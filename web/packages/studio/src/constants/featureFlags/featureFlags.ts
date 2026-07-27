@@ -70,6 +70,7 @@ export const flagDefinitions = {
   guardrailsEnabled: previewFlag('VITE_FF_GUARDRAILS_ENABLED'),
   inferenceProviderEnabled: previewFlag('VITE_FF_INFERENCE_PROVIDER_ENABLED'),
   intakeEnabled: previewFlag('VITE_FF_INTAKE_ENABLED', true),
+  ironSwarmEnabled: previewFlag('VITE_FF_IRON_SWARM_ENABLED'),
   jobsEnabled: previewFlag('VITE_FF_JOBS_ENABLED'),
   membersEnabled: previewFlag('VITE_FF_MEMBERS_ENABLED'),
   modelCompareEnabled: previewFlag('VITE_FF_MODEL_COMPARE_ENABLED'),

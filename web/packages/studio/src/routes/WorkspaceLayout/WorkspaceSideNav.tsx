@@ -21,6 +21,7 @@ import {
   EXPERIMENT_ENABLED,
   GUARDRAILS_ENABLED,
   INTAKE_ENABLED,
+  IRON_SWARM_ENABLED,
   JOBS_ENABLED,
   MODEL_COMPARE_ENABLED,
   OPTIMIZER_ENABLED,
@@ -45,6 +46,7 @@ import {
   getExperimentRoute,
   getGuardrailsRoute,
   getIntakeTracesRoute,
+  getIronSwarmRunListRoute,
   getModelCompareRoute,
   getOptimizerRoute,
   getWorkspaceBaseModelsRoute,
@@ -77,6 +79,7 @@ import {
   ShieldKeyhole,
   FileStack,
   Settings,
+  Swords,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useLocation } from 'react-router';
@@ -315,16 +318,28 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           ]
         : [];
 
-    const governanceItems = GUARDRAILS_ENABLED
-      ? [
-          {
-            id: 'guardrails',
-            slotIcon: <ShieldKeyhole className={iconColorClass} />,
-            slotLabel: 'Guardrails',
-            href: getGuardrailsRoute(workspace),
-          },
-        ]
-      : [];
+    const governanceItems = [
+      ...(GUARDRAILS_ENABLED
+        ? [
+            {
+              id: 'guardrails',
+              slotIcon: <ShieldKeyhole className={iconColorClass} />,
+              slotLabel: 'Guardrails',
+              href: getGuardrailsRoute(workspace),
+            },
+          ]
+        : []),
+      ...(IRON_SWARM_ENABLED
+        ? [
+            {
+              id: 'iron-swarm',
+              slotIcon: <Swords className={iconColorClass} />,
+              slotLabel: 'Iron Swarm',
+              href: getIronSwarmRunListRoute(workspace),
+            },
+          ]
+        : []),
+    ];
 
     return [
       ...dashboardNav,

@@ -30,18 +30,22 @@ import type {
   ComposeDefenseRequest,
   ComposeDefenseResponse,
   EventIn,
+  EventsResponse,
   HTTPValidationError,
   HealthzApisIronSwarmV1HealthzGet200,
   InspectAgentRequest,
   InspectAgentResponse,
   InspectProjectRequest,
   InspectProjectResponse,
+  IronSwarmGetEventsParams,
   IronSwarmGetJobLogsParams,
+  IronSwarmGetSynthBenignJobLogsParams,
   IronSwarmListJobsParams,
   IronSwarmListManifests200,
   IronSwarmListManifestsParams,
   IronSwarmListRuns200,
   IronSwarmListRunsParams,
+  IronSwarmListSynthBenignJobsParams,
   IronSwarmManifest,
   IronSwarmRun,
   ManifestInit,
@@ -51,6 +55,9 @@ import type {
   PlatformJobLogPage,
   PlatformJobResultResponse,
   PlatformJobStatusResponse,
+  SynthBenignJob,
+  SynthBenignJobRequest,
+  SynthBenignJobsPage,
   ValidateModelRequest,
   ValidateModelResponse,
   WarGameJob,
@@ -60,16 +67,6 @@ import type {
 
 import { customFetch } from '../fetchers/iron-swarm.ts';
 import type { ErrorType } from '../fetchers/iron-swarm.ts';
-
-export interface IronSwarmGetRunEventsParams {
-  after?: number;
-  [key: string]: unknown;
-}
-
-export interface EventsResponse {
-  events: Record<string, unknown>[];
-}
-
 const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
   const result = { queryKey } as T & { queryKey: K };
   for (const key of Object.keys(query)) {
@@ -4215,12 +4212,15 @@ export const useIronSwarmIngestEvent = <
 
 /**
  * Return all persisted run events with sequence id greater than *after*.
+ *
+ * Falls back to downloading from the run's ``events_fileset`` when the local
+ * file is absent (e.g. after a pod restart).
  * @summary Get Events
  */
-export const ironSwarmGetRunEvents = (
+export const ironSwarmGetEvents = (
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams,
+  params?: IronSwarmGetEventsParams,
   signal?: AbortSignal
 ) => {
   return customFetch<EventsResponse>({
@@ -4231,10 +4231,10 @@ export const ironSwarmGetRunEvents = (
   });
 };
 
-export const getIronSwarmGetRunEventsQueryKey = (
+export const getIronSwarmGetEventsQueryKey = (
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams
+  params?: IronSwarmGetEventsParams
 ) => {
   return [
     `/apis/iron-swarm/v2/workspaces/${workspace}/runs/${name}/events`,
@@ -4242,97 +4242,90 @@ export const getIronSwarmGetRunEventsQueryKey = (
   ] as const;
 };
 
-export const getIronSwarmGetRunEventsQueryOptions = <
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export const getIronSwarmGetEventsQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams,
+  params?: IronSwarmGetEventsParams,
   options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
-    >;
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>>;
   }
 ) => {
   const { query: queryOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getIronSwarmGetRunEventsQueryKey(workspace, name, params);
+  const queryKey = queryOptions?.queryKey ?? getIronSwarmGetEventsQueryKey(workspace, name, params);
 
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>> = ({ signal }) =>
-    ironSwarmGetRunEvents(workspace, name, params, signal);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetEvents>>> = ({ signal }) =>
+    ironSwarmGetEvents(workspace, name, params, signal);
 
   return {
     queryKey,
     queryFn,
     enabled: workspace !== null && workspace !== undefined && name !== null && name !== undefined,
     ...queryOptions,
-  } as UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData> & {
+  } as UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData> & {
     queryKey: DataTag<QueryKey, TData, TError>;
   };
 };
 
-export type IronSwarmGetRunEventsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof ironSwarmGetRunEvents>>
+export type IronSwarmGetEventsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetEvents>>
 >;
-export type IronSwarmGetRunEventsQueryError = ErrorType<HTTPValidationError>;
+export type IronSwarmGetEventsQueryError = ErrorType<HTTPValidationError>;
 
-export function useIronSwarmGetRunEvents<
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export function useIronSwarmGetEvents<
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params: undefined | IronSwarmGetRunEventsParams,
+  params: undefined | IronSwarmGetEventsParams,
   options: {
-    query: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
-    > &
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>> &
       Pick<
         DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+          Awaited<ReturnType<typeof ironSwarmGetEvents>>,
           TError,
-          Awaited<ReturnType<typeof ironSwarmGetRunEvents>>
+          Awaited<ReturnType<typeof ironSwarmGetEvents>>
         >,
         'initialData'
       >;
   },
   queryClient?: QueryClient
 ): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useIronSwarmGetRunEvents<
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export function useIronSwarmGetEvents<
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams,
+  params?: IronSwarmGetEventsParams,
   options?: {
     query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>
     > &
       Pick<
         UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+          Awaited<ReturnType<typeof ironSwarmGetEvents>>,
           TError,
-          Awaited<ReturnType<typeof ironSwarmGetRunEvents>>
+          Awaited<ReturnType<typeof ironSwarmGetEvents>>
         >,
         'initialData'
       >;
   },
   queryClient?: QueryClient
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useIronSwarmGetRunEvents<
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export function useIronSwarmGetEvents<
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams,
+  params?: IronSwarmGetEventsParams,
   options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
-    >;
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>>;
   },
   queryClient?: QueryClient
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
@@ -4340,21 +4333,19 @@ export function useIronSwarmGetRunEvents<
  * @summary Get Events
  */
 
-export function useIronSwarmGetRunEvents<
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export function useIronSwarmGetEvents<
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams,
+  params?: IronSwarmGetEventsParams,
   options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
-    >;
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>>;
   },
   queryClient?: QueryClient
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getIronSwarmGetRunEventsQueryOptions(workspace, name, params, options);
+  const queryOptions = getIronSwarmGetEventsQueryOptions(workspace, name, params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;
@@ -4363,77 +4354,76 @@ export function useIronSwarmGetRunEvents<
   return withQueryKey(query, queryOptions.queryKey);
 }
 
-export const getIronSwarmGetRunEventsSuspenseQueryOptions = <
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export const getIronSwarmGetEventsSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams,
+  params?: IronSwarmGetEventsParams,
   options?: {
     query?: Partial<
-      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>
     >;
   }
 ) => {
   const { query: queryOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getIronSwarmGetRunEventsQueryKey(workspace, name, params);
+  const queryKey = queryOptions?.queryKey ?? getIronSwarmGetEventsQueryKey(workspace, name, params);
 
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>> = ({ signal }) =>
-    ironSwarmGetRunEvents(workspace, name, params, signal);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetEvents>>> = ({ signal }) =>
+    ironSwarmGetEvents(workspace, name, params, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
-    Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+    Awaited<ReturnType<typeof ironSwarmGetEvents>>,
     TError,
     TData
   > & { queryKey: DataTag<QueryKey, TData, TError> };
 };
 
-export type IronSwarmGetRunEventsSuspenseQueryResult = NonNullable<
-  Awaited<ReturnType<typeof ironSwarmGetRunEvents>>
+export type IronSwarmGetEventsSuspenseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetEvents>>
 >;
-export type IronSwarmGetRunEventsSuspenseQueryError = ErrorType<HTTPValidationError>;
+export type IronSwarmGetEventsSuspenseQueryError = ErrorType<HTTPValidationError>;
 
-export function useIronSwarmGetRunEventsSuspense<
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export function useIronSwarmGetEventsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params: undefined | IronSwarmGetRunEventsParams,
+  params: undefined | IronSwarmGetEventsParams,
   options: {
     query: Partial<
-      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>
     >;
   },
   queryClient?: QueryClient
 ): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useIronSwarmGetRunEventsSuspense<
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export function useIronSwarmGetEventsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams,
+  params?: IronSwarmGetEventsParams,
   options?: {
     query?: Partial<
-      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>
     >;
   },
   queryClient?: QueryClient
 ): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useIronSwarmGetRunEventsSuspense<
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export function useIronSwarmGetEventsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams,
+  params?: IronSwarmGetEventsParams,
   options?: {
     query?: Partial<
-      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>
     >;
   },
   queryClient?: QueryClient
@@ -4442,24 +4432,2175 @@ export function useIronSwarmGetRunEventsSuspense<
  * @summary Get Events
  */
 
-export function useIronSwarmGetRunEventsSuspense<
-  TData = Awaited<ReturnType<typeof ironSwarmGetRunEvents>>,
+export function useIronSwarmGetEventsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetEvents>>,
   TError = ErrorType<HTTPValidationError>,
 >(
   workspace: string,
   name: string,
-  params?: IronSwarmGetRunEventsParams,
+  params?: IronSwarmGetEventsParams,
   options?: {
     query?: Partial<
-      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetRunEvents>>, TError, TData>
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetEvents>>, TError, TData>
     >;
   },
   queryClient?: QueryClient
 ): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getIronSwarmGetRunEventsSuspenseQueryOptions(
+  const queryOptions = getIronSwarmGetEventsSuspenseQueryOptions(workspace, name, params, options);
+
+  const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Create Job
+ */
+export const ironSwarmCreateSynthBenignJob = (
+  workspace: string,
+  synthBenignJobRequest: SynthBenignJobRequest,
+  signal?: AbortSignal
+) => {
+  return customFetch<SynthBenignJob>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: synthBenignJobRequest,
+    signal,
+  });
+};
+
+export const getIronSwarmCreateSynthBenignJobMutationOptions = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof ironSwarmCreateSynthBenignJob>>,
+    TError,
+    { workspace: string; data: SynthBenignJobRequest },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof ironSwarmCreateSynthBenignJob>>,
+  TError,
+  { workspace: string; data: SynthBenignJobRequest },
+  TContext
+> => {
+  const mutationKey = ['ironSwarmCreateSynthBenignJob'];
+  const { mutation: mutationOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof ironSwarmCreateSynthBenignJob>>,
+    { workspace: string; data: SynthBenignJobRequest }
+  > = (props) => {
+    const { workspace, data } = props ?? {};
+
+    return ironSwarmCreateSynthBenignJob(workspace, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type IronSwarmCreateSynthBenignJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmCreateSynthBenignJob>>
+>;
+export type IronSwarmCreateSynthBenignJobMutationBody = SynthBenignJobRequest;
+export type IronSwarmCreateSynthBenignJobMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Create Job
+ */
+export const useIronSwarmCreateSynthBenignJob = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof ironSwarmCreateSynthBenignJob>>,
+      TError,
+      { workspace: string; data: SynthBenignJobRequest },
+      TContext
+    >;
+  },
+  queryClient?: QueryClient
+): UseMutationResult<
+  Awaited<ReturnType<typeof ironSwarmCreateSynthBenignJob>>,
+  TError,
+  { workspace: string; data: SynthBenignJobRequest },
+  TContext
+> => {
+  return useMutation(getIronSwarmCreateSynthBenignJobMutationOptions(options), queryClient);
+};
+
+/**
+ * @summary List Jobs
+ */
+export const ironSwarmListSynthBenignJobs = (
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams,
+  signal?: AbortSignal
+) => {
+  return customFetch<SynthBenignJobsPage>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs`,
+    method: 'GET',
+    params,
+    signal,
+  });
+};
+
+export const getIronSwarmListSynthBenignJobsQueryKey = (
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams
+) => {
+  return [
+    `/apis/iron-swarm/v2/workspaces/${workspace}/synth-benign/jobs`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getIronSwarmListSynthBenignJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>, TError, TData>
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmListSynthBenignJobsQueryKey(workspace, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>> = ({
+    signal,
+  }) => ironSwarmListSynthBenignJobs(workspace, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: workspace !== null && workspace !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type IronSwarmListSynthBenignJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>
+>;
+export type IronSwarmListSynthBenignJobsQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmListSynthBenignJobs<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params: undefined | IronSwarmListSynthBenignJobsParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmListSynthBenignJobs<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmListSynthBenignJobs<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List Jobs
+ */
+
+export function useIronSwarmListSynthBenignJobs<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmListSynthBenignJobsQueryOptions(workspace, params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getIronSwarmListSynthBenignJobsSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+        TError,
+        TData
+      >
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmListSynthBenignJobsQueryKey(workspace, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>> = ({
+    signal,
+  }) => ironSwarmListSynthBenignJobs(workspace, params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmListSynthBenignJobsSuspenseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>
+>;
+export type IronSwarmListSynthBenignJobsSuspenseQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmListSynthBenignJobsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params: undefined | IronSwarmListSynthBenignJobsParams,
+  options: {
+    query: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmListSynthBenignJobsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmListSynthBenignJobsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List Jobs
+ */
+
+export function useIronSwarmListSynthBenignJobsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: IronSwarmListSynthBenignJobsParams,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobs>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmListSynthBenignJobsSuspenseQueryOptions(
+    workspace,
+    params,
+    options
+  );
+
+  const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Get Job Result
+ */
+export const ironSwarmGetSynthBenignJobResult = (
+  workspace: string,
+  job: string,
+  name: string,
+  signal?: AbortSignal
+) => {
+  return customFetch<PlatformJobResultResponse>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs/${encodeURIComponent(String(job))}/results/${encodeURIComponent(String(name))}`,
+    method: 'GET',
+    signal,
+  });
+};
+
+export const getIronSwarmGetSynthBenignJobResultQueryKey = (
+  workspace: string,
+  job: string,
+  name: string
+) => {
+  return [
+    `/apis/iron-swarm/v2/workspaces/${workspace}/synth-benign/jobs/${job}/results/${name}`,
+  ] as const;
+};
+
+export const getIronSwarmGetSynthBenignJobResultQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>, TError, TData>
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmGetSynthBenignJobResultQueryKey(workspace, job, name);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>> = ({
+    signal,
+  }) => ironSwarmGetSynthBenignJobResult(workspace, job, name, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled:
+      workspace !== null &&
+      workspace !== undefined &&
+      job !== null &&
+      job !== undefined &&
+      name !== null &&
+      name !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmGetSynthBenignJobResultQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>
+>;
+export type IronSwarmGetSynthBenignJobResultQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmGetSynthBenignJobResult<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobResult<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobResult<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Job Result
+ */
+
+export function useIronSwarmGetSynthBenignJobResult<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmGetSynthBenignJobResultQueryOptions(
+    workspace,
+    job,
+    name,
+    options
+  );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getIronSwarmGetSynthBenignJobResultSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmGetSynthBenignJobResultQueryKey(workspace, job, name);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>> = ({
+    signal,
+  }) => ironSwarmGetSynthBenignJobResult(workspace, job, name, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmGetSynthBenignJobResultSuspenseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>
+>;
+export type IronSwarmGetSynthBenignJobResultSuspenseQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmGetSynthBenignJobResultSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobResultSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobResultSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Job Result
+ */
+
+export function useIronSwarmGetSynthBenignJobResultSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmGetSynthBenignJobResultSuspenseQueryOptions(
+    workspace,
+    job,
+    name,
+    options
+  );
+
+  const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Download Job Result
+ */
+export const ironSwarmDownloadSynthBenignJobResult = (
+  workspace: string,
+  job: string,
+  name: string,
+  signal?: AbortSignal
+) => {
+  return customFetch<Blob>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs/${encodeURIComponent(String(job))}/results/${encodeURIComponent(String(name))}/download`,
+    method: 'GET',
+    responseType: 'blob',
+    signal,
+  });
+};
+
+export const getIronSwarmDownloadSynthBenignJobResultQueryKey = (
+  workspace: string,
+  job: string,
+  name: string
+) => {
+  return [
+    `/apis/iron-swarm/v2/workspaces/${workspace}/synth-benign/jobs/${job}/results/${name}/download`,
+  ] as const;
+};
+
+export const getIronSwarmDownloadSynthBenignJobResultQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getIronSwarmDownloadSynthBenignJobResultQueryKey(workspace, job, name);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>
+  > = ({ signal }) => ironSwarmDownloadSynthBenignJobResult(workspace, job, name, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled:
+      workspace !== null &&
+      workspace !== undefined &&
+      job !== null &&
+      job !== undefined &&
+      name !== null &&
+      name !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmDownloadSynthBenignJobResultQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>
+>;
+export type IronSwarmDownloadSynthBenignJobResultQueryError = ErrorType<void | HTTPValidationError>;
+
+export function useIronSwarmDownloadSynthBenignJobResult<
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmDownloadSynthBenignJobResult<
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmDownloadSynthBenignJobResult<
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Download Job Result
+ */
+
+export function useIronSwarmDownloadSynthBenignJobResult<
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmDownloadSynthBenignJobResultQueryOptions(
+    workspace,
+    job,
+    name,
+    options
+  );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getIronSwarmDownloadSynthBenignJobResultSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getIronSwarmDownloadSynthBenignJobResultQueryKey(workspace, job, name);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>
+  > = ({ signal }) => ironSwarmDownloadSynthBenignJobResult(workspace, job, name, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmDownloadSynthBenignJobResultSuspenseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>
+>;
+export type IronSwarmDownloadSynthBenignJobResultSuspenseQueryError =
+  ErrorType<void | HTTPValidationError>;
+
+export function useIronSwarmDownloadSynthBenignJobResultSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmDownloadSynthBenignJobResultSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmDownloadSynthBenignJobResultSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Download Job Result
+ */
+
+export function useIronSwarmDownloadSynthBenignJobResultSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+  TError = ErrorType<void | HTTPValidationError>,
+>(
+  workspace: string,
+  job: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmDownloadSynthBenignJobResult>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmDownloadSynthBenignJobResultSuspenseQueryOptions(
+    workspace,
+    job,
+    name,
+    options
+  );
+
+  const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Get Job
+ */
+export const ironSwarmGetSynthBenignJob = (
+  workspace: string,
+  name: string,
+  signal?: AbortSignal
+) => {
+  return customFetch<SynthBenignJob>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs/${encodeURIComponent(String(name))}`,
+    method: 'GET',
+    signal,
+  });
+};
+
+export const getIronSwarmGetSynthBenignJobQueryKey = (workspace: string, name: string) => {
+  return [`/apis/iron-swarm/v2/workspaces/${workspace}/synth-benign/jobs/${name}`] as const;
+};
+
+export const getIronSwarmGetSynthBenignJobQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getIronSwarmGetSynthBenignJobQueryKey(workspace, name);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>> = ({
+    signal,
+  }) => ironSwarmGetSynthBenignJob(workspace, name, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: workspace !== null && workspace !== undefined && name !== null && name !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type IronSwarmGetSynthBenignJobQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>
+>;
+export type IronSwarmGetSynthBenignJobQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmGetSynthBenignJob<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJob<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJob<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Job
+ */
+
+export function useIronSwarmGetSynthBenignJob<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmGetSynthBenignJobQueryOptions(workspace, name, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getIronSwarmGetSynthBenignJobSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getIronSwarmGetSynthBenignJobQueryKey(workspace, name);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>> = ({
+    signal,
+  }) => ironSwarmGetSynthBenignJob(workspace, name, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmGetSynthBenignJobSuspenseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>
+>;
+export type IronSwarmGetSynthBenignJobSuspenseQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmGetSynthBenignJobSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Job
+ */
+
+export function useIronSwarmGetSynthBenignJobSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJob>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmGetSynthBenignJobSuspenseQueryOptions(workspace, name, options);
+
+  const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Delete Job
+ */
+export const ironSwarmDeleteSynthBenignJob = (
+  workspace: string,
+  name: string,
+  signal?: AbortSignal
+) => {
+  return customFetch<void>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs/${encodeURIComponent(String(name))}`,
+    method: 'DELETE',
+    signal,
+  });
+};
+
+export const getIronSwarmDeleteSynthBenignJobMutationOptions = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof ironSwarmDeleteSynthBenignJob>>,
+    TError,
+    { workspace: string; name: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof ironSwarmDeleteSynthBenignJob>>,
+  TError,
+  { workspace: string; name: string },
+  TContext
+> => {
+  const mutationKey = ['ironSwarmDeleteSynthBenignJob'];
+  const { mutation: mutationOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof ironSwarmDeleteSynthBenignJob>>,
+    { workspace: string; name: string }
+  > = (props) => {
+    const { workspace, name } = props ?? {};
+
+    return ironSwarmDeleteSynthBenignJob(workspace, name);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type IronSwarmDeleteSynthBenignJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmDeleteSynthBenignJob>>
+>;
+
+export type IronSwarmDeleteSynthBenignJobMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Delete Job
+ */
+export const useIronSwarmDeleteSynthBenignJob = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof ironSwarmDeleteSynthBenignJob>>,
+      TError,
+      { workspace: string; name: string },
+      TContext
+    >;
+  },
+  queryClient?: QueryClient
+): UseMutationResult<
+  Awaited<ReturnType<typeof ironSwarmDeleteSynthBenignJob>>,
+  TError,
+  { workspace: string; name: string },
+  TContext
+> => {
+  return useMutation(getIronSwarmDeleteSynthBenignJobMutationOptions(options), queryClient);
+};
+
+/**
+ * @summary Cancel Job
+ */
+export const ironSwarmCancelSynthBenignJob = (
+  workspace: string,
+  name: string,
+  signal?: AbortSignal
+) => {
+  return customFetch<SynthBenignJob>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs/${encodeURIComponent(String(name))}/cancel`,
+    method: 'POST',
+    signal,
+  });
+};
+
+export const getIronSwarmCancelSynthBenignJobMutationOptions = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof ironSwarmCancelSynthBenignJob>>,
+    TError,
+    { workspace: string; name: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof ironSwarmCancelSynthBenignJob>>,
+  TError,
+  { workspace: string; name: string },
+  TContext
+> => {
+  const mutationKey = ['ironSwarmCancelSynthBenignJob'];
+  const { mutation: mutationOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof ironSwarmCancelSynthBenignJob>>,
+    { workspace: string; name: string }
+  > = (props) => {
+    const { workspace, name } = props ?? {};
+
+    return ironSwarmCancelSynthBenignJob(workspace, name);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type IronSwarmCancelSynthBenignJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmCancelSynthBenignJob>>
+>;
+
+export type IronSwarmCancelSynthBenignJobMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Cancel Job
+ */
+export const useIronSwarmCancelSynthBenignJob = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof ironSwarmCancelSynthBenignJob>>,
+      TError,
+      { workspace: string; name: string },
+      TContext
+    >;
+  },
+  queryClient?: QueryClient
+): UseMutationResult<
+  Awaited<ReturnType<typeof ironSwarmCancelSynthBenignJob>>,
+  TError,
+  { workspace: string; name: string },
+  TContext
+> => {
+  return useMutation(getIronSwarmCancelSynthBenignJobMutationOptions(options), queryClient);
+};
+
+/**
+ * @summary Get Job Logs
+ */
+export const ironSwarmGetSynthBenignJobLogs = (
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams,
+  signal?: AbortSignal
+) => {
+  return customFetch<PlatformJobLogPage>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs/${encodeURIComponent(String(name))}/logs`,
+    method: 'GET',
+    params,
+    signal,
+  });
+};
+
+export const getIronSwarmGetSynthBenignJobLogsQueryKey = (
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams
+) => {
+  return [
+    `/apis/iron-swarm/v2/workspaces/${workspace}/synth-benign/jobs/${name}/logs`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getIronSwarmGetSynthBenignJobLogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>, TError, TData>
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmGetSynthBenignJobLogsQueryKey(workspace, name, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>> = ({
+    signal,
+  }) => ironSwarmGetSynthBenignJobLogs(workspace, name, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: workspace !== null && workspace !== undefined && name !== null && name !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmGetSynthBenignJobLogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>
+>;
+export type IronSwarmGetSynthBenignJobLogsQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmGetSynthBenignJobLogs<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params: undefined | IronSwarmGetSynthBenignJobLogsParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobLogs<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobLogs<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Job Logs
+ */
+
+export function useIronSwarmGetSynthBenignJobLogs<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmGetSynthBenignJobLogsQueryOptions(
     workspace,
     name,
     params,
+    options
+  );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getIronSwarmGetSynthBenignJobLogsSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+        TError,
+        TData
+      >
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmGetSynthBenignJobLogsQueryKey(workspace, name, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>> = ({
+    signal,
+  }) => ironSwarmGetSynthBenignJobLogs(workspace, name, params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmGetSynthBenignJobLogsSuspenseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>
+>;
+export type IronSwarmGetSynthBenignJobLogsSuspenseQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmGetSynthBenignJobLogsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params: undefined | IronSwarmGetSynthBenignJobLogsParams,
+  options: {
+    query: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobLogsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobLogsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Job Logs
+ */
+
+export function useIronSwarmGetSynthBenignJobLogsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  params?: IronSwarmGetSynthBenignJobLogsParams,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobLogs>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmGetSynthBenignJobLogsSuspenseQueryOptions(
+    workspace,
+    name,
+    params,
+    options
+  );
+
+  const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary List Job Results
+ */
+export const ironSwarmListSynthBenignJobResults = (
+  workspace: string,
+  name: string,
+  signal?: AbortSignal
+) => {
+  return customFetch<PlatformJobListResultResponse>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs/${encodeURIComponent(String(name))}/results`,
+    method: 'GET',
+    signal,
+  });
+};
+
+export const getIronSwarmListSynthBenignJobResultsQueryKey = (workspace: string, name: string) => {
+  return [`/apis/iron-swarm/v2/workspaces/${workspace}/synth-benign/jobs/${name}/results`] as const;
+};
+
+export const getIronSwarmListSynthBenignJobResultsQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>, TError, TData>
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmListSynthBenignJobResultsQueryKey(workspace, name);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>> = ({
+    signal,
+  }) => ironSwarmListSynthBenignJobResults(workspace, name, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: workspace !== null && workspace !== undefined && name !== null && name !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmListSynthBenignJobResultsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>
+>;
+export type IronSwarmListSynthBenignJobResultsQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmListSynthBenignJobResults<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmListSynthBenignJobResults<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmListSynthBenignJobResults<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List Job Results
+ */
+
+export function useIronSwarmListSynthBenignJobResults<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmListSynthBenignJobResultsQueryOptions(workspace, name, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getIronSwarmListSynthBenignJobResultsSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+        TError,
+        TData
+      >
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmListSynthBenignJobResultsQueryKey(workspace, name);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>> = ({
+    signal,
+  }) => ironSwarmListSynthBenignJobResults(workspace, name, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmListSynthBenignJobResultsSuspenseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>
+>;
+export type IronSwarmListSynthBenignJobResultsSuspenseQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmListSynthBenignJobResultsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmListSynthBenignJobResultsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmListSynthBenignJobResultsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List Job Results
+ */
+
+export function useIronSwarmListSynthBenignJobResultsSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmListSynthBenignJobResults>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmListSynthBenignJobResultsSuspenseQueryOptions(
+    workspace,
+    name,
+    options
+  );
+
+  const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Get Job Status
+ */
+export const ironSwarmGetSynthBenignJobStatus = (
+  workspace: string,
+  name: string,
+  signal?: AbortSignal
+) => {
+  return customFetch<PlatformJobStatusResponse>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/synth-benign/jobs/${encodeURIComponent(String(name))}/status`,
+    method: 'GET',
+    signal,
+  });
+};
+
+export const getIronSwarmGetSynthBenignJobStatusQueryKey = (workspace: string, name: string) => {
+  return [`/apis/iron-swarm/v2/workspaces/${workspace}/synth-benign/jobs/${name}/status`] as const;
+};
+
+export const getIronSwarmGetSynthBenignJobStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>, TError, TData>
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmGetSynthBenignJobStatusQueryKey(workspace, name);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>> = ({
+    signal,
+  }) => ironSwarmGetSynthBenignJobStatus(workspace, name, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: workspace !== null && workspace !== undefined && name !== null && name !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmGetSynthBenignJobStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>
+>;
+export type IronSwarmGetSynthBenignJobStatusQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmGetSynthBenignJobStatus<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobStatus<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+          TError,
+          Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobStatus<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Job Status
+ */
+
+export function useIronSwarmGetSynthBenignJobStatus<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>, TError, TData>
+    >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmGetSynthBenignJobStatusQueryOptions(workspace, name, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getIronSwarmGetSynthBenignJobStatusSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+        TError,
+        TData
+      >
+    >;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getIronSwarmGetSynthBenignJobStatusQueryKey(workspace, name);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>> = ({
+    signal,
+  }) => ironSwarmGetSynthBenignJobStatus(workspace, name, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
+    Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type IronSwarmGetSynthBenignJobStatusSuspenseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>
+>;
+export type IronSwarmGetSynthBenignJobStatusSuspenseQueryError = ErrorType<HTTPValidationError>;
+
+export function useIronSwarmGetSynthBenignJobStatusSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options: {
+    query: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobStatusSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useIronSwarmGetSynthBenignJobStatusSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Job Status
+ */
+
+export function useIronSwarmGetSynthBenignJobStatusSuspense<
+  TData = Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  name: string,
+  options?: {
+    query?: Partial<
+      UseSuspenseQueryOptions<
+        Awaited<ReturnType<typeof ironSwarmGetSynthBenignJobStatus>>,
+        TError,
+        TData
+      >
+    >;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getIronSwarmGetSynthBenignJobStatusSuspenseQueryOptions(
+    workspace,
+    name,
     options
   );
 
