@@ -21,8 +21,6 @@ interface Props<T extends 'single' | 'multiple' = 'single'>
       | 'kind'
       | 'value'
       | 'onValueChange'
-      | 'inputValue'
-      | 'onInputValueChange'
       | 'renderValue'
       | 'ref'
     >,
@@ -58,6 +56,8 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
   kind = 'single' as T,
   renderValue,
   freeForm = false,
+  inputValue,
+  onInputValueChange,
   ...comboboxProps
 }: Props<T>) => {
   const {
@@ -72,9 +72,16 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
     onChangeControl(newValue);
   };
 
+  const isInputControlled = inputValue !== undefined;
+
   const handleTempValueChange = (newValue: string) => {
-    // In freeForm, we set form value to enable custom values.
-    if (freeForm) {
+    onInputValueChange?.(newValue);
+    // The caller owns the search text, so don't shadow it with local state.
+    if (isInputControlled) return;
+    // In freeForm, we set form value to enable custom values. Multi-select holds a string[],
+    // so writing the raw input there would replace the whole selection with one string —
+    // those callers surface custom entries as items instead.
+    if (freeForm && kind !== 'multiple') {
       handleSelectedValueChange(newValue);
     } else {
       setDispValue(newValue);
@@ -95,7 +102,7 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
           id: useControllerProps.name,
           name: useControllerProps.name,
           items,
-          inputValue: kind === 'multiple' ? '' : dispValue || '',
+          inputValue: isInputControlled ? inputValue : kind === 'multiple' ? '' : dispValue || '',
           onInputValueChange: handleTempValueChange,
           onBlur,
           slotEnd: loading && <TextInputSpinner />,
