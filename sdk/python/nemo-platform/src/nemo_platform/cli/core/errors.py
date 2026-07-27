@@ -241,14 +241,18 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
         # Re-raise typer.Exit with its original exit code (don't treat Exit(0) as error)
         raise error
     if isinstance(error, AuthenticationError) and _is_model_provider_error(error):
-        console.print(f"[bold red]Model provider authentication error:[/] ({error.status_code}) {_format_api_error(error)}")
+        console.print(
+            f"[bold red]Model provider authentication error:[/] ({error.status_code}) {_format_api_error(error)}"
+        )
         console.print(
             "[yellow]Hint:[/] The ModelProvider rejected its configured credentials. "
             "Check the provider's API key secret and authentication configuration."
         )
         raise typer.Exit(code=1)
     if isinstance(error, PermissionDeniedError) and _is_model_provider_error(error):
-        console.print(f"[bold red]Model provider permission denied:[/] ({error.status_code}) {_format_api_error(error)}")
+        console.print(
+            f"[bold red]Model provider permission denied:[/] ({error.status_code}) {_format_api_error(error)}"
+        )
         console.print(
             "[yellow]Hint:[/] The ModelProvider denied access for its configured credentials. "
             "Check the configured credential's permissions and model access."

@@ -98,6 +98,35 @@ def test_handle_api_connection_error(capsys):
     assert "base-url" in captured.err
 
 
+@pytest.mark.parametrize(
+    "error_class,status_code,expected_prefix,expected_hint",
+    [
+        (AuthenticationError, 401, "Model provider authentication error:", "API key secret"),
+        (PermissionDeniedError, 403, "Model provider permission denied:", "model access"),
+    ],
+)
+def test_handle_model_provider_auth_errors(
+    capsys,
+    error_class,
+    status_code,
+    expected_prefix,
+    expected_hint,
+):
+    response = Mock()
+    response.status_code = status_code
+    response.headers = {"x-nemo-error-source": "model-provider"}
+    error = error_class("Authentication failed", response=response, body=None)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        handle_exception(error)
+
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    assert expected_prefix in captured.err
+    assert expected_hint in captured.err
+    assert "nemo auth login" not in captured.err
+
+
 def test_handle_api_timeout_error(capsys):
     request = Mock()
     error = APITimeoutError(request=request)
