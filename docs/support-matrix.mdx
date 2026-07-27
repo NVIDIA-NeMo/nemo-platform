@@ -19,6 +19,26 @@ self-managed Kubernetes deployments installed with the NeMo Platform Helm chart.
 | Windows and WSL | Not supported for the OSS local install path | Use a supported Linux or macOS host for the local install path. |
 | Kubernetes clusters | minikube, kind, EKS, AKS, GKE, OKE, OpenShift, and on-prem Kubernetes | See [Install NeMo Platform with Helm](/documentation/self-managed-deployment/helm) for prerequisites and cluster-specific notes. |
 
+## Python tiers (core vs optional plugins)
+
+NeMo Platform declares `requires-python = ">=3.11,<3.15"` on the published
+`nemo-platform` and SDK wheels. That is the supported range for the default CLI,
+local services, and `nemo-platform[all]`.
+
+Some optional plugins and monorepo dependency groups impose a **narrower** range.
+You do not need to match the strictest plugin unless you install that plugin.
+
+| Component | Python range | Notes |
+|-----------|--------------|-------|
+| Core Platform (`nemo-platform`, SDK, default services) | 3.11–3.14 | Documented OSS local-install support. |
+| NeMo Experimentalist (`nooa`, Harbor eval loop) | 3.12–3.13 (`>=3.12,<3.14`) | [NOOA](https://github.com/NVIDIA-NeMo/labs-OO-Agents) (labs OO Agents) caps below 3.14. In this repository, install with `uv sync --group experimentalist` on Python 3.12 or 3.13 only. Not part of the default `nemo-platform[all]` wheel bundle today. |
+| GPU training plugins (RL, Automodel, Unsloth, and related services) | 3.11–3.13 (`>=3.11,<3.14`) | Same upper cap in workspace members; monorepo `uv.lock` resolves through 3.13. |
+| Release container images (`nmp-python-base`, API, CPU tasks) | 3.13 | Built from `python:3.13.x-slim` in `docker/base/Dockerfile.nmp-python-base`. Independent of the pip-install floor on 3.11. |
+
+Experimentalist on Python 3.11 is intentionally unsupported: the root
+`experimentalist` dependency group is omitted on 3.11 so Harbor and NOOA are
+not half-installed.
+
 ## Local Runtime
 
 | Area | Supported | Notes |

@@ -10,10 +10,14 @@ or Git-backed agent against Harbor-compatible train and validation datasets.
 
 ## Install and develop
 
+Use **Python 3.12 or 3.13** (`>=3.12,<3.14`). NOOA and Harbor do not support
+Python 3.11 or 3.14. The workspace keeps a 3.11 floor for the rest of NeMo
+Platform; enable Experimentalist only via the `experimentalist` dependency group.
+
 From the root of this checkout:
 
 ```bash
-uv sync
+uv sync --group experimentalist
 export NEMO="$PWD/.venv/bin/nemo"
 ```
 

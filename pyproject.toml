@@ -70,9 +70,11 @@ version = "0.0.0"
 # Optional Insights analyst plugin.
 insights = ["nemo-insights-plugin"]
 # Optional Experimentalist agent-optimization plugin. Its agent framework (nooa) and
-# evaluator (harbor) are both 3.12-only, so the whole plugin is gated rather than
-# installed half-resolved on 3.11.
-experimentalist = ["nemo-experimentalist-plugin ; python_full_version >= '3.12'"]
+# evaluator (harbor) require Python >=3.12,<3.14, so the whole plugin is gated rather
+# than installed half-resolved on 3.11 or on 3.14+ where nooa does not publish wheels.
+experimentalist = [
+  "nemo-experimentalist-plugin ; python_full_version >= '3.12' and python_full_version < '3.14'",
+]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
