@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Badge, Flex, Text } from '@nvidia/foundations-react-core';
-import type { ComparisonMetricDelta } from '@studio/components/dataViews/ComparisonTable/types';
+import type { ComparisonMetricDelta } from '@studio/components/dataViews/EvalComparisonTable/types';
 import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
 import { Equal, Minus, Plus } from 'lucide-react';
 import type { FC } from 'react';

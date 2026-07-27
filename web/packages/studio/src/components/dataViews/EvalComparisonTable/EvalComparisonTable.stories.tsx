@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Meta, StoryObj } from '@storybook/react';
-import { ComparisonTable } from '@studio/components/dataViews/ComparisonTable/ComparisonTable';
+import { EvalComparisonTable } from '@studio/components/dataViews/EvalComparisonTable/EvalComparisonTable';
 import {
   COMPARISON_EVALUATIONS,
   COMPARISON_EVALUATIONS_WIDE,
-} from '@studio/components/dataViews/ComparisonTable/storyData';
+} from '@studio/components/dataViews/EvalComparisonTable/storyData';
 
 const meta = {
-  component: ComparisonTable,
-  title: 'Components/Comparison table',
+  component: EvalComparisonTable,
+  title: 'Components/Eval comparison table',
   decorators: [
     (Story) => (
       <div className="h-[520px] w-full max-w-6xl">
@@ -18,7 +18,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof ComparisonTable>;
+} satisfies Meta<typeof EvalComparisonTable>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

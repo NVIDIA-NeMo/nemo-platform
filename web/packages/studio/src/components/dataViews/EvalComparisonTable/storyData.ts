@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
+import type { EvalComparisonEntry } from '@studio/components/dataViews/EvalComparisonTable/types';
 
-export const COMPARISON_EVALUATIONS: ComparisonEntry[] = [
+export const COMPARISON_EVALUATIONS: EvalComparisonEntry[] = [
   {
     id: 'support-agent-v1-run',
     label: 'Baseline',
-    agentName: 'support-agent-v1',
-    evaluationName: 'support-agent-v1-run',
     createdAt: '2026-07-20T09:15:00Z',
     scores: [
       {
@@ -35,8 +33,6 @@ export const COMPARISON_EVALUATIONS: ComparisonEntry[] = [
   {
     id: 'support-agent-v2-run',
     label: 'Candidate',
-    agentName: 'support-agent-v2',
-    evaluationName: 'support-agent-v2-run',
     createdAt: '2026-07-22T14:30:00Z',
     scores: [
       {
@@ -63,8 +59,6 @@ export const COMPARISON_EVALUATIONS: ComparisonEntry[] = [
   {
     id: 'support-agent-v3-run',
     label: 'Safety candidate',
-    agentName: 'support-agent-v3',
-    evaluationName: 'support-agent-v3-run',
     createdAt: '2026-07-23T11:45:00Z',
     scores: [
       {
@@ -92,12 +86,10 @@ export const COMPARISON_EVALUATIONS: ComparisonEntry[] = [
 
 /** Enough runs to push the candidate columns past the viewport, so the pinned metric and
  * baseline columns can be exercised. */
-export const COMPARISON_EVALUATIONS_WIDE: ComparisonEntry[] = [
+export const COMPARISON_EVALUATIONS_WIDE: EvalComparisonEntry[] = [
   {
     id: 'sweep-baseline',
     label: 'Baseline',
-    agentName: 'support-agent-v1',
-    evaluationName: 'sweep-baseline',
     createdAt: '2026-07-20T09:15:00Z',
     scores: [
       {
@@ -133,8 +125,6 @@ export const COMPARISON_EVALUATIONS_WIDE: ComparisonEntry[] = [
   ...Array.from({ length: 8 }, (_unused, index) => ({
     id: `sweep-run-${index + 1}`,
     label: `Prompt sweep ${index + 1}`,
-    agentName: `support-agent-sweep-${index + 1}`,
-    evaluationName: `sweep-run-${index + 1}`,
     createdAt: '2026-07-23T11:45:00Z',
     scores: [
       {

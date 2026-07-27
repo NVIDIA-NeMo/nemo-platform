@@ -2,23 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AgentEvaluateJob, AgentEvalResult } from '@nemo/sdk/generated/evaluator/schema';
-import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
+import type { EvalComparisonEntry } from '@studio/components/dataViews/EvalComparisonTable/types';
 import {
   baselineForComparisons,
   candidatesForComparisons,
+  comparisonScoresForAgentEval,
+  comparisonScoresForModelEval,
   comparisonsForEvalConfig,
   deltaFromBaseline,
   metricNamesForComparisons,
   normalizeScore,
   scoreForMetric,
-} from '@studio/components/dataViews/ComparisonTable/utils';
+} from '@studio/components/dataViews/EvalComparisonTable/utils';
 
-const evaluations: ComparisonEntry[] = [
+const evaluations: EvalComparisonEntry[] = [
   {
     id: 'first',
     label: 'Baseline',
-    agentName: 'support-agent-v1',
-    evaluationName: 'baseline-run',
     createdAt: null,
     scores: [
       {
@@ -44,8 +44,6 @@ const evaluations: ComparisonEntry[] = [
   {
     id: 'second',
     label: 'Candidate',
-    agentName: 'support-agent-v2',
-    evaluationName: 'candidate-run',
     createdAt: null,
     scores: [
       {
@@ -141,8 +139,27 @@ describe('comparison score helpers', () => {
       'support-eval'
     );
 
-    expect(comparisons).toEqual([
-      expect.objectContaining({ id: 'one', evaluationName: 'baseline-run' }),
+    expect(comparisons).toEqual([expect.objectContaining({ id: 'one', label: 'baseline-run' })]);
+  });
+
+  it('normalizes model-evaluation aggregate score artifacts', () => {
+    expect(
+      comparisonScoresForModelEval({
+        exact_match: { mean: 0.86, min: 0, max: 1 },
+        latency_s: { mean: 1.2 },
+        missing_mean: { min: 0, max: 1 },
+      })
+    ).toEqual([
+      { name: 'exact_match', mean: 0.86 },
+      { name: 'latency_s', mean: 1.2 },
     ]);
+  });
+
+  it('normalizes an agent score with no mean to null', () => {
+    expect(
+      comparisonScoresForAgentEval([
+        { name: 'rubric', count: 5, nan_count: 0, score_type: 'rubric' },
+      ] as AgentEvalResult['scores']['scores'])
+    ).toEqual([{ name: 'rubric', mean: null }]);
   });
 });

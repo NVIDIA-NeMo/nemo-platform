@@ -1,17 +1,19 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { AgentEvalAggregateScore } from '@studio/api/evaluation/agent-evaluations';
+/** The aggregate score fields common to agent and model evaluation results. */
+export interface EvalComparisonScore {
+  readonly name: string;
+  readonly mean: number | null;
+}
 
 /** A completed evaluation run, represented in the common shape consumed by comparison views.
  * All entries passed to a comparison component must use the same persisted eval config. */
-export interface ComparisonEntry {
+export interface EvalComparisonEntry {
   readonly id: string;
   readonly label: string;
-  readonly agentName: string | null;
-  readonly evaluationName: string;
   readonly createdAt: string | null;
-  readonly scores: readonly AgentEvalAggregateScore[];
+  readonly scores: readonly EvalComparisonScore[];
 }
 
 /** The expected range for a score. Supplying bounds keeps radar axes meaningful for scores

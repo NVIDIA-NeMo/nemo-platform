@@ -2,24 +2,27 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export {
-  ComparisonTable,
-  type ComparisonTableProps,
-} from '@studio/components/dataViews/ComparisonTable/ComparisonTable';
+  EvalComparisonTable,
+  type EvalComparisonTableProps,
+} from '@studio/components/dataViews/EvalComparisonTable/EvalComparisonTable';
 export {
   ComparisonDeltaCell,
   type ComparisonDeltaCellProps,
-} from '@studio/components/dataViews/ComparisonTable/ComparisonDeltaCell';
+} from '@studio/components/dataViews/EvalComparisonTable/ComparisonDeltaCell';
 export {
   baselineForComparisons,
+  comparisonScoresForAgentEval,
   candidatesForComparisons,
+  comparisonScoresForModelEval,
   comparisonsForEvalConfig,
   deltaFromBaseline,
   metricNamesForComparisons,
   normalizeScore,
   scoreForMetric,
-} from '@studio/components/dataViews/ComparisonTable/comparisonScores';
+} from '@studio/components/dataViews/EvalComparisonTable/utils';
 export type {
-  ComparisonEntry,
+  EvalComparisonEntry,
+  EvalComparisonScore,
   ComparisonMetricBounds,
   ComparisonMetricDelta,
-} from '@studio/components/dataViews/ComparisonTable/types';
+} from '@studio/components/dataViews/EvalComparisonTable/types';

@@ -6,13 +6,15 @@ import {
   agentNameForJob,
   aggregateScoresOf,
   evalConfigName,
+  type AgentEvalAggregateScore,
   type AgentEvalResult,
 } from '@studio/api/evaluation/agent-evaluations';
 import type {
-  ComparisonEntry,
+  EvalComparisonEntry,
+  EvalComparisonScore,
   ComparisonMetricBounds,
   ComparisonMetricDelta,
-} from '@studio/components/dataViews/ComparisonTable/types';
+} from '@studio/components/dataViews/EvalComparisonTable/types';
 
 /** Creates comparison rows from evaluator API responses and keeps only runs tied to one
  * persisted eval-config fileset. `resultsByJobName` is the map returned by
@@ -21,7 +23,7 @@ export const comparisonsForEvalConfig = (
   jobs: readonly AgentEvaluateJob[],
   resultsByJobName: ReadonlyMap<string, AgentEvalResult>,
   configName: string
-): ComparisonEntry[] =>
+): EvalComparisonEntry[] =>
   jobs.flatMap((job) => {
     if (evalConfigName(job) !== configName || !job.name) return [];
     const agentName = agentNameForJob(job);
@@ -29,34 +31,51 @@ export const comparisonsForEvalConfig = (
       {
         id: job.id || job.name,
         label: agentName ?? job.name,
-        agentName,
-        evaluationName: job.name,
         createdAt: job.created_at ?? null,
-        scores: aggregateScoresOf(resultsByJobName.get(job.name) ?? null),
+        scores: comparisonScoresForAgentEval(
+          aggregateScoresOf(resultsByJobName.get(job.name) ?? null)
+        ),
       },
     ];
   });
 
-export const metricNamesForComparisons = (entries: readonly ComparisonEntry[]): string[] =>
+/** Normalizes optional agent-evaluation means to the comparison table's explicit null value. */
+export const comparisonScoresForAgentEval = (
+  scores: readonly AgentEvalAggregateScore[]
+): EvalComparisonScore[] => scores.map(({ name, mean }) => ({ name, mean: mean ?? null }));
+
+/** Selects the aggregate mean for every metric in the model-evaluation result artifact.
+ * Model results use a record keyed by metric name, whereas agent results are already an
+ * array; both become `EvalComparisonScore` before reaching the table. */
+export const comparisonScoresForModelEval = (
+  scores: Readonly<Record<string, Readonly<Record<string, number>>>> | null | undefined
+): EvalComparisonScore[] =>
+  Object.entries(scores ?? {}).flatMap(([name, aggregate]) => {
+    const mean = aggregate.mean;
+    return typeof mean === 'number' && Number.isFinite(mean) ? [{ name, mean }] : [];
+  });
+
+export const metricNamesForComparisons = (entries: readonly EvalComparisonEntry[]): string[] =>
   Array.from(new Set(entries.flatMap((entry) => entry.scores.map((score) => score.name))));
 
-export const scoreForMetric = (entry: ComparisonEntry, metricName: string): number | null => {
+export const scoreForMetric = (entry: EvalComparisonEntry, metricName: string): number | null => {
   const score = entry.scores.find((candidate) => candidate.name === metricName)?.mean;
   return typeof score === 'number' && Number.isFinite(score) ? score : null;
 };
 
 /** The run every other run is compared against. Callers control this by ordering the list. */
 export const baselineForComparisons = (
-  entries: readonly ComparisonEntry[]
-): ComparisonEntry | null => entries[0] ?? null;
+  entries: readonly EvalComparisonEntry[]
+): EvalComparisonEntry | null => entries[0] ?? null;
 
 /** Every run after the baseline, in the order supplied. */
-export const candidatesForComparisons = (entries: readonly ComparisonEntry[]): ComparisonEntry[] =>
-  entries.slice(1);
+export const candidatesForComparisons = (
+  entries: readonly EvalComparisonEntry[]
+): EvalComparisonEntry[] => entries.slice(1);
 
 export const deltaFromBaseline = (
-  entry: ComparisonEntry,
-  baseline: ComparisonEntry | null,
+  entry: EvalComparisonEntry,
+  baseline: EvalComparisonEntry | null,
   metricName: string
 ): ComparisonMetricDelta => {
   const value = scoreForMetric(entry, metricName);

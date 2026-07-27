@@ -5,18 +5,18 @@ import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataV
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Text } from '@nvidia/foundations-react-core';
-import { ComparisonColumnHeader } from '@studio/components/dataViews/ComparisonTable/ComparisonColumnHeader';
-import { ComparisonDeltaCell } from '@studio/components/dataViews/ComparisonTable/ComparisonDeltaCell';
-import { ComparisonPinnedCell } from '@studio/components/dataViews/ComparisonTable/ComparisonPinnedCell';
-import { ComparisonRunCell } from '@studio/components/dataViews/ComparisonTable/ComparisonRunCell';
-import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
+import { ComparisonColumnHeader } from '@studio/components/dataViews/EvalComparisonTable/ComparisonColumnHeader';
+import { ComparisonDeltaCell } from '@studio/components/dataViews/EvalComparisonTable/ComparisonDeltaCell';
+import { ComparisonPinnedCell } from '@studio/components/dataViews/EvalComparisonTable/ComparisonPinnedCell';
+import { ComparisonRunCell } from '@studio/components/dataViews/EvalComparisonTable/ComparisonRunCell';
+import type { EvalComparisonEntry } from '@studio/components/dataViews/EvalComparisonTable/types';
 import {
   baselineForComparisons,
   candidatesForComparisons,
   deltaFromBaseline,
   metricNamesForComparisons,
   scoreForMetric,
-} from '@studio/components/dataViews/ComparisonTable/utils';
+} from '@studio/components/dataViews/EvalComparisonTable/utils';
 import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
 import { useMemo, type ComponentProps, type FC } from 'react';
 
@@ -40,10 +40,10 @@ interface MetricRow {
   metricName: string;
 }
 
-export interface ComparisonTableProps {
+export interface EvalComparisonTableProps {
   /** Runs made with one persisted eval-config fileset. The first entry is the baseline every
    * other run is measured against; order the list to choose it. */
-  readonly evaluations: readonly ComparisonEntry[];
+  readonly evaluations: readonly EvalComparisonEntry[];
   /** Metrics where a lower score is the improvement (latency, cost, error rate). */
   readonly lowerIsBetterMetrics?: readonly string[];
 }
@@ -51,7 +51,7 @@ export interface ComparisonTableProps {
 /** A matrix for comparing aggregate results from a single eval config. Metrics are rows and each
  * run is a column; the metric and baseline columns stay pinned so candidate runs can be scrolled
  * through side by side against the baseline. */
-export const ComparisonTable: FC<ComparisonTableProps> = ({
+export const EvalComparisonTable: FC<EvalComparisonTableProps> = ({
   evaluations,
   lowerIsBetterMetrics,
 }) => {
