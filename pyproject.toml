@@ -69,6 +69,10 @@ version = "0.0.0"
 [dependency-groups]
 # Optional Insights analyst plugin.
 insights = ["nemo-insights-plugin"]
+# Optional Experimentalist agent-optimization plugin. Its agent framework (nooa) and
+# evaluator (harbor) are both 3.12-only, so the whole plugin is gated rather than
+# installed half-resolved on 3.11.
+experimentalist = ["nemo-experimentalist-plugin ; python_full_version >= '3.12'"]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -364,6 +368,9 @@ nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
+nemo-experimentalist-plugin = { workspace = true }
+# Not published to PyPI yet; pinned to an immutable public tag.
+nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", tag = "v0.0.6" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
@@ -430,6 +437,7 @@ members = [
   "plugins/nemo-agents",
   "plugins/nemo-deployments",
   "plugins/nemo-insights",
+  "plugins/nemo-experimentalist",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-customizer",
@@ -552,6 +560,8 @@ extra-paths = [
   "plugins/nemo-evaluator/src",
   # The optional Insights analyst is not part of the default environment.
   "plugins/nemo-insights/src",
+  # Same for the optional Experimentalist; its tests also import the benchmark runner.
+  "plugins/nemo-experimentalist/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
   # on sys.path in tests/conftest.py.
   "tests/agentic-use",
@@ -611,6 +621,10 @@ exclude = [
   # root `ty` until that cleanup lands in a focused follow-up.
   "plugins/nemo-switchyard/",
 
+  # Standalone Terminal-Bench agent-under-test: resolved from its own lockfile inside
+  # the benchmark's task containers, so its imports are absent from the workspace env.
+  "plugins/nemo-experimentalist/examples/",
+
   "docs/",
 
   "./sdk/",
@@ -618,3 +632,21 @@ exclude = [
   "tools/nemo-platform-sdk-tools/src/nemo_platform_sdk_tools/sdk",
   "tools/nemo-platform-sdk-tools/tests/sdk",
 ]
+
+# nooa agents declare their LLM-generated methods as annotated signatures with an
+# ellipsis body; the framework fills them in at runtime. ty reads that as a missing
+# return, so the rule is off for the Experimentalist's agent classes only.
+[[tool.ty.overrides]]
+include = ["plugins/nemo-experimentalist/src/**"]
+
+[tool.ty.overrides.rules]
+empty-body = "ignore"
+
+# The Experimentalist's agent framework (nooa) and evaluator (harbor) are both
+# 3.12-only, so uv skips them when the lint job resolves on 3.11 and every import
+# of them goes unresolved. Everything else about the plugin still gets checked.
+[[tool.ty.overrides]]
+include = ["plugins/nemo-experimentalist/**"]
+
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"

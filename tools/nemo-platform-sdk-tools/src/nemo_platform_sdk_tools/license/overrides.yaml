@@ -270,6 +270,10 @@ overrides:
   crc32c: LGPL-2.1-or-later # https://pypi.org/project/crc32c/
   detect-installer: 0BSD # https://pypi.org/project/detect-installer/
 
+  # Experimentalist plugin. Only nooa needs an entry: it is a git dependency rather than
+  # a PyPI release, so osv has no metadata to read and reports UNKNOWN.
+  nooa: Apache-2.0 # https://github.com/NVIDIA-NeMo/labs-OO-Agents
+
   databricks-sdk: Apache-2.0  # https://github.com/databricks/databricks-sdk-py/blob/main/LICENSE
   mlflow-skinny: Apache-2.0  # https://github.com/mlflow/mlflow/blob/master/LICENSE.txt
   sqlparse: BSD-3-Clause  # https://github.com/andialbrecht/sqlparse/blob/master/LICENSE
