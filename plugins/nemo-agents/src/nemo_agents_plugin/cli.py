@@ -12,7 +12,7 @@ These run against a local agent config and work without a running NeMo Platform
 instance.
 
 - ``invoke``   — single invocation
-- ``run``      — start a persistent local FastAPI server for NAT configs
+- ``run``      — start a persistent local FastAPI server
 
 The ``evaluate`` and ``optimize`` commands are auto-generated from the
 ``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
@@ -38,6 +38,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from dataclasses import asdict
 from datetime import datetime
@@ -205,7 +206,7 @@ def _register_local_commands(app: typer.Typer) -> None:
             ...,
             "--agent-config",
             "-c",
-            help="Path to a NAT workflow YAML config file.",
+            help="Path to an agent YAML config file.",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -213,10 +214,28 @@ def _register_local_commands(app: typer.Typer) -> None:
         host: str = typer.Option("0.0.0.0", "--host"),
         port: int = typer.Option(8080, "--port", "-p"),
     ) -> None:
-        """Run an agent locally as a persistent FastAPI server (wraps ``nat start fastapi``)."""
+        """Run an agent locally as a persistent FastAPI server."""
         import subprocess
 
-        cmd = ["nat", "start", "fastapi", "--config_file", agent_config.name, "--host", host, "--port", str(port)]
+        config_format = _load_yaml(agent_config).get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            cmd = [
+                sys.executable,
+                "-m",
+                "nemo_agents_plugin.fabric.server",
+                "--agent-config",
+                agent_config.name,
+                "--host",
+                host,
+                "--port",
+                str(port),
+            ]
+        elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+            cmd = ["nat", "start", "fastapi", "--config_file", agent_config.name, "--host", host, "--port", str(port)]
+        else:
+            typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
+            raise typer.Exit(code=1)
+
         typer.echo(f"Starting agent server: {' '.join(cmd)}")
         try:
             subprocess.run(cmd, check=True, cwd=agent_config.parent)
@@ -224,7 +243,10 @@ def _register_local_commands(app: typer.Typer) -> None:
             typer.echo(f"Agent server exited with code {exc.returncode}.", err=True)
             raise typer.Exit(code=exc.returncode)
         except FileNotFoundError:
-            typer.echo("Error: 'nat' command not found.  Install nvidia-nat-core.", err=True)
+            if config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+                typer.echo("Error: 'nat' command not found.  Install nvidia-nat-core.", err=True)
+            else:
+                typer.echo(f"Error: server command {cmd[0]!r} was not found.", err=True)
             raise typer.Exit(code=1)
 
 
