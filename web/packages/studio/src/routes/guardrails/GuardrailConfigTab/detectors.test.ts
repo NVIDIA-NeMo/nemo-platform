@@ -83,6 +83,28 @@ describe('summarizeDetector', () => {
     expect(fields).toContainEqual({ label: 'Input entities', value: 'EMAIL, PHONE' });
   });
 
+  it('masks prefixed and suffixed secret keys', () => {
+    const fields = summarizeDetector({
+      nim_api_key: 'nvapi-xxx',
+      hf_token: 'hf_xxx',
+      access_token: 'tok-xxx',
+      private_key: 'pk-xxx',
+    });
+    expect(fields).toContainEqual({ label: 'Nim Api Key', value: '••••••••' });
+    expect(fields).toContainEqual({ label: 'Hf Token', value: '••••••••' });
+    expect(fields).toContainEqual({ label: 'Access Token', value: '••••••••' });
+    expect(fields).toContainEqual({ label: 'Private Key', value: '••••••••' });
+  });
+
+  it('does not mask non-secret keys that merely contain a secret word', () => {
+    const fields = summarizeDetector({
+      max_tokens: 512,
+      nim_base_url: 'http://localhost:8000/v1',
+    });
+    expect(fields).toContainEqual({ label: 'Max Tokens', value: '512' });
+    expect(fields).toContainEqual({ label: 'Nim Base Url', value: 'http://localhost:8000/v1' });
+  });
+
   it('returns no fields for non-object input', () => {
     expect(summarizeDetector(undefined)).toEqual([]);
     expect(summarizeDetector('nope')).toEqual([]);

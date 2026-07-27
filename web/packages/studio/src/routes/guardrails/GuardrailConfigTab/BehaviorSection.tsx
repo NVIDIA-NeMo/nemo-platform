@@ -43,13 +43,16 @@ const tracingFields = (data: RailsConfigOutput | undefined): Field[] => {
   return fields;
 };
 
+const captureIsEnabled = (data: RailsConfigOutput | undefined): boolean =>
+  data?.tracing?.enable_content_capture === true;
+
 const hasBehaviorContent = (data: RailsConfigOutput | undefined): boolean =>
-  behaviorFields(data).length > 0 || Boolean(data?.tracing);
+  behaviorFields(data).length > 0 || tracingFields(data).length > 0 || captureIsEnabled(data);
 
 export const BehaviorSection: FC<{ data: RailsConfigOutput | undefined }> = ({ data }) => {
   if (!hasBehaviorContent(data)) return null;
 
-  const captureEnabled = data?.tracing?.enable_content_capture === true;
+  const captureEnabled = captureIsEnabled(data);
 
   return (
     <Panel

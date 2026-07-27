@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfigOutput, RailsOutput } from '@nemo/sdk/generated/platform/schema';
+import { BehaviorSection } from '@studio/routes/guardrails/GuardrailConfigTab/BehaviorSection';
 import { DetectorsSection } from '@studio/routes/guardrails/GuardrailConfigTab/DetectorsSection';
 import { PipelineSection } from '@studio/routes/guardrails/GuardrailConfigTab/PipelineSection';
 import { TestProviders } from '@studio/tests/util/TestProviders';
@@ -61,5 +62,36 @@ describe('DetectorsSection', () => {
     // First-party vs third-party provenance badges.
     expect(screen.getAllByText('NVIDIA').length).toBeGreaterThan(0);
     expect(screen.getByText('Third-party')).toBeInTheDocument();
+  });
+});
+
+describe('BehaviorSection', () => {
+  it('renders nothing when tracing is an empty object with no behavior fields', () => {
+    render(
+      <TestProviders>
+        <BehaviorSection data={{ tracing: {} } as RailsConfigOutput} />
+      </TestProviders>
+    );
+    expect(screen.queryByText('Behavior & operations')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing when content capture is disabled and no other content exists', () => {
+    render(
+      <TestProviders>
+        <BehaviorSection
+          data={{ tracing: { enable_content_capture: false } } as RailsConfigOutput}
+        />
+      </TestProviders>
+    );
+    expect(screen.queryByText('Behavior & operations')).not.toBeInTheDocument();
+  });
+
+  it('renders when there is meaningful tracing content', () => {
+    render(
+      <TestProviders>
+        <BehaviorSection data={{ tracing: { enabled: true } } as RailsConfigOutput} />
+      </TestProviders>
+    );
+    expect(screen.getByText('Tracing')).toBeInTheDocument();
   });
 });

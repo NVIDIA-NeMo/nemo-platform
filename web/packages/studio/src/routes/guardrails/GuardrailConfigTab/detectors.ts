@@ -113,7 +113,11 @@ export const deriveScopes = (rails: RailsOutput | undefined, key: string): Scope
   return SCOPE_ORDER.filter((scope) => scopes.has(scope));
 };
 
-const SECRET_KEY = /^(api_key|secret|token|password)$/i;
+// Match secret-bearing keys as whole words or snake_case segments, so prefixed
+// keys like `nim_api_key`, `hf_token`, and `access_token` are masked too. The
+// trailing `(?:_|$)` keeps non-secrets like `max_tokens` unmasked.
+const SECRET_KEY =
+  /(?:^|_)(?:api_?key|secret|token|password|passwd|credential|private_?key)(?:_|$)/i;
 
 const formatScalar = (key: string, value: string | number | boolean): string => {
   if (SECRET_KEY.test(key)) return '••••••••';

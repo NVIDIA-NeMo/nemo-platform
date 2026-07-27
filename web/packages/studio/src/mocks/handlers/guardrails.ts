@@ -76,7 +76,8 @@ export const guardrailsHandlers = [
       const config = mockGuardrailConfigs.find((c) => c.name === params.name);
       if (!config) return new HttpResponse(null, { status: 404 });
       const body = (await request.json()) as Partial<GuardrailConfig>;
-      return HttpResponse.json({ ...config, ...body });
+      Object.assign(config, body);
+      return HttpResponse.json(config);
     }
   ),
   http.delete(
