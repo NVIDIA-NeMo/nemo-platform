@@ -193,8 +193,8 @@ export function useExperimentGroupEvaluations({
   const { mutate: patchEvaluation } = usePatchEvaluation({
     mutation: {
       onSuccess: () => {
-        invalidateList();
         toast.success('Removed the evaluation from this group.');
+        return invalidateList();
       },
       onError: () => toast.error('Failed to remove the evaluation from this group.'),
       onSettled: (_data, _error, { name }) => {
