@@ -7,23 +7,15 @@ import {
   useUpdateExperimentGroup,
 } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
-import {
-  Button,
-  SelectContent,
-  SelectItem,
-  SelectListbox,
-  SelectRoot,
-  SelectTrigger,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Button, Text } from '@nvidia/foundations-react-core';
+import { MetricSelect } from '@studio/components/charts/ExperimentGroupParetoChart/MetricSelect';
+import { ParetoTooltip } from '@studio/components/charts/ExperimentGroupParetoChart/ParetoTooltip';
+import { useParetoEvaluations } from '@studio/components/charts/ExperimentGroupParetoChart/useParetoEvaluations';
 import {
   buildParetoPoints,
   deriveParetoMetrics,
   metricLabel,
-  type ParetoMetric,
-  type ParetoPlotPoint,
-} from '@studio/components/charts/ExperimentGroupParetoChart/paretoMetrics';
-import { useParetoEvaluations } from '@studio/components/charts/ExperimentGroupParetoChart/useParetoEvaluations';
+} from '@studio/components/charts/ExperimentGroupParetoChart/utils';
 import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save } from 'lucide-react';
@@ -41,17 +33,11 @@ import {
 interface ExperimentGroupParetoChartProps {
   workspace: string;
   group: ExperimentGroupResponse;
-  /**
-   * The group's full evaluation set, when the caller already has it loaded (a small group that fit on
-   * the leaderboard's first page). Supplying it lets the chart render from the shared rows and skip its
-   * own all-evaluations fetch — which re-runs the same server-side rollup.
-   */
+  /** The group's full evaluation set when the caller already has it loaded (fits one page), so the
+   * chart renders from these instead of refetching. */
   preloadedEvaluations?: EvaluationRow[];
-  /**
-   * True while the caller is still loading rows it will supply via `preloadedEvaluations`. The chart
-   * shows a loading state and holds off its own fetch, rather than briefly rendering empty. Only set
-   * for groups known (from `evaluation_count`) to fit one page — larger groups fetch immediately.
-   */
+  /** True while the caller is still loading rows it will pass via `preloadedEvaluations`; the chart
+   * shows a loading state and holds off its own fetch. */
   preloadPending?: boolean;
 }
 
@@ -59,96 +45,16 @@ const CHART_HEIGHT = 360;
 const DEFAULT_X_METRIC = 'cost_usd';
 const DEFAULT_Y_METRIC = 'latency_ms';
 
-/** Unit-less axis tick labels (units live on the axis label + chart title). Big values are compacted
- * so they don't wrap and collide with the rotated axis title (16000 -> "16K"); small values keep full
- * precision so close cost/score ticks don't all round to the same number (0.05, 0.11 stay distinct). */
+/** Compact big tick values so they don't collide with the axis title (16000 -> "16K"); keep small
+ * values precise so close cost/score ticks stay distinct. */
 const formatAxisTick = (value: number): string =>
   Math.abs(value) >= 1000
     ? value.toLocaleString(undefined, { notation: 'compact', maximumFractionDigits: 1 })
     : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 
-/** Format a metric value for tooltips: cost as USD, latency in ms, evaluator scores as-is. */
-const formatMetricValue = (metric: ParetoMetric, value: number): string => {
-  if (metric.id === 'cost_usd') {
-    return `$${value.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
-  }
-  if (metric.id === 'latency_ms') {
-    return `${Math.round(value).toLocaleString()} ms`;
-  }
-  return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-};
-
-interface ParetoTooltipProps {
-  active?: boolean;
-  payload?: ReadonlyArray<{ payload: ParetoPlotPoint }>;
-  xMetric: ParetoMetric;
-  yMetric: ParetoMetric;
-}
-
-const ParetoTooltip: FC<ParetoTooltipProps> = ({ active, payload, xMetric, yMetric }) => {
-  const point = payload?.[0]?.payload;
-  if (!active || !point) return null;
-  return (
-    <div className="rounded border border-base bg-surface p-2 shadow-md">
-      <Text kind="body/semibold/sm">{point.name}</Text>
-      <div className="mt-1 flex flex-col gap-0.5">
-        <Text kind="body/regular/xs">
-          {xMetric.label}: {formatMetricValue(xMetric, point.x)}
-        </Text>
-        <Text kind="body/regular/xs">
-          {yMetric.label}: {formatMetricValue(yMetric, point.y)}
-        </Text>
-        {point.onFrontier && (
-          <Text kind="body/regular/xs" color="brand">
-            On the Pareto frontier
-          </Text>
-        )}
-      </div>
-    </div>
-  );
-};
-
-interface MetricSelectProps {
-  label: string;
-  value: string;
-  metrics: readonly ParetoMetric[];
-  onChange: (id: string) => void;
-}
-
-const MetricSelect: FC<MetricSelectProps> = ({ label, value, metrics, onChange }) => (
-  <label className="flex items-center gap-2">
-    <Text kind="body/regular/sm" color="subtle">
-      {label}
-    </Text>
-    <SelectRoot value={value} onValueChange={onChange} size="small">
-      <SelectTrigger
-        className="w-26"
-        size="small"
-        aria-label={label}
-        // The trigger shows the raw value by default; map it back to the metric's label.
-        renderValue={(v) => (typeof v === 'string' && v ? metricLabel(v) : undefined)}
-      />
-      {/* Keep the dropdown readable even when the trigger is compact/narrow. */}
-      <SelectContent className="min-w-48">
-        <SelectListbox>
-          {metrics.map((metric) => (
-            <SelectItem key={metric.id} value={metric.id}>
-              {metric.label}
-            </SelectItem>
-          ))}
-        </SelectListbox>
-      </SelectContent>
-    </SelectRoot>
-  </label>
-);
-
 /**
- * Cost-vs-accuracy Pareto view for an experiment group: one point per evaluation with the Pareto
- * frontier highlighted. Points come from the group's evaluations (the existing list endpoint, which
- * already carries each evaluation's cost/latency/evaluator rollup means). The two axes are chosen from
- * the group's available metrics (cost, latency, and each evaluator) and are **persisted on the group**
- * — changing a picker saves the selection so it survives reloads and is shared across viewers. Seeds
- * from the group's saved axes, defaulting to cost vs. latency (present for every group).
+ * Pareto view for an experiment group: one point per evaluation, frontier highlighted. The two axes
+ * are picked from the group's metrics and persisted on the group (shared across viewers).
  */
 export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = ({
   workspace,
@@ -159,9 +65,6 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  // Reuse the caller's rows when it already has the whole group loaded. While it's still loading and
-  // about to supply them (`preloadPending`), hold off our own fetch and show a loading state instead of
-  // rendering empty. Otherwise fetch the evaluations ourselves (in parallel — see the `enabled` flag).
   const hasPreloaded = preloadedEvaluations !== undefined;
   const {
     rows: fetchedRows,
@@ -172,8 +75,6 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
   const isLoading = hasPreloaded ? false : preloadPending || isFetching;
   const metrics = useMemo(() => deriveParetoMetrics(points), [points]);
 
-  // Selected axes are optimistic local state seeded from the group's saved config (available
-  // synchronously from the `group` prop). Changes update the chart immediately and persist below.
   const [xMetricId, setXMetricId] = useState(group.pareto?.x_metric ?? DEFAULT_X_METRIC);
   const [yMetricId, setYMetricId] = useState(group.pareto?.y_metric ?? DEFAULT_Y_METRIC);
 
@@ -189,8 +90,7 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
     },
   });
 
-  // Persist the axes on the group. PUT is a full replace, so send every current field — only `pareto`
-  // changes.
+  // PUT is a full replace, so send every field — only `pareto` changes.
   const persistAxes = (xMetric: string, yMetric: string) => {
     saveGroup({
       workspace,
@@ -207,8 +107,6 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
     });
   };
 
-  // Picking a metric only updates the local view; persisting the group-wide default is an explicit,
-  // clearly-labeled action (Save button) so users know a save is shared with everyone.
   const handleXChange = (id: string) => setXMetricId(id);
   const handleYChange = (id: string) => setYMetricId(id);
 
@@ -216,8 +114,7 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
   const savedY = group.pareto?.y_metric ?? DEFAULT_Y_METRIC;
   const hasUnsavedAxes = xMetricId !== savedX || yMetricId !== savedY;
 
-  // Fall back to the first/second metric if a saved id isn't in the current data (e.g. an evaluator
-  // that dropped out). Cost and latency are always present, so a fallback always exists.
+  // Fall back to the first/second metric when a saved id isn't in the data; cost/latency always exist.
   const xMetric = metrics.find((m) => m.id === xMetricId) ?? metrics[0];
   const yMetric = metrics.find((m) => m.id === yMetricId) ?? metrics[1] ?? metrics[0];
 

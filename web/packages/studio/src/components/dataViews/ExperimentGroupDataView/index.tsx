@@ -8,6 +8,7 @@ import {
   EditColumnsMenu,
 } from '@nemo/common/src/components/DataView/internal';
 import {
+  ROW_ACTIONS_COLUMN_SIZE,
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
@@ -35,11 +36,12 @@ import {
 } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentGroupDataView/useSortErrorRecovery';
 import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGroupDataView/util';
+import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
-import { Columns3, FolderPlus, Pin } from 'lucide-react';
+import { Columns3, FolderMinus, FolderPlus, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -169,8 +171,9 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     // The evaluations leaderboard supports multi-column sort (shift-click) — score vs. cost etc.
     multiSort: true,
     columnVisibility: { created_by: false, updated_at: false },
-    // Keep the pin toggle and row selection reachable while horizontally scrolling this wide table.
-    columnPinning: { left: ['pin', 'row-selection'] },
+    // Keep the pin toggle, row selection, and the row actions menu reachable while horizontally
+    // scrolling this wide table.
+    columnPinning: { left: ['pin', 'row-selection'], right: ['row-actions'] },
     filterFieldMap: getEvaluationFilterField,
     columnOrder: savedColumnOrder ?? [],
   });
@@ -188,6 +191,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
   const {
     rows: orderedData,
     togglePin,
+    removeFromGroup,
     totalCount,
     error,
     isLoading,
@@ -235,7 +239,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
   const makeColumns = useCallback<
     ComponentProps<typeof DataViewRoot<EvaluationRow>>['makeColumns']
   >(
-    ({ accessor, display }, { rowSelectionColumn }) => [
+    ({ accessor, display }, { rowSelectionColumn, rowActionsColumn }) => [
       rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
       display({
         id: 'pin',
@@ -461,8 +465,31 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           filter: { type: 'text', label: 'Created By', placeholder: 'Filter by Created By' },
         },
       }),
+      rowActionsColumn({
+        size: ROW_ACTIONS_COLUMN_SIZE,
+        enableResizing: false,
+        cell: ({ row }) => (
+          <QuickActionsMenuRoot
+            actions={[
+              {
+                // `fill-none` overrides the menu's cloned `fill: 'solid'`, which would otherwise paint
+                // the folder body over the "+"/"-" (they're drawn before the folder shape).
+                label: 'Add to group',
+                icon: <FolderPlus className="fill-none" size={16} />,
+                onSelect: () =>
+                  setAddToGroupState({ evaluations: [row.original], clearSelection: () => {} }),
+              },
+              {
+                label: 'Remove from group',
+                icon: <FolderMinus className="fill-none" size={16} />,
+                onSelect: () => removeFromGroup(row.original),
+              },
+            ]}
+          />
+        ),
+      }),
     ],
-    [evaluatorNames, togglePin, metadataKeys]
+    [evaluatorNames, togglePin, removeFromGroup, metadataKeys]
   );
 
   // A recoverable sort error is handled by useSortErrorRecovery (toast + revert), and the table keeps
@@ -471,11 +498,8 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     return <ErrorMessage message="Failed to load experiments." />;
   }
 
-  // When the whole group fits on the leaderboard's first page and isn't filtered, those loaded rows are
-  // the complete evaluation set — reuse them for the Pareto chart instead of refetching every
-  // evaluation. `evaluation_count` lets us decide this without waiting on the list query. While the
-  // page loads, `preloadPending` keeps the chart in its loading state; otherwise the chart fetches its
-  // own data in parallel.
+  // When the whole unfiltered group fits on the first page, the loaded rows are the complete set, so we
+  // pass them to the Pareto chart (decided upfront via `evaluation_count`) instead of a second fetch.
   const hasActiveFilter = Object.keys(dataViewState.apiFilter.filter ?? {}).length > 0;
   const groupFitsOnePage =
     group.evaluation_count != null &&

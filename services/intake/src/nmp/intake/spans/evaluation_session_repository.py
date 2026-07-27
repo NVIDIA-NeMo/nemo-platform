@@ -171,7 +171,7 @@ class EvaluationSessionRepository:
         if needs_pre_metrics:
             # Two-query path for cost/tokens sorts.
             #
-            # ClickHouse 24.3 inlines CTEs (does not materialise them), so a single query that
+            # ClickHouse inlines regular CTEs (does not materialise them), so a single query that
             # references `page_sessions` from multiple downstream CTEs (current_page_spans,
             # session_metrics, session_scores, final SELECT) would re-execute the expensive
             # all-session span aggregation once per reference. Splitting into two queries
@@ -340,7 +340,7 @@ def _metric_sort_page_ids_sql(
     ORDER BY + LIMIT/OFFSET to return the ordered (workspace, session_id) pairs for
     the requested page. Only IDs are returned — row hydration is a separate query.
 
-    Why separate: ClickHouse 24.3 inlines CTEs rather than materialising them, so a
+    Why separate: ClickHouse inlines regular CTEs rather than materialising them, so a
     single query that references `page_sessions` from multiple CTEs would re-execute
     the expensive all-session span aggregation once per reference. Returning IDs here
     and hydrating in _hydrate_by_ids_sql ensures the aggregation runs exactly once.

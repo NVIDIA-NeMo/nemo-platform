@@ -3,7 +3,7 @@
 
 """Shared models for the top-level Eval Author."""
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset, DatasetRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -22,7 +22,7 @@ class EvalAuthorConfig(BaseModel):
         default=5,
         ge=0,
         le=10,
-        description="Max Eval Author repair attempts after mandatory dataset validation fails.",
+        description="Max Eval Author repair attempts after mandatory Insight verifier validation fails.",
     )
 
 
@@ -33,8 +33,12 @@ class EvalAuthorResult(BaseModel):
 
     train_dataset: Dataset
     validation_dataset: Dataset
-    insight_suite: DatasetRef | None = Field(
+    insight_suite: Dataset | None = Field(
         default=None,
-        description="NeMo Platform Fileset reference to tasks materialized from the Insight's production traces.",
+        description="Finalized experiment-local Insight dataset for use by the optimization loop.",
+    )
+    insight_suite_identity: str | None = Field(
+        default=None,
+        description="SHA-256 identity of the finalized Insight task and verifier content.",
     )
     summary: str

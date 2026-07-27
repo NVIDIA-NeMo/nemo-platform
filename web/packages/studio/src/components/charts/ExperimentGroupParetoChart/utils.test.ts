@@ -5,7 +5,7 @@ import {
   buildParetoPoints,
   deriveParetoMetrics,
   type ParetoMetric,
-} from '@studio/components/charts/ExperimentGroupParetoChart/paretoMetrics';
+} from '@studio/components/charts/ExperimentGroupParetoChart/utils';
 import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 
 // Only the fields the Pareto accessors read (name + cost/latency/evaluator rollup means) are set;

@@ -54,6 +54,9 @@ environment instead of package-scoped `uv run --package ...` commands.
 
 Prerequisite: Docker must be installed and running locally.
 
+Intake is tested and profiled on ClickHouse 26.3 LTS. Other ClickHouse versions
+may not be supported.
+
 Start a local ClickHouse container for span and trace storage:
 
 ```bash

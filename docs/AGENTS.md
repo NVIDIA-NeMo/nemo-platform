@@ -17,14 +17,14 @@ Run these from the repo root (they wrap `cd docs/fern && npm run …`):
 | `make docs-broken-links` | Report broken links |
 | `make docs-fix-links` | Auto-delink references into gated pages |
 
-Local preview and the published site read the **same** `docs/fern/versions/latest.yml`, so what you see locally is what ships.
+Normal authoring and local preview read `docs/fern/versions/latest.yml`. During production publish, `.github/workflows/publish-fern-docs.yaml` also runs `npm run materialize:versions` to generate frozen release-version entries from stable SemVer tags that already contain Fern config. Tags from before the Fern migration, such as early `0.1.x` tags, cannot become Fern versions unless those docs are backported or migrated.
 
 Use `make docs` when you are only editing `docs/fern/` config. Use `make docs-watch` when you are editing page content elsewhere under `docs/`, since it restarts the Fern dev server when repo-level docs files change outside `docs/fern/`.
 
 ## Rules that bite if you miss them
 
-- **Navigation is the build.** Fern only builds pages listed in `docs/fern/versions/latest.yml`. A `.mdx` not in the nav is **not built** (404, not indexed) — that is how unready features are gated. Do **not** use `hidden: true` for gating (it still builds/serves the page).
-- **Publication state is nav-derived.** Do not maintain or rely on a hard-coded list of gated directories. Check `docs/fern/versions/latest.yml`: listed pages are published, and omitted pages are gated. `docs/fern/gated-nav.yml` contains reference blocks for some gated features. To publish one: move its block into `latest.yml`, re-add inbound links, run `make docs-check && make docs-broken-links`.
+- **Navigation is the build.** Fern only builds pages listed in a version nav file. For ordinary docs work, that is `docs/fern/versions/latest.yml`. A `.mdx` not in the nav is **not built** (404, not indexed) — that is how unready features are gated. Do **not** use `hidden: true` for gating (it still builds/serves the page).
+- **Publication state is nav-derived.** Do not maintain or rely on a hard-coded list of gated directories. Check `docs/fern/versions/latest.yml`: listed pages are published in Latest, and omitted pages are gated. `docs/fern/gated-nav.yml` contains reference blocks for some gated features. To publish one: move its block into `latest.yml`, re-add inbound links, run `make docs-check && make docs-broken-links`.
 - **Don't link into gated pages.** A link from a published page into a gated page is a dead link. `make docs-check` fails on it; `make docs-fix-links` delinks it to plain text. (Replaces the old MkDocs `hide_unready_docs` auto-delinking.)
 - **Internal links** use canonical nav URLs like `/documentation/get-started/core-concepts/workspaces`, not relative `.md`/source paths. `make docs-broken-links` is the check.
 - **No `{{variable}}` substitutions.** Fern has no substitution step; product names are inlined as literal text. (Prompt-template tokens like `` `{{input}}` `` inside backticks are real content — leave them.)
