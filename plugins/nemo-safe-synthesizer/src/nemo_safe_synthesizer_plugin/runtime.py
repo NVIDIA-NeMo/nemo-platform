@@ -19,6 +19,20 @@ RUNTIME_BUILD_REQUIREMENTS = [
     "setuptools",
     "uv-dynamic-versioning",
 ]
+# The plugin is installed with `--no-deps`, so its gunicorn dependency is skipped.
+RUNTIME_EXTRA_REQUIREMENTS = [
+    "gunicorn>=23.0.0",
+]
+# vLLM needs diskcache but the workspace override strips it (CVE-2025-69872);
+# installed separately with `--no-config` to bypass the override for the runtime venv.
+RUNTIME_OVERRIDE_EXEMPT_REQUIREMENTS = [
+    "diskcache==5.6.3",
+]
+# `uv pip check` incompatibility lines to ignore: the aarch64/SBSA cusparselt
+# wheel is correct but its platform tag is misreported.
+RUNTIME_PIP_CHECK_IGNORED = [
+    "`nvidia-cusparselt-cu12` was built for a different platform",
+]
 RUNTIME_CONSTRAINTS_FILE = Path("plugins/nemo-safe-synthesizer/constraints.txt")
 FLASHINFER_CU129_INDEX_URL = "https://flashinfer.ai/whl/cu129"
 PYTORCH_CU129_INDEX_URL = "https://download.pytorch.org/whl/cu129"
@@ -140,6 +154,7 @@ def setup_runtime(
             "-e",
             str(root / "packages/nemo_platform"),
             *runtime_package_extra_requirements(runtime_package),
+            *RUNTIME_EXTRA_REQUIREMENTS,
             runtime_package,
         ],
         cwd=root,
@@ -160,18 +175,52 @@ def setup_runtime(
         cwd=root,
         check=True,
     )
+    # `--no-config` bypasses the workspace override; `--no-deps` pins to exactly
+    # these packages so no other override-stripped package (e.g. ray) is re-pulled.
     subprocess.run(
         [
             "uv",
             "pip",
-            "check",
+            "install",
             "--python",
             str(runtime_python),
+            "--no-config",
+            "--no-deps",
+            *RUNTIME_OVERRIDE_EXEMPT_REQUIREMENTS,
         ],
         cwd=root,
         check=True,
     )
+    check_runtime_environment(runtime_python, root)
     return runtime_python
+
+
+def check_runtime_environment(runtime_python: Path, root: Path) -> None:
+    """Run `uv pip check`, tolerating known-benign incompatibilities.
+
+    On aarch64/SBSA the correct `nvidia-cusparselt-cu12` wheel is misreported by
+    `uv pip check` as built for a different platform. Any other incompatibility
+    still fails setup.
+    """
+    result = subprocess.run(
+        ["uv", "pip", "check", "--python", str(runtime_python)],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return
+    incompatibilities = [
+        line.strip() for line in (result.stdout + result.stderr).splitlines() if line.strip().startswith("The package")
+    ]
+    unexpected = [
+        line for line in incompatibilities if not any(ignored in line for ignored in RUNTIME_PIP_CHECK_IGNORED)
+    ]
+    if unexpected:
+        raise RuntimeError("Safe Synthesizer runtime has incompatibilities:\n" + "\n".join(unexpected))
+    for line in incompatibilities:
+        print(f"Ignoring known-benign runtime incompatibility: {line}")
 
 
 def runtime_info(config: SafeSynthesizerConfig) -> dict[str, str | bool]:

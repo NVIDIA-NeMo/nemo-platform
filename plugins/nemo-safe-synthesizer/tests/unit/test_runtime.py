@@ -95,6 +95,7 @@ def test_setup_runtime_uses_separate_uv_install_commands(tmp_path, monkeypatch):
     assert runtime.VLLM_CU129_INDEX_URL in calls[2][0]
     assert str(tmp_path / "plugins/nemo-safe-synthesizer") not in calls[2][0]
     assert "nemo-safe-synthesizer[engine,cu129]" in calls[2][0]
+    assert "gunicorn>=23.0.0" in calls[2][0]
     assert calls[3][0] == [
         "uv",
         "pip",
@@ -106,7 +107,41 @@ def test_setup_runtime_uses_separate_uv_install_commands(tmp_path, monkeypatch):
         "-e",
         str(tmp_path / "plugins/nemo-safe-synthesizer"),
     ]
-    assert calls[4][0] == ["uv", "pip", "check", "--python", str(runtime_python)]
+    # Override-exempt packages install with `--no-config` to bypass the override.
+    assert calls[4][0] == [
+        "uv",
+        "pip",
+        "install",
+        "--python",
+        str(runtime_python),
+        "--no-config",
+        "--no-deps",
+        "diskcache==5.6.3",
+    ]
+    assert calls[5][0] == ["uv", "pip", "check", "--python", str(runtime_python)]
+
+
+def test_check_runtime_environment_ignores_benign_incompatibility(tmp_path, monkeypatch):
+    stderr = "Found 1 incompatibility\nThe package `nvidia-cusparselt-cu12` was built for a different platform\n"
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "run",
+        lambda *a, **k: CompletedProcess(a[0], 1, stdout="", stderr=stderr),
+    )
+
+    runtime.check_runtime_environment(tmp_path / "bin/python", tmp_path)
+
+
+def test_check_runtime_environment_raises_on_real_incompatibility(tmp_path, monkeypatch):
+    stderr = "Found 1 incompatibility\nThe package `outlines` requires `diskcache`, but it's not installed\n"
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "run",
+        lambda *a, **k: CompletedProcess(a[0], 1, stdout="", stderr=stderr),
+    )
+
+    with pytest.raises(RuntimeError, match="incompatibilities"):
+        runtime.check_runtime_environment(tmp_path / "bin/python", tmp_path)
 
 
 def test_runtime_constraints_include_aws_sdk_bounds():

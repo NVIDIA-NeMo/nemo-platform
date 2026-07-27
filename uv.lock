@@ -120,7 +120,7 @@ overrides = [
     { name = "cbor2", specifier = ">=5.9.0" },
     { name = "click", specifier = ">=8.2.0" },
     { name = "cryptography", specifier = ">=48.0.1,<49" },
-    { name = "datasets", specifier = ">=3.3.1,<=4.3.0" },
+    { name = "datasets", specifier = ">=4.8.5,<5" },
     { name = "diskcache", marker = "sys_platform == 'never'" },
     { name = "fastmcp", specifier = ">=3.2.0" },
     { name = "fschat", marker = "sys_platform == 'never'" },
@@ -136,7 +136,7 @@ overrides = [
     { name = "pydantic", extras = ["email"], specifier = ">=2.9.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "ray", marker = "sys_platform == 'never'" },
-    { name = "setuptools", specifier = ">=78.1.1" },
+    { name = "setuptools", specifier = ">=78.1.1,<82" },
     { name = "simpleeval", specifier = ">=1.0.5" },
     { name = "ujson", specifier = ">=5.12.0" },
     { name = "urllib3", specifier = ">=2.7.0" },
@@ -1155,7 +1155,7 @@ wheels = [
 
 [[package]]
 name = "datasets"
-version = "4.3.0"
+version = "4.8.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dill", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -1173,9 +1173,9 @@ dependencies = [
     { name = "tqdm", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "xxhash", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/47/325206ac160f7699ed9f1798afa8f8f8d5189b03bf3815654859ac1d5cba/datasets-4.3.0.tar.gz", hash = "sha256:bc9118ed9afd92346c5be7ed3aaa00177eb907c25467f9d072a0d22777efbd2b", size = 582801, upload-time = "2025-10-23T16:31:51.547Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/34/14cd8e76f907f7d4dca2334cfeec9f81d30fd15c25a015f99aaea694eaed/datasets-4.8.5.tar.gz", hash = "sha256:0f0c1c3d56ffff2c93b2f4c63c95bac94f3d7e8621aea2a2a576275233bba772", size = 605649, upload-time = "2026-04-27T15:43:57.384Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/51/409a8184ed35453d9cbb3d6b20d524b1115c2c2d117b85d5e9b06cd70b45/datasets-4.3.0-py3-none-any.whl", hash = "sha256:0ea157e72138b3ca6c7d2415f19a164ecf7d4c4fa72da2a570da286882e96903", size = 506846, upload-time = "2025-10-23T16:31:49.965Z" },
+    { url = "https://files.pythonhosted.org/packages/65/99/00f3196036501b53032c4b1ab8337a0b978dee832ed276dae3815df4e8b5/datasets-4.8.5-py3-none-any.whl", hash = "sha256:5079900781719c0e063a8efdd2cd95a31ad0c63209178669cd23cf1b926149ff", size = 528973, upload-time = "2026-04-27T15:43:53.702Z" },
 ]
 
 [[package]]
@@ -4974,10 +4974,10 @@ requires-dist = [
     { name = "data-designer-nemo", marker = "extra == 'nemo-data-designer-plugin'", editable = "packages/data_designer_nemo" },
     { name = "data-designer-nemo", marker = "extra == 'plugins'", editable = "packages/data_designer_nemo" },
     { name = "data-designer-nemo", marker = "extra == 'services'", editable = "packages/data_designer_nemo" },
-    { name = "datasets", marker = "extra == 'all'", specifier = ">=3.3.1,<=4.3.0" },
-    { name = "datasets", marker = "extra == 'nemo-safe-synthesizer-plugin'", specifier = ">=3.3.1,<=4.3.0" },
-    { name = "datasets", marker = "extra == 'plugins'", specifier = ">=3.3.1,<=4.3.0" },
-    { name = "datasets", marker = "extra == 'services'", specifier = ">=3.3.1,<=4.3.0" },
+    { name = "datasets", marker = "extra == 'all'", specifier = ">=4.8.4,<5" },
+    { name = "datasets", marker = "extra == 'nemo-safe-synthesizer-plugin'", specifier = ">=4.8.4,<5" },
+    { name = "datasets", marker = "extra == 'plugins'", specifier = ">=4.8.4,<5" },
+    { name = "datasets", marker = "extra == 'services'", specifier = ">=4.8.4,<5" },
     { name = "distro", marker = "extra == 'nemo-platform-sdk'", specifier = ">=1.7.0,<2" },
     { name = "docker", marker = "extra == 'all'", specifier = ">=7.1.0" },
     { name = "docker", marker = "extra == 'core-service'", specifier = ">=7.1.0" },
@@ -5874,7 +5874,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'nemo-platform-plugin'", specifier = ">=0.88.0" },
-    { name = "datasets", specifier = ">=3.3.1,<=4.3.0" },
+    { name = "datasets", specifier = ">=4.8.4,<5" },
     { name = "fastapi", specifier = ">=0.115.8" },
     { name = "fastapi", marker = "extra == 'nemo-platform-plugin'", specifier = ">=0.115.4" },
     { name = "fastapi", marker = "extra == 'test'", specifier = ">=0.115" },
@@ -9998,11 +9998,11 @@ wheels = [
 
 [[package]]
 name = "setuptools"
-version = "82.0.1"
+version = "81.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/4f/db/cfac1baf10650ab4d1c111714410d2fbb77ac5a616db26775db562c8fab2/setuptools-82.0.1.tar.gz", hash = "sha256:7d872682c5d01cfde07da7bccc7b65469d3dca203318515ada1de5eda35efbf9", size = 1152316, upload-time = "2026-03-09T12:47:17.221Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/1c/73e719955c59b8e424d015ab450f51c0af856ae46ea2da83eba51cc88de1/setuptools-81.0.0.tar.gz", hash = "sha256:487b53915f52501f0a79ccfd0c02c165ffe06631443a886740b91af4b7a5845a", size = 1198299, upload-time = "2026-02-06T21:10:39.601Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9d/76/f789f7a86709c6b087c5a2f52f911838cad707cc613162401badc665acfe/setuptools-82.0.1-py3-none-any.whl", hash = "sha256:a59e362652f08dcd477c78bb6e7bd9d80a7995bc73ce773050228a348ce2e5bb", size = 1006223, upload-time = "2026-03-09T12:47:15.026Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/e3/c164c88b2e5ce7b24d667b9bd83589cf4f3520d97cad01534cd3c4f55fdb/setuptools-81.0.0-py3-none-any.whl", hash = "sha256:fdd925d5c5d9f62e4b74b30d6dd7828ce236fd6ed998a08d81de62ce5a6310d6", size = 1062021, upload-time = "2026-02-06T21:10:37.175Z" },
 ]
 
 [[package]]
