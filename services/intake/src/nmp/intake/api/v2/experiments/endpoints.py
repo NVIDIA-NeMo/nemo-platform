@@ -1321,6 +1321,8 @@ def _evaluation_sort_value(response: EvaluationResponse, field: str) -> Any:
         return getattr(response.cost_usd, rest, None) if response.cost_usd is not None else None
     if head == "latency_ms":
         return getattr(response.latency_ms, rest, None) if response.latency_ms is not None else None
+    if head == "tokens":
+        return getattr(response.tokens, rest, None) if response.tokens is not None else None
     name, _, stat = rest.rpartition(".")  # head == "evaluators"
     score = (response.aggregate_scores or {}).get(name)
     return getattr(score, stat, None) if score is not None else None
