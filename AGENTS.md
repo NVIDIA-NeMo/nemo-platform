@@ -252,14 +252,16 @@ Before any `nemo` CLI command against a local instance, set:
 export NMP_BASE_URL=http://localhost:8080
 ```
 
-Check for an existing instance before starting (`lsof -iTCP:8080 -sTCP:LISTEN` or `nemo workspaces list`). To start all default services in the background, use a tmux session:
+Check for an existing instance before starting (`lsof -iTCP:8080 -sTCP:LISTEN` or `nemo workspaces list`). To start services in the background, use a tmux session:
 
 ```bash
 tmux -f /exec-daemon/tmux.portal.conf new-session -d -s nemo-platform -c /workspace -- \
-  'export NMP_BASE_URL=http://localhost:8080 && uv run nemo services run --service-group all --port 8080'
+  'export NMP_BASE_URL=http://localhost:8080 && uv run nemo services run --services entities,models,inference-gateway,secrets,hello-world --controllers models --port 8080'
 ```
 
 Wait for readiness: `curl -sf http://localhost:8080/health/ready` → `{"status":"ready"}`.
+
+> **`--service-group all` needs a running Docker daemon.** The `nemo-deployments` plugin service initializes its Docker backend at startup, so `--service-group all` (which includes that plugin service) aborts with `docker.errors.DockerException` when no Docker socket is present. Core services and the `models` controller (whose `deployments_plugin` backend connects lazily) start fine without Docker. In a Docker-less VM, start an explicit `--services …` subset instead (the command above covers entities/models/inference-gateway/secrets/hello-world and boots in ~5s).
 
 Minimal subset for inference-focused work (documented in SETUP.md): `uv run nemo services run --services entities,models,inference-gateway,secrets --controllers models`.
 
