@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
+import os
 import signal
 import subprocess
 import threading
@@ -24,7 +25,7 @@ from nmp.automodel.tasks.training.schemas import (
 )
 from nmp.automodel.tasks.training.utils import generate_torchrun_flags_from_env
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.customization_common.training.nccl import maybe_set_nccl_ib_hca
+from nmp.customization_common.training.nccl import get_nccl_ib_env
 
 from .checkpoints import ModelType, find_best_checkpoint, process_checkpoint
 from .config import compile_automodel_config
@@ -106,12 +107,15 @@ class AutomodelBackend:
 
         start_time = time.time()
 
+        training_env = os.environ.copy()
+        training_env.update(get_nccl_ib_env())
         training_process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,  # Line buffered
+            env=training_env,
         )
 
         # Start reader thread to capture output without blocking

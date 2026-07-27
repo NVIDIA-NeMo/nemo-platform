@@ -12,21 +12,17 @@ logger = logging.getLogger(__name__)
 _IB_SYSFS = Path("/sys/class/infiniband")
 
 
-def maybe_set_nccl_ib_hca() -> None:
-    """Set NCCL_IB_HCA to usable Mellanox HCAs when phantom devices are present.
-
-    Some hosts expose mlx InfiniBand devices in sysfs that have no netdev. NCCL
-    will try those and fail; filter them out when that happens.
-    """
-    if os.environ.get("NCCL_IB_HCA") or not _IB_SYSFS.is_dir():
-        return
+def get_nccl_ib_env() -> dict[str, str]:
+    """Return NCCL overrides when Mellanox HCAs lack network devices."""
+    if os.environ.get("NCCL_IB_HCA") or os.environ.get("NCCL_IB_DISABLE") or not _IB_SYSFS.is_dir():
+        return {}
 
     usable: list[str] = []
     phantom: list[str] = []
     try:
-        hcas = sorted(p for p in _IB_SYSFS.iterdir() if p.is_dir())
+        hcas = sorted(path for path in _IB_SYSFS.iterdir() if path.is_dir())
     except OSError:
-        return
+        return {}
 
     for hca in hcas:
         if not hca.name.startswith("mlx"):
@@ -40,8 +36,13 @@ def maybe_set_nccl_ib_hca() -> None:
         else:
             phantom.append(hca.name)
 
-    if not usable or not phantom:
-        return
+    if not phantom:
+        return {}
 
-    os.environ["NCCL_IB_HCA"] = ",".join(usable)
-    logger.info("Setting NCCL_IB_HCA=%s (excluded phantom HCAs: %s)", os.environ["NCCL_IB_HCA"], ",".join(phantom))
+    if not usable:
+        logger.info("Disabling NCCL IB because all detected Mellanox HCAs lack network devices")
+        return {"NCCL_IB_DISABLE": "1"}
+
+    hca_filter = ",".join(f"={hca}" for hca in usable)
+    logger.info("Setting NCCL_IB_HCA=%s (excluded phantom HCAs: %s)", hca_filter, ",".join(phantom))
+    return {"NCCL_IB_HCA": hca_filter}
