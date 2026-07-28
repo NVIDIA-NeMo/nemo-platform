@@ -621,8 +621,8 @@ exclude = [
   # root `ty` until that cleanup lands in a focused follow-up.
   "plugins/nemo-switchyard/",
 
-  # Standalone Terminal-Bench agent-under-test: resolved from its own lockfile inside
-  # the benchmark's task containers, so its imports are absent from the workspace env.
+  # Standalone agents-under-test: each resolves from its own lockfile inside the
+  # benchmark's task containers, so its imports are absent from the workspace env.
   "plugins/nemo-experimentalist/examples/",
 
   "docs/",
