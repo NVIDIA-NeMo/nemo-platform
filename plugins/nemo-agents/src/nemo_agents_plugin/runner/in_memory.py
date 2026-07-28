@@ -449,7 +449,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         ]
         log_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info("Spawning: %s  (log: %s)", " ".join(cmd), log_path)
-        log_file = log_path.open("a")
+        log_file = log_path.open("w")
         try:
             return subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
         finally:

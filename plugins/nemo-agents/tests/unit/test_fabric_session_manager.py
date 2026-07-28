@@ -76,7 +76,7 @@ async def test_open_session_materializes_config_and_starts_runtime(
         agent_config,
         base_dir=tmp_path,
         session_registry=registry,
-        fabric=fabric,
+        fabric=cast(Any, fabric),
     )
 
     assert translation_calls == []
@@ -109,7 +109,7 @@ async def test_open_session_stops_runtime_when_registration_fails(
         _agent_config(),
         base_dir=tmp_path,
         session_registry=registry,
-        fabric=fabric,
+        fabric=cast(Any, fabric),
     )
 
     with pytest.raises(RuntimeError, match="registration failed"):
@@ -132,7 +132,7 @@ async def test_resolve_session_opens_session_when_id_is_absent(
         _agent_config(),
         base_dir=tmp_path,
         session_registry=registry,
-        fabric=fabric,
+        fabric=cast(Any, fabric),
     )
 
     session = await manager.resolve_session(None)
@@ -153,7 +153,7 @@ async def test_resolve_session_reuses_registered_runtime(
         _agent_config(),
         base_dir=tmp_path,
         session_registry=registry,
-        fabric=fabric,
+        fabric=cast(Any, fabric),
     )
 
     session = await manager.resolve_session("session-1")
@@ -308,6 +308,31 @@ async def test_close_all_sessions_continues_after_stop_failure(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_close_all_sessions_continues_after_unexpected_stop_failure(tmp_path: Path) -> None:
+    class _FailingRuntime(_FakeRuntime):
+        async def stop(self) -> None:
+            self.stop_calls += 1
+            raise RuntimeError("unexpected stop failure")
+
+    failing_runtime = _FailingRuntime()
+    healthy_runtime = _FakeRuntime()
+    registry = FabricSessionRegistry()
+    await registry.register(cast(Any, failing_runtime), session_id="session-1")
+    await registry.register(cast(Any, healthy_runtime), session_id="session-2")
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+    )
+
+    closed_count = await manager.close_all_sessions()
+
+    assert closed_count == 2
+    assert failing_runtime.stop_calls == 1
+    assert healthy_runtime.stop_calls == 1
+
+
+@pytest.mark.asyncio
 async def test_invoke_session_refreshes_activity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -346,7 +371,7 @@ async def test_invoke_session_serializes_turns_for_same_runtime(
         _agent_config(),
         base_dir=tmp_path,
         session_registry=registry,
-        fabric=_FakeFabric(_FakeRuntime()),
+        fabric=cast(Any, _FakeFabric(_FakeRuntime())),
     )
     first_started = asyncio.Event()
     release_first = asyncio.Event()
@@ -397,7 +422,7 @@ async def test_invoke_session_releases_lock_after_failure(
         _agent_config(),
         base_dir=tmp_path,
         session_registry=registry,
-        fabric=_FakeFabric(_FakeRuntime()),
+        fabric=cast(Any, _FakeFabric(_FakeRuntime())),
     )
     invocation_count = 0
 
@@ -429,7 +454,7 @@ async def test_invoke_session_releases_lock_after_cancellation(
         _agent_config(),
         base_dir=tmp_path,
         session_registry=registry,
-        fabric=_FakeFabric(_FakeRuntime()),
+        fabric=cast(Any, _FakeFabric(_FakeRuntime())),
     )
     invocation_started = asyncio.Event()
 

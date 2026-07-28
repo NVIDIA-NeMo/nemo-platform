@@ -87,7 +87,17 @@ def test_nat_deployment_resolution_applies_legacy_injections(monkeypatch: pytest
     ]
 
 
-def test_nemo_agents_deployment_resolution_only_normalizes_payload() -> None:
+def test_nemo_agents_deployment_resolution_injects_gateway_and_normalizes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def inject_gateway(config: dict[str, Any], workspace: str) -> dict[str, Any]:
+        calls.append(workspace)
+        return config
+
+    monkeypatch.setattr(agent_config_formats, "inject_fabric_gateway_url", inject_gateway)
+
     resolved = resolve_agent_config_for_deployment(
         NEMO_AGENTS_SPEC_CONFIG_FORMAT,
         _nemo_agents_config(),
@@ -98,3 +108,4 @@ def test_nemo_agents_deployment_resolution_only_normalizes_payload() -> None:
     assert resolved["config_format"] == NEMO_AGENTS_SPEC_CONFIG_FORMAT
     assert resolved["environment"]["provider"] == "local"
     assert "workflow" not in resolved
+    assert calls == ["test-workspace"]

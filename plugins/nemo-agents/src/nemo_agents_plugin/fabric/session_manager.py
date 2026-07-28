@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any
 
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric.environment import ensure_local_workspace_dir
@@ -47,7 +46,7 @@ class FabricSessionManager:
         *,
         base_dir: Path,
         session_registry: FabricSessionRegistry,
-        fabric: Any | None = None,
+        fabric: Fabric | None = None,
         max_concurrent_invocations: int = DEFAULT_MAX_CONCURRENT_INVOCATIONS,
     ) -> None:
         if max_concurrent_invocations < 0:
@@ -136,7 +135,17 @@ class FabricSessionManager:
             except FabricSessionStopError:
                 logger.exception("Failed to stop Fabric session %s during shutdown.", session.session_id)
 
-        await asyncio.gather(*(stop_session(session) for session in sessions))
+        results = await asyncio.gather(
+            *(stop_session(session) for session in sessions),
+            return_exceptions=True,
+        )
+        for session, result in zip(sessions, results, strict=True):
+            if isinstance(result, BaseException):
+                logger.error(
+                    "Unexpected error stopping Fabric session %s during shutdown.",
+                    session.session_id,
+                    exc_info=(type(result), result, result.__traceback__),
+                )
         return len(sessions)
 
     async def _stop_session(self, session: FabricRuntimeSession) -> None:

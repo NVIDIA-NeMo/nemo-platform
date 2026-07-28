@@ -9,7 +9,12 @@ from typing import Any, Protocol
 
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT
-from nemo_agents_plugin.utils import inject_default_model, inject_gateway_url, inject_nemo_trace_fields
+from nemo_agents_plugin.utils import (
+    inject_default_model,
+    inject_fabric_gateway_url,
+    inject_gateway_url,
+    inject_nemo_trace_fields,
+)
 from pydantic import ValidationError
 
 
@@ -67,8 +72,8 @@ class _NemoAgentsSpecConfigHandler:
         workspace: str,
         agent_name: str,
     ) -> dict[str, Any]:
-        del workspace, agent_name
-        return self._normalize(config)
+        del agent_name
+        return self._normalize(inject_fabric_gateway_url(config, workspace))
 
     @staticmethod
     def _normalize(config: dict[str, Any]) -> dict[str, Any]:
