@@ -364,7 +364,12 @@ class AgentDeploymentController(NemoController):
 
         self._starting_since.pop((dep.workspace, dep.name), None)
         try:
-            await self.entities.delete(AgentDeployment, name=dep.name, workspace=dep.workspace)
+            await self.entities.delete(
+                AgentDeployment,
+                name=dep.name,
+                workspace=dep.workspace,
+                expected_db_version=dep.db_version,
+            )
         except Exception:
             logger.exception("Failed to delete deployment entity '%s'", dep.name)
         else:

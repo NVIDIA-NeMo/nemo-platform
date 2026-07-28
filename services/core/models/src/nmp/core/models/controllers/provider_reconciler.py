@@ -63,6 +63,15 @@ def _has_backend_format(model_entity: ModelEntity) -> bool:
     return isinstance(value, str) and bool(value)
 
 
+def _get_virtual_model_db_version(virtual_model: object) -> int | None:
+    db_version = getattr(virtual_model, "db_version", None)
+    if isinstance(db_version, bool):
+        return None
+    if isinstance(db_version, int):
+        return db_version
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Discovery result types
 # ---------------------------------------------------------------------------
@@ -1102,10 +1111,20 @@ class ModelProviderReconciler:
             ):
                 continue
 
+            expected_db_version = _get_virtual_model_db_version(virtual_model)
+            if expected_db_version is None:
+                logger.warning(
+                    "Skipping orphaned autoprovisioned VirtualModel %s/%s because it has no database version for conditional deletion",
+                    virtual_model.workspace,
+                    virtual_model.name,
+                )
+                continue
+
             try:
                 await self._models_sdk.inference.virtual_models.delete(
                     name=virtual_model.name,
                     workspace=virtual_model.workspace,
+                    expected_db_version=expected_db_version,
                 )
                 logger.info(
                     "Deleted orphaned autoprovisioned VirtualModel %s/%s",

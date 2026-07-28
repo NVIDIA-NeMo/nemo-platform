@@ -6,18 +6,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from nemo_evaluator.api.schemas import MetricInline, MetricRef, Task, TaskInput
+from nemo_evaluator.api.schemas import MetadataItem, MetricInline, MetricRef, Task, TaskInput, TaskInputs
 from nemo_evaluator.api.service.task_service import MetricRefNotFoundError, TaskService
+from nemo_evaluator.entities import TaskEntity
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_platform_plugin.entities import (
-    EntityBase,
-    EntityConflictError,
-    EntityNotFoundError,
-    ListResponse,
-    PaginationInfo,
-)
+from nemo_platform_plugin.entities import ListResponse, PaginationInfo
+from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 
 class _FakeMetricService:
@@ -45,12 +41,12 @@ def _inline_metric() -> MetricInline:
 
 class _FakeEntityClient:
     def __init__(self) -> None:
-        self.entities: dict[tuple[str, str, str], EntityBase] = {}
+        self.entities: dict[tuple[str, str, str], TaskEntity] = {}
 
-    async def create(self, entity):
+    async def create(self, entity: TaskEntity) -> TaskEntity:
         key = (entity.__entity_type__, entity.workspace, entity.name)
         if key in self.entities:
-            raise EntityConflictError(f"{key} exists")
+            raise NemoEntityConflictError(f"{key} exists")
         now = datetime.now(timezone.utc)
         entity._id = f"{entity.__entity_type__}-{entity.name}"
         entity._created_at = now
@@ -58,21 +54,37 @@ class _FakeEntityClient:
         self.entities[key] = entity
         return entity
 
-    async def get(self, entity_cls, *, workspace, name):
-        key = (entity_cls.__entity_type__, workspace, name)
+    async def get(self, entity_type: type[TaskEntity], *, workspace: str, name: str) -> TaskEntity:
+        key = (entity_type.__entity_type__, workspace, name)
         if key not in self.entities:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
         return self.entities[key]
 
-    async def delete(self, entity_cls, name, *, workspace):
-        key = (entity_cls.__entity_type__, workspace, name)
+    async def delete(
+        self,
+        entity_type: type[TaskEntity],
+        name: str,
+        *,
+        workspace: str,
+        expected_db_version: int | None = None,
+    ) -> None:
+        key = (entity_type.__entity_type__, workspace, name)
         if key not in self.entities:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
         del self.entities[key]
 
-    async def list(self, entity_cls, *, workspace, filter_operation=None, sort=None, page=1, page_size=100):
+    async def list(
+        self,
+        entity_type: type[TaskEntity],
+        *,
+        workspace: str,
+        filter_operation: object | None = None,
+        sort: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> ListResponse[TaskEntity]:
         items = [
-            e for (etype, ws, _), e in self.entities.items() if etype == entity_cls.__entity_type__ and ws == workspace
+            e for (etype, ws, _), e in self.entities.items() if etype == entity_type.__entity_type__ and ws == workspace
         ]
         return ListResponse(
             data=items,
@@ -89,9 +101,9 @@ class _FakeEntityClient:
 def _task_input() -> TaskInput:
     return TaskInput(
         intent="Answer the question.",
-        inputs={"instruction": "What is 2+2?"},
+        inputs=TaskInputs(instruction="What is 2+2?"),
         metrics=[MetricRef("default/stored-metric")],
-        metadata=[{"key": "suite", "value": "smoke"}],
+        metadata=[MetadataItem(key="suite", value="smoke")],
     )
 
 
@@ -125,7 +137,7 @@ async def test_create_normalizes_inline_metrics_to_refs(
     inline = _inline_metric()
     task_input = TaskInput(
         intent="Answer the question.",
-        inputs={"instruction": "What is 2+2?"},
+        inputs=TaskInputs(instruction="What is 2+2?"),
         metrics=[MetricRef("default/stored-metric"), inline],
     )
 
@@ -140,14 +152,14 @@ async def test_create_normalizes_inline_metrics_to_refs(
 
 
 async def test_create_rejects_missing_metric_ref(service: TaskService) -> None:
-    task_input = TaskInput(intent="x", inputs={"instruction": "?"}, metrics=[MetricRef("default/nope")])
+    task_input = TaskInput(intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("default/nope")])
     with pytest.raises(MetricRefNotFoundError, match="not found"):
         await service.create_task("task-1", task_input, workspace="default")
 
 
 async def test_create_canonicalizes_bare_metric_ref(service: TaskService) -> None:
     # A bare "stored-metric" ref resolves against the task workspace and is persisted as "default/stored-metric".
-    task_input = TaskInput(intent="x", inputs={"instruction": "?"}, metrics=[MetricRef("stored-metric")])
+    task_input = TaskInput(intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("stored-metric")])
     created = await service.create_task("task-1", task_input, workspace="default")
     assert created.metrics[0].root == "default/stored-metric"
 

@@ -5,12 +5,17 @@
 
 from __future__ import annotations
 
+from typing import TypeVar
+
 import pytest
 from nemo_evaluator.api.schemas import MetadataItem, MetricRef, TaskInputs, TaskRef, TasksetRef
 from nemo_evaluator.entities import TaskEntity, TasksetEntity
 from nemo_evaluator.jobs.agent_spec import AgentEvalTaskInput
 from nemo_evaluator.task_refs import resolve_agent_eval_tasks, resolve_taskset_ref
-from nemo_platform_plugin.entities import EntityBase, EntityNotFoundError
+from nemo_platform_plugin.entities import EntityBase
+from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+
+_EntityT = TypeVar("_EntityT", bound=EntityBase)
 
 
 class _FakeEntityClient:
@@ -22,11 +27,13 @@ class _FakeEntityClient:
     def add(self, entity: EntityBase) -> None:
         self.entities[(entity.__entity_type__, entity.workspace, entity.name)] = entity
 
-    async def get(self, entity_cls, *, workspace, name):
-        key = (entity_cls.__entity_type__, workspace, name)
+    async def get(self, entity_type: type[_EntityT], *, workspace: str, name: str) -> _EntityT:
+        key = (entity_type.__entity_type__, workspace, name)
         if key not in self.entities:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
-        return self.entities[key]
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
+        entity = self.entities[key]
+        assert isinstance(entity, entity_type)
+        return entity
 
 
 def _task(name: str, *, workspace: str = "default", metric: str = "default/m") -> TaskEntity:

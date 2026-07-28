@@ -15,10 +15,12 @@ from nemo_evaluator.metric_refs import (
     resolve_metric_specs,
 )
 from nemo_evaluator.metric_storage import store_bundle
-from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_platform_plugin.entities import EntityNotFoundError
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from pydantic import ValidationError
 
 # ---- in-memory fakes (mirror the storage round-trip) -----------------------
@@ -36,19 +38,21 @@ class _FakeAsyncFilesClient:
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], dict[str, bytes]] = {}
 
-    async def create_fileset(self, *, body, workspace=None, exist_ok=False):
-        self._store.setdefault((workspace, body.name), {})
+    async def create_fileset(
+        self, *, body: CreateFilesetRequest, workspace: str | None = None, exist_ok: bool = False
+    ) -> AsyncMock:
+        self._store.setdefault((workspace or "default", body.name), {})
         return AsyncMock(data=lambda: object())
 
-    async def delete_fileset(self, *, name, workspace=None):
-        self._store.pop((workspace, name), None)
+    async def delete_fileset(self, *, name: str, workspace: str | None = None) -> AsyncMock:
+        self._store.pop((workspace or "default", name), None)
         return AsyncMock(data=lambda: object())
 
-    async def upload_file(self, *, path, content, workspace, name):
+    async def upload_file(self, *, path: str, content: bytes, workspace: str, name: str) -> AsyncMock:
         self._store.setdefault((workspace, name), {})[path] = bytes(content)
         return AsyncMock(data=lambda: object())
 
-    async def download_file(self, *, path, workspace, name):
+    async def download_file(self, *, path: str, workspace: str, name: str) -> _FakeResponse:
         return _FakeResponse(self._store[(workspace, name)][path])
 
 
@@ -56,11 +60,11 @@ class _FakeEntityClient:
     def __init__(self) -> None:
         self.entities: dict[tuple[str, str], MetricBundleEntity] = {}
 
-    async def get(self, entity_cls, *, workspace, name):
+    async def get(self, entity_type: type[MetricBundleEntity], *, workspace: str, name: str) -> MetricBundleEntity:
         try:
             return self.entities[(workspace, name)]
         except KeyError:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
 
 
 def _bundle():
@@ -73,10 +77,16 @@ def _metric_inline() -> MetricInline:
     return MetricInline.model_validate_json(_bundle().model_dump_json())
 
 
-async def _stored(fake_client: _FakeAsyncFilesClient, entity_client: _FakeEntityClient, workspace: str, name: str):
+def _fake_platform() -> AsyncNeMoPlatform:
+    return AsyncMock(spec=AsyncNeMoPlatform)
+
+
+async def _stored(
+    fake_client: _FakeAsyncFilesClient, entity_client: _FakeEntityClient, workspace: str, name: str
+) -> MetricBundle:
     bundle = _bundle()
     with patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client):
-        ref = await store_bundle(object(), workspace, name, bundle)
+        ref = await store_bundle(_fake_platform(), workspace, name, bundle)
     entity_client.entities[(workspace, name)] = MetricBundleEntity(
         name=name,
         workspace=workspace,
@@ -127,7 +137,7 @@ async def test_resolve_loads_referenced_bundle() -> None:
             [MetricRef(root="default/exact")],
             workspace="default",
             entity_client=entity_client,
-            async_sdk=object(),
+            async_sdk=_fake_platform(),
         )
 
     assert len(result) == 1
@@ -145,7 +155,7 @@ async def test_resolve_mixes_refs_and_inline_preserving_order() -> None:
             [MetricRef(root="exact"), inline],
             workspace="default",
             entity_client=entity_client,
-            async_sdk=object(),
+            async_sdk=_fake_platform(),
         )
 
     assert len(result) == 2
@@ -168,7 +178,7 @@ async def test_resolve_missing_metric_raises_clear_error() -> None:
             [MetricRef(root="default/no-such-metric")],
             workspace="default",
             entity_client=_FakeEntityClient(),
-            async_sdk=object(),
+            async_sdk=_fake_platform(),
         )
 
 
@@ -178,7 +188,7 @@ async def test_resolve_ref_without_entity_client_raises() -> None:
             [MetricRef(root="default/exact")],
             workspace="default",
             entity_client=None,
-            async_sdk=object(),
+            async_sdk=_fake_platform(),
         )
 
 
@@ -186,9 +196,11 @@ async def test_resolve_ref_without_entity_client_raises() -> None:
 
 
 def test_input_spec_accepts_ref_and_inline() -> None:
-    spec = EvaluateInputSpec(
-        metrics=["default/stored-metric", _metric_inline()],
-        dataset=[{"expected": "a", "output": "a"}],
+    spec = EvaluateInputSpec.model_validate(
+        {
+            "metrics": ["default/stored-metric", _metric_inline()],
+            "dataset": [{"expected": "a", "output": "a"}],
+        }
     )
     assert isinstance(spec.metrics[0], MetricRef)
     assert spec.metrics[0].root == "default/stored-metric"
@@ -196,7 +208,9 @@ def test_input_spec_accepts_ref_and_inline() -> None:
 
 def test_canonical_spec_rejects_unresolved_ref() -> None:
     with pytest.raises(ValidationError):
-        EvaluateSpec(
-            metrics=["default/stored-metric"],
-            dataset=[{"expected": "a", "output": "a"}],
+        EvaluateSpec.model_validate(
+            {
+                "metrics": ["default/stored-metric"],
+                "dataset": [{"expected": "a", "output": "a"}],
+            }
         )

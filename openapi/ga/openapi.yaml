@@ -903,6 +903,16 @@ paths:
           title: Parent
           type: string
         description: Parent entity ID for nested entities
+      - name: expected_db_version
+        in: query
+        required: false
+        schema:
+          description: Optional database version for optimistic locking. Delete only
+            succeeds if the entity still has this version.
+          title: Expected Db Version
+          type: integer
+        description: Optional database version for optimistic locking. Delete only
+          succeeds if the entity still has this version.
       responses:
         '200':
           description: Successful Response
@@ -3267,11 +3277,23 @@ paths:
         schema:
           type: string
           title: Name
+      - name: expected_db_version
+        in: query
+        required: false
+        schema:
+          description: Optional database version for optimistic locking. Delete only
+            succeeds if the VirtualModel still has this version.
+          title: Expected Db Version
+          type: integer
+        description: Optional database version for optimistic locking. Delete only
+          succeeds if the VirtualModel still has this version.
       responses:
         '204':
           description: VirtualModel deleted
         '404':
           description: VirtualModel not found.
+        '409':
+          description: VirtualModel was modified before it could be deleted.
         '422':
           description: Validation Error
           content:
@@ -12412,6 +12434,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -12422,6 +12449,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: GuardrailConfig
       description: A guardrail configuration entity.
     GuardrailConfigFilter:
@@ -15981,6 +16009,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -15992,6 +16025,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: PlatformJobStep
       description: 'A single step within an attempt.
 
@@ -16312,6 +16346,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -16323,6 +16362,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: PlatformJobTask
       description: 'A task within a step (for parallel execution).
 
@@ -19324,6 +19364,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -19334,6 +19379,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: VirtualModel
       description: 'Logical inference route.
 

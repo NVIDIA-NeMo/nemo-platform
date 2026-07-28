@@ -17,21 +17,16 @@
 
 from __future__ import annotations
 
-from typing_extensions import Required, TypedDict
+from typing_extensions import TypedDict
 
-__all__ = ["EntityDeleteEntityByNameParams"]
+__all__ = ["VirtualModelDeleteParams"]
 
 
-class EntityDeleteEntityByNameParams(TypedDict, total=False):
+class VirtualModelDeleteParams(TypedDict, total=False):
     workspace: str
-
-    entity_type: Required[str]
 
     expected_db_version: int
     """Optional database version for optimistic locking.
 
-    Delete only succeeds if the entity still has this version.
+    Delete only succeeds if the VirtualModel still has this version.
     """
-
-    parent: str
-    """Parent entity ID for nested entities"""

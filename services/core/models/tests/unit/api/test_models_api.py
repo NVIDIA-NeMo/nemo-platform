@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from nemo_platform_plugin.client.errors import NemoTransportError
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.auth import AuthClient, Principal, get_auth_client
-from nmp.common.entities.client import EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityValidationError
 from nmp.core.models.api.service.adapter_entity_service import AdapterEntityService
 from nmp.core.models.api.service.model_entity_service import ModelEntityService
 from nmp.core.models.api.v2.models import router, start_update_model_spec_job
@@ -38,6 +38,7 @@ def mock_model_entity_service():
 def mock_adapter_entity_service():
     service = Mock(spec=AdapterEntityService)
     service.create_adapter = AsyncMock()
+    service.delete_adapter = AsyncMock()
     service.update_adapter = AsyncMock()
     return service
 
@@ -472,6 +473,24 @@ def test_update_model_with_verbose_true(client, mock_model_entity_service, sampl
     assert response.status_code == 200
     call_args = mock_model_entity_service.update_model_entity.call_args
     assert call_args.kwargs["verbose"] is True
+
+
+def test_delete_model_conflict_returns_409(client, mock_model_entity_service):
+    """Test stale model deletes return 409."""
+    mock_model_entity_service.delete_model_entity.side_effect = EntityConflictError("stale version")
+
+    response = client.delete("/apis/models/v2/workspaces/default/models/my-model")
+
+    assert response.status_code == 409
+
+
+def test_delete_model_adapter_conflict_returns_409(client, mock_adapter_entity_service):
+    """Test stale model adapter deletes return 409."""
+    mock_adapter_entity_service.delete_adapter.side_effect = EntityConflictError("stale version")
+
+    response = client.delete("/apis/models/v2/workspaces/default/models/my-model/adapters/lora")
+
+    assert response.status_code == 409
 
 
 def test_create_model_adapter_entity_validation_error_returns_422(client, mock_adapter_entity_service):

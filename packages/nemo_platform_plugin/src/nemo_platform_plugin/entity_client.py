@@ -29,17 +29,33 @@ virtually every route handler:
 injects the real implementation at startup via ``app.dependency_overrides``.
 """
 
-from nemo_platform_plugin.dependencies import (
-    get_entity_client,
+from nemo_platform_plugin.dependencies import get_entity_client
+from nemo_platform_plugin.entities import (
+    AnyEntityDeleteClientProtocol as NemoAnyEntityDeleteClientProtocol,
+)
+from nemo_platform_plugin.entities import (
+    AnyEntityGetterProtocol as NemoAnyEntityGetterProtocol,
 )
 from nemo_platform_plugin.entities import (
     EntityClient as NemoEntitiesClient,
 )
 from nemo_platform_plugin.entities import (
+    EntityClientProtocol as NemoEntitiesClientProtocol,
+)
+from nemo_platform_plugin.entities import (
     EntityConflictError as NemoEntityConflictError,
 )
 from nemo_platform_plugin.entities import (
+    EntityDeleteClientProtocol as NemoEntityDeleteClientProtocol,
+)
+from nemo_platform_plugin.entities import (
+    EntityGetterProtocol as NemoEntityGetterProtocol,
+)
+from nemo_platform_plugin.entities import (
     EntityNotFoundError as NemoEntityNotFoundError,
+)
+from nemo_platform_plugin.entities import (
+    EntityValidationError as NemoEntityValidationError,
 )
 from nemo_platform_plugin.entities import (
     PaginationInfo as NemoPaginationInfo,
@@ -47,8 +63,14 @@ from nemo_platform_plugin.entities import (
 
 __all__ = [
     "NemoEntitiesClient",
+    "NemoEntitiesClientProtocol",
+    "NemoAnyEntityDeleteClientProtocol",
+    "NemoAnyEntityGetterProtocol",
+    "NemoEntityDeleteClientProtocol",
+    "NemoEntityGetterProtocol",
     "NemoEntityConflictError",
     "NemoEntityNotFoundError",
+    "NemoEntityValidationError",
     "NemoPaginationInfo",
     "get_entity_client",
 ]
