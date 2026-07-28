@@ -13,8 +13,10 @@
 import { ControlledCombobox } from '@nemo/common/src/components/form/ControlledCombobox/index';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import type { Meta, StoryObj } from '@storybook/react';
-import { useState } from 'react';
+import { useState, type ComponentProps, type ReactElement } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
+
+type ComboboxItems = ComponentProps<typeof ControlledCombobox>['items'];
 
 const LABELS = ['email', 'phone_number', 'first_name', 'last_name', 'ssn', 'street_address'];
 
@@ -34,7 +36,7 @@ interface StoryForm {
 
 interface HarnessProps {
   kind?: 'single' | 'multiple';
-  items?: React.ComponentProps<typeof ControlledCombobox>['items'];
+  items?: ComboboxItems;
   freeForm?: boolean;
   loading?: boolean;
   disabled?: boolean;
@@ -51,7 +53,7 @@ function ControlledComboboxHarness({
   offerTypedValue = false,
   defaultValues,
   ...comboboxProps
-}: HarnessProps) {
+}: HarnessProps): ReactElement {
   const methods = useForm<StoryForm>({
     defaultValues: { single: '', multiple: [], ...defaultValues },
     mode: 'onChange',
@@ -67,8 +69,8 @@ function ControlledComboboxHarness({
   );
   const showTyped =
     offerTypedValue && typed && !offered.includes(typed) && !selected.includes(typed);
-  const resolvedItems = showTyped
-    ? [{ kind: 'section' as const, slotHeading: 'Custom', items: [typed] }, ...(items as [])]
+  const resolvedItems: ComboboxItems = showTyped
+    ? [{ kind: 'section', slotHeading: 'Custom', items: [typed] }, ...(items ?? [])]
     : items;
 
   return (
