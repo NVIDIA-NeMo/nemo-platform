@@ -50,7 +50,7 @@ function createWorkspaceMemberFormSchema(
   return z
     .object({
       principal: z.string(),
-      role: z.enum(['Viewer', 'Editor', 'Admin']),
+      role: z.enum(WORKSPACE_MEMBER_ROLES),
     })
     .superRefine((data, ctx) => {
       if (mode === 'add' && data.principal.trim() === '') {

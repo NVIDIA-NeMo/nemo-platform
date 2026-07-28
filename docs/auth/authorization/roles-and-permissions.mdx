@@ -22,9 +22,22 @@ NeMo Platform provides human-facing roles for interactive users and a separate w
 - Run customization jobs, evaluations, and data design tasks
 - Cannot manage workspace members or settings
 
+**Exporter** — For users and shared-library bindings that may expose workspace resources to other workspaces.
+
+- All Viewer permissions
+- Reference resources from this workspace in deployments, jobs, and other workspace-scoped operations
+- Allow services to retrieve secret values on the user's behalf for exported secret references
+- Cannot create, update, or delete resources
+
+<Note>
+
+Durable jobs and deployments do not persist identity-provider group claims, because replaying a group snapshot would retain access after group removal. Give the creating principal a direct workspace role binding when a background runtime must continue resolving cross-workspace resources.
+
+</Note>
+
 **Admin** — For workspace owners who manage their team's access.
 
-- All Editor permissions
+- All Editor and Exporter permissions
 - Add and remove workspace members
 - Change member roles
 - Grant wildcard access (`*`) to the workspace
@@ -60,13 +73,18 @@ flowchart BT
 +cancel"]
     Admin["Admin
 +manage members
++export
 +change visibility"]
+    Exporter["Exporter
++export"]
     PlatformAdmin["PlatformAdmin
 all workspaces
 all operations"]
 
     Viewer --> Editor
+    Viewer --> Exporter
     Editor --> Admin
+    Exporter --> Admin
     Admin --> PlatformAdmin
 ```
 
@@ -76,13 +94,13 @@ Rows are operations; columns are human-facing roles. Read the hierarchy above fi
 
 ### Workspace Operations
 
-| Operation | Viewer | Editor | Admin | PlatformAdmin |
-|-----------|:------:|:------:|:-----:|:-------------:|
-| List workspaces (visible to user) | ✓ | ✓ | ✓ | ✓ |
-| Delete workspace | | | ✓ | ✓ |
-| List workspace members | ✓ | ✓ | ✓ | ✓ |
-| Add / remove members | | | ✓ | ✓ |
-| Change workspace visibility | | | ✓ | ✓ |
+| Operation | Viewer | Editor | Exporter | Admin | PlatformAdmin |
+|-----------|:------:|:------:|:--------:|:-----:|:-------------:|
+| List workspaces (visible to user) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Delete workspace | | | | ✓ | ✓ |
+| List workspace members | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Add / remove members | | | | ✓ | ✓ |
+| Change workspace visibility | | | | ✓ | ✓ |
 
 <Note>
 
@@ -91,23 +109,25 @@ Workspace creation is controlled by the `WorkspaceCreator` permission in the `sy
 </Note>
 ### Resource Operations (Models, Datasets, Projects)
 
-| Operation | Viewer | Editor | Admin | PlatformAdmin |
-|-----------|:------:|:------:|:-----:|:-------------:|
-| List resources | ✓ | ✓ | ✓ | ✓ |
-| View / read resource | ✓ | ✓ | ✓ | ✓ |
-| Create resource | | ✓ | ✓ | ✓ |
-| Update resource | | ✓ | ✓ | ✓ |
-| Delete resource | | ✓ | ✓ | ✓ |
+| Operation | Viewer | Editor | Exporter | Admin | PlatformAdmin |
+|-----------|:------:|:------:|:--------:|:-----:|:-------------:|
+| List resources | ✓ | ✓ | ✓ | ✓ | ✓ |
+| View / read resource | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Reference resource from another workspace | | | ✓ | ✓ | ✓ |
+| Create resource | | ✓ | | ✓ | ✓ |
+| Update resource | | ✓ | | ✓ | ✓ |
+| Delete resource | | ✓ | | ✓ | ✓ |
 
 ### Jobs (Customization, Evaluation, Data Design)
 
-| Operation | Viewer | Editor | Admin | PlatformAdmin |
-|-----------|:------:|:------:|:-----:|:-------------:|
-| List jobs | ✓ | ✓ | ✓ | ✓ |
-| View job / logs | ✓ | ✓ | ✓ | ✓ |
-| Create / run job | | ✓ | ✓ | ✓ |
-| Cancel job | | ✓ | ✓ | ✓ |
-| Delete job | | ✓ | ✓ | ✓ |
+| Operation | Viewer | Editor | Exporter | Admin | PlatformAdmin |
+|-----------|:------:|:------:|:--------:|:-----:|:-------------:|
+| List jobs | ✓ | ✓ | ✓ | ✓ | ✓ |
+| View job / logs | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Reference job from another workspace | | | ✓ | ✓ | ✓ |
+| Create / run job | | ✓ | | ✓ | ✓ |
+| Cancel job | | ✓ | | ✓ | ✓ |
+| Delete job | | ✓ | | ✓ | ✓ |
 
 <Note>
 
@@ -117,23 +137,24 @@ JobRunner can upload logs from workload containers but does not grant job creati
 
 ### Inference
 
-| Operation | Viewer | Editor | Admin | PlatformAdmin |
-|-----------|:------:|:------:|:-----:|:-------------:|
-| Run inference (chat completions, completions, embeddings) | ✓ | ✓ | ✓ | ✓ |
+| Operation | Viewer | Editor | Exporter | Admin | PlatformAdmin |
+|-----------|:------:|:------:|:--------:|:-----:|:-------------:|
+| Run inference (chat completions, completions, embeddings) | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ### Deployment
 
-| Operation | Viewer | Editor | Admin | PlatformAdmin |
-|-----------|:------:|:------:|:-----:|:-------------:|
-| List deployments | ✓ | ✓ | ✓ | ✓ |
-| View deployment | ✓ | ✓ | ✓ | ✓ |
-| Create deployment | | ✓ | ✓ | ✓ |
-| Update deployment | | ✓ | ✓ | ✓ |
-| Delete deployment | | ✓ | ✓ | ✓ |
+| Operation | Viewer | Editor | Exporter | Admin | PlatformAdmin |
+|-----------|:------:|:------:|:--------:|:-----:|:-------------:|
+| List deployments | ✓ | ✓ | ✓ | ✓ | ✓ |
+| View deployment | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Reference deployment from another workspace | | | ✓ | ✓ | ✓ |
+| Create deployment | | ✓ | | ✓ | ✓ |
+| Update deployment | | ✓ | | ✓ | ✓ |
+| Delete deployment | | ✓ | | ✓ | ✓ |
 
 ## Wildcard Principal Behavior
 
-The wildcard principal `*` grants a role to **all authenticated users**. When both a wildcard binding and an explicit binding exist for a user in the same workspace, the highest role wins.
+The wildcard principal `*` grants a role to **all authenticated users**. Wildcard and explicit bindings are combined, so a principal receives the union of all granted role permissions.
 
 Example:
 

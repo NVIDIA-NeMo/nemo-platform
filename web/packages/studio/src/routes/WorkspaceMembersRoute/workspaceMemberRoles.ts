@@ -4,7 +4,7 @@
  */
 
 /** Workspace role binding names accepted by the Entities members API (see platform role bindings). */
-export const WORKSPACE_MEMBER_ROLES = ['Viewer', 'Editor', 'Admin'] as const;
+export const WORKSPACE_MEMBER_ROLES = ['Viewer', 'Editor', 'Exporter', 'Admin'] as const;
 
 export type WorkspaceMemberRole = (typeof WORKSPACE_MEMBER_ROLES)[number];
 
@@ -12,6 +12,7 @@ export type WorkspaceMemberRole = (typeof WORKSPACE_MEMBER_ROLES)[number];
 export const WORKSPACE_ROLE_DESCRIPTIONS: Record<WorkspaceMemberRole, string> = {
   Viewer: 'View all resources.',
   Editor: 'Create, modify, and delete resources.',
+  Exporter: 'View resources and reference them from other workspaces.',
   Admin: 'Full administrative access over resources, users, and access.',
 };
 
