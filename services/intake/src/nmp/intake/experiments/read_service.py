@@ -3,8 +3,6 @@
 
 """Cross-store read composition for Evaluations."""
 
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass
 
