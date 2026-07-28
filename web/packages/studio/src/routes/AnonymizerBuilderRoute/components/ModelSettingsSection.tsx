@@ -30,19 +30,7 @@ export const ModelSettingsSection: FC = () => {
     [items, models]
   );
 
-  const optionsForRole = (role: string) => (role === GLINER_ROLE ? glinerItems : items);
-
   const missingGliner = !isLoading && !glinerItems.length;
-
-  const formFieldPropsForRole = (role: string) =>
-    role === GLINER_ROLE && missingGliner
-      ? {
-          slotLabel: 'Model',
-          required: true,
-          status: 'error' as const,
-          slotError: 'Requires a GLiNER model',
-        }
-      : { slotLabel: 'Model', required: true };
 
   return (
     <Stack gap="density-2xl">
@@ -54,7 +42,7 @@ export const ModelSettingsSection: FC = () => {
             <div className="grow">
               <ControlledSearchableSelect
                 aria-label={ROLE_LABELS[role] ?? role}
-                options={optionsForRole(role)}
+                options={role === GLINER_ROLE ? glinerItems : items}
                 isLoading={isLoading}
                 triggerPlaceholder="Select a model"
                 searchPlaceholder="Search models..."
@@ -64,7 +52,15 @@ export const ModelSettingsSection: FC = () => {
                   name: `roleModels.${role}.modelId`,
                   control,
                 }}
-                formFieldProps={formFieldPropsForRole(role)}
+                formFieldProps={{
+                  slotLabel: 'Model',
+                  required: true,
+                  ...(role === GLINER_ROLE &&
+                    missingGliner && {
+                      status: 'error' as const,
+                      slotError: 'Requires a GLiNER model',
+                    }),
+                }}
               />
             </div>
             <ParamsDropdown
