@@ -39,13 +39,10 @@ describe('ExperimentEditModal', () => {
           },
         })
       ),
-      http.put(
-        '*/apis/intake/v2/workspaces/:workspace/experiments/:name',
-        async ({ request }) => {
-          body = (await request.json()) as Record<string, unknown>;
-          return HttpResponse.json(group);
-        }
-      )
+      http.put('*/apis/intake/v2/workspaces/:workspace/experiments/:name', async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(group);
+      })
     );
 
     render(<ExperimentEditModal open onClose={vi.fn()} workspace={WORKSPACE} group={group} />);

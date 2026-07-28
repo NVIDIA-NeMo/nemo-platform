@@ -18,10 +18,7 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
-import type {
-  EvaluationFilter,
-  ExperimentResponse,
-} from '@nemo/sdk/generated/platform/schema';
+import type { EvaluationFilter, ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { ChangesetBadge } from '@studio/components/ChangesetBadge';
 import { ExperimentParetoChart } from '@studio/components/charts/ExperimentParetoChart';
@@ -142,10 +139,7 @@ interface ExperimentDataViewProps {
 }
 
 /** Lists the experiments that belong to a single experiment group. */
-export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
-  group,
-  paretoVisible,
-}) => {
+export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoVisible }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const toast = useToast();

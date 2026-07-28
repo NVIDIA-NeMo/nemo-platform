@@ -79,8 +79,7 @@ export const InsightExperiments: FC<InsightExperimentsProps> = ({
   );
   const groups = response?.data ?? [];
   const { wrapColumns, onClick, className } = useRowClick(
-    (group: ExperimentResponse) =>
-      navigate(getExperimentDetailRoute(workspace, group.name)),
+    (group: ExperimentResponse) => navigate(getExperimentDetailRoute(workspace, group.name)),
     groups
   );
 

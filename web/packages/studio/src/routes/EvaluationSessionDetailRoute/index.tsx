@@ -31,14 +31,7 @@ const EvaluationSessionCompare: FC<{
   compareWith: string;
   onSelectCompare: (sessionId: string) => void;
   onClearCompare: () => void;
-}> = ({
-  workspace,
-  experimentName,
-  sessionId,
-  compareWith,
-  onSelectCompare,
-  onClearCompare,
-}) => {
+}> = ({ workspace, experimentName, sessionId, compareWith, onSelectCompare, onClearCompare }) => {
   const { testCaseId, runs, isRunsLoading } = useSessionCompareRuns(
     workspace,
     experimentName,
@@ -160,12 +153,7 @@ export const EvaluationSessionDetailRoute: FC = () => {
         },
       ],
       getSessionHref: (targetSessionId) =>
-        getEvaluationSessionDetailRoute(
-          workspace,
-          experimentName,
-          evaluationName,
-          targetSessionId
-        ),
+        getEvaluationSessionDetailRoute(workspace, experimentName, evaluationName, targetSessionId),
     }),
     [workspace, experimentName, evaluationName]
   );

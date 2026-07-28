@@ -118,8 +118,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
   );
 
   const { mutateAsync: patchEvaluation, isPending: isAdding } = usePatchEvaluation();
-  const { mutateAsync: createExperiment, isPending: isCreatingGroup } =
-    useCreateExperiment();
+  const { mutateAsync: createExperiment, isPending: isCreatingGroup } = useCreateExperiment();
 
   const busy = isAdding || isCreatingGroup;
   const count = evaluations.length;

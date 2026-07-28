@@ -12,9 +12,7 @@ interface ExperimentMetricsProps {
   experimentName: string;
 }
 
-export const ExperimentMetrics: FC<ExperimentMetricsProps> = ({
-  experimentName,
-}) => {
+export const ExperimentMetrics: FC<ExperimentMetricsProps> = ({ experimentName }) => {
   const workspace = useWorkspaceFromPath();
   const { data: group } = useGetExperiment(workspace, experimentName);
 

@@ -51,10 +51,7 @@ const pagination = ({
   total_results: totalResults,
 });
 
-const makeGroup = (
-  id: string,
-  overrides: Partial<ExperimentResponse> = {}
-): ExperimentResponse =>
+const makeGroup = (id: string, overrides: Partial<ExperimentResponse> = {}): ExperimentResponse =>
   ({
     id,
     name: `${id}-name`,

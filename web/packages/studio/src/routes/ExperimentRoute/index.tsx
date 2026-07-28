@@ -11,10 +11,7 @@ import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataV
 import { DEFAULT_PAGE_SIZE_OPTIONS } from '@nemo/common/src/constants/pagination';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useListExperiments } from '@nemo/sdk/generated/platform/api';
-import type {
-  ExperimentFilter,
-  ExperimentResponse,
-} from '@nemo/sdk/generated/platform/schema';
+import type { ExperimentFilter, ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,
   Button,
@@ -56,8 +53,7 @@ interface ExperimentColumnFilters {
   updated_at?: DatetimeFilterValue;
 }
 
-type ExperimentFilterInput = WithFilterOperators<ExperimentFilter> &
-  ExperimentColumnFilters;
+type ExperimentFilterInput = WithFilterOperators<ExperimentFilter> & ExperimentColumnFilters;
 
 /**
  * Filter-only columns. They are never rendered as a table (the cards come from CustomContent);
