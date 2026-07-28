@@ -1,50 +1,40 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""ClickHouse implementation of Intake session detail reads."""
+"""ClickHouse implementation of Intake session reads."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
 
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
+from nmp.intake.repository.session import SessionRepository
 from nmp.intake.spans.domain import IntakeSession
-from nmp.intake.spans.span_rollups import METRIC_ATTRIBUTE_FIELDS, metric_aggregate_columns
-from nmp.intake.spans.storage import float_or_none, int_or_none, normalize_span_status, result_rows
-
-SESSION_COLUMNS = [
-    "id",
-    "workspace",
-    "started_at",
-    "ended_at",
-    "status",
-    *METRIC_ATTRIBUTE_FIELDS.keys(),
-    "trace_count",
-    "span_count",
-]
+from nmp.intake.spans.span_rollups import metric_aggregate_columns
+from nmp.intake.spans.storage import float_or_none, int_or_none, normalize_span_status
 
 
-class SessionRepository:
-    def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+class ClickHouseSessionRepository(SessionRepository):
+    def __init__(self, executor: ClickHouseExecutor) -> None:
+        self._executor = executor
 
     async def get_session(self, *, workspace: str, session_id: str) -> IntakeSession | None:
-        query, parameters = session_detail_sql(self._client.table("spans"))
-        result = await self._client.query(
-            query,
-            parameters={**parameters, "workspace": workspace, "session_id": session_id},
+        query = _session_detail_query(self._executor.table(ClickHouseTable.SPANS)).bind(
+            workspace=workspace,
+            session_id=session_id,
         )
-        rows = result_rows(result)
+        rows = await self._executor.fetch_all(query)
         return _row_to_session(rows[0]) if rows else None
 
 
-def session_detail_sql(table: str) -> tuple[str, dict[str, Any]]:
-    """Return a primary-key-pruned aggregate over the current rows of one session."""
+def _session_detail_query(table: str) -> ClickHouseQuery:
+    """Build a primary-key-pruned aggregate over the current rows of one session."""
 
     source_alias = "session_spans"
     metric_columns, parameters = metric_aggregate_columns(source_alias)
-    query = f"""
+    statement = f"""
         SELECT
             %(session_id)s AS id,
             any({source_alias}.workspace) AS workspace,
@@ -70,7 +60,11 @@ def session_detail_sql(table: str) -> tuple[str, dict[str, Any]]:
         WHERE {source_alias}.is_deleted = 0
         HAVING span_count > 0
     """
-    return query, parameters
+    return ClickHouseQuery(
+        name="sessions.get",
+        statement=statement,
+        parameters=parameters,
+    )
 
 
 def _row_to_session(row: dict[str, Any]) -> IntakeSession:
