@@ -1,0 +1,14 @@
+# E2E overlay: disable deployments orphan cleanup.
+#
+# The e2e services pool can keep multiple platform processes alive against the
+# same host Docker daemon (different config hashes ⇒ different entity stores).
+# Orphan cleanup lists every ``managed-by=nemo-deployments`` container and deletes
+# anything missing from *this* store, so a default-config platform will tear down
+# containers owned by ``test_nemo_deployments_docker`` mid-flight.
+#
+# Modules that intentionally exercise orphan cleanup (e.g.
+# ``local-docker-deployments.yaml``) omit this overlay and keep the feature on.
+
+deployments:
+  controller:
+    orphan_cleanup_interval_seconds: 0
