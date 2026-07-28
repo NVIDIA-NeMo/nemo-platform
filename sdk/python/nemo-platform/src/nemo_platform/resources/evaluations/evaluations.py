@@ -338,7 +338,8 @@ class EvaluationsResource(SyncAPIResource):
         List Evaluations
 
         Args:
-          filter: Filter evaluations by name, experiment_group_id, dataset_name, dataset_version,
+          filter: Filter evaluations by name, experiment_id (experiment group membership;
+              experiment_group_id is a deprecated alias), dataset_name, dataset_version,
               created_by, created_at, or updated_at. Pass is_deleted=true to return only
               soft-deleted evaluations; omit to see only live ones. Pass is_pinned=true (or
               false) to filter by pinned state; omit to return both. Filter by a metadata
@@ -881,7 +882,8 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         List Evaluations
 
         Args:
-          filter: Filter evaluations by name, experiment_group_id, dataset_name, dataset_version,
+          filter: Filter evaluations by name, experiment_id (experiment group membership;
+              experiment_group_id is a deprecated alias), dataset_name, dataset_version,
               created_by, created_at, or updated_at. Pass is_deleted=true to return only
               soft-deleted evaluations; omit to see only live ones. Pass is_pinned=true (or
               false) to filter by pinned state; omit to return both. Filter by a metadata
