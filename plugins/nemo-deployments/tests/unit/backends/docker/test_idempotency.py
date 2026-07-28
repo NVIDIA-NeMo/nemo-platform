@@ -13,8 +13,10 @@ from docker.errors import APIError
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
+    DEFAULT_RESOURCE_SCOPE,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
+    RESOURCE_SCOPE_LABEL,
     RESTART_POLICY_LABEL,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
@@ -28,6 +30,7 @@ def _matching_labels(*, name: str, restart_policy: str = "Always", config_name: 
         DEPLOYMENT_NAME_LABEL: name,
         RESTART_POLICY_LABEL: restart_policy,
         CONFIG_NAME_LABEL: config_name,
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
     }
 
 

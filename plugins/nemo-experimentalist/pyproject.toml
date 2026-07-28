@@ -2,18 +2,14 @@
 name = "nemo-experimentalist-plugin"
 version = "0.1.0"
 description = "NeMo Experimentalist plugin for NeMo Platform."
-# The plugin itself needs 3.12 (so do nooa and harbor), but a workspace member cannot
-# raise its floor above the workspace's without dragging every other package up with it.
-# The floor is declared here and enforced by the markers below plus the `experimentalist`
-# dependency group in the workspace root.
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "pydantic>=2",
     "httpx",
-    "harbor>=0.16 ; python_full_version >= '3.12'",
+    "harbor>=0.16",
     "opentelemetry-proto>=1.42.1",
     "protobuf>=6.0.0",
-    "nooa ; python_full_version >= '3.12'",
+    "nooa",
     "pyyaml>=6.0.3",
     "nemo-insights-plugin",
     "nemo-platform",
