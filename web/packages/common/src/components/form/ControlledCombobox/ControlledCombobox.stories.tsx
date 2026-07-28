@@ -141,16 +141,6 @@ export const MultipleSectioned: Story = {
   args: { kind: 'multiple', items: SECTIONED },
 };
 
-/**
- * freeForm is a no-op for multi-select: the field holds a string[], so raw input is not written
- * to it. Callers that need custom values drive `inputValue` and offer the typed text as an item,
- * which is what "Custom entries" below does.
- */
-export const MultipleFreeFormIsInert: Story = {
-  name: 'Multi select (freeForm has no effect)',
-  args: { kind: 'multiple', freeForm: true },
-};
-
 export const MultipleCustomEntries: Story = {
   name: 'Multi select (custom entries)',
   args: {
