@@ -344,8 +344,8 @@ class EvaluationsResource(SyncAPIResource):
               false) to filter by pinned state; omit to return both. Filter by a metadata
               key/value: filter[metadata.<key>]=<value>. Filter by a rollup metric with
               numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
-              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
-              filter[evaluators.<name>.mean][$gte]=0.8.
+              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
+              filter[tokens.mean][$lte]=5000, or filter[evaluators.<name>.mean][$gte]=0.8.
 
           page: Page number.
 
@@ -355,7 +355,7 @@ class EvaluationsResource(SyncAPIResource):
               dominates); prefix any field with '-' for descending — e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Each field is an evaluation attribute
               (name, created_at, updated_at, pinned_at) or an aggregate metric: run_count,
-              test_case_count, cost_usd.<stat>, latency_ms.<stat>, or
+              test_case_count, cost_usd.<stat>, latency_ms.<stat>, tokens.<stat>, or
               evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95, p99,
               sum, count. When omitted, defaults to -created_at with pinned evaluations first.
 
@@ -887,8 +887,8 @@ class AsyncEvaluationsResource(AsyncAPIResource):
               false) to filter by pinned state; omit to return both. Filter by a metadata
               key/value: filter[metadata.<key>]=<value>. Filter by a rollup metric with
               numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
-              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
-              filter[evaluators.<name>.mean][$gte]=0.8.
+              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
+              filter[tokens.mean][$lte]=5000, or filter[evaluators.<name>.mean][$gte]=0.8.
 
           page: Page number.
 
@@ -898,7 +898,7 @@ class AsyncEvaluationsResource(AsyncAPIResource):
               dominates); prefix any field with '-' for descending — e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Each field is an evaluation attribute
               (name, created_at, updated_at, pinned_at) or an aggregate metric: run_count,
-              test_case_count, cost_usd.<stat>, latency_ms.<stat>, or
+              test_case_count, cost_usd.<stat>, latency_ms.<stat>, tokens.<stat>, or
               evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95, p99,
               sum, count. When omitted, defaults to -created_at with pinned evaluations first.
 

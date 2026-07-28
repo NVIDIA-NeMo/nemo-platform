@@ -5,6 +5,7 @@
 
 from nemo_platform import NeMoPlatform
 from nmp.common.jobs.config import get_task_config
+from nmp.common.sdk_factory import get_task_sdk
 from pydantic import BaseModel
 
 
@@ -18,8 +19,7 @@ def run(*, sdk: NeMoPlatform | None = None) -> int:
     """Read the configured workspace using the public SDK workload identity path."""
     try:
         config = get_task_config(WorkloadWorkspaceGetConfig)
-        if sdk is None:
-            sdk = NeMoPlatform()
+        sdk = sdk or get_task_sdk(as_service="jobs")
         workspace = sdk.workspaces.retrieve(config.workspace)
         print(f"Successfully retrieved workspace: {workspace.name}")
         return 0

@@ -29,16 +29,29 @@ Relay writes ATIF **inside the image** (no host gateway), which removes the bare
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 import shlex
+import shutil
 import tempfile
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, cast
 
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric import _common
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.image import ensure_fabric_image
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
+    CODEX_SKILLS_DIR,
+    SKILL_MODE_CODEX_SKILLS_DIR,
+    AgentSkill,
+    SkillInjectionError,
+    SkillMode,
+    SkillProvenance,
+    SkillSet,
+    resolve_skill_mode,
+    stage_skills_seed,
+)
 from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.api import AsyncSandbox
 from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.base import SandboxExecResult, SandboxProvider, SandboxSpec
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
@@ -67,6 +80,11 @@ if TYPE_CHECKING:
 # AgentEvalTask); until then it is an internal default rather than a runtime-construction knob.
 DEFAULT_FABRIC_TIMEOUT_S = 600
 _RUNTIME_NAME = "fabric_container"
+_MISSING_FABRIC_MSG = (
+    "FabricContainerRuntime skill injection requires the `nemo-fabric` package (native NeMo Fabric SDK) "
+    "on the host to resolve how a skill reaches the selected adapter; the container otherwise runs Fabric "
+    "only inside the sandbox."
+)
 
 # Fixed in-container layout. The runtime seeds ``/in`` (agent config, profiles, input), execs Fabric's
 # CLI, and reads the produced ``/out`` subtree back across the boundary.
@@ -81,6 +99,13 @@ _FABRIC_STDERR = f"{_LOGS_DIR}/fabric-stderr.txt"
 _AGENT_PATH = f"{_IN_DIR}/agent.yaml"
 _INPUT_PATH = f"{_IN_DIR}/input.txt"
 _WORKSPACE_PROFILE_NAME = "eval_workspace"
+# In-sandbox root for a natively-injected skill bundle. It lives under ``/in`` (not ``/out``), so it is
+# never part of the downloaded ``/out`` evidence — only codex-mode skills, which must sit in the workspace
+# for the harness to self-discover them, need post-download cleanup.
+_SKILLS_DIR = f"{_IN_DIR}/skills"
+# Sentinel skill path attached only to probe Fabric's capability planner for the selected adapter's skills
+# routing (mirrors the host runtime). Never staged and need not exist on disk.
+_SKILL_PROBE_PATH = "nemo-eval-skill-capability-probe"
 
 
 class FabricContainerRuntime:
@@ -94,6 +119,7 @@ class FabricContainerRuntime:
         profiles: Sequence[FabricProfileConfig | Mapping[str, Any]] = (),
         secrets: Mapping[str, SecretRef] = {},
         image: str | None = None,
+        skills: Sequence[AgentSkill] | None = None,
     ) -> None:
         # The Fabric agent is fully described by its ``FabricConfig`` (harness + model + runtime); it is
         # consumed structurally as a mapping to cross the sandbox boundary as JSON.
@@ -109,6 +135,34 @@ class FabricContainerRuntime:
         # Optional prebuilt image: the trial runs inside it, so it must contain the Fabric CLI + adapter.
         # None -> stock harness-agnostic image built on first run.
         self._image: str | None = image
+        # Optional agent skills injected per task (A/B: baseline vs. treated via ``with_skills``). How they
+        # reach the harness is resolved once per run (the adapter is constant across the taskset) in
+        # ``run_tasks``; only touched when a skill is set, so the no-skill path stays dependency-free. Names
+        # must be unique — each stages to its own ``<name>/`` bundle, so a repeat would collide.
+        self._skill_set = SkillSet(tuple(skills or ()))
+
+    def with_skills(self, skills: Sequence[AgentSkill]) -> FabricContainerRuntime:
+        """Return a copy of this runtime with ``skills`` *added* to its skill set; ``self`` is not modified.
+
+        Mirrors :meth:`FabricAgentRuntime.with_skills`: additive and chainable
+        (``rt.with_skills([a]).with_skills([b])`` injects both), so an A/B eval derives a treated runtime
+        from a skill-free baseline (``baseline.with_skills(the_skills)``) and the arms differ in exactly the
+        injected skills. Names must be unique across the combined set (colliding ``<name>/`` bundles), so
+        re-adding a present skill raises. A shallow copy suffices — the shared fields are immutable
+        config/paths/provider. (``run_tasks`` disposes the injected provider on completion, so an A/B run
+        over two arms should give each arm its own provider.)
+        """
+        clone = copy.copy(self)
+        clone._skill_set = self._skill_set.with_skills(skills)
+        return clone
+
+    def with_skill(self, skill: AgentSkill) -> FabricContainerRuntime:
+        """Return a copy of this runtime with ``skill`` *added*; ``self`` is not modified.
+
+        Thin wrapper over :meth:`with_skills` for the single-skill case; equally chainable
+        (``rt.with_skill(a).with_skill(b)`` injects both).
+        """
+        return self.with_skills([skill])
 
     async def resolve_secrets(self, secret_resolver: SecretResolver) -> None:
         """Resolve declared ``SecretRef``\\ s to values, keyed by the env var each harness reads.
@@ -134,10 +188,10 @@ class FabricContainerRuntime:
         resolved_config = config or AgentEvalRunConfig()
         semaphore = asyncio.Semaphore(resolved_config.parallelism)
 
-        async def run_one(index: int, task: AgentEvalTask) -> AgentEvalTrial:
+        async def run_one(index: int, task: AgentEvalTask, skill_mode: SkillMode | None) -> AgentEvalTrial:
             async with semaphore:
                 logger.info("running task", extra={"index": index + 1, "task_id": task.id})
-                result = await self._run_task(index, task, resolved_config)
+                result = await self._run_task(index, task, resolved_config, skill_mode)
                 logger.info("task completed", extra={"index": index + 1, "task_id": task.id})
                 return result
 
@@ -150,13 +204,26 @@ class FabricContainerRuntime:
             if self._secrets and not self._secrets_resolved:
                 # No orchestrator resolved our secrets (standalone run) — fall back to local env resolution.
                 await self.resolve_secrets(LocalSecretResolver())
-            return await asyncio.gather(*(run_one(index, task) for index, task in enumerate(tasks)))
+            # Resolve once (the adapter is constant across the taskset) how a skill reaches this harness, by
+            # probing Fabric's capability planner — the same authoritative routing the host runtime uses.
+            # Fail fast rather than silently run a skill-free trial mislabeled "with skill". Blocking pyo3
+            # planning, so keep it off the shared event loop; only reached when a skill is set.
+            skill_mode = await asyncio.to_thread(self._resolve_skill_mode) if self._skill_set.skills else None
+            if self._skill_set.skills and skill_mode is None:
+                raise RuntimeError(
+                    f"FabricContainerRuntime received one or more skills but adapter {self._adapter_id()!r} "
+                    "has no known skill-injection strategy: Fabric does not route skills to it natively and "
+                    "it is not a codex harness. Use a skills-native or codex harness, or drop the skills."
+                )
+            return await asyncio.gather(*(run_one(index, task, skill_mode) for index, task in enumerate(tasks)))
         finally:
             # Each sandbox tears itself down; the provider is shared across the batch, so its
             # process-wide resources are disposed once here, when the batch completes.
             await self._provider.aclose()
 
-    async def _run_task(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> AgentEvalTrial:
+    async def _run_task(
+        self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig, skill_mode: SkillMode | None
+    ) -> AgentEvalTrial:
         evidence_dir = self._evidence_dir(index, task, config)
         out_dir = evidence_dir / "out"
         evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -164,8 +231,9 @@ class FabricContainerRuntime:
         # The whole per-task flow — framing input, seeding, exec, download, and parsing the result — is
         # guarded so any failure (bad seed, sandbox crash, unreadable result) fails only this task's
         # trial rather than aborting the gathered batch.
+        skill_provenances: list[SkillProvenance] = []
         try:
-            seed_files, profile_paths = self._seed_files(task)
+            seed_files, profile_paths, skill_provenances = self._seed_files(task, skill_mode)
             spec = SandboxSpec(
                 image=self._image, workdir=_WORKSPACE_DIR, env=dict(self._resolved_env), files=seed_files
             )
@@ -174,10 +242,61 @@ class FabricContainerRuntime:
                 await self._seed_workspace(sandbox, task)
                 result = await sandbox.exec(self._fabric_command(profile_paths), timeout_s=DEFAULT_FABRIC_TIMEOUT_S)
                 await sandbox.download_dir(_OUT_DIR, out_dir)
-            return self._to_trial(task, out_dir, evidence_dir, result)
+            # Codex self-injection seeds each bundle inside the workspace so the harness discovers it during
+            # the run; drop them from the downloaded evidence before the workspace is exposed (else the
+            # injected files read as agent output to workspace-reading metrics). Native staging lives under
+            # /in, which is never downloaded, so it never pollutes the evidence.
+            if skill_mode == SKILL_MODE_CODEX_SKILLS_DIR:
+                for provenance in skill_provenances:
+                    await asyncio.to_thread(_remove_injected_bundle, out_dir / "workspace", provenance["location"])
+            return self._to_trial(task, out_dir, evidence_dir, result, skill_provenances=skill_provenances)
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
-            # Stamp runtime + image even on failures before _to_trial (startup/seeding/download).
-            return self._failed_trial(task, evidence_dir, exc, extra_metadata=self._base_metadata())
+            # Stamp runtime + image + skills even on failures before _to_trial (startup/seeding/download).
+            return self._failed_trial(
+                task, evidence_dir, exc, extra_metadata={**self._base_metadata(), **_skill_metadata(skill_provenances)}
+            )
+
+    def _resolve_skill_mode(self) -> SkillMode | None:
+        """Ask Fabric how a skill would reach the selected harness, or ``None`` if it can't.
+
+        Mirrors :meth:`FabricAgentRuntime._resolve_skill_mode`: plan a copy of the config with a sentinel
+        skill path attached (it need not exist on disk) and read how the adapter routes skills from the
+        capability plan. Querying the authoritative planner at runtime means any adapter that declares
+        native skills support — ours or an end-user's — is picked up without a hardcoded list. ``nemo_fabric``
+        is imported lazily on the host (only when a skill is set), so the no-skill path never needs it.
+        """
+        try:
+            from nemo_fabric import Fabric, FabricConfig, FabricProfileConfig  # ty: ignore[unresolved-import]
+        except ImportError as exc:
+            raise RuntimeError(_MISSING_FABRIC_MSG) from exc
+        agent_config = FabricConfig.from_mapping(self._config)
+        base_profiles = [FabricProfileConfig.from_mapping(profile) for profile in self._profiles]
+        probe_config = agent_config.model_copy(deep=True)
+        probe_config.add_skill_path(_SKILL_PROBE_PATH)
+        plan = Fabric().plan(probe_config, profiles=base_profiles)
+        return resolve_skill_mode(capability_plan=plan.capability_plan, harness=plan.adapter.harness)
+
+    def _adapter_id(self) -> str:
+        """The harness adapter id declared by the config mapping (for provenance + error messages)."""
+        harness = self._config.get("harness")
+        adapter_id = harness.get("adapter_id") if isinstance(harness, Mapping) else None
+        return str(adapter_id) if adapter_id is not None else ""
+
+    def _existing_skill_paths(self) -> list[str]:
+        """Skill paths the base config/profiles already declare (union, order-preserved).
+
+        Fabric applies profile ``skills.paths`` last-wins, so the native overlay has to re-list these
+        alongside the evaluated skill or the treated arm would silently drop preconfigured skills (see
+        ``stage_skills_seed``). Read from the raw config/profile mappings the runtime was given.
+        """
+        paths: list[str] = []
+        for section in (self._config, *self._profiles):
+            skills = section.get("skills") if isinstance(section, Mapping) else None
+            declared = skills.get("paths") if isinstance(skills, Mapping) else None
+            for path in declared or []:
+                if isinstance(path, str) and path not in paths:
+                    paths.append(path)
+        return paths
 
     def _fabric_command(self, profile_paths: Sequence[str]) -> str:
         """The ``fabric run`` invocation: pre-create the /out dirs Fabric chdirs into, run, capture stdout."""
@@ -188,21 +307,45 @@ class FabricContainerRuntime:
             f"{run} > {shlex.quote(_RESULT_PATH)} 2> {shlex.quote(_FABRIC_STDERR)}"
         )
 
-    def _seed_files(self, task: AgentEvalTask) -> tuple[dict[str, str], list[str]]:
-        """Return (files to seed into /in, profile paths for --profile). Configs are written as JSON,
-        which the Fabric CLI parses as YAML. Base profiles are followed by the per-task workspace overlay
-        and the trajectory profile (built as plain dicts — no host nemo_relay dependency)."""
+    def _seed_files(
+        self, task: AgentEvalTask, skill_mode: SkillMode | None
+    ) -> tuple[dict[str, str], list[str], list[SkillProvenance]]:
+        """Return (files to seed into the sandbox, profile paths for --profile, skill provenances).
+
+        Configs are written as JSON, which the Fabric CLI parses as YAML. When skills are injected each
+        bundle is rendered into the seed set at the harness's in-sandbox discovery path (native:
+        ``/in/skills/<name>``; codex: ``<workspace>/.agents/skills/<name>``), with at most ONE merged native
+        overlay listing every bundle. Profiles are ordered caller-first, then the native skill overlay (if
+        any), then the per-task workspace + trajectory overlays — which trail so the evaluator-owned
+        workspace/artifacts stay authoritative (mirroring the host runtime's overlay ordering).
+        """
         files: dict[str, str] = {
             _AGENT_PATH: json.dumps(self._config),
             _INPUT_PATH: task.agent_prompt(),
         }
+        skill_profiles: list[dict[str, Any]] = []
+        provenances: list[SkillProvenance] = []
+        if self._skill_set.skills and skill_mode is not None:
+            if skill_mode == SKILL_MODE_CODEX_SKILLS_DIR:
+                _check_codex_skill_collision(self._skill_set.skills, task.inputs.get(SEED_FILES_INPUT_KEY) or {})
+            seed = stage_skills_seed(
+                skills=self._skill_set.skills,
+                adapter_id=self._adapter_id(),
+                mode=skill_mode,
+                workspace_dir=_WORKSPACE_DIR,
+                skills_dir=_SKILLS_DIR,
+                existing_skill_paths=self._existing_skill_paths(),
+            )
+            files.update(seed.files)
+            skill_profiles = seed.profiles
+            provenances = seed.provenances
         profile_paths: list[str] = []
-        profiles = [*self._profiles, self._workspace_profile(), self._trajectory_profile()]
+        profiles = [*self._profiles, *skill_profiles, self._workspace_profile(), self._trajectory_profile()]
         for index, profile in enumerate(profiles):
             path = f"{_IN_DIR}/profile-{index}.yaml"
             files[path] = json.dumps(profile)
             profile_paths.append(path)
-        return files, profile_paths
+        return files, profile_paths, provenances
 
     @staticmethod
     def _workspace_profile() -> dict[str, Any]:
@@ -241,9 +384,17 @@ class FabricContainerRuntime:
         return {"runtime": _RUNTIME_NAME, "image": self._image, "sandbox_provider": self._provider.name}
 
     def _to_trial(
-        self, task: AgentEvalTask, out_dir: Path, evidence_dir: Path, result: SandboxExecResult
+        self,
+        task: AgentEvalTask,
+        out_dir: Path,
+        evidence_dir: Path,
+        result: SandboxExecResult,
+        *,
+        skill_provenances: list[SkillProvenance] | None = None,
     ) -> AgentEvalTrial:
-        base_metadata = self._base_metadata()
+        # Skill provenance (name + content hash + injection mode) rides on every trial for the A/B diff:
+        # a ``skills`` list plus the historical lone ``skill`` field, matching the host FabricAgentRuntime.
+        base_metadata = {**self._base_metadata(), **_skill_metadata(skill_provenances or [])}
 
         # Gate on the exec outcome first: a timed-out or non-zero ``fabric run`` is untrustworthy even
         # when a stale/partial fabric_result.json is left behind (the shell ``>`` redirect truncates the
@@ -340,6 +491,67 @@ def _to_mapping(config: FabricConfig | Mapping[str, Any]) -> dict[str, Any]:
     to_mapping = getattr(config, "to_mapping", None)
     source = to_mapping() if callable(to_mapping) else config
     return dict(cast(Mapping[str, Any], source))
+
+
+def _skill_metadata(provenances: list[SkillProvenance]) -> dict[str, object]:
+    """Trial-metadata fields describing the injected skill set (the A/B provenance).
+
+    ``skills`` is the full list of injected-skill provenances (empty = baseline). ``skill`` keeps the
+    historical single-provenance field — the lone provenance for a one-skill run, else ``None`` — so
+    single-skill consumers (e.g. ``SkillUsedMetric``) and existing trials/tests keep working unchanged.
+    Mirrors ``FabricAgentRuntime._skill_metadata``.
+    """
+    return {"skill": provenances[0] if len(provenances) == 1 else None, "skills": provenances}
+
+
+def _check_codex_skill_collision(skills: Sequence[AgentSkill], task_files: Mapping[str, object]) -> None:
+    """Raise if a task seed file targets the same bundle dir as a runtime-injected codex skill.
+
+    ``.agents/skills/`` holds skills from two independent, equally valid sources: the runtime
+    ``skills`` parameter (the A/B knob — staged into the workspace before the sandbox starts) and
+    the task's own ``files`` inputs (skills the task definition always ships — uploaded after it
+    starts). Tasks are free to seed their own skills there; only writing the *same*
+    ``.agents/skills/<name>/`` from both sources is a conflict, since the task upload lands second
+    and would overwrite the injected bundle, leaving the stamped provenance hash describing content
+    the agent never saw. Fail that case rather than emit a silently mislabeled A/B trial.
+    """
+    for skill in skills:
+        injected_bundle = PurePosixPath(CODEX_SKILLS_DIR) / skill.name
+        for rel_path in task_files:
+            seed = PurePosixPath(rel_path)
+            if seed == injected_bundle or injected_bundle in seed.parents:
+                raise SkillInjectionError(
+                    f"task seed file {str(rel_path)!r} writes into {str(injected_bundle)!r}, which is "
+                    f"also injected as the runtime skill {skill.name!r}; the task upload would overwrite "
+                    "the injected bundle. Inject this skill via the runtime ``skills`` parameter or ship "
+                    "it in the task's files, not both"
+                )
+
+
+def _remove_injected_bundle(workspace_dir: Path, location: str) -> None:
+    """Remove the Codex-injected skill subtree from a downloaded ``workspace`` dir and prune emptied parents.
+
+    ``location`` is workspace-relative (``.agents/skills/<name>``). Best-effort and mirrors the host
+    runtime's cleanup: the skill was already captured in the run's trajectory, so SkillUsedMetric (which
+    reads the trace, not the workspace) is unaffected, and any filesystem error here must not fail an
+    otherwise-successful trial.
+    """
+    if not workspace_dir.is_dir():
+        return
+    workspace_root = workspace_dir.resolve()
+    injected = (workspace_dir / location).resolve()
+    # Guard against a location escaping the workspace (defensive; provenance is evaluator-authored).
+    if workspace_root not in injected.parents or not injected.exists():
+        return
+    shutil.rmtree(injected, ignore_errors=True)
+    # Prune now-empty reserved parents (``.agents/skills``, ``.agents``) but never the workspace itself.
+    parent = injected.parent
+    while parent != workspace_root and parent.is_dir():
+        try:
+            parent.rmdir()  # only succeeds while empty
+        except OSError:
+            break
+        parent = parent.parent
 
 
 def _find_atif(relay_dir: Path) -> Path | None:

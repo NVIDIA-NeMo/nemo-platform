@@ -404,6 +404,9 @@ navigation:
         path: ../../evaluator/tutorials/define-run-custom-python-metrics.mdx
     - page: SDK Resources
       path: ../../evaluator/sdk-resources.mdx
+    - page: Manage Tasks & Tasksets
+      slug: manage-tasks-tasksets
+      path: ../../evaluator/manage-tasks-tasksets.mdx
     - section: Metrics
       path: ../../evaluator/metrics/index.mdx
       contents:

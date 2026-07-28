@@ -6,8 +6,8 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { StrategyParamsSection } from '@studio/routes/AnonymizerBuilderRoute/components/StrategyParamsSection';
 import {
-  AVAILABLE_STRATEGY_OPTIONS,
   STRATEGY_DESCRIPTIONS,
+  STRATEGY_OPTIONS,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { FC } from 'react';
@@ -22,7 +22,7 @@ export const GenerationSection: FC = () => {
       <Text kind="label/bold/lg">Generation</Text>
       <ControlledSelect
         aria-label="Anonymization strategy"
-        items={AVAILABLE_STRATEGY_OPTIONS}
+        items={STRATEGY_OPTIONS}
         useControllerProps={{ name: 'strategy', control }}
         formFieldProps={{ slotLabel: 'Anonymization Strategy', required: true }}
       />

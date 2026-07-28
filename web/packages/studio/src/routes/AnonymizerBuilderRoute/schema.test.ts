@@ -58,9 +58,65 @@ describe('buildAnonymizerJobRequest', () => {
     });
   });
 
-  it('routes rewrite to config.rewrite', () => {
+  it('routes rewrite to config.rewrite with the library defaults', () => {
     const req = buildAnonymizerJobRequest(form({ strategy: 'rewrite' }));
-    expect(req.spec.config).toEqual({ rewrite: {} });
+    expect(req.spec.config).toEqual({
+      rewrite: {
+        risk_tolerance: 'low',
+        max_repair_iterations: 3,
+        strict_entity_protection: false,
+      },
+    });
+  });
+
+  it('sends privacy_goal only in custom mode, trimming both fields', () => {
+    const custom = buildAnonymizerJobRequest(
+      form({
+        strategy: 'rewrite',
+        privacyGoalMode: 'custom',
+        privacyProtect: '  patient identifiers  ',
+        privacyPreserve: '  clinical findings  ',
+      })
+    );
+    expect(custom.spec.config.rewrite?.privacy_goal).toEqual({
+      protect: 'patient identifiers',
+      preserve: 'clinical findings',
+    });
+
+    const defaults = buildAnonymizerJobRequest(
+      form({ strategy: 'rewrite', privacyGoalMode: 'default', privacyProtect: 'ignored' })
+    );
+    expect(defaults.spec.config.rewrite?.privacy_goal).toBeUndefined();
+  });
+
+  it('omits blank rewrite instructions and carries the tuned params', () => {
+    const blank = buildAnonymizerJobRequest(
+      form({ strategy: 'rewrite', rewriteInstructions: '   ' })
+    );
+    expect(blank.spec.config.rewrite?.instructions).toBeUndefined();
+
+    const tuned = buildAnonymizerJobRequest(
+      form({
+        strategy: 'rewrite',
+        rewriteInstructions: '  keep the tone  ',
+        riskTolerance: 'minimal',
+        maxRepairRounds: 0,
+        strictEntityProtection: true,
+      })
+    );
+    expect(tuned.spec.config.rewrite).toEqual({
+      instructions: 'keep the tone',
+      risk_tolerance: 'minimal',
+      max_repair_iterations: 0,
+      strict_entity_protection: true,
+    });
+  });
+
+  it('drops rewrite params when a replace strategy is selected', () => {
+    const req = buildAnonymizerJobRequest(
+      form({ strategy: 'redact', privacyGoalMode: 'custom', privacyProtect: 'names' })
+    );
+    expect(req.spec.config.rewrite).toBeUndefined();
   });
 
   it('trims the source and omits empty optional fields', () => {
@@ -107,7 +163,11 @@ describe('buildAnonymizerJobRequest', () => {
     const rew = buildAnonymizerJobRequest(form({ strategy: 'rewrite' })).spec.selected_models;
     expect(rew?.detection?.entity_detector).toBe('model-1');
     expect(rew?.rewrite?.rewriter).toBe('model-1');
-    expect(rew?.replace).toBeUndefined();
+  });
+
+  it('maps the replacement generator for rewrite so the backend alias check passes', () => {
+    const rew = buildAnonymizerJobRequest(form({ strategy: 'rewrite' })).spec.selected_models;
+    expect(rew?.replace?.[REPLACE_ROLE]).toBe('model-1');
   });
 
   it('maps only detection roles for redact/annotate/hash', () => {
