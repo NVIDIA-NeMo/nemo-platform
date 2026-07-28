@@ -32,13 +32,17 @@ export const ModelSettingsSection: FC = () => {
 
   const optionsForRole = (role: string) => (role === GLINER_ROLE ? glinerItems : items);
 
-  const emptyMessageForRole = (role: string) => {
-    if (isLoading) return 'Loading models...';
-    if (role === GLINER_ROLE) {
-      return 'No GLiNER model in this workspace. Entity detection needs one, such as nvidia/gliner-pii.';
-    }
-    return 'No models in this workspace.';
-  };
+  const missingGliner = !isLoading && !glinerItems.length;
+
+  const formFieldPropsForRole = (role: string) =>
+    role === GLINER_ROLE && missingGliner
+      ? {
+          slotLabel: 'Model',
+          required: true,
+          status: 'error' as const,
+          slotError: 'Requires a GLiNER model',
+        }
+      : { slotLabel: 'Model', required: true };
 
   return (
     <Stack gap="density-2xl">
@@ -54,13 +58,13 @@ export const ModelSettingsSection: FC = () => {
                 isLoading={isLoading}
                 triggerPlaceholder="Select a model"
                 searchPlaceholder="Search models..."
-                emptyMessage={emptyMessageForRole(role)}
+                emptyMessage={isLoading ? 'Loading models...' : 'No models in this workspace.'}
                 onChange={(value) => applyModel(role, value)}
                 useControllerProps={{
                   name: `roleModels.${role}.modelId`,
                   control,
                 }}
-                formFieldProps={{ slotLabel: 'Model', required: true }}
+                formFieldProps={formFieldPropsForRole(role)}
               />
             </div>
             <ParamsDropdown
