@@ -11,7 +11,7 @@ _RAW_CLIENT_MODULE = "nmp.intake.spans.clickhouse_client"
 
 # Shrink this allowlist as each legacy repository moves behind ClickHouseExecutor.
 _ALLOWED_RAW_CLIENT_IMPORTS = {
-    "api/v2/experiments/endpoints.py",
+    "api/v2/experiments/dependencies.py",
     "repository/clickhouse/executor.py",
     "service.py",
     "spans/annotations_repository.py",
