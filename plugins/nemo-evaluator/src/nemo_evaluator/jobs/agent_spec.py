@@ -18,7 +18,7 @@ from typing import Any, Literal, Self, TypeAlias
 # payload kind so MetricBundle payloads round-trip through validation.
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
-from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList
+from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList, TasksetRef
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
@@ -248,9 +248,24 @@ class _AgentEvalSpecCommon(BaseModel):
 
 
 class AgentEvalInputSpec(_AgentEvalSpecCommon):
-    """Submitter-facing agent-evaluation input: tasks whose metrics may be inline or references."""
+    """Submitter-facing agent-evaluation input.
 
-    tasks: list[AgentEvalTaskInput] = Field(min_length=1, description="Tasks to evaluate; at least one is required.")
+    ``tasks`` is either an inline list of tasks (whose metrics may be inline or references) or a
+    :class:`TasksetRef` naming a stored taskset whose member tasks are loaded and expanded during spec
+    resolution. Either way it hydrates to the canonical ``AgentEvalSpec.tasks`` list.
+    """
+
+    tasks: TasksetRef | list[AgentEvalTaskInput] = Field(
+        description="Tasks to evaluate: an inline list (at least one) or a reference to a stored taskset.",
+    )
+
+    @model_validator(mode="after")
+    def _reject_empty_inline_tasks(self) -> Self:
+        # A TasksetRef is validated (and required non-empty) when it is expanded during resolution; an
+        # inline list must carry at least one task, mirroring the canonical spec's ``min_length=1``.
+        if isinstance(self.tasks, list) and not self.tasks:
+            raise ValueError("provide at least one task, or a `tasks` taskset reference")
+        return self
 
 
 class AgentEvalSpec(_AgentEvalSpecCommon):

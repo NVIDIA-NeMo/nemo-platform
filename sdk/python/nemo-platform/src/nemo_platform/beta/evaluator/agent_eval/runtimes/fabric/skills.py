@@ -224,6 +224,110 @@ def install_skill(
     raise SkillInjectionError(f"unknown skill injection mode {mode!r} for adapter {adapter_id!r}")
 
 
+@dataclass
+class SkillsInstallation:
+    """Result of installing several skills for one task (see :func:`install_skills`).
+
+    ``profiles`` is the Fabric profile-overlay stack the runtime appends: at most ONE merged native
+    ``skills`` overlay listing every staged bundle (Fabric applies profile ``skills.paths`` last-wins, so
+    all skills must ride in a single overlay or all but the last would be dropped); the Codex branch emits
+    none because workspace placement is the delivery mechanism. ``provenances`` is one entry per skill, in
+    the given order, stamped into trial metadata so a multi-skill A/B comparison is auditable.
+    """
+
+    profiles: list[dict[str, object]]
+    provenances: list[SkillProvenance]
+
+
+def require_unique_skill_names(skills: Sequence[AgentSkill]) -> None:
+    """Raise if two skills share a name — their ``<name>/`` bundles would collide when staged.
+
+    Each skill stages into its own ``<name>/`` directory (native stage dir or ``.agents/skills/``), so a
+    repeated name would clobber (or fail to stage over) an earlier bundle. Checked up front so a
+    misconfigured runtime fails before any task runs, not mid-stage on the second collision.
+    """
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for skill in skills:
+        if skill.name in seen and skill.name not in duplicates:
+            duplicates.append(skill.name)
+        seen.add(skill.name)
+    if duplicates:
+        raise SkillInjectionError(
+            f"duplicate skill name(s) {duplicates}: each skill stages to its own '<name>/' bundle, so "
+            "skill names must be unique within one runtime"
+        )
+
+
+def install_skills(
+    *,
+    skills: Sequence[AgentSkill],
+    adapter_id: str,
+    mode: str,
+    workspace_dir: Path,
+    skill_stage_dir: Path,
+    existing_skill_paths: Sequence[str] = (),
+) -> SkillsInstallation:
+    """Stage every skill in ``skills`` for one task and wire them all into the harness per ``mode``.
+
+    Loops :func:`install_skill` — each skill stages into its own namespaced ``<name>/`` bundle — then, for
+    the native mode, merges the per-skill paths into a SINGLE ``skills`` overlay: Fabric applies profile
+    ``skills.paths`` last-wins, so emitting one overlay per skill would silently drop all but the last.
+    Pre-existing ``existing_skill_paths`` are preserved ahead of the injected skills (same reason). Skill
+    names must be unique (their ``<name>/`` bundles would otherwise collide). Blocking file I/O — call via
+    ``asyncio.to_thread`` from the async runtime.
+
+    Installation is all-or-nothing: if any skill fails to stage, the bundles already staged in this call
+    are rolled back before the error propagates, so a partial skill set never lingers on disk (the caller
+    raises before it ever sees provenances, so it cannot clean up itself). Only bundles this call staged
+    are removed, so a reserved-path collision can never delete a pre-existing task-seeded file.
+    """
+    require_unique_skill_names(skills)
+    provenances: list[SkillProvenance] = []
+    staged_roots: list[Path] = []
+    try:
+        for skill in skills:
+            provenance = install_skill(
+                skill=skill,
+                adapter_id=adapter_id,
+                mode=mode,
+                workspace_dir=workspace_dir,
+                skill_stage_dir=skill_stage_dir,
+                existing_skill_paths=existing_skill_paths,
+            ).provenance
+            provenances.append(provenance)
+            # A native provenance ``location`` is the absolute staged root; a codex one is
+            # workspace-relative (``.agents/skills/<name>``). Record it only after a successful stage.
+            staged_roots.append(_provenance_stage_root(provenance, workspace_dir))
+    except Exception:
+        for root in staged_roots:
+            shutil.rmtree(root, ignore_errors=True)
+        raise
+
+    profiles: list[dict[str, object]] = []
+    if mode == SKILL_MODE_NATIVE and provenances:
+        # One merged overlay: pre-existing skills first, then each staged bundle (a native provenance's
+        # ``location`` is its absolute staged skill root), order-preserved and de-duplicated.
+        paths = list(dict.fromkeys([*existing_skill_paths, *(prov["location"] for prov in provenances)]))
+        profiles = [
+            {
+                "name": SKILL_PROFILE_NAME,
+                "description": "Make the evaluation skills available via the native Fabric skills config.",
+                "skills": {"paths": paths},
+            }
+        ]
+    return SkillsInstallation(profiles=profiles, provenances=provenances)
+
+
+def _provenance_stage_root(provenance: SkillProvenance, workspace_dir: Path) -> Path:
+    """Absolute on-disk root of a staged bundle, for rollback. Native ``location`` is already absolute;
+    codex ``location`` is workspace-relative (``.agents/skills/<name>``)."""
+    location = provenance["location"]
+    if provenance["mode"] == SKILL_MODE_CODEX_SKILLS_DIR:
+        return workspace_dir / location
+    return Path(location)
+
+
 def _stage_bundle(directory: Path, skill_root: Path, *, reserved: bool) -> None:
     """Stage the skill ``directory`` as an *exact* copy at ``skill_root`` (the ``<name>/`` bundle dir).
 

@@ -310,10 +310,10 @@ func TestNewLogExporterDoesNotLogAuthMechanismWhenWorkloadTokenExchangeFails(t *
 	}
 
 	assertLogNotContains(t, logOutput.String(), "auth_mechanism=workload_identity_token_exchange")
-	assertLogNotContains(t, logOutput.String(), "auth_mechanism=service_identity_bearer_token")
+	assertLogNotContains(t, logOutput.String(), "auth_mechanism=service_identity_principal_headers")
 }
 
-func TestNewLogExporterUsesServiceIdentityBearerHeadersWithoutWorkloadTokenFile(t *testing.T) {
+func TestNewLogExporterUsesServiceIdentityPrincipalHeadersWithoutWorkloadTokenFile(t *testing.T) {
 	var logOutput bytes.Buffer
 	captureSlogOutput(t, &logOutput)
 	var mu sync.Mutex
@@ -357,19 +357,19 @@ func TestNewLogExporterUsesServiceIdentityBearerHeadersWithoutWorkloadTokenFile(
 	if exportHeaders == nil {
 		t.Fatal("expected log export request")
 	}
-	if got := exportHeaders.Get("Authorization"); got != "Bearer service:jobs" {
-		t.Fatalf("expected service identity bearer Authorization header without workload token file, got %q", got)
+	if got := exportHeaders.Get("Authorization"); got != "" {
+		t.Fatalf("expected no Authorization header without workload token file, got %q", got)
 	}
 	if got := exportHeaders.Get("X-Third-Party"); got != "" {
 		t.Fatalf("expected user OTEL headers to stay off platform log exports, got X-Third-Party=%q", got)
 	}
-	if got := exportHeaders.Get("X-NMP-Principal-Id"); got != "" {
-		t.Fatalf("expected launcher OTLP principal headers to stay off platform log exports, got X-NMP-Principal-Id=%q", got)
+	if got := exportHeaders.Get("X-NMP-Principal-Id"); got != serviceJobsPrincipal {
+		t.Fatalf("expected service identity principal header without workload token file, got X-NMP-Principal-Id=%q", got)
 	}
 	if got := os.Getenv(otelExporterOTLPLogsHeadersEnv); got != "Authorization=Bearer%20third-party,X-Third-Party=external" {
 		t.Fatalf("expected OTEL headers env to remain untouched, got %q", got)
 	}
-	assertLogContains(t, logOutput.String(), "auth_mechanism=service_identity_bearer_token")
+	assertLogContains(t, logOutput.String(), "auth_mechanism=service_identity_principal_headers")
 	assertLogContains(t, logOutput.String(), "reason=workload_token_file_not_configured")
 }
 

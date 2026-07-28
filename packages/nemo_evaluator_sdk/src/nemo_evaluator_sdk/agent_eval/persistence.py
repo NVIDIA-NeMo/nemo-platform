@@ -6,11 +6,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from pydantic import BaseModel
 
 
@@ -21,7 +22,7 @@ def persist_run(result: AgentEvalResult, output_dir: str | Path) -> AgentEvalRes
 
     _write_json(path / "benchmark.json", result.benchmark)
     _write_jsonl(path / "tasks.jsonl", result.tasks)
-    _write_jsonl(path / "trials.jsonl", result.trials)
+    _write_trials(path / "trials.jsonl", result.trials, base=path)
     _write_jsonl(path / "scores.jsonl", result.scores)
     _write_json(path / "summary.json", result.summary)
 
@@ -59,3 +60,93 @@ def _write_jsonl(path: Path, rows: Sequence[BaseModel]) -> None:
         for row in rows:
             handle.write(json.dumps(row.model_dump(mode="json"), sort_keys=True))
             handle.write("\n")
+
+
+def _write_trials(path: Path, trials: Sequence[BaseModel], *, base: Path) -> None:
+    """Write trials, rewriting evidence refs bundle-relative so the bundle is self-contained.
+
+    A trial's evidence lives under the bundle (``<output_dir>/evidence/...``); storing the ref relative to
+    the bundle (rather than the launch CWD) means a moved or copied bundle re-scores without any path fixups.
+    Refs that point outside the bundle (rare) are left verbatim.
+    """
+    resolved_base = base.resolve()
+    with path.open("w", encoding="utf-8") as handle:
+        row: dict[str, Any]
+        for trial in trials:
+            row = trial.model_dump(mode="json")
+            for descriptor in ((row.get("evidence") or {}).get("descriptors") or {}).values():
+                descriptor["ref"] = _relativize_ref(descriptor.get("ref"), resolved_base)
+            handle.write(json.dumps(row, sort_keys=True))
+            handle.write("\n")
+
+
+def _relativize_ref(ref: str | None, base: Path) -> str | None:
+    """Make an evidence ref relative to the bundle dir when it lives under it; else leave it verbatim."""
+    if not ref:
+        return ref
+    try:
+        return Path(ref).resolve().relative_to(base).as_posix()
+    except ValueError:
+        return ref  # evidence written outside the bundle — cannot relativize
+
+
+def read_trials(run_dir: str | Path) -> list[AgentEvalTrial]:
+    """Hydrate the persisted trials of a run bundle — the inverse of the ``trials.jsonl`` ``persist_run`` writes.
+
+    Each row is loaded back into an ``AgentEvalTrial`` with its evidence pointing at the on-disk
+    deliverables, so a stored run can be **re-scored** — ``AgentEvaluator().run(tasks=…, trials=…)`` with
+    fresh metrics/judge — without re-running the agent. Evidence refs are resolved relative to ``run_dir``
+    when the stored (launch-relative) ref no longer resolves, so a moved or copied bundle still works.
+    """
+    directory = Path(run_dir)
+    trials: list[AgentEvalTrial] = []
+    for row in _read_jsonl(directory / "trials.jsonl"):
+        for descriptor in ((row.get("evidence") or {}).get("descriptors") or {}).values():
+            descriptor["ref"] = _resolve_evidence_ref(directory, descriptor.get("ref"))
+        trials.append(AgentEvalTrial.model_validate(row))
+    return trials
+
+
+def _resolve_evidence_ref(run_dir: Path, ref: str | None) -> str | None:
+    """Resolve a persisted evidence ref against the bundle dir.
+
+    Self-contained bundles store refs relative to the bundle (see ``_write_trials``), so those resolve
+    directly under ``run_dir``. Falls back for still-valid absolute refs, and for moved bundles / legacy
+    absolute refs (rebuilt under ``run_dir`` from the ``evidence/`` tail).
+    """
+    if not ref:
+        return ref
+    base = run_dir.resolve()
+    candidate = Path(ref)
+    if not candidate.is_absolute():
+        rebuilt = run_dir / candidate
+        if _resolves_within(base, rebuilt):
+            return str(rebuilt)
+    elif candidate.exists():
+        return ref
+    parts = candidate.parts
+    if "evidence" in parts:
+        rebuilt = run_dir / Path(*parts[parts.index("evidence") :])
+        if _resolves_within(base, rebuilt):
+            return str(rebuilt)
+    return ref
+
+
+def _resolves_within(base: Path, path: Path) -> bool:
+    """Whether ``path`` exists and stays inside ``base`` after resolving — no ``..``/symlink escape.
+
+    Rebuilt refs are joined onto ``run_dir``; a bundle is designed to be moved/copied, so a ref with ``..``
+    (or a symlink) must not be allowed to point the hydrated evidence outside the bundle it was loaded from.
+    """
+    resolved = path.resolve()
+    if not resolved.exists():
+        return False
+    return resolved == base or base in resolved.parents
+
+
+def _read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if stripped:
+                yield json.loads(stripped)

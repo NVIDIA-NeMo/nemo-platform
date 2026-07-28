@@ -667,7 +667,7 @@ async def test_fabric_runtime_native_skill_adds_overlay_and_provenance(
 
     client_cls = _install_fake_fabric(monkeypatch, handler)
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path, body="# Code Review\n\nBe thorough."))
-    runtime = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root=tmp_path / "fabric", skill=skill)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root=tmp_path / "fabric", skills=[skill])
 
     trials = await runtime.run_tasks([_TASK])
 
@@ -704,7 +704,7 @@ async def test_fabric_runtime_native_skill_preserves_preconfigured_skills(
     runtime = fabric_runtime.FabricAgentRuntime(
         config=config,
         work_root=tmp_path / "fabric",
-        skill=skill,
+        skills=[skill],
         profiles=[{"name": "caller", "skills": {"paths": ["/pre/existing-b"]}}],
     )
 
@@ -732,7 +732,7 @@ async def test_fabric_runtime_native_skill_on_runtime_discovered_adapter(
     client_cls = _install_fake_fabric(monkeypatch, handler)
     custom = {"metadata": {"name": "a"}, "harness": {"adapter_id": "acme.custom.native"}}
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path))
-    runtime = fabric_runtime.FabricAgentRuntime(config=custom, work_root=tmp_path / "fabric", skill=skill)
+    runtime = fabric_runtime.FabricAgentRuntime(config=custom, work_root=tmp_path / "fabric", skills=[skill])
 
     trials = await runtime.run_tasks([_TASK])
 
@@ -757,7 +757,7 @@ async def test_fabric_runtime_codex_skill_staged_for_run_then_excluded_from_evid
 
     client_cls = _install_fake_fabric(monkeypatch, handler)
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path))
-    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skill=skill)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skills=[skill])
 
     trials = await runtime.run_tasks([_TASK])
 
@@ -787,7 +787,7 @@ async def test_fabric_runtime_skill_on_unsupported_adapter_fails_fast(
     runtime = fabric_runtime.FabricAgentRuntime(
         config=unsupported,
         work_root=tmp_path / "fabric",
-        skill=AgentSkill.from_directory(_skill_bundle(tmp_path, name="s")),
+        skills=[AgentSkill.from_directory(_skill_bundle(tmp_path, name="s"))],
     )
 
     with pytest.raises(RuntimeError, match="no known skill-injection strategy"):
@@ -819,5 +819,173 @@ def test_with_skill_returns_independent_copy() -> None:
 
     # A new instance is returned; the original is untouched.
     assert treated is not base
-    assert base._skill is None
-    assert treated._skill is skill
+    assert base._skills == []
+    assert treated._skills == [skill]
+
+
+def test_with_skills_returns_independent_copy_of_the_set() -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    base = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, model="m", work_root="/tmp/x")
+    skills = [
+        AgentSkill(name="docx", directory=Path("/skills/docx")),
+        AgentSkill(name="pptx", directory=Path("/skills/pptx")),
+    ]
+
+    treated = base.with_skills(skills)
+
+    # A new instance carries the added set; the original is untouched.
+    assert treated is not base
+    assert base._skills == []
+    assert treated._skills == skills
+
+
+def test_with_skill_is_additive_and_chainable() -> None:
+    # Regression: with_skill must ADD, not replace. Chaining injects every skill, not just the last.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    base = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, model="m", work_root="/tmp/x")
+    a = AgentSkill(name="docx", directory=Path("/skills/docx"))
+    b = AgentSkill(name="pptx", directory=Path("/skills/pptx"))
+
+    chained = base.with_skill(a).with_skill(b)
+
+    # Both skills are present, in order; each intermediate runtime is left untouched.
+    assert chained._skills == [a, b]
+    assert base._skills == []
+    assert base.with_skill(a)._skills == [a]
+    # with_skills extends the same way (equivalent to chaining the single-skill calls).
+    assert base.with_skills([a, b])._skills == [a, b]
+    assert base.with_skill(a).with_skills([b])._skills == [a, b]
+
+
+def test_with_skills_rejects_duplicate_names() -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    base = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root="/tmp/x")
+    dupes = [AgentSkill(name="docx", directory=Path("/a/docx")), AgentSkill(name="docx", directory=Path("/b/docx"))]
+
+    # Two bundles claiming the same <name>/ would collide when staged, so it is rejected up front.
+    with pytest.raises(ValueError, match="duplicate skill name"):
+        base.with_skills(dupes)
+
+
+def test_with_skill_rejects_re_adding_same_name() -> None:
+    # Adding a skill whose name is already present collides on the combined set — rejected, not silently
+    # deduped, so a caller notices the double-add.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    base = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root="/tmp/x")
+    first = base.with_skill(AgentSkill(name="docx", directory=Path("/a/docx")))
+
+    with pytest.raises(ValueError, match="duplicate skill name"):
+        first.with_skill(AgentSkill(name="docx", directory=Path("/b/docx")))
+
+
+def test_constructor_rejects_duplicate_skill_names(tmp_path: Path) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    # Same name, distinct source directories — still a <name>/ bundle collision; fail before any run.
+    dup_a = AgentSkill.from_directory(_skill_bundle(tmp_path / "a", name="docx"))
+    dup_b = AgentSkill.from_directory(_skill_bundle(tmp_path / "b", name="docx"))
+
+    with pytest.raises(ValueError, match="duplicate skill name"):
+        fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skills=[dup_a, dup_b])
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_multiple_native_skills_merge_into_single_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # LAB hands the agent all of its skills on every task. A native harness must stage each skill into its
+    # own <name>/ bundle and list them ALL in ONE overlay — Fabric applies profile skills.paths last-wins,
+    # so a per-skill overlay would silently drop all but the last.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    skills = [AgentSkill.from_directory(_skill_bundle(tmp_path, name=name)) for name in ("docx", "pptx", "xlsx")]
+    runtime = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root=tmp_path / "fabric", skills=skills)
+
+    trials = await runtime.run_tasks([_TASK])
+
+    # Exactly one native skills overlay reaches client.run, listing every staged <name>/ bundle in order.
+    overlays = [p for p in client_cls.recorded[0]["profiles"] if p.name == "eval_skill"]
+    assert len(overlays) == 1
+    paths = overlays[0].mapping["skills"]["paths"]
+    assert [Path(p).name for p in paths] == ["docx", "pptx", "xlsx"]
+    # Each bundle is staged on disk under its own <name>/ dir with its SKILL.md.
+    for path in paths:
+        assert (Path(path) / "SKILL.md").is_file()
+    # One provenance per skill is stamped for the A/B diff; the single-skill `skill` field is None (multi).
+    provs = trials[0].metadata["skills"]
+    assert [prov["name"] for prov in provs] == ["docx", "pptx", "xlsx"]
+    assert all(prov["mode"] == "native" for prov in provs)
+    assert trials[0].metadata["skill"] is None
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_multiple_codex_skills_each_staged_then_excluded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Codex self-discovers each bundle from .agents/skills/<name>/ in its workspace during the run; all are
+    # then removed before the workspace is exposed as evidence so they don't read as agent output.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    names = ("docx", "pptx", "xlsx")
+    seen: dict[str, bool] = {}
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        workspace = Path(agent.environment.workspace)
+        seen["all_present_during_run"] = all(
+            (workspace / ".agents" / "skills" / name / "SKILL.md").is_file() for name in names
+        )
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    skills = [AgentSkill.from_directory(_skill_bundle(tmp_path, name=name)) for name in names]
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skills=skills)
+
+    trials = await runtime.run_tasks([_TASK])
+
+    # Every bundle was discoverable at its own .agents/skills/<name>/ path during the run...
+    assert seen["all_present_during_run"] is True
+    # ...then all removed (with the emptied .agents parent) before the workspace is exposed as evidence.
+    workspace = next((tmp_path / "fabric").glob("*/000000-task-1/workspace"))
+    assert not (workspace / ".agents").exists()
+    # Codex mode emits no overlay; one provenance per skill records the injection.
+    assert "eval_skill" not in [p.name for p in client_cls.recorded[0]["profiles"]]
+    provs = trials[0].metadata["skills"]
+    assert [prov["name"] for prov in provs] == list(names)
+    assert all(prov["mode"] == "codex_skills_dir" for prov in provs)
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_codex_skills_removed_even_when_run_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Cleanup runs in a `finally`, so a failed/errored run still removes the injected bundles from the
+    # durable workspace — they must not linger and read as agent output on any path that exposes it.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    names = ("docx", "pptx")
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        # The bundles were staged before the run; blow up mid-run to hit the except/finally path.
+        assert all((Path(agent.environment.workspace) / ".agents" / "skills" / n / "SKILL.md").is_file() for n in names)
+        raise RuntimeError("harness blew up")
+
+    _install_fake_fabric(monkeypatch, handler)
+    skills = [AgentSkill.from_directory(_skill_bundle(tmp_path, name=name)) for name in names]
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skills=skills)
+
+    trials = await runtime.run_tasks([_TASK])
+
+    # Failed trial, but every injected bundle (and the emptied .agents parent) was still cleaned up.
+    assert trials[0].status == "failed"
+    workspace = next((tmp_path / "fabric").glob("*/000000-task-1/workspace"))
+    assert not (workspace / ".agents").exists()
+    # Provenance is still stamped on the failed trial for the A/B diff.
+    assert [prov["name"] for prov in trials[0].metadata["skills"]] == list(names)

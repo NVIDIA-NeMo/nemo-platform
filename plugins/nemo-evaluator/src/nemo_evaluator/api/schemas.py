@@ -180,6 +180,19 @@ class TaskRef(RootModel[str]):
     )
 
 
+class TasksetRef(RootModel[str]):
+    """Reference to a persisted taskset (format: ``workspace/name`` or ``name``).
+
+    Same shape and charset as :class:`TaskRef`. Lets an evaluation reference a stored taskset in place
+    of an inline task list; the taskset's member tasks are loaded and expanded during spec resolution.
+    """
+
+    root: str = Field(
+        pattern=_ENTITY_REF_PATTERN,
+        description="Reference to a stored taskset (format: workspace/taskset-name, or taskset-name in the job workspace).",
+    )
+
+
 class Metric(BaseModel):
     """API representation of a stored metric.
 
