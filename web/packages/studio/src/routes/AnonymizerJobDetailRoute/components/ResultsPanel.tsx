@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { triggerDownload } from '@nemo/common/src/utils/file';
 import { anonymizerDownloadRunJobResult } from '@nemo/sdk/generated/anonymizer/api';
 import type { PlatformJobResultResponse } from '@nemo/sdk/generated/anonymizer/schema';
 import { Banner, Button, Flex, Panel, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
@@ -30,12 +31,7 @@ export const ResultsPanel: FC<ResultsPanelProps> = ({
     setError(undefined);
     try {
       const blob = await anonymizerDownloadRunJobResult(workspace, jobName, name);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = name;
-      link.click();
-      URL.revokeObjectURL(url);
+      triggerDownload(blob, name);
     } catch {
       setError(`Could not download ${name}`);
     } finally {
