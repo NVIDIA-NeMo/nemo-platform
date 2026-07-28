@@ -10,6 +10,7 @@ import os
 import select
 import subprocess
 import sys
+from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -365,21 +366,31 @@ def test_project_lock_and_generated_names(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    opened_fds: list[int] = []
     closed_fds: list[int] = []
+    open_fd = os.open
     close_fd = os.close
-
-    def record_close(fd: int) -> None:
-        closed_fds.append(fd)
-        close_fd(fd)
-
-    monkeypatch.setattr(compose_state.os, "close", record_close)
     first = _provider(tmp_path, project_name="shared")
     second = _provider(tmp_path, project_name="shared")
+    lock_paths = {first.lock_path, second.lock_path}
+
+    def record_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        fd = open_fd(path, flags, mode)
+        if Path(path) in lock_paths:
+            opened_fds.append(fd)
+        return fd
+
+    def record_close(fd: int) -> None:
+        if Counter(closed_fds)[fd] < Counter(opened_fds)[fd]:
+            closed_fds.append(fd)
+        close_fd(fd)
+
+    monkeypatch.setattr(compose_state.os, "open", record_open)
+    monkeypatch.setattr(compose_state.os, "close", record_close)
     first_lock = compose_state._ComposeProjectLock.acquire(first.lock_path)
     try:
         with pytest.raises(SandboxCreateError, match="Another Compose sandbox"):
             compose_state._ComposeProjectLock.acquire(second.lock_path)
-        assert len(closed_fds) == 1
     finally:
         first_lock.release()
     assert first_lock.fd is None
@@ -387,7 +398,7 @@ def test_project_lock_and_generated_names(
     second_lock = compose_state._ComposeProjectLock.acquire(second.lock_path)
     second_lock.release()
     assert second_lock.fd is None
-    assert len(closed_fds) == 3
+    assert Counter(closed_fds) == Counter(opened_fds)
 
     generated = _provider(tmp_path, lock_path=tmp_path / "other.lock")
     assert generated.project_name.startswith("nemo-eval-")
