@@ -47,18 +47,27 @@ async def _preflight(
         SandboxCreateError: If the configuration is invalid, the project already has
             containers, service roles differ, or a published host port is unavailable.
     """
-    config, existing = await asyncio.gather(
+    config_task = asyncio.create_task(
         cli.run_compose(
             ["config", "--format", "json"],
             environment=environment,
             timeout=command_timeout_seconds,
-        ),
+        )
+    )
+    existing_task = asyncio.create_task(
         cli.run_compose(
             ["ps", "--all", "--quiet"],
             environment=environment,
             timeout=command_timeout_seconds,
-        ),
+        )
     )
+    try:
+        config, existing = await asyncio.gather(config_task, existing_task)
+    except BaseException:
+        config_task.cancel()
+        existing_task.cancel()
+        await asyncio.gather(config_task, existing_task, return_exceptions=True)
+        raise
     if not config.ok:
         raise SandboxCreateError(cli.failure_message("Invalid Compose configuration", config, environment))
     if not existing.ok:

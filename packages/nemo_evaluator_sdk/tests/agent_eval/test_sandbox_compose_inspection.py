@@ -5,8 +5,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -221,6 +223,37 @@ async def test_preflight_parses_rendered_config_once(
     await provider._preflight(dict(os.environ))
 
     assert payloads == [json.dumps(runner.config)]
+
+
+async def test_preflight_exception_cancels_sibling_and_preserves_error_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    provider = _provider(tmp_path)
+    ps_started = asyncio.Event()
+    ps_cancelled = asyncio.Event()
+
+    async def run_compose(args: Sequence[str], **_kwargs: object) -> None:
+        if tuple(args[:1]) == ("config",):
+            await ps_started.wait()
+            raise OSError("config transport failed")
+        if tuple(args[:1]) == ("ps",):
+            ps_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                ps_cancelled.set()
+                raise
+        raise AssertionError(f"unexpected command: {args}")
+
+    monkeypatch.setattr(provider._cli, "run_compose", run_compose)
+
+    with pytest.raises(SandboxCreateError, match="config transport failed") as caught:
+        await provider.create(SandboxSpec())
+
+    assert isinstance(caught.value.__cause__, OSError)
+    assert ps_cancelled.is_set()
+    assert provider._session is None
 
 
 @pytest.mark.parametrize(
