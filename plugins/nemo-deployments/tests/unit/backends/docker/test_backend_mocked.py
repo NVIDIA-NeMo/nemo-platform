@@ -19,9 +19,11 @@ from nemo_deployments_plugin.backends.labels import (
     RESTART_POLICY_LABEL,
     companion_container_name,
     container_name,
+    deployment_key,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Deployment
+from nemo_deployments_plugin.types import RestartPolicy
 
 
 @pytest.mark.asyncio
@@ -455,10 +457,46 @@ async def test_read_status_lost_when_missing_always(
         return sample_config(restart_policy="Always")
 
     mock_entities.get.side_effect = get_side_effect
+    gpu_pool = MagicMock()
+    docker_backend._gpu_pool = gpu_pool
 
     update = await docker_backend.read_status(workspace="default", name="srv")
 
     assert update.status == "LOST"
+    gpu_pool.release_gpu.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("restart_policy", ["Never", "OnFailure"])
+async def test_read_status_failed_and_releases_gpu_when_missing_one_shot(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+    restart_policy: RestartPolicy,
+) -> None:
+    expected_container_name = container_name("default", "job")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+
+    deployment_entity = MagicMock()
+    deployment_entity.deployment_config = "cfg1"
+
+    async def get_side_effect(entity_type, name, workspace=None):
+        if entity_type is Deployment:
+            return deployment_entity
+        return sample_config(restart_policy=restart_policy)
+
+    mock_entities.get.side_effect = get_side_effect
+    gpu_pool = MagicMock()
+    docker_backend._gpu_pool = gpu_pool
+
+    update = await docker_backend.read_status(workspace="default", name="job")
+
+    assert update.status == "FAILED"
+    assert update.exit_code is None
+    assert update.error_details == {
+        "expected_container_name": expected_container_name,
+    }
+    gpu_pool.release_gpu.assert_called_once_with(deployment_key("default", "job"))
 
 
 @pytest.mark.asyncio
