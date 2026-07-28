@@ -136,6 +136,33 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
     await provider.close(handle)
 
 
+async def test_upload_file_derives_parent_from_normalized_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+    source = tmp_path / "seed.txt"
+    source.write_text("seed", encoding="utf-8")
+    transfer_start = len(runner.calls)
+
+    await provider.upload_file(handle, source, "ignored/../root-seed.txt")
+
+    suffixes = [
+        _compose_suffix(argv)
+        for argv, _, _ in runner.calls[transfer_start:]
+        if argv[:2] == ("docker", "compose")
+    ]
+    assert not any(args[-3:] == ("-p", "--", "/") for args in suffixes)
+    assert ("cp", str(source), "agent:/root-seed.txt") in suffixes
+    assert (
+        "exec", "--no-TTY", "--user", "0", "agent",
+        "chown", "-R", "1001:1002", "--", "/root-seed.txt",
+    ) in suffixes
+    await provider.close(handle)
+
+
 @pytest.mark.parametrize(
     ("failure", "exception_type", "message"),
     [

@@ -71,9 +71,8 @@ async def _copy_to_service(
         Docker merges its contents directly into the prepared target directory.
     """
     container_target = _absolute_container_path(target)
-    remote_directory = container_target if directory else posixpath.dirname(target)
-    if remote_directory:
-        remote_directory = _absolute_container_path(remote_directory)
+    remote_directory = container_target if directory else posixpath.dirname(container_target)
+    if remote_directory != "/":
         prepared = await _run_target_root(
             cli,
             session,
