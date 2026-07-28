@@ -18,7 +18,7 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeResult,
     FabricRuntimeTimeoutError,
 )
-from nemo_agents_plugin.fabric.server import SESSION_ID_HEADER, create_fabric_serving_app
+from nemo_agents_plugin.fabric.server import SESSION_ID_HEADER, FabricServingSettings, create_fabric_serving_app
 from nemo_agents_plugin.fabric.serving_models import ChatCompletionRequest
 from nemo_agents_plugin.fabric.session_manager import (
     FabricSessionManager,
@@ -151,13 +151,13 @@ def test_startup_fails_for_invalid_agent_config(
     assert mock_validate_agent_config == []
 
 
-def test_rejects_non_positive_session_cleanup_settings(tmp_path: Path) -> None:
-    config_path = _write_agent_config(tmp_path)
-
+def test_rejects_invalid_serving_settings() -> None:
+    with pytest.raises(ValueError, match="max_concurrent_invocations"):
+        FabricServingSettings(max_concurrent_invocations=-1)
     with pytest.raises(ValueError, match="idle_session_timeout_seconds"):
-        create_fabric_serving_app(config_path, idle_session_timeout_seconds=0)
+        FabricServingSettings(idle_session_timeout_seconds=0)
     with pytest.raises(ValueError, match="session_cleanup_interval_seconds"):
-        create_fabric_serving_app(config_path, session_cleanup_interval_seconds=0)
+        FabricServingSettings(session_cleanup_interval_seconds=0)
 
 
 def test_chat_completion_without_session_id_opens_and_returns_session(

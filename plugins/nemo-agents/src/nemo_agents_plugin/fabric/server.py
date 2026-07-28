@@ -12,6 +12,7 @@ import sys
 import uuid
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -42,6 +43,23 @@ from nemo_agents_plugin.fabric.session_registry import FabricSessionNotFoundErro
 logger = logging.getLogger(__name__)
 
 SESSION_ID_HEADER = "X-Nemo-Session-Id"
+
+
+@dataclass(frozen=True, slots=True)
+class FabricServingSettings:
+    """Operational settings for the Platform-owned Fabric server."""
+
+    max_concurrent_invocations: int = DEFAULT_MAX_CONCURRENT_INVOCATIONS
+    idle_session_timeout_seconds: float = DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS
+    session_cleanup_interval_seconds: float = DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS
+
+    def __post_init__(self) -> None:
+        if self.max_concurrent_invocations < 0:
+            raise ValueError("max_concurrent_invocations must be greater than or equal to zero.")
+        if self.idle_session_timeout_seconds <= 0:
+            raise ValueError("idle_session_timeout_seconds must be greater than zero.")
+        if self.session_cleanup_interval_seconds <= 0:
+            raise ValueError("session_cleanup_interval_seconds must be greater than zero.")
 
 
 def _to_fabric_invocation_request(
@@ -115,16 +133,10 @@ async def _run_idle_session_cleanup(
 def create_fabric_serving_app(
     agent_config_path: str | Path,
     *,
-    max_concurrent_invocations: int = DEFAULT_MAX_CONCURRENT_INVOCATIONS,
-    idle_session_timeout_seconds: float = DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS,
-    session_cleanup_interval_seconds: float = DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS,
+    settings: FabricServingSettings | None = None,
 ) -> FastAPI:
     """Create a serving app that validates its agent definition at startup."""
-    if idle_session_timeout_seconds <= 0:
-        raise ValueError("idle_session_timeout_seconds must be greater than zero.")
-    if session_cleanup_interval_seconds <= 0:
-        raise ValueError("session_cleanup_interval_seconds must be greater than zero.")
-
+    settings = settings or FabricServingSettings()
     config_path = Path(agent_config_path).resolve()
 
     @asynccontextmanager
@@ -140,15 +152,15 @@ def create_fabric_serving_app(
             agent_config,
             base_dir=config_path.parent,
             session_registry=session_registry,
-            max_concurrent_invocations=max_concurrent_invocations,
+            max_concurrent_invocations=settings.max_concurrent_invocations,
         )
         app.state.session_manager = session_manager
         cleanup_shutdown = asyncio.Event()
         cleanup_task = asyncio.create_task(
             _run_idle_session_cleanup(
                 session_manager,
-                idle_timeout_seconds=idle_session_timeout_seconds,
-                cleanup_interval_seconds=session_cleanup_interval_seconds,
+                idle_timeout_seconds=settings.idle_session_timeout_seconds,
+                cleanup_interval_seconds=settings.session_cleanup_interval_seconds,
                 shutdown_event=cleanup_shutdown,
             )
         )
@@ -267,9 +279,11 @@ def main(argv: list[str] | None = None) -> int:
     uvicorn.run(
         create_fabric_serving_app(
             args.agent_config,
-            max_concurrent_invocations=args.max_concurrent_invocations,
-            idle_session_timeout_seconds=args.idle_session_timeout_seconds,
-            session_cleanup_interval_seconds=args.session_cleanup_interval_seconds,
+            settings=FabricServingSettings(
+                max_concurrent_invocations=args.max_concurrent_invocations,
+                idle_session_timeout_seconds=args.idle_session_timeout_seconds,
+                session_cleanup_interval_seconds=args.session_cleanup_interval_seconds,
+            ),
         ),
         host=args.host,
         port=args.port,
