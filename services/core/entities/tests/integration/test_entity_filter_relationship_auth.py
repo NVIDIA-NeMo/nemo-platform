@@ -96,6 +96,10 @@ class TestRelationshipFilterWithAuth:
         Same graph as the excluded case: model in default, adapter in other, but
         `get_accessible_workspaces` includes the other workspace so
         `relationship_child_workspaces` no longer filters out the child.
+
+        The adapter is seeded via the repo to bypass the API-level entities.export
+        permission check (tested separately in test_entity_create_parent_auth.py);
+        this test covers only the EXISTS filter scoping logic.
         """
         wr: WorkspaceRepositoryInterface = repos["workspace"]
         er: EntityRepositoryInterface = repos["entity"]
@@ -107,11 +111,14 @@ class TestRelationshipFilterWithAuth:
         )
         assert mresp.status_code == 201, mresp.text
         model_id = mresp.json()["id"]
-        aresp = await client_with_auth.post(
-            f"/apis/entities/v2/workspaces/{_OTHER_WS}/entities/adapter",
-            json={"name": "a-remote-now-readable", "parent": model_id, "data": {}},
+        await er.create_entity(
+            workspace=_OTHER_WS,
+            entity_type="adapter",
+            name="a-remote-now-readable",
+            data={},
+            parent=model_id,
+            created_by=TEST_USER_EMAIL,
         )
-        assert aresp.status_code == 201, aresp.text
 
         fresp = await client_with_auth.get(
             f"/apis/entities/v2/workspaces/{_DEFAULT_WS}/entities/model",
@@ -225,6 +232,15 @@ class TestRelationshipFilterWithServiceOnBehalfOf:
     async def test_on_behalf_of_matches_both_workspaces_like_direct_user(
         self, client_with_auth_service_on_behalf_of: AsyncClient, repos
     ) -> None:
+        """Service on-behalf-of sees adapters in any workspace accessible to the effective user.
+
+        The adapter is seeded via the repo to bypass the API-level entities.export
+        permission check (tested separately in test_entity_create_parent_auth.py);
+        this test covers only the EXISTS filter scoping logic.
+
+        See also TestRelationshipFilterWithAuth.test_with_auth_on_adapter_in_other_ws_does_not_satisfy_exists
+        for the excluded-workspace counterpart.
+        """
         wr: WorkspaceRepositoryInterface = repos["workspace"]
         er: EntityRepositoryInterface = repos["entity"]
         await _seed_workspaces(wr, er, member_of={_DEFAULT_WS, _OTHER_WS})
@@ -234,11 +250,14 @@ class TestRelationshipFilterWithServiceOnBehalfOf:
         )
         assert mresp.status_code == 201, mresp.text
         model_id = mresp.json()["id"]
-        aresp = await client_with_auth_service_on_behalf_of.post(
-            f"/apis/entities/v2/workspaces/{_OTHER_WS}/entities/adapter",
-            json={"name": "a-remote-obo-ok", "parent": model_id, "data": {}},
+        await er.create_entity(
+            workspace=_OTHER_WS,
+            entity_type="adapter",
+            name="a-remote-obo-ok",
+            data={},
+            parent=model_id,
+            created_by=TEST_USER_EMAIL,
         )
-        assert aresp.status_code == 201, aresp.text
 
         fresp = await client_with_auth_service_on_behalf_of.get(
             f"/apis/entities/v2/workspaces/{_DEFAULT_WS}/entities/model",

@@ -100,6 +100,10 @@ class AuthContext(BaseModel):
     principal_on_behalf_of_email: Optional[str] = Field(
         default=None, description="The on-behalf-of principal's email address"
     )
+    origin_workspace: Optional[str] = Field(
+        default=None,
+        description="Workspace that initiated the operation captured by this auth context",
+    )
 
 
 # ---------------------------------------------------------------------------

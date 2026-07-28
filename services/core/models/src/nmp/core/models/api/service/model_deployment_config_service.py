@@ -6,7 +6,7 @@
 import json
 import logging
 
-from nemo_platform import PermissionDeniedError
+from nemo_platform_plugin.client.errors import PermissionDeniedError
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import FilterOperation
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError

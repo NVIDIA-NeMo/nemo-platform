@@ -2466,6 +2466,7 @@ def test_job_step_with_auth_context():
             principal_id="creator@example.com",
             principal_email="creator@example.com",
             principal_groups=["engineering", "ml-team"],
+            origin_workspace="default",
         ),
     )
 
@@ -2501,8 +2502,9 @@ def test_docker_job_schedule_with_auth_context(docker_job, docker_client_mock, t
     assert principal_data == {
         "id": "creator@example.com",
         "email": "creator@example.com",
-        "groups": ["engineering", "ml-team"],
+        "groups": [],
     }
+    assert env["NMP_ORIGIN_WORKSPACE"] == "default"
 
     # Verify launcher application log auth is not configured through env headers.
     assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env

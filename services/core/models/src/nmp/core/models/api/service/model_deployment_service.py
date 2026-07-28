@@ -13,6 +13,7 @@ from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import FilterOperation
 from nmp.common.auth import AuthContext
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
+from nmp.common.entities.utils import parse_entity_ref
 from nmp.core.models.entities import ModelDeployment as ModelDeploymentEntity
 from nmp.core.models.entities import ModelDeploymentConfig as ModelDeploymentConfigEntity
 from nmp.core.models.schemas import (
@@ -177,18 +178,19 @@ class ModelDeploymentService:
             raise ValueError(f"Deployment with workspace '{workspace}' and name '{request.name}' already exists")
 
         # If config_version not specified, get the latest version
+        config_ref = parse_entity_ref(request.config, default_workspace=workspace)
         config_version = request.config_version
         if not config_version:
-            config_version = await self._get_config_latest_version(workspace, request.config)
+            config_version = await self._get_config_latest_version(config_ref.workspace, config_ref.name)
             if not config_version:
-                raise ValueError(f"Deployment config '{workspace}/{request.config}' does not exist")
+                raise ValueError(f"Deployment config '{config_ref.workspace}/{config_ref.name}' does not exist")
             logger.debug(f"Using latest config version: {config_version}")
 
         # Verify the deployment config exists
-        config = await self._get_config_by_version(workspace, request.config, config_version)
+        config = await self._get_config_by_version(config_ref.workspace, config_ref.name, config_version)
         if not config:
             raise ValueError(
-                f"Deployment config '{workspace}/{request.config}' version '{config_version}' does not exist"
+                f"Deployment config '{config_ref.workspace}/{config_ref.name}' version '{config_version}' does not exist"
             )
 
         # Create the entity with versioned name
@@ -356,18 +358,19 @@ class ModelDeploymentService:
             raise ValueError(f"Deployment with workspace '{workspace}' and name '{name}' does not exist")
 
         # Determine config_version: use from request or preserve current
+        config_ref = parse_entity_ref(request.config, default_workspace=workspace)
         config_version = request.config_version
         if not config_version:
-            config_version = await self._get_config_latest_version(workspace, request.config)
+            config_version = await self._get_config_latest_version(config_ref.workspace, config_ref.name)
             if not config_version:
-                raise ValueError(f"Deployment config '{workspace}/{request.config}' does not exist")
+                raise ValueError(f"Deployment config '{config_ref.workspace}/{config_ref.name}' does not exist")
             logger.debug(f"Using latest config version: {config_version}")
 
         # Verify the deployment config exists
-        config = await self._get_config_by_version(workspace, request.config, config_version)
+        config = await self._get_config_by_version(config_ref.workspace, config_ref.name, config_version)
         if not config:
             raise ValueError(
-                f"Deployment config '{workspace}/{request.config}' version '{config_version}' does not exist"
+                f"Deployment config '{config_ref.workspace}/{config_ref.name}' version '{config_version}' does not exist"
             )
 
         new_version = current.entity_version + 1

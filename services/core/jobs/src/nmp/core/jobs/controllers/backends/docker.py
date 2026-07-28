@@ -968,8 +968,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
         if step.auth_context:
             sdk_auth_context = step.auth_context
             auth_context = AuthContext.model_validate(sdk_auth_context.model_dump(mode="python", exclude_none=True))
-            principal = auth_context.to_principal()
-            env_var_dict = principal.get_env_var()
+            env_var_dict = auth_context.get_env_vars()
             for name, value in env_var_dict.items():
                 env[name] = value
 

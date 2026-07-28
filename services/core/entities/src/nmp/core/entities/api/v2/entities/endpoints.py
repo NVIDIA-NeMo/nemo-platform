@@ -88,6 +88,8 @@ async def _validate_parent_access(
     accessible: set[str] | None,
     repository: EntityRepository,
     parent_id: str,
+    workspace: str,
+    auth_client: AuthClient,
 ) -> None:
     """Ensure the parent exists and the caller may reference it (parent may live in another workspace).
 
@@ -102,6 +104,15 @@ async def _validate_parent_access(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Parent entity '{parent_id}' not found or not in accessible workspaces",
+        )
+    if parent.workspace == workspace:
+        return
+
+    can_export = await auth_client.has_permissions(parent.workspace, ["entities.export"])
+    if not can_export:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Parent entity '{parent_id}' not found or not exportable to workspace '{workspace}'",
         )
 
 
@@ -225,7 +236,7 @@ async def create_entity(
     )
 
     if entity.parent is not None:
-        await _validate_parent_access(accessible, repository, entity.parent)
+        await _validate_parent_access(accessible, repository, entity.parent, workspace, auth_client)
     try:
         new_entity = await repository.create_entity(
             workspace=workspace,

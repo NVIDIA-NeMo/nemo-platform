@@ -102,7 +102,10 @@ async def create_deployment(
 
     logger.debug(f"Creating deployment: {workspace}/{deployment_input.name}")
 
-    auth_context = AuthContext.from_principal(auth_client.principal)
+    auth_context = AuthContext.from_principal(
+        auth_client.principal,
+        origin_workspace=auth_client.outbound_origin_workspace,
+    )
     try:
         await check_deployment_config_access(auth_client, deployment_input.config, workspace)
 
@@ -298,7 +301,13 @@ async def update_deployment(
         await check_deployment_config_access(auth_client, deployment_input.config, workspace)
 
         deployment = await service.update_deployment(
-            workspace, deployment_name, deployment_input, auth_context=AuthContext.from_principal(auth_client.principal)
+            workspace,
+            deployment_name,
+            deployment_input,
+            auth_context=AuthContext.from_principal(
+                auth_client.principal,
+                origin_workspace=auth_client.outbound_origin_workspace,
+            ),
         )
         return deployment
     except PermissionError as e:
