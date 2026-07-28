@@ -11,13 +11,8 @@ a local cache; no task content is vendored here.
 
 | Suite | Package | Tasks | Agent under test |
 | --- | --- | --- | --- |
-| `suites/terminal-bench-2.1.yaml` (default) | `terminal-bench/terminal-bench-2-1@6` | 89 | `examples/terminal-bench-agent` (LangChain) |
-| `suites/tau3-banking.yaml` | `sierra-research/tau3-bench@1`, banking scoped | 97 | `examples/tau3-nooa-agent` (NOOA) |
-
-A suite manifest owns its `workspace` and `framework_skills`, and may set
-`task_id_prefix` to scope a multi-domain package down to one domain. Configs pair
-with a suite by partition name, so `configs/smoke.yaml` and `configs/tau3-smoke.yaml`
-both select the `fast` partition of whichever suite they are run against.
+| `suites/terminal-bench-2.1.yaml` (default) | `terminal-bench/terminal-bench-2-1@6` | 89 | `examples/terminal-bench-agent` |
+| `suites/tau3-banking.yaml` | `sierra-research/tau3-bench@1`, banking scoped | 97 | `examples/tau3-nooa-agent` |
 
 ## Terminal-Bench provenance
 
@@ -54,19 +49,10 @@ whose `tau2-banking-knowledge-NNN` names map onto the canonical
 only from the 87 tasks whose `reward_basis` is pure database state, so smoke runs
 score deterministically without an LLM judge.
 
-Each task runs two containers: a `python:3.12-slim` main container for the agent
-and a `tau3-runtime` sidecar that hosts the tau2 environment over MCP and drives
-the user simulator. Tau-style suites set `models.user_simulator`, which makes the
-runner export `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `TAU2_USER_MODEL`, and
+Each task also runs a `tau3-runtime` sidecar hosting the tau2 environment and user
+simulator. Tau-style suites set `models.user_simulator`, which makes the runner
+export `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `TAU2_USER_MODEL`, and
 `TAU2_NL_ASSERTIONS_MODEL` for the sidecar and the verifier.
-
-Tasks request 8192 MB each, so keep `n_concurrent_trials` low; the shipped tau3
-configs use 1 and 3. The first build per task clones and installs tau2-bench
-upstream, which the shipped `environment_build_timeout_multiplier` of 3.0 covers.
-
-Because the upstream Dockerfiles clone tau2-bench without a ref, a cold Docker
-layer cache can pick up newer upstream commits than an earlier run did. Reuse the
-same machine's cache when comparing runs.
 
 ## Held-out evaluation
 
@@ -106,10 +92,17 @@ Run the bounded fast benchmark:
 
 ```bash
 uv run python benchmarks/run.py \
-  --config benchmarks/configs/smoke.yaml
+  --config benchmarks/configs/terminal-bench-smoke.yaml
 ```
 
-Run the tau3 banking suite, which needs its own suite, config, and agent:
+Run the reproducible quality benchmark:
+
+```bash
+uv run python benchmarks/run.py \
+  --config benchmarks/configs/terminal-bench-quality.yaml
+```
+
+A non-default suite needs its own suite, config, and agent:
 
 ```bash
 uv run python benchmarks/run.py \
@@ -118,19 +111,9 @@ uv run python benchmarks/run.py \
   --agent examples/tau3-nooa-agent
 ```
 
-Run the reproducible quality benchmark:
-
-```bash
-uv run python benchmarks/run.py \
-  --config benchmarks/configs/quality.yaml
-```
-
-Both setup and agent execution require network access. Each AUT installs itself
-from its committed `uv.lock` inside the task container, and neither needs a Docker
-socket. The Terminal-Bench agent uploads a checksum-pinned static `uv` and a
-uv-managed Python 3.12, because it cannot assume anything about an arbitrary task
-image. The tau3 agent instead installs a pinned `uv` with the `pip` that
-`python:3.12-slim` already ships, since every tau3 task uses that base image.
+Both setup and agent execution require network access. Each AUT installs its own
+dependencies from its committed `uv.lock` inside the task container and does not
+need a Docker socket.
 
 Pass the same `--output` directory to resume interrupted Harbor jobs. Use a new
 output directory for an intentionally fresh run.
