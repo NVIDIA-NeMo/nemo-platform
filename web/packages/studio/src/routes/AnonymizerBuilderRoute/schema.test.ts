@@ -9,11 +9,13 @@ import {
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import {
   AnonymizerFormData,
+  anonymizerFormSchema,
   buildAnonymizerJobRequest,
   getAnonymizerFormDefaults,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
 
 const ALL_ROLES = [...DETECTION_ROLES, REPLACE_ROLE, ...REWRITE_ROLES];
+const DEFAULT_LABELS = ['email', 'ssn', 'first_name'];
 
 const roleModels = (model: string, provider: string): AnonymizerFormData['roleModels'] =>
   Object.fromEntries(ALL_ROLES.map((role) => [role, { modelId: role, model, provider }]));
@@ -58,9 +60,65 @@ describe('buildAnonymizerJobRequest', () => {
     });
   });
 
-  it('routes rewrite to config.rewrite', () => {
+  it('routes rewrite to config.rewrite with the library defaults', () => {
     const req = buildAnonymizerJobRequest(form({ strategy: 'rewrite' }));
-    expect(req.spec.config).toEqual({ rewrite: {} });
+    expect(req.spec.config).toEqual({
+      rewrite: {
+        risk_tolerance: 'low',
+        max_repair_iterations: 3,
+        strict_entity_protection: false,
+      },
+    });
+  });
+
+  it('sends privacy_goal only in custom mode, trimming both fields', () => {
+    const custom = buildAnonymizerJobRequest(
+      form({
+        strategy: 'rewrite',
+        privacyGoalMode: 'custom',
+        privacyProtect: '  patient identifiers  ',
+        privacyPreserve: '  clinical findings  ',
+      })
+    );
+    expect(custom.spec.config.rewrite?.privacy_goal).toEqual({
+      protect: 'patient identifiers',
+      preserve: 'clinical findings',
+    });
+
+    const defaults = buildAnonymizerJobRequest(
+      form({ strategy: 'rewrite', privacyGoalMode: 'default', privacyProtect: 'ignored' })
+    );
+    expect(defaults.spec.config.rewrite?.privacy_goal).toBeUndefined();
+  });
+
+  it('omits blank rewrite instructions and carries the tuned params', () => {
+    const blank = buildAnonymizerJobRequest(
+      form({ strategy: 'rewrite', rewriteInstructions: '   ' })
+    );
+    expect(blank.spec.config.rewrite?.instructions).toBeUndefined();
+
+    const tuned = buildAnonymizerJobRequest(
+      form({
+        strategy: 'rewrite',
+        rewriteInstructions: '  keep the tone  ',
+        riskTolerance: 'minimal',
+        maxRepairRounds: 0,
+        strictEntityProtection: true,
+      })
+    );
+    expect(tuned.spec.config.rewrite).toEqual({
+      instructions: 'keep the tone',
+      risk_tolerance: 'minimal',
+      max_repair_iterations: 0,
+      strict_entity_protection: true,
+    });
+  });
+
+  it('drops rewrite params when a replace strategy is selected', () => {
+    const req = buildAnonymizerJobRequest(
+      form({ strategy: 'redact', privacyGoalMode: 'custom', privacyProtect: 'names' })
+    );
+    expect(req.spec.config.rewrite).toBeUndefined();
   });
 
   it('trims the source and omits empty optional fields', () => {
@@ -107,7 +165,11 @@ describe('buildAnonymizerJobRequest', () => {
     const rew = buildAnonymizerJobRequest(form({ strategy: 'rewrite' })).spec.selected_models;
     expect(rew?.detection?.entity_detector).toBe('model-1');
     expect(rew?.rewrite?.rewriter).toBe('model-1');
-    expect(rew?.replace).toBeUndefined();
+  });
+
+  it('maps the replacement generator for rewrite so the backend alias check passes', () => {
+    const rew = buildAnonymizerJobRequest(form({ strategy: 'rewrite' })).spec.selected_models;
+    expect(rew?.replace?.[REPLACE_ROLE]).toBe('model-1');
   });
 
   it('maps only detection roles for redact/annotate/hash', () => {
@@ -125,18 +187,55 @@ describe('buildAnonymizerJobRequest', () => {
     }
   });
 
-  it('sets config.detect.entity_labels only for custom labels without defaults', () => {
+  it('sends only the picked labels when defaults are excluded', () => {
     const custom = buildAnonymizerJobRequest(
-      form({ entityMode: 'custom', includeDefaultEntities: false, entityLabels: ['email', 'ssn'] })
+      form({ entityMode: 'custom', includeDefaultEntities: false, entityLabels: ['email', 'ssn'] }),
+      DEFAULT_LABELS
     );
     expect(custom.spec.config.detect).toEqual({ entity_labels: ['email', 'ssn'] });
+  });
 
-    const withDefaults = buildAnonymizerJobRequest(
-      form({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: ['email'] })
+  it('merges defaults with custom picks when defaults are included', () => {
+    const merged = buildAnonymizerJobRequest(
+      form({
+        entityMode: 'custom',
+        includeDefaultEntities: true,
+        entityLabels: ['email', 'ice_cream_flavor'],
+      }),
+      DEFAULT_LABELS
     );
-    expect(withDefaults.spec.config.detect).toBeUndefined();
+    expect(merged.spec.config.detect).toEqual({
+      entity_labels: [...DEFAULT_LABELS, 'ice_cream_flavor'],
+    });
+  });
 
-    const auto = buildAnonymizerJobRequest(form({ entityMode: 'auto', entityLabels: ['email'] }));
+  it('omits detect when the selection adds nothing to the defaults', () => {
+    const defaultsOnly = buildAnonymizerJobRequest(
+      form({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: [] }),
+      DEFAULT_LABELS
+    );
+    expect(defaultsOnly.spec.config.detect).toBeUndefined();
+
+    const subsetOfDefaults = buildAnonymizerJobRequest(
+      form({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: ['email'] }),
+      DEFAULT_LABELS
+    );
+    expect(subsetOfDefaults.spec.config.detect).toBeUndefined();
+  });
+
+  it('treats a duplicated default as no addition', () => {
+    const req = buildAnonymizerJobRequest(
+      form({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: ['email'] }),
+      [...DEFAULT_LABELS, 'email']
+    );
+    expect(req.spec.config.detect).toBeUndefined();
+  });
+
+  it('ignores entity labels in auto-detect mode', () => {
+    const auto = buildAnonymizerJobRequest(
+      form({ entityMode: 'auto', entityLabels: ['email'] }),
+      DEFAULT_LABELS
+    );
     expect(auto.spec.config.detect).toBeUndefined();
   });
 
@@ -158,5 +257,35 @@ describe('buildAnonymizerJobRequest', () => {
       max_tokens: 16384,
       temperature: 0.1,
     });
+  });
+});
+
+describe('anonymizerFormSchema', () => {
+  const parse = (overrides: Partial<AnonymizerFormData>) =>
+    anonymizerFormSchema.safeParse({
+      ...getAnonymizerFormDefaults(),
+      source: 'https://example.com/data.csv',
+      roleModels: roleModels('openai/gpt-oss-120b', 'default/nvidia'),
+      ...overrides,
+    });
+
+  it('rejects custom mode with neither labels nor defaults', () => {
+    const result = parse({
+      entityMode: 'custom',
+      includeDefaultEntities: false,
+      entityLabels: [],
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.some((i) => i.path.join('.') === 'entityLabels')).toBe(true);
+  });
+
+  it('accepts custom mode with labels, or with defaults included', () => {
+    expect(
+      parse({ entityMode: 'custom', includeDefaultEntities: false, entityLabels: ['email'] })
+        .success
+    ).toBe(true);
+    expect(
+      parse({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: [] }).success
+    ).toBe(true);
   });
 });

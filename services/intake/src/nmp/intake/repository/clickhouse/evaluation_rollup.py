@@ -70,6 +70,8 @@ class ClickHouseEvaluationRollupRepository(EvaluationRollupRepository):
                 parameters={
                     **parameters,
                     "cost_key": spec_for_field(SpanAttributeField.COST_TOTAL_USD).bag_key,
+                    "input_tokens_key": spec_for_field(SpanAttributeField.INPUT_TOKENS).bag_key,
+                    "output_tokens_key": spec_for_field(SpanAttributeField.OUTPUT_TOKENS).bag_key,
                     "model_key": spec_for_field(SpanAttributeField.MODEL).bag_key,
                     "agent_name_key": spec_for_field(SpanAttributeField.AGENT_NAME).bag_key,
                     "agent_version_key": spec_for_field(SpanAttributeField.AGENT_VERSION).bag_key,
@@ -82,6 +84,7 @@ class ClickHouseEvaluationRollupRepository(EvaluationRollupRepository):
             rollup.agent_versions = _string_list(row["agent_versions"])
             rollup.cost_usd = _score_rollup(row, "cost")
             rollup.latency_ms = _score_rollup(row, "latency")
+            rollup.tokens = _score_rollup(row, "tokens")
 
         return rollups
 
@@ -297,9 +300,10 @@ def _current_session_span_metrics_sql(spans_table: str) -> str:
     The shared ``current_spans_sql`` emits every span column, including the full ``attributes_*`` Maps.
     The metric rollup then joins that to the sessions, so the join hash table would hold every deduped
     span with its maps — gigabytes on real agent workloads (long trajectories × many spans), which is
-    what trips ClickHouse's memory limit. Here we ``argMax`` just the cost value (plus a present-flag,
-    to keep an absent cost distinct from a real 0) and the model/agent strings, so the join carries a
-    handful of scalars per span instead. Deduping by span identity picks each span's latest version.
+    what trips ClickHouse's memory limit. Here we ``argMax`` just the cost and token values (plus a
+    present-flag each, to keep an absent metric distinct from a real 0) and the model/agent strings, so
+    the join carries a handful of scalars per span instead. Deduping by span identity picks each span's
+    latest version.
     """
     return f"""
         (
@@ -308,6 +312,10 @@ def _current_session_span_metrics_sql(spans_table: str) -> str:
                 argMax(session_id, (event_ts, is_deleted)) AS dedup_session_id,
                 argMax(attributes_number[%(cost_key)s], (event_ts, is_deleted)) AS cost_value,
                 argMax(has(mapKeys(attributes_number), %(cost_key)s), (event_ts, is_deleted)) AS cost_present,
+                argMax(attributes_number[%(input_tokens_key)s], (event_ts, is_deleted)) AS input_tokens_value,
+                argMax(has(mapKeys(attributes_number), %(input_tokens_key)s), (event_ts, is_deleted)) AS input_tokens_present,
+                argMax(attributes_number[%(output_tokens_key)s], (event_ts, is_deleted)) AS output_tokens_value,
+                argMax(has(mapKeys(attributes_number), %(output_tokens_key)s), (event_ts, is_deleted)) AS output_tokens_present,
                 argMax(attributes_string[%(model_key)s], (event_ts, is_deleted)) AS model_name,
                 argMax(attributes_string[%(agent_name_key)s], (event_ts, is_deleted)) AS agent_name,
                 argMax(attributes_string[%(agent_version_key)s], (event_ts, is_deleted)) AS agent_version,
@@ -341,6 +349,12 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
                     NULL,
                     sumIf(spans.cost_value, spans.cost_present) / {COST_SCALE}
                 ) AS cost_usd,
+                if(
+                    countIf(spans.input_tokens_present) = 0 AND countIf(spans.output_tokens_present) = 0,
+                    NULL,
+                    sumIf(spans.input_tokens_value, spans.input_tokens_present)
+                        + sumIf(spans.output_tokens_value, spans.output_tokens_present)
+                ) AS tokens,
                 groupUniqArrayIf(spans.model_name, spans.model_name != '') AS model_names,
                 groupUniqArrayIf(spans.agent_name, spans.agent_name != '') AS agent_names,
                 groupUniqArrayIf(spans.agent_version, spans.agent_version != '') AS agent_versions
@@ -358,6 +372,7 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
                 test_case_key,
                 if(countIf(isNotNull(cost_usd)) = 0, NULL, avgIf(cost_usd, isNotNull(cost_usd))) AS cost_usd,
                 if(countIf(isNotNull(latency_ms)) = 0, NULL, avgIf(latency_ms, isNotNull(latency_ms))) AS latency_ms,
+                if(countIf(isNotNull(tokens)) = 0, NULL, avgIf(tokens, isNotNull(tokens))) AS tokens,
                 arrayDistinct(arrayFlatten(groupArray(model_names))) AS model_names,
                 arrayDistinct(arrayFlatten(groupArray(agent_names))) AS agent_names,
                 arrayDistinct(arrayFlatten(groupArray(agent_versions))) AS agent_versions
@@ -370,7 +385,8 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
             arraySort(arrayDistinct(arrayFlatten(groupArray(agent_names)))) AS agent_names,
             arraySort(arrayDistinct(arrayFlatten(groupArray(agent_versions)))) AS agent_versions,
             {_stat_columns("cost_usd", prefix="cost", guarded=True)},
-            {_stat_columns("latency_ms", prefix="latency", guarded=True)}
+            {_stat_columns("latency_ms", prefix="latency", guarded=True)},
+            {_stat_columns("tokens", prefix="tokens", guarded=True)}
         FROM test_case_metrics
         GROUP BY evaluation_id
         ORDER BY evaluation_id ASC

@@ -39,7 +39,7 @@ from nemo_platform_plugin.jobs.spec import BaseExecutionProfile, ProviderRef
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Default image used to set filesystem permissions on job storage volumes.
-DEFAULT_VOLUME_PERMISSIONS_IMAGE = "busybox"
+DEFAULT_VOLUME_PERMISSIONS_IMAGE = "docker.io/library/busybox:stable"
 JOB_LOGS_ENDPOINT_ENVVAR = "NMP_JOB_LOGS_ENDPOINT"
 
 # Env var names set by the platform during job creation; user-provided profile

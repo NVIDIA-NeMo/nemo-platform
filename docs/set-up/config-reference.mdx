@@ -268,8 +268,8 @@ jobs:
       storage:
         # Name of the Docker volume for persistent storage | default: 'nemo-jobs-storage'
         volume_name: nemo-jobs-storage
-        # Docker image used to set permissions on the volume | default: 'busybox'
-        volume_permissions_image: busybox
+        # Docker image used to set permissions on the volume | default: 'docker.io/library/busybox:stable'
+        volume_permissions_image: docker.io/library/busybox:stable
         # List of additional Docker volume mounts for the job
         additional_volume_mounts: []
       # Docker networking configuration
@@ -358,8 +358,8 @@ jobs:
       storage:
         # Persistent Volume Claim Name to use for job storage. | default: ''
         pvc_name: ''
-        # Image used to set volume permissions | default: 'busybox'
-        volume_permissions_image: busybox
+        # Image used to set volume permissions | default: 'docker.io/library/busybox:stable'
+        volume_permissions_image: docker.io/library/busybox:stable
         # Additional volumes to mount
         additional_volumes: []
         # Additional volume mounts
@@ -436,8 +436,8 @@ jobs:
       storage:
         # Persistent Volume Claim Name to use for job storage. | default: ''
         pvc_name: ''
-        # Image used to set volume permissions | default: 'busybox'
-        volume_permissions_image: busybox
+        # Image used to set volume permissions | default: 'docker.io/library/busybox:stable'
+        volume_permissions_image: docker.io/library/busybox:stable
         # Additional volumes to mount
         additional_volumes: []
         # Additional volume mounts

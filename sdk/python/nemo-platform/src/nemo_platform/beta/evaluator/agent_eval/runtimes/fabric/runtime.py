@@ -40,8 +40,10 @@ from uuid import uuid4
 from nemo_platform.beta.evaluator.agent_eval.runtimes.fabric.skills import (
     SKILL_MODE_CODEX_SKILLS_DIR,
     AgentSkill,
+    SkillMode,
     SkillProvenance,
-    install_skill,
+    SkillSet,
+    install_skills,
     resolve_skill_mode,
 )
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
@@ -128,7 +130,7 @@ class FabricAgentRuntime:
         timeout_s: int = DEFAULT_FABRIC_TIMEOUT_S,
         capture_trajectory: bool = True,
         runtime_name: str = _RUNTIME_NAME,
-        skill: AgentSkill | None = None,
+        skills: Sequence[AgentSkill] | None = None,
     ) -> None:
         self._config = config
         self._profiles = list(profiles or [])
@@ -138,19 +140,28 @@ class FabricAgentRuntime:
         self._timeout_s = timeout_s
         self._capture_trajectory = capture_trajectory
         self._runtime_name = runtime_name
-        self._skill = skill
+        self._skill_set = SkillSet(tuple(skills or ()))
 
-    def with_skill(self, skill: AgentSkill | None) -> FabricAgentRuntime:
-        """Return a copy of this runtime with the skill replaced; ``self`` is not modified.
+    def with_skills(self, skills: Sequence[AgentSkill]) -> FabricAgentRuntime:
+        """Return a copy of this runtime with ``skills`` *added* to its skill set; ``self`` is not modified.
 
-        Lets an A/B eval run the same taskset with and without a skill by deriving both runtimes from
-        one configured instance (baseline = ``with_skill(None)``, treated = ``with_skill(the_skill)``),
-        so they differ in exactly the skill and nothing else. A shallow copy suffices — the shared
-        fields are immutable config/paths.
+        Additive and chainable: ``rt.with_skills([a]).with_skills([b])`` injects both a and b. Lets an A/B
+        eval derive a treated runtime from a skill-free baseline (``baseline.with_skills(the_skills)``) so
+        the two arms differ in exactly the injected skills. Skill names must be unique across the combined
+        set — two bundles claiming the same ``<name>/`` would collide — so re-adding a skill already
+        present raises. A shallow copy suffices — the shared fields are immutable config/paths.
         """
         clone = copy.copy(self)
-        clone._skill = skill
+        clone._skill_set = self._skill_set.with_skills(skills)
         return clone
+
+    def with_skill(self, skill: AgentSkill) -> FabricAgentRuntime:
+        """Return a copy of this runtime with ``skill`` *added*; ``self`` is not modified.
+
+        Thin wrapper over :meth:`with_skills` for the common single-skill case; equally chainable
+        (``rt.with_skill(a).with_skill(b)`` injects both).
+        """
+        return self.with_skills([skill])
 
     async def run_tasks(
         self,
@@ -192,15 +203,15 @@ class FabricAgentRuntime:
         # or an end-user's — is picked up automatically instead of via a hardcoded allow-list. Fail fast
         # rather than silently run a skill-free trial mislabeled as "with skill", which would corrupt an
         # A/B comparison. Only touched when a skill is set, so the no-skill path is unaffected.
-        skill_mode: str | None = None
-        if self._skill is not None:
+        skill_mode: SkillMode | None = None
+        if self._skill_set.skills:
             skill_mode = self._resolve_skill_mode(client, agent_config, base_profiles)
             if skill_mode is None:
                 adapter_id = agent_config.harness.adapter_id
                 raise RuntimeError(
-                    f"FabricAgentRuntime received a skill but adapter {adapter_id!r} has no known "
+                    f"FabricAgentRuntime received one or more skills but adapter {adapter_id!r} has no known "
                     "skill-injection strategy: Fabric does not route skills to it natively and it is not a "
-                    "codex harness. Use a skills-native or codex harness, or drop the skill."
+                    "codex harness. Use a skills-native or codex harness, or drop the skills."
                 )
 
         semaphore = asyncio.Semaphore(resolved_config.parallelism)
@@ -218,7 +229,7 @@ class FabricAgentRuntime:
         client: Fabric,
         agent_config: FabricConfig,
         base_profiles: list[FabricProfileConfig],
-    ) -> str | None:
+    ) -> SkillMode | None:
         """Ask Fabric how a skill would reach the selected harness, or ``None`` if it can't.
 
         Probes Fabric's capability planner: plan a copy of the config with a sentinel skill path attached
@@ -256,7 +267,7 @@ class FabricAgentRuntime:
         index: int,
         task: AgentEvalTask,
         config: AgentEvalRunConfig,
-        skill_mode: str | None,
+        skill_mode: SkillMode | None,
     ) -> AgentEvalTrial:
         # nemo_fabric is already imported+validated in ``run_tasks``; this is a cached sys.modules
         # lookup, not a re-load, so the types are used where they're constructed instead of threaded down.
@@ -273,27 +284,28 @@ class FabricAgentRuntime:
         # downloads), so it is offloaded off the shared event loop.
         workspace_dir = evidence_dir / _WORKSPACE_SUBDIR
         workspace_dir.mkdir(parents=True, exist_ok=True)
-        skill_provenance: SkillProvenance | None = None
+        skill_provenances: list[SkillProvenance] = []
         try:
             # Stage seed files into the workspace for their on-disk side effect; the prompt is the task
             # instruction only, so the returned paths are unused.
             await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
 
-            # Inject the skill (if any) for this task. A native harness gets a per-task ``skills`` profile
-            # overlay; codex self-injection stages the bundle into the workspace and emits no overlay.
-            # Provenance is stamped on the trial for the A/B diff. Blocking file I/O, off the event loop.
+            # Inject the skill set (if any) for this task. A native harness gets ONE ``skills`` profile
+            # overlay listing every staged bundle; codex self-injection stages each bundle into the
+            # workspace and emits no overlay. One provenance per skill is stamped on the trial for the A/B
+            # diff. Blocking file I/O, off the event loop.
             skill_profiles: list[FabricProfileConfig] = []
-            if self._skill is not None and skill_mode is not None:
+            if self._skill_set.skills and skill_mode is not None:
                 installation = await asyncio.to_thread(
-                    install_skill,
-                    skill=self._skill,
+                    install_skills,
+                    skills=self._skill_set.skills,
                     adapter_id=agent_config.harness.adapter_id,
                     mode=skill_mode,
                     workspace_dir=workspace_dir,
                     skill_stage_dir=(evidence_dir / _SKILL_SUBDIR).resolve(),
                     existing_skill_paths=self._existing_skill_paths(),
                 )
-                skill_provenance = installation.provenance
+                skill_provenances = installation.provenances
                 skill_profiles = [FabricProfileConfig.from_mapping(p) for p in installation.profiles]
 
             task_config = self._compose_config(agent_config, evidence_dir, workspace_dir)
@@ -316,17 +328,31 @@ class FabricAgentRuntime:
                 timeout=self._timeout_s,
             )
         except TimeoutError as exc:
-            return self._failed_trial(task, evidence_dir, exc, extra_metadata={"skill": skill_provenance})
+            return self._failed_trial(task, evidence_dir, exc, extra_metadata=self._skill_metadata(skill_provenances))
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
-            return self._failed_trial(task, evidence_dir, exc, extra_metadata={"skill": skill_provenance})
+            return self._failed_trial(task, evidence_dir, exc, extra_metadata=self._skill_metadata(skill_provenances))
+        finally:
+            # Codex self-injection staged each bundle *inside* the workspace so the harness could discover
+            # it. Remove them once the run is over (it is already captured in the trajectory) so the injected
+            # files don't linger in the durable workspace and, on any path that exposes it as filesystem
+            # evidence, read as agent output and skew workspace-reading metrics. In ``finally`` so a
+            # timed-out or errored run cleans up too, not just the success path. Best-effort per
+            # ``_remove_injected_bundle``; a no-op for native mode and when nothing was staged.
+            if skill_mode == SKILL_MODE_CODEX_SKILLS_DIR:
+                for provenance in skill_provenances:
+                    await asyncio.to_thread(_remove_injected_bundle, workspace_dir, provenance["location"])
 
-        # Codex self-injection staged the bundle *inside* the workspace so the harness could discover it.
-        # Now that the run is done (and captured in the trajectory), remove it before the workspace is
-        # exposed as filesystem evidence — otherwise the injected files read as agent output and skew
-        # workspace-reading metrics (a treated run with no agent-created files would look non-empty).
-        if skill_mode == SKILL_MODE_CODEX_SKILLS_DIR and skill_provenance is not None:
-            await asyncio.to_thread(_remove_injected_bundle, workspace_dir, skill_provenance["location"])
-        return self._to_trial(task, result, evidence_dir, workspace_dir, skill_provenance=skill_provenance)
+        return self._to_trial(task, result, evidence_dir, workspace_dir, skill_provenances=skill_provenances)
+
+    @staticmethod
+    def _skill_metadata(provenances: list[SkillProvenance]) -> dict[str, Any]:
+        """Trial-metadata fields describing the injected skill set (the A/B provenance).
+
+        ``skills`` is the full list of injected-skill provenances (empty = baseline). ``skill`` keeps the
+        historical single-provenance field — the lone provenance for a one-skill run, else ``None`` — so
+        single-skill consumers (e.g. ``SkillUsedMetric``) and existing trials keep working unchanged.
+        """
+        return {"skill": provenances[0] if len(provenances) == 1 else None, "skills": provenances}
 
     def _to_trial(
         self,
@@ -335,7 +361,7 @@ class FabricAgentRuntime:
         evidence_dir: Path,
         workspace_dir: Path,
         *,
-        skill_provenance: SkillProvenance | None = None,
+        skill_provenances: list[SkillProvenance] | None = None,
     ) -> AgentEvalTrial:
         # Persist the full normalized Fabric result so graders (and debugging) can see the raw
         # envelope, and expose it as an evidence descriptor.
@@ -349,8 +375,8 @@ class FabricAgentRuntime:
             "adapter_kind": result.adapter_kind,
             "invocation_id": result.invocation_id,
             "agent_model": self._model,
-            # Skill provenance (name + content hash + injection mode) for the A/B diff; None baseline.
-            "skill": skill_provenance,
+            # Skill provenance (name + content hash + injection mode) for the A/B diff.
+            **self._skill_metadata(skill_provenances or []),
         }
 
         if result.status != "succeeded":
