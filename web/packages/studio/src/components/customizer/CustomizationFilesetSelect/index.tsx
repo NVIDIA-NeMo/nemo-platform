@@ -62,7 +62,8 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
   const fieldName: DatasetFieldName =
     backend === 'automodel' ? 'automodel.dataset.training' : 'unsloth.dataset.path';
   const automodelTrainingType = useWatch({ control, name: 'automodel.training.training_type' });
-  const trainingType: TrainingType = backend === 'automodel' ? automodelTrainingType : 'sft';
+  const trainingType: TrainingType =
+    backend === 'automodel' ? (automodelTrainingType ?? 'sft') : 'sft';
 
   const {
     field: { value: selectedRef, onChange: setSelectedRef, onBlur },

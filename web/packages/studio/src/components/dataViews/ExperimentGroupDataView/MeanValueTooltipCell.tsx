@@ -9,7 +9,8 @@ import { type FC, type ReactNode } from 'react';
 const aggregateMetricTooltip = (
   label: string,
   count: number | null | undefined,
-  runCount: number | null | undefined
+  runCount: number | null | undefined,
+  countsMissingAsZero: boolean
 ): string => {
   // `count` is the number of test cases the mean is taken over; `runCount` is the total attempts. The
   // rollup is test-case-weighted: each test case is averaged over its attempts first, then averaged
@@ -18,16 +19,21 @@ const aggregateMetricTooltip = (
   const attempts = runCount ?? 0;
   // When each test case was attempted once, the test-case-weighted mean is just the plain per-attempt
   // mean, so keep it simple. Otherwise note that each test case's repeats are averaged first.
-  if (testCases === attempts) {
-    return `Mean ${label} over ${getTextWithCount('test case', testCases)}.`;
-  }
-  return `Mean ${label} over ${getTextWithCount('test case', testCases)} — each test case averaged over its attempts.`;
+  const base =
+    testCases === attempts
+      ? `Mean ${label} over ${getTextWithCount('test case', testCases)}.`
+      : `Mean ${label} over ${getTextWithCount('test case', testCases)} — each test case averaged over its attempts.`;
+  // Scores use a fixed denominator: a run that produced no score counts as 0, so it's included above
+  // rather than dropped. Measurement metrics (cost, latency) instead omit missing values.
+  return countsMissingAsZero ? `${base} Runs with no score count as 0.` : base;
 };
 
 interface MeanValueTooltipCellProps {
   label: string;
   count: number | null | undefined;
   runCount: number | null | undefined;
+  /** When true, note that errored runs with no score are counted as 0 (score metrics only). */
+  readonly countsMissingAsZero?: boolean;
   children: ReactNode;
 }
 
@@ -35,6 +41,7 @@ export const MeanValueTooltipCell: FC<MeanValueTooltipCellProps> = ({
   label,
   count,
   runCount,
+  countsMissingAsZero = false,
   children,
 }) => {
   if (count == null) {
@@ -43,7 +50,9 @@ export const MeanValueTooltipCell: FC<MeanValueTooltipCellProps> = ({
   return (
     <Tooltip
       slotContent={
-        <Text kind="body/regular/sm">{aggregateMetricTooltip(label, count, runCount)}</Text>
+        <Text kind="body/regular/sm">
+          {aggregateMetricTooltip(label, count, runCount, countsMissingAsZero)}
+        </Text>
       }
       className={tooltipClassName}
       side="bottom"

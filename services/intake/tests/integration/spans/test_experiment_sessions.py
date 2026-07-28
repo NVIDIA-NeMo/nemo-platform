@@ -116,6 +116,27 @@ def test_list_evaluation_sessions_returns_joined_session_rows(client: TestClient
     assert paged_body["data"][0]["test_case_id"] == "case-b"
     assert paged_body["data"][0]["evaluator_scores"] == {"reward": pytest.approx(0.5)}
 
+    latency_sorted = client.get(
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
+        params={"sort": "-latency_ms", "page_size": 3},
+    )
+    assert latency_sorted.status_code == 200, latency_sorted.text
+    assert [row["test_case_id"] for row in latency_sorted.json()["data"]] == ["case-c", "case-b", "case-a"]
+
+    cost_sorted = client.get(
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
+        params={"sort": "-cost_total_usd", "page_size": 3},
+    )
+    assert cost_sorted.status_code == 200, cost_sorted.text
+    assert [row["test_case_id"] for row in cost_sorted.json()["data"]] == ["case-c", "case-b", "case-a"]
+
+    tokens_sorted = client.get(
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
+        params={"sort": "tokens", "page_size": 3},
+    )
+    assert tokens_sorted.status_code == 200, tokens_sorted.text
+    assert [row["test_case_id"] for row in tokens_sorted.json()["data"]] == ["case-a", "case-b", "case-c"]
+
 
 def test_list_evaluation_sessions_filter_by_test_case(client: TestClient) -> None:
     evaluation_name = "sessions-filter-exp"
@@ -132,7 +153,8 @@ def test_list_evaluation_sessions_filter_by_test_case(client: TestClient) -> Non
     assert created.status_code == 201, created.text
 
     started_at = datetime.now(timezone.utc).replace(microsecond=0)
-    for index, test_case_id in enumerate(["alpha", "beta"]):
+    adversarial_test_case_id = "alpha') OR 1 = 1 --"
+    for index, test_case_id in enumerate([adversarial_test_case_id, "beta"]):
         response = client.post(
             ATIF_INGEST,
             json=_atif_body(
@@ -152,13 +174,13 @@ def test_list_evaluation_sessions_filter_by_test_case(client: TestClient) -> Non
 
     filtered = client.get(
         f"{EVALUATIONS}/{evaluation_name}/sessions",
-        params={"filter[test_case_id]": "alpha"},
+        params={"filter[test_case_id]": adversarial_test_case_id},
     )
     assert filtered.status_code == 200, filtered.text
     body = filtered.json()
     assert body["pagination"]["total_results"] == 1
     assert len(body["data"]) == 1
-    assert body["data"][0]["test_case_id"] == "alpha"
+    assert body["data"][0]["test_case_id"] == adversarial_test_case_id
 
 
 def test_list_evaluation_sessions_filter_by_status(client: TestClient) -> None:

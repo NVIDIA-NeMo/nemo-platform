@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getFileExtension } from '@nemo/common/src/components/DatasetFileSelect/utils';
+import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/Context/useUploadModalContext';
 import { getExistingFileId } from '@nemo/common/src/components/UploadModal/utils';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
@@ -20,14 +21,29 @@ interface Props {
   error?: string;
 }
 
-const filesetToOption = (fileset: FilesetOutput) => ({
+const filesetToOption = (fileset: FilesetOutput, showUpdatedAt?: boolean) => ({
   children: fileset.name ?? '',
   value: getEntityReference(fileset),
+  ...(showUpdatedAt && fileset.updated_at
+    ? {
+        slotEnd: (
+          <Text kind="body/regular/xs" color="secondary">
+            <RelativeTime datetime={fileset.updated_at} />
+          </Text>
+        ),
+      }
+    : {}),
 });
 
 export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
   const [state, dispatch] = useUploadModalContext();
-  const { dataset, allowNewDataset, acceptableFileTypes, autoSelectFirstAcceptable } = state;
+  const {
+    dataset,
+    allowNewDataset,
+    acceptableFileTypes,
+    autoSelectFirstAcceptable,
+    showUpdatedAt,
+  } = state;
   const purpose = state.filesetPurpose ?? 'dataset';
   const label = state.datasetLabel ?? 'Dataset';
 
@@ -105,9 +121,9 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
     return (
       filesets
         ?.sort((filesetA, filesetB) => (filesetA?.name || '').localeCompare(filesetB.name || ''))
-        .map(filesetToOption) || []
+        .map((fileset) => filesetToOption(fileset, showUpdatedAt)) || []
     );
-  }, [filesets, isLoading, isError]);
+  }, [filesets, isLoading, isError, showUpdatedAt]);
 
   return (
     <FormField
@@ -122,40 +138,37 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
       }
       status={error ? 'error' : undefined}
     >
-      {(props) => (
-        <Select
-          {...props}
-          aria-label="dataset-select"
-          className="motion-safe:[&.nv-input:not(.nv-input--disabled):not(.nv-input--readonly)]:transition-[margin,color,background-color,border-color,outline-color,text-decoration-color,fill,stroke] duration-250 data-[state=open]:mb-24"
-          disabled={disabled}
-          items={[
-            ...(allowNewDataset
-              ? [
-                  {
-                    slotHeading: 'Create Dataset',
-                    attributes: {
-                      MenuHeading: { className: 'hidden', 'aria-hidden': true },
-                    },
-                    items: [
-                      {
-                        children: 'New Dataset',
-                        value: 'new',
-                      },
-                    ],
+      <Select
+        aria-label="dataset-select"
+        className="motion-safe:[&.nv-input:not(.nv-input--disabled):not(.nv-input--readonly)]:transition-[margin,color,background-color,border-color,outline-color,text-decoration-color,fill,stroke] duration-250 data-[state=open]:mb-24"
+        disabled={disabled}
+        items={[
+          ...(allowNewDataset
+            ? [
+                {
+                  slotHeading: 'Create Dataset',
+                  attributes: {
+                    MenuHeading: { className: 'hidden', 'aria-hidden': true },
                   },
-                ]
-              : []),
-            {
-              slotHeading: `Existing ${label}s`,
-              attributes: { MenuHeading: { className: 'hidden', 'aria-hidden': true } },
-              items: datasetOptions,
-            },
-          ]}
-          value={selectedDatasetOption}
-          onValueChange={handleDatasetSelect}
-          placeholder={`Select a ${label.toLowerCase()}`}
-        />
-      )}
+                  items: [
+                    {
+                      children: 'New Dataset',
+                      value: 'new',
+                    },
+                  ],
+                },
+              ]
+            : []),
+          {
+            slotHeading: `Existing ${label}s`,
+            attributes: { MenuHeading: { className: 'hidden', 'aria-hidden': true } },
+            items: datasetOptions,
+          },
+        ]}
+        value={selectedDatasetOption}
+        onValueChange={handleDatasetSelect}
+        placeholder={`Select a ${label.toLowerCase()}`}
+      />
     </FormField>
   );
 };

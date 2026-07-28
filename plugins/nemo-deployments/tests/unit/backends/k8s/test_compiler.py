@@ -3,11 +3,15 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 from backends.k8s.k8s_helpers import sample_always_config, sample_config
 from kubernetes.client import ApiClient
 from nemo_deployments_plugin.backends.k8s.compiler import (
     DeploymentConfigError,
+    _build_probe,
     build_configmap_body,
     compile_workload,
     configmap_data_key,
@@ -20,12 +24,31 @@ from nemo_deployments_plugin.entities import (
     ConfigFile,
     Container,
     ContainerPort,
+    ExecAction,
+    HTTPGetAction,
     K8sDeploymentConfig,
+    Probe,
 )
+from nemo_platform_plugin.config import ImagePullSecret
 
 
 def _serialized(obj: object) -> dict:
     return ApiClient().sanitize_for_serialization(obj)
+
+
+def test_build_probe_exec_action() -> None:
+    # V1Probe requires the `_exec` kwarg (exec is a Python keyword); regression
+    # for the exec-probe path used by loopback-only sidecars.
+    probe = _build_probe(Probe(exec=ExecAction(command=["sh", "-c", "curl -sf http://127.0.0.1:8090/healthz"])))
+    serialized = _serialized(probe)
+    assert serialized["exec"]["command"] == ["sh", "-c", "curl -sf http://127.0.0.1:8090/healthz"]
+
+
+def test_build_probe_http_get_action() -> None:
+    probe = _build_probe(Probe(httpGet=HTTPGetAction(path="/health", port=8000)))
+    serialized = _serialized(probe)
+    assert serialized["httpGet"]["path"] == "/health"
+    assert serialized["httpGet"]["port"] == 8000
 
 
 def test_configmap_data_key_sanitizes_paths() -> None:
@@ -146,6 +169,28 @@ def test_compile_applies_k8s_deployment_config() -> None:
     assert affinity.node_affinity is not None
     security_context = compiled.pod_spec_kwargs["security_context"]
     assert security_context.run_as_user == 1000
+
+
+def test_compile_workload_emits_image_pull_secrets() -> None:
+    config = sample_config(restart_policy="Never")
+    platform_secret = ImagePullSecret(name="platform-secret")
+    executor_secret = ImagePullSecret(name="executor-secret")
+    with patch(
+        "nemo_deployments_plugin.backends.k8s.compiler.get_platform_config",
+        return_value=SimpleNamespace(image_pull_secrets=[platform_secret]),
+    ):
+        compiled = compile_workload(
+            config=config,
+            workspace="default",
+            deployment_name="task",
+            labels={"managed-by": "nemo-deployments"},
+            k8s_config=None,
+            pod_restart_policy="Never",
+            executor_image_pull_secrets=[executor_secret],
+        )
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    secret_names = {secret["name"] for secret in pod_spec["image_pull_secrets"]}
+    assert secret_names == {"platform-secret", "executor-secret"}
 
 
 def test_compile_config_files_emit_configmap_and_mounts() -> None:

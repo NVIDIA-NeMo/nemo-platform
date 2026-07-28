@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
+import type { TableExpandableCellState } from '@nemo/common/src/components/DataView/TableExpandableCell';
 import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
 
 export interface ResponseStats {
@@ -27,9 +28,7 @@ export interface PromptRow {
   responses: Record<number, ResponseResult | null | undefined>;
 }
 
-export interface ExpandedCellState {
-  title: string;
-  content: string;
+export interface ExpandedCellState extends TableExpandableCellState {
   stats?: ResponseStats;
 }
 

@@ -41,8 +41,11 @@ def _make_controller() -> tuple[AgentDeploymentController, Any]:
     ctrl = AgentDeploymentController()
     backend = MagicMock()
     backend.delete_deployment = AsyncMock()
+    registry = MagicMock()
+    registry.backend = backend
+    registry.backend_for = MagicMock(return_value=backend)
     # Bypass on_startup() — wire stubs directly.
-    ctrl._backend = backend
+    ctrl._registry = registry
     ctrl._entities = MagicMock()
     ctrl._controller_config = ControllerConfig(health_check_timeout_seconds=120)
     ctrl._save = AsyncMock()  # type: ignore[method-assign]

@@ -26,6 +26,9 @@ __all__ = ["ExperimentGroupFilterParam"]
 class ExperimentGroupFilterParam(TypedDict, total=False):
     """Filter for listing ExperimentGroups."""
 
+    insight_id: str
+    """Filter groups by the id of the insight that seeded them."""
+
     is_deleted: bool
     """When true, returns only soft-deleted groups.
 

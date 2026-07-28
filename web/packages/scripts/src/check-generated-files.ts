@@ -8,6 +8,9 @@ const execAsync = promisify(exec);
 
 async function main() {
   try {
+    const { stdout: beforeOutput } = await execAsync('git diff --name-status');
+    const beforeFiles = new Set(beforeOutput.trim().split('\n').filter(Boolean));
+
     // Run pnpm gen
     console.log('Running pnpm gen...');
     try {
@@ -17,16 +20,19 @@ async function main() {
       process.exit(1);
     }
 
-    // Check for git diff
     console.log('Checking for file diffs...');
-    const { stdout: diffOutput } = await execAsync('git diff --name-status');
+    const { stdout: afterOutput } = await execAsync('git diff --name-status');
+    const newlyChanged = afterOutput
+      .trim()
+      .split('\n')
+      .filter((line) => line && !beforeFiles.has(line));
 
-    if (diffOutput.trim()) {
+    if (newlyChanged.length > 0) {
       console.error(
         '❌ Generated files are out of sync. Run `make lint-fix` (or `cd web && pnpm gen`) and commit the changes.'
       );
       console.error('Changed files:');
-      console.error(diffOutput);
+      console.error(newlyChanged.join('\n'));
       process.exit(1);
     }
 

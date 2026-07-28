@@ -19,7 +19,7 @@ From the repo root (these wrap `cd docs/fern && npm run …`):
 ```bash
 make docs-deps     # one-time: install docs/fern tooling (needed for MDX validation)
 make docs-login    # one-time per machine: Fern CLI auth for the nvidia org
-make docs-check    # validate: fern check + MDX validation + gated-link check (what CI runs)
+make docs-check    # validate: fern check + MDX + NotebookViewer artifacts + gated links
 make docs          # start local preview (prints a localhost URL)
 make docs-watch    # start local preview plus a repo-level watcher for docs/** changes
 ```
@@ -46,10 +46,11 @@ docs/                          # page content (.mdx), one tree per product area
     ├── snippets/              # reusable <Markdown src> fragments
     ├── scripts/               # validate-mdx.mjs, delink-gated.mjs, ipynb-to-fern-json.py
     ├── gated-nav.yml          # reference nav blocks for gated (unready) features
-    └── versions/latest.yml    # navigation tree (defines what gets built)
+    ├── generated/             # ignored release snapshots created during publish
+    └── versions/latest.yml    # Latest navigation tree (ordinary docs authoring)
 ```
 
-The site uses a single `Latest` version. `versions/latest.yml` defines the sidebar and maps each page file to its canonical route — and, because Fern only builds pages listed there, it is also what gates unready content (see below).
+Normal docs authoring targets `Latest`. `versions/latest.yml` defines the sidebar and maps each page file to its canonical route — and, because Fern only builds pages listed there, it is also what gates unready content (see below). Production publish additionally materializes frozen release versions from stable SemVer tags that already contain Fern config.
 
 ## Authoring
 
@@ -89,11 +90,27 @@ The REST API reference is generated natively by Fern from the OpenAPI spec — n
 
 Fern groups endpoints by their OpenAPI tag in the sidebar (Customizer, Evaluator, Guardrails, …), which replaces the old per-service filter chips. Link to it from other pages with the nav URL `/documentation/reference/api-reference`.
 
+## Release versioning
+
+Fern does not infer docs versions from git tags. The version selector is built from `docs.yml` `versions:` entries, and each entry points at a version-specific nav file.
+
+For public publishing, `.github/workflows/publish-fern-docs.yaml` runs:
+
+```bash
+npm run materialize:versions
+```
+
+That script discovers stable SemVer tags in the full checkout, skips tags that predate `docs/fern/versions/latest.yml`, exports each tag's `docs/` tree into ignored `docs/fern/generated/release-versions/<version>/` snapshots, rewrites the tag's `versions/latest.yml` to point at the snapshot, and injects generated entries into `docs.yml` before `npm run generate` publishes. Tag pushes are publish signals; the workflow checks out the default branch so the current Fern publishing code and `Latest` docs remain the source for the live site.
+
+This means early `0.1.x` tags that were cut before the Fern migration cannot appear as true Fern versions unless someone deliberately backports/migrates those docs into Fern. A release tag such as `0.2.0`, which already contains `docs/fern`, can be materialized.
+
+To preview the release selector locally, run `npm run materialize:versions` from `docs/fern/`, then `npm run dev`. The generated snapshots and generated version YAMLs are gitignored; restore `docs/fern/docs.yml` afterward if you only needed a local preview.
+
 ## Gated (unready) features
 
 Some features are not shipped yet and must be **fully excluded from the build** — not just hidden from the sidebar. Fern's `hidden: true` still builds and serves the page (reachable by direct URL and indexable), so it is **not** used for this. Instead, the gated pages are simply **left out of `versions/latest.yml`**: Fern only builds pages referenced in the navigation, so an omitted page is never built (it 404s and is not indexed). This matches the old MkDocs `hide_unready_docs` hook, which dropped the same files from the build.
 
-The gated `.mdx` files stay in the repo so they remain maintained. The gated trees today are: `auth/`, `customizer/`, `safe-synthesizer/`, `evaluator/benchmarks/`, plus individual pages (`evaluator/metrics/{job-management,results}`, `run-inference/tutorials/deploy-models`, `example-applications/`, `troubleshooting/{cluster-setup,customizer}`, `get-started/quickstart`).
+Gated `.mdx` files stay in the repo so they remain maintained. Do not keep a separate list of gated directories in contributor docs: publication state is derived from `versions/latest.yml`. A page listed there is published; an omitted page is gated.
 
 Inbound links from visible pages into gated pages are **delinked to plain text** (not rewritten URLs), since the target is not built — otherwise they would be broken links.
 
@@ -114,10 +131,10 @@ One difference from the old MkDocs hook: that hook ran at build time and kept th
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `fern-docs-ci.yaml` | `pull_request` touching `docs/**` | `npm run check` (fern check + MDX + gated-link check) and `npm run broken-links` |
+| `fern-docs-ci.yaml` | `pull_request` touching `docs/**` | `npm run check` (fern check + MDX + NotebookViewer artifacts + gated links) and `npm run broken-links` |
 | `fern-docs-preview-build.yaml` | `pull_request` touching `docs/**` | Upload PR `docs/` sources as an artifact (no secrets — fork-safe) |
 | `fern-docs-preview-comment.yaml` | successful preview build (`workflow_run`) | Build a Fern preview with `DOCS_FERN_TOKEN` and post/update the PR comment |
-| `publish-fern-docs.yaml` | push to `main` touching `docs/**`, `docs/v*` tag, or manual dispatch | Publish the Fern docs site |
+| `publish-fern-docs.yaml` | push to `main` touching `docs/**`, stable SemVer tag, `docs/v*` republish tag, or manual dispatch | Materialize release versions and publish the Fern docs site |
 
 Required secret: `DOCS_FERN_TOKEN` (org-level), from `fern token` for an account that can publish to the NVIDIA Fern organization.
 
@@ -132,3 +149,4 @@ PRs that touch `docs/**` get a shared preview URL posted as a comment after the 
 | Page 404 in preview | Check that `versions/latest.yml` lists the page (gated pages are intentionally omitted and *will* 404) |
 | Broken internal link | Rewrite to the nav URL `/documentation/...`; if it targets a gated page, run `make docs-fix-links` to delink it. `make docs-broken-links` reports them all |
 | JSX or MDX parse error | Escape raw `{}`, `<`, or `>` in prose, and use Fern components instead of raw MkDocs syntax |
+| Release tag missing from version selector | Confirm the tag is stable SemVer and contains `docs/fern/versions/latest.yml`; pre-Fern tags are skipped by `npm run materialize:versions` |

@@ -28,6 +28,13 @@ export interface SpanTreeNode {
   children: SpanTreeNode[];
 }
 
+/** A session trace and the summary spans used to render its trajectory. */
+export interface SessionTrajectory {
+  readonly trace: Trace;
+  readonly spans: Span[];
+  readonly spanTree: SpanTreeNode[];
+}
+
 export const formatInteger = (value: number | null | undefined): string => {
   if (value === null || value === undefined) return EMPTY_VALUE;
   return value.toLocaleString();

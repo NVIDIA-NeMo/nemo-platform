@@ -8,11 +8,11 @@ discovers this class and mounts it as ``nemo agents <command>``.
 
 **Local commands (no platform required):**
 
-These wrap NAT's runtime directly and work without a running NeMo Platform
+These run against a local agent config and work without a running NeMo Platform
 instance.
 
-- ``invoke``   — single invocation (wraps ``nat run``)
-- ``run``      — start a persistent local FastAPI server (wraps ``nat serve``)
+- ``invoke``   — single invocation
+- ``run``      — start a persistent local FastAPI server
 
 The ``evaluate`` and ``optimize`` commands are auto-generated from the
 ``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
@@ -27,17 +27,20 @@ group at startup.
 - ``delete``       — delete an agent
 - ``deploy``       — create a deployment for an agent (waits for ``running`` by default)
 - ``undeploy``     — stop and remove a deployment
-- ``logs``         — print or tail the subprocess log file for a deployment
+- ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import re
+import sys
 import time
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional, cast
@@ -57,7 +60,11 @@ from nemo_agents_plugin.cli_context import (
 from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
-from nemo_agents_plugin.entities import CONTAINER_DEPLOYMENT_MODES
+from nemo_agents_plugin.entities import (
+    CONTAINER_DEPLOYMENT_MODES,
+    NAT_WORKFLOW_CONFIG_FORMAT,
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+)
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform.cli.core.formatters import Column, format_output
@@ -119,7 +126,7 @@ class AgentsCLI(NemoCLI):
 
 
 def _register_local_commands(app: typer.Typer) -> None:
-    """Register local NAT-wrapper commands onto *app*."""
+    """Register local agent commands onto *app*."""
 
     @app.command(rich_help_panel="Local commands")
     def invoke(
@@ -127,7 +134,7 @@ def _register_local_commands(app: typer.Typer) -> None:
             None,
             "--agent-config",
             "-c",
-            help="Path to a NAT workflow YAML config file for local execution.",
+            help="Path to an agent YAML config file.",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -199,7 +206,7 @@ def _register_local_commands(app: typer.Typer) -> None:
             ...,
             "--agent-config",
             "-c",
-            help="Path to a NAT workflow YAML config file.",
+            help="Path to an agent YAML config file.",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -207,10 +214,33 @@ def _register_local_commands(app: typer.Typer) -> None:
         host: str = typer.Option("0.0.0.0", "--host"),
         port: int = typer.Option(8080, "--port", "-p"),
     ) -> None:
-        """Run an agent locally as a persistent FastAPI server (wraps ``nat start fastapi``)."""
+        """Run an agent locally as a persistent FastAPI server."""
         import subprocess
 
-        cmd = ["nat", "start", "fastapi", "--config_file", agent_config.name, "--host", host, "--port", str(port)]
+        config = _load_yaml(agent_config)
+        if not isinstance(config, dict):
+            typer.echo(f"Error: agent config {agent_config} root must be a YAML mapping.", err=True)
+            raise typer.Exit(code=1)
+
+        config_format = config.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            cmd = [
+                sys.executable,
+                "-m",
+                "nemo_agents_plugin.fabric.server",
+                "--agent-config",
+                agent_config.name,
+                "--host",
+                host,
+                "--port",
+                str(port),
+            ]
+        elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+            cmd = ["nat", "start", "fastapi", "--config_file", agent_config.name, "--host", host, "--port", str(port)]
+        else:
+            typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
+            raise typer.Exit(code=1)
+
         typer.echo(f"Starting agent server: {' '.join(cmd)}")
         try:
             subprocess.run(cmd, check=True, cwd=agent_config.parent)
@@ -218,7 +248,10 @@ def _register_local_commands(app: typer.Typer) -> None:
             typer.echo(f"Agent server exited with code {exc.returncode}.", err=True)
             raise typer.Exit(code=exc.returncode)
         except FileNotFoundError:
-            typer.echo("Error: 'nat' command not found.  Install nvidia-nat-core.", err=True)
+            if config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+                typer.echo("Error: 'nat' command not found.  Install nvidia-nat-core.", err=True)
+            else:
+                typer.echo(f"Error: server command {cmd[0]!r} was not found.", err=True)
             raise typer.Exit(code=1)
 
 
@@ -634,7 +667,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
             ...,
             "--agent-config",
             "-c",
-            help="Path to a NAT workflow YAML config file.",
+            help="Path to an agent YAML config file.",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -648,18 +681,30 @@ def _register_platform_commands(app: typer.Typer) -> None:
         from nemo_agents_plugin.utils import inject_default_model
 
         config_dict = _load_yaml(agent_config)
-        # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
-        # user context at deploy time.
-        config_dict = inject_default_model(config_dict)
-        if _contains_default_model_placeholder(config_dict):
-            typer.echo(
-                "Error: agent config references ${NEMO_DEFAULT_MODEL} but no "
-                "default model is selected. Run `nemo setup` to pick one, or "
-                "replace the placeholder in the config with an explicit model name.",
-                err=True,
-            )
+        config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
+        elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+            # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
+            # user context at deploy time.
+            config_dict = inject_default_model(config_dict)
+            if _contains_default_model_placeholder(config_dict):
+                typer.echo(
+                    "Error: agent config references ${NEMO_DEFAULT_MODEL} but no "
+                    "default model is selected. Run `nemo setup` to pick one, or "
+                    "replace the placeholder in the config with an explicit model name.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+        else:
+            typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
             raise typer.Exit(code=1)
-        payload = {"name": name, "description": description, "config": config_dict}
+        payload = {
+            "name": name,
+            "description": description,
+            "config": config_dict,
+            "config_format": config_format,
+        }
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
         typer.echo(json.dumps(resp, indent=2))
 
@@ -741,8 +786,8 @@ def _register_platform_commands(app: typer.Typer) -> None:
             help=(
                 "Wait for the deployment to reach a terminal status (running or failed) "
                 "before returning.  Exits 0 only on running; exits 1 with the failure "
-                "reason if the subprocess dies during startup or the health check times "
-                "out.  Pass --no-wait for fire-and-forget behaviour (the original "
+                "reason if runtime startup fails or readiness times out. "
+                "Pass --no-wait for fire-and-forget behaviour (the original "
                 "default — returns the pending deployment immediately as JSON)."
             ),
         ),
@@ -759,7 +804,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         Blocks until the deployment is ``running`` (exit 0) or ``failed`` /
         timed out (exit 1) by default, so the exit code reflects the actual
-        outcome of the spawn instead of merely the API call.  Use
+        outcome of runtime startup instead of merely the API call.  Use
         ``--no-wait`` to keep the previous fire-and-forget behaviour for
         scripted pipelines that prefer to poll separately via ``nemo agents
         deployments wait``.
@@ -842,13 +887,14 @@ def _register_platform_commands(app: typer.Typer) -> None:
     ) -> None:
         """Show logs for an agent deployment.
 
-        Reads the subprocess log file written by the local in-memory runner
-        backend.  The log file location is the same convention the backend
-        uses internally: ``nmp_user_data_dir() / 'agents' / 'system' /
-        <deployment-name>.log`` by default.  This command is therefore only
-        meaningful when the CLI runs on the same host as the platform — once
-        a remote backend lands, log retrieval should move to a server-side
-        endpoint.
+        Reads the log file written by the local in-memory runner backend.
+        NAT subprocess deployments write process output there; Fabric-backed
+        deployments write validation/preparation entries there. The log file
+        location is the same convention the backend uses internally:
+        ``nmp_user_data_dir() / 'agents' / 'system' / <deployment-name>.log``
+        by default. This command is therefore only meaningful when the CLI runs
+        on the same host as the platform — once a remote backend lands, log
+        retrieval should move to a server-side endpoint.
 
         With ``--follow`` (``-f``), this command behaves like ``tail -f`` and
         streams new output until interrupted with Ctrl-C.
@@ -1199,14 +1245,11 @@ def _local_invoke(
     workspace: str = _DEFAULT_WORKSPACE,
     base_url: str = _DEFAULT_BASE_URL,
 ) -> None:
-    """Invoke a NAT workflow locally via ``nat run`` and print the result.
+    """Invoke a local agent config once and print the result.
 
-    Injects the Inference Gateway URL into any LLMs that do not already have
-    ``base_url`` set before spawning the subprocess, so agent configs that omit
-    ``base_url`` route through the IGW automatically.
-
-    Delegates to the ``nat run`` subprocess so this command works against the
-    NAT CLI provided by the plugin's ``nvidia-nat-core`` dependency.
+    NAT workflow configs delegate to ``nat run``. Platform-owned
+    ``nemo-agents-spec-v1`` configs translate to an in-memory ``FabricConfig``
+    and use Fabric's one-shot runtime lifecycle.
     """
     import subprocess
 
@@ -1222,6 +1265,15 @@ def _local_invoke(
         typer.echo("Error: provide --input or --input-file.", err=True)
         raise typer.Exit(code=1)
 
+    config_dict = _load_yaml(agent_config)
+    config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+    if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        _local_fabric_invoke(config_dict, queries, base_dir=agent_config.parent)
+        return
+    if config_format != NAT_WORKFLOW_CONFIG_FORMAT:
+        typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
+        raise typer.Exit(code=1)
+
     with temp_injected_config(agent_config, workspace, base_url=base_url) as injected_path:
         for query in queries:
             cmd = ["nat", "run", "--config_file", injected_path.name, "--input", query]
@@ -1233,6 +1285,30 @@ def _local_invoke(
             except FileNotFoundError:
                 typer.echo("Error: 'nat' command not found.  Install nvidia-nat-core.", err=True)
                 raise typer.Exit(code=1)
+
+
+def _local_fabric_invoke(config: dict[str, Any], inputs: list[Any], *, base_dir: Path) -> None:
+    """Invoke a Platform-owned agent config through Fabric and print results."""
+    from nemo_agents_plugin.agent_config import AgentConfig
+    from nemo_agents_plugin.fabric.invocation import invoke_agent_config_once
+    from nemo_agents_plugin.fabric.runtime import FabricRuntimeExecutionError
+    from nemo_agents_plugin.fabric.translator import FabricTranslationError
+    from pydantic import ValidationError
+
+    try:
+        agent_config = AgentConfig.model_validate(config)
+        results = asyncio.run(invoke_agent_config_once(agent_config, inputs, base_dir=base_dir))
+    except (FabricRuntimeExecutionError, FabricTranslationError, ValidationError) as error:
+        typer.echo(f"Error: Fabric invocation failed: {error}", err=True)
+        raise typer.Exit(code=1) from error
+
+    failed = False
+    for result in results:
+        typer.echo(json.dumps(asdict(result), indent=2))
+        if result.status != "succeeded":
+            failed = True
+    if failed:
+        raise typer.Exit(code=1)
 
 
 def _platform_invoke(
@@ -1403,3 +1479,15 @@ def _contains_default_model_placeholder(value: Any) -> bool:
     if isinstance(value, list):
         return any(_contains_default_model_placeholder(v) for v in value)
     return False
+
+
+def _validate_platform_agent_config_for_cli(config: dict[str, Any], *, base_dir: Path) -> dict[str, Any]:
+    from nemo_agents_plugin.fabric.validation import FabricValidationError, validate_platform_agent_config
+
+    try:
+        validation_result = asyncio.run(validate_platform_agent_config(config, base_dir=base_dir))
+    except FabricValidationError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1) from error
+
+    return validation_result.agent_config.model_dump(exclude_none=True)

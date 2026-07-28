@@ -5,10 +5,11 @@ import { Button, Flex, Spinner, Stack, Tag, Text } from '@nvidia/foundations-rea
 import { FILE_FORMAT_TAG_COLOR } from '@studio/components/FileRowEditor/constants';
 import type { DataFileFormat } from '@studio/components/FileRowEditor/parse';
 import { Download, FileSpreadsheet, FolderOpen, Plus, Save } from 'lucide-react';
-import { type ChangeEvent, type FC, type RefObject } from 'react';
+import { type ChangeEvent, type FC, type ReactNode, type RefObject } from 'react';
 
 export interface FileHeaderProps {
   fileName: string;
+  slotFileName?: ReactNode;
   fileFormat: DataFileFormat;
   rowCount: number;
   columnCount: number;
@@ -42,6 +43,7 @@ export interface FileHeaderProps {
 /** Header summary + toolbar for the {@link FileRowEditor}: file identity, stats, actions. */
 export const FileHeader: FC<FileHeaderProps> = ({
   fileName,
+  slotFileName,
   fileFormat,
   rowCount,
   columnCount,
@@ -62,13 +64,15 @@ export const FileHeader: FC<FileHeaderProps> = ({
 }) => (
   <Flex align="center" gap="density-md" className="w-full shrink-0">
     <Flex align="center" justify="center" className="size-10 shrink-0 rounded-md bg-surface-sunken">
-      <FileSpreadsheet size={20} className="text-secondary" />
+      <FileSpreadsheet className="size-20 text-secondary" />
     </Flex>
     <Stack gap="density-xs" className="min-w-0 flex-1">
-      <Flex align="center" gap="density-sm">
-        <Text kind="title/xs" className="truncate">
-          {fileName}
-        </Text>
+      <Flex align="center" gap="density-sm" className="min-w-0">
+        {slotFileName ?? (
+          <Text kind="title/xs" className="truncate">
+            {fileName}
+          </Text>
+        )}
         <Tag kind="solid" color={FILE_FORMAT_TAG_COLOR[fileFormat]} readOnly>
           {fileFormat === 'unknown' ? 'FILE' : fileFormat.toUpperCase()}
         </Tag>

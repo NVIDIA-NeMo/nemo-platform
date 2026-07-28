@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any, ClassVar
 
 from nmp.common.entities.client import EntityBase
-from pydantic import AnyUrl, Field, field_validator
+from pydantic import AnyUrl, BaseModel, Field, field_validator, model_validator
 
 
 def _stringify_metadata(value: Any) -> Any:
@@ -32,6 +32,31 @@ def _stringify_metadata(value: Any) -> Any:
     if not isinstance(value, dict):
         return value
     return {key: val if isinstance(val, str) else json.dumps(val) for key, val in value.items()}
+
+
+class ParetoConfig(BaseModel):
+    """Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+    Metric ids use the same vocabulary as the evaluations list sort/filter fields — ``cost_usd``,
+    ``latency_ms``, or ``evaluators.<name>``. Defaults to cost (x) vs latency (y): both exist for
+    every group, so the chart always has something to render before anyone customizes it.
+    """
+
+    x_metric: str = Field(default="cost_usd", description="Metric plotted on the Pareto X axis.")
+    y_metric: str = Field(default="latency_ms", description="Metric plotted on the Pareto Y axis.")
+
+    @field_validator("x_metric", "y_metric")
+    @classmethod
+    def _validate_metric(cls, value: str) -> str:
+        """Restrict axes to metrics Studio can actually plot: the two fixed metrics or a dynamic
+        ``evaluators.<name>``. Evaluator names are customer-specific, so only the prefix is checked."""
+        if value in ("cost_usd", "latency_ms"):
+            return value
+        if value.startswith("evaluators.") and value != "evaluators.":
+            return value
+        raise ValueError(
+            f"Unsupported Pareto metric {value!r}; expected 'cost_usd', 'latency_ms', or 'evaluators.<name>'."
+        )
 
 
 class ExperimentGroup(EntityBase):
@@ -74,6 +99,21 @@ class ExperimentGroup(EntityBase):
         schema-on-read, so coerce anything that isn't a usable string to the default on read."""
         return value if isinstance(value, str) else "-created_at"
 
+    pareto: ParetoConfig = Field(
+        default_factory=ParetoConfig,
+        description=(
+            "Default X/Y metrics for this group's cost-vs-accuracy Pareto view. Defaults to cost (x) "
+            "vs latency (y) so the chart always renders before it's customized."
+        ),
+    )
+
+    @field_validator("pareto", mode="before")
+    @classmethod
+    def _pareto_fallback(cls, value: Any) -> Any:
+        """Schema-on-read: groups persisted before this field stored no ``pareto`` (or ``null``);
+        coerce anything that isn't a config mapping to the cost-vs-latency default."""
+        return value if isinstance(value, dict | ParetoConfig) else ParetoConfig()
+
     is_deleted: bool = Field(
         default=False,
         description=(
@@ -94,12 +134,29 @@ class Experiment(EntityBase):
 
     __entity_type__: ClassVar[str] = "experiment"
 
-    experiment_group_id: str = Field(
+    experiment_ids: list[str] = Field(
+        min_length=1,
         description=(
-            "Entity id of the owning ExperimentGroup. Required — every Experiment must belong to a Group. "
-            "Validated at create/update time; deleting a Group cascades to its Experiments."
+            "Entity ids of the ExperimentGroups this Experiment belongs to (>=1). An Experiment "
+            "always belongs to at least one group. Validated at create/update time. Deleting a Group "
+            "removes it from this set; an Experiment whose sole membership was that Group is deleted "
+            "with it, while one shared with another Group survives there."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_group_membership(cls, data: Any) -> Any:
+        """Schema-on-read: coerce a legacy single ``experiment_group_id`` into ``experiment_ids``.
+
+        Rows written before many-to-many membership stored a scalar ``experiment_group_id`` and no
+        ``experiment_ids``. Synthesize the one-element list so old rows read back unchanged, with no
+        data migration. When ``experiment_ids`` is already present it wins (a re-saved row drops the
+        stale scalar). Non-dict input passes through for pydantic to handle.
+        """
+        if isinstance(data, dict) and not data.get("experiment_ids") and data.get("experiment_group_id"):
+            return {**data, "experiment_ids": [data["experiment_group_id"]]}
+        return data
 
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")

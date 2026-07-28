@@ -2,20 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import asyncio
+import logging
 import tarfile
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 from httpx import AsyncClient
 from nemo_platform import AsyncNeMoPlatform
 from nmp.common.entities import ALL_WORKSPACES, DEFAULT_WORKSPACE
+from nmp.common.entities.client import EntityValidationError
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.endpoints import (
+    _format_create_job_conflict,
+    _format_entity_validation_error,
     get_platform_jobs_steps_list_filter,
 )
 from nmp.core.jobs.api.v2.jobs.schemas import (
@@ -24,7 +28,12 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobSortField,
     PlatformJobStepsListFilter,
 )
-from nmp.core.jobs.app.dispatcher import JobDispatcher
+from nmp.core.jobs.app.dispatcher import (
+    JobAlreadyExistsError,
+    JobDispatcher,
+    JobSecretValidationError,
+    StateTransitionConflictError,
+)
 from nmp.core.jobs.app.providers import ContainerSpec, GPUExecutionProvider, SubprocessExecutionProvider
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
@@ -231,6 +240,130 @@ async def test_create_job_with_invalid_project_name(test_client: AsyncClient):
     assert response.status_code == 422, (
         f"Expected 422 or 400 validation error, but got {response.status_code}. Response: {response.json()}"
     )
+
+
+@pytest.mark.asyncio
+async def test_create_job_validation_error_returns_actionable_message(
+    test_client: AsyncClient,
+    mock_dispatcher: JobDispatcher,
+):
+    raw_error = "EntityValidationError: field 'name' is required; internal=db_version"
+    with patch.object(mock_dispatcher, "create_job", new=AsyncMock(side_effect=EntityValidationError(raw_error))):
+        response = await test_client.post(
+            "/apis/jobs/v2/workspaces/default/jobs",
+            json={
+                "name": "bad-job",
+                "source": "test-source",
+                "spec": {},
+                "platform_spec": {
+                    "steps": [
+                        {
+                            "name": "valid-step",
+                            "executor": TestConstants.TEST_EXECUTOR.model_dump(mode="json"),
+                            "config": {},
+                        }
+                    ]
+                },
+            },
+        )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "Field 'name' is required" in detail
+    assert "EntityValidationError" not in detail
+    assert "db_version" not in detail
+
+
+def test_format_entity_validation_error_unknown_type_message():
+    raw_error = "field 'required_string_count' has an invalid value"
+    detail = _format_entity_validation_error(EntityValidationError(raw_error), resource="job")
+
+    assert detail == (
+        "Invalid job request. Field 'required_string_count' has an invalid value. Update the request and try again."
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_job_conflict_hides_raw_exception_message(
+    test_client: AsyncClient,
+    mock_dispatcher: JobDispatcher,
+):
+    raw_error = "ValueError: Job with name 'dup-job' already exists in workspace 'default'. internal=db_version"
+    with patch.object(mock_dispatcher, "create_job", new=AsyncMock(side_effect=JobAlreadyExistsError(raw_error))):
+        response = await test_client.post(
+            "/apis/jobs/v2/workspaces/default/jobs",
+            json={
+                "name": "dup-job",
+                "source": "test-source",
+                "spec": {},
+                "platform_spec": {
+                    "steps": [
+                        {
+                            "name": "valid-step",
+                            "executor": TestConstants.TEST_EXECUTOR.model_dump(mode="json"),
+                            "config": {},
+                        }
+                    ]
+                },
+            },
+        )
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert "Job 'dup-job' already exists in workspace 'default'" in detail
+    assert "ValueError" not in detail
+    assert "db_version" not in detail
+
+
+def test_create_job_conflict_does_not_classify_generic_message():
+    raw_error = "unrelated secret already exists; internal=db_version"
+    detail = _format_create_job_conflict(ValueError(raw_error), job_name="test-job", workspace="default")
+
+    assert "conflicts with existing platform state" in detail
+    assert "already exists" not in detail
+    assert "referenced secrets" not in detail
+    assert "db_version" not in detail
+
+
+def test_create_job_secret_validation_error_returns_safe_guidance():
+    raw_error = "Secret 'default/api-key' not found; internal=db_version"
+    detail = _format_create_job_conflict(JobSecretValidationError(raw_error), job_name="test-job", workspace="default")
+
+    assert "referenced secrets were not found or are not accessible" in detail
+    assert "api-key" not in detail
+    assert "db_version" not in detail
+
+
+@pytest.mark.asyncio
+async def test_create_job_conflict_sanitizes_log_fields(
+    test_client: AsyncClient,
+    mock_dispatcher: JobDispatcher,
+    caplog,
+):
+    with patch.object(mock_dispatcher, "create_job", new=AsyncMock(side_effect=ValueError("conflict"))):
+        with caplog.at_level(logging.INFO, logger="nmp.core.jobs.api.v2.jobs.endpoints"):
+            response = await test_client.post(
+                "/apis/jobs/v2/workspaces/default%0Aforged/jobs",
+                json={
+                    "name": "dup-job\r\nforged",
+                    "source": "test-source",
+                    "spec": {},
+                    "platform_spec": {
+                        "steps": [
+                            {
+                                "name": "valid-step",
+                                "executor": TestConstants.TEST_EXECUTOR.model_dump(mode="json"),
+                                "config": {},
+                            }
+                        ]
+                    },
+                },
+            )
+
+    assert response.status_code == 409
+    message = next(record.getMessage() for record in caplog.records if "Failed to create job" in record.msg)
+    assert "\r" not in message
+    assert "\n" not in message
 
 
 @pytest.mark.asyncio
@@ -1143,8 +1276,84 @@ async def test_get_platform_jobs_steps_list_filter(query_string, expected_checks
 async def test_get_platform_jobs_steps_list_filter_invalid():
     """Test that invalid status raises an error."""
     request = MockRequest("filter[status]=INVALID_STATUS")
-    with pytest.raises(HTTPException):
+    with pytest.raises(HTTPException) as exc_info:
         get_platform_jobs_steps_list_filter(request)  # type: ignore[arg-type]
+    assert exc_info.value.detail is not None
+    assert "filter.status" in str(exc_info.value.detail)
+    assert "Expected one or more of" in str(exc_info.value.detail)
+    assert "ValidationError" not in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_cancel_job_conflict_hides_internal_transition(
+    test_client: AsyncClient,
+    mock_dispatcher: JobDispatcher,
+):
+    raw_error = (
+        "Invalid status transition from PlatformJobStatus.RESUMING to PlatformJobStatus.CANCELLING for step step-id-123"
+    )
+    with patch.object(
+        mock_dispatcher, "cancel_job", new=AsyncMock(side_effect=StateTransitionConflictError(raw_error))
+    ):
+        response = await test_client.post("/apis/jobs/v2/workspaces/default/jobs/conflicted-job/cancel")
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert "Cannot cancel job 'conflicted-job'" in detail
+    assert "PlatformJobStatus" not in detail
+    assert "step-id-123" not in detail
+
+
+@pytest.mark.asyncio
+async def test_cancel_job_conflict_sanitizes_log_fields(
+    test_client: AsyncClient,
+    mock_dispatcher: JobDispatcher,
+    caplog,
+):
+    with patch.object(
+        mock_dispatcher,
+        "cancel_job",
+        new=AsyncMock(side_effect=StateTransitionConflictError("invalid transition")),
+    ):
+        with caplog.at_level(logging.INFO, logger="nmp.core.jobs.api.v2.jobs.endpoints"):
+            response = await test_client.post(
+                "/apis/jobs/v2/workspaces/default%0Aforged/jobs/conflicted-job%0D%0Aforged/cancel"
+            )
+
+    assert response.status_code == 409
+    message = next(record.getMessage() for record in caplog.records if "Cannot cancel job" in record.msg)
+    assert "\r" not in message
+    assert "\n" not in message
+
+
+@pytest.mark.asyncio
+async def test_update_job_step_conflict_sanitizes_log_fields(
+    test_client: AsyncClient,
+    mock_dispatcher: JobDispatcher,
+    caplog,
+):
+    with (
+        patch.object(
+            mock_dispatcher,
+            "get_current_job_step_by_name",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch.object(
+            mock_dispatcher,
+            "update_job_status_from_step",
+            new=AsyncMock(side_effect=StateTransitionConflictError("invalid transition")),
+        ),
+        caplog.at_level(logging.INFO, logger="nmp.core.jobs.api.v2.jobs.endpoints"),
+    ):
+        response = await test_client.patch(
+            "/apis/jobs/v2/workspaces/default/jobs/job%0Aforged/steps/step%0D%0Aforged/status",
+            json={"status": "pending"},
+        )
+
+    assert response.status_code == 409
+    message = next(record.getMessage() for record in caplog.records if "Cannot update job step" in record.msg)
+    assert "\r" not in message
+    assert "\n" not in message
 
 
 @pytest.mark.asyncio

@@ -5,8 +5,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
 
+from nemo_deployments_plugin.auth_proxy import build_auth_proxy_container
 from nemo_deployments_plugin.backends.labels import docker_volume_name
 from nemo_deployments_plugin.entities import Container, DeploymentConfig, DockerDeploymentConfig, VolumeMount
 from nemo_deployments_plugin.types import RestartPolicy
@@ -16,17 +18,77 @@ class DeploymentConfigError(ValueError):
     """Invalid deployment config for docker backend."""
 
 
+@dataclass(frozen=True)
+class DockerDeploymentPlan:
+    """The docker backend's view of a (possibly multi-container) DeploymentConfig.
+
+    - ``init_containers`` run to completion, in order, before the group starts.
+    - ``primary`` is the server container; it keeps the canonical deployment
+      container name, publishes host ports, and owns any GPUs.
+    - ``sidecars`` share the primary's network namespace (``network=container:``)
+      and volumes; they do not publish host ports or own GPUs.
+    """
+
+    primary: Container
+    init_containers: list[Container] = field(default_factory=list)
+    sidecars: list[Container] = field(default_factory=list)
+
+    @property
+    def is_multi_container(self) -> bool:
+        """True when the plan has any init containers or sidecars beyond the primary."""
+        return bool(self.init_containers or self.sidecars)
+
+
 def parse_docker_backend_config(backend_config: dict[str, Any]) -> DockerDeploymentConfig:
     docker_section = backend_config.get("docker") or {}
     return DockerDeploymentConfig.model_validate(docker_section)
 
 
+def build_docker_plan(config: DeploymentConfig) -> DockerDeploymentPlan:
+    """Split a DeploymentConfig into a docker orchestration plan.
+
+    The first container is the primary/server; any additional containers are
+    sidecars sharing the primary's network namespace and volumes (e.g. the LoRA
+    adapters sidecar). Init containers run to completion first.
+
+    Raises DeploymentConfigError for shapes the docker backend cannot honor.
+    """
+    if not config.containers:
+        raise DeploymentConfigError("docker backend requires at least one container")
+
+    primary = config.containers[0]
+    sidecars = list(config.containers[1:])
+
+    # Auth-proxy sidecar (no-op unless requested and platform auth is enabled).
+    # It shares the primary's netns, so the primary reaches it on localhost —
+    # the same loopback address the workload targets in k8s. Declares no ports.
+    auth_proxy = build_auth_proxy_container(config, docker=True)
+    if auth_proxy is not None:
+        sidecars.append(auth_proxy)
+
+    # Sidecars share the primary's netns, so they cannot publish their own host
+    # ports. (The primary owns the published ports for the whole group.)
+    for sidecar in sidecars:
+        if sidecar.ports:
+            raise DeploymentConfigError(
+                f"docker sidecar container '{sidecar.name}' may not declare ports; "
+                "it shares the primary container's network namespace"
+            )
+
+    return DockerDeploymentPlan(
+        primary=primary,
+        init_containers=list(config.init_containers),
+        sidecars=sidecars,
+    )
+
+
 def validate_config_for_docker(config: DeploymentConfig) -> Container:
-    if config.init_containers:
-        raise DeploymentConfigError("init_containers are not supported by the docker backend in v1")
-    if len(config.containers) != 1:
-        raise DeploymentConfigError(f"docker backend v1 supports exactly one container; got {len(config.containers)}")
-    return config.containers[0]
+    """Back-compat single-container accessor: returns the primary container.
+
+    Retained for callers/tests that only need the primary; use
+    :func:`build_docker_plan` for multi-container orchestration.
+    """
+    return build_docker_plan(config).primary
 
 
 def restart_policy_kwargs(restart_policy: RestartPolicy, backoff_limit: int) -> dict[str, Any]:

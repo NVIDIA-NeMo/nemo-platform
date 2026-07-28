@@ -39,6 +39,7 @@ from ...types.experiment_groups import (
     experiment_group_create_params,
     experiment_group_update_params,
 )
+from ...types.experiment_groups.pareto_config_param import ParetoConfigParam
 from ...types.experiment_groups.experiment_group_response import ExperimentGroupResponse
 from ...types.experiment_groups.experiment_group_filter_param import ExperimentGroupFilterParam
 from ..._exceptions import ConflictError
@@ -75,6 +76,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
+        pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -102,6 +104,13 @@ class ExperimentGroupsResource(SyncAPIResource):
           insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
+
+          pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+              Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+              `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+              latency (y): both exist for every group, so the chart always has something to
+              render before anyone customizes it.
 
           summary: Human- or agent-authored summary of the group's findings.
 
@@ -131,6 +140,7 @@ class ExperimentGroupsResource(SyncAPIResource):
                         "description": description,
                         "insight_id": insight_id,
                         "metadata": metadata,
+                        "pareto": pareto,
                         "summary": summary,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
@@ -195,6 +205,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
+        pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -221,6 +232,13 @@ class ExperimentGroupsResource(SyncAPIResource):
           insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
+
+          pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+              Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+              `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+              latency (y): both exist for every group, so the chart always has something to
+              render before anyone customizes it.
 
           summary: Human- or agent-authored summary of the group's findings.
 
@@ -251,6 +269,7 @@ class ExperimentGroupsResource(SyncAPIResource):
                     "description": description,
                     "insight_id": insight_id,
                     "metadata": metadata,
+                    "pareto": pareto,
                     "summary": summary,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
@@ -280,9 +299,9 @@ class ExperimentGroupsResource(SyncAPIResource):
         List Experiment Groups
 
         Args:
-          filter:
-              Filter experiment groups by name, or by a metadata key/value:
-              filter[metadata.<key>]=<value>.
+          filter: Filter experiment groups by name, insight_id, is_deleted, or a metadata
+              key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
+              soft-deleted groups; omit to see only live ones.
 
           page: Page number.
 
@@ -394,6 +413,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
+        pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -421,6 +441,13 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
           insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
+
+          pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+              Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+              `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+              latency (y): both exist for every group, so the chart always has something to
+              render before anyone customizes it.
 
           summary: Human- or agent-authored summary of the group's findings.
 
@@ -450,6 +477,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                         "description": description,
                         "insight_id": insight_id,
                         "metadata": metadata,
+                        "pareto": pareto,
                         "summary": summary,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
@@ -514,6 +542,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
+        pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -540,6 +569,13 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
           insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
+
+          pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+              Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+              `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+              latency (y): both exist for every group, so the chart always has something to
+              render before anyone customizes it.
 
           summary: Human- or agent-authored summary of the group's findings.
 
@@ -570,6 +606,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                     "description": description,
                     "insight_id": insight_id,
                     "metadata": metadata,
+                    "pareto": pareto,
                     "summary": summary,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
@@ -599,9 +636,9 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         List Experiment Groups
 
         Args:
-          filter:
-              Filter experiment groups by name, or by a metadata key/value:
-              filter[metadata.<key>]=<value>.
+          filter: Filter experiment groups by name, insight_id, is_deleted, or a metadata
+              key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
+              soft-deleted groups; omit to see only live ones.
 
           page: Page number.
 

@@ -11,6 +11,12 @@ export const capitalize = (str: string) => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
+/** Trim a string, returning undefined when it is empty or whitespace-only. */
+export const trimToUndefined = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+};
+
 /**
  * Formats a snake_case key into a human-readable label.
  * @param key - The snake_case key to format (e.g., "prompt_tokens")

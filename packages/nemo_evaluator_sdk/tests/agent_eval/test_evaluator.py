@@ -16,7 +16,11 @@ from nemo_evaluator_sdk.agent_eval.evaluator import (
     _trial_from_sample,
 )
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
-from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
+from nemo_evaluator_sdk.agent_eval.scores import (
+    AgentEvalDiagnosticSeverity,
+    AgentEvalScoreStatus,
+    AgentEvalTaskScore,
+)
 from nemo_evaluator_sdk.agent_eval.tasks import (
     AgentEvalRunConfig,
     AgentEvalTask,
@@ -27,7 +31,13 @@ from nemo_evaluator_sdk.agent_eval.tasks import (
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.agent_inference import AgentInferenceContext, AgentInvocationResult, AgentInvocationStatus
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
-from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+from nemo_evaluator_sdk.metrics.protocol import (
+    MetricDiagnostic,
+    MetricInput,
+    MetricOutput,
+    MetricOutputSpec,
+    MetricResult,
+)
 from nemo_evaluator_sdk.values import (
     Agent,
     GenericAgent,
@@ -194,6 +204,23 @@ class _FailingMetric:
 
     async def compute_scores(self, input: MetricInput) -> MetricResult:
         raise RuntimeError("missing final_state evidence")
+
+
+class _DiagnosticMetric:
+    @property
+    def type(self) -> str:
+        return "diagnostic_metric"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        return MetricResult(
+            outputs=[MetricOutput(name="score", value=0.5)],
+            diagnostics=[
+                MetricDiagnostic(message="criterion C-001 passed", details={"verdict": "pass", "id": "C-001"})
+            ],
+        )
 
 
 def _task(metric: Any | None = None, *, task_id: str = "task-1") -> AgentEvalTask:
@@ -422,6 +449,21 @@ async def test_metric_failure_records_failed_score_and_does_not_stop_other_metri
     assert completed.outputs[0].value == 0.25
     assert result.summary.metric_coverage["failing_metric"]["score"].failed == 1
     assert result.summary.metric_coverage["other_metric"]["quality"].scored == 1
+
+
+@pytest.mark.asyncio
+async def test_success_metric_diagnostics_are_persisted() -> None:
+    # A successful metric's own diagnostics (e.g. per-criterion judge verdicts) must reach the score:
+    # previously only the failure path recorded diagnostics and the success path dropped them.
+    result = await AgentEvaluator().run(tasks=[_task(_DiagnosticMetric())], trials=[_candidate_trial()])
+
+    (score,) = result.scores
+    assert score.status.value == "completed"
+    (diagnostic,) = score.diagnostics
+    assert diagnostic.severity == AgentEvalDiagnosticSeverity.INFO
+    assert diagnostic.message == "criterion C-001 passed"
+    assert diagnostic.source == "diagnostic_metric"
+    assert diagnostic.details == {"verdict": "pass", "id": "C-001"}
 
 
 @pytest.mark.asyncio

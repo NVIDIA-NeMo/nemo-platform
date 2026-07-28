@@ -62,7 +62,7 @@ const renderDataView = () =>
         ),
       },
       {
-        path: ROUTES.workspace.evaluationTraceDetail,
+        path: ROUTES.workspace.evaluationSessionDetail,
         element: <div data-testid="trace-detail-route" />,
       },
     ],
@@ -126,7 +126,7 @@ describe('EvaluationSessionsDataView', () => {
     await waitFor(() => expect(sessionRequestModes).toEqual(['preview', null]));
   });
 
-  it('navigates to the experiment trace route when a row is clicked', async () => {
+  it('navigates to the experiment session route with the trace selected', async () => {
     const user = userEvent.setup();
     renderDataView();
 

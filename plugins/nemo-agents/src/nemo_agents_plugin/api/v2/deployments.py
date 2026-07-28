@@ -18,18 +18,23 @@ from __future__ import annotations
 
 import logging
 import secrets
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_agents_plugin.agent_config_formats import AgentConfigFormatError, resolve_agent_config_for_deployment
 from nemo_agents_plugin.api.v2._perms import DeploymentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.entities import Agent, AgentDeployment, is_container_deployment_mode
+from nemo_agents_plugin.entities import (
+    Agent,
+    AgentDeployment,
+    is_container_deployment_mode,
+)
 from nemo_agents_plugin.schema import (
     CreateDeploymentRequest,
     DeploymentFilter,
     DeploymentPage,
 )
-from nemo_agents_plugin.utils import inject_default_model, inject_gateway_url, inject_nemo_trace_fields
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
@@ -73,10 +78,9 @@ async def create_deployment(
     # 2. Build deployment name (auto-generate if not provided)
     deployment_name = body.name or f"{body.agent}-{secrets.token_hex(4)}"
 
-    # 3. Deep-copy config and inject IGW URL, telemetry fields, and default model.
-    resolved_config = inject_gateway_url(agent.config, workspace)
-    resolved_config = inject_default_model(resolved_config)
-    inject_nemo_trace_fields(resolved_config, workspace=workspace, agent_name=body.agent)
+    # 3. Resolve deployment-time config. NAT workflows need legacy injection;
+    # Platform-owned agent specs stay strict and are translated by the runner.
+    resolved_config = _resolve_deployment_config(agent, workspace=workspace)
 
     # 4. Create the entity with status "pending"
     deployment = AgentDeployment(
@@ -101,6 +105,18 @@ async def create_deployment(
         raise HTTPException(status_code=500, detail="Failed to create deployment.") from exc
 
     return saved
+
+
+def _resolve_deployment_config(agent: Agent, *, workspace: str) -> dict[str, Any]:
+    try:
+        return resolve_agent_config_for_deployment(
+            agent.config_format,
+            agent.config,
+            workspace=workspace,
+            agent_name=agent.name,
+        )
+    except AgentConfigFormatError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/deployments", response_model=DeploymentPage, tags=["Agent Deployments"])

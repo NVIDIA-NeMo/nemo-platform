@@ -8,7 +8,7 @@ paths:
       tags:
       - Agents
       summary: Create Agent
-      description: Create a new agent from a NAT workflow config.
+      description: Create a new agent from an agent config.
       operationId: create_agent_apis_agents_v2_workspaces__workspace__agents_post
       parameters:
       - name: workspace
@@ -3384,7 +3384,22 @@ components:
         optimize_config:
           type: string
           title: Optimize Config
-          description: Path to the NAT optimization YAML config file.
+          description: Path to the NAT optimization YAML config file, interpreted
+            relative to the downloaded fileset when ``optimize_config_fileset`` is
+            set.
+        optimize_config_fileset:
+          title: Optimize Config Fileset
+          description: Optional fileset (``name`` or ``workspace/name``) that pre-stages
+            the optimize YAML and its sibling inputs for remote submissions; leave
+            unset for local CLI runs where ``optimize_config`` is a real path.
+          type: string
+        output:
+          title: Output
+          description: "Where to write optimizer outputs \u2014 a local directory\
+            \ (path-shaped: '/', './', '../', '~/') or a NeMo Platform fileset ('name'\
+            \ or 'workspace/name', auto-created), defaulting to the platform-persistent\
+            \ results dir when unset."
+          type: string
         workspace:
           type: string
           title: Workspace
@@ -3408,9 +3423,13 @@ components:
         \ (sweeps don't affect the remote agent \u2014 see\n        module docstring).\
         \  When ``None`` the optimize config is\n        expected to include an inline\
         \ agent workflow.\n    optimize_config: Path to the NAT optimization YAML\
-        \ config file.\n        The output path is controlled by ``optimizer.output_path``\n\
-        \        inside the YAML.\n    workspace: NeMo Platform workspace used to\
-        \ scope the agent fetch and the\n        gateway URL injection."
+        \ config file.\n    optimize_config_fileset: Optional fileset containing the\
+        \ optimization\n        YAML and its sibling inputs.\n    output: Local directory\
+        \ or fileset where optimizer artifacts are\n        written. The relative\
+        \ suffixes from ``eval.general.output_dir``\n        and ``optimizer.output_path``\
+        \ inside the YAML are preserved under\n        this output base.\n    workspace:\
+        \ NeMo Platform workspace used to scope the agent fetch and the\n        gateway\
+        \ URL injection, and as the default workspace for bare\n        fileset references."
     OptimizeJob:
       properties:
         id:

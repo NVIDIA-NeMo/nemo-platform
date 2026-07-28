@@ -5,6 +5,8 @@
 
 from nmp.common.controller.controller import (
     Controller,
+    Heartbeat,
+    HeartbeatMixin,
     Loop,
     LoopWaiter,
     ProvidesLastExecutionTime,
@@ -16,6 +18,8 @@ from nmp.common.controller.controller_manager import ControllerManager
 __all__ = [
     "Controller",
     "ControllerManager",
+    "Heartbeat",
+    "HeartbeatMixin",
     "Loop",
     "LoopWaiter",
     "ProvidesLastExecutionTime",

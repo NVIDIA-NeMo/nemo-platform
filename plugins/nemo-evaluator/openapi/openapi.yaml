@@ -1634,6 +1634,7 @@ components:
           - $ref: '#/components/schemas/AgentTargetInput'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
             an agent runner (e.g. Codex CLI). Endpoint targets carry their own request
@@ -1664,19 +1665,30 @@ components:
           title: Benchmark
           description: Benchmark metadata recorded with the run.
         tasks:
-          items:
-            $ref: '#/components/schemas/AgentEvalTaskInput'
-          type: array
-          minItems: 1
+          anyOf:
+          - $ref: '#/components/schemas/TasksetRef'
+          - items:
+              $ref: '#/components/schemas/AgentEvalTaskInput'
+            type: array
           title: Tasks
-          description: Tasks to evaluate; at least one is required.
+          description: 'Tasks to evaluate: an inline list (at least one) or a reference
+            to a stored taskset.'
       additionalProperties: false
       type: object
       required:
       - tasks
       title: AgentEvalInputSpec
-      description: 'Submitter-facing agent-evaluation input: tasks whose metrics may
-        be inline or references.'
+      description: 'Submitter-facing agent-evaluation input.
+
+
+        ``tasks`` is either an inline list of tasks (whose metrics may be inline or
+        references) or a
+
+        :class:`TasksetRef` naming a stored taskset whose member tasks are loaded
+        and expanded during spec
+
+        resolution. Either way it hydrates to the canonical ``AgentEvalSpec.tasks``
+        list.'
     AgentEvalResult:
       properties:
         id:
@@ -1786,6 +1798,7 @@ components:
           - $ref: '#/components/schemas/AgentTargetOutput'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
             an agent runner (e.g. Codex CLI). Endpoint targets carry their own request
@@ -3121,6 +3134,17 @@ components:
           description: Read JSON SSE data frames instead of a single JSON response
             body.
           default: false
+        response_aggregation:
+          type: string
+          enum:
+          - last
+          - concat
+          title: Response Aggregation
+          description: How to combine matched data-frame values when 'stream' is true.
+            'last' keeps the final matched value (endpoints that emit a full snapshot
+            per frame); 'concat' joins matched string values in arrival order (token-delta
+            endpoints).
+          default: last
       additionalProperties: false
       type: object
       required:
@@ -3140,6 +3164,83 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    HarborRunnerTarget:
+      properties:
+        kind:
+          type: string
+          const: harbor
+          title: Kind
+          default: harbor
+        agent_name:
+          title: Agent Name
+          description: Built-in Harbor agent to run (e.g. 'oracle'). Ignored when
+            `agent_import_path` is set.
+          default: oracle
+          type: string
+        agent_import_path:
+          title: Agent Import Path
+          description: Custom Harbor agent import path (e.g. 'harbor_wrapper:WrappedAgent');
+            overrides `agent_name`. The module must already be importable in the run
+            environment.
+          type: string
+        agent_model_name:
+          title: Agent Model Name
+          description: Optional model slug passed to the Harbor agent.
+          type: string
+        n_attempts:
+          type: integer
+          minimum: 1.0
+          title: N Attempts
+          description: Number of attempts Harbor runs per task.
+          default: 1
+        n_concurrent_trials:
+          type: integer
+          minimum: 1.0
+          title: N Concurrent Trials
+          description: Maximum concurrent Harbor trials.
+          default: 4
+        max_retries:
+          type: integer
+          minimum: 0.0
+          title: Max Retries
+          description: Harbor per-trial retry attempts on transient failures.
+          default: 0
+        artifacts:
+          items:
+            type: string
+          type: array
+          title: Artifacts
+          description: Harbor artifact sources to collect per trial.
+        trace_dir:
+          title: Trace Dir
+          description: Container path of agent traces to collect as the 'traces' artifact
+            (e.g. '/app/traces').
+          type: string
+        reward_key:
+          type: string
+          title: Reward Key
+          description: Key read from Harbor's per-trial rewards mapping to score against.
+          default: reward
+      additionalProperties: false
+      type: object
+      title: HarborRunnerTarget
+      description: 'Generate trials by driving a Harbor job through the SDK''s :class:`HarborAgentTaskRunner`.
+
+
+        Runs in *native* mode: Harbor builds and runs its own ``JobConfig`` (executing
+        each task in a
+
+        Docker environment, retrying, and writing a per-trial results tree), then
+        the runtime adapts that
+
+        tree into SDK trials. The dataset Harbor runs against is recovered from each
+        task''s
+
+        ``harbor_dataset_path`` metadata, so it is not configured here. The runtime-only
+        jobs directory is
+
+        injected from the job''s storage at run time; only the harness-selection and
+        run knobs live here.'
     HelloResponse:
       properties:
         message:
@@ -3642,9 +3743,20 @@ components:
         response_path:
           type: string
           title: Response Path
-          description: JSONPath applied to data-channel payloads; the last match is
-            the final output.
+          description: JSONPath applied to each data-channel payload to extract its
+            emitted value.
           default: $.value
+        response_aggregation:
+          type: string
+          enum:
+          - last
+          - concat
+          title: Response Aggregation
+          description: How to combine matched data-frame values into the final output.
+            NAT /generate/full emits token-level deltas, so 'concat' reconstructs
+            the complete response; 'last' keeps only the final matched value (for
+            endpoints that emit a full snapshot per frame).
+          default: concat
       additionalProperties: false
       type: object
       title: NatAgentConfig
@@ -4586,6 +4698,19 @@ components:
       description: "Create/replace body for a stored taskset (the name comes from\
         \ the path).\n\nThe authorable subset of :class:`Taskset` \u2014 minus server-owned\
         \ fields (id, name, workspace,\ntimestamps)."
+    TasksetRef:
+      type: string
+      pattern: ^[\w\-.]+(/[\w\-.]+)?$
+      title: TasksetRef
+      description: 'Reference to a persisted taskset (format: ``workspace/name`` or
+        ``name``).
+
+
+        Same shape and charset as :class:`TaskRef`. Lets an evaluation reference a
+        stored taskset in place
+
+        of an inline task list; the taskset''s member tasks are loaded and expanded
+        during spec resolution.'
     TasksetSort:
       type: string
       enum:

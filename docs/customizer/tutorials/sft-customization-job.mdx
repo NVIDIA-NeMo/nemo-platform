@@ -5,8 +5,6 @@ description: ""
 
 [Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/sft-customization-job.ipynb)
 
-# Full SFT Customization
-
 Learn how to fine-tune all model weights using supervised fine-tuning (SFT) to customize LLM behavior for your specific tasks.
 
 ## About
@@ -27,7 +25,7 @@ Supervised Fine-Tuning (SFT) customizes model behavior, injects new knowledge, a
 - ✅ Can fundamentally change model behavior
 - ✅ Best for significant domain shifts or specialized tasks
 - ❌ Requires substantial GPU resources (4-8x more than LoRA)
-- ❌ Produces full model weights (~140GB for Llama 70B)
+- ❌ Produces a full BF16 checkpoint (~140 GB for Llama 70B); peak job disk usage can reach approximately 3× the downloaded base checkpoint size
 - ❌ Longer training time
 
 **LoRA** trains only ~1% of weights by adding thin matrices to existing weights:
@@ -52,6 +50,7 @@ Before starting this tutorial, ensure you have:
 
 1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
 2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
+3. **At least one GPU with CUDA 13+**
 
 ## Quick Start
 
@@ -224,40 +223,44 @@ print(json.dumps([f.model_dump() for f in client.files.list(fileset=DATASET_NAME
 
 ### 4. Secrets Setup
 
-If you plan to use NGC or HuggingFace models, you will need to configure authentication:
+If you plan to use NGC or Hugging Face models, you will need to configure authentication:
 
 - **NGC models** (`ngc://` URIs): Requires NGC API key
-- **HuggingFace models** (`hf://` URIs): Requires HF token for gated/private models
+- **Hugging Face models** (`hf://` URIs): Requires HF token for gated/private models
 
 
 Configure these as secrets in your platform. Refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets) for detailed instructions.
 
 Get your credentials to access base models:
 - [NGC API Key](https://ngc.nvidia.com/) (Setup → Generate API Key)
-- [HuggingFace Token](https://huggingface.co/settings/tokens) (Create token with Read access)
+- [Hugging Face Token](https://huggingface.co/settings/tokens) (Create token with Read access)
 
 
 ---
 
 #### Quick Setup Example
 
-In this tutorial we are going to work with [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model from HuggingFace. Ensure that you have sufficient permissions to download the model. If you cannot access the files on the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) Hugging Face page, request access.
+In this tutorial we are going to work with the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model from Hugging Face. Ensure that you have sufficient permissions to download the model. If you cannot access the files on the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) Hugging Face page, request access.
 
-**HuggingFace Authentication:**
-- For gated models (Llama, Gemma), you must provide a HuggingFace token via the `token_secret` parameter
-- Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens) (requires Read access)
-- Accept the model's terms on the HuggingFace model page before using it. Example: [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main)
+**Hugging Face Authentication:**
+- For gated models (Llama, Gemma), you must provide a Hugging Face token via the `token_secret` parameter
+- Get your token from [Hugging Face Settings](https://huggingface.co/settings/tokens) (requires Read access)
+- Accept the model's terms on the Hugging Face model page before using it. Example: [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main)
 - For public models, you can omit the `token_secret` parameter when creating a fileset for model in the next step
 
 ```python
-# Export the HF_TOKEN and NGC_API_KEY environment variables if they are not already set
+# Export the HF_TOKEN and NGC_API_KEY environment variables if they are not already set.
+# This tutorial's default model (meta-llama/Llama-3.2-1B-Instruct) is gated and requires HF_TOKEN.
 HF_TOKEN = os.getenv("HF_TOKEN")
 NGC_API_KEY = os.getenv("NGC_API_KEY")
+if not HF_TOKEN:
+    raise RuntimeError(
+        "Set HF_TOKEN before running this tutorial. "
+        "The default model meta-llama/Llama-3.2-1B-Instruct is gated."
+    )
 
 
-def create_or_get_secret(name: str, value: str | None, label: str):
-    if not value:
-        raise ValueError(f"{label} is not set")
+def create_or_get_secret(name: str, value: str, label: str):
     try:
         secret = client.secrets.create(
             name=name,
@@ -271,7 +274,7 @@ def create_or_get_secret(name: str, value: str | None, label: str):
         return client.secrets.retrieve(name=name, workspace="default")
 
 
-# Create HuggingFace token secret
+# Create Hugging Face token secret
 hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN")
 print("HF_TOKEN secret:")
 print(hf_secret.model_dump_json(indent=2))
@@ -283,33 +286,33 @@ print(hf_secret.model_dump_json(indent=2))
 
 ### 5. Create Base Model FileSet and Model Entity
 
-Create a fileset pointing to [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model in HuggingFace that we will train with SFT. Then create a Model Entity that references this fileset. Model downloading will take place at training time.
+Create a fileset pointing to the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model in Hugging Face that we will train with SFT. Then create a Model Entity that references this fileset. Model downloading will take place at training time.
 
-Note: for public models, you can omit the `token_secret` parameter when creating a model fileset.
+This tutorial's default model is gated, so the fileset includes `token_secret=hf_secret.name`. If you substitute a public model, you can omit `token_secret`.
 
 ```python
 import time
 
-# Create a fileset pointing to the desired HuggingFace model
+# Create a fileset pointing to the desired Hugging Face model
 from nemo_platform.types.files import HuggingfaceStorageConfigParam
 
 HF_REPO_ID = "meta-llama/Llama-3.2-1B-Instruct"
 MODEL_NAME = "llama-3-2-1b-base"
 
-# Ensure you have a HuggingFace token secret created
+# Ensure you have a Hugging Face token secret created
 try:
     base_model_fs = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
-        description="Llama 3.2 1B base model from HuggingFace",
+        description="Llama 3.2 1B base model from Hugging Face",
         storage=HuggingfaceStorageConfigParam(
             type="huggingface",
             # repo_id is the full model name from Hugging Face
             repo_id=HF_REPO_ID,
             repo_type="model",
             # we use the secret created in the previous step
-            token_secret=hf_secret.name
-        )
+            token_secret=hf_secret.name,
+        ),
     )
     print(f"Created base model fileset: {MODEL_NAME}")
 except ConflictError:
@@ -355,7 +358,7 @@ while not base_model.spec:
 print(f"ModelSpec populated: {base_model.spec}")
 ```
 
-### 6. Create SFT Finetuning Job
+### 6. Create SFT Fine-Tuning Job
 Create a customization job to fine-tune all model weights using the **Automodel** backend and `AutomodelJobInput`.
 
 **GPU Requirements:**
@@ -655,7 +658,7 @@ For detailed information on all available hyperparameters, recommended values, a
 
 **Job fails during model download:**
 - Verify authentication secrets are configured (refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets))
-- For gated HuggingFace models (Llama, Gemma), accept the license on the model page (for example, [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct))
+- For gated Hugging Face models (Llama, Gemma), accept the license on the model page (for example, [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct))
 - Confirm the model fileset uses `token_secret=hf_secret.name` for gated models
 - Check `AutomodelJobInput` references use the `workspace/name` format: `model=f"default/{MODEL_NAME}"` and `dataset={"training": f"default/{DATASET_NAME}"}` (for example, `default/llama-3-2-1b-base`, `default/sft-dataset`)
 - Verify the model entity points at the fileset: `fileset=f"default/{MODEL_NAME}"`

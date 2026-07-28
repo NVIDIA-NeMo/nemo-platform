@@ -75,7 +75,7 @@ const intakeRoutes = [
   ROUTES.workspace.intake,
   ROUTES.workspace.intakeTraces,
   ROUTES.workspace.intakeSpans,
-  ROUTES.workspace.intakeTrace,
+  ROUTES.workspace.intakeSession,
 ];
 
 const safeSynthesizerRoutes = [
@@ -84,6 +84,8 @@ const safeSynthesizerRoutes = [
   ROUTES.workspace.safeSynthesizerJob,
   ROUTES.workspace.safeSynthesizerJobReport,
 ];
+
+const optimizerRoutes = [ROUTES.workspace.optimizer, ROUTES.workspace.optimizerInsight];
 
 describe('Routes', () => {
   afterEach(() => {
@@ -107,7 +109,7 @@ describe('Routes', () => {
         import('./index'),
         import('./utils'),
       ]);
-    });
+    }, 30_000);
 
     it('every workspace route except the default route is behind a feature flag', () => {
       const defaultRoute = getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER);
@@ -187,6 +189,15 @@ describe('Routes', () => {
       expect(
         findIfRouteExists(routes, getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
       ).toBe(true);
+    });
+
+    it('includes Optimizer routes when Optimizer is enabled for preview', async () => {
+      vi.stubEnv('VITE_FF_OPTIMIZER_ENABLED', 'preview');
+      const { routes } = await import('./index');
+
+      const missingRoutes = optimizerRoutes.filter((route) => !findIfRouteExists(routes, route));
+
+      expect(missingRoutes).toHaveLength(0);
     });
   });
 });

@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from urllib.parse import urlsplit
 
 import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'fileset' workspace-seed handler
@@ -33,22 +33,26 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    HarborRunnerTarget,
     ModelTarget,
     Target,
 )
 from nemo_evaluator.jobs.metric_resolution import resolve_metrics_to_inline, to_runtime_bundle
 from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
+from nemo_evaluator.task_refs import resolve_agent_eval_tasks
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.persistence import persist_run
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import RunConfigOnline, RunConfigOnlineModel
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
@@ -135,8 +139,15 @@ class AgentEvalJob(NemoJob):
             if isinstance(input_spec, AgentEvalInputSpec)
             else AgentEvalInputSpec.model_validate_json(input_spec.model_dump_json())
         )
+        entity_client = cast(EntityClient | None, entity_client)
+        # A `tasks` taskset reference is loaded and expanded into inline task DTOs first, so the
+        # metric-ref resolution below is identical whether the tasks were submitted inline or via a
+        # stored taskset.
+        task_inputs = await resolve_agent_eval_tasks(
+            submit_spec.tasks, workspace=workspace, entity_client=entity_client
+        )
         resolved_tasks: list[AgentEvalTaskSpec] = []
-        for task in submit_spec.tasks:
+        for task in task_inputs:
             metrics = await resolve_metrics_to_inline(
                 task.metrics,
                 workspace=workspace,
@@ -263,6 +274,22 @@ class AgentEvalJob(NemoJob):
                 work_root=ctx.storage.persistent / "fabric",
             )
             return fabric_runtime, None, None
+        if isinstance(target, HarborRunnerTarget):
+            harbor_runtime = HarborAgentTaskRunner(
+                config=HarborRuntimeConfig(
+                    jobs_dir=ctx.storage.persistent / "harbor",
+                    agent_name=target.agent_name,
+                    agent_import_path=target.agent_import_path,
+                    agent_model_name=target.agent_model_name,
+                    n_attempts=target.n_attempts,
+                    n_concurrent_trials=target.n_concurrent_trials,
+                    max_retries=target.max_retries,
+                    artifacts=target.artifacts,
+                    trace_dir=target.trace_dir,
+                    reward_key=target.reward_key,
+                )
+            )
+            return harbor_runtime, None, None
         return None, None, None
 
     @staticmethod

@@ -447,48 +447,20 @@ jobs:
           export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
           uv run --frozen pytest \
             e2e/test_jobs.py::test_job_using_secret_environment_variable \
+            e2e/test_models_deployments_plugin.py::test_generic_model_deployment_lifecycle \
             -v \
             --run-e2e \
             --no-cov \
             --junitxml=report-kubernetes-smoke.xml
 
-      - name: Collect Kubernetes logs
+      - name: Finalize Kind e2e
         if: always()
-        shell: bash
-        run: e2e/k8s/scripts/collect_k8s_logs.sh
-
-      - name: Disk usage summary
-        if: always()
-        shell: bash
-        run: |
-          echo "=== Host disk ==="
-          df -h /
-          echo "=== Docker system ==="
-          docker system df
-          echo "=== kind node storage ==="
-          for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
-            echo "--- ${node} ---"
-            docker exec "${node}" sh -c "du -sh /var/lib/containerd /var/lib/kubelet /var/log 2>/dev/null | sort -h" || true
-          done
-
-      - name: Upload Kubernetes artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/finalize-kind-e2e
         with:
-          name: kind-smoke-kubernetes-artifacts
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            k8s-logs/
-            report-kubernetes-smoke.xml
-            ${{ runner.temp }}/e2e-services-logs/
-
-      - name: Delete kind cluster
-        if: always()
-        shell: bash
-        run: |
-          docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
-          kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
+          kind-cluster-name: ${{ env.KIND_CLUSTER_NAME }}
+          artifact-name: kind-smoke-kubernetes-artifacts
+          junit-report: report-kubernetes-smoke.xml
+          services-log-dir: ${{ runner.temp }}/e2e-services-logs
 
   kind-cpu-e2e:
     name: Kind CPU e2e
@@ -542,43 +514,14 @@ jobs:
             --no-cov \
             --junitxml=report-kubernetes-e2e.xml
 
-      - name: Collect Kubernetes logs
+      - name: Finalize Kind e2e
         if: always()
-        shell: bash
-        run: e2e/k8s/scripts/collect_k8s_logs.sh
-
-      - name: Disk usage summary
-        if: always()
-        shell: bash
-        run: |
-          echo "=== Host disk ==="
-          df -h /
-          echo "=== Docker system ==="
-          docker system df
-          echo "=== kind node storage ==="
-          for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
-            echo "--- ${node} ---"
-            docker exec "${node}" sh -c "du -sh /var/lib/containerd /var/lib/kubelet /var/log 2>/dev/null | sort -h" || true
-          done
-
-      - name: Upload Kubernetes artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/finalize-kind-e2e
         with:
-          name: kind-e2e-kubernetes-artifacts
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            k8s-logs/
-            report-kubernetes-e2e.xml
-            ${{ runner.temp }}/e2e-services-logs/
-
-      - name: Delete kind cluster
-        if: always()
-        shell: bash
-        run: |
-          docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
-          kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
+          kind-cluster-name: ${{ env.KIND_CLUSTER_NAME }}
+          artifact-name: kind-e2e-kubernetes-artifacts
+          junit-report: report-kubernetes-e2e.xml
+          services-log-dir: ${{ runner.temp }}/e2e-services-logs
 
   helm-lint:
     name: Helm lint

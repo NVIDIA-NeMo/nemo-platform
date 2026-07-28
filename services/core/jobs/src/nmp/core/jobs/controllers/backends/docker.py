@@ -65,6 +65,7 @@ from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.observability import start_span_with_ctx
 from nmp.common.resources import SharedResourceManager
 from nmp.core.jobs.app.constants import (
+    DEFAULT_VOLUME_PERMISSIONS_IMAGE,
     JOB_ATTEMPT_ID_LABEL,
     JOB_CONTROLLER_INSTANCE_ID_LABEL,
     JOB_EXECUTION_BACKEND_LABEL,
@@ -89,7 +90,7 @@ from nmp.core.jobs.app.providers import (
     GPUExecutionProvider,
 )
 from nmp.core.jobs.controllers.backends.base import (
-    JOB_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
     WORKLOAD_IDENTITY_VOLUME_PATH,
@@ -138,8 +139,6 @@ def k8s_shm_quantity_to_docker(quantity: str) -> str:
         return q
     return q
 
-
-DEFAULT_VOLUME_PERMISSIONS_IMAGE = "busybox"
 
 NEMO_JOBS_IMAGE_REGISTRY_PASSWORD = os.getenv("NEMO_JOBS_IMAGE_REGISTRY_PASSWORD")
 NEMO_JOBS_IMAGE_REGISTRY = os.getenv("NEMO_JOBS_IMAGE_REGISTRY")
@@ -951,8 +950,8 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 EPHEMERAL_TASK_STORAGE_PATH_ENVVAR: DEFAULT_TASK_STORAGE_PATH,
                 CONFIG_TASK_STORAGE_PATH_ENVVAR: DEFAULT_CONFIG_STORAGE_PATH,
                 NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR: DEFAULT_NEMO_JOB_STEP_CONFIG_FILE_PATH,
-                # Endpoint used by jobs-launcher to upload task stdout/stderr logs.
-                JOB_LOGS_ENDPOINT_ENVVAR: get_logs_endpoint_from_fileset(
+                # Private env vars for jobs-launcher to export captured logs.
+                NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR: get_logs_endpoint_from_fileset(
                     platform_config,
                     step.workspace,
                     step.fileset,

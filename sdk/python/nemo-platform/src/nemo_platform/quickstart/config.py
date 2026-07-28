@@ -18,6 +18,33 @@ from typing_extensions import Self
 from ._registry import image_registry_host
 from .gpu_config import parse_comma_separated_non_negative_integers
 
+
+def _try_secure_chmod_dir(path: Path) -> None:
+    """Best-effort owner-only permissions on a directory (e.g. ``/tmp`` may reject chmod)."""
+    try:
+        os.chmod(path, stat.S_IRWXU)  # 700
+    except PermissionError:
+        pass
+
+
+def _write_secure_yaml(path: Path, config_data: dict) -> None:
+    """Write YAML atomically with owner read/write permissions (600).
+
+    File permission failures remain fatal so credentials are never left world-readable.
+    """
+    mode = stat.S_IRUSR | stat.S_IWUSR  # 600
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        with os.fdopen(fd, "w") as f:
+            fd = -1
+            yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+    # Existing files keep prior mode under O_TRUNC; enforce 600 after write.
+    os.chmod(path, mode)
+
+
 InferenceProviderType = Literal["nvidia-build", "host-gpu"]
 
 # Registry and repo placeholder for SDK-stamped nightly/milestone tags.
@@ -228,7 +255,7 @@ class QuickstartConfig(BaseModel):
 
         # Ensure parent directory exists with secure permissions (owner-only access)
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        os.chmod(config_path.parent, stat.S_IRWXU)  # 700
+        _try_secure_chmod_dir(config_path.parent)
 
         # Serialize with secrets revealed
         config_data = self.model_dump(
@@ -246,11 +273,7 @@ class QuickstartConfig(BaseModel):
         if "platform_config_path" in config_data:
             config_data["platform_config_path"] = str(config_data["platform_config_path"])
 
-        with open(config_path, "w") as f:
-            yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)
-
-        # Set secure file permissions (owner read/write only)
-        os.chmod(config_path, stat.S_IRUSR | stat.S_IWUSR)  # 600
+        _write_secure_yaml(config_path, config_data)
 
     @classmethod
     def remove(cls) -> None:

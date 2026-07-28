@@ -1,5 +1,0 @@
-{"messages": [
-  {"role": "system", "content": "detailed thinking off"},
-  {"role": "user", "content": "What is 2 + 2?"},
-  {"role": "assistant", "content": "4"}
-]}

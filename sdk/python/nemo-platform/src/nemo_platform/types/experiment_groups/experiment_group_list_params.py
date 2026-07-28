@@ -29,8 +29,9 @@ class ExperimentGroupListParams(TypedDict, total=False):
 
     filter: ExperimentGroupFilterParam
     """
-    Filter experiment groups by name, or by a metadata key/value:
-    filter[metadata.<key>]=<value>.
+    Filter experiment groups by name, insight_id, is_deleted, or a metadata
+    key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
+    soft-deleted groups; omit to see only live ones.
     """
 
     page: int

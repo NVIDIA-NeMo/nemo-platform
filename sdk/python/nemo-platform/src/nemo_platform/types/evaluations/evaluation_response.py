@@ -33,7 +33,10 @@ class EvaluationResponse(BaseModel):
     dataset_name: str
 
     experiment_group_id: str
-    """Entity id of the owning ExperimentGroup. Required for every Evaluation."""
+    """Deprecated single-group alias; the first of experiment_ids. Use experiment_ids."""
+
+    experiment_ids: List[str]
+    """Entity ids of the ExperimentGroups this Evaluation belongs to (>=1)."""
 
     name: str
 
@@ -96,6 +99,9 @@ class EvaluationResponse(BaseModel):
     own). A test case run k times counts once; the rollup metrics are averaged per
     test case before pooling across test cases.
     """
+
+    tokens: Optional[EvaluatorAggregate] = None
+    """Aggregate statistics over evaluator scores or session-level metric values."""
 
     updated_at: Optional[datetime] = None
 

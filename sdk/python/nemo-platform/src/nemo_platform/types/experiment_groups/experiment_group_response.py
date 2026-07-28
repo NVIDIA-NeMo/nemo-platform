@@ -19,6 +19,7 @@ from typing import Dict, Optional
 from datetime import datetime
 
 from ..._models import BaseModel
+from .pareto_config import ParetoConfig
 
 __all__ = ["ExperimentGroupResponse"]
 
@@ -47,6 +48,15 @@ class ExperimentGroupResponse(BaseModel):
     insight_id: Optional[str] = None
 
     metadata: Optional[Dict[str, str]] = None
+
+    pareto: Optional[ParetoConfig] = None
+    """Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+    Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+    `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+    latency (y): both exist for every group, so the chart always has something to
+    render before anyone customizes it.
+    """
 
     summary: Optional[str] = None
 

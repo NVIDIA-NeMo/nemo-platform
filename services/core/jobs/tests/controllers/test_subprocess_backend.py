@@ -8,8 +8,14 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from nmp.common.config import PlatformConfig
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.app.providers import SubprocessExecutionProvider
+from nmp.core.jobs.controllers.backends.base import (
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR,
+)
 from nmp.core.jobs.controllers.backends.subprocess import (
     SubprocessJobBackend,
     SubprocessJobExecutionProfileConfig,
@@ -155,6 +161,38 @@ def test_schedule_uses_allowlisted_host_environment(mock_nmp_client, tmp_path, m
     )
     assert metadata is not None
     assert metadata.process.wait(timeout=5) == 0
+
+
+def test_schedule_preserves_uds_otlp_metadata_in_runtime_env(mock_nmp_client, tmp_path, test_step_pending):
+    platform_config = PlatformConfig(  # type: ignore[abstract]
+        service_discovery={"files": "unix:///tmp/nemo-platform.sock"},
+        loopback_address=None,
+    )
+    backend = _subprocess_backend(mock_nmp_client, tmp_path, platform_config)
+    step = _step_with_command(test_step_pending, ["/bin/sh", "-c", "true"])
+    captured_env = {}
+
+    def fake_create_otel_logger(*, env, **_kwargs):
+        captured_env.update(env)
+        return None
+
+    with (
+        patch("nmp.core.jobs.controllers.backends.subprocess.get_platform_config", return_value=platform_config),
+        patch("nmp.core.jobs.controllers.backends.subprocess.create_otel_logger", side_effect=fake_create_otel_logger),
+    ):
+        update = backend.schedule(step.step_spec.executor, step)
+
+    assert update.status == PlatformJobStatus.PENDING
+    metadata = backend._process_registry.get(
+        SubprocessProcessKey(step.workspace, step.job, str(step.attempt_id), step.name)
+    )
+    assert metadata is not None
+    assert metadata.process.wait(timeout=5) == 0
+    assert captured_env[NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR] == (
+        "http://nemo-platform.local/apis/files/v2/workspaces/default/filesets/test-logs-fileset/otlp/v1/logs"
+    )
+    assert captured_env[NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR] == "uds"
+    assert captured_env[NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR] == "/tmp/nemo-platform.sock"
 
 
 def test_schedule_terminates_process_when_post_popen_setup_fails(

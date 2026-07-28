@@ -15,7 +15,7 @@ from nemo_platform_plugin.jobs.types import (
     PlatformJobStatusUpdateRequest,
     PlatformJobStepWithContext,
 )
-from nmp.common.controller import Controller
+from nmp.common.controller import Controller, HeartbeatMixin
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.observability import scoped_app_ctx, start_span_with_ctx
 from nmp.core.jobs.app.ctx import JobBackendContext, JobContext
@@ -29,7 +29,7 @@ meter = metrics.get_meter(__name__)
 logger = logging.getLogger(__name__)
 
 
-class JobReconciler(Controller):
+class JobReconciler(HeartbeatMixin, Controller):
     def __init__(
         self,
         backend_registry: BackendRegistry,
@@ -76,6 +76,7 @@ class JobReconciler(Controller):
                 ]
                 steps_to_reconcile = self.get_steps_for_reconciliation(statuses)
                 self._is_healthy = True
+                self.emit_heartbeat()
             except NemoClientError:
                 self._is_healthy = False
                 logger.exception("Could not fetch job steps for reconciliation", exc_info=True)
@@ -166,6 +167,10 @@ class JobReconciler(Controller):
                             "error_type": "unknown",
                         },
                     )
+                finally:
+                    # Working through the queue is progress whether or not an
+                    # individual step could be reconciled.
+                    self.emit_heartbeat()
 
         # Perform any necessary cleanup steps for expired jobs
         logger.debug("Running job cleanup for expired job steps")
@@ -175,6 +180,8 @@ class JobReconciler(Controller):
                     backend.cleanup_steps()
                 except Exception:
                     logger.exception("Could not complete cleanup steps for backend", exc_info=True)
+                finally:
+                    self.emit_heartbeat()
 
     def _update_step_status_with_timing(
         self,

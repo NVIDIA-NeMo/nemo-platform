@@ -11,8 +11,10 @@ prefix from the RouterSpec).
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_agents_plugin.agent_config_formats import AgentConfigFormatError, validate_agent_config
 from nemo_agents_plugin.api.v2._perms import AgentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
@@ -50,12 +52,14 @@ async def create_agent(
     body: CreateAgentRequest,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> Agent:
-    """Create a new agent from a NAT workflow config."""
+    """Create a new agent from an agent config."""
+    config = _validate_agent_config_for_create(body)
+
     agent = Agent(
         name=body.name,
         workspace=workspace,
         description=body.description,
-        config=body.config,
+        config=config,
         config_format=body.config_format,
     )
     try:
@@ -179,3 +183,10 @@ async def delete_agent(
     except Exception as exc:
         logger.exception("Failed to delete agent '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to delete agent.") from exc
+
+
+def _validate_agent_config_for_create(body: CreateAgentRequest) -> dict[str, Any]:
+    try:
+        return validate_agent_config(body.config_format, body.config)
+    except AgentConfigFormatError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

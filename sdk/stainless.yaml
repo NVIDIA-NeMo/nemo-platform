@@ -919,6 +919,7 @@ resources:
       experiment_group_request: ExperimentGroupRequest
       experiment_group_response: ExperimentGroupResponse
       experiment_group_responses_page: ExperimentGroupResponsesPage
+      pareto_config: ParetoConfig
     methods:
       create: post /apis/intake/v2/workspaces/{workspace}/experiment-groups
       list: get /apis/intake/v2/workspaces/{workspace}/experiment-groups
@@ -929,6 +930,7 @@ resources:
     standalone_api: true
     models:
       evaluation_filter: EvaluationFilter
+      evaluation_patch_request: EvaluationPatchRequest
       evaluation_request: EvaluationRequest
       evaluation_response: EvaluationResponse
       evaluation_responses_page: EvaluationResponsesPage
@@ -940,6 +942,7 @@ resources:
       list: get /apis/intake/v2/workspaces/{workspace}/evaluations
       retrieve: get /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
       update: put /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
+      patch: patch /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
       delete: delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
       pin: post /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin
       unpin: delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin

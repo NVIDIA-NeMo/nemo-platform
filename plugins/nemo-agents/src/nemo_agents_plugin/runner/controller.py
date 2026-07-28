@@ -202,7 +202,7 @@ class AgentDeploymentController(NemoController):
             return
 
         spawn_ms = (time.perf_counter() - t0) * 1000
-        dep.status = "starting"
+        dep.status = info.status
         dep.port = info.port
         dep.pid = info.pid
         if is_container_deployment_mode(dep.deployment_mode):
@@ -213,11 +213,13 @@ class AgentDeploymentController(NemoController):
             dep.endpoint = info.endpoint
             dep.endpoints = []
         dep.error = ""
-        self._starting_since[(dep.workspace, dep.name)] = time.monotonic()
+        if dep.status == "starting":
+            self._starting_since[(dep.workspace, dep.name)] = time.monotonic()
         await self._save(dep)
         logger.info(
-            "Deployment '%s' starting (mode=%s, pid=%d, port=%d, spawn=%.0fms, log=%s).",
+            "Deployment '%s' %s (mode=%s, pid=%d, port=%d, spawn=%.0fms, log=%s).",
             dep.name,
+            dep.status,
             dep.deployment_mode,
             dep.pid,
             dep.port,

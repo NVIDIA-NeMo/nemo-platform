@@ -228,7 +228,7 @@ class TestValidatePlatformAgentConfig:
             fabric=_FakeFabric(),
         )
 
-        assert result.fabric_config.harness.adapter_id == "nvidia.fabric.codex.cli"
+        assert result.fabric_config.harness.adapter_id == "nvidia.fabric.codex"
         assert result.fabric_config.models["default"].model == "openai/gpt-5.4"
 
     async def test_invalid_platform_config_is_reported(self, fake_fabric_stack: None) -> None:
