@@ -40,9 +40,7 @@ _E2E_REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_E2E_PLATFORM_CONFIG = _E2E_REPO_ROOT / "packages/nmp_platform/config/local.yaml"
 # Layered on the default config so pooled platforms that are not testing
 # deployments orphan cleanup cannot delete peer platforms' docker containers.
-_DEFAULT_E2E_DISABLE_DEPLOYMENTS_ORPHAN_CLEANUP = (
-    _E2E_REPO_ROOT / "e2e/configs/disable-deployments-orphan-cleanup.yaml"
-)
+_DEFAULT_E2E_DISABLE_DEPLOYMENTS_ORPHAN_CLEANUP = _E2E_REPO_ROOT / "e2e/configs/disable-deployments-orphan-cleanup.yaml"
 _E2E_COMPOSE_LIFECYCLE_ENV = "NMP_E2E_COMPOSE_LIFECYCLE"
 
 
