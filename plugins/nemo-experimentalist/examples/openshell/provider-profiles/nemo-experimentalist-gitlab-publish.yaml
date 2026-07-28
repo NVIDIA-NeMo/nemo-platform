@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id: nemo-experimentalist-gitlab-publish
+display_name: NeMo Experimentalist GitLab publish
+description: GitLab HTTPS clone/fetch, branch push, and winner merge-request creation
+category: source_control
+credentials:
+  - name: api_token
+    description: GitLab token
+    env_vars: [GITLAB_TOKEN]
+    required: true
+    auth_style: bearer
+    header_name: authorization
+discovery:
+  credentials: [api_token]
+endpoints:
+  - host: gitlab.com
+    port: 443
+    protocol: rest
+    enforcement: enforce
+    allow_encoded_slash: true
+    rules:
+      - allow:
+          method: GET
+          path: /**
+      - allow:
+          method: HEAD
+          path: /**
+      - allow:
+          method: POST
+          path: /**/git-upload-pack
+      - allow:
+          method: POST
+          path: /**/git-receive-pack
+      - allow:
+          method: POST
+          path: /api/v4/projects/**/merge_requests
+binaries:
+  - /usr/bin/git
+  - /usr/bin/glab

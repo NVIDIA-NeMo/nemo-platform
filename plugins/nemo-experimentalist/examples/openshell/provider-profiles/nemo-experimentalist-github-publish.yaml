@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id: nemo-experimentalist-github-publish
+display_name: NeMo Experimentalist GitHub publish
+description: GitHub HTTPS clone/fetch, branch push, and winner pull-request creation
+category: source_control
+credentials:
+  - name: api_token
+    description: GitHub token
+    env_vars: [GH_TOKEN, GITHUB_TOKEN]
+    required: true
+    auth_style: bearer
+    header_name: authorization
+discovery:
+  credentials: [api_token]
+endpoints:
+  - host: api.github.com
+    port: 443
+    protocol: rest
+    enforcement: enforce
+    rules:
+      - allow:
+          method: GET
+          path: /**
+      - allow:
+          method: HEAD
+          path: /**
+  - host: api.github.com
+    port: 443
+    path: /graphql
+    protocol: graphql
+    enforcement: enforce
+    rules:
+      - allow:
+          operation_type: query
+      - allow:
+          operation_type: mutation
+          operation_name: PullRequestCreate*
+  - host: github.com
+    port: 443
+    protocol: rest
+    enforcement: enforce
+    rules:
+      - allow:
+          method: GET
+          path: /**
+      - allow:
+          method: HEAD
+          path: /**
+      - allow:
+          method: POST
+          path: /**/git-upload-pack
+      - allow:
+          method: POST
+          path: /**/git-receive-pack
+binaries:
+  - /usr/bin/git
+  - /usr/bin/gh

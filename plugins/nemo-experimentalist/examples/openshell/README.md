@@ -13,6 +13,7 @@ developer files
 OpenShell sandbox: nmp-experimentalist
   - NOOA / Experimentalist agents
   - candidate mutation and orchestration
+  - git, gh, and glab clients
   - no Docker CLI
   - no Docker socket
       |
@@ -64,18 +65,37 @@ uv run --frozen nemo-experimentalist-harbor-bridge --host 0.0.0.0
 `host.docker.internal`. The bearer token is required on every evaluation
 request; use a host firewall on untrusted networks.
 
-In another shell with the same token, create the OpenShell provider. Supplying
-the credential name without a value makes the CLI read it from the environment
-instead of placing the value in the process arguments:
+In another shell with the same token, configure the provider profiles. The
+inference provider is held by the gateway and backs `inference.local`; its
+credential is never attached to the sandbox. The bridge and selected
+source-control provider expose randomized placeholders in the sandbox, which
+OpenShell replaces only in proxied requests:
 
 ```bash
-openshell provider create \
-  --name nemo-experimentalist-harbor-bridge \
-  --type generic \
-  --credential NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN
+export NVIDIA_API_KEY=nvapi-...
+export NEMO_EXPERIMENTALIST_INFERENCE_MODEL=meta/llama-3.3-70b-instruct
+
+# Configure either or both source-control credentials. Only one is attached
+# to any individual sandbox by run.sh.
+export GH_TOKEN="$(gh auth token)"
+export GITLAB_TOKEN=glpat-...
+# For self-managed GitLab:
+export NEMO_EXPERIMENTALIST_GITLAB_HOST=gitlab.example.com
+
+plugins/nemo-experimentalist/examples/openshell/configure-providers.sh
 ```
 
-Then launch Experimentalist:
+The setup script enables the gateway-global OpenShell
+`providers_v2_enabled=true` setting. Without it OpenShell injects credential
+placeholders but does not compose the provider profiles' endpoint rules into
+the sandbox policy.
+
+`NVIDIA_INTERNAL_API_KEY` is also accepted for the default NVIDIA inference
+provider. To use another OpenShell inference profile, set
+`NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER_TYPE` and the credential environment
+variables that profile discovers.
+
+Then launch Experimentalist. Source control is disabled by default:
 
 ```bash
 export NEMO_EXPERIMENTALIST_IMAGE=local/nmp-experimentalist:local
@@ -83,13 +103,41 @@ plugins/nemo-experimentalist/examples/openshell/run.sh /path/to/agent doctor
 plugins/nemo-experimentalist/examples/openshell/run.sh /path/to/agent run
 ```
 
+For a GitHub or GitLab agent source, attach one provider with the least
+authority the run needs:
+
+```bash
+# HTTPS clone/fetch and API reads
+export NEMO_EXPERIMENTALIST_SOURCE_CONTROL=github-read
+
+# Or allow HTTPS branch push and draft winner PR creation
+export NEMO_EXPERIMENTALIST_SOURCE_CONTROL=github-publish
+
+# GitLab equivalents
+export NEMO_EXPERIMENTALIST_SOURCE_CONTROL=gitlab-read
+export NEMO_EXPERIMENTALIST_SOURCE_CONTROL=gitlab-publish
+```
+
+The current profiles support `github.com` and either `gitlab.com` or one exact
+self-managed GitLab hostname configured before provider setup and launch. SSH,
+Git LFS, and GitHub Enterprise are not included in this research-preview
+policy.
+
 The launcher uploads the selected agent workspace into `/sandbox/project`,
 applies [`policy.yaml`](policy.yaml), attaches the bridge provider, and runs as
-the non-root `sandbox` user. The provider exposes only a placeholder token to
-the sandbox; OpenShell replaces it in the outbound Authorization header for
-the allowed REST endpoint. The launcher sets
+the non-root `sandbox` user. When selected, it also attaches exactly one
+source-control provider. The launcher sets
 `NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL`, which selects the remote evaluator
 and makes preflight probe the bridge instead of local Docker.
+
+Experimentalist itself calls `git` for clone, fetch, checkout, commit, and
+push. It calls `gh pr create` for a GitHub winner and `glab mr create` for a
+GitLab winner; preflight also calls `gh auth status` or `glab auth status`.
+The image therefore includes all three CLIs. `GIT_ASKPASS` supplies provider
+placeholders to HTTPS Git without storing a real source-control token in the
+container. For GitLab, the launcher writes the placeholder—not the real
+token—to `glab`'s per-host config so its auth-status check recognizes the
+self-managed host.
 
 For Docker Desktop, set
 `NEMO_EXPERIMENTALIST_POLICY_MODE=docker-desktop`. That uses
@@ -114,5 +162,13 @@ container. Production follow-up should move the same API to a dedicated
 evaluator worker with resource quotas, approved task sources/images, scoped
 task-network policy, and short-lived inference credentials.
 
-Git clone, registry download, and winner publication also need separately
-scoped OpenShell providers and are not granted by this policy.
+OpenShell static provider placeholders are currently resolved from a
+sandbox-wide map rather than being cryptographically bound to one target
+hostname. This launcher never attaches GitHub and GitLab providers together,
+so one source-control token cannot be substituted into a request to the other
+service. The source-control placeholder can still be sent to the trusted local
+bridge endpoint, and the bridge placeholder can be sent to the selected source
+host; neither endpoint reflects the resolved Authorization header. Endpoint
+binding in OpenShell would make this defense stronger.
+
+Registry download is not granted by this policy.

@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id: nemo-experimentalist-harbor-bridge
+display_name: NeMo Experimentalist Harbor bridge
+description: Authenticated access to the local Harbor evaluation bridge
+category: other
+credentials:
+  - name: bridge_token
+    description: Ephemeral bearer token shared with the local Harbor bridge
+    env_vars: [NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN]
+    required: true
+    auth_style: bearer
+    header_name: authorization
+discovery:
+  credentials: [bridge_token]
+endpoints:
+  - host: host.docker.internal
+    port: 8765
+    protocol: rest
+    enforcement: enforce
+    rules:
+      - allow:
+          method: GET
+          path: /health/ready
+      - allow:
+          method: POST
+          path: /v1/evaluations
+binaries:
+  - /app/.venv/bin/python
+  - /app/.venv/bin/python3.13
+  - /usr/local/bin/python3.13
