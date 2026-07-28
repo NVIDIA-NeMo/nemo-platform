@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Create, list, get, and delete endpoints for Evaluations and ExperimentGroups.
+"""Create, list, get, and delete endpoints for Evaluations and Experiments.
 
 Entity-store (Postgres) operations are wired directly onto ``EntityClient``,
 following the inline pattern used by the core services. PUT updates only the
@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, NamedTuple, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.routing import APIRoute
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
@@ -33,9 +34,9 @@ from nmp.intake.api.v2.experiments.schemas import (
     EvaluationSessionMode,
     EvaluationSessionResponse,
     EvaluatorAggregate,
-    ExperimentGroupFilter,
-    ExperimentGroupRequest,
-    ExperimentGroupResponse,
+    ExperimentFilter,
+    ExperimentRequest,
+    ExperimentResponse,
 )
 
 # The API/Studio expose this as an "Evaluation", but it is still stored as the Experiment entity
@@ -63,10 +64,10 @@ def _sanitize_for_log(value: str) -> str:
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 
-GROUPS_TAG = "Experiment Groups"
+EXPERIMENTS_TAG = "Experiments"
 EVALUATIONS_TAG = "Evaluations"
 
-ExperimentGroupSortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
+ExperimentSortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
 
 # The evaluations list is sorted in the application layer (compute-on-read) so a single request can
 # sort by a ClickHouse rollup metric, not just entity columns. `sort` is therefore a free string,
@@ -95,7 +96,7 @@ _MAX_GROUP_EVALUATIONS = 1000
 EntityT = TypeVar("EntityT", Evaluation, ExperimentGroup)
 
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
-ExperimentGroupFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentGroupFilter))]
+ExperimentFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentFilter))]
 EvaluationFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(EvaluationFilter))]
 EvaluationSessionFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(EvaluationSessionFilter))]
 
@@ -128,17 +129,17 @@ EvaluationSessionRepositoryDep = Annotated[
 
 
 @router.post(
-    "/v2/workspaces/{workspace}/experiment-groups",
-    response_model=ExperimentGroupResponse,
+    "/v2/workspaces/{workspace}/experiments",
+    response_model=ExperimentResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=[GROUPS_TAG],
-    responses={409: {"description": "Experiment group already exists"}},
+    tags=[EXPERIMENTS_TAG],
+    responses={409: {"description": "Experiment already exists"}},
 )
-async def create_experiment_group(
+async def create_experiment(
     workspace: str,
-    body: ExperimentGroupRequest,
+    body: ExperimentRequest,
     entity_client: EntityClientDep,
-) -> ExperimentGroupResponse:
+) -> ExperimentResponse:
     _validate_default_sort(body.default_sort)
     entity = ExperimentGroup(
         workspace=workspace,
@@ -155,35 +156,35 @@ async def create_experiment_group(
     except EntityConflictError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Experiment group '{workspace}/{body.name}' already exists.",
+            detail=f"Experiment '{workspace}/{body.name}' already exists.",
         ) from e
-    return ExperimentGroupResponse.from_entity(created)
+    return ExperimentResponse.from_entity(created)
 
 
 @router.get(
-    "/v2/workspaces/{workspace}/experiment-groups",
-    response_model=Page[ExperimentGroupResponse],
-    tags=[GROUPS_TAG],
+    "/v2/workspaces/{workspace}/experiments",
+    response_model=Page[ExperimentResponse],
+    tags=[EXPERIMENTS_TAG],
     openapi_extra=generate_openapi_extra_params(
-        filter_schema=ExperimentGroupFilter,
+        filter_schema=ExperimentFilter,
         filter_description=(
-            "Filter experiment groups by name, insight_id, is_deleted, or a metadata key/value "
+            "Filter experiments by name, insight_id, is_deleted, or a metadata key/value "
             "(filter[metadata.<key>]=<value>). "
-            "Pass is_deleted=true to return only soft-deleted groups; omit to see only live ones."
+            "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones."
         ),
     ),
 )
-async def list_experiment_groups(
+async def list_experiments(
     workspace: str,
     request: Request,
     entity_client: EntityClientDep,
-    parsed: ExperimentGroupFilterDep,
+    parsed: ExperimentFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
-    sort: ExperimentGroupSortField = Query(
+    sort: ExperimentSortField = Query(
         default="-created_at", description="Sort field; prefix with '-' for descending."
     ),
-) -> Page[ExperimentGroupResponse]:
+) -> Page[ExperimentResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
     result = await entity_client.list(
@@ -194,7 +195,7 @@ async def list_experiment_groups(
         page=page,
         page_size=page_size,
     )
-    responses = [ExperimentGroupResponse.from_entity(e) for e in result.data]
+    responses = [ExperimentResponse.from_entity(e) for e in result.data]
     counts = await _count_live_evaluations_by_group(
         entity_client, workspace=workspace, group_ids=[g.id for g in result.data]
     )
@@ -209,25 +210,25 @@ async def list_experiment_groups(
 
 
 @router.get(
-    "/v2/workspaces/{workspace}/experiment-groups/{name}",
-    response_model=ExperimentGroupResponse,
-    tags=[GROUPS_TAG],
-    responses={404: {"description": "Experiment group not found"}},
+    "/v2/workspaces/{workspace}/experiments/{name}",
+    response_model=ExperimentResponse,
+    tags=[EXPERIMENTS_TAG],
+    responses={404: {"description": "Experiment not found"}},
 )
-async def get_experiment_group(
+async def get_experiment(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
-) -> ExperimentGroupResponse:
+) -> ExperimentResponse:
     entity = await _get_or_404(
         entity_client,
         ExperimentGroup,
         workspace=workspace,
         name=name,
-        label="Experiment group",
+        label="Experiment",
     )
-    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment group")
-    response = ExperimentGroupResponse.from_entity(entity)
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
+    response = ExperimentResponse.from_entity(entity)
     response.evaluation_count = await _count_live_evaluations_in_group(
         entity_client, workspace=workspace, group_id=entity.id
     )
@@ -235,32 +236,32 @@ async def get_experiment_group(
 
 
 @router.put(
-    "/v2/workspaces/{workspace}/experiment-groups/{name}",
-    response_model=ExperimentGroupResponse,
-    tags=[GROUPS_TAG],
+    "/v2/workspaces/{workspace}/experiments/{name}",
+    response_model=ExperimentResponse,
+    tags=[EXPERIMENTS_TAG],
     responses={
-        404: {"description": "Experiment group not found"},
-        409: {"description": "Attempt to rename the group"},
+        404: {"description": "Experiment not found"},
+        409: {"description": "Attempt to rename the experiment"},
     },
 )
-async def update_experiment_group(
+async def update_experiment(
     workspace: str,
     name: str,
-    body: ExperimentGroupRequest,
+    body: ExperimentRequest,
     entity_client: EntityClientDep,
-) -> ExperimentGroupResponse:
+) -> ExperimentResponse:
     existing = await _get_or_404(
         entity_client,
         ExperimentGroup,
         workspace=workspace,
         name=name,
-        label="Experiment group",
+        label="Experiment",
     )
-    _reject_if_deleted(existing, workspace=workspace, name=name, label="Experiment group")
+    _reject_if_deleted(existing, workspace=workspace, name=name, label="Experiment")
     if body.name != name:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot rename an experiment group; the name is its identity.",
+            detail="Cannot rename an experiment; the name is its identity.",
         )
     _validate_default_sort(body.default_sort)
     existing.description = body.description
@@ -273,7 +274,7 @@ async def update_experiment_group(
     if body.pareto is not None:
         existing.pareto = body.pareto
     updated = await entity_client.update(existing)
-    response = ExperimentGroupResponse.from_entity(updated)
+    response = ExperimentResponse.from_entity(updated)
     response.evaluation_count = await _count_live_evaluations_in_group(
         entity_client, workspace=workspace, group_id=updated.id
     )
@@ -281,12 +282,12 @@ async def update_experiment_group(
 
 
 @router.delete(
-    "/v2/workspaces/{workspace}/experiment-groups/{name}",
+    "/v2/workspaces/{workspace}/experiments/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=[GROUPS_TAG],
-    responses={404: {"description": "Experiment group not found"}},
+    tags=[EXPERIMENTS_TAG],
+    responses={404: {"description": "Experiment not found"}},
 )
-async def delete_experiment_group(
+async def delete_experiment(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
@@ -299,9 +300,9 @@ async def delete_experiment_group(
         ExperimentGroup,
         workspace=workspace,
         name=name,
-        label="Experiment group",
+        label="Experiment",
     )
-    _reject_if_deleted(group, workspace=workspace, name=name, label="Experiment group")
+    _reject_if_deleted(group, workspace=workspace, name=name, label="Experiment")
 
     # Reference-counted cascade, sequential — one update per member. Linear in group size, fine for
     # now. A member whose *sole* membership was this group is soft-deleted; a member also in another
@@ -1428,3 +1429,23 @@ def _aggregate(rollup: ScoreRollup) -> EvaluatorAggregate:
         p99=rollup.p99,
         count=rollup.count,
     )
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatible URL aliases (deprecated)
+#
+# The parent resource moved from `/experiment-groups` to `/experiments`. Register the old
+# `/experiment-groups...` paths as hidden aliases (``include_in_schema=False``) pointing at the
+# same handlers, so existing callers keep working until they migrate to `/experiments`.
+# ---------------------------------------------------------------------------
+for _legacy_route in list(router.routes):
+    if isinstance(_legacy_route, APIRoute) and "/experiments" in _legacy_route.path:
+        router.add_api_route(
+            _legacy_route.path.replace("/experiments", "/experiment-groups", 1),
+            _legacy_route.endpoint,
+            methods=sorted(_legacy_route.methods),
+            response_model=_legacy_route.response_model,
+            status_code=_legacy_route.status_code,
+            include_in_schema=False,
+            name=f"{_legacy_route.name}_experiment_groups_alias",
+        )

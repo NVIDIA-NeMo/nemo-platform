@@ -11,7 +11,7 @@ computed without rollups, so it must fail loudly rather than silently degrade to
 from fastapi.testclient import TestClient
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+GROUPS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _make_evaluation(client: TestClient, name: str = "exp-1", group: str = "grp-1") -> None:

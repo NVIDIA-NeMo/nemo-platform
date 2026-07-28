@@ -20,7 +20,7 @@ from nmp.intake.api.v2.experiments.endpoints import _sort_evaluations, _validate
 from nmp.intake.api.v2.experiments.schemas import EvaluationResponse, EvaluatorAggregate
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+GROUPS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _exp(

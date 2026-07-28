@@ -8,7 +8,7 @@ validation, and free-form status."""
 from fastapi.testclient import TestClient
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+GROUPS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _group(client: TestClient, name: str = "grp") -> dict:

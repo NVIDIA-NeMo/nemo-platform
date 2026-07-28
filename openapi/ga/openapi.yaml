@@ -4015,12 +4015,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiment-groups:
+  /apis/intake/v2/workspaces/{workspace}/experiments:
     post:
       tags:
-      - Experiment Groups
-      summary: Create Experiment Group
-      operationId: create_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups_post
+      - Experiments
+      summary: Create Experiment
+      operationId: create_experiment_apis_intake_v2_workspaces__workspace__experiments_post
       parameters:
       - name: workspace
         in: path
@@ -4033,16 +4033,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExperimentGroupRequest'
+              $ref: '#/components/schemas/ExperimentRequest'
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentGroupResponse'
+                $ref: '#/components/schemas/ExperimentResponse'
         '409':
-          description: Experiment group already exists
+          description: Experiment already exists
         '422':
           description: Validation Error
           content:
@@ -4051,9 +4051,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     get:
       tags:
-      - Experiment Groups
-      summary: List Experiment Groups
-      operationId: list_experiment_groups_apis_intake_v2_workspaces__workspace__experiment_groups_get
+      - Experiments
+      summary: List Experiments
+      operationId: list_experiments_apis_intake_v2_workspaces__workspace__experiments_get
       parameters:
       - name: workspace
         in: path
@@ -4104,29 +4104,29 @@ paths:
         required: false
         explode: true
         schema:
-          $ref: '#/components/schemas/ExperimentGroupFilter'
-        description: Filter experiment groups by name, insight_id, is_deleted, or
-          a metadata key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true
-          to return only soft-deleted groups; omit to see only live ones.
+          $ref: '#/components/schemas/ExperimentFilter'
+        description: Filter experiments by name, insight_id, is_deleted, or a metadata
+          key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return
+          only soft-deleted experiments; omit to see only live ones.
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentGroupResponsesPage'
+                $ref: '#/components/schemas/ExperimentResponsesPage'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}:
+  /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
     get:
       tags:
-      - Experiment Groups
-      summary: Get Experiment Group
-      operationId: get_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__get
+      - Experiments
+      summary: Get Experiment
+      operationId: get_experiment_apis_intake_v2_workspaces__workspace__experiments__name__get
       parameters:
       - name: workspace
         in: path
@@ -4146,9 +4146,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentGroupResponse'
+                $ref: '#/components/schemas/ExperimentResponse'
         '404':
-          description: Experiment group not found
+          description: Experiment not found
         '422':
           description: Validation Error
           content:
@@ -4157,9 +4157,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     put:
       tags:
-      - Experiment Groups
-      summary: Update Experiment Group
-      operationId: update_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__put
+      - Experiments
+      summary: Update Experiment
+      operationId: update_experiment_apis_intake_v2_workspaces__workspace__experiments__name__put
       parameters:
       - name: workspace
         in: path
@@ -4178,18 +4178,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExperimentGroupRequest'
+              $ref: '#/components/schemas/ExperimentRequest'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentGroupResponse'
+                $ref: '#/components/schemas/ExperimentResponse'
         '404':
-          description: Experiment group not found
+          description: Experiment not found
         '409':
-          description: Attempt to rename the group
+          description: Attempt to rename the experiment
         '422':
           description: Validation Error
           content:
@@ -4198,9 +4198,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
       tags:
-      - Experiment Groups
-      summary: Delete Experiment Group
-      operationId: delete_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__delete
+      - Experiments
+      summary: Delete Experiment
+      operationId: delete_experiment_apis_intake_v2_workspaces__workspace__experiments__name__delete
       parameters:
       - name: workspace
         in: path
@@ -4218,7 +4218,7 @@ paths:
         '204':
           description: Successful Response
         '404':
-          description: Experiment group not found
+          description: Experiment not found
         '422':
           description: Validation Error
           content:
@@ -10496,7 +10496,7 @@ components:
           title: Name
           type: string
         experiment_group_id:
-          description: Filter evaluations by owning group id.
+          description: Filter evaluations by owning experiment id.
           title: Experiment Group Id
           type: string
         dataset_name:
@@ -10565,8 +10565,8 @@ components:
       properties:
         experiment_ids:
           title: Experiment Ids
-          description: Replace the ExperimentGroups this Evaluation belongs to. Must
-            be non-empty when provided; each group must already exist. Omit to leave
+          description: Replace the Experiments this Evaluation belongs to. Must be
+            non-empty when provided; each experiment must already exist. Omit to leave
             membership unchanged.
           items:
             type: string
@@ -10609,7 +10609,7 @@ components:
         \ \u2014 same pattern as the models service's PATCH).\nImmutable fields (name,\
         \ dataset_name, dataset_version) aren't accepted here. ``experiment_ids``,\n\
         when provided, must be non-empty: an evaluation must always belong to at least\
-        \ one group."
+        \ one experiment."
     EvaluationRequest:
       properties:
         name:
@@ -10621,13 +10621,13 @@ components:
             type: string
           type: array
           title: Experiment Ids
-          description: Entity ids of the ExperimentGroups this Evaluation belongs
-            to (>=1). Preferred; each group must already exist. When omitted, the
-            deprecated experiment_group_id is used instead.
+          description: Entity ids of the Experiments this Evaluation belongs to (>=1).
+            Preferred; each experiment must already exist. When omitted, the deprecated
+            experiment_group_id is used instead.
         experiment_group_id:
           title: Experiment Group Id
-          description: Deprecated single-group field; provide experiment_ids instead.
-            Coalesced into experiment_ids when experiment_ids is omitted.
+          description: Deprecated single-experiment field; provide experiment_ids
+            instead. Coalesced into experiment_ids when experiment_ids is omitted.
           deprecated: true
           type: string
         dataset_name:
@@ -10691,8 +10691,7 @@ components:
             type: string
           type: array
           title: Experiment Ids
-          description: Entity ids of the ExperimentGroups this Evaluation belongs
-            to (>=1).
+          description: Entity ids of the Experiments this Evaluation belongs to (>=1).
         dataset_name:
           type: string
           title: Dataset Name
@@ -10796,7 +10795,7 @@ components:
         experiment_group_id:
           type: string
           title: Experiment Group Id
-          description: Deprecated single-group alias; the first of experiment_ids.
+          description: Deprecated single-experiment alias; the first of experiment_ids.
             Use experiment_ids.
           deprecated: true
           readOnly: true
@@ -11191,21 +11190,21 @@ components:
       - action_name
       title: ExecutedAction
       description: Information about an action that was executed.
-    ExperimentGroupFilter:
+    ExperimentFilter:
       additionalProperties: false
-      description: Filter for listing ExperimentGroups.
+      description: Filter for listing Experiments.
       properties:
         name:
-          description: Filter groups by name.
+          description: Filter experiments by name.
           title: Name
           type: string
         insight_id:
-          description: Filter groups by the id of the insight that seeded them.
+          description: Filter experiments by the id of the insight that seeded them.
           title: Insight Id
           type: string
         is_deleted:
-          description: When true, returns only soft-deleted groups. Omit (or false)
-            to see only live groups.
+          description: When true, returns only soft-deleted experiments. Omit (or
+            false) to see only live experiments.
           title: Is Deleted
           type: boolean
         metadata:
@@ -11214,55 +11213,56 @@ components:
           additionalProperties:
             type: string
           type: object
-      title: ExperimentGroupFilter
+      title: ExperimentFilter
       type: object
-    ExperimentGroupRequest:
+    ExperimentRequest:
       properties:
         name:
           type: string
           title: Name
-          description: Workspace-unique group name.
+          description: Workspace-unique experiment name.
         description:
           title: Description
-          description: Human-readable purpose of the group.
+          description: Human-readable purpose of the experiment.
           type: string
         insight_id:
           title: Insight Id
-          description: Reference to an external insight that seeded this group, if
-            any.
+          description: Reference to an external insight that seeded this experiment,
+            if any.
           type: string
         summary:
           title: Summary
-          description: Human- or agent-authored summary of the group's findings.
+          description: Human- or agent-authored summary of the experiment's findings.
           type: string
         metadata:
           title: Metadata
-          description: Free-form producer metadata for the group.
+          description: Free-form producer metadata for the experiment.
           additionalProperties:
             type: string
           type: object
         default_sort:
           type: string
           title: Default Sort
-          description: 'Default sort for this group''s evaluations list, as a `sort`-param
-            string: a comma-separated, ordered list of fields where the first is the
-            primary sort and the rest break ties (leading ''-'' on a field = descending),
-            e.g. ''-evaluators.reward.mean,cost_usd.mean''. Defaults to ''-created_at''.
-            Accepts any field the evaluations list `sort` param does; clients apply
-            it as the list `sort` param.'
+          description: 'Default sort for this experiment''s evaluations list, as a
+            `sort`-param string: a comma-separated, ordered list of fields where the
+            first is the primary sort and the rest break ties (leading ''-'' on a
+            field = descending), e.g. ''-evaluators.reward.mean,cost_usd.mean''. Defaults
+            to ''-created_at''. Accepts any field the evaluations list `sort` param
+            does; clients apply it as the list `sort` param.'
           default: -created_at
         pareto:
           allOf:
           - $ref: '#/components/schemas/ParetoConfig'
-          description: Default X/Y metrics for the group's Pareto view. Omit to preserve
-            the existing value on update; on create, defaults to cost vs. latency.
+          description: Default X/Y metrics for the experiment's Pareto view. Omit
+            to preserve the existing value on update; on create, defaults to cost
+            vs. latency.
       additionalProperties: false
       type: object
       required:
       - name
-      title: ExperimentGroupRequest
-      description: Request body for creating an ExperimentGroup.
-    ExperimentGroupResponse:
+      title: ExperimentRequest
+      description: Request body for creating an Experiment.
+    ExperimentResponse:
       properties:
         id:
           type: string
@@ -11303,7 +11303,7 @@ components:
         evaluation_count:
           type: integer
           title: Evaluation Count
-          description: Number of live (non-soft-deleted) evaluations in this group.
+          description: Number of live (non-soft-deleted) evaluations in this experiment.
           default: 0
       type: object
       required:
@@ -11311,13 +11311,13 @@ components:
       - name
       - workspace
       - default_sort
-      title: ExperimentGroupResponse
-      description: ExperimentGroup as served by the API.
-    ExperimentGroupResponsesPage:
+      title: ExperimentResponse
+      description: Experiment as served by the API.
+    ExperimentResponsesPage:
       properties:
         data:
           items:
-            $ref: '#/components/schemas/ExperimentGroupResponse'
+            $ref: '#/components/schemas/ExperimentResponse'
           type: array
           title: Data
         pagination:
@@ -11336,7 +11336,7 @@ components:
       type: object
       required:
       - data
-      title: ExperimentGroupResponsesPage
+      title: ExperimentResponsesPage
     FactCheckingRailConfig:
       properties:
         parameters:

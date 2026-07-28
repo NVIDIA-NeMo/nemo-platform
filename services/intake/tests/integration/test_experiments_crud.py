@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""CRUD tests for the Evaluations and ExperimentGroups endpoints."""
+"""CRUD tests for the Evaluations and Experiments endpoints."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nmp.intake.api.v2.experiments.endpoints import get_evaluation_rollup_repository
 
-GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+GROUPS = "/apis/intake/v2/workspaces/default/experiments"
+# The deprecated pre-rename path; kept as a hidden alias for backwards compatibility.
+LEGACY_GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
 
 
@@ -35,6 +37,20 @@ def _create_group(client: TestClient, name: str = "default-test-group") -> dict:
         response = client.get(f"{GROUPS}/{name}")
     response.raise_for_status()
     return response.json()
+
+
+def test_legacy_experiment_groups_alias_is_backwards_compatible(client: TestClient) -> None:
+    """The pre-rename `/experiment-groups` path still works and shares the `/experiments` handlers."""
+    # Create via the legacy path; read it back via the canonical path.
+    created = client.post(LEGACY_GROUPS, json={"name": "legacy-alias-exp"})
+    assert created.status_code == 201, created.text
+    assert client.get(f"{GROUPS}/legacy-alias-exp").status_code == 200
+
+    # Create via the canonical path; read it back via the legacy path.
+    assert client.post(GROUPS, json={"name": "canonical-exp"}).status_code == 201
+    legacy_get = client.get(f"{LEGACY_GROUPS}/canonical-exp")
+    assert legacy_get.status_code == 200, legacy_get.text
+    assert legacy_get.json()["name"] == "canonical-exp"
 
 
 def test_experiment_group_crud(client: TestClient) -> None:

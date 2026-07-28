@@ -441,10 +441,10 @@ def _create_experiment(client: TestClient, name: str) -> str:
 
 def _ensure_group(client: TestClient, name: str = "chat-completions-test-group") -> str:
     response = client.post(
-        "/apis/intake/v2/workspaces/default/experiment-groups",
+        "/apis/intake/v2/workspaces/default/experiments",
         json={"name": name},
     )
     if response.status_code == 409:
-        response = client.get(f"/apis/intake/v2/workspaces/default/experiment-groups/{name}")
+        response = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
     response.raise_for_status()
     return response.json()["id"]

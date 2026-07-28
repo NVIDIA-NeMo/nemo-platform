@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 ATIF_INGEST = "/apis/intake/v2/workspaces/default/ingest/atif"
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+GROUPS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _ensure_group(client: TestClient, name: str) -> str:

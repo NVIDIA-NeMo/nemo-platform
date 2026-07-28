@@ -55,7 +55,7 @@ class IntakeService(Service[IntakeConfig]):
             RouterConfig(
                 experiments.router,
                 tag="Experiments",
-                description="Create, list, get, and delete Evaluations and Experiment Groups",
+                description="Create, list, get, and delete Evaluations and Experiments",
             ),
             RouterConfig(otlp.router, tag="Ingest", description="OTLP/HTTP trace ingest endpoints"),
             RouterConfig(atif.router, tag="Ingest", description="ATIF trajectory ingest endpoints"),
