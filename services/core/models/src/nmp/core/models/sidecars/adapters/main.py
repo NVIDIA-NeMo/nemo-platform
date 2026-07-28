@@ -127,20 +127,24 @@ class AdaptersController(HeartbeatMixin, Controller):
             self.emit_heartbeat()
 
             for name in set(os.listdir(self.nim_peft_source)) - dirs_to_keep:
-                # Staging temp dirs (".{dir}.tmp") were never loaded into vLLM;
-                # just reap them.
-                if name.startswith("."):
-                    shutil.rmtree(f"{self.nim_peft_source}/{name}")
-                    continue
-                # Unload from vLLM before deleting on disk so a removed/disabled
-                # adapter stops being served (no-op for NIM). Only delete the
-                # directory once the unload is confirmed (or vLLM has no endpoint):
-                # if vLLM is currently unreachable, keep the dir so the unload is
-                # retried next cycle rather than orphaning a still-loaded adapter
-                # in vLLM until it restarts (the dir is the only state driving GC).
-                if self._unload_vllm_adapter(name):
-                    shutil.rmtree(f"{self.nim_peft_source}/{name}")
-                self.emit_heartbeat()
+                try:
+                    # Staging temp dirs (".{dir}.tmp") were never loaded into vLLM;
+                    # just reap them.
+                    if name.startswith("."):
+                        shutil.rmtree(f"{self.nim_peft_source}/{name}")
+                        continue
+                    # Unload from vLLM before deleting on disk so a removed/disabled
+                    # adapter stops being served (no-op for NIM). Only delete the
+                    # directory once the unload is confirmed (or vLLM has no endpoint):
+                    # if vLLM is currently unreachable, keep the dir so the unload is
+                    # retried next cycle rather than orphaning a still-loaded adapter
+                    # in vLLM until it restarts (the dir is the only state driving GC).
+                    if self._unload_vllm_adapter(name):
+                        shutil.rmtree(f"{self.nim_peft_source}/{name}")
+                finally:
+                    # Reaping any directory is progress, including the ones the
+                    # early continue above handles.
+                    self.emit_heartbeat()
 
         except Exception:
             logger.exception(f"Failed to fetch {self.workspace}/{self.model_name}'s model_entity")

@@ -750,3 +750,67 @@ async def test_step_emits_heartbeats_between_phases(mock_sdk_class_patch, mock_g
     await controller.async_controller_step()
 
     assert len(beats) >= 4
+
+
+@pytest.mark.asyncio
+async def test_step_flushes_when_deployment_reconciliation_raises(
+    mock_sdk_class_patch, mock_get_config_patch, mock_backend_registry
+):
+    """A raising deployment phase must still apply what it staged.
+
+    Leaving changes staged would make every later refresh reject, so a single
+    failure here would stop the controller from recovering at all.
+    """
+    controller = ModelsController(backend_registry=mock_backend_registry)
+
+    calls: list[str] = []
+    controller._entity_cache.refresh = AsyncMock(side_effect=lambda: calls.append("refresh"))
+    controller._entity_cache.flush = AsyncMock(side_effect=lambda: calls.append("flush"))
+
+    controller.retrieve_non_terminal_deployments = AsyncMock(return_value=[])
+    controller._deployment_reconciler.reconcile_orphans = AsyncMock(side_effect=RuntimeError("backend exploded"))
+
+    with pytest.raises(RuntimeError):
+        await controller.async_controller_step()
+
+    assert calls == ["refresh", "flush"]
+
+
+@pytest.mark.asyncio
+async def test_step_flushes_when_provider_reconciliation_raises(
+    mock_sdk_class_patch, mock_get_config_patch, mock_backend_registry
+):
+    """Same guarantee for the provider phase."""
+    controller = ModelsController(backend_registry=mock_backend_registry)
+
+    calls: list[str] = []
+    controller._entity_cache.refresh = AsyncMock(side_effect=lambda: calls.append("refresh"))
+    controller._entity_cache.flush = AsyncMock(side_effect=lambda: calls.append("flush"))
+
+    controller.retrieve_non_terminal_deployments = AsyncMock(return_value=[])
+    controller.retrieve_error_deployments = AsyncMock(return_value=[])
+    controller._deployment_reconciler.reconcile_orphans = AsyncMock()
+    controller.retrieve_model_providers = AsyncMock(return_value=[])
+    controller._provider_reconciler.reconcile_model_providers = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError):
+        await controller.async_controller_step()
+
+    assert calls == ["refresh", "flush", "refresh", "flush"]
+
+
+@pytest.mark.asyncio
+async def test_step_aborts_before_reconciliation_when_the_entity_cache_cannot_load(
+    mock_sdk_class_patch, mock_get_config_patch, mock_backend_registry
+):
+    """An unreadable entity list stops the step rather than reconciling blind."""
+    controller = ModelsController(backend_registry=mock_backend_registry)
+    controller._entity_cache.refresh = AsyncMock(side_effect=RuntimeError("entity list unavailable"))
+    controller._deployment_reconciler.reconcile_deployments = AsyncMock()
+    controller._provider_reconciler.reconcile_model_providers = AsyncMock()
+
+    with pytest.raises(RuntimeError):
+        await controller.async_controller_step()
+
+    controller._deployment_reconciler.reconcile_deployments.assert_not_awaited()
+    controller._provider_reconciler.reconcile_model_providers.assert_not_awaited()

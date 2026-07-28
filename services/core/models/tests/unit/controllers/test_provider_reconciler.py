@@ -31,25 +31,15 @@ from nmp.core.models.controllers.provider_reconciler import (
 )
 from nmp.core.models.schemas import ModelProviderStatus
 
+from .conftest import AsyncPaginator, make_entity, seed_entity_cache
+
 
 def _discovery_models_from_ids(ids: list[str]) -> list[dict]:
     """Build GET /v1/models data[] entries (id only; root/parent omitted in external-path tests)."""
     return [{"id": i, "root": None, "parent": None} for i in ids]
 
 
-class _AsyncPaginator:
-    """Tiny async iterator for SDK list() calls in reconciler tests."""
-
-    def __init__(self, items):
-        self._items = list(items)
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if not self._items:
-            raise StopAsyncIteration
-        return self._items.pop(0)
+_AsyncPaginator = AsyncPaginator
 
 
 def test_infer_backend_format():
@@ -140,12 +130,6 @@ def reconciler(mock_models_sdk, controller_config, entity_cache, heartbeat_calls
         entity_cache=entity_cache,
         emit_heartbeat=lambda: heartbeat_calls.append(1),
     )
-
-
-async def seed_entity_cache(mock_models_sdk, entity_cache, entities=()):
-    """Load the cache from the mock SDK so lookups resolve to ``entities``."""
-    mock_models_sdk.models.list = MagicMock(return_value=_AsyncPaginator(list(entities)))
-    await entity_cache.refresh()
 
 
 async def reconcile_and_flush(reconciler, entity_cache, provider_contexts):
@@ -986,8 +970,12 @@ async def test_ensure_model_entity_handles_create_exception(reconciler):
 
 
 @pytest.mark.asyncio
-async def test_entity_cache_load_failure_prevents_any_entity_writes(reconciler, mock_models_sdk):
-    """An unreadable entity list must abort before anything is created or updated."""
+async def test_entity_cache_load_failure_propagates_and_stages_nothing(reconciler, mock_models_sdk):
+    """An unreadable entity list surfaces to the caller with nothing staged.
+
+    The controller loads the cache at the start of the phase, so this failure aborts
+    the step before reconciliation runs; see the models controller tests for that.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 503
     mock_models_sdk.models.list = MagicMock(
@@ -1006,6 +994,45 @@ async def test_entity_cache_load_failure_prevents_any_entity_writes(reconciler, 
     await reconciler._entity_cache.flush()
     mock_models_sdk.models.create.assert_not_called()
     mock_models_sdk.models.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_virtual_model_listing_failure_does_not_abort_provider_reconciliation(
+    reconciler, mock_models_sdk, entity_cache
+):
+    """A VirtualModel listing failure must not cost discovery, status, or entity work."""
+    await seed_entity_cache(mock_models_sdk, entity_cache, [])
+    provider = MagicMock()
+    provider.workspace = "test-ns"
+    provider.name = "test-provider"
+    provider.model_deployment_id = None
+    provider.enabled_models = None
+    provider.served_models = []
+    ctx = ModelContext(
+        model_provider=provider,
+        model_deployment=None,
+        model_deployment_config=None,
+        model_entity=None,
+    )
+
+    mock_models_sdk.inference.virtual_models.list = MagicMock(side_effect=Exception("listing unavailable"))
+    mock_models_sdk.models.create = AsyncMock()
+    mock_models_sdk.inference.providers.update_status = AsyncMock()
+
+    with patch.object(
+        reconciler,
+        "_discover_models",
+        return_value=DiscoverySuccess(_discovery_models_from_ids(["m1"])),
+    ):
+        await reconciler.reconcile_model_providers([ctx])
+    await entity_cache.flush()
+
+    # Provider status and entity linking still happened.
+    mock_models_sdk.inference.providers.update_status.assert_awaited()
+    mock_models_sdk.models.create.assert_awaited_once()
+    # VirtualModel work was skipped rather than acted on with an unknown state.
+    mock_models_sdk.inference.virtual_models.create.assert_not_awaited()
+    mock_models_sdk.inference.virtual_models.delete.assert_not_awaited()
 
 
 # ============================================================================
@@ -1977,28 +2004,8 @@ def _virtual_model(
 
 
 def _existing_entity(workspace: str, name: str, **attrs):
-    """Model Entity stand-in addressable by the cache.
-
-    ``model_copy`` mirrors the real model's behaviour of carrying every field
-    across, which the cache relies on when overlaying staged changes.
-    """
-    fields = {
-        "workspace": workspace,
-        "name": name,
-        "model_providers": attrs.get("model_providers"),
-        "fileset": attrs.get("fileset"),
-        "api_endpoint": attrs.get("api_endpoint"),
-        "backend_format": attrs.get("backend_format"),
-    }
-    entity = MagicMock()
-    for key, value in fields.items():
-        setattr(entity, key, value)
-    entity.model_copy = MagicMock(
-        side_effect=lambda update: _existing_entity(
-            workspace, name, **{**{k: v for k, v in fields.items() if k not in ("workspace", "name")}, **update}
-        )
-    )
-    return entity
+    """Model Entity stand-in addressable by the cache."""
+    return make_entity(workspace, name, **attrs)
 
 
 def _provider_context(

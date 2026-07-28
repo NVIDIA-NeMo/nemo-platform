@@ -1,12 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the control loop liveness model."""
+"""Tests for the control loop liveness model.
+
+The liveness check is pure logic over a timestamp, the poll interval, and whether
+the loop thread is alive, so these tests drive the clock rather than sleep on it.
+"""
 
 import threading
-import time
 from datetime import datetime, timedelta, timezone
 
+import time_machine
 from nmp.common.controller import (
     Controller,
     Heartbeat,
@@ -15,6 +19,11 @@ from nmp.common.controller import (
     TimedLoopWaiter,
     TrackLastExecutionTime,
 )
+
+# Matches the models controller's default, so the 3x window below is 15s.
+INTERVAL_SECONDS = 5.0
+BUDGET = timedelta(seconds=INTERVAL_SECONDS * 3)
+START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 class _PlainController(Controller):
@@ -27,131 +36,136 @@ class _PlainController(Controller):
         self.steps += 1
 
 
-class _ItemController(HeartbeatMixin, Controller):
+class _ReportingController(HeartbeatMixin, Controller):
     """Controller that reports progress as it works through a batch."""
 
-    def __init__(self, items: int, seconds_per_item: float = 0.0) -> None:
-        self.items = items
-        self.seconds_per_item = seconds_per_item
+    def __init__(self) -> None:
         self.processed = 0
 
     def step(self):
-        for _ in range(self.items):
-            if self.seconds_per_item:
-                time.sleep(self.seconds_per_item)
-            self.processed += 1
-            self.emit_heartbeat()
+        self.process_one()
+
+    def process_one(self) -> None:
+        self.processed += 1
+        self.emit_heartbeat()
+
+
+def _build_loop(controller: Controller, *, alive: bool = True) -> tuple[Loop, TrackLastExecutionTime]:
+    """Wrap a controller in a Loop without starting a thread.
+
+    Thread liveness is a separate branch of the health check with its own test, so
+    it is pinned here to keep the staleness assertions unambiguous.
+    """
+    stop_signal = threading.Event()
+    wrapper = TrackLastExecutionTime(controller)
+    loop = Loop(TimedLoopWaiter(INTERVAL_SECONDS, stop_signal=stop_signal), wrapper, stop_signal=stop_signal)
+    loop.name = "test-loop"
+    if alive:
+        loop.is_alive = lambda: True  # type: ignore[method-assign]
+    return loop, wrapper
 
 
 def test_heartbeat_beat_advances_last():
-    heartbeat = Heartbeat()
-    before = heartbeat.last()
-    heartbeat.beat()
-    assert heartbeat.last() >= before
+    with time_machine.travel(START, tick=False) as clock:
+        heartbeat = Heartbeat()
+        assert heartbeat.last() == START
+
+        clock.shift(timedelta(seconds=30))
+        heartbeat.beat()
+
+        assert heartbeat.last() == START + timedelta(seconds=30)
 
 
 def test_wrapper_shares_its_heartbeat_with_a_reporting_controller():
-    controller = _ItemController(items=0)
-    wrapper = TrackLastExecutionTime(controller)
+    with time_machine.travel(START, tick=False) as clock:
+        controller = _ReportingController()
+        wrapper = TrackLastExecutionTime(controller)
+        assert wrapper.last_execution_time() == START
 
-    # Backdate so a beat from the controller is observable.
-    wrapper._heartbeat._last = datetime.now(timezone.utc) - timedelta(seconds=60)
-    stale = wrapper.last_execution_time()
+        clock.shift(timedelta(seconds=10))
+        controller.emit_heartbeat()
 
-    controller.emit_heartbeat()
-
-    assert wrapper.last_execution_time() > stale
+        assert wrapper.last_execution_time() == START + timedelta(seconds=10)
 
 
 def test_emit_heartbeat_before_attach_is_a_noop():
-    controller = _ItemController(items=0)
     # Never wrapped, so no heartbeat is attached.
-    controller.emit_heartbeat()
+    _ReportingController().emit_heartbeat()
 
 
 def test_controller_without_the_mixin_still_tracks_step_entry():
-    controller = _PlainController()
-    wrapper = TrackLastExecutionTime(controller)
+    with time_machine.travel(START, tick=False) as clock:
+        controller = _PlainController()
+        wrapper = TrackLastExecutionTime(controller)
 
-    wrapper._heartbeat._last = datetime.now(timezone.utc) - timedelta(seconds=60)
-    stale = wrapper.last_execution_time()
+        clock.shift(timedelta(seconds=10))
+        wrapper.step()
 
-    wrapper.step()
-
-    assert controller.steps == 1
-    assert wrapper.last_execution_time() > stale
-
-
-def _run_loop_until(loop: Loop, predicate, timeout: float = 5.0) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        time.sleep(0.01)
-    raise AssertionError("condition not reached before timeout")
+        assert controller.steps == 1
+        assert wrapper.last_execution_time() == START + timedelta(seconds=10)
 
 
 def test_loop_stays_healthy_while_a_long_step_reports_progress():
-    """A step far exceeding its interval stays healthy as long as it progresses."""
-    stop_signal = threading.Event()
-    # Interval 0.05s allows 0.15s without progress; the step runs ~0.5s total but
-    # reports progress every ~0.01s.
-    controller = _ItemController(items=50, seconds_per_item=0.01)
-    wrapper = TrackLastExecutionTime(controller)
-    loop = Loop(TimedLoopWaiter(0.05, stop_signal=stop_signal), wrapper, stop_signal=stop_signal)
-    loop.name = "progressing"
+    """A step far exceeding its interval stays healthy as long as it progresses.
 
-    loop.start()
-    try:
-        _run_loop_until(loop, lambda: controller.processed > 25)
-        # Well past 3x the interval into a single step, yet still healthy.
-        assert loop.is_healthy
-        assert loop.unhealthy_reason is None
-    finally:
-        stop_signal.set()
-        loop.join(timeout=5)
+    This is the case a single heartbeat per step cannot express: the step has not
+    returned, yet the loop is demonstrably working.
+    """
+    with time_machine.travel(START, tick=False) as clock:
+        controller = _ReportingController()
+        loop, _ = _build_loop(controller)
+
+        # Work through a batch that takes several times the poll interval, reporting
+        # progress at intervals shorter than the window.
+        for _ in range(12):
+            clock.shift(BUDGET / 2)
+            controller.process_one()
+            assert loop.is_healthy
+            assert loop.unhealthy_reason is None
+
+        assert controller.processed == 12
 
 
 def test_loop_goes_unhealthy_when_a_step_reports_no_progress():
-    """A step that blocks without reporting progress is still detected."""
-    stop_signal = threading.Event()
-    started = threading.Event()
-    release = threading.Event()
+    """A step that stops making progress is still detected."""
+    with time_machine.travel(START, tick=False) as clock:
+        loop, _ = _build_loop(_ReportingController())
+        assert loop.is_healthy
 
-    class _StuckController(HeartbeatMixin, Controller):
-        def step(self):
-            started.set()
-            release.wait(timeout=5)
+        # Just inside the window.
+        clock.shift(BUDGET - timedelta(seconds=1))
+        assert loop.is_healthy
 
-    wrapper = TrackLastExecutionTime(_StuckController())
-    loop = Loop(TimedLoopWaiter(0.05, stop_signal=stop_signal), wrapper, stop_signal=stop_signal)
-    loop.name = "stuck"
-
-    loop.start()
-    try:
-        assert started.wait(timeout=5)
-        _run_loop_until(loop, lambda: not loop.is_healthy)
+        # And past it.
+        clock.shift(timedelta(seconds=2))
+        assert not loop.is_healthy
         assert loop.unhealthy_reason is not None
         assert "no progress" in loop.unhealthy_reason
-    finally:
-        release.set()
-        stop_signal.set()
-        loop.join(timeout=5)
+
+
+def test_loop_recovers_once_progress_resumes_without_the_step_returning():
+    with time_machine.travel(START, tick=False) as clock:
+        controller = _ReportingController()
+        loop, _ = _build_loop(controller)
+
+        clock.shift(BUDGET + timedelta(seconds=1))
+        assert not loop.is_healthy
+
+        controller.process_one()
+
+        assert loop.is_healthy
+        assert loop.unhealthy_reason is None
 
 
 def test_loop_reports_reason_when_thread_is_not_alive():
-    stop_signal = threading.Event()
-    wrapper = TrackLastExecutionTime(_PlainController())
-    loop = Loop(TimedLoopWaiter(0.05, stop_signal=stop_signal), wrapper, stop_signal=stop_signal)
-    loop.name = "never-started"
+    # Built but never started, so the real is_alive() is False.
+    loop, _ = _build_loop(_PlainController(), alive=False)
 
     assert not loop.is_healthy
     assert loop.unhealthy_reason == "loop thread is not alive"
 
 
 def test_loop_reports_reason_when_controller_declares_itself_unhealthy():
-    stop_signal = threading.Event()
-
     class _SelfUnhealthy(HeartbeatMixin, Controller):
         def step(self):
             self.emit_heartbeat()
@@ -160,14 +174,8 @@ def test_loop_reports_reason_when_controller_declares_itself_unhealthy():
         def is_healthy(self) -> bool:
             return False
 
-    wrapper = TrackLastExecutionTime(_SelfUnhealthy())
-    loop = Loop(TimedLoopWaiter(0.05, stop_signal=stop_signal), wrapper, stop_signal=stop_signal)
-    loop.name = "self-unhealthy"
+    with time_machine.travel(START, tick=False):
+        loop, _ = _build_loop(_SelfUnhealthy())
 
-    loop.start()
-    try:
-        _run_loop_until(loop, lambda: not loop.is_healthy)
+        assert not loop.is_healthy
         assert loop.unhealthy_reason == "controller reported itself unhealthy"
-    finally:
-        stop_signal.set()
-        loop.join(timeout=5)

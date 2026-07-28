@@ -39,6 +39,9 @@ class _PendingEntity:
     link_providers: list[str] = field(default_factory=list)
     unlink_providers: list[str] = field(default_factory=list)
     field_updates: dict = field(default_factory=dict)
+    # Number of times a flush has tried to apply this entry. Distinguishes a
+    # change that was never flushed from one that was flushed and failed.
+    attempts: int = 0
 
 
 class UnflushedMutationsError(RuntimeError):
@@ -75,12 +78,19 @@ class ModelEntityCache:
     async def refresh(self) -> None:
         """Re-read every Model Entity across all workspaces.
 
+        Changes that a flush already tried and failed to apply are kept and
+        retried on a later flush. Because staged changes are expressed as
+        differences rather than absolute state, replaying them against a newer
+        snapshot stays correct.
+
         Raises:
-            UnflushedMutationsError: If changes are still staged.
+            UnflushedMutationsError: If changes are staged that no flush has tried
+                to apply yet, which would lose them silently.
         """
-        if self._pending:
+        never_attempted = [key for key, staged in self._pending.items() if staged.attempts == 0]
+        if never_attempted:
             raise UnflushedMutationsError(
-                f"{len(self._pending)} staged Model Entity change(s) must be flushed before refreshing the cache"
+                f"{len(never_attempted)} staged Model Entity change(s) must be flushed before refreshing the cache"
             )
 
         entities: dict[tuple[str, str], ModelEntity] = {}
@@ -168,10 +178,15 @@ class ModelEntityCache:
 
         Entities whose staged state already matches the snapshot are skipped, so a
         pass that changes nothing performs no writes.
-        """
-        pending, self._pending = self._pending, {}
 
-        for (workspace, name), staged in pending.items():
+        An entity that fails to write keeps its staged change so a later flush can
+        retry it. Some changes cannot be recomputed by a later pass -- unlinking a
+        provider that is about to be deleted is derived from that provider, which
+        will be gone -- so dropping a failure would leave the entity permanently
+        inconsistent.
+        """
+        for (workspace, name), staged in list(self._pending.items()):
+            staged.attempts += 1
             existing = self._entities.get((workspace, name))
             try:
                 if existing is None:
@@ -179,13 +194,17 @@ class ModelEntityCache:
                 else:
                     await self._update(workspace, name, staged, existing)
             except Exception:
-                # One entity must not stop the rest; the next pass retries.
+                # One entity must not stop the rest, and the change is kept for a
+                # later attempt rather than discarded.
                 logger.warning(
-                    "Failed to apply Model Entity changes for %s/%s",
+                    "Failed to apply Model Entity changes for %s/%s, will retry (attempt %d)",
                     workspace,
                     name,
+                    staged.attempts,
                     exc_info=True,
                 )
+            else:
+                del self._pending[(workspace, name)]
             finally:
                 self._emit_heartbeat()
 

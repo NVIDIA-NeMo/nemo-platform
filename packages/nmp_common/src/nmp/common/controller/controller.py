@@ -19,43 +19,31 @@ logger = getLogger(__name__)
 class Heartbeat:
     """Timestamp of the last observed progress in a control loop.
 
-    A single loop iteration may take considerably longer than the loop's poll
-    interval when there is a lot of work to do. ``Heartbeat`` records the most
-    recent point at which the loop demonstrably made progress, which lets the
-    liveness check in :class:`Loop` distinguish a loop that is working through a
-    large batch from one that is stuck.
+    Lets :class:`Loop` tell a loop working through a large batch apart from one
+    that is stuck, since a single iteration can outlast the poll interval.
     """
 
     def __init__(self) -> None:
         self._last = datetime.now(timezone.utc)
 
     def beat(self) -> None:
-        """Record that progress was just made."""
         self._last = datetime.now(timezone.utc)
 
     def last(self) -> datetime:
-        """Return the time of the most recently recorded progress."""
         return self._last
 
 
 class HeartbeatMixin:
-    """Gives a controller a way to report incremental progress.
+    """Lets a controller report progress while a single ``step()`` is still running.
 
-    Controllers whose ``step()`` iterates over a variable number of items should
-    mix this in and call :meth:`emit_heartbeat` as each item is finished. Nested
-    collaborators are handed the bound :meth:`emit_heartbeat` method rather than
-    the :class:`Heartbeat` itself, so they report progress without depending on
-    how liveness is measured.
-
-    ``_heartbeat`` is a class-level default so that mixing this in never obliges
-    a subclass to call ``super().__init__()``. :meth:`attach_heartbeat` binds the
-    instance that :class:`Loop` measures; emitting before then is a no-op.
+    Mixed into controllers whose ``step()`` iterates a variable number of items.
     """
 
-    _heartbeat: "Heartbeat | None" = None
+    # Class-level default so mixing this in never obliges a subclass to call
+    # super().__init__(); emitting before attach_heartbeat() is a no-op.
+    _heartbeat: Heartbeat | None = None
 
     def attach_heartbeat(self, heartbeat: Heartbeat) -> None:
-        """Bind the heartbeat that this controller reports progress to."""
         self._heartbeat = heartbeat
 
     def emit_heartbeat(self) -> None:
@@ -108,10 +96,9 @@ class ProvidesLastExecutionTime(ABC):
 class TrackLastExecutionTime(Controller, ProvidesLastExecutionTime):
     """Tracks when the wrapped controller last made progress.
 
-    Entering ``step()`` counts as progress. A controller that also mixes in
-    :class:`HeartbeatMixin` shares this wrapper's :class:`Heartbeat`, so progress
-    it reports part-way through a long iteration is visible here too. There is
-    only ever one timestamp, and it means "last observed progress".
+    Entering ``step()`` counts as progress; a controller mixing in
+    :class:`HeartbeatMixin` shares this wrapper's :class:`Heartbeat` so its
+    mid-iteration progress lands on the same single timestamp.
     """
 
     def __init__(self, controller: Controller):

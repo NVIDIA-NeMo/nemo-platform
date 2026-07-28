@@ -453,39 +453,42 @@ class ModelsController(HeartbeatMixin, Controller):
         logger.debug("Models controller step starting")
 
         await self._entity_cache.refresh()
-        deployment_contexts = await self.retrieve_non_terminal_deployments()
-        self.emit_heartbeat()
+        try:
+            deployment_contexts = await self.retrieve_non_terminal_deployments()
+            self.emit_heartbeat()
 
-        # Check stop signal before reconciling deployments
-        if self._is_stopping():
-            logger.debug("Stop signal received, skipping reconciliation")
+            # Check stop signal before reconciling deployments
+            if self._is_stopping():
+                logger.debug("Stop signal received, skipping reconciliation")
+                return
+
+            if deployment_contexts:
+                logger.debug(f"Found {len(deployment_contexts)} total deployment(s) in non-terminal states")
+                await self._deployment_reconciler.reconcile_deployments(deployment_contexts)
+
+            known_deployment_ids = {
+                f"{ctx.model_deployment.workspace}/{ctx.model_deployment.name}" for ctx in deployment_contexts
+            }
+            await self._deployment_reconciler.reconcile_orphans(known_deployment_ids)
+            self.emit_heartbeat()
+
+            # Check stop signal before ERROR GC
+            if self._is_stopping():
+                logger.debug("Stop signal received, skipping ERROR GC and provider queries")
+                return
+
+            error_deployments = await self.retrieve_error_deployments()
+            if error_deployments:
+                logger.debug(
+                    "Found %d ERROR deployment(s) for GC evaluation",
+                    len(error_deployments),
+                )
+                await self._deployment_reconciler.gc_error_deployments(error_deployments)
+        finally:
+            # Unconditional: a phase that ends early or raises must still apply what
+            # it staged, otherwise the changes are stranded and the next refresh
+            # refuses to run.
             await self._entity_cache.flush()
-            return
-
-        if deployment_contexts:
-            logger.debug(f"Found {len(deployment_contexts)} total deployment(s) in non-terminal states")
-            await self._deployment_reconciler.reconcile_deployments(deployment_contexts)
-
-        known_deployment_ids = {
-            f"{ctx.model_deployment.workspace}/{ctx.model_deployment.name}" for ctx in deployment_contexts
-        }
-        await self._deployment_reconciler.reconcile_orphans(known_deployment_ids)
-        self.emit_heartbeat()
-
-        # Check stop signal before ERROR GC
-        if self._is_stopping():
-            logger.debug("Stop signal received, skipping ERROR GC and provider queries")
-            await self._entity_cache.flush()
-            return
-
-        error_deployments = await self.retrieve_error_deployments()
-        if error_deployments:
-            logger.debug(
-                "Found %d ERROR deployment(s) for GC evaluation",
-                len(error_deployments),
-            )
-            await self._deployment_reconciler.gc_error_deployments(error_deployments)
-        await self._entity_cache.flush()
         self.emit_heartbeat()
 
         # Check stop signal before querying providers
@@ -494,14 +497,13 @@ class ModelsController(HeartbeatMixin, Controller):
             return
 
         await self._entity_cache.refresh()
-        provider_contexts = await self.retrieve_model_providers()
-        if provider_contexts is None:
-            logger.debug("Skipping provider reconciliation because provider listing failed")
-            await self._entity_cache.flush()
-            return
-        logger.debug("Found %d total model provider(s)", len(provider_contexts))
-        self.emit_heartbeat()
         try:
+            provider_contexts = await self.retrieve_model_providers()
+            if provider_contexts is None:
+                logger.debug("Skipping provider reconciliation because provider listing failed")
+                return
+            logger.debug("Found %d total model provider(s)", len(provider_contexts))
+            self.emit_heartbeat()
             await self._provider_reconciler.reconcile_model_providers(provider_contexts)
         finally:
             await self._entity_cache.flush()

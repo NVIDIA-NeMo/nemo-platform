@@ -18,35 +18,14 @@ from nmp.core.models.controllers.deployment_reconciler import ModelDeploymentRec
 from nmp.core.models.controllers.entity_cache import ModelEntityCache
 from nmp.core.models.schemas import ModelDeployment
 
+from .conftest import AsyncPaginator, make_entity, seed_entity_cache
 
-class _AsyncPaginator:
-    """Tiny async iterator for SDK list() calls in reconciler tests."""
-
-    def __init__(self, items):
-        self._items = list(items)
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if not self._items:
-            raise StopAsyncIteration
-        return self._items.pop(0)
-
-
-async def seed_entity_cache(mock_models_sdk, entity_cache, entities=()):
-    """Load the cache from the mock SDK so lookups resolve to ``entities``."""
-    mock_models_sdk.models.list = MagicMock(return_value=_AsyncPaginator(list(entities)))
-    await entity_cache.refresh()
+_AsyncPaginator = AsyncPaginator
 
 
 def _entity(workspace, name, model_providers):
     """Model Entity stand-in addressable by the cache."""
-    entity = MagicMock()
-    entity.workspace = workspace
-    entity.name = name
-    entity.model_providers = model_providers
-    return entity
+    return make_entity(workspace, name, model_providers=model_providers)
 
 
 @pytest.fixture

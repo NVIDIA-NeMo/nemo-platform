@@ -799,6 +799,17 @@ class ModelDeploymentReconciler:
                     _model_ref = parse_entity_ref(served_model.model_entity_id)
                     model_workspace, model_name = _model_ref.workspace, _model_ref.name
 
+                    if not self._entity_cache.loaded:
+                        # Without a snapshot, a lookup miss is indistinguishable from
+                        # "does not exist", and dropping the unlink here would leave a
+                        # dangling provider reference once the provider is deleted.
+                        logger.warning(
+                            "Model Entity cache holds no snapshot; skipping unlink of %s from %s",
+                            provider_id,
+                            served_model.model_entity_id,
+                        )
+                        continue
+
                     model_entity = self._entity_cache.get(model_workspace, model_name)
                     if model_entity is None:
                         logger.debug(f"Model Entity {served_model.model_entity_id} not found, nothing to unlink")

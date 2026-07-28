@@ -336,7 +336,10 @@ class ModelProviderReconciler:
         # as read: orphan cleanup only ever considers VirtualModels that predate
         # the pass, and keeping it separate means a VirtualModel created here can
         # never be mistaken for a deletion candidate.
-        vm_snapshot, existing_vm_names = await self._load_virtual_models()
+        # A listing failure must not cost us discovery, provider status, or entity
+        # linking; only the VirtualModel work depends on it.
+        virtual_models = await self._load_virtual_models()
+        existing_vm_names = virtual_models[1] if virtual_models is not None else None
 
         for ctx in provider_contexts:
             provider = ctx.model_provider
@@ -356,23 +359,34 @@ class ModelProviderReconciler:
 
         # Runs after every provider so the active set reflects the served_models
         # resolved during this pass rather than the previously persisted values.
+        if virtual_models is None:
+            logger.warning("Skipping orphaned VirtualModel cleanup because the VirtualModel listing failed")
+            return
         try:
-            await self._cleanup_orphaned_virtual_models(provider_contexts, vm_snapshot)
+            await self._cleanup_orphaned_virtual_models(provider_contexts, virtual_models[0])
         except Exception:
             logger.exception("Unexpected error cleaning up orphaned autoprovisioned VirtualModels")
 
-    async def _load_virtual_models(self) -> tuple[list[VirtualModel], set[tuple[str, str]]]:
+    async def _load_virtual_models(self) -> tuple[list[VirtualModel], set[tuple[str, str]]] | None:
         """Read every VirtualModel once, returning the list and an existence set.
 
         The existence set covers all VirtualModels, not just autoprovisioned ones,
         so a name already taken by a user-managed VirtualModel is left untouched.
+
+        Returns ``None`` if the listing failed, which callers read as "the
+        VirtualModel state is unknown this pass" and skip VirtualModel work rather
+        than acting on a partial view.
         """
         vm_snapshot: list[VirtualModel] = []
-        async for virtual_model in self._models_sdk.inference.virtual_models.list(
-            workspace="-", page_size=_VIRTUAL_MODEL_PAGE_SIZE
-        ):
-            vm_snapshot.append(virtual_model)
-            self._emit_heartbeat()
+        try:
+            async for virtual_model in self._models_sdk.inference.virtual_models.list(
+                workspace="-", page_size=_VIRTUAL_MODEL_PAGE_SIZE
+            ):
+                vm_snapshot.append(virtual_model)
+                self._emit_heartbeat()
+        except Exception:
+            logger.warning("Failed to list VirtualModels for provider reconciliation", exc_info=True)
+            return None
         existing_vm_names = {(vm.workspace, vm.name) for vm in vm_snapshot}
         logger.debug("Loaded %d VirtualModel(s) for provider reconciliation", len(vm_snapshot))
         return vm_snapshot, existing_vm_names
@@ -383,7 +397,7 @@ class ModelProviderReconciler:
         provider: ModelProvider,
         provider_id: str,
         now: datetime,
-        existing_vm_names: set[tuple[str, str]],
+        existing_vm_names: set[tuple[str, str]] | None,
     ) -> None:
         """Reconcile a single provider. Extracted for per-provider exception isolation.
 
@@ -992,7 +1006,7 @@ class ModelProviderReconciler:
             self._entity_cache.stage_field_updates(model_workspace, model_name, **updates)
 
     async def _ensure_passthrough_virtual_model(
-        self, workspace: str, model_name: str, existing_vm_names: set[tuple[str, str]]
+        self, workspace: str, model_name: str, existing_vm_names: set[tuple[str, str]] | None
     ) -> None:
         """Auto-create a passthrough VirtualModel for a model entity if one does not exist.
 
@@ -1013,10 +1027,20 @@ class ModelProviderReconciler:
         Args:
             workspace: Workspace of the model entity.
             model_name: Name of the model entity (also used as the VirtualModel name).
-            existing_vm_names: ``(workspace, name)`` of every known VirtualModel.
+            existing_vm_names: ``(workspace, name)`` of every known VirtualModel, or
+                ``None`` when the VirtualModel state could not be read this pass.
         """
+        if existing_vm_names is None:
+            return
+
         if (workspace, model_name) in existing_vm_names:
-            logger.debug("Passthrough VirtualModel %s/%s already exists", workspace, model_name)
+            # The name may belong to a user-managed VirtualModel pointing somewhere
+            # else, so do not claim the passthrough itself exists.
+            logger.debug(
+                "Skipping passthrough VirtualModel for %s/%s: the name is already in use",
+                workspace,
+                model_name,
+            )
             return
 
         try:
