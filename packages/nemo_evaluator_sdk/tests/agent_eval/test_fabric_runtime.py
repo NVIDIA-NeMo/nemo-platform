@@ -101,7 +101,14 @@ class _FakeRelayConfig:
         self.kwargs = kwargs
 
     def to_dict(self) -> dict[str, Any]:
-        return {key: (value.to_dict() if hasattr(value, "to_dict") else value) for key, value in self.kwargs.items()}
+        return {key: _unwrap(value) for key, value in self.kwargs.items()}
+
+
+def _unwrap(value: Any) -> Any:
+    """Recursively render a fake relay config value, including inside sink lists."""
+    if isinstance(value, list):
+        return [_unwrap(item) for item in value]
+    return value.to_dict() if hasattr(value, "to_dict") else value
 
 
 class _FakeComponentSpec:
@@ -244,6 +251,7 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
     observability_mod = types.ModuleType("nemo_relay.observability")
     observability_mod.AtifConfig = _FakeRelayConfig  # type: ignore[attr-defined]
     observability_mod.AtofConfig = _FakeRelayConfig  # type: ignore[attr-defined]
+    observability_mod.AtofFileSinkConfig = _FakeRelayConfig  # type: ignore[attr-defined]
     observability_mod.ObservabilityConfig = _FakeRelayConfig  # type: ignore[attr-defined]
     observability_mod.ComponentSpec = _FakeComponentSpec  # type: ignore[attr-defined]
     relay_mod.observability = observability_mod  # type: ignore[attr-defined]

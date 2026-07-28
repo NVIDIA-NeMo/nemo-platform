@@ -320,10 +320,14 @@ def test_trajectory_profile_built_from_relay_types() -> None:
     component = FabricContainerRuntime._trajectory_profile()["telemetry"]["config"]["components"][0]
     assert component["kind"] == "observability" and component["enabled"] is True
     cfg = component["config"]
-    # The ATIF/ATOF file exporter is configured with the names both runtimes agree on.
+    # The ATIF/ATOF file exporter is configured with the names both runtimes agree on. Since
+    # nemo-relay 0.6 the ATOF destination lives in a typed sink list rather than flat on the config.
     assert cfg["atif"]["enabled"] is True
     assert cfg["atif"]["filename_template"] == crt._common.ATIF_FILENAME_TEMPLATE
-    assert cfg["atof"]["filename"] == crt._common.ATOF_FILENAME
+    assert cfg["atof"]["enabled"] is True
+    (atof_sink,) = cfg["atof"]["sinks"]
+    assert atof_sink["type"] == "file"
+    assert atof_sink["filename"] == crt._common.ATOF_FILENAME
 
 
 async def test_sandbox_exception_is_isolated_per_task(tmp_path: Path) -> None:

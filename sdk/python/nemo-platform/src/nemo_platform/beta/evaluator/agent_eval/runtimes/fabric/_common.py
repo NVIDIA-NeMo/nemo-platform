@@ -23,7 +23,13 @@ from typing import Any
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalTask
 from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus
 from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
-from nemo_relay.observability import AtifConfig, AtofConfig, ComponentSpec, ObservabilityConfig
+from nemo_relay.observability import (
+    AtifConfig,
+    AtofConfig,
+    AtofFileSinkConfig,
+    ComponentSpec,
+    ObservabilityConfig,
+)
 
 # Trajectory profile identity + the file-exporter output names we choose (Relay accepts these as
 # inputs). Shared so both runtimes select/emit the trajectory under identical names.
@@ -122,11 +128,17 @@ def trajectory_telemetry(*, relay_dir: str, agent_name: str, agent_version: str)
                 agent_name=agent_name,
                 agent_version=agent_version,
             ),
+            # nemo-relay 0.6 moved ATOF's destination out of AtofConfig and into a list of typed
+            # sinks; the file sink carries the fields the flat 0.5 config used to hold directly.
             atof=AtofConfig(
                 enabled=True,
-                output_directory=relay_dir,
-                filename=ATOF_FILENAME,
-                mode="overwrite",
+                sinks=[
+                    AtofFileSinkConfig(
+                        output_directory=relay_dir,
+                        filename=ATOF_FILENAME,
+                        mode="overwrite",
+                    )
+                ],
             ),
         )
     )

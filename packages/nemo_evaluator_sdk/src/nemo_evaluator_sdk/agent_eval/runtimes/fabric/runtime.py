@@ -559,6 +559,7 @@ class FabricAgentRuntime:
             from nemo_relay.observability import (  # ty: ignore[unresolved-import]
                 AtifConfig,
                 AtofConfig,
+                AtofFileSinkConfig,
                 ComponentSpec,
                 ObservabilityConfig,
             )
@@ -575,11 +576,17 @@ class FabricAgentRuntime:
                     agent_name=self._runtime_name,
                     agent_version="fabric",
                 ),
+                # nemo-relay 0.6 moved ATOF's destination out of AtofConfig and into a list of typed
+                # sinks; the file sink carries the fields the flat 0.5 config used to hold directly.
                 atof=AtofConfig(
                     enabled=True,
-                    output_directory=relay_dir_str,
-                    filename=_ATOF_FILENAME,
-                    mode="overwrite",
+                    sinks=[
+                        AtofFileSinkConfig(
+                            output_directory=relay_dir_str,
+                            filename=_ATOF_FILENAME,
+                            mode="overwrite",
+                        )
+                    ],
                 ),
             )
         )
