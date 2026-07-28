@@ -18,6 +18,7 @@ venv*
 .venv*
 .nemo/
 .env*
+!**/.env.example
 !**/env.py
 !packages/data_designer/**/environment.py
 !packages/nemo_data_designer/**/environment.py

@@ -7,27 +7,13 @@ import importlib
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
-from nemo_eval_author_plugin.eval_author.models import (
-    EvalAuthorConfig,
-    EvalAuthorResult,
-)
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.client import make_client
-from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import (
-    stage_task_template,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
-    Dataset,
-    Task,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
-    EvaluatorType,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import (
-    DatasetFactory,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
-    DatasetRef,
-)
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset, Task
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     make_experimentalist_backend,
 )
@@ -97,14 +83,10 @@ async def run_eval_author(
             experiments_output=str(experiment_dir),
             mode=mode,
         )
-        resolved_insight = await backend.get_insight(
-            workspace=workspace, insight_id=str(insight)
-        )
+        resolved_insight = await backend.get_insight(workspace=workspace, insight_id=str(insight))
         agent_ref = agent if agent is not None else resolved_insight.agent
         agent_path = experiment_dir / "eval_author" / "source-agent"
-        await backend.get_agent_code(
-            workspace=workspace, agent=agent_ref, dest=agent_path
-        )
+        await backend.get_agent_code(workspace=workspace, agent=agent_ref, dest=agent_path)
 
         dataset_factory = DatasetFactory()
         staged_task_template = await stage_task_template(
@@ -120,26 +102,18 @@ async def run_eval_author(
         return await eval_author.run(
             insight=resolved_insight,
             agent_path=agent_path,
-            task_template=dataset_factory.build_task_template(
-                evaluator_type, staged_task_template
-            ),
+            task_template=dataset_factory.build_task_template(evaluator_type, staged_task_template),
             train_dataset=dataset_factory.build_dataset(evaluator_type, train_dataset),
-            validation_dataset=dataset_factory.build_dataset(
-                evaluator_type, validation_dataset
-            ),
+            validation_dataset=dataset_factory.build_dataset(evaluator_type, validation_dataset),
             client=client,
         )
     finally:
         await client.close()
 
 
-def build_eval_author_agent(
-    *, experiment_dir: Path, config: EvalAuthorConfig
-) -> _EvalAuthorAgent:
+def build_eval_author_agent(*, experiment_dir: Path, config: EvalAuthorConfig) -> _EvalAuthorAgent:
     """Build the LLM-backed Eval Author agent lazily."""
-    from nemo_eval_author_plugin.eval_author.agent import (
-        build_eval_author_agent as _build_eval_author_agent,
-    )
+    from nemo_eval_author_plugin.eval_author.agent import build_eval_author_agent as _build_eval_author_agent
 
     return _build_eval_author_agent(experiment_dir=experiment_dir, config=config)
 

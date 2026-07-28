@@ -10,14 +10,10 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from nemo_eval_author_plugin.eval_author import (
-    materialization as materialization_module,
-)
+from nemo_eval_author_plugin.eval_author import materialization as materialization_module
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Task
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
-)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 
 
 def _write_template(root: Path) -> Task:
@@ -46,34 +42,22 @@ build_timeout_sec = 60.0
     (environment / "Dockerfile").write_text("FROM ubuntu:24.04\n", encoding="utf-8")
     tests = root / "tests"
     tests.mkdir()
-    (tests / "test.sh").write_text(
-        "#!/bin/sh\nmkdir -p /logs/verifier\necho 1 > /logs/verifier/reward.txt\n"
-    )
+    (tests / "test.sh").write_text("#!/bin/sh\nmkdir -p /logs/verifier\necho 1 > /logs/verifier/reward.txt\n")
     return Task(id="task-template", uri=root.as_uri())
 
 
-def test_insight_suite_materializes_discoverable_tasks_with_provenance(
-    tmp_path: Path,
-) -> None:
+def test_insight_suite_materializes_discoverable_tasks_with_provenance(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "template")
     refs = ["intake/traces/unsafe ref", "intake/traces/unsafe ref"]
-    suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight/unsafe id", task_template=template
-    )
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight/unsafe id", task_template=template)
 
     staged = suite.stage(refs)
     for index, task in enumerate(staged, start=1):
-        (task.path / "instruction.md").write_text(
-            f"Reproduce production scenario {index}.\n", encoding="utf-8"
-        )
+        (task.path / "instruction.md").write_text(f"Reproduce production scenario {index}.\n", encoding="utf-8")
         suite.validate(task)
     dataset = suite.promote_local(refs, staged)
 
-    assert (
-        suite.suite_dir
-        == next((tmp_path / "eval-and-optimize" / "eval_author").iterdir())
-        / "insight-suite"
-    )
+    assert suite.suite_dir == next((tmp_path / "eval-and-optimize" / "eval_author").iterdir()) / "insight-suite"
     assert [task.id for task in dataset.list_tasks()] == [task.slug for task in staged]
     assert len(HarborDataset.from_path(suite.suite_dir).list_tasks()) == 2
     names: list[str] = []
@@ -93,65 +77,45 @@ def test_insight_suite_materializes_discoverable_tasks_with_provenance(
     assert len(set(names)) == 2
     assert all(name.startswith("example/template__") for name in names)
 
-    manifest = json.loads(
-        (suite.suite_dir / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((suite.suite_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["insight_id"] == "insight/unsafe id"
     assert manifest["trace_refs"] == refs
     assert manifest["task_template"] == {"uri": template.uri}
     assert [task["source_trace_ref"] for task in manifest["tasks"]] == refs
 
 
-def test_insight_suite_second_materialization_replaces_first_at_stable_path(
-    tmp_path: Path,
-) -> None:
+def test_insight_suite_second_materialization_replaces_first_at_stable_path(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "template")
     refs = ["trace-1"]
-    first_suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    first_suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     first_staged = first_suite.stage(refs)
-    (first_staged[0].path / "instruction.md").write_text(
-        "First generated instruction.\n", encoding="utf-8"
-    )
+    (first_staged[0].path / "instruction.md").write_text("First generated instruction.\n", encoding="utf-8")
     first_suite.validate(first_staged[0])
     first_suite.promote_local(refs, first_staged)
     materialized_path = first_suite.suite_dir
 
-    second_suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    second_suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     second_staged = second_suite.stage(refs)
-    (second_staged[0].path / "instruction.md").write_text(
-        "Second generated instruction.\n", encoding="utf-8"
-    )
+    (second_staged[0].path / "instruction.md").write_text("Second generated instruction.\n", encoding="utf-8")
     second_suite.validate(second_staged[0])
     second_suite.promote_local(refs, second_staged)
 
     assert second_suite.suite_dir == materialized_path
     task = list(HarborDataset.from_path(materialized_path).list_tasks())[0]
     task_dir = Path(task.uri.removeprefix("file://"))
-    assert (task_dir / "instruction.md").read_text(
-        encoding="utf-8"
-    ) == "Second generated instruction.\n"
+    assert (task_dir / "instruction.md").read_text(encoding="utf-8") == "Second generated instruction.\n"
 
 
 def test_failed_rebuild_preserves_previous_materialized_suite(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "template")
     refs = ["trace-1"]
-    first_suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    first_suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     first_staged = first_suite.stage(refs)
-    (first_staged[0].path / "instruction.md").write_text(
-        "Valid materialized instruction.\n", encoding="utf-8"
-    )
+    (first_staged[0].path / "instruction.md").write_text("Valid materialized instruction.\n", encoding="utf-8")
     first_suite.validate(first_staged[0])
     first_suite.promote_local(refs, first_staged)
 
-    failed_suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    failed_suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     failed_staged = failed_suite.stage(refs)
     (failed_staged[0].path / "instruction.md").write_text("\n", encoding="utf-8")
 
@@ -160,9 +124,7 @@ def test_failed_rebuild_preserves_previous_materialized_suite(tmp_path: Path) ->
 
     task = list(HarborDataset.from_path(first_suite.suite_dir).list_tasks())[0]
     task_dir = Path(task.uri.removeprefix("file://"))
-    assert (task_dir / "instruction.md").read_text(
-        encoding="utf-8"
-    ) == "Valid materialized instruction.\n"
+    assert (task_dir / "instruction.md").read_text(encoding="utf-8") == "Valid materialized instruction.\n"
 
 
 def test_post_promotion_validation_failure_restores_previous_suite(
@@ -171,50 +133,34 @@ def test_post_promotion_validation_failure_restores_previous_suite(
 ) -> None:
     template = _write_template(tmp_path / "template")
     refs = ["trace-1"]
-    first_suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    first_suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     first_staged = first_suite.stage(refs)
-    (first_staged[0].path / "instruction.md").write_text(
-        "Previously materialized.\n", encoding="utf-8"
-    )
+    (first_staged[0].path / "instruction.md").write_text("Previously materialized.\n", encoding="utf-8")
     first_suite.validate(first_staged[0])
     first_suite.promote_local(refs, first_staged)
 
-    failed_suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    failed_suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     failed_staged = failed_suite.stage(refs)
-    (failed_staged[0].path / "instruction.md").write_text(
-        "Broken promotion.\n", encoding="utf-8"
-    )
+    (failed_staged[0].path / "instruction.md").write_text("Broken promotion.\n", encoding="utf-8")
     failed_suite.validate(failed_staged[0])
 
     def fail_post_promotion_validation(_: Path) -> None:
         raise RuntimeError("post-promotion validation failed")
 
-    monkeypatch.setattr(
-        materialization_module, "HarborTask", fail_post_promotion_validation
-    )
+    monkeypatch.setattr(materialization_module, "HarborTask", fail_post_promotion_validation)
 
     with pytest.raises(RuntimeError, match="post-promotion validation failed"):
         failed_suite.promote_local(refs, failed_staged)
 
     task = list(HarborDataset.from_path(first_suite.suite_dir).list_tasks())[0]
     task_dir = Path(task.uri.removeprefix("file://"))
-    assert (task_dir / "instruction.md").read_text(
-        encoding="utf-8"
-    ) == "Previously materialized.\n"
+    assert (task_dir / "instruction.md").read_text(encoding="utf-8") == "Previously materialized.\n"
     assert list(first_suite.root.glob(".insight-suite-backup-*")) == []
 
 
-def test_insight_suite_rejects_empty_instruction_before_materialization(
-    tmp_path: Path,
-) -> None:
+def test_insight_suite_rejects_empty_instruction_before_materialization(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "template")
-    suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     staged = suite.stage(["trace-1"])
     (staged[0].path / "instruction.md").write_text("\n", encoding="utf-8")
 
@@ -226,9 +172,7 @@ def test_insight_suite_rejects_empty_instruction_before_materialization(
 
 def test_discard_removes_candidate_and_allows_restaging(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "template")
-    suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     staged = suite.stage(["trace-1"])
     candidate_root = staged[0].path.parent.parent
 
@@ -241,18 +185,12 @@ def test_discard_removes_candidate_and_allows_restaging(tmp_path: Path) -> None:
     assert not restaged[0].path.exists()
 
 
-def test_insight_suite_records_analysis_without_removing_failed_tasks(
-    tmp_path: Path,
-) -> None:
+def test_insight_suite_records_analysis_without_removing_failed_tasks(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "template")
-    suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     staged = suite.stage(["trace-good", "trace-bad"])
     for task in staged:
-        (task.path / "instruction.md").write_text(
-            f"Run {task.trace_ref}.\n", encoding="utf-8"
-        )
+        (task.path / "instruction.md").write_text(f"Run {task.trace_ref}.\n", encoding="utf-8")
         suite.validate(task)
     suite.promote_local([task.trace_ref for task in staged], staged)
 
@@ -263,9 +201,7 @@ def test_insight_suite_records_analysis_without_removing_failed_tasks(
         }
     )
 
-    manifest = json.loads(
-        (suite.suite_dir / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((suite.suite_dir / "manifest.json").read_text(encoding="utf-8"))
     assert [task["analysis"] for task in manifest["tasks"]] == [
         {"status": "completed"},
         {"error": "analysis failed", "status": "failed"},
@@ -276,20 +212,14 @@ def test_insight_suite_records_analysis_without_removing_failed_tasks(
 def test_finalized_suite_persists_identities_in_the_local_suite(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "template")
     refs = ["trace-1"]
-    suite = InsightSuite(
-        experiment_dir=tmp_path, insight_id="insight-1", task_template=template
-    )
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
     staged = suite.stage(refs)
-    (staged[0].path / "instruction.md").write_text(
-        "Reproduce the motivating failure.\n"
-    )
+    (staged[0].path / "instruction.md").write_text("Reproduce the motivating failure.\n")
     suite.validate(staged[0])
     suite.promote_local(refs, staged)
 
     finalized = suite.finalize()
-    manifest = json.loads(
-        (finalized.path / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((finalized.path / "manifest.json").read_text(encoding="utf-8"))
 
     assert finalized.identity.startswith("sha256:")
     assert finalized.scorer_identity.startswith("sha256:")
@@ -307,14 +237,9 @@ def test_finalized_suite_persists_identities_in_the_local_suite(tmp_path: Path) 
     assert not (suite.root / "artifacts").exists()
     assert finalized.dataset.metadata["insight_suite_identity"] == finalized.identity
     assert "insight_suite_artifact_ref" not in finalized.dataset.metadata
-    assert list(finalized.dataset.list_tasks())[0].uri.startswith(
-        finalized.path.as_uri()
-    )
+    assert list(finalized.dataset.list_tasks())[0].uri.startswith(finalized.path.as_uri())
 
-    instruction = (
-        next(path for path in finalized.path.iterdir() if path.is_dir())
-        / "instruction.md"
-    )
+    instruction = next(path for path in finalized.path.iterdir() if path.is_dir()) / "instruction.md"
     instruction.write_text("changed after finalization\n")
     changed = suite.finalize()
     assert changed.identity != finalized.identity
@@ -344,17 +269,10 @@ def test_finalized_suite_identity_is_stable_and_changes_with_task_or_verifier_co
     first_identity, first_scorer_identity = build("Same authored task.\n")
     identical_identity, identical_scorer_identity = build("Same authored task.\n")
     changed_task_identity, _ = build("Changed authored task.\n")
-    changed_verifier_identity, changed_scorer_identity = build(
-        "Same authored task.\n", "\n# changed scorer\n"
-    )
+    changed_verifier_identity, changed_scorer_identity = build("Same authored task.\n", "\n# changed scorer\n")
 
-    assert (identical_identity, identical_scorer_identity) == (
-        first_identity,
-        first_scorer_identity,
-    )
+    assert (identical_identity, identical_scorer_identity) == (first_identity, first_scorer_identity)
     assert changed_task_identity != first_identity
     assert changed_verifier_identity != first_identity
     assert changed_scorer_identity != first_scorer_identity
-    assert (
-        list((tmp_path / "eval-and-optimize" / "eval_author").glob("*/artifacts")) == []
-    )
+    assert list((tmp_path / "eval-and-optimize" / "eval_author").glob("*/artifacts")) == []

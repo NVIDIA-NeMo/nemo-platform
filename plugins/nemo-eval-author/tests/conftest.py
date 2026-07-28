@@ -6,6 +6,11 @@
 Eval Author and Experimentalist agents call get_smart_model() at class-definition
 time. Placeholder credentials keep collection working when real keys are absent.
 setdefault does not overwrite CI or developer-provided values.
+
+Both stand-in values contain "placeholder" on purpose: real-model canaries such as
+test_eval_author_repair_e2e cannot use "is it set?" to decide whether to skip, because
+these assignments make every credential look present. Keep the substring if you change
+the values.
 """
 
 import os

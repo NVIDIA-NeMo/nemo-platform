@@ -15,6 +15,7 @@ dependencies = [
     "protobuf>=6.0.0",
     "nooa ; python_full_version >= '3.12'",
     "pyyaml>=6.0.3",
+    "nemo-eval-author-plugin ; python_full_version >= '3.12'",
     "nemo-insights-plugin",
     "nemo-platform",
     "nemo-platform-plugin",

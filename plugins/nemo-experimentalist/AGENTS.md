@@ -13,6 +13,41 @@ Inherited from the NeMo Platform monorepo that now hosts this plugin:
 
 ## Active migrations
 
+### 2026-07-28: Eval Author extracted to its own plugin, heading for standalone
+
+`plugins/nemo-eval-author/` (`nemo-eval-author-plugin`) owns the Eval Author agent package
+(`eval_author/`) plus its own `AUTHOR_*` `model_config`.
+
+**The target is one arrow: Experimentalist → Eval Author.** Eval Author is meant to stop
+depending on Experimentalist entirely, even where that means duplicating code. Today the
+arrow points both ways:
+
+- Experimentalist → Eval Author is permanent. Insight mode imports `EvalAuthor` in
+  `components/loop.py` and `EvalAuthorConfig` in `resolve.py`, both at module scope, so
+  the dependency is declared in `pyproject.toml`.
+- Eval Author → Experimentalist is temporary. It still borrows the evaluator/Harbor
+  abstractions, dataset staging, trace analyzer/explorer, `GuardedShellTools`, the cache,
+  and the backend factory.
+
+`plugins/nemo-eval-author/tests/test_plugin_boundary.py` pins that second list so it can
+only shrink. **When you are tempted to share a helper between the two plugins, duplicate it
+into Eval Author instead.** Sharing reads like a cleanup and is a regression here; the
+boundary test will reject it, which is the intended answer, not an obstacle to route
+around. `uv` resolves the current cycle fine — install both with
+`uv sync --group experimentalist`.
+
+Two transitional mechanisms exist only because of the second arrow. Both should be deleted
+with the last `nemo_experimentalist_plugin` import, and both are tagged
+`TODO(eval-author-standalone)` — `rg 'eval-author-standalone'` lists every site:
+
+- `nemo_eval_author_plugin/_env_bridge.py` copies `AUTHOR_*` into unset `EXPERIMENTALIST_*`
+  slots and is imported for that side effect. `eval_author/agent.py` imports it ahead of
+  every Experimentalist agent, because those agents build their LLM in the class body and
+  so read the environment at import time. isort keeps a plain `import` ahead of `from`
+  imports in the same section, so do not convert it to a `from` import.
+- `AUTHOR_*` falls back to `EXPERIMENTALIST_*` in `model_config`. `AUTHOR_*` is the real
+  contract; the fallback only keeps one credential set working in insight mode.
+
 ### 2026-07-24: Optimizer renamed to Experimentalist
 
 Ahead of the move into the `nemo-platform` monorepo, the plugin was renamed from
@@ -44,19 +79,6 @@ The command group is top-level (`nemo experimentalist`) rather than the
 eventual `nemo agents experimentalist`. The platform's `nemo.cli` entry-point
 group is flat — only `nemo.jobs` and `nemo.functions` are dot-scoped — so
 nesting under `nemo agents` needs a Platform-side change first.
-
-### 2026-07-28: Eval Author plugin depends on Experimentalist modules
-
-`plugins/nemo-eval-author/` (`nemo-eval-author-plugin`) owns only the Eval Author
-agent package (`eval_author/`) plus a thin `AUTHOR_*` `model_config`. Harbor
-evaluator, dataset staging, and trace helpers stay in Experimentalist
-(`experimentalist/components/`). Dependency direction:
-
-- Eval Author hard-depends on Experimentalist and imports shared modules from it
-- Experimentalist does **not** declare a reverse package dep (avoids a cycle);
-  insight mode still imports `EvalAuthor` when both packages are installed via
-  `uv sync --group experimentalist`
-- do not re-copy evaluator/trace/staging into the Eval Author plugin
 
 ### 2026-07-21: Curator renamed to Eval Author
 

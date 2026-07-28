@@ -72,9 +72,11 @@ insights = ["nemo-insights-plugin"]
 # Optional Experimentalist agent-optimization plugin. Its agent framework (nooa) and
 # evaluator (harbor) are both 3.12-only, so the whole plugin is gated rather than
 # installed half-resolved on 3.11.
-# Install Experimentalist and Eval Author together. Eval Author hard-depends on
-# Experimentalist for evaluator/trace helpers; Experimentalist imports Eval Author
-# at runtime for insight mode (no reverse package dep, to avoid a cycle).
+# Install Experimentalist and Eval Author together. Experimentalist depends on Eval Author
+# because insight mode imports it at module scope; Eval Author still depends back on
+# Experimentalist for evaluator/trace helpers, but that arrow is being removed (see
+# plugins/nemo-eval-author/README.md). Both are listed here so the 3.12 marker is applied
+# consistently, not because the current cycle needs help resolving.
 experimentalist = [
   "nemo-experimentalist-plugin ; python_full_version >= '3.12'",
   "nemo-eval-author-plugin ; python_full_version >= '3.12'",

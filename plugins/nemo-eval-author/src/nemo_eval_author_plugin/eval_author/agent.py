@@ -12,21 +12,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
+# Populates EXPERIMENTALIST_* from AUTHOR_*, which the Experimentalist agent imports below
+# read when their class bodies execute. Must stay ahead of them; isort keeps it there.
+import nemo_eval_author_plugin._env_bridge  # noqa: F401
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
-from nemo_eval_author_plugin.eval_author.models import (
-    EvalAuthorConfig,
-    EvalAuthorResult,
-)
-from nemo_eval_author_plugin.model_config import (
-    bridge_author_env_to_experimentalist,
-    get_fast_model,
-    get_smart_model,
-)
-
-# Bridge before importing Experimentalist agents that read EXPERIMENTALIST_* at
-# class-definition time (e.g. helpers pulled in by TraceAnalyzer).
-bridge_author_env_to_experimentalist()
-
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
+from nemo_eval_author_plugin.model_config import get_fast_model, get_smart_model
 from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
@@ -34,12 +25,8 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
-    ResourceRef,
-)
-from nemo_experimentalist_plugin.experimentalist.components.tools import (
-    GuardedShellTools,
-)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
     TraceAnalyzer,
@@ -71,12 +58,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
     This suite will be used for optimization and regression testing.
     """
 
-    def __init__(
-        self,
-        experiment_dir: Path,
-        config: EvalAuthorConfig | None = None,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, experiment_dir: Path, config: EvalAuthorConfig | None = None, **kwargs: Any) -> None:
         """Initialize the Eval Author for the given experiment directory.
 
         Args:
@@ -84,7 +66,6 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             config: Tuning parameters; defaults to ``EvalAuthorConfig()``.
             **kwargs: Forwarded to ``Agent.__init__``.
         """
-        bridge_author_env_to_experimentalist()
         super().__init__(**kwargs)
         self._config = config or EvalAuthorConfig()
         self.experiment_dir = experiment_dir
@@ -104,9 +85,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
-    @strategy(
-        CodeActStrategy(config=CodeActConfig(max_iterations=15, cell_timeout=60.0))
-    )
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=15, cell_timeout=60.0)))
     async def discover_runner(self, dataset: Dataset) -> str:
         """Discover how this dataset's evaluation runner works.
 
@@ -122,9 +101,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         """  # noqa: D413
         ...
 
-    @strategy(
-        CodeActStrategy(config=CodeActConfig(max_iterations=60, cell_timeout=3600.0))
-    )
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=60, cell_timeout=3600.0)))
     async def author_insight_metrics(
         self,
         insight: Insight,
@@ -207,9 +184,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         """  # noqa: D413
         ...
 
-    @strategy(
-        CodeActStrategy(config=CodeActConfig(max_iterations=20, cell_timeout=60.0))
-    )
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=20, cell_timeout=60.0)))
     async def fill_task_template(
         self,
         trace_ref: str,
@@ -251,10 +226,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             id=f"insight-trace-{index}",
             task_id=task.id,
             status="completed",
-            trace=ResourceRef(
-                uri=f"intake://{trace_ref}",
-                description="Production trace attached to the insight.",
-            ),
+            trace=ResourceRef(uri=f"intake://{trace_ref}", description="Production trace attached to the insight."),
             metadata={
                 "source": "insight",
                 "trace_ref": trace_ref,
@@ -308,9 +280,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         resolved_agent = self.experiment_dir / agent_path
         insight_id = insight.id
         if not insight_id:
-            raise ValueError(
-                "Eval Author requires a persisted Insight with a durable id"
-            )
+            raise ValueError("Eval Author requires a persisted Insight with a durable id")
         refs = insight.trace_refs[: self._config.max_traces]
 
         if not refs:
@@ -328,9 +298,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         try:
             staged_tasks = insight_suite.stage(refs)
             for staged in staged_tasks:
-                await self.fill_task_template(
-                    staged.trace_ref, staged.task, client, insight.workspace
-                )
+                await self.fill_task_template(staged.trace_ref, staged.task, client, insight.workspace)
                 insight_suite.validate(staged)
             materialized_dataset = insight_suite.promote_local(refs, staged_tasks)
         except BaseException:
@@ -342,13 +310,8 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             for index, (task, ref) in enumerate(zip(tasks, refs, strict=True), start=1)
         ]
         diagnostics: list[tuple[str, Diagnostic]] = []
-        analyzer_config = TraceAnalyzerConfig(
-            max_summary_tokens=self._config.max_summary_tokens
-        )
-        analyzers = [
-            TraceAnalyzer(experiment_dir=self.experiment_dir, config=analyzer_config)
-            for _ in trials
-        ]
+        analyzer_config = TraceAnalyzerConfig(max_summary_tokens=self._config.max_summary_tokens)
+        analyzers = [TraceAnalyzer(experiment_dir=self.experiment_dir, config=analyzer_config) for _ in trials]
         raw_diagnostics: list[Diagnostic | BaseException] = list(
             await asyncio.gather(
                 *[
@@ -360,9 +323,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                         client=client,
                         workspace=insight.workspace,
                     )
-                    for analyzer, trial, task in zip(
-                        analyzers, trials, tasks, strict=True
-                    )
+                    for analyzer, trial, task in zip(analyzers, trials, tasks, strict=True)
                 ],
                 return_exceptions=True,
             )
@@ -375,16 +336,12 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                 logger.warning("Trace analysis failed for %s: %s", ref, result)
                 analysis_statuses[task.id] = ("failed", str(result))
                 continue
-            cache.store(
-                self.experiment_dir, cache.task_hash(f"eval_author:{ref}"), result
-            )
+            cache.store(self.experiment_dir, cache.task_hash(f"eval_author:{ref}"), result)
             diagnostics.append((ref, result))
             analysis_statuses[task.id] = ("completed", None)
         insight_suite.record_analysis(analysis_statuses)
 
-        self.context["dataset_documentation"] = doc(
-            type(materialized_dataset), inline_depth=1
-        )
+        self.context["dataset_documentation"] = doc(type(materialized_dataset), inline_depth=1)
         runner_conventions = await self.discover_runner(materialized_dataset)
         summary = await self.author_insight_metrics(
             insight,

@@ -18,13 +18,8 @@ from uuid import uuid4
 
 import tomlkit
 from harbor.models.task.task import Task as HarborTask
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
-    Task,
-    local_path_from_uri,
-)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Task, local_path_from_uri
 
 _MANIFEST_SCHEMA_VERSION = 3
 _CONTENT_HASH_SCHEMA_VERSION = 1
@@ -46,11 +41,7 @@ def _sha256_bytes(value: bytes) -> str:
 
 
 def _canonical_digest(value: object) -> str:
-    return _sha256_bytes(
-        json.dumps(
-            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        ).encode("utf-8")
-    )
+    return _sha256_bytes(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
 
 
 def _file_hashes(root: Path) -> dict[str, str]:
@@ -76,40 +67,28 @@ def _verifier_dir(task_dir: Path) -> Path:
     raise ValueError(f"Materialized task has no verifier directory: {task_dir}")
 
 
-def _content_provenance(
-    suite_dir: Path, manifest: dict[str, object]
-) -> tuple[list[dict[str, object]], str, str]:
+def _content_provenance(suite_dir: Path, manifest: dict[str, object]) -> tuple[list[dict[str, object]], str, str]:
     raw_tasks = manifest.get("tasks")
     if not isinstance(raw_tasks, list):
-        raise ValueError(
-            f"Insight suite manifest has invalid tasks: {suite_dir / 'manifest.json'}"
-        )
+        raise ValueError(f"Insight suite manifest has invalid tasks: {suite_dir / 'manifest.json'}")
 
     tasks: list[dict[str, object]] = []
     scorer_inputs: list[dict[str, str]] = []
     suite_inputs: list[dict[str, str]] = []
     for raw_task in raw_tasks:
         if not isinstance(raw_task, dict):
-            raise ValueError(
-                f"Insight suite manifest has invalid task entry: {raw_task!r}"
-            )
+            raise ValueError(f"Insight suite manifest has invalid task entry: {raw_task!r}")
         if not all(isinstance(key, str) for key in raw_task):
-            raise ValueError(
-                f"Insight suite manifest task has invalid keys: {raw_task!r}"
-            )
+            raise ValueError(f"Insight suite manifest task has invalid keys: {raw_task!r}")
         task_entry = cast(dict[str, object], raw_task)
         relative_path = task_entry.get("path")
         if not isinstance(relative_path, str) or not relative_path:
-            raise ValueError(
-                f"Insight suite manifest task has invalid path: {relative_path!r}"
-            )
+            raise ValueError(f"Insight suite manifest task has invalid path: {relative_path!r}")
         task_dir = (suite_dir / relative_path).resolve()
         try:
             task_dir.relative_to(suite_dir.resolve())
         except ValueError as exc:
-            raise ValueError(
-                f"Insight suite manifest task escapes the suite: {relative_path!r}"
-            ) from exc
+            raise ValueError(f"Insight suite manifest task escapes the suite: {relative_path!r}") from exc
         if not task_dir.is_dir():
             raise ValueError(f"Insight suite manifest task path is missing: {task_dir}")
 
@@ -118,16 +97,12 @@ def _content_provenance(
         try:
             verifier_path = verifier_dir.relative_to(task_dir).as_posix()
         except ValueError as exc:
-            raise ValueError(
-                f"Insight suite verifier must be contained in its task: {verifier_dir}"
-            ) from exc
+            raise ValueError(f"Insight suite verifier must be contained in its task: {verifier_dir}") from exc
         verifier_files = _file_hashes(verifier_dir)
         content_hash = f"sha256:{_canonical_digest(files)}"
         verifier_hash = f"sha256:{_canonical_digest(verifier_files)}"
         task_metadata = {
-            key: value
-            for key, value in task_entry.items()
-            if key not in {"content_hash", "files", "verifier"}
+            key: value for key, value in task_entry.items() if key not in {"content_hash", "files", "verifier"}
         }
         tasks.append(
             {
@@ -184,16 +159,12 @@ class FinalizedInsightSuite:
 class InsightSuite:
     """Build one experiment-local persisted Harbor dataset for an Insight."""
 
-    def __init__(
-        self, *, experiment_dir: Path, insight_id: str, task_template: Task
-    ) -> None:
+    def __init__(self, *, experiment_dir: Path, insight_id: str, task_template: Task) -> None:
         """Initialize deterministic paths and template provenance for a suite."""
         if not insight_id:
             raise ValueError("Insight id is required to materialize an insight suite")
         if not task_template.uri:
-            raise ValueError(
-                "Task template URI is required to materialize an insight suite"
-            )
+            raise ValueError("Task template URI is required to materialize an insight suite")
 
         self.experiment_dir = experiment_dir.resolve()
         self.insight_id = insight_id
@@ -202,14 +173,10 @@ class InsightSuite:
             context="Eval Author task template",
         ).resolve()
         if not self.template_dir.is_dir():
-            raise ValueError(
-                f"Eval Author task template is not a directory: {self.template_dir}"
-            )
+            raise ValueError(f"Eval Author task template is not a directory: {self.template_dir}")
         self.template_uri = self.template_dir.as_uri()
         insight_slug = f"{_slug(insight_id, fallback='insight')}-{_digest(insight_id)}"
-        self.root = (
-            self.experiment_dir / "eval-and-optimize" / "eval_author" / insight_slug
-        )
+        self.root = self.experiment_dir / "eval-and-optimize" / "eval_author" / insight_slug
         self.suite_dir = self.root / "insight-suite"
         self._candidate_root: Path | None = None
         self._candidate_suite: Path | None = None
@@ -233,15 +200,7 @@ class InsightSuite:
             task_dir = self._candidate_suite / slug
             shutil.copytree(self.template_dir, task_dir)
             task = list(HarborDataset.from_path(task_dir).list_tasks())[0]
-            staged.append(
-                StagedInsightTask(
-                    index=index,
-                    trace_ref=trace_ref,
-                    slug=slug,
-                    path=task_dir,
-                    task=task,
-                )
-            )
+            staged.append(StagedInsightTask(index=index, trace_ref=trace_ref, slug=slug, path=task_dir, task=task))
         return staged
 
     def discard(self) -> None:
@@ -260,9 +219,7 @@ class InsightSuite:
             raise ValueError(f"Materialized task has no [task] table: {toml_path}")
         raw_name = task_table.get("name")
         if not isinstance(raw_name, str) or "/" not in raw_name:
-            raise ValueError(
-                f"Materialized task [task].name must use org/name format: {raw_name!r}"
-            )
+            raise ValueError(f"Materialized task [task].name must use org/name format: {raw_name!r}")
         organization, short_name = raw_name.rsplit("/", 1)
         base_name = short_name.split("__", 1)[0]
         task_table["name"] = f"{organization}/{base_name}__{staged.slug}"
@@ -280,24 +237,15 @@ class InsightSuite:
         toml_path.write_text(tomlkit.dumps(document), encoding="utf-8")
 
         instruction_path = staged.path / "instruction.md"
-        if (
-            not instruction_path.is_file()
-            or not instruction_path.read_text(encoding="utf-8").strip()
-        ):
-            raise ValueError(
-                f"Materialized task instruction is missing or empty: {instruction_path}"
-            )
+        if not instruction_path.is_file() or not instruction_path.read_text(encoding="utf-8").strip():
+            raise ValueError(f"Materialized task instruction is missing or empty: {instruction_path}")
         for directory_name in ("environment", "tests"):
             directory = staged.path / directory_name
             if not directory.is_dir():
-                raise ValueError(
-                    f"Materialized task is missing required {directory_name}/ directory: {directory}"
-                )
+                raise ValueError(f"Materialized task is missing required {directory_name}/ directory: {directory}")
         HarborTask(staged.path)
 
-    def promote_local(
-        self, trace_refs: list[str], staged_tasks: list[StagedInsightTask]
-    ) -> HarborDataset:
+    def promote_local(self, trace_refs: list[str], staged_tasks: list[StagedInsightTask]) -> HarborDataset:
         """Promote the validated candidate to the experiment-local working copy."""
         if self._candidate_root is None or self._candidate_suite is None:
             raise RuntimeError("Insight suite has not been staged")
@@ -334,9 +282,7 @@ class InsightSuite:
                 dataset_id=f"insight-{_digest(self.insight_id, 12)}",
             )
             for task in dataset.list_tasks():
-                HarborTask(
-                    local_path_from_uri(task.uri, context="Materialized Harbor task")
-                )
+                HarborTask(local_path_from_uri(task.uri, context="Materialized Harbor task"))
         except BaseException as exc:
             try:
                 if had_existing and backup.exists():
@@ -347,9 +293,7 @@ class InsightSuite:
                     shutil.rmtree(self.suite_dir)
                 self.discard()
             except BaseException as rollback_exc:
-                rollback_exc.add_note(
-                    f"Local Insight suite promotion also failed before rollback: {exc!r}"
-                )
+                rollback_exc.add_note(f"Local Insight suite promotion also failed before rollback: {exc!r}")
                 raise rollback_exc from exc
             raise
 
@@ -368,18 +312,14 @@ class InsightSuite:
             if error is not None:
                 task["analysis"]["error"] = error
         pending_path = manifest_path.with_suffix(".json.pending")
-        pending_path.write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+        pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(pending_path, manifest_path)
 
     def finalize(self) -> FinalizedInsightSuite:
         """Persist content identities on the experiment-local authored suite."""
         manifest_path = self.suite_dir / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        tasks, scorer_identity, suite_identity = _content_provenance(
-            self.suite_dir, manifest
-        )
+        tasks, scorer_identity, suite_identity = _content_provenance(self.suite_dir, manifest)
         digest = suite_identity.removeprefix("sha256:")
         manifest.pop("artifact", None)
         manifest.update(
@@ -396,9 +336,7 @@ class InsightSuite:
             }
         )
         pending_path = manifest_path.with_suffix(".json.pending")
-        pending_path.write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+        pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(pending_path, manifest_path)
 
         dataset = HarborDataset.from_path(
@@ -410,17 +348,13 @@ class InsightSuite:
             task_path = task.get("path")
             content_hash = task.get("content_hash")
             verifier = task.get("verifier")
-            verifier_hash = (
-                verifier.get("content_hash") if isinstance(verifier, dict) else None
-            )
+            verifier_hash = verifier.get("content_hash") if isinstance(verifier, dict) else None
             if (
                 not isinstance(task_path, str)
                 or not isinstance(content_hash, str)
                 or not isinstance(verifier_hash, str)
             ):
-                raise ValueError(
-                    f"Finalized Insight suite has invalid task provenance: {task!r}"
-                )
+                raise ValueError(f"Finalized Insight suite has invalid task provenance: {task!r}")
             task_hashes[task_path] = {
                 "content_hash": content_hash,
                 "verifier_hash": verifier_hash,

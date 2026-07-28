@@ -12,7 +12,6 @@ dependencies = [
     "pydantic>=2",
     "harbor>=0.16 ; python_full_version >= '3.12'",
     "nooa ; python_full_version >= '3.12'",
-    "pyyaml>=6.0.3",
     "nemo-experimentalist-plugin",
     "nemo-insights-plugin",
     "nemo-platform",
@@ -30,7 +29,3 @@ packages = ["src/nemo_eval_author_plugin"]
 asyncio_mode = "auto"
 pythonpath = ["src"]
 testpaths = ["tests"]
-
-[tool.ruff.lint.per-file-ignores]
-# Bridge AUTHOR_* → EXPERIMENTALIST_* before TraceAnalyzer import (class-time LLM client).
-"src/nemo_eval_author_plugin/eval_author/agent.py" = ["E402"]
