@@ -26,11 +26,6 @@ export const JobSummaryPanel: FC<JobSummaryPanelProps> = ({ job }) => {
             value={job.status ? <StatusBadge status={job.status} /> : EMPTY_FIELD_VALUE}
           />
           <KVPair label="Strategy" value={jobStrategy(job) ?? EMPTY_FIELD_VALUE} />
-          <KVPair label="Source" value={jobSource(job) ?? EMPTY_FIELD_VALUE} />
-          <KVPair
-            label="Created by"
-            value={(job.ownership?.created_by as string | undefined) ?? EMPTY_FIELD_VALUE}
-          />
           <KVPair
             label="Created"
             value={job.created_at ? <RelativeTime datetime={job.created_at} /> : EMPTY_FIELD_VALUE}
@@ -39,7 +34,12 @@ export const JobSummaryPanel: FC<JobSummaryPanelProps> = ({ job }) => {
             label="Updated"
             value={job.updated_at ? <RelativeTime datetime={job.updated_at} /> : EMPTY_FIELD_VALUE}
           />
+          <KVPair
+            label="Created by"
+            value={(job.ownership?.created_by as string | undefined) ?? EMPTY_FIELD_VALUE}
+          />
         </Grid>
+        <KVPair label="Source" value={jobSource(job) ?? EMPTY_FIELD_VALUE} />
         {errorMessage && (
           <Banner kind="inline" status="error">
             {errorMessage}
