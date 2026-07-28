@@ -81,7 +81,34 @@ describe('fetchAndConvertDataset', () => {
 
     await expect(
       fetchAndConvertDataset(dataset({ convertRow: () => null }), () => {})
-    ).rejects.toThrow(/No valid training rows/);
+    ).rejects.toThrow(/Not enough valid training rows/);
+  });
+
+  it('throws when valid training rows are short of the configured count', async () => {
+    // 2 valid rows for a 3-row training request — undersized but not empty.
+    let served = 0;
+    server.use(
+      http.get(HF_URL, ({ request }) => {
+        const length = Number(new URL(request.url).searchParams.get('length') ?? '0');
+        const rows = Array.from({ length }, () => {
+          const valid = served < 2;
+          served += 1;
+          return { row: valid ? { text: 'x' } : { drop: true } };
+        });
+        return HttpResponse.json({ rows });
+      })
+    );
+
+    await expect(
+      fetchAndConvertDataset(
+        dataset({
+          trainingRowCount: 3,
+          validationRowCount: 0,
+          convertRow: (row) => (row.drop ? null : row),
+        }),
+        () => {}
+      )
+    ).rejects.toThrow(/Not enough valid training rows: needed 3, found 2/);
   });
 
   it('throws when validation is requested but yields no rows', async () => {
@@ -101,6 +128,22 @@ describe('fetchAndConvertDataset', () => {
 
     await expect(
       fetchAndConvertDataset(dataset({ convertRow: (row) => (row.drop ? null : row) }), () => {})
-    ).rejects.toThrow(/No valid validation rows/);
+    ).rejects.toThrow(/Not enough valid validation rows/);
+  });
+
+  it('retries a transient failure and then succeeds', async () => {
+    let calls = 0;
+    server.use(
+      http.get(HF_URL, ({ request }) => {
+        calls += 1;
+        if (calls === 1) return HttpResponse.json({ error: 'temporary' }, { status: 503 });
+        const length = Number(new URL(request.url).searchParams.get('length') ?? '0');
+        return HttpResponse.json({ rows: Array.from({ length }, () => ({ row: { text: 'x' } })) });
+      })
+    );
+
+    const { training } = await fetchAndConvertDataset(dataset(), () => {});
+    expect((await training.text()).split('\n')).toHaveLength(3);
+    expect(calls).toBe(2); // one 503, one success
   });
 });
