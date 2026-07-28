@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from nmp.intake.repository.clickhouse.session import _session_detail_query
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable, qualified_table
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 
 
@@ -93,7 +94,7 @@ def test_session_detail_rolls_up_all_current_spans(
     assert "input" not in session
     assert "output" not in session
 
-    query = _session_detail_query(clickhouse_client.table("spans"))
+    query = _session_detail_query(qualified_table(clickhouse_client.database, ClickHouseTable.SPANS))
     plan = run_async(
         clickhouse_client.query(
             f"EXPLAIN indexes = 1 {query.statement}",
