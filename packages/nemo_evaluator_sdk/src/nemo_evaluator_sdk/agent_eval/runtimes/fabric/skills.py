@@ -41,7 +41,7 @@ import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -52,10 +52,15 @@ CODEX_SKILLS_DIR = ".agents/skills"
 #: Name of the Fabric profile overlay that carries the native ``skills`` config.
 SKILL_PROFILE_NAME = "eval_skill"
 
+#: How an injected skill reaches the selected harness (resolved from Fabric's capability plan). The two
+#: runtimes thread this value from :func:`resolve_skill_mode` down to :func:`install_skill` /
+#: :func:`stage_skills_seed`, so a mistyped mode is a type error rather than a silent no-op.
+SkillMode = Literal["native", "codex_skills_dir"]
+
 #: Skill reaches the harness via the native Fabric ``skills`` config (adapter accepts it).
-SKILL_MODE_NATIVE = "native"
+SKILL_MODE_NATIVE: SkillMode = "native"
 #: Skill is placed under ``<workspace>/.agents/skills/<name>/`` for Codex to discover.
-SKILL_MODE_CODEX_SKILLS_DIR = "codex_skills_dir"
+SKILL_MODE_CODEX_SKILLS_DIR: SkillMode = "codex_skills_dir"
 
 # agentskills.io name rule: 1-64 chars, lowercase alphanumeric + single interior hyphens.
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -120,7 +125,7 @@ class SkillProvenance(TypedDict):
 
     name: str  #: The skill's agentskills name.
     hash: str  #: sha256 over the staged bundle — attributes a score delta to an exact skill version.
-    mode: str  #: How it was injected (:data:`SKILL_MODE_NATIVE` / :data:`SKILL_MODE_CODEX_SKILLS_DIR`).
+    mode: SkillMode  #: How it was injected (:data:`SKILL_MODE_NATIVE` / :data:`SKILL_MODE_CODEX_SKILLS_DIR`).
     adapter_id: str  #: The harness adapter the skill was wired into.
     location: str  #: Where the bundle was staged (absolute for native, workspace-relative for codex).
 
@@ -158,7 +163,7 @@ def native_skills_route(capability_plan: Mapping[str, object]) -> bool:
     )
 
 
-def resolve_skill_mode(*, capability_plan: Mapping[str, object], harness: str) -> str | None:
+def resolve_skill_mode(*, capability_plan: Mapping[str, object], harness: str) -> SkillMode | None:
     """Resolve how a skill would reach the selected harness, or ``None`` if it can't.
 
     Driven by Fabric's own capability routing (queried at runtime via ``Fabric.plan``) rather than a
@@ -180,7 +185,7 @@ def install_skill(
     *,
     skill: AgentSkill,
     adapter_id: str,
-    mode: str,
+    mode: SkillMode,
     workspace_dir: Path,
     skill_stage_dir: Path,
     existing_skill_paths: Sequence[str] = (),
@@ -259,11 +264,35 @@ def require_unique_skill_names(skills: Sequence[AgentSkill]) -> None:
         )
 
 
+@dataclass(frozen=True)
+class SkillSet:
+    """Immutable, name-validated collection of :class:`AgentSkill`\\s shared by both Fabric runtimes.
+
+    Centralizes the uniqueness check and clone-on-mutation pattern that
+    :class:`~...FabricAgentRuntime` and :class:`~...FabricContainerRuntime` would otherwise
+    duplicate: construction validates that skill names are unique; :meth:`with_skills` and
+    :meth:`with_skill` each return a new ``SkillSet`` without modifying ``self``.
+    """
+
+    skills: tuple[AgentSkill, ...] = ()
+
+    def __post_init__(self) -> None:
+        require_unique_skill_names(self.skills)
+
+    def with_skills(self, skills: Sequence[AgentSkill]) -> SkillSet:
+        """Return a new ``SkillSet`` with ``skills`` appended; ``self`` is not modified."""
+        return SkillSet((*self.skills, *skills))
+
+    def with_skill(self, skill: AgentSkill) -> SkillSet:
+        """Return a new ``SkillSet`` with ``skill`` appended; ``self`` is not modified."""
+        return self.with_skills([skill])
+
+
 def install_skills(
     *,
     skills: Sequence[AgentSkill],
     adapter_id: str,
-    mode: str,
+    mode: SkillMode,
     workspace_dir: Path,
     skill_stage_dir: Path,
     existing_skill_paths: Sequence[str] = (),
@@ -287,6 +316,14 @@ def install_skills(
     staged_roots: list[Path] = []
     try:
         for skill in skills:
+            # Register the target BEFORE staging: install_skill can raise after it has already written
+            # files (a copytree failing partway, an unreadable file while hashing), and a root recorded
+            # only on success would leave that partial bundle behind. A target that already exists is
+            # never registered — in codex mode that is a task-seeded file install_skill refuses to
+            # clobber, and rolling it back would delete task input this call did not create.
+            stage_root = _skill_stage_root(skill, mode, workspace_dir, skill_stage_dir)
+            if not stage_root.exists():
+                staged_roots.append(stage_root)
             provenance = install_skill(
                 skill=skill,
                 adapter_id=adapter_id,
@@ -296,9 +333,6 @@ def install_skills(
                 existing_skill_paths=existing_skill_paths,
             ).provenance
             provenances.append(provenance)
-            # A native provenance ``location`` is the absolute staged root; a codex one is
-            # workspace-relative (``.agents/skills/<name>``). Record it only after a successful stage.
-            staged_roots.append(_provenance_stage_root(provenance, workspace_dir))
     except Exception:
         for root in staged_roots:
             shutil.rmtree(root, ignore_errors=True)
@@ -319,13 +353,129 @@ def install_skills(
     return SkillsInstallation(profiles=profiles, provenances=provenances)
 
 
-def _provenance_stage_root(provenance: SkillProvenance, workspace_dir: Path) -> Path:
-    """Absolute on-disk root of a staged bundle, for rollback. Native ``location`` is already absolute;
-    codex ``location`` is workspace-relative (``.agents/skills/<name>``)."""
-    location = provenance["location"]
-    if provenance["mode"] == SKILL_MODE_CODEX_SKILLS_DIR:
-        return workspace_dir / location
-    return Path(location)
+def _skill_stage_root(skill: AgentSkill, mode: SkillMode, workspace_dir: Path, skill_stage_dir: Path) -> Path:
+    """Absolute on-disk root :func:`install_skill` would stage ``skill`` into, computed before staging.
+
+    Mirrors install_skill's per-mode placement so :func:`install_skills` can register a rollback target
+    up front (an unknown mode raises there, not here; the returned path is simply never created, and
+    rolling back a path that does not exist is a no-op)."""
+    if mode == SKILL_MODE_NATIVE:
+        return skill_stage_dir / skill.name
+    return workspace_dir / CODEX_SKILLS_DIR / skill.name
+
+
+def _render_skill_seed(
+    *, skill: AgentSkill, adapter_id: str, mode: SkillMode, workspace_dir: str, skills_dir: str
+) -> tuple[dict[str, str], SkillProvenance]:
+    """Render one skill bundle into an in-sandbox ``{path: text}`` seed map + its provenance.
+
+    The per-skill core of :func:`stage_skills_seed` (the containerized counterpart of :func:`install_skill`,
+    which ``copytree``\\ s onto host disk): the container has no host workspace, so the bundle is read into
+    memory as UTF-8 text and keyed at the harness's in-sandbox discovery path — native: ``<skills_dir>/
+    <name>/``; codex: ``<workspace_dir>/.agents/skills/<name>/``. The content hash is over the source bundle
+    (matching :func:`install_skill`). The caller merges these into one seed set and, for native mode, a
+    single ``skills`` overlay — so no per-skill overlay is emitted here.
+    """
+    bundle = _read_text_bundle(skill.directory)
+    skill_hash = _hash_directory(skill.directory)
+    if mode == SKILL_MODE_NATIVE:
+        skill_root = f"{skills_dir.rstrip('/')}/{skill.name}"
+        files = {f"{skill_root}/{rel}": text for rel, text in bundle.items()}
+        return files, _provenance(skill, skill_hash, mode, adapter_id, skill_root)
+
+    if mode == SKILL_MODE_CODEX_SKILLS_DIR:
+        skill_root = f"{workspace_dir.rstrip('/')}/{CODEX_SKILLS_DIR}/{skill.name}"
+        files = {f"{skill_root}/{rel}": text for rel, text in bundle.items()}
+        location = f"{CODEX_SKILLS_DIR}/{skill.name}"
+        return files, _provenance(skill, skill_hash, mode, adapter_id, location)
+
+    raise SkillInjectionError(f"unknown skill injection mode {mode!r} for adapter {adapter_id!r}")
+
+
+def _read_text_bundle(directory: Path) -> dict[str, str]:
+    """Read an agentskills bundle into a ``{posix_relpath: text}`` map (requires a top-level ``SKILL.md``).
+
+    Every file is decoded as UTF-8: the containerized seed set (``SandboxSpec.files``) is text-only, so a
+    binary file (e.g. an image under ``assets/``) raises here rather than silently corrupting the staged
+    bundle — the host :func:`install_skill` path (OS-level ``copytree``) handles binary bundles instead.
+    """
+    src = directory.expanduser()
+    if not (src / PRIMARY_SKILL_DOC).is_file():
+        raise SkillInjectionError(f"skill directory {str(directory)!r} has no {PRIMARY_SKILL_DOC}")
+    bundle: dict[str, str] = {}
+    for path in sorted(candidate for candidate in src.rglob("*") if candidate.is_file()):
+        rel = path.relative_to(src).as_posix()
+        try:
+            bundle[rel] = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise SkillInjectionError(
+                f"skill file {rel!r} is not UTF-8 text; containerized skill injection (via the sandbox "
+                "seed set) supports text bundles only"
+            ) from exc
+    return bundle
+
+
+@dataclass
+class SkillsSeed:
+    """Result of rendering several skills into one sandbox seed set (see :func:`stage_skills_seed`).
+
+    The plural, containerized sibling of :class:`SkillsInstallation`:
+
+    * ``files`` — the merged ``{absolute_in_sandbox_path: text}`` seed map for every staged bundle.
+    * ``profiles`` — at most ONE merged native ``skills`` overlay listing every bundle (Fabric applies
+      ``skills.paths`` last-wins, so all must ride in a single overlay or all but the last are dropped);
+      the codex branch emits none.
+    * ``provenances`` — one entry per skill, in the given order, for the multi-skill A/B trial metadata.
+    """
+
+    files: dict[str, str]
+    profiles: list[dict[str, object]]
+    provenances: list[SkillProvenance]
+
+
+def stage_skills_seed(
+    *,
+    skills: Sequence[AgentSkill],
+    adapter_id: str,
+    mode: SkillMode,
+    workspace_dir: str,
+    skills_dir: str,
+    existing_skill_paths: Sequence[str] = (),
+) -> SkillsSeed:
+    """Render every skill in ``skills`` into one sandbox seed set + overlays for the container runtime.
+
+    The plural, containerized sibling of :func:`install_skills`: renders each bundle (via
+    :func:`_render_skill_seed`) under its own ``<name>/`` at the harness's in-sandbox discovery path, then,
+    for the native mode, merges the per-skill paths into a SINGLE ``skills`` overlay (Fabric applies profile
+    ``skills.paths`` last-wins, so one overlay per skill would silently drop all but the last). Pre-existing
+    ``existing_skill_paths`` are preserved ahead of the injected skills (same reason). Skill names must be
+    unique — their ``<name>/`` bundles would otherwise collide. No on-disk rollback is needed (unlike
+    :func:`install_skills`): the seed set is an in-memory map, so a failure to render any skill just
+    discards the accumulated map and raises, leaving nothing staged.
+    """
+    require_unique_skill_names(skills)
+    files: dict[str, str] = {}
+    provenances: list[SkillProvenance] = []
+    for skill in skills:
+        rendered, provenance = _render_skill_seed(
+            skill=skill, adapter_id=adapter_id, mode=mode, workspace_dir=workspace_dir, skills_dir=skills_dir
+        )
+        files.update(rendered)
+        provenances.append(provenance)
+
+    profiles: list[dict[str, object]] = []
+    if mode == SKILL_MODE_NATIVE and provenances:
+        # One merged overlay: pre-existing skills first, then each staged bundle (a native provenance's
+        # ``location`` is its absolute in-sandbox skill root), order-preserved and de-duplicated.
+        paths = list(dict.fromkeys([*existing_skill_paths, *(prov["location"] for prov in provenances)]))
+        profiles = [
+            {
+                "name": SKILL_PROFILE_NAME,
+                "description": "Make the evaluation skills available via the native Fabric skills config.",
+                "skills": {"paths": paths},
+            }
+        ]
+    return SkillsSeed(files=files, profiles=profiles, provenances=provenances)
 
 
 def _stage_bundle(directory: Path, skill_root: Path, *, reserved: bool) -> None:
@@ -355,7 +505,7 @@ def _stage_bundle(directory: Path, skill_root: Path, *, reserved: bool) -> None:
     shutil.copytree(src, skill_root)
 
 
-def _provenance(skill: AgentSkill, skill_hash: str, mode: str, adapter_id: str, location: str) -> SkillProvenance:
+def _provenance(skill: AgentSkill, skill_hash: str, mode: SkillMode, adapter_id: str, location: str) -> SkillProvenance:
     return {
         "name": skill.name,
         "hash": skill_hash,

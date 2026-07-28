@@ -819,8 +819,8 @@ def test_with_skill_returns_independent_copy() -> None:
 
     # A new instance is returned; the original is untouched.
     assert treated is not base
-    assert base._skills == []
-    assert treated._skills == [skill]
+    assert base._skill_set.skills == ()
+    assert treated._skill_set.skills == (skill,)
 
 
 def test_with_skills_returns_independent_copy_of_the_set() -> None:
@@ -836,8 +836,8 @@ def test_with_skills_returns_independent_copy_of_the_set() -> None:
 
     # A new instance carries the added set; the original is untouched.
     assert treated is not base
-    assert base._skills == []
-    assert treated._skills == skills
+    assert base._skill_set.skills == ()
+    assert treated._skill_set.skills == tuple(skills)
 
 
 def test_with_skill_is_additive_and_chainable() -> None:
@@ -851,12 +851,12 @@ def test_with_skill_is_additive_and_chainable() -> None:
     chained = base.with_skill(a).with_skill(b)
 
     # Both skills are present, in order; each intermediate runtime is left untouched.
-    assert chained._skills == [a, b]
-    assert base._skills == []
-    assert base.with_skill(a)._skills == [a]
+    assert chained._skill_set.skills == (a, b)
+    assert base._skill_set.skills == ()
+    assert base.with_skill(a)._skill_set.skills == (a,)
     # with_skills extends the same way (equivalent to chaining the single-skill calls).
-    assert base.with_skills([a, b])._skills == [a, b]
-    assert base.with_skill(a).with_skills([b])._skills == [a, b]
+    assert base.with_skills([a, b])._skill_set.skills == (a, b)
+    assert base.with_skill(a).with_skills([b])._skill_set.skills == (a, b)
 
 
 def test_with_skills_rejects_duplicate_names() -> None:
