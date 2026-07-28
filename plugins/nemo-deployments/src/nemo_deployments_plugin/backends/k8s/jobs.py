@@ -30,9 +30,11 @@ from nemo_deployments_plugin.backends.k8s.status import (
 )
 from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
+    DEFAULT_RESOURCE_SCOPE,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
     MANAGED_BY_KEY,
+    RESOURCE_SCOPE_LABEL,
     deployment_identity_labels,
     k8s_deployment_configmap_name,
     k8s_deployment_resource_name,
@@ -74,6 +76,7 @@ def deployment_scope_labels(workspace: str, name: str) -> dict[str, str]:
         MANAGED_BY_KEY: MANAGED_BY_LABEL,
         DEPLOYMENT_WORKSPACE_LABEL: workspace,
         DEPLOYMENT_NAME_LABEL: name,
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
     }
 
 

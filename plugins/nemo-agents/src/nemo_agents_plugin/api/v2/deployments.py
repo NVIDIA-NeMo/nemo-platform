@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _deployment_filter_dep = make_filter_obj_dep(DeploymentFilter)
+_DELETE_MARK_ATTEMPTS = 3
 
 
 @router.post("/deployments", response_model=AgentDeployment, status_code=201, tags=["Agent Deployments"])
@@ -198,9 +199,42 @@ async def delete_deployment(
     Marks the deployment as ``deleting``.  The controller terminates the
     subprocess and removes the entity on the next reconcile cycle.
     """
+    for attempt in range(_DELETE_MARK_ATTEMPTS):
+        try:
+            await _mark_deployment_deleting_once(
+                entity_client,
+                workspace=workspace,
+                name=name,
+                retrying=attempt > 0,
+            )
+            return
+        except HTTPException:
+            raise
+        except NemoEntityConflictError as exc:
+            if attempt + 1 >= _DELETE_MARK_ATTEMPTS:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Deployment '{name}' is being modified concurrently.",
+                ) from exc
+            logger.info("Retrying delete for deployment '%s' after concurrent update", name)
+        except Exception as exc:
+            logger.exception("Failed to mark deployment '%s' as deleting", name)
+            raise HTTPException(status_code=500, detail="Failed to update deployment.") from exc
+
+
+async def _mark_deployment_deleting_once(
+    entity_client: NemoEntitiesClient,
+    *,
+    workspace: str,
+    name: str,
+    retrying: bool,
+) -> None:
     try:
         dep = await entity_client.get(AgentDeployment, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:
+        if retrying:
+            logger.info("Deployment '%s' already deleted during delete retry", name)
+            return
         raise HTTPException(
             status_code=404,
             detail=f"Deployment '{name}' not found in workspace '{workspace}'.",
@@ -209,11 +243,12 @@ async def delete_deployment(
         logger.exception("Failed to look up deployment '%s' before delete", name)
         raise HTTPException(status_code=500, detail="Failed to look up deployment.") from exc
 
+    if dep.status == "deleting":
+        return
+
     dep.status = "deleting"
     try:
         await entity_client.update(dep)
     except NemoEntityNotFoundError:
         logger.info("Deployment '%s' already deleted before status update", name)
-    except Exception as exc:
-        logger.exception("Failed to mark deployment '%s' as deleting", name)
-        raise HTTPException(status_code=500, detail="Failed to update deployment.") from exc
+        return
