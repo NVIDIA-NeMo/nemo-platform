@@ -599,7 +599,7 @@ target "nmp-cpu-tasks-docker" {
 target "nmp-experimentalist-docker" {
   target     = "runtime"
   context    = "."
-  dockerfile = "docker/Dockerfile.nmp-experimentalist"
+  dockerfile = "plugins/nemo-experimentalist/Dockerfile"
   contexts = {
     nmp-python-base = "target:nmp-python-base"
     nmp-workspace   = "target:nmp-workspace"

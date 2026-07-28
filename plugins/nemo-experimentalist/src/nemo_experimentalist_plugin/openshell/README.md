@@ -36,7 +36,8 @@ imports the candidate's `harbor_wrapper.py`.
 ## Start the local components
 
 Install the OpenShell CLI and select a running gateway. From the repository
-root, build the Experimentalist image:
+root, build the Experimentalist image defined by
+[`plugins/nemo-experimentalist/Dockerfile`](../../../Dockerfile):
 
 ```bash
 export NEMO_EXPERIMENTALIST_PLATFORM=linux/arm64  # use linux/amd64 on x86 hosts
@@ -82,7 +83,7 @@ export GITLAB_TOKEN=glpat-...
 # For self-managed GitLab:
 export NEMO_EXPERIMENTALIST_GITLAB_HOST=gitlab.example.com
 
-plugins/nemo-experimentalist/examples/openshell/configure-providers.sh
+plugins/nemo-experimentalist/src/nemo_experimentalist_plugin/openshell/configure-providers.sh
 ```
 
 The setup script enables the gateway-global OpenShell
@@ -99,8 +100,8 @@ Then launch Experimentalist. Source control is disabled by default:
 
 ```bash
 export NEMO_EXPERIMENTALIST_IMAGE=local/nmp-experimentalist:local
-plugins/nemo-experimentalist/examples/openshell/run.sh /path/to/agent doctor
-plugins/nemo-experimentalist/examples/openshell/run.sh /path/to/agent run
+plugins/nemo-experimentalist/src/nemo_experimentalist_plugin/openshell/run.sh /path/to/agent doctor
+plugins/nemo-experimentalist/src/nemo_experimentalist_plugin/openshell/run.sh /path/to/agent run
 ```
 
 For a GitHub or GitLab agent source, attach one provider with the least

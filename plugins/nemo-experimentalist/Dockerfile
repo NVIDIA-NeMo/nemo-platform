@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chown sandbox:sandbox /sandbox
 
 COPY --from=builder /app/.venv /app/.venv
-COPY --chmod=0755 plugins/nemo-experimentalist/examples/openshell/git-askpass.sh \
+COPY --chmod=0755 plugins/nemo-experimentalist/src/nemo_experimentalist_plugin/openshell/git-askpass.sh \
     /usr/local/bin/nemo-experimentalist-git-askpass
 
 ENV HOME=/home/sandbox \
