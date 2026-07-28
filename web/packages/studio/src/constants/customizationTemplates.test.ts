@@ -31,8 +31,6 @@ describe('CUSTOMIZATION_TEMPLATES', () => {
     });
 
     it('registers every model it references', () => {
-      // The student/base model always comes from the models list; a teacher model
-      // (distillation) must also be registered so its fileset exists.
       const registered = template.models.map((m) => `${WORKSPACE}/${m.name}`);
       expect(registered).toContain(fields.automodel.model);
       const teacher = fields.automodel.training.teacher_model;

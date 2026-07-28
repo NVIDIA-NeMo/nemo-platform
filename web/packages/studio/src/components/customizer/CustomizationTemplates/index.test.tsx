@@ -15,7 +15,6 @@ import type { Mock } from 'vitest';
 
 const WORKSPACE = 'default';
 
-/** Returns `length` valid SQuAD rows so the converter yields enough train + validation data. */
 const hfRowsHandler = http.get('https://datasets-server.huggingface.co/rows', ({ request }) => {
   const length = Number(new URL(request.url).searchParams.get('length') ?? '0');
   return HttpResponse.json({
@@ -44,7 +43,6 @@ describe('CustomizationTemplates', () => {
     for (const template of CUSTOMIZATION_TEMPLATES) {
       expect(screen.getByText(template.title)).toBeInTheDocument();
     }
-    // Gated templates surface an "HF token" badge; open ones do not.
     const gatedCount = CUSTOMIZATION_TEMPLATES.filter((t) =>
       t.models.some((m) => m.requiresHfToken)
     ).length;
@@ -59,7 +57,6 @@ describe('CustomizationTemplates', () => {
       </TestProviders>
     );
 
-    // First card is the LoRA (no HF token) template.
     await user.click(screen.getAllByRole('button', { name: 'Use Template' })[0]);
 
     await waitFor(

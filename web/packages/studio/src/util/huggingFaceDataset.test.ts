@@ -8,7 +8,6 @@ import { http, HttpResponse } from 'msw';
 
 const HF_URL = 'https://datasets-server.huggingface.co/rows';
 
-/** Responds with `length` identical rows so the converter has data to work with. */
 const rowsHandler = (makeRow: () => Record<string, unknown> = () => ({ text: 'x' })) =>
   http.get(HF_URL, ({ request }) => {
     const length = Number(new URL(request.url).searchParams.get('length') ?? '0');
@@ -50,6 +49,33 @@ describe('fetchAndConvertDataset', () => {
     expect(onProgress).toHaveBeenLastCalledWith(5, 5);
   });
 
+  it('does not backfill a dropped training row from the validation partition', async () => {
+    server.use(
+      http.get(HF_URL, () =>
+        HttpResponse.json({
+          rows: [
+            { row: { text: 'a' } },
+            { row: { drop: true } },
+            { row: { text: 'c' } },
+            { row: { text: 'd' } },
+            { row: { text: 'e' } },
+          ],
+        })
+      )
+    );
+
+    await expect(
+      fetchAndConvertDataset(
+        dataset({
+          trainingRowCount: 3,
+          validationRowCount: 2,
+          convertRow: (row) => (row.drop ? null : row),
+        }),
+        () => {}
+      )
+    ).rejects.toThrow(/Not enough valid training rows: needed 3, found 2/);
+  });
+
   it('paginates in 100-row pages for large datasets', async () => {
     let requests = 0;
     server.use(
@@ -65,7 +91,7 @@ describe('fetchAndConvertDataset', () => {
       () => {}
     );
 
-    expect(requests).toBe(2); // 200 rows / 100 per page
+    expect(requests).toBe(2);
   });
 
   it('throws when Hugging Face responds with an error', async () => {
@@ -85,7 +111,6 @@ describe('fetchAndConvertDataset', () => {
   });
 
   it('throws when valid training rows are short of the configured count', async () => {
-    // 2 valid rows for a 3-row training request — undersized but not empty.
     let served = 0;
     server.use(
       http.get(HF_URL, ({ request }) => {
@@ -112,7 +137,6 @@ describe('fetchAndConvertDataset', () => {
   });
 
   it('throws when validation is requested but yields no rows', async () => {
-    // Only enough valid rows to fill training, leaving validation empty.
     let served = 0;
     server.use(
       http.get(HF_URL, ({ request }) => {
@@ -144,6 +168,6 @@ describe('fetchAndConvertDataset', () => {
 
     const { training } = await fetchAndConvertDataset(dataset(), () => {});
     expect((await training.text()).split('\n')).toHaveLength(3);
-    expect(calls).toBe(2); // one 503, one success
+    expect(calls).toBe(2);
   });
 });
