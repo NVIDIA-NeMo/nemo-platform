@@ -165,9 +165,10 @@ def _relay_atof_config(atof_config: dict[str, Any], output_dir: str | None) -> d
 
     for endpoint in atof.pop("endpoints", []) or []:
         stream_sink = dict(endpoint)
-        if "endpoint" in stream_sink and "url" not in stream_sink:
-            stream_sink["url"] = stream_sink.pop("endpoint")
-        stream_sink.setdefault("type", "stream")
+        endpoint_url = stream_sink.pop("endpoint", None)
+        if endpoint_url is not None and "url" not in stream_sink:
+            stream_sink["url"] = endpoint_url
+        stream_sink["type"] = "stream"
         sinks.append(stream_sink)
 
     translated = {"enabled": atof.pop("enabled", False)}
