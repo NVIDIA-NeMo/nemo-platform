@@ -354,7 +354,19 @@ class EvaluationFilter(Filter):
     """Filter for listing Evaluations."""
 
     name: str | None = Field(default=None, description="Filter evaluations by name.")
-    experiment_group_id: str | None = Field(default=None, description="Filter evaluations by owning group id.")
+    experiment_id: str | None = Field(
+        default=None,
+        description=(
+            "Filter evaluations by experiment group membership: matches evaluations whose "
+            "`experiment_ids` include this group id (legacy rows still on `experiment_group_id` also "
+            "match). This is the canonical membership filter — it mirrors the write-side `experiment_ids`."
+        ),
+    )
+    experiment_group_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated alias for `experiment_id`; filter evaluations by experiment group membership.",
+    )
     dataset_name: str | None = Field(default=None, description="Filter evaluations by dataset name.")
     dataset_version: str | None = Field(default=None, description="Filter evaluations by dataset version.")
     created_by: str | None = Field(default=None, description="Filter evaluations by the principal that created them.")

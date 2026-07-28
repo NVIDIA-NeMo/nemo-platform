@@ -284,6 +284,28 @@ def test_evaluation_list_and_scope_to_group(client: TestClient) -> None:
     assert missing.status_code == 404
 
 
+def test_evaluation_filter_experiment_id_matches_deprecated_alias(client: TestClient) -> None:
+    """The canonical `experiment_id` filter returns the same set as the deprecated `experiment_group_id`,
+    both resolving membership over the evaluation's `experiment_ids` list."""
+    group = client.post(GROUPS, json={"name": "grp-canon"}).json()
+    other = client.post(GROUPS, json={"name": "grp-other"}).json()
+    # Membership is set via the canonical `experiment_ids` write field (no legacy scalar).
+    client.post(EVALUATIONS, json={"name": "in-group", "experiment_ids": [group["id"]], "dataset_name": "ds"})
+    client.post(EVALUATIONS, json={"name": "in-other", "experiment_ids": [other["id"]], "dataset_name": "ds"})
+
+    by_canonical = client.get(EVALUATIONS, params={"filter[experiment_id]": group["id"]})
+    assert by_canonical.status_code == 200, by_canonical.text
+    canonical_names = {e["name"] for e in by_canonical.json()["data"]}
+    assert canonical_names == {"in-group"}
+
+    by_deprecated = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group["id"]})
+    assert by_deprecated.status_code == 200, by_deprecated.text
+    deprecated_names = {e["name"] for e in by_deprecated.json()["data"]}
+
+    # The canonical key and the deprecated alias resolve to the same membership set.
+    assert canonical_names == deprecated_names
+
+
 def test_evaluation_filter_by_dataset_version(client: TestClient) -> None:
     group = _create_group(client)
     client.post(
