@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.base import SandboxCreateError, SandboxSpec, SandboxStatus
 from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers import _compose_cli as compose_cli
+from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers import _compose_lifecycle as compose_lifecycle
 from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers import _compose_state as compose_state
 from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers.compose import ComposeCleanupError, ComposeServiceTopology
 
@@ -137,6 +138,63 @@ async def test_cancelled_startup_diagnostics_finishes_cleanup_before_restoring_c
         await create_task
 
     assert any(_compose_suffix(argv)[:1] == ("down",) for argv, _, _ in runner.calls)
+    assert provider._session is None
+    recovered_lock = compose_state._ComposeProjectLock.acquire(provider.lock_path)
+    recovered_lock.release()
+
+
+@pytest.mark.parametrize("exit_type", [KeyboardInterrupt, SystemExit])
+async def test_startup_process_exit_is_preserved_after_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    exit_type: type[BaseException],
+) -> None:
+    runner = _Runner()
+    provider = _provider(tmp_path)
+
+    async def fail_readiness(_environment: Mapping[str, str]) -> None:
+        raise exit_type("process exit")
+
+    monkeypatch.setattr(provider, "_assert_ready", fail_readiness)
+
+    with pytest.raises(exit_type, match="process exit"):
+        await _create(monkeypatch, provider, runner)
+
+    assert any(_compose_suffix(argv)[:1] == ("down",) for argv, _, _ in runner.calls)
+    assert provider._session is None
+    recovered_lock = compose_state._ComposeProjectLock.acquire(provider.lock_path)
+    recovered_lock.release()
+
+
+@pytest.mark.parametrize("exit_type", [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize("phase", ["hook", "down"])
+async def test_teardown_process_exit_is_preserved_after_retirement(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    exit_type: type[BaseException],
+    phase: str,
+) -> None:
+    runner = _Runner()
+
+    async def hook(_context) -> None:
+        if phase == "hook":
+            raise exit_type("process exit")
+
+    provider = _provider(tmp_path, teardown_hook=hook)
+    handle = await _create(monkeypatch, provider, runner)
+
+    if phase == "down":
+
+        async def fail_down(*_args: object, **_kwargs: object) -> None:
+            raise exit_type("process exit")
+
+        monkeypatch.setattr(compose_lifecycle, "_compose_down", fail_down)
+
+    with pytest.raises(exit_type, match="process exit"):
+        await provider.close(handle)
+
+    if phase == "hook":
+        assert any(_compose_suffix(argv)[:1] == ("down",) for argv, _, _ in runner.calls)
     assert provider._session is None
     recovered_lock = compose_state._ComposeProjectLock.acquire(provider.lock_path)
     recovered_lock.release()

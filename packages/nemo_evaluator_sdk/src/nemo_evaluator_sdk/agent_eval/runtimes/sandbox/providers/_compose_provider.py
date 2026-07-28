@@ -330,7 +330,7 @@ class DockerComposeSandboxProvider:
             cleanup_error = await self._shielded_cleanup(session, diagnostics_reason="startup-failure")
             if cleanup_error is not None:
                 exc.add_note(f"Compose cleanup also failed: {cleanup_error}")
-            if isinstance(exc, asyncio.CancelledError):
+            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
                 raise
             if isinstance(exc, SandboxCreateError):
                 raise
@@ -628,7 +628,7 @@ class DockerComposeSandboxProvider:
             if self.teardown_hook is not None:
                 await self.teardown_hook(ComposeTeardownContext(self, environment))
         except BaseException as exc:  # noqa: BLE001 - Compose down must still run
-            if isinstance(exc, asyncio.CancelledError):
+            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
                 raise
             errors.append(f"Compose teardown hook failed: {type(exc).__name__}: {exc}")
         finally:
@@ -644,7 +644,7 @@ class DockerComposeSandboxProvider:
                     errors.append(self._cli.failure_message("Compose down failed", down, environment))
                 errors.extend(await self._verify_project_destroyed(environment))
             except BaseException as exc:  # noqa: BLE001 - release ownership even if Docker fails
-                if isinstance(exc, asyncio.CancelledError):
+                if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
                     raise
                 errors.append(f"Compose teardown failed: {type(exc).__name__}: {exc}")
             finally:
@@ -674,17 +674,33 @@ class DockerComposeSandboxProvider:
             asyncio.CancelledError: Re-raised after cleanup completes when the caller was cancelled.
         """
 
+        process_exit: KeyboardInterrupt | SystemExit | None = None
+
         async def cleanup() -> ComposeCleanupError | None:
             """Capture optional diagnostics, then tear down the owned project."""
-            if diagnostics_reason is not None:
-                await self._capture_diagnostics(session.environment, reason=diagnostics_reason)
-            return await self._cleanup_owned_project(session)
+            nonlocal process_exit
+            try:
+                if diagnostics_reason is not None:
+                    await self._capture_diagnostics(session.environment, reason=diagnostics_reason)
+            except (KeyboardInterrupt, SystemExit) as exc:
+                process_exit = exc
+
+            try:
+                return await self._cleanup_owned_project(session)
+            except (KeyboardInterrupt, SystemExit) as exc:
+                if process_exit is None:
+                    process_exit = exc
+                else:
+                    process_exit.add_note(f"Compose cleanup also exited: {exc}")
+                return None
 
         result, cancellation = await _run_shielded(cleanup())
         if cancellation is not None:
             if result is not None:
                 cancellation.add_note(f"Compose cleanup also failed: {result}")
             raise cancellation
+        if process_exit is not None:
+            raise process_exit
         return result
 
     def _retire_session(self, session: _ComposeSession) -> None:
