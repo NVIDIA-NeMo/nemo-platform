@@ -399,6 +399,23 @@ For the complete default values, see [values.yaml](values.yaml).
 | ncclTest.iterations | int | `3` | How many times to run the full multinode NCCL test (orchestrator loop; env NCCL_TEST_ITERATIONS). Increase the test timeout on helm test if increasing this variable |
 | ncclTest.validation.minBandwidthMBpsAt1024MB | int | `8000` | Minimum allreduce bandwidth (MB/s) at 1024MB message size; 0 disables the floor check in nccl_test.py. |
 | ncclTest.waitTimeoutSeconds | int | `900` | Max seconds to wait for each worker pod to complete. |
+| networkPolicies | object | This object has the following default values for optional NetworkPolicy resources. | NetworkPolicy configuration. |
+| networkPolicies.jobs | object | This object has the following default values for managed job pod egress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled. | NetworkPolicy configuration for pods created by the jobs controller. |
+| networkPolicies.jobs.dns | object | `{"enabled":true,"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"kube-system"}},"podSelector":{"matchLabels":{"k8s-app":"kube-dns"}},"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]}` | Allow DNS lookup from managed job pods. |
+| networkPolicies.jobs.dns.enabled | bool | `true` | Enable egress to DNS pods. |
+| networkPolicies.jobs.dns.namespaceSelector | object | `{"matchLabels":{"kubernetes.io/metadata.name":"kube-system"}}` | Namespace selector for DNS pods. |
+| networkPolicies.jobs.dns.podSelector | object | `{"matchLabels":{"k8s-app":"kube-dns"}}` | Pod selector for DNS pods. |
+| networkPolicies.jobs.dns.ports | list | `[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]` | DNS ports to allow. |
+| networkPolicies.jobs.enabled | bool | `false` | Create NetworkPolicy resources that isolate managed job pod egress. |
+| networkPolicies.jobs.externalEgress | object | `{"enabled":true,"ipBlocks":[{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","100.64.0.0/10","127.0.0.0/8","169.254.0.0/16","172.16.0.0/12","192.168.0.0/16"]}],"ports":[]}` | Allow egress to external CIDR blocks. The default excludes common private, loopback, and link-local ranges so enabling the policy does not allow direct access to typical in-cluster service and pod networks. |
+| networkPolicies.jobs.externalEgress.enabled | bool | `true` | Enable egress to external CIDR blocks. |
+| networkPolicies.jobs.externalEgress.ipBlocks | list | `[{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","100.64.0.0/10","127.0.0.0/8","169.254.0.0/16","172.16.0.0/12","192.168.0.0/16"]}]` | External destination CIDR blocks for managed job pods. |
+| networkPolicies.jobs.externalEgress.ports | list | `[]` | Optional list of ports for external egress. Empty allows all ports to the configured ipBlocks. |
+| networkPolicies.jobs.extraEgress | list | `[]` | Extra NetworkPolicy egress rules appended to the managed job policy, for cluster-specific dependencies or additional allowed CIDRs. |
+| networkPolicies.jobs.platformApi | object | `{"enabled":true,"port":""}` | Allow managed job pods to reach the in-namespace NeMo Platform API pods. |
+| networkPolicies.jobs.platformApi.enabled | bool | `true` | Enable egress to the platform API pods. |
+| networkPolicies.jobs.platformApi.port | string | `""` | Optional NetworkPolicy port for the platform API. Empty uses api.service.port. |
+| networkPolicies.jobs.podSelector | object | `{"matchLabels":{"app":"nemo-job","nmp.nvidia.com/managed_by":"jobs-controller"}}` | Pod selector for managed job pods. The default matches Kubernetes/Volcano pods created by the jobs controller. |
 | ngcAPIKey | string | `"YOUR-NGC-API-KEY"` | Your NVIDIA GPU Cloud (NGC) API key authenticates API calls to NGC services, such as model downloads. The existing secret overrides this key if you provide one to the `existingSecret` key. |
 | openshiftRoute | object | [See values.yaml](values.yaml#L587) | OpenShift Route (route.openshift.io/v1). Use on OpenShift to expose the API via a Route instead of Ingress. |
 | openshiftRoute.annotations | object | `{}` | Annotations for the route resource. |

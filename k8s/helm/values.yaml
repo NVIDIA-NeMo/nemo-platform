@@ -120,6 +120,62 @@ multinodeNetworking:
     # -- Number of RDMA devices (mlnxnics) to request per GPU
     rdmaDevicesPerGPU: 8
 
+# -- NetworkPolicy configuration.
+# @default -- This object has the following default values for optional NetworkPolicy resources.
+networkPolicies:
+  # -- NetworkPolicy configuration for pods created by the jobs controller.
+  # @default -- This object has the following default values for managed job pod egress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
+  jobs:
+    # -- Create NetworkPolicy resources that isolate managed job pod egress.
+    enabled: false
+    # -- Pod selector for managed job pods. The default matches Kubernetes/Volcano pods created by the jobs controller.
+    podSelector:
+      matchLabels:
+        app: nemo-job
+        nmp.nvidia.com/managed_by: jobs-controller
+    # -- Allow managed job pods to reach the in-namespace NeMo Platform API pods.
+    platformApi:
+      # -- Enable egress to the platform API pods.
+      enabled: true
+      # -- Optional NetworkPolicy port for the platform API. Empty uses api.service.port.
+      port: ""
+    # -- Allow DNS lookup from managed job pods.
+    dns:
+      # -- Enable egress to DNS pods.
+      enabled: true
+      # -- Namespace selector for DNS pods.
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      # -- Pod selector for DNS pods.
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+      # -- DNS ports to allow.
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # -- Allow egress to external CIDR blocks. The default excludes common private, loopback, and link-local ranges so enabling the policy does not allow direct access to typical in-cluster service and pod networks.
+    externalEgress:
+      # -- Enable egress to external CIDR blocks.
+      enabled: true
+      # -- External destination CIDR blocks for managed job pods.
+      ipBlocks:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 100.64.0.0/10
+            - 127.0.0.0/8
+            - 169.254.0.0/16
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+      # -- Optional list of ports for external egress. Empty allows all ports to the configured ipBlocks.
+      ports: []
+    # -- Extra NetworkPolicy egress rules appended to the managed job policy, for cluster-specific dependencies or additional allowed CIDRs.
+    extraEgress: []
+
 # -- NCCL chart test (`helm test`): multi-node allreduce check. Templates use helm.sh/hook: test — they are not created on install/upgrade, only when you run helm test.
 # Requires nodes labeled with gpuNodeLabelKey/gpuNodeLabelValue (default NFD / GPU operator style).
 # See https://helm.sh/docs/topics/chart_tests/
