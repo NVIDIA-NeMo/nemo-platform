@@ -94,6 +94,41 @@ describe('ControlledCombobox', () => {
     await waitFor(() => expect(screen.getByTestId('typed')).toHaveTextContent('ice_cream'));
   });
 
+  it('adds typed text to a multi-select field on Enter', async () => {
+    let value: string[] = [];
+    render(<MultiHarness freeForm onValues={(next) => (value = next)} />);
+
+    const input = screen.getByRole('combobox', { name: 'Labels' });
+    await userEvent.type(input, 'ice_cream{Enter}');
+    await waitFor(() => expect(value).toEqual(['ice_cream']));
+
+    await userEvent.type(input, 'sprinkles{Enter}');
+    await waitFor(() => expect(value).toEqual(['ice_cream', 'sprinkles']));
+  });
+
+  it('ignores Enter on blank or duplicate entries', async () => {
+    let value: string[] = [];
+    render(<MultiHarness freeForm onValues={(next) => (value = next)} />);
+
+    const input = screen.getByRole('combobox', { name: 'Labels' });
+    await userEvent.type(input, 'ice_cream{Enter}');
+    await waitFor(() => expect(value).toEqual(['ice_cream']));
+
+    await userEvent.type(input, '   {Enter}');
+    await userEvent.type(input, 'ice_cream{Enter}');
+
+    expect(value).toEqual(['ice_cream']);
+  });
+
+  it('does not add on Enter without freeForm', async () => {
+    let value: string[] = [];
+    render(<MultiHarness onValues={(next) => (value = next)} />);
+
+    await userEvent.type(screen.getByRole('combobox', { name: 'Labels' }), 'ice_cream{Enter}');
+
+    expect(value).toEqual([]);
+  });
+
   it('still selects items in multi-select mode', async () => {
     let value: string[] = [];
     render(<MultiHarness onValues={(next) => (value = next)} />);

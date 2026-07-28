@@ -141,6 +141,11 @@ export const MultipleSectioned: Story = {
   args: { kind: 'multiple', items: SECTIONED },
 };
 
+export const MultipleFreeForm: Story = {
+  name: 'Multi select (freeForm, adds on Enter)',
+  args: { kind: 'multiple', freeForm: true, placeholder: 'Type a label, then Enter...' },
+};
+
 export const MultipleCustomEntries: Story = {
   name: 'Multi select (custom entries)',
   args: {
