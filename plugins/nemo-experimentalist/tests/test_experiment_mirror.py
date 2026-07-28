@@ -21,11 +21,11 @@ _NOTFOUND = NotFoundError(
 
 
 def _client(groups: object, experiments: object) -> AsyncNeMoPlatform:
-    return cast(AsyncNeMoPlatform, SimpleNamespace(experiment_groups=groups, evaluations=experiments))
+    return cast(AsyncNeMoPlatform, SimpleNamespace(experiments=groups, evaluations=experiments))
 
 
 class _StatefulGroups:
-    """Models experiment_groups as a full-replace PUT store: create/update set the
+    """Models experiments as a full-replace PUT store: create/update set the
     stored body to exactly the fields passed, treating ``omit`` (or an absent kwarg)
     as "field became None". This is what catches accidental field-wiping on update."""
 
@@ -209,7 +209,7 @@ async def test_finalize_round0_winner_preserves_existing_source_link():
 
 
 async def test_group_update_and_finalize_do_not_wipe_insight_or_metadata():
-    # experiment_groups.update is a full-replace PUT; ensure_group → update_group →
+    # experiments.update is a full-replace PUT; ensure_group → update_group →
     # finalize must all preserve insight_id + metadata rather than reset them to None.
     groups = _StatefulGroups()
     mirror = ExperimentMirror(_client(groups, AsyncMock()), workspace="default")
