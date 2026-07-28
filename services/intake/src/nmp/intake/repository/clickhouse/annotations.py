@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""ClickHouse implementation of Intake annotation storage."""
+"""ClickHouse implementation of Intake annotation persistence."""
 
 from __future__ import annotations
 
@@ -10,9 +10,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.repository.annotations import AnnotationsRepository
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseInsert, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
 from nmp.intake.spans.domain import Annotation, AnnotationKind, AnnotationListFilter
-from nmp.intake.spans.storage import dict_to_row, make_pagination, result_rows
+from nmp.intake.spans.storage import dict_to_row, make_pagination
 
 ANNOTATION_COLUMNS = [
     "annotation_id",
@@ -36,29 +38,38 @@ ANNOTATION_SORT_COLUMNS = {
 }
 
 
-class AnnotationsRepository:
-    def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+class ClickHouseAnnotationsRepository(AnnotationsRepository):
+    def __init__(self, executor: ClickHouseExecutor) -> None:
+        self._executor = executor
 
     async def save_annotations(self, annotations: list[Annotation]) -> None:
         if not annotations:
             return
         rows = [dict_to_row(_annotation_to_row(item), ANNOTATION_COLUMNS) for item in annotations]
-        await self._client.insert("annotations", rows, column_names=ANNOTATION_COLUMNS)
+        await self._executor.insert(
+            ClickHouseInsert(
+                name="annotations.save",
+                table=ClickHouseTable.ANNOTATIONS,
+                rows=rows,
+                column_names=ANNOTATION_COLUMNS,
+            )
+        )
 
     async def get_annotation(self, *, workspace: str, annotation_id: str) -> Annotation | None:
-        result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {self._client.table("annotations")} FINAL
-            WHERE workspace = %(workspace)s
-              AND annotation_id = %(annotation_id)s
-              AND is_deleted = 0
-            LIMIT 1
-            """,
-            parameters={"workspace": workspace, "annotation_id": annotation_id},
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="annotations.get",
+                statement=f"""
+                SELECT *
+                FROM {self._executor.table(ClickHouseTable.ANNOTATIONS)} FINAL
+                WHERE workspace = %(workspace)s
+                  AND annotation_id = %(annotation_id)s
+                  AND is_deleted = 0
+                LIMIT 1
+                """,
+                parameters={"workspace": workspace, "annotation_id": annotation_id},
+            )
         )
-        rows = result_rows(result)
         if not rows:
             return None
         return _row_to_annotation(rows[0])
@@ -72,24 +83,32 @@ class AnnotationsRepository:
         sort: str,
     ) -> PaginatedResult[Annotation]:
         where_sql, parameters = _annotation_where(filters)
-        table = self._client.table("annotations")
-        total_result = await self._client.query(
-            f"SELECT count() FROM {table} FINAL WHERE {where_sql}",
-            parameters=parameters,
+        table = self._executor.table(ClickHouseTable.ANNOTATIONS)
+        total_results = int(
+            await self._executor.fetch_scalar(
+                ClickHouseQuery(
+                    name="annotations.list.count",
+                    statement=f"SELECT count() FROM {table} FINAL WHERE {where_sql}",
+                    parameters=parameters,
+                )
+            )
+            or 0
         )
-        total_results = int(total_result.result_rows[0][0])
         offset = (page - 1) * page_size
-        rows_result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {table} FINAL
-            WHERE {where_sql}
-            ORDER BY {_annotation_order_by(sort)}
-            LIMIT %(limit)s OFFSET %(offset)s
-            """,
-            parameters={**parameters, "limit": page_size, "offset": offset},
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="annotations.list.rows",
+                statement=f"""
+                SELECT *
+                FROM {table} FINAL
+                WHERE {where_sql}
+                ORDER BY {_annotation_order_by(sort)}
+                LIMIT %(limit)s OFFSET %(offset)s
+                """,
+                parameters={**parameters, "limit": page_size, "offset": offset},
+            )
         )
-        annotations = [_row_to_annotation(row) for row in result_rows(rows_result)]
+        annotations = [_row_to_annotation(row) for row in rows]
         return PaginatedResult(
             data=annotations,
             pagination=make_pagination(
@@ -111,7 +130,14 @@ class AnnotationsRepository:
         row = _annotation_to_row(annotation, is_deleted=True)
         row["ingested_at"] = datetime.now(timezone.utc)
         rows = [dict_to_row(row, ANNOTATION_COLUMNS)]
-        await self._client.insert("annotations", rows, column_names=ANNOTATION_COLUMNS)
+        await self._executor.insert(
+            ClickHouseInsert(
+                name="annotations.soft_delete",
+                table=ClickHouseTable.ANNOTATIONS,
+                rows=rows,
+                column_names=ANNOTATION_COLUMNS,
+            )
+        )
 
 
 def _annotation_where(filters: AnnotationListFilter) -> tuple[str, dict[str, Any]]:

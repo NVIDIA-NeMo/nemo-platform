@@ -12,10 +12,21 @@ from time import perf_counter
 from typing import Any
 
 from clickhouse_connect.driver.exceptions import ClickHouseError
+from clickhouse_connect.driver.external import ExternalData
 from nmp.intake.repository.clickhouse.tables import ClickHouseTable, qualified_table
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ClickHouseExternalData:
+    """One typed external-data payload used by a repository query."""
+
+    file_name: str
+    data: bytes
+    fmt: str
+    structure: str
 
 
 @dataclass(frozen=True)
@@ -25,6 +36,7 @@ class ClickHouseQuery:
     name: str
     statement: str
     parameters: Mapping[str, object] = field(default_factory=dict)
+    external_data: ClickHouseExternalData | None = None
 
     def bind(self, **parameters: object) -> ClickHouseQuery:
         """Return a copy with additional bound parameters."""
@@ -33,7 +45,18 @@ class ClickHouseQuery:
             name=self.name,
             statement=self.statement,
             parameters={**self.parameters, **parameters},
+            external_data=self.external_data,
         )
+
+
+@dataclass(frozen=True)
+class ClickHouseInsert:
+    """One named insert into a registered runtime table."""
+
+    name: str
+    table: ClickHouseTable
+    rows: Sequence[Sequence[Any]]
+    column_names: Sequence[str]
 
 
 class ClickHouseQueryError(RuntimeError):
@@ -44,8 +67,16 @@ class ClickHouseQueryError(RuntimeError):
         super().__init__(f"ClickHouse query failed: {query_name}")
 
 
+class ClickHouseInsertError(RuntimeError):
+    """Raised when a named repository insert fails."""
+
+    def __init__(self, insert_name: str) -> None:
+        self.insert_name = insert_name
+        super().__init__(f"ClickHouse insert failed: {insert_name}")
+
+
 class ClickHouseExecutor:
-    """Execute named repository queries without exposing the raw driver result."""
+    """Execute named repository operations without exposing the raw driver."""
 
     def __init__(self, client: ClickHouseSpanClient) -> None:
         self._client = client
@@ -56,10 +87,23 @@ class ClickHouseExecutor:
     async def fetch_all(self, query: ClickHouseQuery) -> list[dict[str, Any]]:
         started_at = perf_counter()
         try:
-            result = await self._client.query(
-                query.statement,
-                parameters=dict(query.parameters),
-            )
+            if query.external_data is None:
+                result = await self._client.query(
+                    query.statement,
+                    parameters=dict(query.parameters),
+                )
+            else:
+                external_data = query.external_data
+                result = await self._client.query(
+                    query.statement,
+                    parameters=dict(query.parameters),
+                    external_data=ExternalData(
+                        file_name=external_data.file_name,
+                        data=external_data.data,
+                        fmt=external_data.fmt,
+                        structure=external_data.structure,
+                    ),
+                )
         except ClickHouseError as exc:
             logger.exception("ClickHouse repository query failed", extra={"query_name": query.name})
             raise ClickHouseQueryError(query.name) from exc
@@ -81,3 +125,29 @@ class ClickHouseExecutor:
 
         rows = await self.fetch_all(query)
         return next(iter(rows[0].values())) if rows else None
+
+    async def insert(self, insert: ClickHouseInsert) -> None:
+        if not insert.rows:
+            return
+        if not isinstance(insert.table, ClickHouseTable):
+            raise TypeError(f"Expected ClickHouseTable, got {type(insert.table).__name__}")
+
+        started_at = perf_counter()
+        try:
+            await self._client.insert(
+                insert.table.value,
+                insert.rows,
+                column_names=insert.column_names,
+            )
+        except ClickHouseError as exc:
+            logger.exception("ClickHouse repository insert failed", extra={"insert_name": insert.name})
+            raise ClickHouseInsertError(insert.name) from exc
+        finally:
+            logger.debug(
+                "ClickHouse repository insert finished",
+                extra={
+                    "insert_name": insert.name,
+                    "row_count": len(insert.rows),
+                    "duration_ms": (perf_counter() - started_at) * 1000,
+                },
+            )

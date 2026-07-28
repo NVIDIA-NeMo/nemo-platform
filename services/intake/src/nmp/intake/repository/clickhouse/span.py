@@ -10,7 +10,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseInsert, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
+from nmp.intake.repository.span import SpanRepository
 from nmp.intake.spans.domain import IntakeResponseMode, IntakeSpan, SpanGroup, SpanListFilter
 from nmp.intake.spans.span_attribute_catalog import where_clause
 from nmp.intake.spans.storage import (
@@ -18,7 +20,6 @@ from nmp.intake.spans.storage import (
     make_pagination,
     normalize_span_kind,
     normalize_span_status,
-    result_rows,
     text_query_parameters,
     text_select_for_mode,
 )
@@ -65,13 +66,20 @@ class _GroupExpression:
     required_sql: str
 
 
-class SpanRepository:
-    def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+class ClickHouseSpanRepository(SpanRepository):
+    def __init__(self, executor: ClickHouseExecutor) -> None:
+        self._executor = executor
 
     async def save_spans(self, spans: list[IntakeSpan]) -> None:
         rows = [dict_to_row(_span_to_row(span), SPAN_INSERT_COLUMNS) for span in spans]
-        await self._client.insert("spans", rows, column_names=SPAN_INSERT_COLUMNS)
+        await self._executor.insert(
+            ClickHouseInsert(
+                name="spans.save",
+                table=ClickHouseTable.SPANS,
+                rows=rows,
+                column_names=SPAN_INSERT_COLUMNS,
+            )
+        )
 
     async def list_spans(
         self,
@@ -83,11 +91,17 @@ class SpanRepository:
         mode: IntakeResponseMode,
     ) -> PaginatedResult[IntakeSpan]:
         where_sql, parameters = _span_where(filters)
-        table = self._client.table("spans")
-        total_result = await self._client.query(
-            f"SELECT count() FROM {table} FINAL WHERE {where_sql}", parameters=parameters
+        table = self._executor.table(ClickHouseTable.SPANS)
+        total_results = int(
+            await self._executor.fetch_scalar(
+                ClickHouseQuery(
+                    name="spans.list.count",
+                    statement=f"SELECT count() FROM {table} FINAL WHERE {where_sql}",
+                    parameters=parameters,
+                )
+            )
+            or 0
         )
-        total_results = int(total_result.result_rows[0][0])
         offset = (page - 1) * page_size
         columns_sql = _span_select_columns(mode=mode)
         rows_parameters: dict[str, Any] = {
@@ -96,17 +110,19 @@ class SpanRepository:
             "limit": page_size,
             "offset": offset,
         }
-        rows_result = await self._client.query(
-            f"""
-            SELECT {columns_sql}
-            FROM {table} FINAL
-            WHERE {where_sql}
-            ORDER BY {_order_by(sort)}
-            LIMIT %(limit)s OFFSET %(offset)s
-            """,
-            parameters=rows_parameters,
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="spans.list.rows",
+                statement=f"""
+                SELECT {columns_sql}
+                FROM {table} FINAL
+                WHERE {where_sql}
+                ORDER BY {_order_by(sort)}
+                LIMIT %(limit)s OFFSET %(offset)s
+                """,
+                parameters=rows_parameters,
+            )
         )
-        rows = result_rows(rows_result)
         spans = _rows_to_spans(rows)
         return PaginatedResult(
             data=spans,
@@ -131,7 +147,7 @@ class SpanRepository:
         if required_sql:
             where_sql = f"{where_sql} AND {required_sql}"
 
-        table = self._client.table("spans")
+        table = self._executor.table(ClickHouseTable.SPANS)
         select_sql = ", ".join(expression.select_sql for expression in group_expressions)
         group_sql = ", ".join(expression.group_sql for expression in group_expressions)
         grouped_sql = f"""
@@ -141,22 +157,29 @@ class SpanRepository:
             GROUP BY {group_sql}
         """
 
-        total_result = await self._client.query(
-            f"SELECT count() FROM ({grouped_sql}) AS span_groups",
-            parameters=parameters,
+        total_results = int(
+            await self._executor.fetch_scalar(
+                ClickHouseQuery(
+                    name="spans.list_groups.count",
+                    statement=f"SELECT count() FROM ({grouped_sql}) AS span_groups",
+                    parameters=parameters,
+                )
+            )
+            or 0
         )
-        total_results = int(total_result.result_rows[0][0])
         offset = (page - 1) * page_size
-        rows_result = await self._client.query(
-            f"""
-            SELECT *
-            FROM ({grouped_sql}) AS span_groups
-            ORDER BY {_group_order_by(sort, group_by)}
-            LIMIT %(limit)s OFFSET %(offset)s
-            """,
-            parameters={**parameters, "limit": page_size, "offset": offset},
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="spans.list_groups.rows",
+                statement=f"""
+                SELECT *
+                FROM ({grouped_sql}) AS span_groups
+                ORDER BY {_group_order_by(sort, group_by)}
+                LIMIT %(limit)s OFFSET %(offset)s
+                """,
+                parameters={**parameters, "limit": page_size, "offset": offset},
+            )
         )
-        rows = result_rows(rows_result)
         groups = [_row_to_group(row, group_by=group_by) for row in rows]
         return PaginatedResult(
             data=groups,
@@ -167,16 +190,18 @@ class SpanRepository:
 
     async def get_span(self, *, workspace: str, span_id: str) -> IntakeSpan | None:
         columns_sql = ", ".join(SPAN_COLUMNS)
-        result = await self._client.query(
-            f"""
-            SELECT {columns_sql}
-            FROM {self._client.table("spans")} FINAL
-            WHERE workspace = %(workspace)s AND external_span_id = %(span_id)s AND is_deleted = 0
-            LIMIT 1
-            """,
-            parameters={"workspace": workspace, "span_id": span_id},
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="spans.get",
+                statement=f"""
+                SELECT {columns_sql}
+                FROM {self._executor.table(ClickHouseTable.SPANS)} FINAL
+                WHERE workspace = %(workspace)s AND external_span_id = %(span_id)s AND is_deleted = 0
+                LIMIT 1
+                """,
+                parameters={"workspace": workspace, "span_id": span_id},
+            )
         )
-        rows = result_rows(result)
         if not rows:
             return None
         return _row_to_span(rows[0])

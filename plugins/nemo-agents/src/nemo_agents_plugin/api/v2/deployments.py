@@ -21,13 +21,11 @@ import secrets
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from nemo_agents_plugin.agent_config import AgentConfig
+from nemo_agents_plugin.agent_config_formats import AgentConfigFormatError, resolve_agent_config_for_deployment
 from nemo_agents_plugin.api.v2._perms import DeploymentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.entities import (
-    NAT_WORKFLOW_CONFIG_FORMAT,
-    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     Agent,
     AgentDeployment,
     is_container_deployment_mode,
@@ -37,12 +35,10 @@ from nemo_agents_plugin.schema import (
     DeploymentFilter,
     DeploymentPage,
 )
-from nemo_agents_plugin.utils import inject_default_model, inject_gateway_url, inject_nemo_trace_fields
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
-from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -112,19 +108,15 @@ async def create_deployment(
 
 
 def _resolve_deployment_config(agent: Agent, *, workspace: str) -> dict[str, Any]:
-    if agent.config_format == NAT_WORKFLOW_CONFIG_FORMAT:
-        resolved_config = inject_gateway_url(agent.config, workspace)
-        resolved_config = inject_default_model(resolved_config)
-        inject_nemo_trace_fields(resolved_config, workspace=workspace, agent_name=agent.name)
-        return resolved_config
-
-    if agent.config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-        try:
-            return AgentConfig.model_validate(agent.config).model_dump(exclude_none=True)
-        except ValidationError as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid agent config: {exc}") from exc
-
-    raise HTTPException(status_code=400, detail=f"Unsupported config_format {agent.config_format!r}.")
+    try:
+        return resolve_agent_config_for_deployment(
+            agent.config_format,
+            agent.config,
+            workspace=workspace,
+            agent_name=agent.name,
+        )
+    except AgentConfigFormatError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/deployments", response_model=DeploymentPage, tags=["Agent Deployments"])

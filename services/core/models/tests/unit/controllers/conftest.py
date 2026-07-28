@@ -198,3 +198,47 @@ def assert_helpers():
             assert_helpers.assert_controller_healthy(controller)
     """
     return AssertHelpers
+
+
+class AsyncPaginator:
+    """Async iterator standing in for the SDK's paginated list() responses."""
+
+    def __init__(self, items):
+        self._items = list(items)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._items:
+            raise StopAsyncIteration
+        return self._items.pop(0)
+
+
+_ENTITY_FIELDS = ("model_providers", "fileset", "api_endpoint", "backend_format")
+
+
+def make_entity(workspace: str, name: str, **attrs):
+    """Model Entity stand-in addressable by ModelEntityCache.
+
+    ``model_copy`` mirrors the real model in carrying every field across, which the
+    cache relies on when overlaying staged changes onto a snapshot.
+    """
+    fields = {field: attrs.get(field) for field in _ENTITY_FIELDS}
+    entity = MagicMock()
+    entity.workspace = workspace
+    entity.name = name
+    for field, value in fields.items():
+        setattr(entity, field, value)
+
+    def _copy(update):
+        return make_entity(workspace, name, **{**fields, **update})
+
+    entity.model_copy = MagicMock(side_effect=_copy)
+    return entity
+
+
+async def seed_entity_cache(mock_models_sdk, entity_cache, entities=()):
+    """Load the cache from the mock SDK so lookups resolve to ``entities``."""
+    mock_models_sdk.models.list = MagicMock(return_value=AsyncPaginator(list(entities)))
+    await entity_cache.refresh()
