@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -50,6 +52,44 @@ def _never_config() -> DeploymentConfig:
         restart_policy="Never",  # ty: ignore[unknown-argument]
         containers=[Container(name="main", image="alpine:3.20", command=["echo"], args=["hello"])],
     )
+
+
+def _never_sleep_config(*, sleep_seconds: int) -> DeploymentConfig:
+    return DeploymentConfig(
+        name="sleep-cfg",
+        workspace="itest",
+        restart_policy="Never",  # ty: ignore[unknown-argument]
+        containers=[
+            Container(
+                name="main",
+                image="alpine:3.20",
+                command=["sleep"],
+                args=[str(sleep_seconds)],
+            )
+        ],
+    )
+
+
+def _docker_backend_with_observe_timeout(
+    *,
+    oneshot_observe_timeout_seconds: int,
+) -> DockerDeploymentBackend:
+    mock_entities = AsyncMock()
+    mock_sdk = MagicMock()
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {
+                "pull_images": True,
+                "oneshot_observe_timeout_seconds": oneshot_observe_timeout_seconds,
+            },
+        )
+    backend._entities = mock_entities
+    return backend
 
 
 def _always_http_config() -> DeploymentConfig:
@@ -108,6 +148,49 @@ async def test_never_deployment_succeeds(docker_backend: DockerDeploymentBackend
         assert status.exit_code == 0
     finally:
         await docker_backend.delete_deployment("itest", "echo-job")
+        force_remove_container(client, c_name)
+
+
+@pytest.mark.asyncio
+async def test_never_deployment_outlives_observe_wait_then_succeeds() -> None:
+    """Long Never jobs return STARTING on create and finish via read_status polling."""
+    job_sleep_seconds = 5
+    observe_timeout_seconds = 1
+    docker_backend = _docker_backend_with_observe_timeout(
+        oneshot_observe_timeout_seconds=observe_timeout_seconds,
+    )
+    config = _never_sleep_config(sleep_seconds=job_sleep_seconds)
+    docker_backend._entities.get.return_value = config  # ty: ignore[unresolved-attribute]
+    c_name = container_name("itest", "sleep-job")
+    client = docker.from_env()
+
+    try:
+        started = time.monotonic()
+        created = await docker_backend.create_deployment(
+            workspace="itest",
+            name="sleep-job",
+            config_name="sleep-cfg",
+            labels={"managed-by": MANAGED_BY_LABEL},
+            backend_config={},
+        )
+        create_elapsed = time.monotonic() - started
+
+        assert created.status == "STARTING"
+        assert "after observe wait" in (created.status_message or "")
+        assert create_elapsed < 3.0
+
+        deadline = time.monotonic() + 15.0
+        status = created
+        while time.monotonic() < deadline:
+            status = await docker_backend.read_status(workspace="itest", name="sleep-job")
+            if status.status in {"SUCCEEDED", "FAILED"}:
+                break
+            await asyncio.sleep(0.5)
+
+        assert status.status == "SUCCEEDED"
+        assert status.exit_code == 0
+    finally:
+        await docker_backend.delete_deployment("itest", "sleep-job")
         force_remove_container(client, c_name)
 
 
