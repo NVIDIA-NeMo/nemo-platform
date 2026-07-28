@@ -15,41 +15,42 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Dict, Optional
-from datetime import datetime
+from __future__ import annotations
 
-from ..._models import BaseModel
-from .pareto_config import ParetoConfig
+from typing import Dict
+from typing_extensions import Required, TypedDict
 
-__all__ = ["ExperimentGroupResponse"]
+from .pareto_config_param import ParetoConfigParam
+
+__all__ = ["ExperimentCreateParams"]
 
 
-class ExperimentGroupResponse(BaseModel):
-    """ExperimentGroup as served by the API."""
-
-    id: str
-
-    default_sort: str
-
-    experiment_count: int
-    """Deprecated alias for evaluation_count."""
-
-    name: str
-
+class ExperimentCreateParams(TypedDict, total=False):
     workspace: str
 
-    created_at: Optional[datetime] = None
+    name: Required[str]
+    """Workspace-unique experiment name."""
 
-    description: Optional[str] = None
+    default_sort: str
+    """
+    Default sort for this experiment's evaluations list, as a `sort`-param string: a
+    comma-separated, ordered list of fields where the first is the primary sort and
+    the rest break ties (leading '-' on a field = descending), e.g.
+    '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
+    field the evaluations list `sort` param does; clients apply it as the list
+    `sort` param.
+    """
 
-    evaluation_count: Optional[int] = None
-    """Number of live (non-soft-deleted) evaluations in this group."""
+    description: str
+    """Human-readable purpose of the experiment."""
 
-    insight_id: Optional[str] = None
+    insight_id: str
+    """Reference to an external insight that seeded this experiment, if any."""
 
-    metadata: Optional[Dict[str, str]] = None
+    metadata: Dict[str, str]
+    """Free-form producer metadata for the experiment."""
 
-    pareto: Optional[ParetoConfig] = None
+    pareto: ParetoConfigParam
     """Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
 
     Metric ids use the same vocabulary as the evaluations list sort/filter fields —
@@ -58,6 +59,5 @@ class ExperimentGroupResponse(BaseModel):
     render before anyone customizes it.
     """
 
-    summary: Optional[str] = None
-
-    updated_at: Optional[datetime] = None
+    summary: str
+    """Human- or agent-authored summary of the experiment's findings."""

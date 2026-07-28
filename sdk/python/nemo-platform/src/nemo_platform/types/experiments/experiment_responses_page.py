@@ -15,20 +15,23 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from .experiment_groups import (
-    ExperimentGroupsResource,
-    AsyncExperimentGroupsResource,
-    ExperimentGroupsResourceWithRawResponse,
-    AsyncExperimentGroupsResourceWithRawResponse,
-    ExperimentGroupsResourceWithStreamingResponse,
-    AsyncExperimentGroupsResourceWithStreamingResponse,
-)
+from typing import Dict, List, Optional
 
-__all__ = [
-    "ExperimentGroupsResource",
-    "AsyncExperimentGroupsResource",
-    "ExperimentGroupsResourceWithRawResponse",
-    "AsyncExperimentGroupsResourceWithRawResponse",
-    "ExperimentGroupsResourceWithStreamingResponse",
-    "AsyncExperimentGroupsResourceWithStreamingResponse",
-]
+from ..._models import BaseModel
+from .experiment_response import ExperimentResponse
+from ..shared.pagination_data import PaginationData
+
+__all__ = ["ExperimentResponsesPage"]
+
+
+class ExperimentResponsesPage(BaseModel):
+    data: List[ExperimentResponse]
+
+    filter: Optional[Dict[str, object]] = None
+    """Filtering information."""
+
+    pagination: Optional[PaginationData] = None
+    """Pagination information."""
+
+    sort: Optional[str] = None
+    """The field on which the results are sorted."""

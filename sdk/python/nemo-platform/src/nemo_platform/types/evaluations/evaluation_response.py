@@ -33,15 +33,15 @@ class EvaluationResponse(BaseModel):
     dataset_name: str
 
     experiment_group_id: str
-    """Deprecated single-group alias; the first of experiment_ids. Use experiment_ids."""
+    """Deprecated single-experiment alias; the first of experiment_ids.
+
+    Use experiment_ids.
+    """
 
     experiment_ids: List[str]
-    """Entity ids of the ExperimentGroups this Evaluation belongs to (>=1)."""
+    """Entity ids of the Experiments this Evaluation belongs to (>=1)."""
 
     name: str
-
-    parent_experiment_id: str
-    """Deprecated alias for parent_evaluation_id."""
 
     workspace: str
 

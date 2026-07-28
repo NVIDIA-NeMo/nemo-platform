@@ -23,47 +23,42 @@ from nemo_platform_ext.cli.core.types import (
     OutputColumnsOption,
 )
 
-app = create_typer_app(name="filesets", help="Manage filesets")
+app = create_typer_app(name="experiments", help="Manage experiments")
 
 
 @app.command("create")
 @collect_warnings
 @handle_errors
-def create_filesets(
+def create_experiments(
     ctx: typer.Context,
-    name: Annotated[
-        str | None,
-        typer.Argument(
-            help="The name of the fileset. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots. (required)"
-        ),
-    ] = None,
+    name: Annotated[str | None, typer.Argument(help="Workspace-unique experiment name. (required)")] = None,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
-    cache: Annotated[
-        bool | None, typer.Option("--cache", help="Cache all files after creation. Only applies to external storage.")
+    default_sort: Annotated[
+        str | None,
+        typer.Option(
+            "--default-sort",
+            help="Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.",
+        ),
     ] = None,
-    custom_fields: Annotated[
-        str | None, typer.Option("--custom-fields", help="Custom fields for the fileset. (JSON string)")
+    description: Annotated[
+        str | None, typer.Option("--description", help="Human-readable purpose of the experiment.")
     ] = None,
-    description: Annotated[str | None, typer.Option("--description", help="The description of the fileset.")] = None,
+    insight_id: Annotated[
+        str | None,
+        typer.Option("--insight-id", help="Reference to an external insight that seeded this experiment, if any."),
+    ] = None,
     metadata: Annotated[
+        str | None, typer.Option("--metadata", help="Free-form producer metadata for the experiment. (JSON string)")
+    ] = None,
+    pareto: Annotated[
         str | None,
         typer.Option(
-            "--metadata",
-            help='Tagged metadata container - the key indicates the type.Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema={"columns": ["id", "name"]}, ) ) (JSON string)',
+            "--pareto",
+            help="Default X/Y metrics for a group's cost-vs-accuracy Pareto view.Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)",
         ),
     ] = None,
-    project: Annotated[
-        str | None, typer.Option("--project", help="The name of the project associated with this fileset.")
-    ] = None,
-    purpose: Annotated[
-        Literal["dataset", "generic", "model"] | None, typer.Option("--purpose", help="The purpose of the fileset.")
-    ] = None,
-    storage: Annotated[
-        str | None,
-        typer.Option(
-            "--storage",
-            help="The storage configuration for the fileset. If not provided, uses default storage. (JSON string)",
-        ),
+    summary: Annotated[
+        str | None, typer.Option("--summary", help="Human- or agent-authored summary of the experiment's findings.")
     ] = None,
     exist_ok: Annotated[
         bool | None,
@@ -81,18 +76,15 @@ def create_filesets(
     ] = None,
     output_format: EntityOutputFormatOption = None,
 ) -> None:
-    """Create a new fileset.
+    """Create Experiment
 
-    If no storage configuration is provided, the default storage backend will be
-    used.
+    [bold red]Required fields:[/] name
 
-        [bold red]Required fields:[/] name
-
-        [green]Examples:[/]
-        nemo files filesets create <name> --input-file config.json
-        nemo files filesets create <name> --input-data '{"name": "value"}'
-        echo '{"json": "data"}' | nemo files filesets create <name> --input-file -
-        nemo files filesets create <name> --<option> "value"
+    [green]Examples:[/]
+    nemo experiments create <name> --input-file config.json
+    nemo experiments create <name> --input-data '{"name": "value"}'
+    echo '{"json": "data"}' | nemo experiments create <name> --input-file -
+    nemo experiments create <name> --<option> "value"
     """
     # Read base input (optional if all fields provided via flags)
     if input_file or input_data:
@@ -105,29 +97,27 @@ def create_filesets(
         input_payload["workspace"] = workspace
     if name is not None:
         input_payload["name"] = name
-    if cache is not None:
-        input_payload["cache"] = cache
-    if custom_fields is not None:
-        input_payload["custom_fields"] = read_payload("custom_fields", custom_fields)
+    if default_sort is not None:
+        input_payload["default_sort"] = default_sort
     if description is not None:
         input_payload["description"] = description
+    if insight_id is not None:
+        input_payload["insight_id"] = insight_id
     if metadata is not None:
         input_payload["metadata"] = read_payload("metadata", metadata)
-    if project is not None:
-        input_payload["project"] = project
-    if purpose is not None:
-        input_payload["purpose"] = purpose
-    if storage is not None:
-        input_payload["storage"] = read_payload("storage", storage)
+    if pareto is not None:
+        input_payload["pareto"] = read_payload("pareto", pareto)
+    if summary is not None:
+        input_payload["summary"] = summary
     if exist_ok is not None:
         input_payload["exist_ok"] = exist_ok
     # Validate required fields are present after merging
     validate_required_fields(
         input_payload,
         ["name"],
-        "files filesets create",
+        "experiments create",
         {
-            "name": "The name of the fileset. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots. (required)",
+            "name": "Workspace-unique experiment name. (required)",
         },
     )
 
@@ -135,11 +125,11 @@ def create_filesets(
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
-    if handle_code_generation(["files", "filesets"], "create", all_kwargs, output_format, state):
+    if handle_code_generation(["experiments"], "create", all_kwargs, output_format, state):
         return
 
     client = state.get_client()
-    result = client.files.filesets.create(**all_kwargs)
+    result = client.experiments.create(**all_kwargs)
 
     format_output(
         result,
@@ -153,25 +143,19 @@ def create_filesets(
 @app.command("delete")
 @collect_warnings
 @handle_errors
-def delete_filesets(
+def delete_experiments(
     ctx: typer.Context,
     name: Annotated[str, typer.Argument()],
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
 ) -> None:
-    """Delete Fileset.
-
-    Permanently deletes a fileset from the platform.
-
-    Returns metadata about the
-    deleted fileset. For local storage backends, this also deletes the underlying
-    files."""
+    """Delete Experiment"""
     state: CLIContext = ctx.obj
     client = state.get_client()
 
     kwargs = build_kwargs(
         workspace=workspace,
     )
-    client.files.filesets.delete(name, **kwargs)
+    client.experiments.delete(name, **kwargs)
 
     typer.echo("✓ Deleted successfully")
 
@@ -179,7 +163,7 @@ def delete_filesets(
 @app.command("list")
 @collect_warnings
 @handle_errors
-def list_filesets(
+def list_experiments(
     ctx: typer.Context,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     filter: Annotated[
@@ -187,35 +171,29 @@ def list_filesets(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  created_at: {gte: str, lte: str}\n  updated_at: {gte: str, lte: str}\n\nFilter filesets by name, description, purpose, storage_type, created_at, and updated_at.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  metadata: dict[str, str]\n\nFilter experiments by name, insight_id, is_deleted, or a metadata key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
-    filter_description: Annotated[
-        str | None, typer.Option("--filter.description", rich_help_panel="Filter Options")
+    filter_insight_id: Annotated[
+        str | None, typer.Option("--filter.insight-id", rich_help_panel="Filter Options")
+    ] = None,
+    filter_is_deleted: Annotated[
+        bool | None, typer.Option("--filter.is-deleted", rich_help_panel="Filter Options")
     ] = None,
     filter_name: Annotated[str | None, typer.Option("--filter.name", rich_help_panel="Filter Options")] = None,
-    filter_purpose: Annotated[str | None, typer.Option("--filter.purpose", rich_help_panel="Filter Options")] = None,
-    filter_storage_type: Annotated[
-        str | None, typer.Option("--filter.storage-type", rich_help_panel="Filter Options")
-    ] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Page size.")] = None,
     sort: Annotated[
         Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"] | None,
-        typer.Option(
-            "--sort", help="The field to sort by. To sort in decreasing order, use `-` in front of the field name."
-        ),
+        typer.Option("--sort", help="Sort field; prefix with '-' for descending."),
     ] = None,
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
-    """List Filesets endpoint with filtering and pagination.
-
-    Supports filtering by name, description, purpose, storage_type, created_at, and
-    updated_at via query parameters. Returns paginated results with sorting options."""
+    """List Experiments"""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
@@ -231,19 +209,13 @@ def list_filesets(
 
     kwargs = build_kwargs(
         workspace=workspace,
-        filter=merge_filter_dict(
-            filter,
-            description=filter_description,
-            name=filter_name,
-            purpose=filter_purpose,
-            storage_type=filter_storage_type,
-        ),
+        filter=merge_filter_dict(filter, insight_id=filter_insight_id, is_deleted=filter_is_deleted, name=filter_name),
         page=page,
         page_size=page_size,
         sort=sort,
     )
 
-    if handle_code_generation(["files", "filesets"], "list", kwargs, output_format, state):
+    if handle_code_generation(["experiments"], "list", kwargs, output_format, state):
         return
 
     client = state.get_client()
@@ -251,13 +223,13 @@ def list_filesets(
     pagination_type = PaginationType.PAGE_NUMBER
     if all_pages:
         items = fetch_all_pages(
-            client.files.filesets.list,
+            client.experiments.list,
             path_args=path_args,
             body_args=kwargs,
             pagination_type=pagination_type,
         )
     else:
-        items = client.files.filesets.list(*path_args, **kwargs)
+        items = client.experiments.list(*path_args, **kwargs)
 
     format_output(
         items,
@@ -274,26 +246,24 @@ def list_filesets(
 @app.command("get")
 @collect_warnings
 @handle_errors
-def retrieve_filesets(
+def retrieve_experiments(
     ctx: typer.Context,
     name: Annotated[str, typer.Argument()],
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     output_format: EntityOutputFormatOption = None,
 ) -> None:
-    """Get Fileset by Workspace and Name.
-
-    Returns the details of a specific fileset identified by its workspace and name."""
+    """Get Experiment"""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
     kwargs = build_kwargs(
         workspace=workspace,
     )
-    if handle_code_generation(["files", "filesets"], "retrieve", kwargs, output_format, state):
+    if handle_code_generation(["experiments"], "retrieve", kwargs, output_format, state):
         return
 
     client = state.get_client()
-    result = client.files.filesets.retrieve(name, **kwargs)
+    result = client.experiments.retrieve(name, **kwargs)
 
     format_output(
         result,
@@ -307,26 +277,39 @@ def retrieve_filesets(
 @app.command("update")
 @collect_warnings
 @handle_errors
-def update_filesets(
+def update_experiments(
     ctx: typer.Context,
-    name: Annotated[str, typer.Argument()],
+    path_name: Annotated[str, typer.Argument()],
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
-    custom_fields: Annotated[
-        str | None, typer.Option("--custom-fields", help="Custom fields for the fileset. (JSON string)")
+    body_name: Annotated[
+        str | None, typer.Option("--body-name", help="Workspace-unique experiment name. (required)")
     ] = None,
-    description: Annotated[str | None, typer.Option("--description", help="The description of the fileset.")] = None,
-    metadata: Annotated[
+    default_sort: Annotated[
         str | None,
         typer.Option(
-            "--metadata",
-            help='Tagged metadata container - the key indicates the type.Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema={"columns": ["id", "name"]}, ) ) (JSON string)',
+            "--default-sort",
+            help="Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.",
         ),
     ] = None,
-    project: Annotated[
-        str | None, typer.Option("--project", help="The name of the project associated with this fileset.")
+    description: Annotated[
+        str | None, typer.Option("--description", help="Human-readable purpose of the experiment.")
     ] = None,
-    purpose: Annotated[
-        Literal["dataset", "generic", "model"] | None, typer.Option("--purpose", help="The purpose of the fileset.")
+    insight_id: Annotated[
+        str | None,
+        typer.Option("--insight-id", help="Reference to an external insight that seeded this experiment, if any."),
+    ] = None,
+    metadata: Annotated[
+        str | None, typer.Option("--metadata", help="Free-form producer metadata for the experiment. (JSON string)")
+    ] = None,
+    pareto: Annotated[
+        str | None,
+        typer.Option(
+            "--pareto",
+            help="Default X/Y metrics for a group's cost-vs-accuracy Pareto view.Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)",
+        ),
+    ] = None,
+    summary: Annotated[
+        str | None, typer.Option("--summary", help="Human- or agent-authored summary of the experiment's findings.")
     ] = None,
     input_file: Annotated[
         str | None,
@@ -338,13 +321,15 @@ def update_filesets(
     ] = None,
     output_format: EntityOutputFormatOption = None,
 ) -> None:
-    """Update Fileset Metadata.
+    """Update Experiment
+
+    [bold red]Required fields:[/] body_name
 
     [green]Examples:[/]
-    nemo files filesets update <name> --input-file config.json
-    nemo files filesets update <name> --input-data '{"field": "value"}'
-    echo '{"json": "data"}' | nemo files filesets update <name> --input-file -
-    nemo files filesets update <name> --<option> "value"
+    nemo experiments update <path_name> --input-file config.json
+    nemo experiments update <path_name> --input-data '{"body_name": "value"}'
+    echo '{"json": "data"}' | nemo experiments update <path_name> --input-file -
+    nemo experiments update <path_name> --<option> "value"
     """
     # Read base input (optional if all fields provided via flags)
     if input_file or input_data:
@@ -355,27 +340,40 @@ def update_filesets(
     # Apply CLI flag overrides (flags take precedence)
     if workspace is not None:
         input_payload["workspace"] = workspace
-    if custom_fields is not None:
-        input_payload["custom_fields"] = read_payload("custom_fields", custom_fields)
+    if body_name is not None:
+        input_payload["body_name"] = body_name
+    if default_sort is not None:
+        input_payload["default_sort"] = default_sort
     if description is not None:
         input_payload["description"] = description
+    if insight_id is not None:
+        input_payload["insight_id"] = insight_id
     if metadata is not None:
         input_payload["metadata"] = read_payload("metadata", metadata)
-    if project is not None:
-        input_payload["project"] = project
-    if purpose is not None:
-        input_payload["purpose"] = purpose
+    if pareto is not None:
+        input_payload["pareto"] = read_payload("pareto", pareto)
+    if summary is not None:
+        input_payload["summary"] = summary
+    # Validate required fields are present after merging
+    validate_required_fields(
+        input_payload,
+        ["body_name"],
+        "experiments update",
+        {
+            "body_name": "Workspace-unique experiment name. (required)",
+        },
+    )
 
-    all_kwargs = {"name": name, **input_payload}
+    all_kwargs = {"path_name": path_name, **input_payload}
 
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
-    if handle_code_generation(["files", "filesets"], "update", all_kwargs, output_format, state):
+    if handle_code_generation(["experiments"], "update", all_kwargs, output_format, state):
         return
 
     client = state.get_client()
-    result = client.files.filesets.update(**all_kwargs)
+    result = client.experiments.update(**all_kwargs)
 
     format_output(
         result,

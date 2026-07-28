@@ -19,19 +19,19 @@ from __future__ import annotations
 
 from typing_extensions import Literal, TypedDict
 
-from .experiment_group_filter_param import ExperimentGroupFilterParam
+from .experiment_filter_param import ExperimentFilterParam
 
-__all__ = ["ExperimentGroupListParams"]
+__all__ = ["ExperimentListParams"]
 
 
-class ExperimentGroupListParams(TypedDict, total=False):
+class ExperimentListParams(TypedDict, total=False):
     workspace: str
 
-    filter: ExperimentGroupFilterParam
+    filter: ExperimentFilterParam
     """
-    Filter experiment groups by name, insight_id, is_deleted, or a metadata
-    key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
-    soft-deleted groups; omit to see only live ones.
+    Filter experiments by name, insight_id, is_deleted, or a metadata key/value
+    (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
+    soft-deleted experiments; omit to see only live ones.
     """
 
     page: int

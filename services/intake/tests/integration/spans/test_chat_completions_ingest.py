@@ -137,8 +137,6 @@ def test_chat_completions_ingest_happy_path(client: TestClient):
     assert filtered_spans[0]["span_id"] == "chatcmpl-test-abc123"
 
 
-
-
 def test_chat_completions_ingest_persists_cost_fields(client: TestClient):
     body = {
         "request": _openai_request(),

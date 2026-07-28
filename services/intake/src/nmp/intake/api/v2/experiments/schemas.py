@@ -36,7 +36,9 @@ class ExperimentRequest(BaseModel):
     insight_id: str | None = Field(
         default=None, description="Reference to an external insight that seeded this experiment, if any."
     )
-    summary: str | None = Field(default=None, description="Human- or agent-authored summary of the experiment's findings.")
+    summary: str | None = Field(
+        default=None, description="Human- or agent-authored summary of the experiment's findings."
+    )
     metadata: dict[str, str] | None = Field(default=None, description="Free-form producer metadata for the experiment.")
     default_sort: str = Field(
         default="-created_at",

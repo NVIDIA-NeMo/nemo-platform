@@ -1172,7 +1172,7 @@ nemo files filesets list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**
@@ -2992,7 +2992,7 @@ nemo inference prompts list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**
@@ -4495,7 +4495,7 @@ nemo models list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--verbose`: Whether to include full spec details
 * `--all-pages`: Fetch all pages
 
@@ -5144,7 +5144,7 @@ nemo workspaces list [OPTIONS]
 - Object (JSON): `{"name":{"$like":"value"}}` with operators `$eq`, `$like`, `$lt`, `$lte`, `$gt`, `$gte`, `$in`, `$nin`, `$and`, `$or`, `$not`
 * `--page <INTEGER>`: Page number
 * `--page-size <INTEGER>`: Items per page
-* `--sort <CHOICE>`: Sort field [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: Sort field [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--all-pages`: Fetch all pages
 
 **Help:**
@@ -5431,6 +5431,213 @@ nemo workspaces members update [OPTIONS] PRINCIPAL_ID
 
 * `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
 
+### nemo experiments
+
+Manage experiments
+
+**Usage:**
+
+```shell
+nemo experiments [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create Experiment
+* `delete`: Delete Experiment
+* `list`: List Experiments
+* `get`: Get Experiment
+* `update`: Update Experiment
+
+#### nemo experiments create
+
+Create Experiment
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo experiments create <name> --input-file config.json
+nemo experiments create <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo experiments create <name> --input-file -
+nemo experiments create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo experiments create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Workspace-unique experiment name.
+
+**Options:**
+
+* `--workspace`
+* `--default-sort`: Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.
+* `--description`: Human-readable purpose of the experiment.
+* `--insight-id`: Reference to an external insight that seeded this experiment, if any.
+* `--metadata`: Free-form producer metadata for the experiment. (JSON string)
+* `--pareto`: Default X/Y metrics for a group's cost-vs-accuracy Pareto view. Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)
+* `--summary`: Human- or agent-authored summary of the experiment's findings.
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo experiments delete
+
+Delete Experiment
+
+**Usage:**
+
+```shell
+nemo experiments delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo experiments list
+
+List Experiments
+
+**Usage:**
+
+```shell
+nemo experiments list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: Sort field; prefix with '-' for descending. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  metadata: dict[str, str]
+
+Filter experiments by name, insight_id, is_deleted, or a metadata key/value (filter[metadata.\<key>]=\<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.
+* `--filter.insight-id`
+* `--filter.is-deleted`
+* `--filter.name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo experiments get
+
+Get Experiment
+
+**Usage:**
+
+```shell
+nemo experiments get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo experiments update
+
+Update Experiment
+
+**Required fields:** body_name
+
+**Examples:**
+
+```shell
+nemo experiments update <path_name> --input-file config.json
+nemo experiments update <path_name> --input-data '{"body_name": "value"}'
+echo '{"json": "data"}' | nemo experiments update <path_name> --input-file -
+nemo experiments update <path_name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo experiments update [OPTIONS] PATH_NAME
+```
+
+**Arguments:**
+
+* `<PATH_NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--body-name`: Workspace-unique experiment name.
+* `--default-sort`: Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.
+* `--description`: Human-readable purpose of the experiment.
+* `--insight-id`: Reference to an external insight that seeded this experiment, if any.
+* `--metadata`: Free-form producer metadata for the experiment. (JSON string)
+* `--pareto`: Default X/Y metrics for a group's cost-vs-accuracy Pareto view. Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)
+* `--summary`: Human- or agent-authored summary of the experiment's findings.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
 ## Functional plugins
 
 ### nemo guardrail
@@ -5621,7 +5828,7 @@ nemo guardrail configs list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**

@@ -15,23 +15,31 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Dict, List, Optional
+from __future__ import annotations
 
-from ..._models import BaseModel
-from ..shared.pagination_data import PaginationData
-from .experiment_group_response import ExperimentGroupResponse
+from typing import Dict
+from typing_extensions import TypedDict
 
-__all__ = ["ExperimentGroupResponsesPage"]
+__all__ = ["ExperimentFilterParam"]
 
 
-class ExperimentGroupResponsesPage(BaseModel):
-    data: List[ExperimentGroupResponse]
+class ExperimentFilterParam(TypedDict, total=False):
+    """Filter for listing Experiments."""
 
-    filter: Optional[Dict[str, object]] = None
-    """Filtering information."""
+    insight_id: str
+    """Filter experiments by the id of the insight that seeded them."""
 
-    pagination: Optional[PaginationData] = None
-    """Pagination information."""
+    is_deleted: bool
+    """When true, returns only soft-deleted experiments.
 
-    sort: Optional[str] = None
-    """The field on which the results are sorted."""
+    Omit (or false) to see only live experiments.
+    """
+
+    metadata: Dict[str, str]
+    """Filter by a metadata key/value pair, e.g.
+
+    filter[metadata.model]=claude-opus-4-8.
+    """
+
+    name: str
+    """Filter experiments by name."""

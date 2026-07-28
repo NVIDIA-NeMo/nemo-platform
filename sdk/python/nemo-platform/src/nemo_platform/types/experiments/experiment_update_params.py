@@ -23,18 +23,18 @@ from typing_extensions import Required, Annotated, TypedDict
 from ..._utils import PropertyInfo
 from .pareto_config_param import ParetoConfigParam
 
-__all__ = ["ExperimentGroupUpdateParams"]
+__all__ = ["ExperimentUpdateParams"]
 
 
-class ExperimentGroupUpdateParams(TypedDict, total=False):
+class ExperimentUpdateParams(TypedDict, total=False):
     workspace: str
 
     body_name: Required[Annotated[str, PropertyInfo(alias="name")]]
-    """Workspace-unique group name."""
+    """Workspace-unique experiment name."""
 
     default_sort: str
     """
-    Default sort for this group's evaluations list, as a `sort`-param string: a
+    Default sort for this experiment's evaluations list, as a `sort`-param string: a
     comma-separated, ordered list of fields where the first is the primary sort and
     the rest break ties (leading '-' on a field = descending), e.g.
     '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
@@ -43,13 +43,13 @@ class ExperimentGroupUpdateParams(TypedDict, total=False):
     """
 
     description: str
-    """Human-readable purpose of the group."""
+    """Human-readable purpose of the experiment."""
 
     insight_id: str
-    """Reference to an external insight that seeded this group, if any."""
+    """Reference to an external insight that seeded this experiment, if any."""
 
     metadata: Dict[str, str]
-    """Free-form producer metadata for the group."""
+    """Free-form producer metadata for the experiment."""
 
     pareto: ParetoConfigParam
     """Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
@@ -61,4 +61,4 @@ class ExperimentGroupUpdateParams(TypedDict, total=False):
     """
 
     summary: str
-    """Human- or agent-authored summary of the group's findings."""
+    """Human- or agent-authored summary of the experiment's findings."""

@@ -61,7 +61,7 @@ class EvaluationFilterParam(TypedDict, total=False):
     """
 
     experiment_group_id: str
-    """Filter evaluations by owning group id."""
+    """Filter evaluations by owning experiment id."""
 
     is_deleted: bool
     """When true, returns only soft-deleted evaluations.

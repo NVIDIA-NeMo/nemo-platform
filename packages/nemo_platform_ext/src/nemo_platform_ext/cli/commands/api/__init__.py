@@ -16,6 +16,14 @@ API_TOP_LEVEL_ENTRIES = (
         hidden=True,
     ),
     TopLevelEntry(
+        import_path=f"{__package__}.experiments:app",
+        name="experiments",
+        help="Manage experiments",
+        panel="Core plugins",
+        kind="group",
+        hidden=False,
+    ),
+    TopLevelEntry(
         import_path=f"{__package__}.files:app",
         name="files",
         help="Manage files.",

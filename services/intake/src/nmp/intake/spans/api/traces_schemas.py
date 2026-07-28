@@ -107,5 +107,3 @@ def _evaluation_context(trace: IntakeTrace) -> EvaluationContext | None:
         evaluation_id=trace.evaluation_id,
         test_case_id=trace.test_case_id,
     )
-
-

@@ -15,42 +15,38 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Dict, Optional
+from datetime import datetime
 
-from typing import Dict
-from typing_extensions import Required, TypedDict
+from ..._models import BaseModel
+from .pareto_config import ParetoConfig
 
-from .pareto_config_param import ParetoConfigParam
-
-__all__ = ["ExperimentGroupCreateParams"]
+__all__ = ["ExperimentResponse"]
 
 
-class ExperimentGroupCreateParams(TypedDict, total=False):
-    workspace: str
+class ExperimentResponse(BaseModel):
+    """Experiment as served by the API."""
 
-    name: Required[str]
-    """Workspace-unique group name."""
+    id: str
 
     default_sort: str
-    """
-    Default sort for this group's evaluations list, as a `sort`-param string: a
-    comma-separated, ordered list of fields where the first is the primary sort and
-    the rest break ties (leading '-' on a field = descending), e.g.
-    '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
-    field the evaluations list `sort` param does; clients apply it as the list
-    `sort` param.
-    """
 
-    description: str
-    """Human-readable purpose of the group."""
+    name: str
 
-    insight_id: str
-    """Reference to an external insight that seeded this group, if any."""
+    workspace: str
 
-    metadata: Dict[str, str]
-    """Free-form producer metadata for the group."""
+    created_at: Optional[datetime] = None
 
-    pareto: ParetoConfigParam
+    description: Optional[str] = None
+
+    evaluation_count: Optional[int] = None
+    """Number of live (non-soft-deleted) evaluations in this experiment."""
+
+    insight_id: Optional[str] = None
+
+    metadata: Optional[Dict[str, str]] = None
+
+    pareto: Optional[ParetoConfig] = None
     """Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
 
     Metric ids use the same vocabulary as the evaluations list sort/filter fields —
@@ -59,5 +55,6 @@ class ExperimentGroupCreateParams(TypedDict, total=False):
     render before anyone customizes it.
     """
 
-    summary: str
-    """Human- or agent-authored summary of the group's findings."""
+    summary: Optional[str] = None
+
+    updated_at: Optional[datetime] = None

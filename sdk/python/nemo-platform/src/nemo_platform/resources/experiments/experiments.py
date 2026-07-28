@@ -34,38 +34,38 @@ from ..._response import (
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
-from ...types.experiment_groups import (
-    experiment_group_list_params,
-    experiment_group_create_params,
-    experiment_group_update_params,
+from ...types.experiments import (
+    experiment_list_params,
+    experiment_create_params,
+    experiment_update_params,
 )
-from ...types.experiment_groups.pareto_config_param import ParetoConfigParam
-from ...types.experiment_groups.experiment_group_response import ExperimentGroupResponse
-from ...types.experiment_groups.experiment_group_filter_param import ExperimentGroupFilterParam
+from ...types.experiments.experiment_response import ExperimentResponse
+from ...types.experiments.pareto_config_param import ParetoConfigParam
+from ...types.experiments.experiment_filter_param import ExperimentFilterParam
 from ..._exceptions import ConflictError
 
-__all__ = ["ExperimentGroupsResource", "AsyncExperimentGroupsResource"]
+__all__ = ["ExperimentsResource", "AsyncExperimentsResource"]
 
 
-class ExperimentGroupsResource(SyncAPIResource):
+class ExperimentsResource(SyncAPIResource):
     @cached_property
-    def with_raw_response(self) -> ExperimentGroupsResourceWithRawResponse:
+    def with_raw_response(self) -> ExperimentsResourceWithRawResponse:
         """
         This property can be used as a prefix for any HTTP method call to return
         the raw response object instead of the parsed content.
 
         For more information, see https://docs.nvidia.com/nemo/microservices/latest/pysdk/index.html#accessing-raw-response-data-e-g-headers
         """
-        return ExperimentGroupsResourceWithRawResponse(self)
+        return ExperimentsResourceWithRawResponse(self)
 
     @cached_property
-    def with_streaming_response(self) -> ExperimentGroupsResourceWithStreamingResponse:
+    def with_streaming_response(self) -> ExperimentsResourceWithStreamingResponse:
         """
         An alternative to `.with_raw_response` that doesn't eagerly read the response body.
 
         For more information, see https://docs.nvidia.com/nemo/microservices/latest/pysdk/index.html#with_streaming_response
         """
-        return ExperimentGroupsResourceWithStreamingResponse(self)
+        return ExperimentsResourceWithStreamingResponse(self)
 
     def create(
         self,
@@ -85,25 +85,25 @@ class ExperimentGroupsResource(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> ExperimentGroupResponse:
+    ) -> ExperimentResponse:
         """
-        Create Experiment Group
+        Create Experiment
 
         Args:
-          name: Workspace-unique group name.
+          name: Workspace-unique experiment name.
 
-          default_sort: Default sort for this group's evaluations list, as a `sort`-param string: a
+          default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
               the rest break ties (leading '-' on a field = descending), e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
               field the evaluations list `sort` param does; clients apply it as the list
               `sort` param.
 
-          description: Human-readable purpose of the group.
+          description: Human-readable purpose of the experiment.
 
-          insight_id: Reference to an external insight that seeded this group, if any.
+          insight_id: Reference to an external insight that seeded this experiment, if any.
 
-          metadata: Free-form producer metadata for the group.
+          metadata: Free-form producer metadata for the experiment.
 
           pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
 
@@ -112,7 +112,7 @@ class ExperimentGroupsResource(SyncAPIResource):
               latency (y): both exist for every group, so the chart always has something to
               render before anyone customizes it.
 
-          summary: Human- or agent-authored summary of the group's findings.
+          summary: Human- or agent-authored summary of the experiment's findings.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -132,7 +132,7 @@ class ExperimentGroupsResource(SyncAPIResource):
             if not workspace:
                 raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
             return self._post(
-                path_template("/apis/intake/v2/workspaces/{workspace}/experiment-groups", workspace=workspace),
+                path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
                 body=maybe_transform(
                     {
                         "name": name,
@@ -143,12 +143,12 @@ class ExperimentGroupsResource(SyncAPIResource):
                         "pareto": pareto,
                         "summary": summary,
                     },
-                    experiment_group_create_params.ExperimentGroupCreateParams,
+                    experiment_create_params.ExperimentCreateParams,
                 ),
                 options=make_request_options(
                     extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
                 ),
-                cast_to=ExperimentGroupResponse,
+                cast_to=ExperimentResponse,
             )
         except ConflictError:
             if not exist_ok:
@@ -166,9 +166,9 @@ class ExperimentGroupsResource(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> ExperimentGroupResponse:
+    ) -> ExperimentResponse:
         """
-        Get Experiment Group
+        Get Experiment
 
         Args:
           extra_headers: Send extra headers
@@ -186,13 +186,11 @@ class ExperimentGroupsResource(SyncAPIResource):
         if not name:
             raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
         return self._get(
-            path_template(
-                "/apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}", workspace=workspace, name=name
-            ),
+            path_template("/apis/intake/v2/workspaces/{workspace}/experiments/{name}", workspace=workspace, name=name),
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=ExperimentGroupResponse,
+            cast_to=ExperimentResponse,
         )
 
     def update(
@@ -213,25 +211,25 @@ class ExperimentGroupsResource(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> ExperimentGroupResponse:
+    ) -> ExperimentResponse:
         """
-        Update Experiment Group
+        Update Experiment
 
         Args:
-          body_name: Workspace-unique group name.
+          body_name: Workspace-unique experiment name.
 
-          default_sort: Default sort for this group's evaluations list, as a `sort`-param string: a
+          default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
               the rest break ties (leading '-' on a field = descending), e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
               field the evaluations list `sort` param does; clients apply it as the list
               `sort` param.
 
-          description: Human-readable purpose of the group.
+          description: Human-readable purpose of the experiment.
 
-          insight_id: Reference to an external insight that seeded this group, if any.
+          insight_id: Reference to an external insight that seeded this experiment, if any.
 
-          metadata: Free-form producer metadata for the group.
+          metadata: Free-form producer metadata for the experiment.
 
           pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
 
@@ -240,7 +238,7 @@ class ExperimentGroupsResource(SyncAPIResource):
               latency (y): both exist for every group, so the chart always has something to
               render before anyone customizes it.
 
-          summary: Human- or agent-authored summary of the group's findings.
+          summary: Human- or agent-authored summary of the experiment's findings.
 
           extra_headers: Send extra headers
 
@@ -258,7 +256,7 @@ class ExperimentGroupsResource(SyncAPIResource):
             raise ValueError(f"Expected a non-empty value for `path_name` but received {path_name!r}")
         return self._put(
             path_template(
-                "/apis/intake/v2/workspaces/{workspace}/experiment-groups/{path_name}",
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{path_name}",
                 workspace=workspace,
                 path_name=path_name,
             ),
@@ -272,19 +270,19 @@ class ExperimentGroupsResource(SyncAPIResource):
                     "pareto": pareto,
                     "summary": summary,
                 },
-                experiment_group_update_params.ExperimentGroupUpdateParams,
+                experiment_update_params.ExperimentUpdateParams,
             ),
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=ExperimentGroupResponse,
+            cast_to=ExperimentResponse,
         )
 
     def list(
         self,
         *,
         workspace: str | None = None,
-        filter: ExperimentGroupFilterParam | Omit = omit,
+        filter: ExperimentFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"] | Omit = omit,
@@ -294,14 +292,14 @@ class ExperimentGroupsResource(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> SyncDefaultPagination[ExperimentGroupResponse]:
+    ) -> SyncDefaultPagination[ExperimentResponse]:
         """
-        List Experiment Groups
+        List Experiments
 
         Args:
-          filter: Filter experiment groups by name, insight_id, is_deleted, or a metadata
-              key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
-              soft-deleted groups; omit to see only live ones.
+          filter: Filter experiments by name, insight_id, is_deleted, or a metadata key/value
+              (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
+              soft-deleted experiments; omit to see only live ones.
 
           page: Page number.
 
@@ -322,8 +320,8 @@ class ExperimentGroupsResource(SyncAPIResource):
         if not workspace:
             raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
         return self._get_api_list(
-            path_template("/apis/intake/v2/workspaces/{workspace}/experiment-groups", workspace=workspace),
-            page=SyncDefaultPagination[ExperimentGroupResponse],
+            path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
+            page=SyncDefaultPagination[ExperimentResponse],
             options=make_request_options(
                 extra_headers=extra_headers,
                 extra_query=extra_query,
@@ -336,10 +334,10 @@ class ExperimentGroupsResource(SyncAPIResource):
                         "page_size": page_size,
                         "sort": sort,
                     },
-                    experiment_group_list_params.ExperimentGroupListParams,
+                    experiment_list_params.ExperimentListParams,
                 ),
             ),
-            model=ExperimentGroupResponse,
+            model=ExperimentResponse,
         )
 
     def delete(
@@ -355,7 +353,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> None:
         """
-        Delete Experiment Group
+        Delete Experiment
 
         Args:
           extra_headers: Send extra headers
@@ -374,9 +372,7 @@ class ExperimentGroupsResource(SyncAPIResource):
             raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
         extra_headers = {"Accept": "*/*", **(extra_headers or {})}
         return self._delete(
-            path_template(
-                "/apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}", workspace=workspace, name=name
-            ),
+            path_template("/apis/intake/v2/workspaces/{workspace}/experiments/{name}", workspace=workspace, name=name),
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
@@ -384,25 +380,25 @@ class ExperimentGroupsResource(SyncAPIResource):
         )
 
 
-class AsyncExperimentGroupsResource(AsyncAPIResource):
+class AsyncExperimentsResource(AsyncAPIResource):
     @cached_property
-    def with_raw_response(self) -> AsyncExperimentGroupsResourceWithRawResponse:
+    def with_raw_response(self) -> AsyncExperimentsResourceWithRawResponse:
         """
         This property can be used as a prefix for any HTTP method call to return
         the raw response object instead of the parsed content.
 
         For more information, see https://docs.nvidia.com/nemo/microservices/latest/pysdk/index.html#accessing-raw-response-data-e-g-headers
         """
-        return AsyncExperimentGroupsResourceWithRawResponse(self)
+        return AsyncExperimentsResourceWithRawResponse(self)
 
     @cached_property
-    def with_streaming_response(self) -> AsyncExperimentGroupsResourceWithStreamingResponse:
+    def with_streaming_response(self) -> AsyncExperimentsResourceWithStreamingResponse:
         """
         An alternative to `.with_raw_response` that doesn't eagerly read the response body.
 
         For more information, see https://docs.nvidia.com/nemo/microservices/latest/pysdk/index.html#with_streaming_response
         """
-        return AsyncExperimentGroupsResourceWithStreamingResponse(self)
+        return AsyncExperimentsResourceWithStreamingResponse(self)
 
     async def create(
         self,
@@ -422,25 +418,25 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> ExperimentGroupResponse:
+    ) -> ExperimentResponse:
         """
-        Create Experiment Group
+        Create Experiment
 
         Args:
-          name: Workspace-unique group name.
+          name: Workspace-unique experiment name.
 
-          default_sort: Default sort for this group's evaluations list, as a `sort`-param string: a
+          default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
               the rest break ties (leading '-' on a field = descending), e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
               field the evaluations list `sort` param does; clients apply it as the list
               `sort` param.
 
-          description: Human-readable purpose of the group.
+          description: Human-readable purpose of the experiment.
 
-          insight_id: Reference to an external insight that seeded this group, if any.
+          insight_id: Reference to an external insight that seeded this experiment, if any.
 
-          metadata: Free-form producer metadata for the group.
+          metadata: Free-form producer metadata for the experiment.
 
           pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
 
@@ -449,7 +445,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
               latency (y): both exist for every group, so the chart always has something to
               render before anyone customizes it.
 
-          summary: Human- or agent-authored summary of the group's findings.
+          summary: Human- or agent-authored summary of the experiment's findings.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -469,7 +465,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
             if not workspace:
                 raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
             return await self._post(
-                path_template("/apis/intake/v2/workspaces/{workspace}/experiment-groups", workspace=workspace),
+                path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
                 body=await async_maybe_transform(
                     {
                         "name": name,
@@ -480,12 +476,12 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                         "pareto": pareto,
                         "summary": summary,
                     },
-                    experiment_group_create_params.ExperimentGroupCreateParams,
+                    experiment_create_params.ExperimentCreateParams,
                 ),
                 options=make_request_options(
                     extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
                 ),
-                cast_to=ExperimentGroupResponse,
+                cast_to=ExperimentResponse,
             )
         except ConflictError:
             if not exist_ok:
@@ -503,9 +499,9 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> ExperimentGroupResponse:
+    ) -> ExperimentResponse:
         """
-        Get Experiment Group
+        Get Experiment
 
         Args:
           extra_headers: Send extra headers
@@ -523,13 +519,11 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         if not name:
             raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
         return await self._get(
-            path_template(
-                "/apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}", workspace=workspace, name=name
-            ),
+            path_template("/apis/intake/v2/workspaces/{workspace}/experiments/{name}", workspace=workspace, name=name),
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=ExperimentGroupResponse,
+            cast_to=ExperimentResponse,
         )
 
     async def update(
@@ -550,25 +544,25 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> ExperimentGroupResponse:
+    ) -> ExperimentResponse:
         """
-        Update Experiment Group
+        Update Experiment
 
         Args:
-          body_name: Workspace-unique group name.
+          body_name: Workspace-unique experiment name.
 
-          default_sort: Default sort for this group's evaluations list, as a `sort`-param string: a
+          default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
               the rest break ties (leading '-' on a field = descending), e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
               field the evaluations list `sort` param does; clients apply it as the list
               `sort` param.
 
-          description: Human-readable purpose of the group.
+          description: Human-readable purpose of the experiment.
 
-          insight_id: Reference to an external insight that seeded this group, if any.
+          insight_id: Reference to an external insight that seeded this experiment, if any.
 
-          metadata: Free-form producer metadata for the group.
+          metadata: Free-form producer metadata for the experiment.
 
           pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
 
@@ -577,7 +571,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
               latency (y): both exist for every group, so the chart always has something to
               render before anyone customizes it.
 
-          summary: Human- or agent-authored summary of the group's findings.
+          summary: Human- or agent-authored summary of the experiment's findings.
 
           extra_headers: Send extra headers
 
@@ -595,7 +589,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
             raise ValueError(f"Expected a non-empty value for `path_name` but received {path_name!r}")
         return await self._put(
             path_template(
-                "/apis/intake/v2/workspaces/{workspace}/experiment-groups/{path_name}",
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{path_name}",
                 workspace=workspace,
                 path_name=path_name,
             ),
@@ -609,19 +603,19 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                     "pareto": pareto,
                     "summary": summary,
                 },
-                experiment_group_update_params.ExperimentGroupUpdateParams,
+                experiment_update_params.ExperimentUpdateParams,
             ),
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=ExperimentGroupResponse,
+            cast_to=ExperimentResponse,
         )
 
     def list(
         self,
         *,
         workspace: str | None = None,
-        filter: ExperimentGroupFilterParam | Omit = omit,
+        filter: ExperimentFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"] | Omit = omit,
@@ -631,14 +625,14 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> AsyncPaginator[ExperimentGroupResponse, AsyncDefaultPagination[ExperimentGroupResponse]]:
+    ) -> AsyncPaginator[ExperimentResponse, AsyncDefaultPagination[ExperimentResponse]]:
         """
-        List Experiment Groups
+        List Experiments
 
         Args:
-          filter: Filter experiment groups by name, insight_id, is_deleted, or a metadata
-              key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
-              soft-deleted groups; omit to see only live ones.
+          filter: Filter experiments by name, insight_id, is_deleted, or a metadata key/value
+              (filter[metadata.<key>]=<value>). Pass is_deleted=true to return only
+              soft-deleted experiments; omit to see only live ones.
 
           page: Page number.
 
@@ -659,8 +653,8 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         if not workspace:
             raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
         return self._get_api_list(
-            path_template("/apis/intake/v2/workspaces/{workspace}/experiment-groups", workspace=workspace),
-            page=AsyncDefaultPagination[ExperimentGroupResponse],
+            path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
+            page=AsyncDefaultPagination[ExperimentResponse],
             options=make_request_options(
                 extra_headers=extra_headers,
                 extra_query=extra_query,
@@ -673,10 +667,10 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                         "page_size": page_size,
                         "sort": sort,
                     },
-                    experiment_group_list_params.ExperimentGroupListParams,
+                    experiment_list_params.ExperimentListParams,
                 ),
             ),
-            model=ExperimentGroupResponse,
+            model=ExperimentResponse,
         )
 
     async def delete(
@@ -692,7 +686,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> None:
         """
-        Delete Experiment Group
+        Delete Experiment
 
         Args:
           extra_headers: Send extra headers
@@ -711,9 +705,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
             raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
         extra_headers = {"Accept": "*/*", **(extra_headers or {})}
         return await self._delete(
-            path_template(
-                "/apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}", workspace=workspace, name=name
-            ),
+            path_template("/apis/intake/v2/workspaces/{workspace}/experiments/{name}", workspace=workspace, name=name),
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
@@ -721,85 +713,85 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         )
 
 
-class ExperimentGroupsResourceWithRawResponse:
-    def __init__(self, experiment_groups: ExperimentGroupsResource) -> None:
-        self._experiment_groups = experiment_groups
+class ExperimentsResourceWithRawResponse:
+    def __init__(self, experiments: ExperimentsResource) -> None:
+        self._experiments = experiments
 
         self.create = to_raw_response_wrapper(
-            experiment_groups.create,
+            experiments.create,
         )
         self.retrieve = to_raw_response_wrapper(
-            experiment_groups.retrieve,
+            experiments.retrieve,
         )
         self.update = to_raw_response_wrapper(
-            experiment_groups.update,
+            experiments.update,
         )
         self.list = to_raw_response_wrapper(
-            experiment_groups.list,
+            experiments.list,
         )
         self.delete = to_raw_response_wrapper(
-            experiment_groups.delete,
+            experiments.delete,
         )
 
 
-class AsyncExperimentGroupsResourceWithRawResponse:
-    def __init__(self, experiment_groups: AsyncExperimentGroupsResource) -> None:
-        self._experiment_groups = experiment_groups
+class AsyncExperimentsResourceWithRawResponse:
+    def __init__(self, experiments: AsyncExperimentsResource) -> None:
+        self._experiments = experiments
 
         self.create = async_to_raw_response_wrapper(
-            experiment_groups.create,
+            experiments.create,
         )
         self.retrieve = async_to_raw_response_wrapper(
-            experiment_groups.retrieve,
+            experiments.retrieve,
         )
         self.update = async_to_raw_response_wrapper(
-            experiment_groups.update,
+            experiments.update,
         )
         self.list = async_to_raw_response_wrapper(
-            experiment_groups.list,
+            experiments.list,
         )
         self.delete = async_to_raw_response_wrapper(
-            experiment_groups.delete,
+            experiments.delete,
         )
 
 
-class ExperimentGroupsResourceWithStreamingResponse:
-    def __init__(self, experiment_groups: ExperimentGroupsResource) -> None:
-        self._experiment_groups = experiment_groups
+class ExperimentsResourceWithStreamingResponse:
+    def __init__(self, experiments: ExperimentsResource) -> None:
+        self._experiments = experiments
 
         self.create = to_streamed_response_wrapper(
-            experiment_groups.create,
+            experiments.create,
         )
         self.retrieve = to_streamed_response_wrapper(
-            experiment_groups.retrieve,
+            experiments.retrieve,
         )
         self.update = to_streamed_response_wrapper(
-            experiment_groups.update,
+            experiments.update,
         )
         self.list = to_streamed_response_wrapper(
-            experiment_groups.list,
+            experiments.list,
         )
         self.delete = to_streamed_response_wrapper(
-            experiment_groups.delete,
+            experiments.delete,
         )
 
 
-class AsyncExperimentGroupsResourceWithStreamingResponse:
-    def __init__(self, experiment_groups: AsyncExperimentGroupsResource) -> None:
-        self._experiment_groups = experiment_groups
+class AsyncExperimentsResourceWithStreamingResponse:
+    def __init__(self, experiments: AsyncExperimentsResource) -> None:
+        self._experiments = experiments
 
         self.create = async_to_streamed_response_wrapper(
-            experiment_groups.create,
+            experiments.create,
         )
         self.retrieve = async_to_streamed_response_wrapper(
-            experiment_groups.retrieve,
+            experiments.retrieve,
         )
         self.update = async_to_streamed_response_wrapper(
-            experiment_groups.update,
+            experiments.update,
         )
         self.list = async_to_streamed_response_wrapper(
-            experiment_groups.list,
+            experiments.list,
         )
         self.delete = async_to_streamed_response_wrapper(
-            experiment_groups.delete,
+            experiments.delete,
         )

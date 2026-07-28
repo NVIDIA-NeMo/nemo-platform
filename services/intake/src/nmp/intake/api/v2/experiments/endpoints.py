@@ -181,9 +181,7 @@ async def list_experiments(
     parsed: ExperimentFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
-    sort: ExperimentSortField = Query(
-        default="-created_at", description="Sort field; prefix with '-' for descending."
-    ),
+    sort: ExperimentSortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
 ) -> Page[ExperimentResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)

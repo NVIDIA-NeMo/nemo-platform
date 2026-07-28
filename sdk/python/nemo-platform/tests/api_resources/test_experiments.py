@@ -25,29 +25,29 @@ import pytest
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
 from nemo_platform.pagination import SyncDefaultPagination, AsyncDefaultPagination
-from nemo_platform.types.experiment_groups import (
-    ExperimentGroupResponse,
+from nemo_platform.types.experiments import (
+    ExperimentResponse,
 )
 
 base_url = os.environ.get("TEST_API_BASE_URL", "http://127.0.0.1:4010")
 
 
-class TestExperimentGroups:
+class TestExperiments:
     parametrize = pytest.mark.parametrize("client", [False, True], indirect=True, ids=["loose", "strict"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_create(self, client: NeMoPlatform) -> None:
-        experiment_group = client.experiment_groups.create(
+        experiment = client.experiments.create(
             workspace="workspace",
             name="name",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_create_with_all_params(self, client: NeMoPlatform) -> None:
-        experiment_group = client.experiment_groups.create(
+        experiment = client.experiments.create(
             workspace="workspace",
             name="name",
             default_sort="default_sort",
@@ -60,33 +60,33 @@ class TestExperimentGroups:
             },
             summary="summary",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_raw_response_create(self, client: NeMoPlatform) -> None:
-        response = client.experiment_groups.with_raw_response.create(
+        response = client.experiments.with_raw_response.create(
             workspace="workspace",
             name="name",
         )
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = response.parse()
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        experiment = response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_streaming_response_create(self, client: NeMoPlatform) -> None:
-        with client.experiment_groups.with_streaming_response.create(
+        with client.experiments.with_streaming_response.create(
             workspace="workspace",
             name="name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = response.parse()
-            assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+            experiment = response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -94,7 +94,7 @@ class TestExperimentGroups:
     @parametrize
     def test_path_params_create(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.experiment_groups.with_raw_response.create(
+            client.experiments.with_raw_response.create(
                 workspace="",
                 name="name",
             )
@@ -102,37 +102,37 @@ class TestExperimentGroups:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_retrieve(self, client: NeMoPlatform) -> None:
-        experiment_group = client.experiment_groups.retrieve(
+        experiment = client.experiments.retrieve(
             name="name",
             workspace="workspace",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_raw_response_retrieve(self, client: NeMoPlatform) -> None:
-        response = client.experiment_groups.with_raw_response.retrieve(
+        response = client.experiments.with_raw_response.retrieve(
             name="name",
             workspace="workspace",
         )
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = response.parse()
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        experiment = response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_streaming_response_retrieve(self, client: NeMoPlatform) -> None:
-        with client.experiment_groups.with_streaming_response.retrieve(
+        with client.experiments.with_streaming_response.retrieve(
             name="name",
             workspace="workspace",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = response.parse()
-            assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+            experiment = response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -140,13 +140,13 @@ class TestExperimentGroups:
     @parametrize
     def test_path_params_retrieve(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.experiment_groups.with_raw_response.retrieve(
+            client.experiments.with_raw_response.retrieve(
                 name="name",
                 workspace="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
-            client.experiment_groups.with_raw_response.retrieve(
+            client.experiments.with_raw_response.retrieve(
                 name="",
                 workspace="workspace",
             )
@@ -154,17 +154,17 @@ class TestExperimentGroups:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_update(self, client: NeMoPlatform) -> None:
-        experiment_group = client.experiment_groups.update(
+        experiment = client.experiments.update(
             path_name="name",
             workspace="workspace",
             body_name="name",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_update_with_all_params(self, client: NeMoPlatform) -> None:
-        experiment_group = client.experiment_groups.update(
+        experiment = client.experiments.update(
             path_name="name",
             workspace="workspace",
             body_name="name",
@@ -178,12 +178,12 @@ class TestExperimentGroups:
             },
             summary="summary",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_raw_response_update(self, client: NeMoPlatform) -> None:
-        response = client.experiment_groups.with_raw_response.update(
+        response = client.experiments.with_raw_response.update(
             path_name="name",
             workspace="workspace",
             body_name="name",
@@ -191,13 +191,13 @@ class TestExperimentGroups:
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = response.parse()
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        experiment = response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_streaming_response_update(self, client: NeMoPlatform) -> None:
-        with client.experiment_groups.with_streaming_response.update(
+        with client.experiments.with_streaming_response.update(
             path_name="name",
             workspace="workspace",
             body_name="name",
@@ -205,8 +205,8 @@ class TestExperimentGroups:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = response.parse()
-            assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+            experiment = response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -214,14 +214,14 @@ class TestExperimentGroups:
     @parametrize
     def test_path_params_update(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.experiment_groups.with_raw_response.update(
+            client.experiments.with_raw_response.update(
                 path_name="name",
                 workspace="",
                 body_name="name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `path_name` but received ''"):
-            client.experiment_groups.with_raw_response.update(
+            client.experiments.with_raw_response.update(
                 path_name="",
                 workspace="workspace",
                 body_name="name",
@@ -230,15 +230,15 @@ class TestExperimentGroups:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_list(self, client: NeMoPlatform) -> None:
-        experiment_group = client.experiment_groups.list(
+        experiment = client.experiments.list(
             workspace="workspace",
         )
-        assert_matches_type(SyncDefaultPagination[ExperimentGroupResponse], experiment_group, path=["response"])
+        assert_matches_type(SyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_list_with_all_params(self, client: NeMoPlatform) -> None:
-        experiment_group = client.experiment_groups.list(
+        experiment = client.experiments.list(
             workspace="workspace",
             filter={
                 "insight_id": "insight_id",
@@ -250,31 +250,31 @@ class TestExperimentGroups:
             page_size=1,
             sort="-created_at",
         )
-        assert_matches_type(SyncDefaultPagination[ExperimentGroupResponse], experiment_group, path=["response"])
+        assert_matches_type(SyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_raw_response_list(self, client: NeMoPlatform) -> None:
-        response = client.experiment_groups.with_raw_response.list(
+        response = client.experiments.with_raw_response.list(
             workspace="workspace",
         )
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = response.parse()
-        assert_matches_type(SyncDefaultPagination[ExperimentGroupResponse], experiment_group, path=["response"])
+        experiment = response.parse()
+        assert_matches_type(SyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_streaming_response_list(self, client: NeMoPlatform) -> None:
-        with client.experiment_groups.with_streaming_response.list(
+        with client.experiments.with_streaming_response.list(
             workspace="workspace",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = response.parse()
-            assert_matches_type(SyncDefaultPagination[ExperimentGroupResponse], experiment_group, path=["response"])
+            experiment = response.parse()
+            assert_matches_type(SyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -282,44 +282,44 @@ class TestExperimentGroups:
     @parametrize
     def test_path_params_list(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.experiment_groups.with_raw_response.list(
+            client.experiments.with_raw_response.list(
                 workspace="",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_delete(self, client: NeMoPlatform) -> None:
-        experiment_group = client.experiment_groups.delete(
+        experiment = client.experiments.delete(
             name="name",
             workspace="workspace",
         )
-        assert experiment_group is None
+        assert experiment is None
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_raw_response_delete(self, client: NeMoPlatform) -> None:
-        response = client.experiment_groups.with_raw_response.delete(
+        response = client.experiments.with_raw_response.delete(
             name="name",
             workspace="workspace",
         )
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = response.parse()
-        assert experiment_group is None
+        experiment = response.parse()
+        assert experiment is None
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_streaming_response_delete(self, client: NeMoPlatform) -> None:
-        with client.experiment_groups.with_streaming_response.delete(
+        with client.experiments.with_streaming_response.delete(
             name="name",
             workspace="workspace",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = response.parse()
-            assert experiment_group is None
+            experiment = response.parse()
+            assert experiment is None
 
         assert cast(Any, response.is_closed) is True
 
@@ -327,19 +327,19 @@ class TestExperimentGroups:
     @parametrize
     def test_path_params_delete(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.experiment_groups.with_raw_response.delete(
+            client.experiments.with_raw_response.delete(
                 name="name",
                 workspace="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
-            client.experiment_groups.with_raw_response.delete(
+            client.experiments.with_raw_response.delete(
                 name="",
                 workspace="workspace",
             )
 
 
-class TestAsyncExperimentGroups:
+class TestAsyncExperiments:
     parametrize = pytest.mark.parametrize(
         "async_client", [False, True, {"http_client": "aiohttp"}], indirect=True, ids=["loose", "strict", "aiohttp"]
     )
@@ -347,16 +347,16 @@ class TestAsyncExperimentGroups:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_create(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment_group = await async_client.experiment_groups.create(
+        experiment = await async_client.experiments.create(
             workspace="workspace",
             name="name",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_create_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment_group = await async_client.experiment_groups.create(
+        experiment = await async_client.experiments.create(
             workspace="workspace",
             name="name",
             default_sort="default_sort",
@@ -369,33 +369,33 @@ class TestAsyncExperimentGroups:
             },
             summary="summary",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_raw_response_create(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.experiment_groups.with_raw_response.create(
+        response = await async_client.experiments.with_raw_response.create(
             workspace="workspace",
             name="name",
         )
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = await response.parse()
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        experiment = await response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_streaming_response_create(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.experiment_groups.with_streaming_response.create(
+        async with async_client.experiments.with_streaming_response.create(
             workspace="workspace",
             name="name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = await response.parse()
-            assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+            experiment = await response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -403,7 +403,7 @@ class TestAsyncExperimentGroups:
     @parametrize
     async def test_path_params_create(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.experiment_groups.with_raw_response.create(
+            await async_client.experiments.with_raw_response.create(
                 workspace="",
                 name="name",
             )
@@ -411,37 +411,37 @@ class TestAsyncExperimentGroups:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_retrieve(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment_group = await async_client.experiment_groups.retrieve(
+        experiment = await async_client.experiments.retrieve(
             name="name",
             workspace="workspace",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_raw_response_retrieve(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.experiment_groups.with_raw_response.retrieve(
+        response = await async_client.experiments.with_raw_response.retrieve(
             name="name",
             workspace="workspace",
         )
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = await response.parse()
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        experiment = await response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_streaming_response_retrieve(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.experiment_groups.with_streaming_response.retrieve(
+        async with async_client.experiments.with_streaming_response.retrieve(
             name="name",
             workspace="workspace",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = await response.parse()
-            assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+            experiment = await response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -449,13 +449,13 @@ class TestAsyncExperimentGroups:
     @parametrize
     async def test_path_params_retrieve(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.experiment_groups.with_raw_response.retrieve(
+            await async_client.experiments.with_raw_response.retrieve(
                 name="name",
                 workspace="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
-            await async_client.experiment_groups.with_raw_response.retrieve(
+            await async_client.experiments.with_raw_response.retrieve(
                 name="",
                 workspace="workspace",
             )
@@ -463,17 +463,17 @@ class TestAsyncExperimentGroups:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_update(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment_group = await async_client.experiment_groups.update(
+        experiment = await async_client.experiments.update(
             path_name="name",
             workspace="workspace",
             body_name="name",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_update_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment_group = await async_client.experiment_groups.update(
+        experiment = await async_client.experiments.update(
             path_name="name",
             workspace="workspace",
             body_name="name",
@@ -487,12 +487,12 @@ class TestAsyncExperimentGroups:
             },
             summary="summary",
         )
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_raw_response_update(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.experiment_groups.with_raw_response.update(
+        response = await async_client.experiments.with_raw_response.update(
             path_name="name",
             workspace="workspace",
             body_name="name",
@@ -500,13 +500,13 @@ class TestAsyncExperimentGroups:
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = await response.parse()
-        assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+        experiment = await response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_streaming_response_update(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.experiment_groups.with_streaming_response.update(
+        async with async_client.experiments.with_streaming_response.update(
             path_name="name",
             workspace="workspace",
             body_name="name",
@@ -514,8 +514,8 @@ class TestAsyncExperimentGroups:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = await response.parse()
-            assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
+            experiment = await response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -523,14 +523,14 @@ class TestAsyncExperimentGroups:
     @parametrize
     async def test_path_params_update(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.experiment_groups.with_raw_response.update(
+            await async_client.experiments.with_raw_response.update(
                 path_name="name",
                 workspace="",
                 body_name="name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `path_name` but received ''"):
-            await async_client.experiment_groups.with_raw_response.update(
+            await async_client.experiments.with_raw_response.update(
                 path_name="",
                 workspace="workspace",
                 body_name="name",
@@ -539,15 +539,15 @@ class TestAsyncExperimentGroups:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_list(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment_group = await async_client.experiment_groups.list(
+        experiment = await async_client.experiments.list(
             workspace="workspace",
         )
-        assert_matches_type(AsyncDefaultPagination[ExperimentGroupResponse], experiment_group, path=["response"])
+        assert_matches_type(AsyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_list_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment_group = await async_client.experiment_groups.list(
+        experiment = await async_client.experiments.list(
             workspace="workspace",
             filter={
                 "insight_id": "insight_id",
@@ -559,31 +559,31 @@ class TestAsyncExperimentGroups:
             page_size=1,
             sort="-created_at",
         )
-        assert_matches_type(AsyncDefaultPagination[ExperimentGroupResponse], experiment_group, path=["response"])
+        assert_matches_type(AsyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_raw_response_list(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.experiment_groups.with_raw_response.list(
+        response = await async_client.experiments.with_raw_response.list(
             workspace="workspace",
         )
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = await response.parse()
-        assert_matches_type(AsyncDefaultPagination[ExperimentGroupResponse], experiment_group, path=["response"])
+        experiment = await response.parse()
+        assert_matches_type(AsyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_streaming_response_list(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.experiment_groups.with_streaming_response.list(
+        async with async_client.experiments.with_streaming_response.list(
             workspace="workspace",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = await response.parse()
-            assert_matches_type(AsyncDefaultPagination[ExperimentGroupResponse], experiment_group, path=["response"])
+            experiment = await response.parse()
+            assert_matches_type(AsyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -591,44 +591,44 @@ class TestAsyncExperimentGroups:
     @parametrize
     async def test_path_params_list(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.experiment_groups.with_raw_response.list(
+            await async_client.experiments.with_raw_response.list(
                 workspace="",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_delete(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment_group = await async_client.experiment_groups.delete(
+        experiment = await async_client.experiments.delete(
             name="name",
             workspace="workspace",
         )
-        assert experiment_group is None
+        assert experiment is None
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_raw_response_delete(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.experiment_groups.with_raw_response.delete(
+        response = await async_client.experiments.with_raw_response.delete(
             name="name",
             workspace="workspace",
         )
 
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        experiment_group = await response.parse()
-        assert experiment_group is None
+        experiment = await response.parse()
+        assert experiment is None
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_streaming_response_delete(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.experiment_groups.with_streaming_response.delete(
+        async with async_client.experiments.with_streaming_response.delete(
             name="name",
             workspace="workspace",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
-            experiment_group = await response.parse()
-            assert experiment_group is None
+            experiment = await response.parse()
+            assert experiment is None
 
         assert cast(Any, response.is_closed) is True
 
@@ -636,13 +636,13 @@ class TestAsyncExperimentGroups:
     @parametrize
     async def test_path_params_delete(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.experiment_groups.with_raw_response.delete(
+            await async_client.experiments.with_raw_response.delete(
                 name="name",
                 workspace="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
-            await async_client.experiment_groups.with_raw_response.delete(
+            await async_client.experiments.with_raw_response.delete(
                 name="",
                 workspace="workspace",
             )

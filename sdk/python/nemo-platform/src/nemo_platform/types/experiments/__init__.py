@@ -15,21 +15,13 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from __future__ import annotations
 
-from ..._models import BaseModel
-
-__all__ = ["ExperimentContext"]
-
-
-class ExperimentContext(BaseModel):
-    """Deprecated alias for :class:`EvaluationContext`.
-
-    Producers should send ``evaluation_context``.
-    """
-
-    experiment_id: str
-    """Name of an existing Experiment entity."""
-
-    test_case_id: Optional[str] = None
-    """Optional producer-supplied test case id."""
+from .pareto_config import ParetoConfig as ParetoConfig
+from .experiment_response import ExperimentResponse as ExperimentResponse
+from .pareto_config_param import ParetoConfigParam as ParetoConfigParam
+from .experiment_list_params import ExperimentListParams as ExperimentListParams
+from .experiment_filter_param import ExperimentFilterParam as ExperimentFilterParam
+from .experiment_create_params import ExperimentCreateParams as ExperimentCreateParams
+from .experiment_update_params import ExperimentUpdateParams as ExperimentUpdateParams
+from .experiment_responses_page import ExperimentResponsesPage as ExperimentResponsesPage
