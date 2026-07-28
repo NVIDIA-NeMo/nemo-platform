@@ -124,3 +124,9 @@ export const getErrorMessage = (error: AxiosError | Error, fallbackMessage?: str
   // Return fallback or generic error message
   return fallbackMessage ?? error.message;
 };
+
+export const swallowConflict = <T>(promise: Promise<T>): Promise<T | undefined> =>
+  promise.catch((e: unknown) => {
+    if (e instanceof AxiosError && e.response?.status === 409) return undefined;
+    throw e;
+  });

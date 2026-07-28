@@ -2,17 +2,36 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
-import type { Adapter, ModelEntity } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, PageHeader, Stack } from '@nvidia/foundations-react-core';
+import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
+import type {
+  Adapter,
+  ModelEntity,
+  ModelsListModelsParams,
+} from '@nemo/sdk/generated/platform/schema';
+import {
+  Button,
+  Flex,
+  ModalContent,
+  ModalDialog,
+  ModalHeading,
+  ModalMain,
+  ModalRoot,
+  PageHeader,
+  Stack,
+} from '@nvidia/foundations-react-core';
+import { CustomizationTemplates } from '@studio/components/customizer/CustomizationTemplates';
 import { CustomModelsDataView } from '@studio/components/dataViews/CustomModelsDataView';
+import { DEFAULT_CUSTOM_MODELS_FILTER } from '@studio/components/dataViews/CustomModelsDataView/constants';
 import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsDataView/CustomizeModelButton';
 import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
-import { INTAKE_ENABLED } from '@studio/constants/environment';
+import { CUSTOMIZER_ENABLED, INTAKE_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getEvaluationResultsRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router';
+
+const CUSTOM_MODELS_FILTER = JSON.stringify(DEFAULT_CUSTOM_MODELS_FILTER);
 
 export const CustomizationJobListRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -22,13 +41,21 @@ export const CustomizationJobListRoute: FC = () => {
   const [selectedTab, setSelectedTab] = useState<'model-details' | 'chat-playground'>(
     'model-details'
   );
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+
+  const { data: modelsCheck } = useModelsListModels(
+    workspace,
+    {
+      page: 1,
+      page_size: 1,
+      filter: CUSTOM_MODELS_FILTER as unknown as ModelsListModelsParams['filter'],
+    },
+    { query: { staleTime: 0, refetchOnWindowFocus: true } }
+  );
+  const hasModels = (modelsCheck?.pagination?.total_results ?? 0) > 0;
 
   useBreadcrumbs({
-    items: [
-      {
-        slotLabel: 'Custom Models',
-      },
-    ],
+    items: [{ slotLabel: 'Custom Models' }],
   });
 
   return (
@@ -38,8 +65,18 @@ export const CustomizationJobListRoute: FC = () => {
           className="p-0"
           slotHeading="Custom Models"
           slotDescription="Create, manage, and deploy custom AI models with fine-tuning and prompt tuning."
-          slotActions={<CustomizeModelButton workspace={workspace} />}
+          slotActions={
+            <Flex gap="density-sm" align="center">
+              {CUSTOMIZER_ENABLED && hasModels && (
+                <Button kind="secondary" onClick={() => setIsTemplateModalOpen(true)}>
+                  Start from Template
+                </Button>
+              )}
+              <CustomizeModelButton workspace={workspace} />
+            </Flex>
+          }
         />
+        {CUSTOMIZER_ENABLED && !hasModels && <CustomizationTemplates />}
         <CustomModelsDataView
           workspace={workspace}
           onRowClick={(model: ModelEntity, tab: ModelPanelTab, adapter?: Adapter) => {
@@ -49,6 +86,20 @@ export const CustomizationJobListRoute: FC = () => {
           }}
         />
       </Stack>
+
+      {CUSTOMIZER_ENABLED && (
+        <ModalRoot open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}>
+          <ModalDialog>
+            <ModalContent className="w-[1000px] max-w-[90vw]">
+              <ModalHeading>Start from a Template</ModalHeading>
+              <ModalMain className="p-density-lg">
+                <CustomizationTemplates />
+              </ModalMain>
+            </ModalContent>
+          </ModalDialog>
+        </ModalRoot>
+      )}
+
       <ModelPanel
         open={!!selectedModel}
         model={selectedModel ?? undefined}
@@ -71,9 +122,7 @@ export const CustomizationJobListRoute: FC = () => {
                   className="flex-1"
                   kind="secondary"
                   size="small"
-                  onClick={() => {
-                    navigate(getIntakeTracesRoute(workspace));
-                  }}
+                  onClick={() => navigate(getIntakeTracesRoute(workspace))}
                 >
                   View Intake Traces
                 </Button>
@@ -82,11 +131,7 @@ export const CustomizationJobListRoute: FC = () => {
                 className="flex-1"
                 kind="secondary"
                 size="small"
-                onClick={() => {
-                  // EvaluationModelSelect treats `URN::adapter` as a single
-                  // form-field value, so when an adapter is selected we append
-                  navigate(getEvaluationResultsRoute(workspace));
-                }}
+                onClick={() => navigate(getEvaluationResultsRoute(workspace))}
               >
                 Evaluate this Model
               </Button>

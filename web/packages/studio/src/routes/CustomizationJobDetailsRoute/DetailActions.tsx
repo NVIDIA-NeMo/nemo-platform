@@ -16,8 +16,8 @@ import { getCustomizationJobStatusQueryKey } from '@studio/hooks/useCustomizatio
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getNewCustomizationJobRoute, getNewEvaluationMetricRoute } from '@studio/routes/utils';
 import { CustomizationBackend, type CustomizationJob } from '@studio/util/customizationBackend';
+import { toError } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
 import { Ban, Copy } from 'lucide-react';
 import { FC } from 'react';
 import { useNavigate } from 'react-router';
@@ -76,11 +76,7 @@ export const DetailActions: FC<DetailActionsProps> = ({ model, status, backend, 
     try {
       await cancel({ workspace, name });
     } catch (e) {
-      if (e instanceof AxiosError || e instanceof Error) {
-        toast.error(`Failed to cancel job: ${getErrorMessage(e)}`);
-      } else {
-        toast.error('Failed to cancel job: Unknown error');
-      }
+      toast.error(`Failed to cancel job: ${getErrorMessage(toError(e))}`);
     }
   };
 

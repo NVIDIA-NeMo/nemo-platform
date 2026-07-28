@@ -36,3 +36,11 @@ export const FINETUNING_TYPE_FILTER_OPTIONS = FINETUNING_TYPE_OPTIONS.map((opt) 
   value: opt.value,
   label: opt.children,
 }));
+
+export const HAS_BASE_MODEL = { 'data.base_model': { $not: { $eq: null } } };
+export const HAS_ADAPTERS = { adapters: { $exists: true } };
+
+/**
+ * Default filter: show only "custom" models (has base_model, finetuning_type, or adapters).
+ */
+export const DEFAULT_CUSTOM_MODELS_FILTER = { $or: [HAS_BASE_MODEL, HAS_ADAPTERS] };
