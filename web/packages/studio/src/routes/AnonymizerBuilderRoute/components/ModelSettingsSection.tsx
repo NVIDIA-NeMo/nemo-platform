@@ -7,10 +7,12 @@ import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import { Divider, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import {
   activeRolesForStrategy,
+  GLINER_ROLE,
   ROLE_LABELS,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { useAnonymizerModels } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerModels';
+import { isGlinerModel } from '@studio/routes/AnonymizerBuilderRoute/utils';
 import { useMemo, useState, type FC } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
@@ -21,7 +23,22 @@ export const ModelSettingsSection: FC = () => {
   const [openParamsRole, setOpenParamsRole] = useState<string | null>(null);
 
   const roles = useMemo(() => activeRolesForStrategy(strategy), [strategy]);
-  const { items, isLoading, applyModel } = useAnonymizerModels();
+  const { models, items, isLoading, applyModel } = useAnonymizerModels();
+
+  const glinerItems = useMemo(
+    () => items.filter((item) => models.some((m) => m.id === item.value && isGlinerModel(m))),
+    [items, models]
+  );
+
+  const optionsForRole = (role: string) => (role === GLINER_ROLE ? glinerItems : items);
+
+  const emptyMessageForRole = (role: string) => {
+    if (isLoading) return 'Loading models...';
+    if (role === GLINER_ROLE) {
+      return 'No GLiNER model in this workspace. Entity detection needs one, such as nvidia/gliner-pii.';
+    }
+    return 'No models in this workspace.';
+  };
 
   return (
     <Stack gap="density-2xl">
@@ -33,11 +50,11 @@ export const ModelSettingsSection: FC = () => {
             <div className="grow">
               <ControlledSearchableSelect
                 aria-label={ROLE_LABELS[role] ?? role}
-                options={items}
+                options={optionsForRole(role)}
                 isLoading={isLoading}
                 triggerPlaceholder="Select a model"
                 searchPlaceholder="Search models..."
-                emptyMessage={isLoading ? 'Loading models...' : 'No models in this workspace.'}
+                emptyMessage={emptyMessageForRole(role)}
                 onChange={(value) => applyModel(role, value)}
                 useControllerProps={{
                   name: `roleModels.${role}.modelId`,
