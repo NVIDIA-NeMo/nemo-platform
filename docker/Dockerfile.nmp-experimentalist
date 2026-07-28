@@ -16,8 +16,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM ${NMP_PYTHON_BASE} AS runtime
 
 # OpenShell's supervisor resolves the sandbox user by name. iproute2 and
-# nftables are required for full network-policy enforcement.
+# nftables are required for full network-policy enforcement. Experimentalist
+# calls gh/glab directly when publishing the winning candidate.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    gh \
+    glab \
     iproute2 \
     nftables \
     && apt-get clean \
@@ -28,6 +31,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chown sandbox:sandbox /sandbox
 
 COPY --from=builder /app/.venv /app/.venv
+COPY --chmod=0755 plugins/nemo-experimentalist/examples/openshell/git-askpass.sh \
+    /usr/local/bin/nemo-experimentalist-git-askpass
 
 ENV HOME=/home/sandbox \
     PATH="/app/.venv/bin:$PATH" \
