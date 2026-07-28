@@ -4,8 +4,7 @@
 
 # Experimentalist control plane. Harbor task execution deliberately does not
 # live in this image: it has no Docker CLI and must never receive a Docker
-# socket. A future platform-evaluator adapter will submit Harbor work to a
-# dedicated evaluator profile instead.
+# socket. It submits Harbor work through the authenticated bridge API instead.
 
 ARG NMP_PYTHON_BASE=nmp-python-base
 

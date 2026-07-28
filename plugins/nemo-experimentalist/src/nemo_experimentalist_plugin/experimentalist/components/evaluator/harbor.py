@@ -179,6 +179,7 @@ class HarborEvaluatorConfig(EvaluatorConfig):
     )
     n_attempts: int = Field(default=1)
     n_concurrent_trials: int = Field(default=os.cpu_count() or 4)
+    agent_model_name: str | None = Field(default=None)
     quiet: bool = Field(default=False)
     verifier_timeout_multiplier: float | None = Field(default=1.0)
     agent_timeout_multiplier: float | None = Field(default=1.0)
@@ -187,6 +188,10 @@ class HarborEvaluatorConfig(EvaluatorConfig):
     artifacts: list[str] = Field(default=[])
     retry: RetryConfig = Field(default=RetryConfig(exclude_exceptions=set()))
     import_path: str = Field(default="harbor_wrapper:WrappedAgent")
+    scope_import_path: bool = Field(
+        default=True,
+        description="Scope a candidate-owned import path to the candidate directory before Harbor imports it.",
+    )
     trace_dir: str = Field(default=_TRACE_ARTIFACT_SOURCE)
 
 
@@ -1245,9 +1250,13 @@ class HarborEvaluator(Evaluator):
     evaluator_type: EvaluatorType = "harbor"
 
     def __init__(self, options: HarborEvaluatorConfig | None = None, experiment_dir: Path | None = None) -> None:
-        super().__init__(options or HarborEvaluatorConfig(), experiment_dir=experiment_dir)
+        resolved_options = options or HarborEvaluatorConfig()
+        super().__init__(resolved_options, experiment_dir=experiment_dir)
+        self.options = resolved_options
 
-    async def _run(self, agent: Path, dataset: Dataset, options: HarborEvaluatorConfig) -> Sequence[TrialResult]:
+    async def _run(self, agent: Path, dataset: Dataset, options: EvaluatorConfig) -> Sequence[TrialResult]:
+        if not isinstance(options, HarborEvaluatorConfig):
+            raise TypeError("Harbor evaluator requires HarborEvaluatorConfig")
         if not isinstance(dataset, HarborDataset):
             raise ValueError("Dataset must be a Harbor dataset")
 
@@ -1260,7 +1269,9 @@ class HarborEvaluator(Evaluator):
         options_dict["jobs_dir"] = experiment_dir / options.jobs_dir
         options_dict["job_name"] = options.job_name or f"{agent.name}-{dataset.id}"
         import_path: str = options_dict.pop("import_path")
+        scope_import_path: bool = options_dict.pop("scope_import_path", True)
         trace_dir: str = options_dict.pop("trace_dir", _TRACE_ARTIFACT_SOURCE)
+        agent_model_name: str | None = options_dict.pop("agent_model_name", None)
         options_dict["artifacts"] = _with_trace_artifact(options_dict.get("artifacts") or [], trace_dir)
         force_rerun: bool = options_dict.pop("force_rerun", False)
 
@@ -1271,8 +1282,12 @@ class HarborEvaluator(Evaluator):
 
         await dataset.validate()
 
-        scoped_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
-        agents_config = [AgentConfig(import_path=scoped_import_path)]
+        scoped_package: str | None = None
+        if scope_import_path:
+            scoped_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
+        else:
+            scoped_import_path = import_path
+        agents_config = [AgentConfig(import_path=scoped_import_path, model_name=agent_model_name)]
         datasets_config = [DatasetConfig(path=dataset_path, task_names=[task.id for task in dataset.tasks])]
         job_config = JobConfig(**options_dict, agents=agents_config, datasets=datasets_config)
         if force_rerun:
@@ -1284,7 +1299,8 @@ class HarborEvaluator(Evaluator):
             job = await Job.create(job_config)
             await job.run()
         finally:
-            _cleanup_scoped_imports(scoped_package)
+            if scoped_package is not None:
+                _cleanup_scoped_imports(scoped_package)
 
         trials = await self._trials_from_dir(job.job_dir, dataset.tasks)
         return trials

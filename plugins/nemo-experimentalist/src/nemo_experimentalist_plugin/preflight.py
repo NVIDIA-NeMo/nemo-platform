@@ -40,6 +40,8 @@ _SKELETON_HINT = (
     "  agent: <name>\n  task_template: ./path/to/task_template\n"
     "  datasets:\n    train: ./path\n    validation: ./path"
 )
+_HARBOR_BRIDGE_URL_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL"
+_HARBOR_BRIDGE_TOKEN_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN"
 
 
 def _default_run_cmd(argv: list[str]) -> tuple[int, str]:
@@ -114,6 +116,8 @@ def check_environment(
     insight: str | None,
     insight_id: str | None = None,
     base_url: str,
+    harbor_bridge_url: str | None = None,
+    harbor_bridge_token_env: str = _HARBOR_BRIDGE_TOKEN_ENV,
     enforce_insight_agent: bool = True,
     probes: Probes | None = None,
 ) -> list[CheckResult]:
@@ -162,30 +166,48 @@ def check_environment(
     )
     profile_agent = profile.agent if (profile is not None and enforce_insight_agent) else None
     results += _check_insight_file(insight, insight_id, profile_agent)
-    code, _ = p.run_cmd(["docker", "info"])
-    results.append(
-        make_check_result(
-            "docker",
-            "runtime",
-            code == 0,
-            "required",
-            "docker daemon running",
-            "docker daemon not running",
-            hint="start Docker; Harbor evaluation requires it",
+    bridge_url = harbor_bridge_url or p.env.get(_HARBOR_BRIDGE_URL_ENV)
+    if bridge_url:
+        results += _check_env(p, "runtime", (harbor_bridge_token_env,), profile_dir)
+        health_url = f"{bridge_url.rstrip('/')}/health/ready"
+        bridge_ok = p.http_ok(health_url)
+        display_health_url = f"{_redact_url(bridge_url).rstrip('/')}/health/ready"
+        results.append(
+            make_check_result(
+                "harbor-bridge",
+                "runtime",
+                bridge_ok,
+                "required",
+                f"{display_health_url} reachable",
+                f"{display_health_url} unreachable",
+                hint="start nemo-experimentalist-harbor-bridge and check OpenShell network policy",
+            )
         )
-    )
-    has_harbor = importlib.util.find_spec("harbor") is not None
-    results.append(
-        make_check_result(
-            "harbor-import",
-            "runtime",
-            has_harbor,
-            "required",
-            "harbor importable",
-            "harbor not importable",
-            hint="uv sync",
+    else:
+        code, _ = p.run_cmd(["docker", "info"])
+        results.append(
+            make_check_result(
+                "docker",
+                "runtime",
+                code == 0,
+                "required",
+                "docker daemon running",
+                "docker daemon not running",
+                hint="start Docker; Harbor evaluation requires it",
+            )
         )
-    )
+        has_harbor = importlib.util.find_spec("harbor") is not None
+        results.append(
+            make_check_result(
+                "harbor-import",
+                "runtime",
+                has_harbor,
+                "required",
+                "harbor importable",
+                "harbor not importable",
+                hint="uv sync",
+            )
+        )
     return results
 
 
