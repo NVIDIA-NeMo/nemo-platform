@@ -12,6 +12,7 @@ import { compileSystemPrompt } from '@nemo/common/src/models/utils';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useModelsGetModel as useGetModel } from '@nemo/sdk/generated/platform/api';
 import { FormField, Stack } from '@nvidia/foundations-react-core';
+import { useSetFieldErrorOnApiError } from '@studio/hooks/evaluation/useSetFieldErrorOnApiError';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import type {
   PromptTuningFormFields,
@@ -38,11 +39,13 @@ export const ModelDetailsSection: FC<
     rules: { required: 'Base model is required' },
   });
 
-  const { groups, ...modelSearch } = useModelSearch({
+  const { groups, error, ...modelSearch } = useModelSearch({
     workspace: workspace ?? null,
     filter: QUERY_PROMPT_TUNEABLE_MODELS.filter,
     enabled: open,
   });
+
+  useSetFieldErrorOnApiError<PromptTuningFormFields>('baseModel', error);
 
   const iclFewShotExamples = useWatch({ control, name: 'iclFewShotExamples' });
 

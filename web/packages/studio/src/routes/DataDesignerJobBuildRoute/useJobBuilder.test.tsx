@@ -66,6 +66,14 @@ describe('useJobBuilder template auto-fill', () => {
     await waitFor(() => expect(result.current.getBuilderValues().models[0].model).toBe(''));
   });
 
+  it('skips provider-less models rather than seeding one that cannot run', async () => {
+    mockListModels.mockResolvedValue(makePage([model(NEMOTRON, [])]));
+
+    const { result } = renderHook(() => useJobBuilder(template, 'ws1'), { wrapper: StrictMode });
+
+    await waitFor(() => expect(result.current.getBuilderValues().models[0].model).toBe(''));
+  });
+
   it('leaves models that already carry a provider alone', async () => {
     const seeded = {
       ...template,

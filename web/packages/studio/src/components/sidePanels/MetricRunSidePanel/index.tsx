@@ -202,6 +202,12 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
   const selectedModelEntity = selectedModel?.entity ?? fetchedModel;
 
   useEffect(() => {
+    if (modelSearch.error) {
+      form.setError('model', { message: modelSearch.error.message });
+    }
+  }, [form, modelSearch.error]);
+
+  useEffect(() => {
     if (open) {
       form.reset(defaultFormValues);
       setSelectedJobType(defaultFormValues.jobType);

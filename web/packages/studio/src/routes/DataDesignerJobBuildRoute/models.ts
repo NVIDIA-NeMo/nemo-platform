@@ -6,7 +6,7 @@ import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels'
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
 import { MAX_COMPLETION_TOKENS_DEFAULT } from '@nemo/common/src/constants/inferenceParameters';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
-import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
+import { groupModelsByWorkspace, hasModelProvider } from '@nemo/common/src/utils/models';
 import type {
   ChatCompletionInferenceParams,
   EmbeddingInferenceParams,
@@ -51,6 +51,10 @@ const AUTO_FILL_PAGE_SIZE = 25;
  * The models {@link resolveTemplateModel} should consider: those whose name matches `preferred`,
  * plus the first page of the workspace as a fallback. Two small requests instead of walking the
  * whole catalogue, which is all the resolver needs to make its choice.
+ *
+ * Provider-less models are dropped: auto-fill happens without the user asking, so seeding one
+ * would hand them a recipe that fails at submit with "the model does not have a provider"
+ * (see {@link providerForSelection}) — better to leave the field empty and let them pick.
  */
 export const fetchAutoFillCandidates = async (
   workspace: string,
@@ -79,6 +83,7 @@ export const fetchAutoFillCandidates = async (
 
   const seen = new Set<string>();
   const models = [...matches, ...firstPage].filter((entity) => {
+    if (!hasModelProvider(entity)) return false;
     const urn = getURNFromNamedEntityRef(entity);
     if (!urn || seen.has(urn)) return false;
     seen.add(urn);

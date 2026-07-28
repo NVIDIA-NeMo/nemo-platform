@@ -5,6 +5,7 @@ import { useModelEntity } from '@nemo/common/src/api/models/useModelEntity';
 import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { ComposerMode } from '@nemo/common/src/components/AssistantChat';
 import type { BroadcastSignal } from '@nemo/common/src/components/AssistantChat/types';
+import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { hasModelProvider } from '@nemo/common/src/utils/models';
 import { PageHeader, Tabs, Tooltip } from '@nvidia/foundations-react-core';
 import { ChatEmptyState } from '@studio/components/chat/ChatEmptyState';
@@ -36,7 +37,10 @@ export const ModelCompareRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const availableModels = useModelSearch({ workspace, include: hasModelProvider });
   const hasNoModels =
-    !availableModels.loading && !availableModels.hasMore && availableModels.models.length === 0;
+    !availableModels.loading &&
+    !availableModels.error &&
+    !availableModels.hasMore &&
+    availableModels.models.length === 0;
 
   const [searchParams] = useSearchParams();
   const [activeView, setActiveView] = useState<CompareView>('compare');
@@ -46,7 +50,7 @@ export const ModelCompareRoute: FC = () => {
     makeDefaultEntry(1),
   ]);
   const nextIdRef = useRef(2);
-  const didPreselectRef = useRef(false);
+  const preselectedUrnRef = useRef<string | null>(null);
 
   // Preselect panel 0 from ?model=, which carries either a full URN or a bare name in this
   // workspace. Resolved with a single lookup rather than by scanning the whole catalogue.
@@ -57,22 +61,22 @@ export const ModelCompareRoute: FC = () => {
         ? modelParam
         : `${workspace}/${modelParam}`
       : null;
-  const preselectModel = useModelEntity(preselectUrn, { enabled: !didPreselectRef.current });
+  const preselectModel = useModelEntity(preselectUrn, {
+    enabled: !!preselectUrn && preselectedUrnRef.current !== preselectUrn,
+  });
 
   useEffect(() => {
-    if (didPreselectRef.current) return;
-    if (!modelParam) {
-      didPreselectRef.current = true;
-      return;
-    }
+    if (!preselectUrn || preselectedUrnRef.current === preselectUrn) return;
     if (!preselectModel) return;
-    setModels((prev) =>
-      prev.map((m, i) =>
-        i === 0 ? { ...m, modelURN: `${preselectModel.workspace}/${preselectModel.name}` } : m
-      )
-    );
-    didPreselectRef.current = true;
-  }, [modelParam, preselectModel]);
+    if (preselectModel.workspace === workspace && hasModelProvider(preselectModel)) {
+      setModels((prev) =>
+        prev.map((m, i) =>
+          i === 0 ? { ...m, modelURN: `${preselectModel.workspace}/${preselectModel.name}` } : m
+        )
+      );
+    }
+    preselectedUrnRef.current = preselectUrn;
+  }, [preselectModel, preselectUrn, workspace]);
 
   // Seed transfer: broadcast→panels and panel→broadcast.
   const compareComposerDraftRef = useRef('');
@@ -157,6 +161,10 @@ export const ModelCompareRoute: FC = () => {
 
   const atMaxModels = models.length >= MAX_MODELS;
   const readyPanelCount = models.filter((m) => !!m.modelURN).length;
+
+  if (availableModels.error) {
+    return <ErrorMessage header="Couldn't load models" message={availableModels.error.message} />;
+  }
 
   // Empty state when the workspace has no servable models and we're not still loading.
   if (hasNoModels) {
