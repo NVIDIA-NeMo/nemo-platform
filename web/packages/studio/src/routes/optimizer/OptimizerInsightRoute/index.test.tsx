@@ -3,9 +3,9 @@
 
 import {
   getListEvaluationsQueryKey,
-  getListExperimentGroupsQueryKey,
+  getListExperimentsQueryKey,
 } from '@nemo/sdk/generated/platform/api';
-import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
+import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import type { Insight } from '@studio/api/optimizer';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
@@ -20,7 +20,7 @@ import { useParams } from 'react-router-dom';
 const WORKSPACE = 'workspace-a';
 const INSIGHT_ID = 'insight-a';
 const INSIGHT_URL = `${PLATFORM_BASE_URL}/apis/insights/v2/workspaces/:workspace/insights/:insightId`;
-const GROUPS_URL = `${PLATFORM_BASE_URL}${getListExperimentGroupsQueryKey(':workspace')[0]}`;
+const GROUPS_URL = `${PLATFORM_BASE_URL}${getListExperimentsQueryKey(':workspace')[0]}`;
 const EVALUATIONS_URL = `${PLATFORM_BASE_URL}${getListEvaluationsQueryKey(':workspace')[0]}`;
 
 const insight: Insight = {
@@ -53,8 +53,8 @@ const pagination = ({
 
 const makeGroup = (
   id: string,
-  overrides: Partial<ExperimentGroupResponse> = {}
-): ExperimentGroupResponse =>
+  overrides: Partial<ExperimentResponse> = {}
+): ExperimentResponse =>
   ({
     id,
     name: `${id}-name`,
@@ -67,11 +67,11 @@ const makeGroup = (
     created_at: '2026-07-19T12:00:00Z',
     updated_at: '2026-07-20T12:00:00Z',
     ...overrides,
-  }) as ExperimentGroupResponse;
+  }) as ExperimentResponse;
 
-const ExperimentGroupDestination = () => {
-  const { experimentGroupName } = useParams();
-  return <div>{`Opened ${experimentGroupName}`}</div>;
+const ExperimentDestination = () => {
+  const { experimentName } = useParams();
+  return <div>{`Opened ${experimentName}`}</div>;
 };
 
 const renderInsight = (history = getOptimizerInsightRoute(WORKSPACE, INSIGHT_ID)) =>
@@ -80,8 +80,8 @@ const renderInsight = (history = getOptimizerInsightRoute(WORKSPACE, INSIGHT_ID)
     routes: [
       { path: ROUTES.workspace.optimizerInsight, element: <OptimizerInsightRoute /> },
       {
-        path: ROUTES.workspace.experimentGroupDetail,
-        element: <ExperimentGroupDestination />,
+        path: ROUTES.workspace.experimentDetail,
+        element: <ExperimentDestination />,
       },
     ],
   });
@@ -133,7 +133,7 @@ describe('OptimizerInsightRoute experiments', () => {
     expect(screen.queryByText('Failed to load experiments')).not.toBeInTheDocument();
   });
 
-  it('requests and displays only the selected ExperimentGroup page', async () => {
+  it('requests and displays only the selected Experiment page', async () => {
     const user = userEvent.setup();
     const firstPageGroups = Array.from({ length: 10 }, (_unused, index) =>
       makeGroup(`page-one-${index + 1}`)

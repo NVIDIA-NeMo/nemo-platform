@@ -3,20 +3,20 @@
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
-  getGetExperimentGroupQueryKey,
-  useUpdateExperimentGroup,
+  getGetExperimentQueryKey,
+  useUpdateExperiment,
 } from '@nemo/sdk/generated/platform/api';
-import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
+import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text } from '@nvidia/foundations-react-core';
-import { MetricSelect } from '@studio/components/charts/ExperimentGroupParetoChart/MetricSelect';
-import { ParetoTooltip } from '@studio/components/charts/ExperimentGroupParetoChart/ParetoTooltip';
-import { useParetoEvaluations } from '@studio/components/charts/ExperimentGroupParetoChart/useParetoEvaluations';
+import { MetricSelect } from '@studio/components/charts/ExperimentParetoChart/MetricSelect';
+import { ParetoTooltip } from '@studio/components/charts/ExperimentParetoChart/ParetoTooltip';
+import { useParetoEvaluations } from '@studio/components/charts/ExperimentParetoChart/useParetoEvaluations';
 import {
   buildParetoPoints,
   deriveParetoMetrics,
   metricLabel,
-} from '@studio/components/charts/ExperimentGroupParetoChart/utils';
-import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
+} from '@studio/components/charts/ExperimentParetoChart/utils';
+import type { EvaluationRow } from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save } from 'lucide-react';
 import { type FC, useMemo, useState } from 'react';
@@ -30,9 +30,9 @@ import {
   YAxis,
 } from 'recharts';
 
-interface ExperimentGroupParetoChartProps {
+interface ExperimentParetoChartProps {
   workspace: string;
-  group: ExperimentGroupResponse;
+  group: ExperimentResponse;
   /** The group's full evaluation set when the caller already has it loaded (fits one page), so the
    * chart renders from these instead of refetching. */
   preloadedEvaluations?: EvaluationRow[];
@@ -56,7 +56,7 @@ const formatAxisTick = (value: number): string =>
  * Pareto view for an experiment group: one point per evaluation, frontier highlighted. The two axes
  * are picked from the group's metrics and persisted on the group (shared across viewers).
  */
-export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = ({
+export const ExperimentParetoChart: FC<ExperimentParetoChartProps> = ({
   workspace,
   group,
   preloadedEvaluations,
@@ -78,12 +78,12 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
   const [xMetricId, setXMetricId] = useState(group.pareto?.x_metric ?? DEFAULT_X_METRIC);
   const [yMetricId, setYMetricId] = useState(group.pareto?.y_metric ?? DEFAULT_Y_METRIC);
 
-  const { mutate: saveGroup, isPending: isSaving } = useUpdateExperimentGroup({
+  const { mutate: saveGroup, isPending: isSaving } = useUpdateExperiment({
     mutation: {
       onSuccess: () => {
         toast.success('Saved the group default Pareto view.');
         queryClient.invalidateQueries({
-          queryKey: getGetExperimentGroupQueryKey(workspace, group.name),
+          queryKey: getGetExperimentQueryKey(workspace, group.name),
         });
       },
       onError: () => toast.error('Failed to save the Pareto metrics.'),

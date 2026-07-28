@@ -3,7 +3,7 @@
 
 import { useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import type { EvaluationFilter } from '@nemo/sdk/generated/platform/schema';
-import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
+import type { EvaluationRow } from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { useMemo } from 'react';
 
@@ -17,17 +17,17 @@ export interface ParetoEvaluations {
  * (each evaluation already carries the rollup means the chart plots). */
 export function useParetoEvaluations(
   workspace: string,
-  experimentGroupId: string,
+  experimentId: string,
   options?: { enabled?: boolean }
 ): ParetoEvaluations {
   // Disabled by callers that already hold the whole group, to avoid a redundant all-evaluations fetch.
-  const enabled = (options?.enabled ?? true) && !!experimentGroupId;
+  const enabled = (options?.enabled ?? true) && !!experimentId;
   const { data, isLoading, isError } = useListEvaluations(
     workspace,
     {
       page: 1,
       page_size: DEFAULT_LARGE_PAGE_SIZE,
-      filter: { experiment_group_id: experimentGroupId } as EvaluationFilter,
+      filter: { experiment_group_id: experimentId } as EvaluationFilter,
     },
     { query: { enabled } }
   );

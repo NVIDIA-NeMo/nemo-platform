@@ -5,8 +5,8 @@ import {
   buildParetoPoints,
   deriveParetoMetrics,
   type ParetoMetric,
-} from '@studio/components/charts/ExperimentGroupParetoChart/utils';
-import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
+} from '@studio/components/charts/ExperimentParetoChart/utils';
+import type { EvaluationRow } from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 
 // Only the fields the Pareto accessors read (name + cost/latency/evaluator rollup means) are set;
 // the rest of the rich EvaluationRow shape is irrelevant here, so build a minimal stand-in.

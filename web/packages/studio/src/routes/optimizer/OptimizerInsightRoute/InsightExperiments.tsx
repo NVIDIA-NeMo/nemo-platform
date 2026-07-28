@@ -7,16 +7,16 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { DEFAULT_PAGE_SIZE_OPTIONS } from '@nemo/common/src/constants/pagination';
-import { useListExperimentGroups } from '@nemo/sdk/generated/platform/api';
-import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
+import { useListExperiments } from '@nemo/sdk/generated/platform/api';
+import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text } from '@nvidia/foundations-react-core';
-import { getExperimentGroupDetailRoute } from '@studio/routes/utils';
+import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { FlaskConical } from 'lucide-react';
 import { type ComponentProps, type FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const makeColumns: ComponentProps<typeof DataView.Root<ExperimentGroupResponse>>['makeColumns'] = ({
+const makeColumns: ComponentProps<typeof DataView.Root<ExperimentResponse>>['makeColumns'] = ({
   accessor,
 }) => [
   accessor('name', {
@@ -44,14 +44,14 @@ const makeColumns: ComponentProps<typeof DataView.Root<ExperimentGroupResponse>>
   }),
 ];
 
-interface InsightExperimentGroupsProps {
+interface InsightExperimentsProps {
   workspace: string;
   insightId: string;
   onRunExperiment: () => void;
   runExperimentDisabled: boolean;
 }
 
-export const InsightExperimentGroups: FC<InsightExperimentGroupsProps> = ({
+export const InsightExperiments: FC<InsightExperimentsProps> = ({
   workspace,
   insightId,
   onRunExperiment,
@@ -67,7 +67,7 @@ export const InsightExperimentGroups: FC<InsightExperimentGroupsProps> = ({
     isError,
     isFetching,
     refetch,
-  } = useListExperimentGroups(
+  } = useListExperiments(
     workspace,
     {
       page: pageIndex + 1,
@@ -79,8 +79,8 @@ export const InsightExperimentGroups: FC<InsightExperimentGroupsProps> = ({
   );
   const groups = response?.data ?? [];
   const { wrapColumns, onClick, className } = useRowClick(
-    (group: ExperimentGroupResponse) =>
-      navigate(getExperimentGroupDetailRoute(workspace, group.name)),
+    (group: ExperimentResponse) =>
+      navigate(getExperimentDetailRoute(workspace, group.name)),
     groups
   );
 

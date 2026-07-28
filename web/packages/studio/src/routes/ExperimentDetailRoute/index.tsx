@@ -2,28 +2,28 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
+import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
 import { Button, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { ExperimentGroupDataView } from '@studio/components/dataViews/ExperimentGroupDataView';
-import { ExperimentGroupEditModal } from '@studio/components/ExperimentGroupEditModal';
+import { ExperimentDataView } from '@studio/components/dataViews/ExperimentDataView';
+import { ExperimentEditModal } from '@studio/components/ExperimentEditModal';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
 import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { ExperimentGroupMetrics } from '@studio/routes/ExperimentGroupDetailRoute/ExperimentGroupMetrics';
+import { ExperimentMetrics } from '@studio/routes/ExperimentDetailRoute/ExperimentMetrics';
 import { getExperimentRoute } from '@studio/routes/utils';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { ChartScatter, Pencil } from 'lucide-react';
 import { type FC, useState } from 'react';
 
-export const ExperimentGroupDetailRoute: FC = () => {
+export const ExperimentDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
-  const { experimentGroupName } = useRequiredPathParams([ROUTE_PARAMS.experimentGroupName]);
-  const { data: group, error } = useGetExperimentGroup(workspace, experimentGroupName);
+  const { experimentName } = useRequiredPathParams([ROUTE_PARAMS.experimentName]);
+  const { data: group, error } = useGetExperiment(workspace, experimentName);
   // The insight is a group-level concept, reached via the group's insight_id.
   const { data: insight } = useOptimizerGetInsight(workspace, group?.insight_id ?? '', {
     query: { enabled: OPTIMIZER_ENABLED && Boolean(group?.insight_id) },
@@ -32,24 +32,24 @@ export const ExperimentGroupDetailRoute: FC = () => {
 
   // Pareto (cost-vs-accuracy) view visibility, persisted per group. Hidden by default.
   const [storedParetoVisible, setParetoVisible] = useLocalStorage<boolean>(
-    `nemo-studio:experiment-group-pareto:${group?.id ?? ''}`,
+    `nemo-studio:experiment-pareto:${group?.id ?? ''}`,
     false
   );
   const paretoVisible = storedParetoVisible ?? false;
 
   useBreadcrumbs({
     items: [
-      { href: getExperimentRoute(workspace), slotLabel: 'Experiment Groups' },
-      { slotLabel: experimentGroupName },
+      { href: getExperimentRoute(workspace), slotLabel: 'Experiments' },
+      { slotLabel: experimentName },
     ],
   });
 
   return (
-    <AccessibleTitle title={experimentGroupName}>
+    <AccessibleTitle title={experimentName}>
       <Stack className="h-full overflow-auto" gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="p-0"
-          slotHeading={experimentGroupName}
+          slotHeading={experimentName}
           slotDescription={group?.description || undefined}
           slotActions={
             <Button kind="secondary" disabled={!group} onClick={() => setEditOpen(true)}>
@@ -63,14 +63,14 @@ export const ExperimentGroupDetailRoute: FC = () => {
         ) : (
           <>
             {group && (
-              <ExperimentGroupEditModal
+              <ExperimentEditModal
                 open={editOpen}
                 onClose={() => setEditOpen(false)}
                 workspace={workspace}
                 group={group}
               />
             )}
-            <ExperimentGroupMetrics experimentGroupName={experimentGroupName} />
+            <ExperimentMetrics experimentName={experimentName} />
             {(insight?.description || group?.summary) && (
               <div className="flex items-start gap-density-lg">
                 {insight?.description ? (
@@ -108,7 +108,7 @@ export const ExperimentGroupDetailRoute: FC = () => {
                   </Button>
                 )}
               </div>
-              {group && <ExperimentGroupDataView group={group} paretoVisible={paretoVisible} />}
+              {group && <ExperimentDataView group={group} paretoVisible={paretoVisible} />}
             </div>
           </>
         )}

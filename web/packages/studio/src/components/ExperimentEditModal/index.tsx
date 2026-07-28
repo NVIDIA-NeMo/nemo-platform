@@ -4,24 +4,24 @@
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
-  getGetExperimentGroupQueryKey,
-  getListExperimentGroupsQueryKey,
+  getGetExperimentQueryKey,
+  getListExperimentsQueryKey,
   useListEvaluations,
-  useUpdateExperimentGroup,
+  useUpdateExperiment,
 } from '@nemo/sdk/generated/platform/api';
-import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
+import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
 import { DefaultSortControl } from '@studio/components/DefaultSortControl';
 import { AxiosError } from 'axios';
 import { type FC, type FormEvent, useEffect, useMemo, useState } from 'react';
 
-export interface ExperimentGroupEditModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
+export interface ExperimentEditModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   workspace: string;
-  group: ExperimentGroupResponse;
+  group: ExperimentResponse;
 }
 
-export const ExperimentGroupEditModal: FC<ExperimentGroupEditModalProps> = ({
+export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
   open,
   onClose,
   workspace,
@@ -55,13 +55,13 @@ export const ExperimentGroupEditModal: FC<ExperimentGroupEditModalProps> = ({
     [experimentsPage]
   );
 
-  const { mutateAsync: updateExperimentGroup, isPending } = useUpdateExperimentGroup({
+  const { mutateAsync: updateExperiment, isPending } = useUpdateExperiment({
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({
-          queryKey: getGetExperimentGroupQueryKey(workspace, group.name),
+          queryKey: getGetExperimentQueryKey(workspace, group.name),
         });
-        queryClient.invalidateQueries({ queryKey: getListExperimentGroupsQueryKey(workspace) });
+        queryClient.invalidateQueries({ queryKey: getListExperimentsQueryKey(workspace) });
       },
     },
   });
@@ -69,7 +69,7 @@ export const ExperimentGroupEditModal: FC<ExperimentGroupEditModalProps> = ({
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault(); // FormModal doesn't preventDefault; without RHF's handler we must.
     try {
-      await updateExperimentGroup({
+      await updateExperiment({
         workspace,
         name: group.name,
         data: {

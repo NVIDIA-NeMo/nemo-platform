@@ -12,7 +12,7 @@ import {
 import {
   metricLabel,
   type ParetoMetric,
-} from '@studio/components/charts/ExperimentGroupParetoChart/utils';
+} from '@studio/components/charts/ExperimentParetoChart/utils';
 import type { FC } from 'react';
 
 interface MetricSelectProps {

@@ -6,13 +6,13 @@ import type {
   EvaluationResponsesPage,
   EvaluationSessionResponse,
   EvaluationSessionResponsesPage,
-  ExperimentGroupResponse,
+  ExperimentResponse,
 } from '@nemo/sdk/generated/platform/schema';
 
 const WORKSPACE = 'default';
 
 /** The experiment group the EvaluationSessionDetailRoute tests navigate under. */
-export const mockExperimentGroup = (name: string): ExperimentGroupResponse => ({
+export const mockExperiment = (name: string): ExperimentResponse => ({
   id: `grp_${name}`,
   name,
   workspace: WORKSPACE,

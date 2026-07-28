@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
+import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
-import { ExperimentGroupDetailRoute } from '@studio/routes/ExperimentGroupDetailRoute';
+import { ExperimentDetailRoute } from '@studio/routes/ExperimentDetailRoute';
 import { renderRoute, screen } from '@studio/tests/util/render';
 import { http, HttpResponse } from 'msw';
 
@@ -24,12 +24,12 @@ const group = {
   insight_id: 'insight-id',
   default_sort: '-created_at',
   evaluation_count: 0,
-} satisfies Partial<ExperimentGroupResponse>;
+} satisfies Partial<ExperimentResponse>;
 
-const mockGroup = (overrides?: Partial<ExperimentGroupResponse>) => {
+const mockGroup = (overrides?: Partial<ExperimentResponse>) => {
   const insightRequest = vi.fn();
   server.use(
-    http.get('*/apis/intake/v2/workspaces/:workspace/experiment-groups/:name', () =>
+    http.get('*/apis/intake/v2/workspaces/:workspace/experiments/:name', () =>
       HttpResponse.json({ ...group, ...overrides })
     ),
     http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', () =>
@@ -50,12 +50,12 @@ const mockGroup = (overrides?: Partial<ExperimentGroupResponse>) => {
     })
   );
 
-  renderRoute(<ExperimentGroupDetailRoute />, {
+  renderRoute(<ExperimentDetailRoute />, {
     history: `/workspaces/${WORKSPACE}/experiment/${GROUP_NAME}`,
     routes: [
       {
-        path: ROUTES.workspace.experimentGroupDetail,
-        element: <ExperimentGroupDetailRoute />,
+        path: ROUTES.workspace.experimentDetail,
+        element: <ExperimentDetailRoute />,
       },
     ],
   });
@@ -63,7 +63,7 @@ const mockGroup = (overrides?: Partial<ExperimentGroupResponse>) => {
   return insightRequest;
 };
 
-describe('ExperimentGroupDetailRoute', () => {
+describe('ExperimentDetailRoute', () => {
   it('renders the group description and summary without requesting Optimizer when disabled', async () => {
     const insightRequest = mockGroup();
 

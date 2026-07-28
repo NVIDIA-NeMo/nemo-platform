@@ -3,20 +3,20 @@
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
+import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
 import { Divider } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { type FC } from 'react';
 
-interface ExperimentGroupMetricsProps {
-  experimentGroupName: string;
+interface ExperimentMetricsProps {
+  experimentName: string;
 }
 
-export const ExperimentGroupMetrics: FC<ExperimentGroupMetricsProps> = ({
-  experimentGroupName,
+export const ExperimentMetrics: FC<ExperimentMetricsProps> = ({
+  experimentName,
 }) => {
   const workspace = useWorkspaceFromPath();
-  const { data: group } = useGetExperimentGroup(workspace, experimentGroupName);
+  const { data: group } = useGetExperiment(workspace, experimentName);
 
   return (
     <div className="flex gap-8">

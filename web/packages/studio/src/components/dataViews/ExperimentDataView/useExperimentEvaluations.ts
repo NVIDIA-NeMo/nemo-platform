@@ -35,9 +35,9 @@ const toRows = (experiments: EvaluationResponse[] | undefined): EvaluationRow[] 
  */
 const MAX_PINNED_ROWS = 100;
 
-export interface UseExperimentGroupEvaluationsParams {
+export interface UseExperimentEvaluationsParams {
   workspace: string;
-  experimentGroupId: string;
+  experimentId: string;
   filter: Partial<EvaluationFilter> | undefined;
   search: string;
   page: number;
@@ -46,7 +46,7 @@ export interface UseExperimentGroupEvaluationsParams {
   sort?: ListEvaluationsSortParam;
 }
 
-export interface ExperimentGroupEvaluations {
+export interface ExperimentEvaluations {
   /** Pinned rows first (newest-pinned first), then the current page of unpinned rows. */
   rows: EvaluationRow[];
   /** Pins the row if unpinned, unpins it otherwise, then refetches both lists. */
@@ -80,15 +80,15 @@ export interface ExperimentGroupEvaluations {
  * once and repeated atop every page rather than paginated. A pin/unpin persists through the API,
  * then invalidates both lists so the new state is refetched (no optimistic update).
  */
-export function useExperimentGroupEvaluations({
+export function useExperimentEvaluations({
   workspace,
-  experimentGroupId,
+  experimentId,
   filter,
   search,
   page,
   pageSize,
   sort,
-}: UseExperimentGroupEvaluationsParams): ExperimentGroupEvaluations {
+}: UseExperimentEvaluationsParams): ExperimentEvaluations {
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -96,12 +96,12 @@ export function useExperimentGroupEvaluations({
     ...filter,
     ...(search && { name: { $like: search } }),
     // Spread last so the group scope can't be overridden by a user filter.
-    experiment_group_id: experimentGroupId,
+    experiment_group_id: experimentId,
   };
   const listQueryOptions = {
     query: {
       placeholderData: keepPreviousData,
-      enabled: !!experimentGroupId,
+      enabled: !!experimentId,
     },
   };
 
@@ -154,10 +154,10 @@ export function useExperimentGroupEvaluations({
     () =>
       queryClient.invalidateQueries({
         queryKey: getListEvaluationsQueryKey(workspace, {
-          filter: { experiment_group_id: experimentGroupId },
+          filter: { experiment_group_id: experimentId },
         }),
       }),
-    [queryClient, workspace, experimentGroupId]
+    [queryClient, workspace, experimentId]
   );
 
   const { mutate: pinEvaluation } = usePinEvaluation({
@@ -217,10 +217,10 @@ export function useExperimentGroupEvaluations({
       patchEvaluation({
         workspace,
         name,
-        data: { experiment_ids: row.experiment_ids.filter((id) => id !== experimentGroupId) },
+        data: { experiment_ids: row.experiment_ids.filter((id) => id !== experimentId) },
       });
     },
-    [workspace, experimentGroupId, patchEvaluation, toast]
+    [workspace, experimentId, patchEvaluation, toast]
   );
 
   // Pinned first, then the current page of unpinned. Drop any unpinned row already shown as pinned —

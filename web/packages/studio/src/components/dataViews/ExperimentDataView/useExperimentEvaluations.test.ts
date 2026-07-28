@@ -11,9 +11,9 @@ import {
 } from '@nemo/sdk/generated/platform/api';
 import {
   type EvaluationRow,
-  useExperimentGroupEvaluations,
-  type UseExperimentGroupEvaluationsParams,
-} from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
+  useExperimentEvaluations,
+  type UseExperimentEvaluationsParams,
+} from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 import { renderHook } from '@testing-library/react';
 
 vi.mock('@nemo/common/src/providers/toast/useToast');
@@ -62,9 +62,9 @@ const mockLists = (
       : queryResult(unpinned.rows, unpinned.total)) as typeof useListEvaluations);
 };
 
-const baseParams: UseExperimentGroupEvaluationsParams = {
+const baseParams: UseExperimentEvaluationsParams = {
   workspace: 'ws',
-  experimentGroupId: 'grp',
+  experimentId: 'grp',
   filter: undefined,
   search: '',
   page: 1,
@@ -72,7 +72,7 @@ const baseParams: UseExperimentGroupEvaluationsParams = {
   sort: '-created_at',
 };
 
-describe('useExperimentGroupEvaluations', () => {
+describe('useExperimentEvaluations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseToast.mockReturnValue({ error: vi.fn() } as unknown as ReturnType<typeof useToast>);
@@ -95,7 +95,7 @@ describe('useExperimentGroupEvaluations', () => {
       { rows: Array.from({ length: 50 }, (_unused, i) => unp(`u${i}`)), total: 50 }
     );
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
 
     expect(result.current.totalCount).toBe(50);
   });
@@ -103,7 +103,7 @@ describe('useExperimentGroupEvaluations', () => {
   it('falls back to the pinned count when nothing is unpinned so a fully-pinned group is not empty', () => {
     mockLists({ rows: [pin('p1'), pin('p2')], total: 2 }, { rows: [], total: 0 });
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
 
     expect(result.current.totalCount).toBe(2);
   });
@@ -111,7 +111,7 @@ describe('useExperimentGroupEvaluations', () => {
   it('reports a zero count only when both lists are empty', () => {
     mockLists({ rows: [], total: 0 }, { rows: [], total: 0 });
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
 
     expect(result.current.totalCount).toBe(0);
   });
@@ -120,7 +120,7 @@ describe('useExperimentGroupEvaluations', () => {
     // 'b' appears in both lists (the brief window where the two queries refetch out of step).
     mockLists({ rows: [pin('a'), pin('b')], total: 2 }, { rows: [unp('b'), unp('c')], total: 2 });
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
 
     expect(result.current.rows.map((row) => row.name)).toEqual(['a', 'b', 'c']);
   });
@@ -128,7 +128,7 @@ describe('useExperimentGroupEvaluations', () => {
   it('fetches the full pinned set in one page and paginates the unpinned set by the caller page size', () => {
     mockLists({ rows: [], total: 0 }, { rows: [], total: 0 });
 
-    renderHook(() => useExperimentGroupEvaluations({ ...baseParams, page: 2, pageSize: 25 }));
+    renderHook(() => useExperimentEvaluations({ ...baseParams, page: 2, pageSize: 25 }));
 
     const calls = mockUseListEvaluations.mock.calls;
     const pinnedParams = calls.find(
@@ -156,7 +156,7 @@ describe('useExperimentGroupEvaluations', () => {
             error: null,
           } as unknown as ReturnType<typeof useListEvaluations>)) as typeof useListEvaluations);
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
 
     expect(result.current.isLoading).toBe(true);
   });
@@ -164,7 +164,7 @@ describe('useExperimentGroupEvaluations', () => {
   it('clears loading once both queries have responded', () => {
     mockLists({ rows: [pin('p')], total: 1 }, { rows: [unp('u')], total: 1 });
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
 
     expect(result.current.isLoading).toBe(false);
   });
@@ -182,7 +182,7 @@ describe('useExperimentGroupEvaluations', () => {
             error: null,
           } as unknown as ReturnType<typeof useListEvaluations>)) as typeof useListEvaluations);
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
 
     expect(result.current.isSuccess).toBe(false);
   });
@@ -190,7 +190,7 @@ describe('useExperimentGroupEvaluations', () => {
   it('reports isSuccess once the unpinned query has loaded the current sort', () => {
     mockLists({ rows: [pin('p')], total: 1 }, { rows: [unp('u')], total: 1 });
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
 
     expect(result.current.isSuccess).toBe(true);
   });
@@ -210,7 +210,7 @@ describe('useExperimentGroupEvaluations', () => {
             error: null,
           } as unknown as ReturnType<typeof useListEvaluations>)) as typeof useListEvaluations);
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
 
     expect(result.current.isSuccess).toBe(false);
   });
@@ -218,7 +218,7 @@ describe('useExperimentGroupEvaluations', () => {
   it('scopes pin/unpin invalidation to this group, not the whole workspace', () => {
     mockLists({ rows: [], total: 0 }, { rows: [], total: 0 });
 
-    renderHook(() => useExperimentGroupEvaluations(baseParams));
+    renderHook(() => useExperimentEvaluations(baseParams));
     // onSuccess is the group-scoped invalidate the hook wires into both mutations.
     const onSuccess = mockUsePinEvaluation.mock.calls[0]?.[0]?.mutation?.onSuccess as
       | (() => void)
@@ -240,7 +240,7 @@ describe('useExperimentGroupEvaluations', () => {
     const error = vi.fn();
     mockUseToast.mockReturnValue({ error } as unknown as ReturnType<typeof useToast>);
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
     result.current.removeFromGroup({
       name: 'only-here',
       experiment_ids: ['grp'],
@@ -257,7 +257,7 @@ describe('useExperimentGroupEvaluations', () => {
       mutate: patch,
     } as unknown as ReturnType<typeof usePatchEvaluation>);
 
-    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    const { result } = renderHook(() => useExperimentEvaluations(baseParams));
     result.current.removeFromGroup({
       name: 'multi',
       experiment_ids: ['grp', 'other'],

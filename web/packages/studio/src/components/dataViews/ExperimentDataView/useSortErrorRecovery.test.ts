@@ -7,7 +7,7 @@ import {
   type SortingState,
   useSortErrorRecovery,
   type UseSortErrorRecoveryParams,
-} from '@studio/components/dataViews/ExperimentGroupDataView/useSortErrorRecovery';
+} from '@studio/components/dataViews/ExperimentDataView/useSortErrorRecovery';
 import { renderHook } from '@testing-library/react';
 
 const sort = (id: string, desc = false): SortingState => [{ id, desc }];

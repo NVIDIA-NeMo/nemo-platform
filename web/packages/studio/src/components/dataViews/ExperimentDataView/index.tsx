@@ -20,22 +20,22 @@ import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type {
   EvaluationFilter,
-  ExperimentGroupResponse,
+  ExperimentResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { ChangesetBadge } from '@studio/components/ChangesetBadge';
-import { ExperimentGroupParetoChart } from '@studio/components/charts/ExperimentGroupParetoChart';
-import { AddToGroupModal } from '@studio/components/dataViews/ExperimentGroupDataView/AddToGroupModal';
-import '@studio/components/dataViews/ExperimentGroupDataView/ExperimentGroupDataView.css';
-import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
-import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
+import { ExperimentParetoChart } from '@studio/components/charts/ExperimentParetoChart';
+import { AddToGroupModal } from '@studio/components/dataViews/ExperimentDataView/AddToGroupModal';
+import '@studio/components/dataViews/ExperimentDataView/ExperimentDataView.css';
+import { Empty } from '@studio/components/dataViews/ExperimentDataView/Empty';
+import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentDataView/MeanValueTooltipCell';
 import {
   type EvaluationRow,
   type ListEvaluationsSortParam,
-  useExperimentGroupEvaluations,
-} from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
-import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentGroupDataView/useSortErrorRecovery';
-import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGroupDataView/util';
+  useExperimentEvaluations,
+} from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
+import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentDataView/useSortErrorRecovery';
+import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentDataView/util';
 import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
@@ -132,25 +132,25 @@ const getEvaluationSortParam = (
   return fields.join(',') as ListEvaluationsSortParam;
 };
 
-interface ExperimentGroupDataViewProps {
+interface ExperimentDataViewProps {
   /** The loaded group, so the table's initial sort can seed from `default_sort` at first
    * render — the sorting state is initialized once and not reactive. */
-  group: ExperimentGroupResponse;
+  group: ExperimentResponse;
   /** Whether the Pareto (cost-vs-accuracy) chart is shown. The toggle lives in the parent
    * route header (next to the "Evaluations" title); this component only renders the chart. */
   paretoVisible: boolean;
 }
 
 /** Lists the experiments that belong to a single experiment group. */
-export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
+export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
   group,
   paretoVisible,
 }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const toast = useToast();
-  const experimentGroupName = group.name;
-  const experimentGroupId = group.id;
+  const experimentName = group.name;
+  const experimentId = group.id;
 
   // The bulk "Add to group" modal state: the selected evaluations plus a way to clear the row
   // selection on success. Null when the modal is closed.
@@ -161,7 +161,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
 
   // Persist column order to localStorage, keyed by experiment group ID.
   const [savedColumnOrder, saveColumnOrder] = useLocalStorage<string[]>(
-    `nemo-studio:experiment-group-columns:${experimentGroupId}`,
+    `nemo-studio:experiment-columns:${experimentId}`,
     []
   );
 
@@ -199,9 +199,9 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     error,
     isLoading,
     isSuccess,
-  } = useExperimentGroupEvaluations({
+  } = useExperimentEvaluations({
     workspace,
-    experimentGroupId,
+    experimentId,
     filter: dataViewState.apiFilter.filter,
     search: dataViewState.debouncedSearchBar,
     page,
@@ -537,7 +537,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         <div className="mb-4">
           {/* Key by group id so the axis selection resets (re-seeds from the new group's saved
               config) when navigating between groups without a route remount. */}
-          <ExperimentGroupParetoChart
+          <ExperimentParetoChart
             key={group.id}
             workspace={workspace}
             group={group}
@@ -551,7 +551,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         makeColumns={makeColumns}
         searchField="name"
         onRowClick={(row) =>
-          navigate(getEvaluationDetailRoute(workspace, experimentGroupName, row.name))
+          navigate(getEvaluationDetailRoute(workspace, experimentName, row.name))
         }
         renderBulkActions={({ selectedRows, table }) => (
           <Button
@@ -588,13 +588,13 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
             data: orderedData,
             totalCount,
             requestStatus: isLoading ? 'loading' : undefined,
-            className: 'experiment-group-data-view',
+            className: 'experiment-data-view',
           },
           DataViewTableContent: {
             enableColumnReordering: true,
             renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
               hasFiltersApplied || hasSearchApplied ? null : (
-                <Empty experimentGroupName={experimentGroupName} />
+                <Empty experimentName={experimentName} />
               ),
           },
         }}

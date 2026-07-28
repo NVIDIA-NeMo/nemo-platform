@@ -34,7 +34,7 @@ const pathParams = {
   [RP.agentEvalJobName]: 'test-agent-eval-job',
   [RP.jobName]: 'test-job',
   [RP.benchmarkName]: 'test-benchmark',
-  [RP.experimentGroupName]: 'test-experiment-group',
+  [RP.experimentName]: 'test-experiment-group',
   [RP.evaluationName]: 'test-experiment',
   [RP.insightId]: 'test-insight',
   [RP.guardrailConfigName]: 'test-guardrail-config',

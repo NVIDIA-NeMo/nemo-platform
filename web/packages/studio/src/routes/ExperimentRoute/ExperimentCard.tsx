@@ -1,35 +1,35 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
+import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Card, Text } from '@nvidia/foundations-react-core';
 import { Metric } from '@studio/routes/ExperimentRoute/Metric';
 import { UpdatedAt } from '@studio/routes/ExperimentRoute/UpdatedAt';
-import { getExperimentGroupDetailRoute } from '@studio/routes/utils';
+import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { type FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-interface ExperimentGroupCardProps {
-  group: ExperimentGroupResponse;
+interface ExperimentCardProps {
+  group: ExperimentResponse;
   workspace: string;
 }
 
-export const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace }) => {
+export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) => {
   const navigate = useNavigate();
 
   return (
     <Card
       interactive
       attributes={{ CardContent: { className: 'flex flex-row items-center gap-6 p-6' } }}
-      onClick={() => navigate(getExperimentGroupDetailRoute(workspace, group.name))}
+      onClick={() => navigate(getExperimentDetailRoute(workspace, group.name))}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
-          navigate(getExperimentGroupDetailRoute(workspace, group.name));
+          navigate(getExperimentDetailRoute(workspace, group.name));
         } else if (e.key === ' ') {
           e.preventDefault();
-          navigate(getExperimentGroupDetailRoute(workspace, group.name));
+          navigate(getExperimentDetailRoute(workspace, group.name));
         }
       }}
     >

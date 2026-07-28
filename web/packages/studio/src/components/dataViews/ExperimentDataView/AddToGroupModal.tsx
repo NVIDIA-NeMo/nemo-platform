@@ -6,9 +6,9 @@ import { FormModal, type FormModalProps } from '@nemo/common/src/components/Form
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getListEvaluationsQueryKey,
-  getListExperimentGroupsQueryKey,
-  useCreateExperimentGroup,
-  useListExperimentGroups,
+  getListExperimentsQueryKey,
+  useCreateExperiment,
+  useListExperiments,
   usePatchEvaluation,
 } from '@nemo/sdk/generated/platform/api';
 import {
@@ -23,13 +23,13 @@ import {
   TextArea,
   TextInput,
 } from '@nvidia/foundations-react-core';
-import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
+import type { EvaluationRow } from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 import { DefaultSortControl } from '@studio/components/DefaultSortControl';
 import { DEFAULT_SORT } from '@studio/components/DefaultSortControl/util';
 import {
-  experimentGroupCreateSchema,
-  type ExperimentGroupCreateFormFields,
-} from '@studio/components/ExperimentGroupCreateModal/constants';
+  experimentCreateSchema,
+  type ExperimentCreateFormFields,
+} from '@studio/components/ExperimentCreateModal/constants';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
@@ -50,7 +50,7 @@ export interface AddToGroupModalProps extends Pick<FormModalProps, 'open' | 'onC
 }
 
 /**
- * Adds one or more selected evaluations to another ExperimentGroup. Offers the workspace's groups in a
+ * Adds one or more selected evaluations to another Experiment. Offers the workspace's groups in a
  * dropdown — excluding groups every selected evaluation already belongs to — plus a "Create new group"
  * option that reveals a name/description sub-form. On submit it either adds the evaluations to the
  * chosen group, or creates the group first and then adds them, then refreshes the board and toasts.
@@ -72,7 +72,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const isCreating = selectedGroupId === CREATE_NEW;
   // Default sort is a single `sort`-param string driven by a custom control (not a registered RHF
-  // input), so it's managed here and merged into the create payload (mirrors ExperimentGroupCreateModal).
+  // input), so it's managed here and merged into the create payload (mirrors ExperimentCreateModal).
   const [defaultSort, setDefaultSort] = useState<string>(DEFAULT_SORT);
 
   const {
@@ -82,8 +82,8 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
     setValue,
     setError,
     formState: { errors, isValid },
-  } = useForm<ExperimentGroupCreateFormFields>({
-    resolver: zodResolver(experimentGroupCreateSchema),
+  } = useForm<ExperimentCreateFormFields>({
+    resolver: zodResolver(experimentCreateSchema),
     mode: 'onChange',
   });
 
@@ -97,7 +97,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
   }, [open, reset]);
 
   // Only fetch groups while the modal is open. A single large page covers any realistic group count.
-  const { data: groupsPage, isLoading } = useListExperimentGroups(
+  const { data: groupsPage, isLoading } = useListExperiments(
     workspace,
     { page_size: DEFAULT_LARGE_PAGE_SIZE },
     { query: { enabled: open && !!workspace } }
@@ -118,8 +118,8 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
   );
 
   const { mutateAsync: patchEvaluation, isPending: isAdding } = usePatchEvaluation();
-  const { mutateAsync: createExperimentGroup, isPending: isCreatingGroup } =
-    useCreateExperimentGroup();
+  const { mutateAsync: createExperiment, isPending: isCreatingGroup } =
+    useCreateExperiment();
 
   const busy = isAdding || isCreatingGroup;
   const count = evaluations.length;
@@ -171,10 +171,10 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
     finishAdds(groupName, await associateEvaluations(selectedGroupId), 'Added to');
   };
 
-  const createGroupAndAdd: SubmitHandler<ExperimentGroupCreateFormFields> = async (data) => {
+  const createGroupAndAdd: SubmitHandler<ExperimentCreateFormFields> = async (data) => {
     let created;
     try {
-      created = await createExperimentGroup({
+      created = await createExperiment({
         workspace,
         data: {
           name: data.name,
@@ -200,7 +200,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
       return;
     }
     // Group now exists; adding evaluations is best-effort (a group with fewer evals is still valid).
-    queryClient.invalidateQueries({ queryKey: getListExperimentGroupsQueryKey(workspace) });
+    queryClient.invalidateQueries({ queryKey: getListExperimentsQueryKey(workspace) });
     finishAdds(created.name, await associateEvaluations(created.id), 'Created');
   };
 

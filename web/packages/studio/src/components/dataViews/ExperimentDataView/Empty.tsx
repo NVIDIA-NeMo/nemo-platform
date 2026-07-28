@@ -15,11 +15,11 @@ import { LINK_DOCS_EXPERIMENTS_CLI } from '@studio/constants/links';
 import { Bot, ChevronRight, File, FlaskConical, Terminal } from 'lucide-react';
 
 interface EmptyProps {
-  experimentGroupName: string;
+  experimentName: string;
 }
 
-export const Empty = ({ experimentGroupName }: EmptyProps) => {
-  const escapedGroupName = experimentGroupName.replace(/'/g, "'\\''");
+export const Empty = ({ experimentName }: EmptyProps) => {
+  const escapedGroupName = experimentName.replace(/'/g, "'\\''");
   const cliCommand =
     `nemo exp run \\\n` +
     `  --group '${escapedGroupName}' \\\n` +

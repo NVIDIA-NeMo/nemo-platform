@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
-import { ExperimentGroupEditModal } from '@studio/components/ExperimentGroupEditModal';
+import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
+import { ExperimentEditModal } from '@studio/components/ExperimentEditModal';
 import { server } from '@studio/mocks/node';
 import { render, screen } from '@studio/tests/util/render';
 import { waitFor } from '@testing-library/react';
@@ -11,7 +11,7 @@ import { http, HttpResponse } from 'msw';
 
 const WORKSPACE = 'test-workspace';
 
-const group: ExperimentGroupResponse = {
+const group: ExperimentResponse = {
   id: 'group-id',
   name: 'opt-group',
   workspace: WORKSPACE,
@@ -23,7 +23,7 @@ const group: ExperimentGroupResponse = {
   evaluation_count: 0,
 };
 
-describe('ExperimentGroupEditModal', () => {
+describe('ExperimentEditModal', () => {
   it('resends the fields it does not edit, which a full-replace update would otherwise clear', async () => {
     let body: Record<string, unknown> | undefined;
     server.use(
@@ -40,7 +40,7 @@ describe('ExperimentGroupEditModal', () => {
         })
       ),
       http.put(
-        '*/apis/intake/v2/workspaces/:workspace/experiment-groups/:name',
+        '*/apis/intake/v2/workspaces/:workspace/experiments/:name',
         async ({ request }) => {
           body = (await request.json()) as Record<string, unknown>;
           return HttpResponse.json(group);
@@ -48,7 +48,7 @@ describe('ExperimentGroupEditModal', () => {
       )
     );
 
-    render(<ExperimentGroupEditModal open onClose={vi.fn()} workspace={WORKSPACE} group={group} />);
+    render(<ExperimentEditModal open onClose={vi.fn()} workspace={WORKSPACE} group={group} />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
 

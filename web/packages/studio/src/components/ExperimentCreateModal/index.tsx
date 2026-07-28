@@ -14,8 +14,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
-  getListExperimentGroupsQueryKey,
-  useCreateExperimentGroup,
+  getListExperimentsQueryKey,
+  useCreateExperiment,
 } from '@nemo/sdk/generated/platform/api';
 import {
   CodeSnippet,
@@ -32,19 +32,19 @@ import { queryClient } from '@studio/api/queryClient';
 import { DefaultSortControl } from '@studio/components/DefaultSortControl';
 import { DEFAULT_SORT } from '@studio/components/DefaultSortControl/util';
 import {
-  experimentGroupCreateSchema,
-  type ExperimentGroupCreateFormFields,
-} from '@studio/components/ExperimentGroupCreateModal/constants';
+  experimentCreateSchema,
+  type ExperimentCreateFormFields,
+} from '@studio/components/ExperimentCreateModal/constants';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { AxiosError } from 'axios';
 import { useState, type FC } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 
-export interface ExperimentGroupCreateModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
+export interface ExperimentCreateModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   workspace: string;
 }
 
-export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = ({
+export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
   open,
   onClose,
   workspace,
@@ -56,8 +56,8 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
     formState: { errors, isSubmitting },
     setValue,
     setError,
-  } = useForm<ExperimentGroupCreateFormFields>({
-    resolver: zodResolver(experimentGroupCreateSchema),
+  } = useForm<ExperimentCreateFormFields>({
+    resolver: zodResolver(experimentCreateSchema),
     mode: 'onChange',
   });
 
@@ -68,10 +68,10 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
 
   const toast = useToast();
 
-  const { mutateAsync: createExperimentGroup } = useCreateExperimentGroup({
+  const { mutateAsync: createExperiment } = useCreateExperiment({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListExperimentGroupsQueryKey(workspace) });
+        queryClient.invalidateQueries({ queryKey: getListExperimentsQueryKey(workspace) });
       },
     },
   });
@@ -82,9 +82,9 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
     onClose();
   };
 
-  const onSubmit: SubmitHandler<ExperimentGroupCreateFormFields> = async (data) => {
+  const onSubmit: SubmitHandler<ExperimentCreateFormFields> = async (data) => {
     try {
-      await createExperimentGroup({
+      await createExperiment({
         workspace,
         data: {
           name: data.name,
@@ -127,7 +127,7 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
       loading={isSubmitting}
       onSubmit={handleSubmit(
         onSubmit,
-        handleFormErrorsGeneric({ title: 'Experiment Group Create Form Errors' })
+        handleFormErrorsGeneric({ title: 'Experiment Create Form Errors' })
       )}
       onClose={resetAndClose}
       open={open}

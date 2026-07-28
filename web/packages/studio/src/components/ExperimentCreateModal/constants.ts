@@ -10,14 +10,14 @@
  * its affiliates is strictly prohibited.
  */
 
-import { CreateExperimentGroupBody } from '@nemo/sdk/generated/platform/zod/experiment-groups/createExperimentGroup';
+import { CreateExperimentBody } from '@nemo/sdk/generated/platform/zod/experiments/createExperiment';
 import { workspaceInputSchema } from '@studio/constants/zod';
 
 // Override the SDK-generated `name` validation — the generated zod uses the DTO's loose
 // string pattern; we validate against the stricter workspace-name rules so the user sees
 // a useful inline error instead of a 422 toast.
-export const experimentGroupCreateSchema = CreateExperimentGroupBody.extend({
+export const experimentCreateSchema = CreateExperimentBody.extend({
   name: workspaceInputSchema,
 });
 
-export type ExperimentGroupCreateFormFields = typeof experimentGroupCreateSchema._type;
+export type ExperimentCreateFormFields = typeof experimentCreateSchema._type;

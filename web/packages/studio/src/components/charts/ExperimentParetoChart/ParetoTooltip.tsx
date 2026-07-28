@@ -5,7 +5,7 @@ import { Text } from '@nvidia/foundations-react-core';
 import type {
   ParetoMetric,
   ParetoPlotPoint,
-} from '@studio/components/charts/ExperimentGroupParetoChart/utils';
+} from '@studio/components/charts/ExperimentParetoChart/utils';
 import type { FC } from 'react';
 
 /** Format a metric value for tooltips: cost as USD, latency in ms, evaluator scores as-is. */

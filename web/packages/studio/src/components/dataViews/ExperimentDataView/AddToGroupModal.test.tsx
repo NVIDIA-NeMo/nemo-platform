@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { MockToastProvider } from '@nemo/common/src/tests/MockToastProvider';
-import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
-import { AddToGroupModal } from '@studio/components/dataViews/ExperimentGroupDataView/AddToGroupModal';
-import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
+import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
+import { AddToGroupModal } from '@studio/components/dataViews/ExperimentDataView/AddToGroupModal';
+import type { EvaluationRow } from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Hoisted mocks for the SDK hooks the modal calls.
-const { mockMutateAsync, mockCreateMutateAsync, mockUseListExperimentGroups } = vi.hoisted(() => ({
+const { mockMutateAsync, mockCreateMutateAsync, mockUseListExperiments } = vi.hoisted(() => ({
   mockMutateAsync: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   mockCreateMutateAsync: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  mockUseListExperimentGroups: vi.fn<() => { data: unknown; isLoading: boolean }>(),
+  mockUseListExperiments: vi.fn<() => { data: unknown; isLoading: boolean }>(),
 }));
 
 vi.mock('@nemo/sdk/generated/platform/api', async () => {
@@ -22,20 +22,20 @@ vi.mock('@nemo/sdk/generated/platform/api', async () => {
   );
   return {
     ...actual,
-    useListExperimentGroups: () => mockUseListExperimentGroups(),
+    useListExperiments: () => mockUseListExperiments(),
     usePatchEvaluation: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
-    useCreateExperimentGroup: () => ({ mutateAsync: mockCreateMutateAsync, isPending: false }),
+    useCreateExperiment: () => ({ mutateAsync: mockCreateMutateAsync, isPending: false }),
   };
 });
 
-const makeGroup = (id: string, name: string): ExperimentGroupResponse => ({
+const makeGroup = (id: string, name: string): ExperimentResponse => ({
   id,
   name,
   workspace: 'default',
   default_sort: '-created_at',
 });
 
-const GROUPS: ExperimentGroupResponse[] = [
+const GROUPS: ExperimentResponse[] = [
   makeGroup('g1', 'Alpha benchmarks'),
   makeGroup('g2', 'Beta benchmarks'),
   makeGroup('g3', 'Gamma benchmarks'),
@@ -80,8 +80,8 @@ describe('AddToGroupModal', () => {
     mockMutateAsync.mockResolvedValue(undefined);
     mockCreateMutateAsync.mockReset();
     mockCreateMutateAsync.mockResolvedValue(makeGroup('g-new', 'Regression suite'));
-    mockUseListExperimentGroups.mockReset();
-    mockUseListExperimentGroups.mockReturnValue({
+    mockUseListExperiments.mockReset();
+    mockUseListExperiments.mockReturnValue({
       data: { data: GROUPS },
       isLoading: false,
     });
@@ -151,7 +151,7 @@ describe('AddToGroupModal', () => {
 
   it('still offers "Create new group" when every group already contains all selected evaluations', async () => {
     const user = userEvent.setup();
-    mockUseListExperimentGroups.mockReturnValue({
+    mockUseListExperiments.mockReturnValue({
       data: { data: [makeGroup('g1', 'Alpha benchmarks')] },
       isLoading: false,
     });
