@@ -45,6 +45,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional, cast
 
+import click
 import httpx
 import typer
 import yaml
@@ -71,6 +72,8 @@ from nemo_platform.cli.core.formatters import Column, format_output
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
+from nemo_platform_plugin.discovery import discover_agent_cli, discover_entry_points
+from typer.main import get_command as typer_get_command
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +94,12 @@ _DEPLOYMENT_LIST_COLUMNS = [
     Column("endpoint"),
     Column("created_at"),
 ]
+
+_AGENT_CLI_ENTRY_POINT_PATTERN = re.compile(
+    r"^(?P<plugin>[a-z0-9]+(?:-[a-z0-9]+)*)\.(?P<agent>[a-z0-9]+(?:-[a-z0-9]+)*)$"
+)
+_AGENT_CLI_HELP_PANEL = "Platform agents"
+_INJECTED_COMMAND_ENTRY_POINT_GROUPS = ("nemo.jobs", "nemo.functions")
 
 
 class AgentsCLI(NemoCLI):
@@ -117,7 +126,78 @@ class AgentsCLI(NemoCLI):
         _register_platform_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
+        _register_contributed_agent_commands(app)
         return app
+
+
+def _registered_command_names(app: typer.Typer) -> set[str]:
+    command = typer_get_command(app)
+    if not isinstance(command, click.Group):
+        return set()
+    return set(command.commands)
+
+
+def _reserved_command_names(app: typer.Typer) -> set[str]:
+    names = _registered_command_names(app)
+    for group in _INJECTED_COMMAND_ENTRY_POINT_GROUPS:
+        for entry_point_name in discover_entry_points(group):
+            if entry_point_name.startswith("agents."):
+                names.add(entry_point_name.removeprefix("agents."))
+    return names
+
+
+def _register_contributed_agent_commands(app: typer.Typer) -> None:
+    """Mount plugin-contributed agent CLIs at ``nemo agents <agent>``."""
+    contributions_by_name: dict[str, list[tuple[str, Any]]] = {}
+    for entry_point_name, factory in sorted(discover_agent_cli().items()):
+        match = _AGENT_CLI_ENTRY_POINT_PATTERN.fullmatch(entry_point_name)
+        if match is None:
+            logger.warning(
+                "Ignoring agent CLI entry point %r: expected '<plugin-name>.<agent-name>' in kebab case",
+                entry_point_name,
+            )
+            continue
+        command_name = match.group("agent")
+        contributions_by_name.setdefault(command_name, []).append((entry_point_name, factory))
+
+    reserved_names = _reserved_command_names(app)
+    for command_name, contributions in sorted(contributions_by_name.items()):
+        entry_point_names = [entry_point_name for entry_point_name, _factory in contributions]
+        if len(contributions) > 1:
+            logger.warning(
+                "Ignoring agent CLI command %r because multiple plugins registered it: %s",
+                command_name,
+                ", ".join(entry_point_names),
+            )
+            continue
+        if command_name in reserved_names:
+            logger.warning(
+                "Ignoring agent CLI entry point %r because %r is already registered under 'nemo agents'",
+                entry_point_names[0],
+                command_name,
+            )
+            continue
+
+        entry_point_name, factory = contributions[0]
+        if not callable(factory) or isinstance(factory, typer.Typer):
+            logger.warning(
+                "Ignoring agent CLI entry point %r: expected a zero-argument callable returning typer.Typer",
+                entry_point_name,
+            )
+            continue
+        try:
+            agent_app = factory()
+        except Exception:
+            logger.warning("Failed to build agent CLI entry point %r; skipping", entry_point_name, exc_info=True)
+            continue
+        if not isinstance(agent_app, typer.Typer):
+            logger.warning(
+                "Ignoring agent CLI entry point %r: factory returned %s instead of typer.Typer",
+                entry_point_name,
+                type(agent_app).__name__,
+            )
+            continue
+        app.add_typer(agent_app, name=command_name, rich_help_panel=_AGENT_CLI_HELP_PANEL)
 
 
 # ---------------------------------------------------------------------------

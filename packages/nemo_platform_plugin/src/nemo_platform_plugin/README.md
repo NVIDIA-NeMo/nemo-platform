@@ -14,6 +14,7 @@ Build NeMo Platform plugins in Python.
 |---|---|---|---|
 | HTTP service | `NemoService` | `nemo.services` | Contributes FastAPI routers mounted at `/apis/<name>/...` |
 | CLI | `NemoCLI` | `nemo.cli` | Contributes `nemo <name> <cmd>` subcommands |
+| Agent CLI | `() -> typer.Typer` | `nemo.cli.agents` | Contributes `nemo agents <agent> <verb>` subcommands |
 | Job | `NemoJob` | `nemo.jobs` | Contributes schedulable, container-executable jobs. Auto-generates `run` / `submit` / `explain` CLI verbs. |
 | Controller | `NemoController` | `nemo.controllers` | Contributes background reconcile-loop controllers |
 | Configuration | `NemoConfig` | — | Typed plugin configuration with env var / YAML loading |

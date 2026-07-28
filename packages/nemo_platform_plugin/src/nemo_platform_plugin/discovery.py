@@ -12,6 +12,7 @@ Entry-point groups and their wrappers
 
 ``nemo.services``              → :func:`discover_services`              — :class:`~nemo_platform_plugin.service.NemoService` subclass  (typed, platform instantiates)
 ``nemo.cli``                   → :func:`discover_cli`                   — :class:`~nemo_platform_plugin.cli.NemoCLI` subclass  (typed, platform instantiates)
+``nemo.cli.agents``            → :func:`discover_agent_cli`             — ``() -> typer.Typer`` callable mounted at ``nemo agents <agent>``
 ``nemo.jobs``                  → :func:`discover_jobs`                  — :class:`~nemo_platform_plugin.job.NemoJob` subclass  (typed, platform instantiates)
 ``nemo.functions``             → :func:`discover_functions`             — :class:`~nemo_platform_plugin.function.NemoFunction` subclass  (typed, platform instantiates)
 ``nemo.controllers``           → :func:`discover_controllers`           — :class:`~nemo_platform_plugin.controller.NemoController` subclass  (typed, platform instantiates)
@@ -51,7 +52,7 @@ from functools import cache
 from importlib.metadata import EntryPoint, entry_points
 from typing import Any, cast
 
-from nemo_platform_plugin.cli import NemoCLI
+from nemo_platform_plugin.cli import AgentCLIFactory, NemoCLI
 from nemo_platform_plugin.controller import NemoController
 from nemo_platform_plugin.customization_contributor import (
     CustomizationContributor,
@@ -66,11 +67,14 @@ from nemo_platform_plugin.service import NemoService
 
 logger = logging.getLogger(__name__)
 
+AGENT_CLI_GROUP = "nemo.cli.agents"
+
 # All surface groups the platform recognises.  Scanning these is sufficient to
 # know whether a plugin is installed — no separate ``nemo.plugins`` group needed.
 _ALL_SURFACE_GROUPS = (
     "nemo.services",
     "nemo.cli",
+    AGENT_CLI_GROUP,
     "nemo.jobs",
     "nemo.functions",
     "nemo.controllers",
@@ -89,11 +93,12 @@ _ALL_SURFACE_GROUPS = (
 # ``<plugin>.<item>`` rather than the bare plugin name. Used by the
 # manifest builder to map a key like ``example.greet`` back to the
 # plugin name ``example``.
-_DOT_SCOPED_GROUPS: frozenset[str] = frozenset({"nemo.jobs", "nemo.functions"})
+_DOT_SCOPED_GROUPS: frozenset[str] = frozenset({AGENT_CLI_GROUP, "nemo.jobs", "nemo.functions"})
 
 _SURFACE_ALLOWLIST_ENV_VARS: dict[str, str] = {
     "nemo.services": "NEMO_PLUGIN_SERVICES_ALLOWLIST",
     "nemo.cli": "NEMO_PLUGIN_CLI_ALLOWLIST",
+    AGENT_CLI_GROUP: "NEMO_PLUGIN_AGENT_CLI_ALLOWLIST",
     "nemo.jobs": "NEMO_PLUGIN_JOBS_ALLOWLIST",
     "nemo.functions": "NEMO_PLUGIN_FUNCTIONS_ALLOWLIST",
     "nemo.controllers": "NEMO_PLUGIN_CONTROLLERS_ALLOWLIST",
@@ -291,6 +296,17 @@ def discover_cli() -> dict[str, type[NemoCLI]]:
             )
         result[key] = cast(type[NemoCLI], cls)
     return result
+
+
+def discover_agent_cli() -> dict[str, AgentCLIFactory]:
+    """Discover agent CLI factories contributed beneath ``nemo agents``.
+
+    Entry-point keys use ``<plugin-name>.<agent-name>`` so plugin discovery
+    and allowlists retain the owning plugin while the CLI exposes only the
+    agent-name suffix. Each value is a zero-argument callable returning the
+    :class:`typer.Typer` app mounted at ``nemo agents <agent-name>``.
+    """
+    return {key: cast(AgentCLIFactory, factory) for key, factory in discover(AGENT_CLI_GROUP).items()}
 
 
 def discover_jobs() -> dict[str, type[NemoJob]]:

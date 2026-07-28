@@ -12,9 +12,11 @@ import typer
 from fastapi import APIRouter
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.discovery import (
+    AGENT_CLI_GROUP,
     _ALL_SURFACE_GROUPS,
     CUSTOMIZATION_CONTRIBUTORS_GROUP,
     discover,
+    discover_agent_cli,
     discover_cli,
     discover_customization_contributors,
     discover_entry_points,
@@ -207,6 +209,16 @@ class TestDiscoverEntryPoints:
 
         assert result == {"alpha.job": alpha_job}
 
+    def test_agent_cli_allowlist_filters_by_owning_plugin(self, monkeypatch) -> None:
+        analyst = _make_ep("insights.analyst", object())
+        experimentalist = _make_ep("experimentalist.experimentalist", object())
+        monkeypatch.setenv("NEMO_PLUGIN_AGENT_CLI_ALLOWLIST", "insights")
+
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[analyst, experimentalist]):
+            result = discover_entry_points(AGENT_CLI_GROUP)
+
+        assert result == {"insights.analyst": analyst}
+
 
 # ---------------------------------------------------------------------------
 # discover — generic
@@ -353,6 +365,39 @@ class TestDiscoverCLI:
             result = discover_cli()
         assert "bad" not in result
         assert "good" in result
+
+
+# ---------------------------------------------------------------------------
+# discover_agent_cli
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverAgentCLI:
+    def test_uses_agent_cli_group(self) -> None:
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[]) as mock_eps:
+            discover_agent_cli()
+        mock_eps.assert_called_once_with(group=AGENT_CLI_GROUP)
+
+    def test_loads_factory_under_plugin_scoped_key(self) -> None:
+        def factory() -> typer.Typer:
+            return typer.Typer()
+
+        ep = _make_ep("insights.analyst", factory)
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
+            result = discover_agent_cli()
+
+        assert result["insights.analyst"] is factory
+        assert isinstance(result["insights.analyst"](), typer.Typer)
+
+    def test_failing_factory_import_is_skipped(self) -> None:
+        bad = _make_ep("bad.broken", None)
+        bad.load.side_effect = RuntimeError("broken")
+        good = _make_ep("good.analyst", lambda: typer.Typer())
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[bad, good]):
+            result = discover_agent_cli()
+
+        assert "bad.broken" not in result
+        assert "good.analyst" in result
 
 
 # ---------------------------------------------------------------------------
@@ -567,6 +612,17 @@ class TestDiscoverManifests:
             result = discover_manifests()
         assert list(result.keys()) == ["example"]
         assert result["example"].version == "1.2.3"
+
+    def test_agent_cli_only_plugins_use_plugin_name_not_agent_name(self) -> None:
+        ep = _make_ep("insights.analyst", None, version="1.2.3", description="Agent CLI only plugin")
+        with patch(
+            "nemo_platform_plugin.discovery.entry_points",
+            side_effect=_eps_by_group({AGENT_CLI_GROUP: [ep]}),
+        ):
+            result = discover_manifests()
+
+        assert list(result.keys()) == ["insights"]
+        assert result["insights"].version == "1.2.3"
 
 
 class TestDiscoverCustomizationContributors:

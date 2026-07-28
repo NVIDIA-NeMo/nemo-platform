@@ -8,6 +8,7 @@ Every plugin capability is a "surface" — a typed contract registered via a Pyt
 |---|---|---|---|---|
 | **HTTP service** ★ | `nemo.services` | `NemoService` | `/apis/<name>/...` | wraps in `NemoServiceAdapter`, mounts FastAPI router |
 | **CLI** ★ | `nemo.cli` | `NemoCLI` | `nemo <name> <cmd>` | calls `get_cli()`, mounts as Typer subcommand |
+| **Agent CLI** | `nemo.cli.agents` | `() -> typer.Typer` | `nemo agents <agent> <verb>` | mounts an agent command group under the shared `agents` namespace |
 | **Job** ★ | `nemo.jobs` | `NemoJob` | key: `<plugin>.<job>` | auto-generates `run` / `submit` / `explain` CLI verbs; the scheduler drives local runs and remote submission |
 | **Controller** ★ | `nemo.controllers` | `NemoController` | (background) | wraps in `NemoControllerAdapter`, runs reconcile loop |
 | SDK | `nemo.sdk` | (any class) | `nemo.<name>` on hub | instantiated as attribute on the `NeMo` hub |
@@ -28,6 +29,39 @@ Platform wraps each surface:
 - `NemoCLI` → `get_cli()` → Typer subcommand
 - `NemoJob` → job scheduler
 - `NemoController` → `NemoControllerAdapter` → async reconcile loop
+
+## Agent CLI extensions
+
+Plugins that provide an agent register a Typer factory under
+`nemo.cli.agents`. The entry-point key is `<plugin-name>.<agent-name>`:
+
+```toml
+[project.entry-points."nemo.cli.agents"]
+"insights.analyst" = "nemo_insights_plugin.analyst.cli:create_cli"
+```
+
+```python
+import typer
+
+
+def create_cli() -> typer.Typer:
+    app = typer.Typer(help="Analyze agent telemetry.")
+
+    @app.command()
+    def run(agent: str) -> None:
+        """Run the analyst against AGENT."""
+
+    return app
+```
+
+The plugin prefix preserves ownership for manifests and
+`NEMO_PLUGIN_AGENT_CLI_ALLOWLIST`; only the kebab-case agent-name suffix is
+public. The example registers `nemo agents analyst run`.
+
+Agent names must be nouns. Commands beneath an agent must be verbs. A
+contribution cannot replace an existing `nemo agents` command or an injected
+job/function command. If multiple plugins claim the same agent name, neither
+contribution is mounted.
 
 ## Startup sequence
 

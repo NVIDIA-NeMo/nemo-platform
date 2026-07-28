@@ -31,18 +31,33 @@ Example::
     # pyproject.toml:
     # [project.entry-points."nemo.cli"]
     # my-plugin = "my_plugin.cli:MyCLI"
+
+Agent CLIs use a separate factory entry point so multiple plugins can extend
+the shared ``nemo agents`` namespace without colliding on ``nemo.cli``::
+
+    def create_analyst_cli() -> typer.Typer:
+        app = typer.Typer()
+        ...
+        return app
+
+    # [project.entry-points."nemo.cli.agents"]
+    # "my-plugin.analyst" = "my_plugin.cli:create_analyst_cli"
 """
 
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import ClassVar, Literal
+from collections.abc import Callable
+from typing import ClassVar, Literal, TypeAlias
 
 import typer
 from nemo_platform_plugin._base import _NamedPlugin
 from nemo_platform_plugin.cli_renderer import CLIRenderer
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.job import NemoJob
+
+AgentCLIFactory: TypeAlias = Callable[[], typer.Typer]
+"""Factory for a ``nemo agents <agent-name>`` Typer command group."""
 
 
 class NemoCLI(_NamedPlugin):
