@@ -2,7 +2,7 @@
 name = "nemoplatform"
 description = "NeMo Platform"
 readme = "README.md"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.15"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 
@@ -17,7 +17,6 @@ classifiers = [
 
   "License :: OSI Approved :: Apache Software License",
 
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -69,10 +68,8 @@ version = "0.0.0"
 [dependency-groups]
 # Optional Insights analyst plugin.
 insights = ["nemo-insights-plugin"]
-# Optional Experimentalist agent-optimization plugin. Its agent framework (nooa) and
-# evaluator (harbor) are both 3.12-only, so the whole plugin is gated rather than
-# installed half-resolved on 3.11.
-experimentalist = ["nemo-experimentalist-plugin ; python_full_version >= '3.12'"]
+# Optional Experimentalist agent-optimization plugin.
+experimentalist = ["nemo-experimentalist-plugin"]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -536,7 +533,7 @@ executionEnvironments = [
 ]
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.12"
 extra-paths = [
   # nemo-data-designer plugin is a workspace member; add its src so ty can
   # resolve nemo_data_designer_plugin imports from plugin test files.
@@ -641,12 +638,3 @@ include = ["plugins/nemo-experimentalist/src/**"]
 
 [tool.ty.overrides.rules]
 empty-body = "ignore"
-
-# The Experimentalist's agent framework (nooa) and evaluator (harbor) are both
-# 3.12-only, so uv skips them when the lint job resolves on 3.11 and every import
-# of them goes unresolved. Everything else about the plugin still gets checked.
-[[tool.ty.overrides]]
-include = ["plugins/nemo-experimentalist/**"]
-
-[tool.ty.overrides.rules]
-unresolved-import = "ignore"
