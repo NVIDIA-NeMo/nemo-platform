@@ -6,13 +6,15 @@
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseInsert, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
+from nmp.intake.repository.evaluator_results import EvaluatorResultsRepository
 from nmp.intake.spans.domain import (
     EvaluatorResult,
     EvaluatorResultDataType,
     EvaluatorResultListFilter,
 )
-from nmp.intake.spans.storage import dict_to_row, make_pagination, result_rows
+from nmp.intake.spans.storage import dict_to_row, make_pagination
 
 EVALUATOR_RESULT_COLUMNS = [
     "evaluator_result_id",
@@ -35,27 +37,36 @@ EVALUATOR_RESULT_SORT_COLUMNS = {
 }
 
 
-class EvaluatorResultsRepository:
-    def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+class ClickHouseEvaluatorResultsRepository(EvaluatorResultsRepository):
+    def __init__(self, executor: ClickHouseExecutor) -> None:
+        self._executor = executor
 
     async def save_evaluator_results(self, results: list[EvaluatorResult]) -> None:
         if not results:
             return
         rows = [dict_to_row(_evaluator_result_to_row(result), EVALUATOR_RESULT_COLUMNS) for result in results]
-        await self._client.insert("evaluator_results", rows, column_names=EVALUATOR_RESULT_COLUMNS)
+        await self._executor.insert(
+            ClickHouseInsert(
+                name="evaluator_results.save",
+                table=ClickHouseTable.EVALUATOR_RESULTS,
+                rows=rows,
+                column_names=EVALUATOR_RESULT_COLUMNS,
+            )
+        )
 
     async def get_evaluator_result(self, *, workspace: str, evaluator_result_id: str) -> EvaluatorResult | None:
-        result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {self._client.table("evaluator_results")} FINAL
-            WHERE workspace = %(workspace)s AND evaluator_result_id = %(evaluator_result_id)s
-            LIMIT 1
-            """,
-            parameters={"workspace": workspace, "evaluator_result_id": evaluator_result_id},
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="evaluator_results.get",
+                statement=f"""
+                SELECT *
+                FROM {self._executor.table(ClickHouseTable.EVALUATOR_RESULTS)} FINAL
+                WHERE workspace = %(workspace)s AND evaluator_result_id = %(evaluator_result_id)s
+                LIMIT 1
+                """,
+                parameters={"workspace": workspace, "evaluator_result_id": evaluator_result_id},
+            )
         )
-        rows = result_rows(result)
         if not rows:
             return None
         return _row_to_evaluator_result(rows[0])
@@ -69,23 +80,32 @@ class EvaluatorResultsRepository:
         sort: str,
     ) -> PaginatedResult[EvaluatorResult]:
         where_sql, parameters = _evaluator_result_where(filters)
-        table = self._client.table("evaluator_results")
-        total_result = await self._client.query(
-            f"SELECT count() FROM {table} FINAL WHERE {where_sql}", parameters=parameters
+        table = self._executor.table(ClickHouseTable.EVALUATOR_RESULTS)
+        total_results = int(
+            await self._executor.fetch_scalar(
+                ClickHouseQuery(
+                    name="evaluator_results.list.count",
+                    statement=f"SELECT count() FROM {table} FINAL WHERE {where_sql}",
+                    parameters=parameters,
+                )
+            )
+            or 0
         )
-        total_results = int(total_result.result_rows[0][0])
         offset = (page - 1) * page_size
-        rows_result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {table} FINAL
-            WHERE {where_sql}
-            ORDER BY {_evaluator_result_order_by(sort)}
-            LIMIT %(limit)s OFFSET %(offset)s
-            """,
-            parameters={**parameters, "limit": page_size, "offset": offset},
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="evaluator_results.list.rows",
+                statement=f"""
+                SELECT *
+                FROM {table} FINAL
+                WHERE {where_sql}
+                ORDER BY {_evaluator_result_order_by(sort)}
+                LIMIT %(limit)s OFFSET %(offset)s
+                """,
+                parameters={**parameters, "limit": page_size, "offset": offset},
+            )
         )
-        results = [_row_to_evaluator_result(row) for row in result_rows(rows_result)]
+        results = [_row_to_evaluator_result(row) for row in rows]
         return PaginatedResult(
             data=results,
             pagination=make_pagination(
@@ -94,16 +114,19 @@ class EvaluatorResultsRepository:
         )
 
     async def list_evaluator_results_for_span(self, *, workspace: str, span_id: str) -> list[EvaluatorResult]:
-        result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {self._client.table("evaluator_results")} FINAL
-            WHERE workspace = %(workspace)s AND span_id = %(span_id)s
-            ORDER BY created_at ASC, evaluator_result_id ASC
-            """,
-            parameters={"workspace": workspace, "span_id": span_id},
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="evaluator_results.list_for_span",
+                statement=f"""
+                SELECT *
+                FROM {self._executor.table(ClickHouseTable.EVALUATOR_RESULTS)} FINAL
+                WHERE workspace = %(workspace)s AND span_id = %(span_id)s
+                ORDER BY created_at ASC, evaluator_result_id ASC
+                """,
+                parameters={"workspace": workspace, "span_id": span_id},
+            )
         )
-        return [_row_to_evaluator_result(row) for row in result_rows(result)]
+        return [_row_to_evaluator_result(row) for row in rows]
 
 
 def _evaluator_result_where(filters: EvaluatorResultListFilter) -> tuple[str, dict[str, Any]]:

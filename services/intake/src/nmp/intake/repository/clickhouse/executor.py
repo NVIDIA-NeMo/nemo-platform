@@ -36,6 +36,16 @@ class ClickHouseQuery:
         )
 
 
+@dataclass(frozen=True)
+class ClickHouseInsert:
+    """One named insert into a registered runtime table."""
+
+    name: str
+    table: ClickHouseTable
+    rows: Sequence[Sequence[Any]]
+    column_names: Sequence[str]
+
+
 class ClickHouseQueryError(RuntimeError):
     """Raised when a named repository query fails."""
 
@@ -44,8 +54,16 @@ class ClickHouseQueryError(RuntimeError):
         super().__init__(f"ClickHouse query failed: {query_name}")
 
 
+class ClickHouseInsertError(RuntimeError):
+    """Raised when a named repository insert fails."""
+
+    def __init__(self, insert_name: str) -> None:
+        self.insert_name = insert_name
+        super().__init__(f"ClickHouse insert failed: {insert_name}")
+
+
 class ClickHouseExecutor:
-    """Execute named repository queries without exposing the raw driver result."""
+    """Execute named repository operations without exposing the raw driver."""
 
     def __init__(self, client: ClickHouseSpanClient) -> None:
         self._client = client
@@ -81,3 +99,29 @@ class ClickHouseExecutor:
 
         rows = await self.fetch_all(query)
         return next(iter(rows[0].values())) if rows else None
+
+    async def insert(self, insert: ClickHouseInsert) -> None:
+        if not insert.rows:
+            return
+        if not isinstance(insert.table, ClickHouseTable):
+            raise TypeError(f"Expected ClickHouseTable, got {type(insert.table).__name__}")
+
+        started_at = perf_counter()
+        try:
+            await self._client.insert(
+                insert.table.value,
+                insert.rows,
+                column_names=insert.column_names,
+            )
+        except ClickHouseError as exc:
+            logger.exception("ClickHouse repository insert failed", extra={"insert_name": insert.name})
+            raise ClickHouseInsertError(insert.name) from exc
+        finally:
+            logger.debug(
+                "ClickHouse repository insert finished",
+                extra={
+                    "insert_name": insert.name,
+                    "row_count": len(insert.rows),
+                    "duration_ms": (perf_counter() - started_at) * 1000,
+                },
+            )
