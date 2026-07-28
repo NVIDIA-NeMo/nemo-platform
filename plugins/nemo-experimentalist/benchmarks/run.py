@@ -92,6 +92,24 @@ class SuiteSpec(BaseModel):
     workspace: str
     framework_skills: list[str] = Field(min_length=1)
 
+    @model_validator(mode="after")
+    def expand_partition_task_ids(self) -> Self:
+        """Read partition entries as names inside the suite's ``task_id_prefix``.
+
+        Every ID in a domain-scoped package repeats that prefix, which buries the part
+        that differs. Manifests write the distinguishing name and the prefix is joined
+        back on here, so the rest of the runner still works in canonical IDs. A manifest
+        that writes full IDs anyway fails the quality-coverage check with both forms in
+        the message.
+        """
+        prefix = self.dataset.task_id_prefix
+        if prefix is None:
+            return self
+        for split in (self.partitions.quality, self.partitions.fast):
+            for role in ("train", "validation", "test"):
+                setattr(split, role, [f"{prefix}{name}" for name in getattr(split, role)])
+        return self
+
     def framework_skills_dirs(self, plugin_root: Path) -> list[Path]:
         """Resolve framework-skill names to directories, failing on unknown names."""
         dirs: list[Path] = []

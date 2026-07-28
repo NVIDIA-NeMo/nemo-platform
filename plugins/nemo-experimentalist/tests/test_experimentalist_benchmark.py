@@ -72,23 +72,19 @@ def test_task_id_prefix_scopes_canonical_set_to_domain() -> None:
                 "expected_task_count": 2,
                 "task_id_prefix": "pkg__banking-",
             },
+            # Partition entries are names inside task_id_prefix, not whole IDs.
             "partitions": {
                 "source": {"commit": "deadbeef", "note": "IDs only."},
-                "quality": {
-                    "train": ["pkg__banking-1"],
-                    "validation": ["pkg__banking-2"],
-                    "test": ["pkg__banking-3"],
-                },
-                "fast": {
-                    "train": ["pkg__banking-1"],
-                    "validation": ["pkg__banking-2"],
-                    "test": ["pkg__banking-3"],
-                },
+                "quality": {"train": ["1"], "validation": ["2"], "test": ["3"]},
+                "fast": {"train": ["1"], "validation": ["2"], "test": ["3"]},
             },
             "workspace": "tau3-banking",
             "framework_skills": ["nooa"],
         }
     )
+
+    assert suite.partitions.quality.train == ["pkg__banking-1"]
+
     # Package holds two domains; only the banking three belong to this suite.
     package_ids = {
         "pkg__banking-1",

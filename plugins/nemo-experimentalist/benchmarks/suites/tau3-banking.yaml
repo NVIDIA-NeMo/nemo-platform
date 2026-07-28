@@ -20,124 +20,31 @@ partitions:
       The commit above identifies the `optimization-datasets`
       `feat/tau2-other-domains` revision these train/validation/test splits were
       derived from. Its `tau2-banking-knowledge-NNN` directory names map onto the
-      canonical `tau3-bench__tau3-banking_knowledge-task-NNN` IDs below. Task IDs
-      only; no task content is copied here. The fast partition draws only from the
-      87 tasks whose reward basis is pure database state, so smoke runs need no
-      LLM judge.
+      canonical `tau3-bench__tau3-banking_knowledge-task-NNN` IDs. Task IDs only;
+      no task content is copied here. The fast partition draws only from the 87
+      tasks whose reward basis is pure database state, so smoke runs need no LLM
+      judge.
   quality:
-    train:
-      - tau3-bench__tau3-banking_knowledge-task-001
-      - tau3-bench__tau3-banking_knowledge-task-002
-      - tau3-bench__tau3-banking_knowledge-task-003
-      - tau3-bench__tau3-banking_knowledge-task-008
-      - tau3-bench__tau3-banking_knowledge-task-010
-      - tau3-bench__tau3-banking_knowledge-task-012
-      - tau3-bench__tau3-banking_knowledge-task-018
-      - tau3-bench__tau3-banking_knowledge-task-019
-      - tau3-bench__tau3-banking_knowledge-task-020
-      - tau3-bench__tau3-banking_knowledge-task-025
-      - tau3-bench__tau3-banking_knowledge-task-026
-      - tau3-bench__tau3-banking_knowledge-task-027
-      - tau3-bench__tau3-banking_knowledge-task-033
-      - tau3-bench__tau3-banking_knowledge-task-034
-      - tau3-bench__tau3-banking_knowledge-task-035
-      - tau3-bench__tau3-banking_knowledge-task-040
-      - tau3-bench__tau3-banking_knowledge-task-041
-      - tau3-bench__tau3-banking_knowledge-task-043
-      - tau3-bench__tau3-banking_knowledge-task-048
-      - tau3-bench__tau3-banking_knowledge-task-049
-      - tau3-bench__tau3-banking_knowledge-task-050
-      - tau3-bench__tau3-banking_knowledge-task-055
-      - tau3-bench__tau3-banking_knowledge-task-056
-      - tau3-bench__tau3-banking_knowledge-task-057
-      - tau3-bench__tau3-banking_knowledge-task-062
-      - tau3-bench__tau3-banking_knowledge-task-063
-      - tau3-bench__tau3-banking_knowledge-task-064
-      - tau3-bench__tau3-banking_knowledge-task-069
-      - tau3-bench__tau3-banking_knowledge-task-070
-      - tau3-bench__tau3-banking_knowledge-task-071
-      - tau3-bench__tau3-banking_knowledge-task-076
-      - tau3-bench__tau3-banking_knowledge-task-077
-      - tau3-bench__tau3-banking_knowledge-task-078
-      - tau3-bench__tau3-banking_knowledge-task-083
-      - tau3-bench__tau3-banking_knowledge-task-084
-      - tau3-bench__tau3-banking_knowledge-task-085
-      - tau3-bench__tau3-banking_knowledge-task-090
-      - tau3-bench__tau3-banking_knowledge-task-091
-      - tau3-bench__tau3-banking_knowledge-task-092
-      - tau3-bench__tau3-banking_knowledge-task-097
-      - tau3-bench__tau3-banking_knowledge-task-098
-    validation:
-      - tau3-bench__tau3-banking_knowledge-task-004
-      - tau3-bench__tau3-banking_knowledge-task-005
-      - tau3-bench__tau3-banking_knowledge-task-014
-      - tau3-bench__tau3-banking_knowledge-task-015
-      - tau3-bench__tau3-banking_knowledge-task-021
-      - tau3-bench__tau3-banking_knowledge-task-022
-      - tau3-bench__tau3-banking_knowledge-task-028
-      - tau3-bench__tau3-banking_knowledge-task-029
-      - tau3-bench__tau3-banking_knowledge-task-036
-      - tau3-bench__tau3-banking_knowledge-task-037
-      - tau3-bench__tau3-banking_knowledge-task-044
-      - tau3-bench__tau3-banking_knowledge-task-045
-      - tau3-bench__tau3-banking_knowledge-task-051
-      - tau3-bench__tau3-banking_knowledge-task-052
-      - tau3-bench__tau3-banking_knowledge-task-058
-      - tau3-bench__tau3-banking_knowledge-task-059
-      - tau3-bench__tau3-banking_knowledge-task-065
-      - tau3-bench__tau3-banking_knowledge-task-066
-      - tau3-bench__tau3-banking_knowledge-task-072
-      - tau3-bench__tau3-banking_knowledge-task-073
-      - tau3-bench__tau3-banking_knowledge-task-079
-      - tau3-bench__tau3-banking_knowledge-task-080
-      - tau3-bench__tau3-banking_knowledge-task-086
-      - tau3-bench__tau3-banking_knowledge-task-087
-      - tau3-bench__tau3-banking_knowledge-task-093
-      - tau3-bench__tau3-banking_knowledge-task-094
-      - tau3-bench__tau3-banking_knowledge-task-100
-      - tau3-bench__tau3-banking_knowledge-task-101
-    test:
-      - tau3-bench__tau3-banking_knowledge-task-006
-      - tau3-bench__tau3-banking_knowledge-task-007
-      - tau3-bench__tau3-banking_knowledge-task-016
-      - tau3-bench__tau3-banking_knowledge-task-017
-      - tau3-bench__tau3-banking_knowledge-task-023
-      - tau3-bench__tau3-banking_knowledge-task-024
-      - tau3-bench__tau3-banking_knowledge-task-031
-      - tau3-bench__tau3-banking_knowledge-task-032
-      - tau3-bench__tau3-banking_knowledge-task-038
-      - tau3-bench__tau3-banking_knowledge-task-039
-      - tau3-bench__tau3-banking_knowledge-task-046
-      - tau3-bench__tau3-banking_knowledge-task-047
-      - tau3-bench__tau3-banking_knowledge-task-053
-      - tau3-bench__tau3-banking_knowledge-task-054
-      - tau3-bench__tau3-banking_knowledge-task-060
-      - tau3-bench__tau3-banking_knowledge-task-061
-      - tau3-bench__tau3-banking_knowledge-task-067
-      - tau3-bench__tau3-banking_knowledge-task-068
-      - tau3-bench__tau3-banking_knowledge-task-074
-      - tau3-bench__tau3-banking_knowledge-task-075
-      - tau3-bench__tau3-banking_knowledge-task-081
-      - tau3-bench__tau3-banking_knowledge-task-082
-      - tau3-bench__tau3-banking_knowledge-task-088
-      - tau3-bench__tau3-banking_knowledge-task-089
-      - tau3-bench__tau3-banking_knowledge-task-095
-      - tau3-bench__tau3-banking_knowledge-task-096
-      - tau3-bench__tau3-banking_knowledge-task-099
-      - tau3-bench__tau3-banking_knowledge-task-102
+    train: [
+      task-001, task-002, task-003, task-008, task-010, task-012, task-018, task-019, task-020,
+      task-025, task-026, task-027, task-033, task-034, task-035, task-040, task-041, task-043,
+      task-048, task-049, task-050, task-055, task-056, task-057, task-062, task-063, task-064,
+      task-069, task-070, task-071, task-076, task-077, task-078, task-083, task-084, task-085,
+      task-090, task-091, task-092, task-097, task-098
+    ]
+    validation: [
+      task-004, task-005, task-014, task-015, task-021, task-022, task-028, task-029, task-036,
+      task-037, task-044, task-045, task-051, task-052, task-058, task-059, task-065, task-066,
+      task-072, task-073, task-079, task-080, task-086, task-087, task-093, task-094, task-100,
+      task-101
+    ]
+    test: [
+      task-006, task-007, task-016, task-017, task-023, task-024, task-031, task-032, task-038,
+      task-039, task-046, task-047, task-053, task-054, task-060, task-061, task-067, task-068,
+      task-074, task-075, task-081, task-082, task-088, task-089, task-095, task-096, task-099,
+      task-102
+    ]
   fast:
-    train:
-      - tau3-bench__tau3-banking_knowledge-task-001
-      - tau3-bench__tau3-banking_knowledge-task-002
-      - tau3-bench__tau3-banking_knowledge-task-003
-      - tau3-bench__tau3-banking_knowledge-task-010
-      - tau3-bench__tau3-banking_knowledge-task-018
-      - tau3-bench__tau3-banking_knowledge-task-019
-    validation:
-      - tau3-bench__tau3-banking_knowledge-task-005
-      - tau3-bench__tau3-banking_knowledge-task-015
-      - tau3-bench__tau3-banking_knowledge-task-021
-    test:
-      - tau3-bench__tau3-banking_knowledge-task-006
-      - tau3-bench__tau3-banking_knowledge-task-007
-      - tau3-bench__tau3-banking_knowledge-task-016
+    train: [task-001, task-002, task-003, task-010, task-018, task-019]
+    validation: [task-005, task-015, task-021]
+    test: [task-006, task-007, task-016]
