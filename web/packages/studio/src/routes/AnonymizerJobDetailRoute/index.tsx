@@ -14,8 +14,10 @@ import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { FailedRecordsPanel } from '@studio/routes/AnonymizerJobDetailRoute/components/FailedRecordsPanel';
 import { JobSummaryPanel } from '@studio/routes/AnonymizerJobDetailRoute/components/JobSummaryPanel';
 import { ResultsPanel } from '@studio/routes/AnonymizerJobDetailRoute/components/ResultsPanel';
+import { ResultsPreviewPanel } from '@studio/routes/AnonymizerJobDetailRoute/components/ResultsPreviewPanel';
 import { ANONYMIZER_POLLING_INTERVAL_MS } from '@studio/routes/AnonymizerJobDetailRoute/util';
 import { getWorkspaceAnonymizerRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
@@ -58,6 +60,8 @@ export const AnonymizerJobDetailRoute: FC | null = ANONYMIZER_ENABLED
         query: { refetchInterval: isTerminal ? false : ANONYMIZER_POLLING_INTERVAL_MS },
       });
 
+      const artifactUrl = results?.data?.[0]?.artifact_url;
+
       useBreadcrumbs({
         items: [
           { href: getWorkspaceAnonymizerRoute(workspace), slotLabel: 'Anonymizer' },
@@ -98,6 +102,13 @@ export const AnonymizerJobDetailRoute: FC | null = ANONYMIZER_ENABLED
                     loadError={!!resultsError}
                   />
                 </Grid>
+                {isTerminal && artifactUrl ? (
+                  <>
+                    <ResultsPreviewPanel workspace={workspace} artifactUrl={artifactUrl} />
+                    <FailedRecordsPanel workspace={workspace} artifactUrl={artifactUrl} />
+                  </>
+                ) : null}
+
                 <Panel slotHeading="Logs" elevation="high" density="compact">
                   {logsError ? (
                     <Banner kind="inline" status="error">
