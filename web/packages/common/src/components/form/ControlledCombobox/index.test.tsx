@@ -82,7 +82,6 @@ describe('ControlledCombobox', () => {
 
     await userEvent.type(screen.getByRole('combobox', { name: 'Labels' }), 'custom');
 
-    // The array must stay an array — the pre-fix behaviour replaced it with the string.
     expect(Array.isArray(value)).toBe(true);
     expect(value).toEqual([]);
   });

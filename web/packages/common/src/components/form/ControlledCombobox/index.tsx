@@ -76,11 +76,8 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
 
   const handleTempValueChange = (newValue: string) => {
     onInputValueChange?.(newValue);
-    // The caller owns the search text, so don't shadow it with local state.
     if (isInputControlled) return;
-    // In freeForm, we set form value to enable custom values. Multi-select holds a string[],
-    // so writing the raw input there would replace the whole selection with one string —
-    // those callers surface custom entries as items instead.
+    // Multi-select holds a string[], so raw input would clobber the whole selection.
     if (freeForm && kind !== 'multiple') {
       handleSelectedValueChange(newValue);
     } else {
