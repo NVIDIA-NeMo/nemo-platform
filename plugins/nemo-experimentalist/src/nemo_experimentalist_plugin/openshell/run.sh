@@ -29,7 +29,7 @@ if ! command -v openshell >/dev/null 2>&1; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-image="${NEMO_EXPERIMENTALIST_IMAGE:-nmp-experimentalist:local}"
+image="${NEMO_EXPERIMENTALIST_IMAGE:-local/nmp-experimentalist:local}"
 sandbox_name="${NEMO_EXPERIMENTALIST_SANDBOX_NAME:-nemo-exp-$$}"
 platform_url="${NMP_BASE_URL:-http://host.docker.internal:8080}"
 bridge_url="${NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL:-http://host.docker.internal:8765}"

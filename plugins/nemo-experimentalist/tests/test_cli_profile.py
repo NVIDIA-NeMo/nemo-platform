@@ -39,6 +39,7 @@ def _quiet_preflight(monkeypatch):
     """Deterministic probes for every test; tests override with their own
     monkeypatch.setattr when they exercise specific probe behavior."""
     monkeypatch.setattr(cli, "_PREFLIGHT_PROBES", quiet_probes())
+    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", True)
 
 
 @dataclass
@@ -302,6 +303,63 @@ def test_doctor_healthy_exits_zero(app, profile_tree: Path, monkeypatch) -> None
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0, result.output
     assert "✓" in result.output
+
+
+def test_doctor_uses_openshell_by_default(app, profile_tree: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    profile_path = profile_tree / "optimizer.yaml"
+    captured: dict[str, object] = {}
+
+    def launch(
+        command: str,
+        args: list[str],
+        *,
+        workspace_dir: Path,
+        output_dir: Path | None,
+        platform_url: str | None,
+    ) -> int:
+        captured.update(
+            command=command,
+            args=args,
+            workspace_dir=workspace_dir,
+            output_dir=output_dir,
+            platform_url=platform_url,
+        )
+        return 0
+
+    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", False)
+    monkeypatch.setattr(cli, "_OPEN_SHELL_LAUNCHER", launch)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(
+        app,
+        [
+            "doctor",
+            "--profile",
+            str(profile_path),
+            "--insight",
+            "platform-insight-id",
+            "--insight-id",
+            "selected",
+            "--base-url",
+            "https://platform.example",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured == {
+        "command": "doctor",
+        "args": [
+            "--insight",
+            "platform-insight-id",
+            "--insight-id",
+            "selected",
+            "--profile",
+            f"/sandbox/project/{profile_tree.name}/optimizer.yaml",
+        ],
+        "workspace_dir": profile_tree,
+        "output_dir": None,
+        "platform_url": "https://platform.example",
+    }
 
 
 def test_doctor_no_profile_exits_one_with_skeleton(app, tmp_path: Path, monkeypatch) -> None:

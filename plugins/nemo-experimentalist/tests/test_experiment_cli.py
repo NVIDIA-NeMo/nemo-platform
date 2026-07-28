@@ -31,6 +31,7 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
             env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
+    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", True)
 
 
 @pytest.fixture(autouse=True)
@@ -168,6 +169,117 @@ def test_cli_help_exposes_only_run_and_doctor() -> None:
     assert "doctor" in result.output
     assert "analyze" not in result.output
     assert "analysis" not in result.output
+    run_help = CliRunner().invoke(app, ["run", "--help"])
+    assert "--runtime" not in run_help.output
+
+
+def test_experiment_cli_uses_openshell_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    paths = _make_paths(tmp_path)
+    agent_spec = tmp_path / "agent-spec.md"
+    insight = tmp_path / "insight.yaml"
+    config = tmp_path / "config.yaml"
+    skills = _make_dir(tmp_path / "skills")
+    agent_spec.write_text("# Agent\n", encoding="utf-8")
+    insight.write_text("id: insight-1\n", encoding="utf-8")
+    config.write_text("max_rounds: 1\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def launch(
+        command: Literal["run", "doctor"],
+        args: list[str],
+        *,
+        workspace_dir: Path,
+        output_dir: Path | None,
+        platform_url: str | None,
+    ) -> int:
+        captured.update(
+            command=command,
+            args=args,
+            workspace_dir=workspace_dir,
+            output_dir=output_dir,
+            platform_url=platform_url,
+        )
+        return 0
+
+    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", False)
+    monkeypatch.setattr(cli, "_OPEN_SHELL_LAUNCHER", launch)
+    monkeypatch.setattr(cli, "run_experimentalist", _fail_if_runner_starts)
+
+    result = _run_experiment(
+        [
+            *paths.args(),
+            "--agent-spec",
+            str(agent_spec),
+            "--insight",
+            str(insight),
+            "--config",
+            str(config),
+            "--framework-skills",
+            str(skills),
+            "--workspace",
+            "workspace-a",
+            "--base-url",
+            "http://localhost:8080",
+        ]
+    )
+
+    sandbox_root = Path("/sandbox/project") / tmp_path.name
+    assert result.exit_code == 0, result.output
+    assert captured == {
+        "command": "run",
+        "args": [
+            "--agent",
+            str(sandbox_root / "agent"),
+            "--agent-spec",
+            str(sandbox_root / "agent-spec.md"),
+            "--insight",
+            str(sandbox_root / "insight.yaml"),
+            "--train-dataset",
+            str(sandbox_root / "train"),
+            "--validation-dataset",
+            str(sandbox_root / "validation"),
+            "--task-template",
+            str(sandbox_root / "template"),
+            "--config",
+            str(sandbox_root / "config.yaml"),
+            "--mode",
+            "local",
+            "--workspace",
+            "workspace-a",
+            "--framework-skills",
+            str(sandbox_root / "skills"),
+        ],
+        "workspace_dir": tmp_path,
+        "output_dir": paths.experiment,
+        "platform_url": "http://localhost:8080",
+    }
+
+
+def test_experiment_cli_rejects_local_inputs_outside_openshell_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    outside_agent = tmp_path.parent / f"{tmp_path.name}-outside-agent"
+    outside_agent.mkdir()
+    launched = False
+
+    def launch(*args: object, **kwargs: object) -> int:
+        nonlocal launched
+        launched = True
+        return 0
+
+    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", False)
+    monkeypatch.setattr(cli, "_OPEN_SHELL_LAUNCHER", launch)
+
+    result = _run_experiment(["--agent", str(outside_agent), "--no-insight"])
+
+    assert result.exit_code == 1
+    assert "resolves outside the OpenShell workspace" in result.output
+    assert "Run from a directory that contains every local input" in result.output
+    assert not launched
 
 
 @pytest.mark.parametrize(
