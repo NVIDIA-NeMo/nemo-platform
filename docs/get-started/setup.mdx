@@ -9,11 +9,11 @@ Install NeMo Platform and start working with AI agents.
 <a id="nemo-setup-prerequisites"></a>
 ## Prerequisites
 
-- Python 3.11-3.14
+- Python 3.11-3.13
 - An API key from one of: [NVIDIA Build](https://build.nvidia.com), [OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://console.anthropic.com/settings/keys), [Google Gemini](https://aistudio.google.com/apikey), or a local [Ollama](https://ollama.com) instance (no key needed)
 - 16 GB available disk space and 8 GB RAM
 - For the PyPI install: `pip` in a Python environment
-- For the source checkout install: [Git](https://git-scm.com/), GNU Make, [uv](https://docs.astral.sh/uv/), [Node.js (≥22.18.0, \<23)](https://nodejs.org/en/download) satisfying `web/package.json`, and [pnpm](https://pnpm.io/installation)
+- For the source checkout install: [Git](https://git-scm.com/), GNU Make, [uv](https://docs.astral.sh/uv/) `>=0.9.14,<0.10.0`, [Node.js (≥22.18.0, \<23)](https://nodejs.org/en/download) satisfying `web/package.json`, and [pnpm](https://pnpm.io/installation)
 
 ## Install
 
@@ -27,14 +27,6 @@ Use the [PyPI package](https://pypi.org/project/nemo-platform/) for the quickest
 python -m venv .venv
 source .venv/bin/activate
 pip install "nemo-platform[all]"
-```
-
-On Python 3.14, prefix the install command with
-`PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust
-extension catches up to Python 3.14:
-
-```bash
-PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install "nemo-platform[all]"
 ```
 
 For SDK and CLI usage only, install the base package:

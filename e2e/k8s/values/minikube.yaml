@@ -12,7 +12,7 @@ postgresql:
 core:
   storage:
     storageClass: standard
-  volumePermissionsImage: docker.io/library/busybox
+  volumePermissionsImage: docker.io/library/busybox:stable
 
 ingress:
   enabled: true

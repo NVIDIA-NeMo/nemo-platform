@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from nemo_evaluator.api.schemas import MetricInline
+from nemo_evaluator.api.schemas import MetricInline, TasksetRef
 from nemo_evaluator.jobs.agent_evaluate import (
     AGENT_BUNDLE_DIR,
     DEFAULT_RESULT_NAME,
@@ -377,6 +377,19 @@ def test_input_spec_accepts_stored_metric_reference() -> None:
         target=CodexRunnerTarget(model="gpt-5.5"),
     )
     assert isinstance(spec.tasks[0].metrics[0], MetricRef)
+
+
+def test_input_spec_accepts_a_taskset_reference() -> None:
+    spec = AgentEvalInputSpec(tasks=TasksetRef("default/geo-suite"), target=CodexRunnerTarget(model="gpt-5.5"))
+    assert isinstance(spec.tasks, TasksetRef)
+    assert spec.tasks.root == "default/geo-suite"
+    # A JSON string round-trips back to the TasksetRef arm of the union, not a list.
+    assert isinstance(AgentEvalInputSpec.model_validate_json(spec.model_dump_json()).tasks, TasksetRef)
+
+
+def test_input_spec_rejects_empty_inline_task_list() -> None:
+    with pytest.raises(ValueError, match="at least one task"):
+        AgentEvalInputSpec(tasks=[], target=CodexRunnerTarget(model="gpt-5.5"))
 
 
 async def test_to_spec_resolves_inline_task_metrics_without_a_platform() -> None:

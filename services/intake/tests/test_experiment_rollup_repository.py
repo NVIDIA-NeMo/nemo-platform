@@ -64,6 +64,13 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
                     "latency_p95": 3000.0,
                     "latency_p99": 3000.0,
                     "latency_count": 4,
+                    "tokens_sum": 6000.0,
+                    "tokens_mean": 1500.0,
+                    "tokens_median": 1500.0,
+                    "tokens_p90": 2500.0,
+                    "tokens_p95": 2500.0,
+                    "tokens_p99": 2500.0,
+                    "tokens_count": 4,
                 }
             ],
         ]
@@ -102,6 +109,14 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert rollup.latency_ms.p95 == 3000
     assert rollup.latency_ms.p99 == 3000
     assert rollup.latency_ms.count == 4
+    assert rollup.tokens is not None
+    assert rollup.tokens.sum == 6000
+    assert rollup.tokens.mean == 1500
+    assert rollup.tokens.median == 1500
+    assert rollup.tokens.p90 == 2500
+    assert rollup.tokens.p95 == 2500
+    assert rollup.tokens.p99 == 2500
+    assert rollup.tokens.count == 4
 
     assert [query.name for query in executor.queries] == [
         "evaluation_rollups.run_counts",
@@ -135,9 +150,12 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert "cost_median" in statements[2]
     assert "quantileExactIf(0.99)" in statements[2]
     assert "latency_p99" in statements[2]
+    assert "tokens_p99" in statements[2]
     assert "sessions.trace_id = spans.trace_id" not in statements[2]
     assert executor.queries[0].parameters["evaluation_id_0"] == "exp-a"
     assert executor.queries[2].parameters["model_key"] == "gen_ai.request.model"
+    assert "input_tokens_key" in executor.queries[2].parameters
+    assert "output_tokens_key" in executor.queries[2].parameters
 
 
 def test_score_rollup_cte_builders_compose_the_pipeline():

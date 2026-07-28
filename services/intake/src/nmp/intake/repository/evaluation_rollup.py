@@ -29,6 +29,7 @@ class EvaluationRollup:
     evaluator_scores: dict[str, ScoreRollup] = field(default_factory=dict)
     cost_usd: ScoreRollup | None = None
     latency_ms: ScoreRollup | None = None
+    tokens: ScoreRollup | None = None
 
     @property
     def evaluator_names(self) -> list[str]:
