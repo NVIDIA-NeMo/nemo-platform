@@ -72,11 +72,11 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
     onChangeControl(newValue);
   };
 
-  const isInputControlled = inputValue !== undefined;
+  const hasCallerInputValue = inputValue !== undefined;
 
   const handleTempValueChange = (newValue: string) => {
     onInputValueChange?.(newValue);
-    if (isInputControlled) return;
+    if (hasCallerInputValue) return;
     // Multi-select holds a string[], so raw input would clobber the whole selection.
     if (freeForm && kind !== 'multiple') {
       handleSelectedValueChange(newValue);
@@ -99,7 +99,7 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
           id: useControllerProps.name,
           name: useControllerProps.name,
           items,
-          inputValue: isInputControlled ? inputValue : kind === 'multiple' ? '' : dispValue || '',
+          inputValue: hasCallerInputValue ? inputValue : kind === 'multiple' ? '' : dispValue || '',
           onInputValueChange: handleTempValueChange,
           onBlur,
           slotEnd: loading && <TextInputSpinner />,
