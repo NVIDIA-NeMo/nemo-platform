@@ -19,19 +19,33 @@ export class WorkspacesAPI {
     await this.request.delete(`${NMP_BASE_URL}/apis/entities/v2/workspaces/${name}`);
   }
 
-  async listWorkspaces() {
+  async listWorkspaces(page = 1) {
     const response = await this.request.get(
-      `${NMP_BASE_URL}/apis/entities/v2/workspaces?page_size=100`
+      `${NMP_BASE_URL}/apis/entities/v2/workspaces?page=${page}&page_size=100`
     );
     return (await response.json()) as WorkspacesPage;
   }
 
   async deleteAllWorkspacesByPrefix(prefix: string) {
-    const list = await this.listWorkspaces();
-    for (const workspace of list.data) {
-      if (workspace.name.startsWith(prefix)) {
-        await this.deleteWorkspace(workspace.name);
+    // Collect matches across every page before deleting. Deleting mutates the collection,
+    // which would shift later pages and skip entries if we deleted mid-pagination, so we
+    // page through the full list first (following pagination.total_pages) and delete after.
+    const namesToDelete: string[] = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const list = await this.listWorkspaces(page);
+      for (const workspace of list.data) {
+        if (workspace.name.startsWith(prefix)) {
+          namesToDelete.push(workspace.name);
+        }
       }
+      totalPages = list.pagination?.total_pages ?? 1;
+      page += 1;
+    } while (page <= totalPages);
+
+    for (const name of namesToDelete) {
+      await this.deleteWorkspace(name);
     }
   }
 }
