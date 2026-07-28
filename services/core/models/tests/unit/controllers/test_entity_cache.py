@@ -47,8 +47,14 @@ def mock_models_sdk():
 
 
 @pytest.fixture
-def cache(mock_models_sdk):
-    return ModelEntityCache(models_sdk=mock_models_sdk)
+def heartbeat_calls():
+    """Collects heartbeat emissions so tests can assert progress was reported."""
+    return []
+
+
+@pytest.fixture
+def cache(mock_models_sdk, heartbeat_calls):
+    return ModelEntityCache(models_sdk=mock_models_sdk, emit_heartbeat=lambda: heartbeat_calls.append(1))
 
 
 async def _load(mock_models_sdk, cache, entities=()):
@@ -265,3 +271,43 @@ async def test_refresh_after_flush_does_not_reapply_earlier_state(mock_models_sd
     # Phase two re-reads, so it sees the removal instead of the stale link.
     await cache.refresh()
     assert cache.get("ws", "model").model_providers == []
+
+
+@pytest.mark.asyncio
+async def test_refresh_reports_progress_per_entity_read(mock_models_sdk, cache, heartbeat_calls):
+    """Reading a large batch has to report progress as it goes."""
+    await _load(mock_models_sdk, cache, [_entity("ws", f"m{i}") for i in range(25)])
+
+    assert len(heartbeat_calls) == 25
+
+
+@pytest.mark.asyncio
+async def test_flush_reports_progress_per_entity_written(mock_models_sdk, cache, heartbeat_calls):
+    """Writing a large batch has to report progress as it goes.
+
+    Writes are the slowest part of a pass, so a flush that reported nothing would
+    make a long but advancing pass indistinguishable from a stalled one.
+    """
+    await _load(mock_models_sdk, cache, [_entity("ws", f"m{i}", []) for i in range(25)])
+    heartbeat_calls.clear()
+
+    for i in range(25):
+        cache.stage_provider_link("ws", f"m{i}", "ws/p1")
+    await cache.flush()
+
+    assert mock_models_sdk.models.update.await_count == 25
+    assert len(heartbeat_calls) == 25
+
+
+@pytest.mark.asyncio
+async def test_flush_reports_progress_even_when_an_entity_write_fails(mock_models_sdk, cache, heartbeat_calls):
+    """Moving past a failed entity is still progress."""
+    await _load(mock_models_sdk, cache, [_entity("ws", "m1", []), _entity("ws", "m2", [])])
+    mock_models_sdk.models.update = AsyncMock(side_effect=[Exception("boom"), None])
+    heartbeat_calls.clear()
+
+    cache.stage_provider_link("ws", "m1", "ws/p1")
+    cache.stage_provider_link("ws", "m2", "ws/p1")
+    await cache.flush()
+
+    assert len(heartbeat_calls) == 2

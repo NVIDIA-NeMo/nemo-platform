@@ -372,6 +372,7 @@ class ModelProviderReconciler:
             workspace="-", page_size=_VIRTUAL_MODEL_PAGE_SIZE
         ):
             vm_snapshot.append(virtual_model)
+            self._emit_heartbeat()
         existing_vm_names = {(vm.workspace, vm.name) for vm in vm_snapshot}
         logger.debug("Loaded %d VirtualModel(s) for provider reconciliation", len(vm_snapshot))
         return vm_snapshot, existing_vm_names

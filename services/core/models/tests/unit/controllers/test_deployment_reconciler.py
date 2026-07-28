@@ -72,7 +72,7 @@ def controller_config():
 @pytest.fixture
 def entity_cache(mock_models_sdk):
     """Model Entity cache backed by the mock SDK."""
-    return ModelEntityCache(models_sdk=mock_models_sdk)
+    return ModelEntityCache(models_sdk=mock_models_sdk, emit_heartbeat=lambda: None)
 
 
 @pytest.fixture
@@ -1751,7 +1751,7 @@ def gc_reconciler(mock_models_sdk, mock_backend_registry):
         models_sdk=mock_models_sdk,
         backend_registry=mock_backend_registry,
         controller_config=config,
-        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk),
+        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk, emit_heartbeat=lambda: None),
         emit_heartbeat=lambda: None,
     )
     mock_backend = MagicMock()
@@ -1930,7 +1930,7 @@ async def test_gc_custom_ttl_respected(mock_models_sdk, mock_backend_registry):
         models_sdk=mock_models_sdk,
         backend_registry=mock_backend_registry,
         controller_config=config,
-        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk),
+        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk, emit_heartbeat=lambda: None),
         emit_heartbeat=lambda: None,
     )
 
@@ -2019,7 +2019,7 @@ async def test_gc_ttl_boundary_parametrized(mock_models_sdk, mock_backend_regist
         models_sdk=mock_models_sdk,
         backend_registry=mock_backend_registry,
         controller_config=config,
-        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk),
+        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk, emit_heartbeat=lambda: None),
         emit_heartbeat=lambda: None,
     )
 

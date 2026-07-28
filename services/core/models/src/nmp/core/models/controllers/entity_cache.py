@@ -17,6 +17,7 @@ overwrite one another.
 
 from dataclasses import dataclass, field
 from logging import getLogger
+from typing import Callable
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import ConflictError, NotFoundError
@@ -56,8 +57,17 @@ class ModelEntityCache:
     reads the same entity within a phase observes its own write.
     """
 
-    def __init__(self, models_sdk: AsyncNeMoPlatform) -> None:
+    def __init__(self, models_sdk: AsyncNeMoPlatform, emit_heartbeat: Callable[[], None]) -> None:
+        """Initialize the cache.
+
+        Args:
+            models_sdk: SDK client for Models API interactions
+            emit_heartbeat: Called as each entity is read or written. Reading and
+                writing are both proportional to the number of entities, so they
+                have to report progress or a large batch looks like a stall.
+        """
         self._models_sdk = models_sdk
+        self._emit_heartbeat = emit_heartbeat
         self._entities: dict[tuple[str, str], ModelEntity] = {}
         self._pending: dict[tuple[str, str], _PendingEntity] = {}
         self._loaded = False
@@ -76,6 +86,7 @@ class ModelEntityCache:
         entities: dict[tuple[str, str], ModelEntity] = {}
         async for entity in self._models_sdk.models.list(workspace="-", page_size=_PAGE_SIZE):
             entities[(entity.workspace, entity.name)] = entity
+            self._emit_heartbeat()
 
         self._entities = entities
         self._loaded = True
@@ -175,6 +186,8 @@ class ModelEntityCache:
                     name,
                     exc_info=True,
                 )
+            finally:
+                self._emit_heartbeat()
 
     async def _create(self, workspace: str, name: str, staged: _PendingEntity) -> None:
         if staged.create_kwargs is None:

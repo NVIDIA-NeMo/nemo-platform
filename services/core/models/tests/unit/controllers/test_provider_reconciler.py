@@ -122,7 +122,7 @@ def mock_models_sdk():
 @pytest.fixture
 def entity_cache(mock_models_sdk):
     """Model Entity cache backed by the mock SDK, pre-loaded and empty."""
-    return ModelEntityCache(models_sdk=mock_models_sdk)
+    return ModelEntityCache(models_sdk=mock_models_sdk, emit_heartbeat=lambda: None)
 
 
 @pytest.fixture
@@ -199,7 +199,7 @@ async def test_discover_models_passes_configured_timeout(mock_models_sdk):
     reconciler = ModelProviderReconciler(
         models_sdk=mock_models_sdk,
         controller_config=config,
-        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk),
+        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk, emit_heartbeat=lambda: None),
         emit_heartbeat=lambda: None,
     )
 
@@ -237,7 +237,7 @@ async def test_discover_models_uses_discovery_sdk_with_configured_retries(
     reconciler = ModelProviderReconciler(
         models_sdk=mock_models_sdk,
         controller_config=config,
-        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk),
+        entity_cache=ModelEntityCache(models_sdk=mock_models_sdk, emit_heartbeat=lambda: None),
         emit_heartbeat=lambda: None,
     )
 

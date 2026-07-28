@@ -68,7 +68,7 @@ class ModelsController(HeartbeatMixin, Controller):
 
         # Shared by both reconcilers; re-read at the start of each phase that
         # writes entities so neither phase works from state the other has changed.
-        self._entity_cache = ModelEntityCache(models_sdk=self._models_sdk)
+        self._entity_cache = ModelEntityCache(models_sdk=self._models_sdk, emit_heartbeat=self.emit_heartbeat)
 
         # Initialize reconcilers
         self._deployment_reconciler = ModelDeploymentReconciler(
