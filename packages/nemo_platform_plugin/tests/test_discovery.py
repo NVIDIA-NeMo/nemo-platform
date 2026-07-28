@@ -12,8 +12,8 @@ import typer
 from fastapi import APIRouter
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.discovery import (
-    AGENT_CLI_GROUP,
     _ALL_SURFACE_GROUPS,
+    AGENT_CLI_GROUP,
     CUSTOMIZATION_CONTRIBUTORS_GROUP,
     discover,
     discover_agent_cli,
