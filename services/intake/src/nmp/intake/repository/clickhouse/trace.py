@@ -9,9 +9,10 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from clickhouse_connect.driver.external import ExternalData
 from nmp.common.api.common import PaginatedResult
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseExternalData, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
+from nmp.intake.repository.trace import TraceRepository
 from nmp.intake.spans.domain import IntakeTrace, TraceListFilter, TraceMode
 from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, spec_for_field
 from nmp.intake.spans.span_rollups import METRIC_ATTRIBUTE_FIELDS, metric_aggregate_columns
@@ -20,7 +21,6 @@ from nmp.intake.spans.storage import (
     int_or_none,
     make_pagination,
     normalize_span_status,
-    result_rows,
     text_query_parameters,
     text_select_for_mode,
 )
@@ -77,9 +77,9 @@ _CURRENT_SPAN_VALUE_COLUMNS = (
 _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
 
 
-class TraceRepository:
-    def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+class ClickHouseTraceRepository(TraceRepository):
+    def __init__(self, executor: ClickHouseExecutor) -> None:
+        self._executor = executor
 
     async def list_traces(
         self,
@@ -90,22 +90,27 @@ class TraceRepository:
         sort: str,
         mode: TraceMode,
     ) -> PaginatedResult[IntakeTrace]:
-        trace_index_table = self._client.table("trace_index")
-        spans_table = self._client.table("spans")
+        trace_index_table = self._executor.table(ClickHouseTable.TRACE_INDEX)
+        spans_table = self._executor.table(ClickHouseTable.SPANS)
         count_trace_index_sql, parameters = _trace_index_sql(
             trace_index_table,
             filters,
             mode="summary",
         )
 
-        total_result = await self._client.query(
-            f"""
-            SELECT count()
-            FROM ({count_trace_index_sql}) AS traces
-            """,
-            parameters=parameters,
+        total_results = int(
+            await self._executor.fetch_scalar(
+                ClickHouseQuery(
+                    name="traces.list.count",
+                    statement=f"""
+                    SELECT count()
+                    FROM ({count_trace_index_sql}) AS traces
+                    """,
+                    parameters=parameters,
+                )
+            )
+            or 0
         )
-        total_results = int(total_result.result_rows[0][0])
 
         offset = (page - 1) * page_size
         trace_index_sql, row_parameters = _trace_index_sql(
@@ -119,16 +124,18 @@ class TraceRepository:
             mode=mode,
             sort=sort,
         )
-        rows_result = await self._client.query(
-            rows_sql,
-            parameters={
-                **row_parameters,
-                **rows_parameters,
-                "limit": page_size,
-                "offset": offset,
-            },
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="traces.list.rows",
+                statement=rows_sql,
+                parameters={
+                    **row_parameters,
+                    **rows_parameters,
+                    "limit": page_size,
+                    "offset": offset,
+                },
+            )
         )
-        rows = result_rows(rows_result)
         traces = [_row_to_trace(row) for row in rows]
         return PaginatedResult(
             data=traces,
@@ -164,41 +171,45 @@ class TraceRepository:
         if not pairs:
             return {}
 
-        trace_index_table = self._client.table("trace_index")
-        result = await self._client.query(
-            f"""
-            WITH
-            refs AS (
-                SELECT group_id, trace_id
-                FROM trace_refs
-            ),
-            traces AS (
-                SELECT
-                    trace_roots.trace_id AS id,
-                    trace_roots.root_started_at AS started_at
-                FROM {trace_index_table} AS trace_roots FINAL
-                WHERE trace_roots.workspace = %(workspace)s
-                    AND trace_roots.is_deleted = 0
-                    AND trace_roots.trace_id IN (SELECT trace_id FROM refs)
-                ORDER BY trace_roots.root_started_at ASC, trace_roots.root_span_id ASC
-                LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id
-            )
-            SELECT refs.group_id, max(traces.started_at) AS started_at
-            FROM refs
-            INNER JOIN traces ON traces.id = refs.trace_id
-            GROUP BY refs.group_id
-            """,
-            parameters={"workspace": workspace},
-            external_data=ExternalData(
-                file_name="trace_refs.jsonl",
-                data=b"\n".join(
-                    json.dumps({"group_id": group_id, "trace_id": trace_id}).encode() for group_id, trace_id in pairs
+        trace_index_table = self._executor.table(ClickHouseTable.TRACE_INDEX)
+        rows = await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="traces.latest_started_at_by_group",
+                statement=f"""
+                WITH
+                refs AS (
+                    SELECT group_id, trace_id
+                    FROM trace_refs
                 ),
-                fmt="JSONEachRow",
-                structure="group_id String, trace_id String",
-            ),
+                traces AS (
+                    SELECT
+                        trace_roots.trace_id AS id,
+                        trace_roots.root_started_at AS started_at
+                    FROM {trace_index_table} AS trace_roots FINAL
+                    WHERE trace_roots.workspace = %(workspace)s
+                        AND trace_roots.is_deleted = 0
+                        AND trace_roots.trace_id IN (SELECT trace_id FROM refs)
+                    ORDER BY trace_roots.root_started_at ASC, trace_roots.root_span_id ASC
+                    LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id
+                )
+                SELECT refs.group_id, max(traces.started_at) AS started_at
+                FROM refs
+                INNER JOIN traces ON traces.id = refs.trace_id
+                GROUP BY refs.group_id
+                """,
+                parameters={"workspace": workspace},
+                external_data=ClickHouseExternalData(
+                    file_name="trace_refs.jsonl",
+                    data=b"\n".join(
+                        json.dumps({"group_id": group_id, "trace_id": trace_id}).encode()
+                        for group_id, trace_id in pairs
+                    ),
+                    fmt="JSONEachRow",
+                    structure="group_id String, trace_id String",
+                ),
+            )
         )
-        return {str(group_id): started_at for group_id, started_at in result.result_rows}
+        return {str(row["group_id"]): row["started_at"] for row in rows}
 
 
 def _trace_rows_sql(
