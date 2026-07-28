@@ -111,16 +111,14 @@ export const useJobBuilder = (
     if (pending.length === 0) return;
     autoFilled.current = true;
 
-    let cancelled = false;
     void (async () => {
       const resolutions = await Promise.all(
         pending.map(async (model) => {
           const preferred = model.model || undefined;
-          const candidates = await fetchAutoFillCandidates(workspace, preferred);
+          const candidates = await fetchAutoFillCandidates(workspace, preferred).catch(() => []);
           return [model.id, resolveTemplateModel(candidates, preferred)] as const;
         })
       );
-      if (cancelled) return;
       const byId = new Map(resolutions);
       setValue(
         'models',
@@ -131,10 +129,6 @@ export const useJobBuilder = (
         })
       );
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [getValues, setValue, workspace]);
 
   const selectColumn = useCallback((id: string | null) => {

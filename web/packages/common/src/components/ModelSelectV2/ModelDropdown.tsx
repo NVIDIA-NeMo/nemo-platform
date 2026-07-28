@@ -22,7 +22,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { ChevronDown, LoaderCircle } from 'lucide-react';
-import { useEffect, useMemo, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
 import { useDebounce } from 'use-debounce';
 
 const MODEL_TYPE_ITEMS = [
@@ -85,7 +85,7 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
 
   const filteredGroups = useMemo(() => {
     const filterType = showModelTypeToggle && !onModelTypeChange;
-    const filterSearch = !onSearchChange && search.length > 0;
+    const filterSearch = !onSearchChange && debouncedSearch.length > 0;
     if (!filterType && !filterSearch) return localGroups;
 
     return localGroups
@@ -95,17 +95,27 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
           models = modelType === 'base' ? models.filter(isBaseModel) : models.filter(isCustomModel);
         }
         if (filterSearch) {
-          models = models.filter((m) => filterModel(m, search));
+          models = models.filter((m) => filterModel(m, debouncedSearch));
         }
         return { ...group, models };
       })
       .filter((group) => group.models.length > 0);
-  }, [localGroups, modelType, onModelTypeChange, onSearchChange, search, showModelTypeToggle]);
+  }, [
+    debouncedSearch,
+    localGroups,
+    modelType,
+    onModelTypeChange,
+    onSearchChange,
+    showModelTypeToggle,
+  ]);
 
-  const handleSelect = (selection: ModelSelection) => {
-    onValueChange(selection);
-    onOpenChange(false);
-  };
+  const handleSelect = useCallback(
+    (selection: ModelSelection) => {
+      onValueChange(selection);
+      onOpenChange(false);
+    },
+    [onOpenChange, onValueChange]
+  );
 
   const handleModelTypeChange = (val: string) => {
     setModelType(val as ModelType);
@@ -120,8 +130,9 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
   };
 
   const selectedParts = value?.model ? getPartsFromReference(value.model) : undefined;
-  const selectedName = selectedModel?.name ?? selectedParts?.name;
-  const selectedWorkspace = selectedModel?.workspace ?? selectedParts?.workspace;
+  const selectedName = selectedModel?.name ?? (selectedParts?.name || value?.model);
+  const selectedWorkspace =
+    selectedModel?.workspace ?? (selectedParts?.name ? selectedParts.workspace : undefined);
   const triggerLabel = selectedName ? (selectedName.split('@')[0] ?? selectedName) : placeholder;
 
   return (
@@ -166,29 +177,33 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
         className="min-w-[360px]"
         style={{ width: 360 }} // eslint-disable-line no-restricted-syntax -- KUI DropdownContent needs explicit width
       >
-        <ModelDropdownSearch value={search} onChange={setSearch} />
-        {showModelTypeToggle && (
-          <Flex className="px-2 pb-2 w-full">
-            <SegmentedControl
-              className="w-full"
-              value={modelType}
-              items={MODEL_TYPE_ITEMS}
-              onValueChange={handleModelTypeChange}
+        {open && (
+          <>
+            <ModelDropdownSearch value={search} onChange={setSearch} />
+            {showModelTypeToggle && (
+              <Flex className="px-2 pb-2 w-full">
+                <SegmentedControl
+                  className="w-full"
+                  value={modelType}
+                  items={MODEL_TYPE_ITEMS}
+                  onValueChange={handleModelTypeChange}
+                />
+              </Flex>
+            )}
+            <ModelDropdownList
+              groups={filteredGroups}
+              value={value}
+              onSelect={handleSelect}
+              hideAdapters={hideAdapters}
+              loading={loading}
+              onLoadMore={onLoadMore}
+              hasMore={hasMore}
+              isLoadingMore={isLoadingMore}
+              doneLoadingMessage={doneLoadingMessage}
+              emptyMessage={emptyMessage}
             />
-          </Flex>
+          </>
         )}
-        <ModelDropdownList
-          groups={filteredGroups}
-          value={value}
-          onSelect={handleSelect}
-          hideAdapters={hideAdapters}
-          loading={loading}
-          onLoadMore={onLoadMore}
-          hasMore={hasMore}
-          isLoadingMore={isLoadingMore}
-          doneLoadingMessage={doneLoadingMessage}
-          emptyMessage={emptyMessage}
-        />
       </DropdownContent>
     </DropdownRoot>
   );

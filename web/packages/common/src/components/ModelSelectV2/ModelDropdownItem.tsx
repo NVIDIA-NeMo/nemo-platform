@@ -3,7 +3,6 @@
 
 import { ModelDetailsPanel } from '@nemo/common/src/components/ModelSelectV2/ModelDetailsPanel';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
-import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import type { Adapter, ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import {
   Divider,
@@ -16,11 +15,16 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { Check } from 'lucide-react';
-import type { FC } from 'react';
+import { memo, useState, type FC } from 'react';
 
 interface ModelDropdownItemProps {
   model: ModelEntity;
-  value: ModelSelection | null;
+  /** Precomputed by the list, so the URN is parsed once per model rather than once per render. */
+  modelUrn: string;
+  /** Whether this model is the current selection. Primitive so the row can memoize. */
+  isSelected: boolean;
+  /** The selected adapter, when it belongs to this model. */
+  selectedAdapter?: string;
   onSelect: (selection: ModelSelection) => void;
   hideAdapters?: boolean;
 }
@@ -50,6 +54,23 @@ const ModelName: FC<{ name: string | undefined }> = ({ name }) => {
   );
 };
 
+/**
+ * Tracks whether a submenu has ever been opened.
+ *
+ * KUI's `DropdownSubContent` is a native `popover="auto"` surface with no presence gating — it
+ * sits in the DOM whether or not the submenu is open. Rendering its body unconditionally means
+ * every row in view mounts a whole details panel (two live relative-time tickers each), and every
+ * adapter mounts another one below that. Deferring the body until first hover keeps the cost
+ * proportional to what the user actually looks at; latching keeps repeat hovers instant.
+ */
+const useOpenedOnce = () => {
+  const [hasOpened, setHasOpened] = useState(false);
+  const handleOpenChange = (open: boolean) => {
+    if (open) setHasOpened(true);
+  };
+  return [hasOpened, handleOpenChange] as const;
+};
+
 const AdapterItem: FC<{
   adapter: Adapter;
   model: ModelEntity;
@@ -57,8 +78,10 @@ const AdapterItem: FC<{
   isSelected: boolean;
   onSelect: (selection: ModelSelection) => void;
 }> = ({ adapter, model, modelUrn, isSelected, onSelect }) => {
+  const [hasOpened, handleOpenChange] = useOpenedOnce();
+
   return (
-    <DropdownSub>
+    <DropdownSub onOpenChange={handleOpenChange}>
       <DropdownSubTrigger
         slotEnd={false}
         data-testid="model-dropdown-adapter-option"
@@ -78,24 +101,32 @@ const AdapterItem: FC<{
       </DropdownSubTrigger>
       {/* eslint-disable-next-line no-restricted-syntax -- KUI ignores Tailwind width classes */}
       <DropdownSubContent style={{ width: 360 }}>
-        <ModelDetailsPanel model={model} adapter={adapter} />
+        {hasOpened && <ModelDetailsPanel model={model} adapter={adapter} />}
       </DropdownSubContent>
     </DropdownSub>
   );
 };
 
-export const ModelDropdownItem: FC<ModelDropdownItemProps> = ({
+const sortAdaptersByNewest = (adapters: Adapter[]): Adapter[] =>
+  [...adapters].sort((a, b) => {
+    if (!a.created_at || !b.created_at) return 0;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+const ModelDropdownItemImpl: FC<ModelDropdownItemProps> = ({
   model,
-  value,
+  modelUrn,
+  isSelected,
+  selectedAdapter,
   onSelect,
   hideAdapters = false,
 }) => {
-  const modelUrn = getURNFromNamedEntityRef(model)!;
+  const [hasOpened, handleOpenChange] = useOpenedOnce();
   const hasAdapters = !hideAdapters && model.adapters && model.adapters.length > 0;
 
   if (!hasAdapters) {
     return (
-      <DropdownSub>
+      <DropdownSub onOpenChange={handleOpenChange}>
         <DropdownSubTrigger
           slotEnd={false}
           data-testid="model-dropdown-item"
@@ -105,49 +136,55 @@ export const ModelDropdownItem: FC<ModelDropdownItemProps> = ({
         </DropdownSubTrigger>
         {/* eslint-disable-next-line no-restricted-syntax -- KUI ignores Tailwind width classes */}
         <DropdownSubContent style={{ width: 360 }}>
-          <ModelDetailsPanel model={model} />
+          {hasOpened && <ModelDetailsPanel model={model} />}
         </DropdownSubContent>
       </DropdownSub>
     );
   }
 
-  const sortedAdapters = [...model.adapters!].sort((a, b) => {
-    if (!a.created_at || !b.created_at) return 0;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
-
-  const isBaseSelected = value?.model === modelUrn && !value?.adapter;
+  const isBaseSelected = isSelected && !selectedAdapter;
 
   return (
-    <DropdownSub>
+    <DropdownSub onOpenChange={handleOpenChange}>
       <DropdownSubTrigger data-testid="model-dropdown-item-with-adapters">
         <ModelName name={model.name} />
       </DropdownSubTrigger>
       {/* eslint-disable-next-line no-restricted-syntax -- KUI ignores Tailwind width classes */}
       <DropdownSubContent style={{ width: 360 }}>
-        <DropdownHeading>Base Model</DropdownHeading>
-        <DropdownItem
-          data-testid="model-dropdown-base-option"
-          onSelect={() => onSelect({ model: modelUrn, entity: model })}
-        >
-          <Flex align="center" gap="density-sm">
-            {isBaseSelected && <Check size={14} className="shrink-0" />}
-            <Text>{modelUrn}</Text>
-          </Flex>
-        </DropdownItem>
-        <Divider />
-        <DropdownHeading>Adapters</DropdownHeading>
-        {sortedAdapters.map((adapter) => (
-          <AdapterItem
-            key={adapter.name}
-            adapter={adapter}
-            model={model}
-            modelUrn={modelUrn}
-            isSelected={value?.model === modelUrn && value?.adapter === adapter.name}
-            onSelect={onSelect}
-          />
-        ))}
+        {hasOpened && (
+          <>
+            <DropdownHeading>Base Model</DropdownHeading>
+            <DropdownItem
+              data-testid="model-dropdown-base-option"
+              onSelect={() => onSelect({ model: modelUrn, entity: model })}
+            >
+              <Flex align="center" gap="density-sm">
+                {isBaseSelected && <Check size={14} className="shrink-0" />}
+                <Text>{modelUrn}</Text>
+              </Flex>
+            </DropdownItem>
+            <Divider />
+            <DropdownHeading>Adapters</DropdownHeading>
+            {sortAdaptersByNewest(model.adapters!).map((adapter) => (
+              <AdapterItem
+                key={adapter.name}
+                adapter={adapter}
+                model={model}
+                modelUrn={modelUrn}
+                isSelected={selectedAdapter === adapter.name}
+                onSelect={onSelect}
+              />
+            ))}
+          </>
+        )}
       </DropdownSubContent>
     </DropdownSub>
   );
 };
+
+/**
+ * Memoized because the filter box's state lives above the list: without this, every keystroke
+ * re-renders every row in view. All props are primitives or stable references, so the shallow
+ * compare actually holds.
+ */
+export const ModelDropdownItem = memo(ModelDropdownItemImpl);

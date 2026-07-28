@@ -4,14 +4,81 @@
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { ModelDropdown } from '@nemo/common/src/components/ModelSelectV2/ModelDropdown';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-const makeModel = (name: string, workspace = 'nvidia'): ModelEntity =>
-  ({ id: name, name, workspace }) as unknown as ModelEntity;
+const makeModel = (name: string, overrides: Partial<ModelEntity> = {}): ModelEntity =>
+  ({ id: name, name, workspace: 'nvidia', ...overrides }) as unknown as ModelEntity;
 
 const groups: ModelWorkspaceGroup[] = [
   { workspace: 'nvidia', models: [makeModel('nemotron-8b'), makeModel('llama-3.1-8b')] },
 ];
+
+const withAdapters: ModelWorkspaceGroup[] = [
+  {
+    workspace: 'nvidia',
+    models: [
+      makeModel('nemotron-8b', {
+        adapters: [
+          {
+            name: 'support-v1',
+            created_at: '2026-01-10T00:00:00Z',
+            workspace: 'nvidia',
+            fileset: 'nvidia/support-v1',
+            finetuning_type: 'lora',
+          },
+        ],
+      }),
+    ],
+  },
+];
+
+const MANY_MODELS = 200;
+
+const manyGroups: ModelWorkspaceGroup[] = [
+  {
+    workspace: 'nvidia',
+    models: Array.from({ length: MANY_MODELS }, (_, i) => makeModel(`model-${i}`)),
+  },
+];
+
+/**
+ * jsdom has no layout, so the viewport is stubbed to make the virtualizer engage. Returns a
+ * handle for driving the resize callback the list subscribes to.
+ */
+const stubViewport = () => {
+  type ResizeCallback = (entries: ResizeObserverEntry[]) => void;
+  const callbacks: ResizeCallback[] = [];
+  let height = 0;
+
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(() => height);
+  // Rows measure themselves; jsdom would report every one as zero-height, collapsing the window.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    width: 360,
+    height: 36,
+  } as DOMRect);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: ResizeCallback) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
+
+  return {
+    resizeTo: (next: number) => {
+      height = next;
+      // The virtualizer reads `borderBoxSize` off the entry; the list ignores the argument.
+      const entries = [
+        { borderBoxSize: [{ inlineSize: 360, blockSize: next }] },
+      ] as unknown as ResizeObserverEntry[];
+      callbacks.forEach((callback) => callback(entries));
+    },
+  };
+};
 
 type Props = React.ComponentProps<typeof ModelDropdown>;
 
@@ -99,11 +166,92 @@ describe('ModelDropdown', () => {
     });
   });
 
+  describe('virtualization', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    });
+
+    it('renders nothing at all while the menu is closed', () => {
+      renderOpen({ open: false, groups: manyGroups });
+
+      // DropdownContent is a native popover and stays mounted, so a closed menu would otherwise
+      // keep a row (and its submenu popover) in the DOM for every model in the catalogue.
+      expect(listedModels()).toHaveLength(0);
+      expect(screen.queryByTestId('model-select-v2-filter')).not.toBeInTheDocument();
+    });
+
+    // Regression: the viewport used to be measured once on mount. The menu is a popover, so that
+    // measurement read zero height and disabled windowing for good — every model in the workspace
+    // rendered at once, which is what ground the page to a halt on large catalogues.
+    it('windows the list once the popover gains height after mount', async () => {
+      const viewport = stubViewport();
+      renderOpen({ groups: manyGroups });
+
+      await act(async () => viewport.resizeTo(300));
+
+      // A 300px viewport over 36px rows is ~9 visible, plus overscan either side — nowhere near
+      // the 200 in the catalogue.
+      const rendered = listedModels().length;
+      expect(rendered).toBeGreaterThan(0);
+      expect(rendered).toBeLessThan(40);
+    });
+
+    it('falls back to rendering every row when there is no viewport to window into', async () => {
+      renderOpen({ groups: manyGroups });
+
+      await waitFor(() => expect(listedModels()).toHaveLength(MANY_MODELS));
+    });
+  });
+
+  describe('row details', () => {
+    // KUI's DropdownSubContent is always in the DOM, so rendering its body eagerly would mount a
+    // details panel (and every adapter's) for each row in view — the cost that made typing lag.
+    it('does not mount a row’s details until its submenu is opened', async () => {
+      renderOpen({ groups: withAdapters });
+      await waitFor(() =>
+        expect(screen.getAllByTestId('model-dropdown-item-with-adapters')).toHaveLength(1)
+      );
+
+      expect(screen.queryByTestId('model-dropdown-adapter-option')).not.toBeInTheDocument();
+      expect(screen.queryByText('Fine-tuning Type')).not.toBeInTheDocument();
+    });
+
+    it('mounts the details on hover and keeps them mounted afterwards', async () => {
+      renderOpen({ groups: withAdapters });
+      const sub = (await screen.findAllByTestId('nv-dropdown-sub'))[0];
+
+      fireEvent.pointerEnter(sub);
+
+      expect(await screen.findByTestId('model-dropdown-adapter-option')).toBeInTheDocument();
+
+      fireEvent.pointerLeave(sub, { relatedTarget: document.body });
+
+      // Latched: leaving does not throw the panel away, so a second hover is instant.
+      expect(screen.getByTestId('model-dropdown-adapter-option')).toBeInTheDocument();
+    });
+  });
+
   describe('trigger', () => {
     it('falls back to the name in the URN when the selection is not in the loaded pages', () => {
       renderOpen({ open: false, value: { model: 'nvidia/not-yet-loaded' }, groups: [] });
 
       expect(screen.getByTestId('model-select-v2-trigger')).toHaveTextContent('not-yet-loaded');
+    });
+
+    // Data Designer templates seed a bare model name, which only becomes a URN once auto-fill
+    // resolves it. Showing the placeholder over it reads as "nothing selected".
+    it('shows a reference that has no workspace prefix rather than the placeholder', () => {
+      renderOpen({
+        open: false,
+        value: { model: 'nvidia-llama-3-3-nemotron-super-49b-v1' },
+        groups: [],
+        placeholder: 'Select a model',
+      });
+
+      expect(screen.getByTestId('model-select-v2-trigger')).toHaveTextContent(
+        'nvidia-llama-3-3-nemotron-super-49b-v1'
+      );
     });
 
     it('prefers the entity the selection carries', () => {

@@ -15,7 +15,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 /** Rows the virtualizer measures: group headings and models share one flat index space. */
 type ModelRow =
   | { kind: 'heading'; key: string; workspace: string }
-  | { kind: 'model'; key: string; model: ModelEntity };
+  | { kind: 'model'; key: string; model: ModelEntity; urn: string };
 
 const HEADING_HEIGHT = 32;
 const ITEM_HEIGHT = 36;
@@ -60,22 +60,32 @@ export const ModelDropdownList: FC<ModelDropdownListProps> = ({
   emptyMessage = 'No models found',
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [hasViewport, setHasViewport] = useState(true);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const [isLoadingMoreLocal, setIsLoadingMoreLocal] = useState(false);
 
   useLayoutEffect(() => {
-    setHasViewport((scrollRef.current?.clientHeight ?? 0) > 0);
+    const element = scrollRef.current;
+    if (!element) return;
+
+    const measure = () => setViewportHeight(element.clientHeight);
+    measure();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
+
+  const isVirtualized = viewportHeight > 0;
 
   const rows = useMemo<ModelRow[]>(
     () =>
       groups.flatMap((group) => [
         { kind: 'heading' as const, key: `heading-${group.workspace}`, workspace: group.workspace },
-        ...group.models.map((model) => ({
-          kind: 'model' as const,
-          key: getURNFromNamedEntityRef(model) ?? `${group.workspace}/${model.name}`,
-          model,
-        })),
+        ...group.models.map((model) => {
+          const urn = getURNFromNamedEntityRef(model) ?? `${group.workspace}/${model.name}`;
+          return { kind: 'model' as const, key: urn, model, urn };
+        }),
       ]),
     [groups]
   );
@@ -89,6 +99,8 @@ export const ModelDropdownList: FC<ModelDropdownListProps> = ({
   });
 
   const virtualItems = virtualizer.getVirtualItems();
+  const lastVisibleIndex =
+    virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
 
   const loadMore = useCallback(async () => {
     if (!onLoadMore || !hasMore || isLoadingMore || isLoadingMoreLocal) return;
@@ -101,12 +113,11 @@ export const ModelDropdownList: FC<ModelDropdownListProps> = ({
   }, [hasMore, isLoadingMore, isLoadingMoreLocal, onLoadMore]);
 
   useEffect(() => {
-    if (virtualItems.length === 0) return;
-    const lastRow = virtualItems[virtualItems.length - 1];
-    if (lastRow.index >= rows.length - LOAD_MORE_THRESHOLD) {
+    if (lastVisibleIndex < 0) return;
+    if (lastVisibleIndex >= rows.length - LOAD_MORE_THRESHOLD) {
       void loadMore();
     }
-  }, [loadMore, rows.length, virtualItems]);
+  }, [lastVisibleIndex, loadMore, rows.length]);
 
   const loadingMore = isLoadingMore || isLoadingMoreLocal;
   const showDoneMessage = Boolean(doneLoadingMessage) && !hasMore && !loading && !loadingMore;
@@ -122,7 +133,9 @@ export const ModelDropdownList: FC<ModelDropdownListProps> = ({
     ) : (
       <ModelDropdownItem
         model={row.model}
-        value={value}
+        modelUrn={row.urn}
+        isSelected={value?.model === row.urn}
+        selectedAdapter={value?.model === row.urn ? value.adapter : undefined}
         onSelect={onSelect}
         hideAdapters={hideAdapters}
       />
@@ -138,7 +151,7 @@ export const ModelDropdownList: FC<ModelDropdownListProps> = ({
 
   return (
     <div ref={scrollRef} className="w-full overflow-auto max-h-[300px]">
-      {hasViewport ? (
+      {isVirtualized ? (
         <div
           className="relative w-full"
           // eslint-disable-next-line no-restricted-syntax -- runtime pixel height from the virtualizer
