@@ -15,8 +15,6 @@ _ALLOWED_RAW_CLIENT_IMPORTS = {
     "repository/clickhouse/executor.py",
     "service.py",
     "spans/api/dependencies.py",
-    "spans/span_repository.py",
-    "spans/trace_repository.py",
 }
 
 

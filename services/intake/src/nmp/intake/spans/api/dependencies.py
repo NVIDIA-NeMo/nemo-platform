@@ -13,12 +13,14 @@ from nmp.intake.repository.clickhouse.annotations import ClickHouseAnnotationsRe
 from nmp.intake.repository.clickhouse.evaluator_results import ClickHouseEvaluatorResultsRepository
 from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor
 from nmp.intake.repository.clickhouse.session import ClickHouseSessionRepository
+from nmp.intake.repository.clickhouse.span import ClickHouseSpanRepository
+from nmp.intake.repository.clickhouse.trace import ClickHouseTraceRepository
 from nmp.intake.repository.evaluator_results import EvaluatorResultsRepository
 from nmp.intake.repository.session import SessionRepository
+from nmp.intake.repository.span import SpanRepository
+from nmp.intake.repository.trace import TraceRepository
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient, get_clickhouse_client
 from nmp.intake.spans.service import IntakeSpansService
-from nmp.intake.spans.span_repository import SpanRepository
-from nmp.intake.spans.trace_repository import TraceRepository
 
 
 async def require_workspace_access(
@@ -50,22 +52,22 @@ def validate_list_query_params(request: Request, additional_params: set[str] | N
         )
 
 
-def get_span_repository(
-    client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
-) -> SpanRepository:
-    return SpanRepository(client)
-
-
-def get_trace_repository(
-    client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
-) -> TraceRepository:
-    return TraceRepository(client)
-
-
 def get_clickhouse_executor(
     client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
 ) -> ClickHouseExecutor:
     return ClickHouseExecutor(client)
+
+
+def get_span_repository(
+    executor: Annotated[ClickHouseExecutor, Depends(get_clickhouse_executor)],
+) -> SpanRepository:
+    return ClickHouseSpanRepository(executor)
+
+
+def get_trace_repository(
+    executor: Annotated[ClickHouseExecutor, Depends(get_clickhouse_executor)],
+) -> TraceRepository:
+    return ClickHouseTraceRepository(executor)
 
 
 def get_session_repository(

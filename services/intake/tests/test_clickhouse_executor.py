@@ -8,8 +8,10 @@ from typing import Any, cast
 
 import pytest
 from clickhouse_connect.driver.exceptions import ClickHouseError
+from clickhouse_connect.driver.external import ExternalData
 from nmp.intake.repository.clickhouse.executor import (
     ClickHouseExecutor,
+    ClickHouseExternalData,
     ClickHouseInsert,
     ClickHouseInsertError,
     ClickHouseQuery,
@@ -26,11 +28,19 @@ class _Client:
         self.error = error
         self.statements: list[str] = []
         self.parameters: list[dict[str, Any]] = []
+        self.external_data: list[object | None] = []
         self.inserts: list[tuple[str, list[tuple[object, ...]], list[str]]] = []
 
-    async def query(self, statement: str, *, parameters: dict[str, Any]) -> SimpleNamespace:
+    async def query(
+        self,
+        statement: str,
+        *,
+        parameters: dict[str, Any],
+        external_data: object | None = None,
+    ) -> SimpleNamespace:
         self.statements.append(statement)
         self.parameters.append(parameters)
+        self.external_data.append(external_data)
         if self.error is not None:
             raise self.error
         return SimpleNamespace(
@@ -96,6 +106,29 @@ async def test_executor_returns_first_scalar() -> None:
     )
 
     assert scalar == "session-a"
+
+
+@pytest.mark.asyncio
+async def test_executor_builds_driver_external_data_inside_boundary() -> None:
+    client = _Client()
+    query = ClickHouseQuery(
+        name="traces.latest_started_at_by_group",
+        statement="SELECT * FROM trace_refs",
+        external_data=ClickHouseExternalData(
+            file_name="trace_refs.jsonl",
+            data=b'{"group_id":"group-a","trace_id":"trace-a"}',
+            fmt="JSONEachRow",
+            structure="group_id String, trace_id String",
+        ),
+    )
+
+    await _executor(client).fetch_all(query)
+
+    external_data = cast(ExternalData, client.external_data[0])
+    assert external_data.query_params == {
+        "trace_refs_format": "JSONEachRow",
+        "trace_refs_structure": "group_id String, trace_id String",
+    }
 
 
 @pytest.mark.asyncio

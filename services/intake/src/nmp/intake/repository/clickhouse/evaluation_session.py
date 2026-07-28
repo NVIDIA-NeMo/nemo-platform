@@ -14,6 +14,7 @@ from typing import Any
 
 from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseQuery
 from nmp.intake.repository.clickhouse.tables import ClickHouseTable
+from nmp.intake.repository.clickhouse.trace import current_spans_sql
 from nmp.intake.repository.evaluation_session import (
     EvaluationSessionPage,
     EvaluationSessionRepository,
@@ -30,7 +31,6 @@ from nmp.intake.spans.storage import (
     text_query_parameters,
     text_select_for_mode,
 )
-from nmp.intake.spans.trace_repository import current_spans_sql
 
 # Sort fields that require a pre-pagination spans join to compute. These values live in the
 # `spans` table (not `trace_index`), so they don't exist until after the session_metrics join.
