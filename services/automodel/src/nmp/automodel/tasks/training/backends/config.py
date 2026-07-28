@@ -206,31 +206,15 @@ def compile_automodel_config(
     cfg["step_scheduler"]["ckpt_every_steps"] = val_every_steps
     logger.info(f"Validation interval: {customizer_config.schedule.val_check_interval} -> {val_every_steps} steps")
 
-    # === Validate warmup_steps ===
-    # Automodel requires: lr_warmup_steps < lr_decay_steps (scheduler.py line 96)
-    # lr_decay_steps = total_optimizer_steps (accounting for gradient accumulation)
-    warmup_steps = customizer_config.optimizer.warmup_steps
-    if warmup_steps > 0:
-        micro_batch_size = customizer_config.batch.micro_batch_size
-
-        # Calculate gradient accumulation steps (how StepScheduler computes it)
-        grad_acc_steps = batch_size // (micro_batch_size * dp)
-
-        # Calculate total optimizer steps (accounting for gradient accumulation)
-        total_optimizer_steps = (epochs * prepared.train_samples) // grad_acc_steps
-
-        # lr_decay_steps will be min(max_steps, total_optimizer_steps)
-        lr_decay_steps = min(total_optimizer_steps, max_steps)
-
-        if warmup_steps >= lr_decay_steps:
-            raise ValueError(
-                f"warmup_steps ({warmup_steps}) must be less than lr_decay_steps ({lr_decay_steps}). "
-                f"Calculation: grad_acc_steps={grad_acc_steps} (batch_size={batch_size} / "
-                f"(micro_batch_size={micro_batch_size} * dp_size={dp})), "
-                f"total_optimizer_steps={total_optimizer_steps} (epochs={epochs} * "
-                f"steps_per_epoch={prepared.train_samples} / grad_acc_steps={grad_acc_steps}), "
-                f"lr_decay_steps=min({total_optimizer_steps}, {max_steps})={lr_decay_steps}"
-            )
+    warmup_steps = resolve_warmup_steps(
+        warmup_steps=customizer_config.optimizer.warmup_steps,
+        batch_size=batch_size,
+        micro_batch_size=customizer_config.batch.micro_batch_size,
+        dp=dp,
+        epochs=epochs,
+        train_samples=prepared.train_samples,
+        max_steps=max_steps,
+    )
 
     # === Optimizer ===
     # Map the optimizer choice to its torch class. Reject unknown names instead of
@@ -249,7 +233,7 @@ def compile_automodel_config(
 
     cfg["lr_scheduler"] = {
         "lr_decay_style": customizer_config.optimizer.lr_decay_style,
-        "lr_warmup_steps": customizer_config.optimizer.warmup_steps,
+        "lr_warmup_steps": warmup_steps,
     }
     if customizer_config.optimizer.min_learning_rate:
         cfg["lr_scheduler"]["min_lr"] = customizer_config.optimizer.min_learning_rate
@@ -383,6 +367,46 @@ def compile_automodel_config(
         logger.info(f"MLflow enabled: {mlflow_config.get('tracking_uri')}")
 
     return cfg
+
+
+def resolve_warmup_steps(
+    *,
+    warmup_steps: int,
+    batch_size: int,
+    micro_batch_size: int,
+    dp: int,
+    epochs: int,
+    train_samples: int,
+    max_steps: int,
+) -> int:
+    """Return warmup steps that satisfy Automodel's ``lr_warmup_steps < lr_decay_steps``.
+
+    A large global batch size can leave a run with fewer optimizer steps than the
+    requested warmup. That is a schedule too short to warm up over rather than a
+    misconfiguration, so warm up over the whole run instead of failing.
+    """
+    if warmup_steps <= 0:
+        return warmup_steps
+
+    # Gradient accumulation steps, matching how StepScheduler computes them.
+    grad_acc_steps = batch_size // (micro_batch_size * dp)
+    total_optimizer_steps = (epochs * train_samples) // grad_acc_steps
+    lr_decay_steps = min(total_optimizer_steps, max_steps)
+
+    if warmup_steps < lr_decay_steps:
+        return warmup_steps
+
+    clamped_warmup_steps = max(0, lr_decay_steps - 1)
+    logger.warning(
+        f"warmup_steps ({warmup_steps}) must be less than lr_decay_steps ({lr_decay_steps}); "
+        f"clamping warmup_steps to {clamped_warmup_steps}. "
+        f"Calculation: grad_acc_steps={grad_acc_steps} (batch_size={batch_size} / "
+        f"(micro_batch_size={micro_batch_size} * dp_size={dp})), "
+        f"total_optimizer_steps={total_optimizer_steps} (epochs={epochs} * "
+        f"steps_per_epoch={train_samples} / grad_acc_steps={grad_acc_steps}), "
+        f"lr_decay_steps=min({total_optimizer_steps}, {max_steps})={lr_decay_steps}"
+    )
+    return clamped_warmup_steps
 
 
 def _configure_moe_backend(

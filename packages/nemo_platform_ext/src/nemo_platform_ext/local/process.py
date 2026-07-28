@@ -703,13 +703,24 @@ def stop_instance(
             pid,
         )
     _reap_stopped_pid(pid, timeout=min(_REAP_PID_TIMEOUT, timeout))
-    _wait_until_instance_lock_released(
+    lock_released = _wait_until_instance_lock_released(
         scope,
         base_dir=base_dir,
         timeout=min(_LOCK_RELEASE_WAIT_TIMEOUT, timeout),
     )
+    if not lock_released:
+        # A descendant may still hold the inherited flock, or a replacement
+        # instance may have acquired it. Preserve its descriptor.
+        return StopResult(stopped_pids=[pid], swept_children=swept)
 
-    remove_descriptor(scope, base_dir=base_dir)
+    current_desc = read_descriptor(scope, base_dir=base_dir)
+    if current_desc is not None and (current_desc.pid != desc.pid or current_desc.create_time != desc.create_time):
+        logger.warning(
+            "Instance %r descriptor changed during stop; preserving replacement descriptor",
+            scope,
+        )
+    else:
+        remove_descriptor(scope, base_dir=base_dir)
     return StopResult(stopped_pids=[pid], swept_children=swept)
 
 
@@ -754,19 +765,21 @@ def _wait_until_instance_lock_released(
     *,
     base_dir: Path | None,
     timeout: float,
-) -> None:
+) -> bool:
     """Wait until the scope flock is free (graceful shutdown may lag process exit)."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if not is_instance_alive(scope, base_dir=base_dir):
-            return
+            return True
         _pause(_SIGTERM_POLL_INTERVAL)
-    if is_instance_alive(scope, base_dir=base_dir):
-        logger.warning(
-            "Instance %r lock still held after stop (waited %.1fs)",
-            scope,
-            timeout,
-        )
+    if not is_instance_alive(scope, base_dir=base_dir):
+        return True
+    logger.warning(
+        "Instance %r lock still held after stop (waited %.1fs); preserving descriptor",
+        scope,
+        timeout,
+    )
+    return False
 
 
 def _pid_alive(pid: int) -> bool:

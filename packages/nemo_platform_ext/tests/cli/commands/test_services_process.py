@@ -432,14 +432,15 @@ class TestStopInstance:
         assert result.stopped_pids == []
 
     def test_stops_running_process(self, base_dir: Path) -> None:
+        scope = "stop-test"
+        fd = acquire_lock(scope, base_dir=base_dir)
         proc = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(60)"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            pass_fds=(fd,),
         )
         try:
-            scope = "stop-test"
-            fd = acquire_lock(scope, base_dir=base_dir)
             desc = InstanceDescriptor(
                 pid=proc.pid,
                 config=PlatformAppConfig(scope=scope),
@@ -459,6 +460,41 @@ class TestStopInstance:
         finally:
             if proc.poll() is None:
                 proc.kill()
+                proc.wait(timeout=5)
+
+    def test_preserves_descriptor_while_lock_remains_held(self, base_dir: Path) -> None:
+        scope = "lock-still-held"
+        fd = acquire_lock(scope, base_dir=base_dir)
+        lock_holder = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            pass_fds=(fd,),
+        )
+        target = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        os.close(fd)
+        try:
+            desc = InstanceDescriptor(
+                pid=target.pid,
+                config=PlatformAppConfig(scope=scope),
+                mode="background",
+                create_time=psutil.Process(target.pid).create_time(),
+            )
+            write_descriptor(desc, base_dir=base_dir)
+
+            result = stop_instance(scope, base_dir=base_dir, timeout=0.5)
+
+            assert target.pid in result.stopped_pids
+            assert is_instance_alive(scope, base_dir=base_dir)
+            assert read_descriptor(scope, base_dir=base_dir) == desc
+        finally:
+            for proc in (target, lock_holder):
+                if proc.poll() is None:
+                    proc.kill()
                 proc.wait(timeout=5)
 
     def test_cleans_up_stale_descriptor(self, base_dir: Path) -> None:

@@ -21,6 +21,7 @@ from nmp.automodel.tasks.training.backends.config import (  # noqa: E402
     _configure_chat_dataset,
     _configure_moe_backend,
     _configure_sft_dataset,
+    resolve_warmup_steps,
 )
 
 CONFIG_MODULE = "nmp.automodel.tasks.training.backends.config"
@@ -319,3 +320,42 @@ class TestConfigureMoeBackend:
                 cfg,
                 self._make_config(num_gpus_per_node=8, tensor_parallel_size=4, expert_parallel_size=2),
             )
+
+
+class TestResolveWarmupSteps:
+    """Tests for resolve_warmup_steps function."""
+
+    @staticmethod
+    def _resolve(**overrides: int) -> int:
+        kwargs: dict[str, int] = {
+            "warmup_steps": 50,
+            "batch_size": 1024,
+            "micro_batch_size": 8,
+            "dp": 16,
+            "epochs": 1,
+            "train_samples": 9741,
+            "max_steps": 10,
+        }
+        kwargs.update(overrides)
+        return resolve_warmup_steps(**kwargs)
+
+    def test_warmup_below_decay_steps_is_unchanged(self) -> None:
+        assert self._resolve(warmup_steps=5, batch_size=256, max_steps=39) == 5
+
+    def test_warmup_clamped_to_one_below_decay_steps(self) -> None:
+        # max_steps=10 is the shorter schedule, so warmup must land at 9.
+        assert self._resolve(warmup_steps=50) == 9
+
+    def test_warmup_equal_to_decay_steps_is_clamped(self) -> None:
+        assert self._resolve(warmup_steps=10) == 9
+
+    def test_single_step_schedule_disables_warmup(self) -> None:
+        assert self._resolve(warmup_steps=50, max_steps=1) == 0
+
+    def test_zero_warmup_is_left_alone(self) -> None:
+        assert self._resolve(warmup_steps=0) == 0
+
+    def test_clamping_logs_a_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("WARNING"):
+            self._resolve(warmup_steps=50)
+        assert "clamping warmup_steps to 9" in caplog.text
