@@ -256,6 +256,51 @@ async def test_preflight_exception_cancels_sibling_and_preserves_error_boundary(
     assert provider._session is None
 
 
+async def test_preflight_drain_finishes_sibling_cleanup_before_restoring_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    provider = _provider(tmp_path)
+    ps_started = asyncio.Event()
+    ps_cleanup_started = asyncio.Event()
+    ps_cleanup_finished = asyncio.Event()
+    ps_cancelled_during_cleanup = asyncio.Event()
+    release_ps_cleanup = asyncio.Event()
+
+    async def run_compose(args: Sequence[str], **_kwargs: object) -> None:
+        if tuple(args[:1]) == ("config",):
+            await ps_started.wait()
+            raise OSError("config transport failed")
+        if tuple(args[:1]) == ("ps",):
+            ps_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                ps_cleanup_started.set()
+                try:
+                    await release_ps_cleanup.wait()
+                except asyncio.CancelledError:
+                    ps_cancelled_during_cleanup.set()
+                    raise
+                ps_cleanup_finished.set()
+                raise
+        raise AssertionError(f"unexpected command: {args}")
+
+    monkeypatch.setattr(provider._cli, "run_compose", run_compose)
+
+    create_task = asyncio.create_task(provider.create(SandboxSpec()))
+    await ps_cleanup_started.wait()
+    create_task.cancel()
+    release_ps_cleanup.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await create_task
+
+    assert ps_cleanup_finished.is_set()
+    assert not ps_cancelled_during_cleanup.is_set()
+    assert provider._session is None
+
+
 @pytest.mark.parametrize(
     ("config_stdout", "cause_type"),
     [

@@ -66,7 +66,15 @@ async def _preflight(
     except BaseException:
         config_task.cancel()
         existing_task.cancel()
-        await asyncio.gather(config_task, existing_task, return_exceptions=True)
+        drain_task = asyncio.gather(config_task, existing_task, return_exceptions=True)
+        cancellation: asyncio.CancelledError | None = None
+        while not drain_task.done():
+            try:
+                await asyncio.shield(drain_task)
+            except asyncio.CancelledError as exc:
+                cancellation = cancellation or exc
+        if cancellation is not None:
+            raise cancellation
         raise
     if not config.ok:
         raise SandboxCreateError(cli.failure_message("Invalid Compose configuration", config, environment))
