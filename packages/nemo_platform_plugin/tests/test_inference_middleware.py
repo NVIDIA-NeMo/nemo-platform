@@ -36,7 +36,7 @@ from nemo_platform_plugin.inference_middleware import (
     VirtualModel,
     VirtualModelInferenceConfig,
 )
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 # ---------------------------------------------------------------------------
 # Cache management
@@ -447,6 +447,35 @@ class TestVirtualModel:
         assert vm.request_middleware == []
         assert vm.response_middleware == []
         assert vm.post_response_middleware == []
+
+    def test_validation_retains_wire_metadata(self):
+        """Entity metadata carried by an API response survives validation."""
+        vm = TypeAdapter(VirtualModel).validate_python(
+            {
+                "id": "virtual-model-abc123",
+                "name": "router",
+                "workspace": "default",
+                "created_at": "2026-01-01T00:00:00Z",
+                "created_by": "creator",
+                "updated_at": "2026-01-02T00:00:00Z",
+                "updated_by": "updater",
+                "parent": "parent-id",
+            }
+        )
+
+        assert vm.id == "virtual-model-abc123"
+        assert vm.created_at is not None
+        assert vm.created_by == "creator"
+        assert vm.updated_at is not None
+        assert vm.updated_by == "updater"
+        assert vm.parent == "parent-id"
+
+    def test_validation_without_wire_metadata_leaves_entity_defaults(self):
+        vm = TypeAdapter(VirtualModel).validate_python({"name": "router", "workspace": "default"})
+
+        assert vm.id == ""
+        assert vm.created_at is None
+        assert vm.parent is None
 
 
 # ---------------------------------------------------------------------------

@@ -14,14 +14,17 @@ models service.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
 from nemo_platform_plugin.inference_middleware import InferenceMiddlewareError, NemoInferenceMiddleware
 from nemo_platform_plugin.virtual_models.client import AsyncVirtualModelsClient
-from nemo_platform_plugin.virtual_models.types import CreateVirtualModelRequest
+from nemo_platform_plugin.virtual_models.types import CreateVirtualModelRequest, UpdateVirtualModelRequest
 from nmp.core.inference_gateway.api.dependencies import global_middleware_registry
 from nmp.core.inference_gateway.api.middleware_registry import MiddlewareRegistry
 from nmp.core.inference_gateway.config import InferenceGatewayConfig
@@ -78,32 +81,110 @@ def _install_registry(client: TestClient, plugins: dict[str, NemoInferenceMiddle
     return registry
 
 
-@pytest.mark.asyncio
-async def test_typed_async_client_is_compatible_with_igw_router(client: TestClient) -> None:
-    """The public typed client and mounted IGW router share the same wire contract."""
+@asynccontextmanager
+async def _typed_client(client: TestClient) -> AsyncIterator[AsyncVirtualModelsClient]:
+    """Public typed client wired to the mounted IGW app over an in-process ASGI transport."""
     transport = httpx.ASGITransport(app=client.app)
     async with httpx.AsyncClient(transport=transport) as http_client:
-        typed_client = AsyncVirtualModelsClient(
+        yield AsyncVirtualModelsClient(
             base_url="http://testserver",
             workspace="default",
             http_client=http_client,
         )
 
-        created = (
-            await typed_client.create_virtual_model(
-                body=CreateVirtualModelRequest(
-                    name="vm-typed-client",
-                    default_model_entity="default/model-a",
-                )
-            )
-        ).data()
-        fetched = (await typed_client.get_virtual_model(name="vm-typed-client")).data()
 
-    assert created.name == "vm-typed-client"
-    assert created.id is not None
-    assert created.created_at is not None
-    assert fetched.id == created.id
-    assert fetched.default_model_entity == "default/model-a"
+# ---------------------------------------------------------------------------
+# Typed client contract
+# ---------------------------------------------------------------------------
+
+
+class TestTypedClientContract:
+    """The public typed client and the mounted IGW router share one wire contract.
+
+    These run the real client against the real router and entity store, so they
+    catch drift that mocked-transport client tests cannot: status codes, the
+    pagination envelope, ``response_model_exclude_none`` on list responses, and
+    the filter expression grammar.
+    """
+
+    @pytest.mark.asyncio
+    async def test_create_and_get_roundtrip_carries_entity_metadata(self, client: TestClient) -> None:
+        async with _typed_client(client) as typed:
+            created = (
+                await typed.create_virtual_model(
+                    body=CreateVirtualModelRequest(
+                        name="vm-typed-client",
+                        default_model_entity="default/model-a",
+                    )
+                )
+            ).data()
+            fetched = (await typed.get_virtual_model(name="vm-typed-client")).data()
+
+        assert created.name == "vm-typed-client"
+        assert created.id is not None
+        assert created.created_at is not None
+        assert created.created_by is not None
+        assert fetched.id == created.id
+        assert fetched.updated_at is not None
+        assert fetched.default_model_entity == "default/model-a"
+
+    @pytest.mark.asyncio
+    async def test_list_follows_pagination_and_keeps_metadata(self, client: TestClient) -> None:
+        """Server pages are followed to exhaustion; list responses omit None fields."""
+        async with _typed_client(client) as typed:
+            for name in ("vm-a", "vm-b", "vm-c"):
+                await typed.create_virtual_model(body=CreateVirtualModelRequest(name=name))
+
+            listed = [model async for model in (await typed.list_virtual_models(query_params={"page_size": 1})).items()]
+
+        assert sorted(model.name for model in listed) == ["vm-a", "vm-b", "vm-c"]
+        assert all(model.id is not None for model in listed)
+        assert all(model.created_at is not None for model in listed)
+
+    @pytest.mark.asyncio
+    async def test_list_query_params_reach_the_router(self, client: TestClient) -> None:
+        """``exclude_autoprovisioned`` and the filter expression are server-parseable as sent."""
+        async with _typed_client(client) as typed:
+            await typed.create_virtual_model(body=CreateVirtualModelRequest(name="vm-keep"))
+            await typed.create_virtual_model(body=CreateVirtualModelRequest(name="vm-auto", autoprovisioned=True))
+
+            unprovisioned = await typed.list_virtual_models(query_params={"exclude_autoprovisioned": True})
+            assert [model.name async for model in unprovisioned.items()] == ["vm-keep"]
+
+            filtered = await typed.list_virtual_models(query_params={"filter": 'name:"vm-keep"'})
+            assert [model.name async for model in filtered.items()] == ["vm-keep"]
+
+    @pytest.mark.asyncio
+    async def test_update_then_delete_then_get_raises_not_found(self, client: TestClient) -> None:
+        async with _typed_client(client) as typed:
+            await typed.create_virtual_model(
+                body=CreateVirtualModelRequest(name="vm-up", default_model_entity="default/model-a")
+            )
+
+            updated = (
+                await typed.update_virtual_model(
+                    name="vm-up", body=UpdateVirtualModelRequest(default_model_entity=None)
+                )
+            ).data()
+            assert updated.default_model_entity is None
+            assert updated.id is not None
+
+            deleted = await typed.delete_virtual_model(name="vm-up")
+            assert deleted.http_response.status_code == 204
+            assert deleted.data() is None
+
+            with pytest.raises(NotFoundError) as not_found:
+                await typed.get_virtual_model(name="vm-up")
+            assert not_found.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_duplicate_create_raises_conflict(self, client: TestClient) -> None:
+        async with _typed_client(client) as typed:
+            await typed.create_virtual_model(body=CreateVirtualModelRequest(name="vm-dup"))
+
+            with pytest.raises(ConflictError) as conflict:
+                await typed.create_virtual_model(body=CreateVirtualModelRequest(name="vm-dup"))
+        assert conflict.value.status_code == 409
 
 
 # ---------------------------------------------------------------------------
