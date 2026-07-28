@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/ci.yaml/badge.svg)](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/ci.yaml)
 [![License](https://img.shields.io/badge/license-Apache_2.0-D22128?style=flat-square)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11--3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.12--3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Docs](https://img.shields.io/static/v1?label=docs&message=docs.nvidia.com%2Fnemo-platform&color=76B900&style=flat-square&logo=readthedocs&logoColor=white)](https://docs.nvidia.com/nemo-platform)
 
 Make the agents you ship faster, more accurate, and safer.
@@ -13,7 +13,7 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Get started
 
-**Prerequisites:** Python 3.11-3.13, `uv>=0.9.14,<0.10.0`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, and Node.js 22.18.x with `pnpm` if you want the web UI.
+**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14,<0.10.0`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, and Node.js 22.18.x with `pnpm` if you want the web UI.
 
 Quick install from PyPI:
 
