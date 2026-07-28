@@ -37,7 +37,7 @@ __all__ = [
 class OutputRequest(RlSchema):
     """Submitter-facing output preferences. ``name`` is auto-derived if omitted."""
 
-    name: str | None = None
+    name: str | None = Field(default=None, max_length=255)
 
 
 class RlJobInput(RlSchema):

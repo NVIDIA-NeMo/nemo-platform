@@ -2076,6 +2076,7 @@ components:
             \ Defaults to AdamW with cosine annealing."
         learning_rate:
           type: number
+          exclusiveMinimum: 0.0
           title: Learning Rate
           description: Peak learning rate.
           default: 0.0001
@@ -2083,18 +2084,24 @@ components:
           title: Min Learning Rate
           description: Minimum LR for cosine decay.
           type: number
+          minimum: 0.0
         weight_decay:
           type: number
+          minimum: 0.0
           title: Weight Decay
           description: Weight decay coefficient.
           default: 0.01
         adam_beta1:
           type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
           title: Adam Beta1
           description: Adam beta1.
           default: 0.9
         adam_beta2:
           type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
           title: Adam Beta2
           description: Adam beta2.
           default: 0.999
@@ -2434,6 +2441,7 @@ components:
         name:
           title: Name
           type: string
+          maxLength: 255
       additionalProperties: false
       type: object
       title: RlOutputRequest

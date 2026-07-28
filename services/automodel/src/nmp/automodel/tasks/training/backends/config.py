@@ -38,6 +38,7 @@ from nmp.automodel.tasks.training.schemas import (
 )
 from nmp.automodel.tasks.training.sequence_packing import (
     calculate_optimal_pack_size,
+    calculate_target_packing_factor,
     estimate_dataset_sequence_lengths,
 )
 from nmp.customization_common.service.context import NMPJobContext
@@ -194,7 +195,10 @@ def compile_automodel_config(
             )
         else:
             optimal_pack_size = calculate_optimal_pack_size(customizer_config)
-            logger.info(f"Sequence packing enabled with conservative pack_size={optimal_pack_size}")
+            packing_factor = float(calculate_target_packing_factor(customizer_config))
+            logger.info(
+                f"Sequence packing enabled with fallback pack_size={optimal_pack_size}, packing_factor={packing_factor}"
+            )
 
         cfg["packed_sequence"] = {
             "packed_sequence_size": optimal_pack_size,
