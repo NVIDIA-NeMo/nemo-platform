@@ -200,7 +200,7 @@ class TestTranslateAgentConfig:
         assert fabric_config.relay.project == "example-agent"
         assert fabric_config.relay.output_dir == "./artifacts/relay"
         assert fabric_config.relay.observability.model_dump(exclude_none=True) == {
-            "version": 1,
+            "version": 2,
             "atif": {
                 "enabled": True,
                 "filename_template": "trajectory-{session_id}.atif.json",
@@ -210,8 +210,13 @@ class TestTranslateAgentConfig:
             },
             "atof": {
                 "enabled": True,
-                "filename": "events.atof.jsonl",
-                "mode": "overwrite",
-                "output_directory": "./artifacts/relay",
+                "sinks": [
+                    {
+                        "type": "file",
+                        "output_directory": "./artifacts/relay",
+                        "filename": "events.atof.jsonl",
+                        "mode": "overwrite",
+                    }
+                ],
             },
         }

@@ -134,7 +134,7 @@ def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig
 
 def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict[str, Any]:
     telemetry = config.telemetry
-    observability: dict[str, Any] = {"version": 1}
+    observability: dict[str, Any] = {"version": 2}
 
     if telemetry.atif is not None:
         atif = dict(telemetry.atif)
@@ -145,9 +145,33 @@ def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict
         observability["atif"] = atif
 
     if telemetry.atof is not None:
-        atof = dict(telemetry.atof)
-        if telemetry.output_dir is not None:
-            atof.setdefault("output_directory", telemetry.output_dir)
-        observability["atof"] = atof
+        observability["atof"] = _relay_atof_config(telemetry.atof, output_dir=telemetry.output_dir)
 
     return observability
+
+
+def _relay_atof_config(atof_config: dict[str, Any], output_dir: str | None) -> dict[str, Any]:
+    atof = dict(atof_config)
+    sinks = list(atof.pop("sinks", []) or [])
+
+    file_sink = {"type": "file"}
+    if output_dir is not None:
+        file_sink["output_directory"] = output_dir
+    for key in ("output_directory", "filename", "mode"):
+        if key in atof:
+            file_sink[key] = atof.pop(key)
+    if len(file_sink) > 1:
+        sinks.insert(0, file_sink)
+
+    for endpoint in atof.pop("endpoints", []) or []:
+        stream_sink = dict(endpoint)
+        if "endpoint" in stream_sink and "url" not in stream_sink:
+            stream_sink["url"] = stream_sink.pop("endpoint")
+        stream_sink.setdefault("type", "stream")
+        sinks.append(stream_sink)
+
+    translated = {"enabled": atof.pop("enabled", False)}
+    if sinks:
+        translated["sinks"] = sinks
+    translated.update(atof)
+    return translated
