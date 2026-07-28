@@ -10,10 +10,11 @@
 # This is an imperative install — it does NOT touch uv.lock, and CI intentionally runs without it
 # (the `# ty: ignore[unresolved-import]` in agent_eval/runtimes/fabric/runtime.py covers the CI case).
 #
-# On Linux you no longer need this script for the SDK: `nemo-fabric` now publishes wheels to PyPI and
-# is a locked, Linux-gated `fabric` extra on nemo-evaluator-sdk — install it with
-# `uv sync --extra fabric` (or `uv pip install "nemo-evaluator-sdk[fabric]"`). This script remains
-# the path for macOS-native dev, where nemo-fabric-runtime has no wheel yet (manylinux only).
+# You no longer need this script just to get the SDK: `nemo-fabric` publishes wheels to PyPI
+# (manylinux + macOS arm64 as of 0.1.0rc2) and is a locked `fabric` extra on nemo-evaluator-sdk —
+# install it with `uv sync --extra fabric` (or `uv pip install "nemo-evaluator-sdk[fabric]"`).
+# This script remains the path for (a) running against an unreleased NeMo-Fabric checkout, (b) Intel
+# macOS, where no nemo-fabric-runtime wheel is published, and (c) the relay gateway binary below.
 #
 # The `nemo-relay` gateway is NOT on PyPI (the pip `nemo-relay` package ships only the Python
 # bindings, not the daemon), but NeMo-Relay publishes prebuilt gateway binaries on its GitHub
@@ -45,10 +46,10 @@ if [ "${1:-}" = "--uninstall" ]; then
   exit 0
 fi
 
-# On macOS the `runtime` extra builds nemo-fabric-runtime (a Rust/pyo3 extension) from source via
-# maturin — there is no macOS wheel — so cargo must be on PATH for the SDK install. The relay gateway
-# is downloaded prebuilt below and does NOT need cargo unless a source build is forced via
-# NEMO_RELAY_REPO.
+# This script always installs the SDK from a NeMo-Fabric checkout, and the `runtime` extra builds
+# nemo-fabric-runtime (a Rust/pyo3 extension) from source via maturin, so cargo must be on PATH. The
+# relay gateway is downloaded prebuilt below and does NOT need cargo unless a source build is forced
+# via NEMO_RELAY_REPO.
 if ! command -v cargo >/dev/null 2>&1 && [ -f "$HOME/.cargo/env" ]; then
   # shellcheck disable=SC1091
   . "$HOME/.cargo/env"
@@ -59,7 +60,7 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 # 1. nemo-fabric SDK into the project venv. The `runtime` extra provides the importable `nemo_fabric`
-#    module (built from source on macOS); `codex`+`relay` add the codex adapter + ATIF trajectory deps.
+#    module (built from source here); `codex`+`relay` add the codex adapter + ATIF trajectory deps.
 FABRIC_REPO="${NEMO_FABRIC_REPO:-$HOME/workspace/NeMo-Fabric}"
 if [ ! -d "$FABRIC_REPO" ]; then
   echo "NeMo-Fabric checkout not found at: $FABRIC_REPO" >&2

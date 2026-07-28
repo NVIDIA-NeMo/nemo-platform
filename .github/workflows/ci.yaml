@@ -861,8 +861,8 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       # Installs the published nemo-fabric wheels (+ codex/claude/deepagents adapters) from the lock.
-      # The extra is Linux-gated, so this is the platform that actually resolves it; it also validates
-      # that the manylinux_2_39 nemo-fabric-runtime wheel installs on the runner's glibc.
+      # Linux is where jobs actually execute the runtime, and it validates that the manylinux
+      # nemo-fabric-runtime wheel installs on the runner's glibc.
       - name: Install nemo-evaluator-sdk[fabric] from the lock
         run: uv sync --frozen --package nemo-evaluator-sdk --extra fabric
       # Import the Fabric SDK surface that agent_eval/runtimes/fabric/runtime.py depends on, so the
