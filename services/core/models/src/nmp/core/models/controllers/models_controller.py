@@ -12,7 +12,7 @@ from nemo_platform.types.inference import ModelDeploymentStatus
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
-from nmp.common.controller import Controller
+from nmp.common.controller import Controller, HeartbeatMixin
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.core.models.app import parse_model_name_revision
@@ -21,6 +21,7 @@ from nmp.core.models.controllers.backends.backends import ServiceBackend
 from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.deployment_reconciler import ModelDeploymentReconciler
+from nmp.core.models.controllers.entity_cache import ModelEntityCache
 from nmp.core.models.controllers.provider_reconciler import ModelProviderReconciler
 
 logger = getLogger(__name__)
@@ -34,7 +35,7 @@ NON_TERMINAL_STATES: list[ModelDeploymentStatus] = [
 ]
 
 
-class ModelsController(Controller):
+class ModelsController(HeartbeatMixin, Controller):
     """
     Models Controller manages the lifecycle of ModelDeployment objects.
 
@@ -65,15 +66,23 @@ class ModelsController(Controller):
         )
         self._service_backends = backend_registry.list_backends()
 
+        # Shared by both reconcilers; re-read at the start of each phase that
+        # writes entities so neither phase works from state the other has changed.
+        self._entity_cache = ModelEntityCache(models_sdk=self._models_sdk)
+
         # Initialize reconcilers
         self._deployment_reconciler = ModelDeploymentReconciler(
             models_sdk=self._models_sdk,
             backend_registry=backend_registry,
             controller_config=models_config.controller,
+            entity_cache=self._entity_cache,
+            emit_heartbeat=self.emit_heartbeat,
         )
         self._provider_reconciler = ModelProviderReconciler(
             models_sdk=self._models_sdk,
             controller_config=models_config.controller,
+            entity_cache=self._entity_cache,
+            emit_heartbeat=self.emit_heartbeat,
         )
 
         logger.info("Models Controller initialized")
@@ -224,10 +233,18 @@ class ModelsController(Controller):
 
             logger.debug(f"Querying Models API for model entity: {workspace}/{full_model_name}")
 
-            model_entity = await self._models_sdk.models.retrieve(
-                name=full_model_name,
-                workspace=workspace,
-            )
+            if revision or not self._entity_cache.loaded:
+                # A revision resolves server-side and does not correspond to an
+                # cache key, so it has to be fetched directly.
+                model_entity = await self._models_sdk.models.retrieve(
+                    name=full_model_name,
+                    workspace=workspace,
+                )
+            else:
+                model_entity = self._entity_cache.get(workspace, model_name)
+                if model_entity is None:
+                    logger.debug(f"No model entity found in Models API: {workspace}/{full_model_name}")
+                    return None
 
             if model_entity:
                 logger.debug(f"Successfully retrieved model entity from Models API: {workspace}/{model_name}")
@@ -419,13 +436,30 @@ class ModelsController(Controller):
             return []
 
     async def async_controller_step(self) -> None:
-        """Execute one async iteration of the Models Controller loop."""
+        """Execute one async iteration of the Models Controller loop.
+
+        Deployment and provider reconciliation both read and write Model Entities,
+        and the deployment phase can unlink a provider that the provider phase
+        would otherwise re-link. The entity cache is therefore re-read at the
+        start of each phase and flushed at the end of it, so each phase sees the
+        results of the previous one. Any new phase that writes entities needs the
+        same treatment.
+
+        Staged changes are applied even when the step bails out early. Provider
+        deletion stages the removal of its entity links, and the provider itself is
+        already gone by then, so discarding those would leave the links behind with
+        nothing left to trigger another attempt.
+        """
         logger.debug("Models controller step starting")
+
+        await self._entity_cache.refresh()
         deployment_contexts = await self.retrieve_non_terminal_deployments()
+        self.emit_heartbeat()
 
         # Check stop signal before reconciling deployments
         if self._is_stopping():
             logger.debug("Stop signal received, skipping reconciliation")
+            await self._entity_cache.flush()
             return
 
         if deployment_contexts:
@@ -436,10 +470,12 @@ class ModelsController(Controller):
             f"{ctx.model_deployment.workspace}/{ctx.model_deployment.name}" for ctx in deployment_contexts
         }
         await self._deployment_reconciler.reconcile_orphans(known_deployment_ids)
+        self.emit_heartbeat()
 
         # Check stop signal before ERROR GC
         if self._is_stopping():
             logger.debug("Stop signal received, skipping ERROR GC and provider queries")
+            await self._entity_cache.flush()
             return
 
         error_deployments = await self.retrieve_error_deployments()
@@ -449,18 +485,26 @@ class ModelsController(Controller):
                 len(error_deployments),
             )
             await self._deployment_reconciler.gc_error_deployments(error_deployments)
+        await self._entity_cache.flush()
+        self.emit_heartbeat()
 
         # Check stop signal before querying providers
         if self._is_stopping():
             logger.debug("Stop signal received, skipping provider queries")
             return
 
+        await self._entity_cache.refresh()
         provider_contexts = await self.retrieve_model_providers()
         if provider_contexts is None:
             logger.debug("Skipping provider reconciliation because provider listing failed")
+            await self._entity_cache.flush()
             return
         logger.debug("Found %d total model provider(s)", len(provider_contexts))
-        await self._provider_reconciler.reconcile_model_providers(provider_contexts)
+        self.emit_heartbeat()
+        try:
+            await self._provider_reconciler.reconcile_model_providers(provider_contexts)
+        finally:
+            await self._entity_cache.flush()
 
         logger.debug(
             "Models controller step completed: %d deployment(s), %d provider(s)",

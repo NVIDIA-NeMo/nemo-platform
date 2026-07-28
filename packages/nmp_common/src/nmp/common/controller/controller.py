@@ -16,6 +16,59 @@ from nmp.common.observability.context import AppContext, initialize_app_ctx
 logger = getLogger(__name__)
 
 
+class Heartbeat:
+    """Timestamp of the last observed progress in a control loop.
+
+    A single loop iteration may take considerably longer than the loop's poll
+    interval when there is a lot of work to do. ``Heartbeat`` records the most
+    recent point at which the loop demonstrably made progress, which lets the
+    liveness check in :class:`Loop` distinguish a loop that is working through a
+    large batch from one that is stuck.
+    """
+
+    def __init__(self) -> None:
+        self._last = datetime.now(timezone.utc)
+
+    def beat(self) -> None:
+        """Record that progress was just made."""
+        self._last = datetime.now(timezone.utc)
+
+    def last(self) -> datetime:
+        """Return the time of the most recently recorded progress."""
+        return self._last
+
+
+class HeartbeatMixin:
+    """Gives a controller a way to report incremental progress.
+
+    Controllers whose ``step()`` iterates over a variable number of items should
+    mix this in and call :meth:`emit_heartbeat` as each item is finished. Nested
+    collaborators are handed the bound :meth:`emit_heartbeat` method rather than
+    the :class:`Heartbeat` itself, so they report progress without depending on
+    how liveness is measured.
+
+    ``_heartbeat`` is a class-level default so that mixing this in never obliges
+    a subclass to call ``super().__init__()``. :meth:`attach_heartbeat` binds the
+    instance that :class:`Loop` measures; emitting before then is a no-op.
+    """
+
+    _heartbeat: "Heartbeat | None" = None
+
+    def attach_heartbeat(self, heartbeat: Heartbeat) -> None:
+        """Bind the heartbeat that this controller reports progress to."""
+        self._heartbeat = heartbeat
+
+    def emit_heartbeat(self) -> None:
+        """Report that a unit of work finished.
+
+        Only call this once work has actually completed. Emitting on a timer, or
+        around a call that may block, would report progress that did not happen
+        and defeat the liveness check.
+        """
+        if self._heartbeat is not None:
+            self._heartbeat.beat()
+
+
 class Controller(ABC):
     """Step represents a function intended to be run in a loop."""
 
@@ -53,17 +106,25 @@ class ProvidesLastExecutionTime(ABC):
 
 
 class TrackLastExecutionTime(Controller, ProvidesLastExecutionTime):
-    """TrackLastExecutionTime"""
+    """Tracks when the wrapped controller last made progress.
+
+    Entering ``step()`` counts as progress. A controller that also mixes in
+    :class:`HeartbeatMixin` shares this wrapper's :class:`Heartbeat`, so progress
+    it reports part-way through a long iteration is visible here too. There is
+    only ever one timestamp, and it means "last observed progress".
+    """
 
     def __init__(self, controller: Controller):
-        self._last_runtime = datetime.now(timezone.utc)
         self._internal = controller
+        self._heartbeat = Heartbeat()
+        if isinstance(controller, HeartbeatMixin):
+            controller.attach_heartbeat(self._heartbeat)
 
     def last_execution_time(self) -> datetime:
-        return self._last_runtime
+        return self._heartbeat.last()
 
     def step(self):
-        self._last_runtime = datetime.now(timezone.utc)
+        self._heartbeat.beat()
         self._internal.step()
 
     @property
@@ -114,6 +175,7 @@ class Loop(threading.Thread):
         self._internal = controller
         self._stop_signal = stop_signal if stop_signal is not None else threading.Event()
         self._shutdown_func = shutdown_func
+        self._unhealthy_reason: str | None = None
 
         # Capture the current context so it can be used in the thread
         self._context = contextvars.copy_context()
@@ -144,6 +206,11 @@ class Loop(threading.Thread):
         self._stop_signal.set()
 
     @property
+    def unhealthy_reason(self) -> str | None:
+        """Why the most recent :attr:`is_healthy` evaluation failed, if it did."""
+        return self._unhealthy_reason
+
+    @property
     def is_healthy(self) -> bool:
         """Check if the internal controller is healthy.
 
@@ -152,6 +219,7 @@ class Loop(threading.Thread):
         """
         # Thread must be alive
         if not self.is_alive():
+            self._unhealthy_reason = "loop thread is not alive"
             logger.debug(f"Controller thread {self.name} is not alive")
             return False
 
@@ -163,6 +231,7 @@ class Loop(threading.Thread):
             max_delay = sleep_secs * 3  # Allow 3 sleep windows before marking unhealthy
             time_since_last = (now - last_execution).total_seconds()
             if time_since_last > max_delay:
+                self._unhealthy_reason = f"no progress for {time_since_last:.2f}s (max allowed: {max_delay:.2f}s)"
                 logger.debug(
                     f"Controller thread {self.name} has not executed in {time_since_last:.2f}s "
                     f"(max allowed: {max_delay:.2f}s)"
@@ -170,7 +239,9 @@ class Loop(threading.Thread):
                 return False
 
         if not self._internal.is_healthy:
+            self._unhealthy_reason = "controller reported itself unhealthy"
             logger.debug(f"Controller thread {self.name} internal controller is unhealthy")
             return False
 
+        self._unhealthy_reason = None
         return True

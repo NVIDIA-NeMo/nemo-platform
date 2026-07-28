@@ -17,7 +17,14 @@ from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform.types.models import ModelEntity
 from nemo_platform.types.models.adapter import Adapter
 from nmp.common.config import get_platform_config
-from nmp.common.controller import Controller, ControllerManager, Loop, TimedLoopWaiter, TrackLastExecutionTime
+from nmp.common.controller import (
+    Controller,
+    ControllerManager,
+    HeartbeatMixin,
+    Loop,
+    TimedLoopWaiter,
+    TrackLastExecutionTime,
+)
 from nmp.common.sdk_factory import get_platform_sdk
 
 stop_signal = threading.Event()
@@ -30,7 +37,7 @@ logger = logging.getLogger(__name__)
 ADAPTER_META_FILENAME = "nmp_adapter_meta.json"
 
 
-class AdaptersController(Controller):
+class AdaptersController(HeartbeatMixin, Controller):
     def __init__(self, stop_signal: threading.Event | None = None):
         self.nim_peft_source = os.getenv("NIM_PEFT_SOURCE", "")
         if not self.nim_peft_source:
@@ -115,7 +122,9 @@ class AdaptersController(Controller):
         try:
             dirs_to_keep: set[str] = set()
             self._update_lora_adapters(dirs_to_keep)
+            self.emit_heartbeat()
             self._update_prompt_tuned_models(dirs_to_keep)
+            self.emit_heartbeat()
 
             for name in set(os.listdir(self.nim_peft_source)) - dirs_to_keep:
                 # Staging temp dirs (".{dir}.tmp") were never loaded into vLLM;
@@ -131,6 +140,7 @@ class AdaptersController(Controller):
                 # in vLLM until it restarts (the dir is the only state driving GC).
                 if self._unload_vllm_adapter(name):
                     shutil.rmtree(f"{self.nim_peft_source}/{name}")
+                self.emit_heartbeat()
 
         except Exception:
             logger.exception(f"Failed to fetch {self.workspace}/{self.model_name}'s model_entity")
@@ -156,6 +166,7 @@ class AdaptersController(Controller):
                     os.makedirs(prompt_tuned_model_dir, exist_ok=True)
                 with open(f"{prompt_tuned_model_dir}/config.json", "w") as f:
                     f.write(model_entity.prompt.model_dump_json())
+            self.emit_heartbeat()
 
     def _rewrite_adapter_base_model(self, adapter_dir: str) -> bool:
         """Rewrite ``adapter_config.json``'s ``base_model_name_or_path`` to the
@@ -432,6 +443,7 @@ class AdaptersController(Controller):
             # is (idempotently) reloaded so it survives a vLLM restart without flapping.
             if os.path.isdir(adapter_dir):
                 self._ensure_vllm_adapter_loaded(dir_name, adapter_dir, reload=(published and dir_existed))
+            self.emit_heartbeat()
 
 
 def get_health_status() -> dict:

@@ -1,0 +1,225 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Batched reads and writes of Model Entities for a single reconciliation phase.
+
+Reconciling providers and deployments requires looking at the Model Entity behind
+every served model, and often needs to link or unlink a provider on it. Doing that
+one entity at a time costs two round trips per served model per pass, which grows
+with the product of providers and the size of their model catalogues.
+
+:class:`ModelEntityCache` reads the entities once per phase and accumulates the
+intended changes, so each entity is written at most once and only when something
+actually differs. Because the desired state for an entity is assembled in memory
+before it is written, concurrent contributions from several providers cannot
+overwrite one another.
+"""
+
+from dataclasses import dataclass, field
+from logging import getLogger
+
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform._exceptions import ConflictError, NotFoundError
+from nemo_platform.types.models.model_entity import ModelEntity
+
+logger = getLogger(__name__)
+
+# Entity lists are read whole, so prefer few large pages over many small ones.
+_PAGE_SIZE = 1000
+
+
+@dataclass
+class _PendingEntity:
+    """Changes staged for one Model Entity within a phase."""
+
+    workspace: str
+    name: str
+    create_kwargs: dict | None = None
+    link_providers: list[str] = field(default_factory=list)
+    unlink_providers: list[str] = field(default_factory=list)
+    field_updates: dict = field(default_factory=dict)
+
+
+class UnflushedMutationsError(RuntimeError):
+    """Raised when the cache is refreshed while changes are still staged.
+
+    Re-reading would discard the staged changes and reload the very state they
+    were derived from, so the caller must flush first.
+    """
+
+
+class ModelEntityCache:
+    """A per-phase snapshot of Model Entities plus the changes staged against it.
+
+    Usage is strictly ``refresh()`` -> read/stage -> ``flush()``. Reads see staged
+    changes layered over the snapshot, so a caller that stages a change and then
+    reads the same entity within a phase observes its own write.
+    """
+
+    def __init__(self, models_sdk: AsyncNeMoPlatform) -> None:
+        self._models_sdk = models_sdk
+        self._entities: dict[tuple[str, str], ModelEntity] = {}
+        self._pending: dict[tuple[str, str], _PendingEntity] = {}
+        self._loaded = False
+
+    async def refresh(self) -> None:
+        """Re-read every Model Entity across all workspaces.
+
+        Raises:
+            UnflushedMutationsError: If changes are still staged.
+        """
+        if self._pending:
+            raise UnflushedMutationsError(
+                f"{len(self._pending)} staged Model Entity change(s) must be flushed before refreshing the cache"
+            )
+
+        entities: dict[tuple[str, str], ModelEntity] = {}
+        async for entity in self._models_sdk.models.list(workspace="-", page_size=_PAGE_SIZE):
+            entities[(entity.workspace, entity.name)] = entity
+
+        self._entities = entities
+        self._loaded = True
+        logger.debug("Model Entity cache loaded %d entities", len(entities))
+
+    @property
+    def loaded(self) -> bool:
+        """Whether the cache holds a snapshot."""
+        return self._loaded
+
+    def get(self, workspace: str, name: str) -> ModelEntity | None:
+        """Return an entity as it will exist once staged changes are flushed.
+
+        Returns ``None`` when the entity neither exists nor is staged for creation.
+        """
+        key = (workspace, name)
+        entity = self._entities.get(key)
+        pending = self._pending.get(key)
+        if pending is None:
+            return entity
+
+        if entity is None:
+            # An entity staged for creation is reported as absent rather than
+            # fabricated. Callers stage what they want and the staged changes are
+            # merged, so a second caller reaching the same conclusion is harmless.
+            return None
+
+        providers = [p for p in (entity.model_providers or []) if p not in pending.unlink_providers]
+        providers.extend(p for p in pending.link_providers if p not in providers)
+        return entity.model_copy(update={"model_providers": providers, **pending.field_updates})
+
+    def _pending_for(self, workspace: str, name: str) -> _PendingEntity:
+        key = (workspace, name)
+        if key not in self._pending:
+            self._pending[key] = _PendingEntity(workspace=workspace, name=name)
+        return self._pending[key]
+
+    def stage_create(self, workspace: str, name: str, **create_kwargs) -> None:
+        """Stage creation of an entity that does not exist yet.
+
+        Repeated calls for the same entity keep the first set of attributes; the
+        providers that asked for it are merged by :meth:`stage_provider_link`.
+        """
+        pending = self._pending_for(workspace, name)
+        if pending.create_kwargs is None:
+            pending.create_kwargs = dict(create_kwargs)
+
+    def stage_provider_link(self, workspace: str, name: str, provider_id: str) -> None:
+        """Stage a provider reference to be present on an entity."""
+        pending = self._pending_for(workspace, name)
+        if provider_id in pending.unlink_providers:
+            pending.unlink_providers.remove(provider_id)
+        if provider_id not in pending.link_providers:
+            pending.link_providers.append(provider_id)
+
+    def stage_provider_unlink(self, workspace: str, name: str, provider_id: str) -> None:
+        """Stage a provider reference to be absent from an entity."""
+        pending = self._pending_for(workspace, name)
+        if provider_id in pending.link_providers:
+            pending.link_providers.remove(provider_id)
+        if provider_id not in pending.unlink_providers:
+            pending.unlink_providers.append(provider_id)
+
+    def stage_field_updates(self, workspace: str, name: str, **updates) -> None:
+        """Stage attribute values to write.
+
+        Whether a value ought to be written is the caller's decision, since only
+        the caller knows what counts as already-set for a given attribute. Values
+        of ``None`` are dropped so callers can pass optional values through
+        directly.
+        """
+        pending = self._pending_for(workspace, name)
+        for key, value in updates.items():
+            if value is not None:
+                pending.field_updates.setdefault(key, value)
+
+    async def flush(self) -> None:
+        """Apply staged changes, writing each entity at most once.
+
+        Entities whose staged state already matches the snapshot are skipped, so a
+        pass that changes nothing performs no writes.
+        """
+        pending, self._pending = self._pending, {}
+
+        for (workspace, name), staged in pending.items():
+            existing = self._entities.get((workspace, name))
+            try:
+                if existing is None:
+                    await self._create(workspace, name, staged)
+                else:
+                    await self._update(workspace, name, staged, existing)
+            except Exception:
+                # One entity must not stop the rest; the next pass retries.
+                logger.warning(
+                    "Failed to apply Model Entity changes for %s/%s",
+                    workspace,
+                    name,
+                    exc_info=True,
+                )
+
+    async def _create(self, workspace: str, name: str, staged: _PendingEntity) -> None:
+        if staged.create_kwargs is None:
+            # Only a link/unlink was staged for an entity that does not exist.
+            logger.debug("Skipping Model Entity changes for missing entity %s/%s", workspace, name)
+            return
+
+        create_kwargs = {k: v for k, v in staged.create_kwargs.items() if k not in ("name", "workspace")}
+        create_kwargs.update(staged.field_updates)
+        if staged.link_providers:
+            create_kwargs["model_providers"] = list(staged.link_providers)
+
+        try:
+            created = await self._models_sdk.models.create(workspace=workspace, name=name, **create_kwargs)
+        except ConflictError:
+            # Created concurrently; adopt it and apply the staged changes instead.
+            logger.debug("Model Entity %s/%s already exists, applying staged changes", workspace, name)
+            try:
+                existing = await self._models_sdk.models.retrieve(workspace=workspace, name=name)
+            except NotFoundError:
+                return
+            self._entities[(workspace, name)] = existing
+            await self._update(workspace, name, staged, existing)
+            return
+
+        if created is not None:
+            self._entities[(workspace, name)] = created
+        logger.debug("Created Model Entity %s/%s", workspace, name)
+
+    async def _update(self, workspace: str, name: str, staged: _PendingEntity, existing: ModelEntity) -> None:
+        update_params: dict = {}
+
+        current_providers = list(existing.model_providers or [])
+        desired_providers = [p for p in current_providers if p not in staged.unlink_providers]
+        desired_providers.extend(p for p in staged.link_providers if p not in desired_providers)
+        if desired_providers != current_providers:
+            update_params["model_providers"] = desired_providers
+
+        update_params.update(staged.field_updates)
+
+        if not update_params:
+            logger.debug("Model Entity %s/%s already matches desired state", workspace, name)
+            return
+
+        updated = await self._models_sdk.models.update(workspace=workspace, name=name, **update_params)
+        if updated is not None:
+            self._entities[(workspace, name)] = updated
+        logger.debug("Updated Model Entity %s/%s: %s", workspace, name, sorted(update_params))
