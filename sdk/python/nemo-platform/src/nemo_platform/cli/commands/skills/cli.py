@@ -47,15 +47,9 @@ def skills_callback(ctx: typer.Context) -> None:
         typer.echo(ctx.get_help())
 
 
-def _find_project_root() -> Path:
-    """Find the project root by looking for a .git directory, falling back to cwd."""
-    cwd = Path.cwd()
-    current = cwd
-    while current != current.parent:
-        if (current / ".git").exists():
-            return current
-        current = current.parent
-    return cwd
+def _find_project_root(project_dir: Path | None = None) -> Path:
+    """Resolve the project install directory without inspecting parent directories."""
+    return project_dir if project_dir is not None else Path.cwd()
 
 
 # Distributions that ship the platform's own bundled skills. Both names show
@@ -268,16 +262,30 @@ def install(
         bool,
         typer.Option("--user", help="Install to user scope (default: project scope)"),
     ] = False,
+    project_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-dir",
+            "--project-root",
+            help="Project directory to install into (default: current working directory)",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            resolve_path=True,
+        ),
+    ] = None,
 ) -> None:
     """Install Nemo skill files for an AI coding agent.
 
     By default, installs all skills to project scope.
-    Use --skill to select specific skills, --user for user scope.
+    Use --skill to select specific skills, --user for user scope, or
+    --project-dir to explicitly select the project install directory.
 
     Examples:
       nemo skills install --agent claude
       nemo skills install --agent claude --user
       nemo skills install --agent claude --skill inference
+      nemo skills install --agent claude --project-dir /path/to/project
     """
     try:
         installer = get_installer(agent)
@@ -296,7 +304,7 @@ def install(
         raise typer.Exit(code=1)
 
     skills = _resolve_skills(skill)
-    project_root = _find_project_root()
+    project_root = _find_project_root(project_dir)
     result_paths = installer.install(scope, project_root, skills)
     typer.echo(f"Installed {len(skills)} skill(s) for {installer.display_name}:")
     for path in result_paths:
