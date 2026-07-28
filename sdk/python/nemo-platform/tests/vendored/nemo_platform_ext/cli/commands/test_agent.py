@@ -47,6 +47,18 @@ class TestAgentContext:
         assert "Tasks" in result.stdout
         assert "test-plugin.some-job" in result.stdout
 
+    def test_context_maps_agent_cli_entry_points_to_owning_plugin(self):
+        with patch(
+            "nemo_platform_plugin.discovery.discover_entry_points",
+            side_effect=lambda group: {"insights.analyst": object()} if group == "nemo.cli.agents" else {},
+        ):
+            result = _invoke("agent", "context")
+
+        assert result.exit_code == 0
+        assert "| insights |" in result.stdout
+        assert "Agent CLI" in result.stdout
+        assert "insights.analyst" in result.stdout
+
     def test_context_sections_present(self):
         result = _invoke("agent", "context")
         assert result.exit_code == 0

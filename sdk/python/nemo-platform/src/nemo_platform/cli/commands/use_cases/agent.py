@@ -30,6 +30,7 @@ nemo agent commands""",
 
 _SURFACE_GROUPS: tuple[tuple[str, str], ...] = (
     ("nemo.cli", "CLI"),
+    ("nemo.cli.agents", "Agent CLI"),
     ("nemo.controllers", "Controllers"),
     ("nemo.docs", "Docs"),
     ("nemo.executors", "Executors"),
@@ -42,6 +43,7 @@ _SURFACE_GROUPS: tuple[tuple[str, str], ...] = (
     ("nemo.skills", "Skills"),
     ("nemo.studio", "Studio"),
 )
+_DOT_SCOPED_SURFACE_GROUPS = frozenset({"nemo.cli.agents", "nemo.functions", "nemo.jobs"})
 
 
 def _normalize_cell(value: object) -> str:
@@ -51,7 +53,7 @@ def _normalize_cell(value: object) -> str:
 
 
 def _plugin_name_for_entry_point(entry_point_name: str, entry_point_group: str) -> str:
-    if entry_point_group == "nemo.jobs":
+    if entry_point_group in _DOT_SCOPED_SURFACE_GROUPS:
         return entry_point_name.split(".", 1)[0]
     return entry_point_name
 
