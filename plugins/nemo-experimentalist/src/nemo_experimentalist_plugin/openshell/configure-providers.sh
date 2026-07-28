@@ -10,9 +10,8 @@ if ! command -v openshell >/dev/null 2>&1; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$script_dir/../../../.." && pwd)"
 profile_template_dir="$script_dir/provider-profiles"
-profile_dir="$repo_root/tmp/experimentalist-openshell-provider-profiles"
+profile_dir="${NEMO_EXPERIMENTALIST_PROVIDER_PROFILE_DIR:-$PWD/tmp/experimentalist-openshell-provider-profiles}"
 bridge_provider="${NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_PROVIDER:-nemo-experimentalist-harbor-bridge}"
 inference_provider="${NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER:-nemo-experimentalist-inference}"
 inference_provider_type="${NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER_TYPE:-nvidia}"
@@ -41,7 +40,7 @@ done
 delete_provider_if_present() {
   local provider_name="$1"
 
-  # These names are dedicated to this example. Recreating them makes profile
+  # These names are dedicated to this runtime. Recreating them makes profile
   # changes deterministic and migrates the earlier generic bridge provider.
   if openshell provider get "$provider_name" >/dev/null 2>&1; then
     openshell provider delete "$provider_name"

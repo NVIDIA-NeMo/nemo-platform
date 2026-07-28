@@ -126,11 +126,10 @@ Each run writes its local artifacts under `--experiment-dir`, or under
 
 ## OpenShell container prototype
 
-The [`examples/openshell`](examples/openshell) prototype packages the
-Experimentalist control plane as a non-root container and runs it under a
-fail-closed OpenShell policy without Docker access. The full optimization path
-is intentionally blocked until Harbor evaluation is delegated to NeMo
-Evaluator; do not mount the host Docker socket into the Experimentalist
-sandbox.
+The [`openshell`](src/nemo_experimentalist_plugin/openshell) runtime packages
+the Experimentalist control plane as a non-root container and runs it under a
+fail-closed OpenShell policy without Docker access. Harbor evaluation crosses
+an authenticated, narrow API to a Docker-owning bridge outside the sandbox; do
+not mount the host Docker socket into Experimentalist.
 
 License: Apache-2.0.

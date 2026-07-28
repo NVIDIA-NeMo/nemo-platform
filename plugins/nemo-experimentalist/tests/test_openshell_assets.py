@@ -9,13 +9,15 @@ import yaml
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = PLUGIN_ROOT.parents[1]
-POLICY_PATH = PLUGIN_ROOT / "examples" / "openshell" / "policy.yaml"
-DOCKER_DESKTOP_POLICY_PATH = PLUGIN_ROOT / "examples" / "openshell" / "policy.docker-desktop.yaml"
-RUNNER_PATH = PLUGIN_ROOT / "examples" / "openshell" / "run.sh"
-PROVIDER_SETUP_PATH = PLUGIN_ROOT / "examples" / "openshell" / "configure-providers.sh"
-ASKPASS_PATH = PLUGIN_ROOT / "examples" / "openshell" / "git-askpass.sh"
-PROVIDER_PROFILE_DIR = PLUGIN_ROOT / "examples" / "openshell" / "provider-profiles"
-DOCKERFILE_PATH = REPO_ROOT / "docker" / "Dockerfile.nmp-experimentalist"
+OPENSHELL_ROOT = PLUGIN_ROOT / "src" / "nemo_experimentalist_plugin" / "openshell"
+POLICY_PATH = OPENSHELL_ROOT / "policy.yaml"
+DOCKER_DESKTOP_POLICY_PATH = OPENSHELL_ROOT / "policy.docker-desktop.yaml"
+RUNNER_PATH = OPENSHELL_ROOT / "run.sh"
+PROVIDER_SETUP_PATH = OPENSHELL_ROOT / "configure-providers.sh"
+ASKPASS_PATH = OPENSHELL_ROOT / "git-askpass.sh"
+PROVIDER_PROFILE_DIR = OPENSHELL_ROOT / "provider-profiles"
+DOCKERFILE_PATH = PLUGIN_ROOT / "Dockerfile"
+DOCKER_BAKE_PATH = REPO_ROOT / "docker-bake.hcl"
 
 
 def test_openshell_policy_fails_closed_without_docker_access() -> None:
@@ -47,6 +49,7 @@ def test_docker_desktop_policy_is_an_explicit_landlock_fallback() -> None:
 
 def test_experimentalist_image_has_no_docker_client_or_socket() -> None:
     dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
+    docker_bake = DOCKER_BAKE_PATH.read_text(encoding="utf-8")
 
     assert "iproute2" in dockerfile
     assert "nftables" in dockerfile
@@ -56,6 +59,7 @@ def test_experimentalist_image_has_no_docker_client_or_socket() -> None:
     assert "USER sandbox" in dockerfile
     assert "docker.sock" not in dockerfile
     assert "docker-ce-cli" not in dockerfile
+    assert 'dockerfile = "plugins/nemo-experimentalist/Dockerfile"' in docker_bake
 
 
 def test_openshell_launcher_uses_policy_and_inference_route() -> None:
