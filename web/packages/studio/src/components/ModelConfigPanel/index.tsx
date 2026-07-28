@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
-import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2/ModelSelectV2';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
+import { WorkspaceModelSelect } from '@nemo/common/src/components/ModelSelectV2/WorkspaceModelSelect';
 import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, FormField, Stack, Text } from '@nvidia/foundations-react-core';
 import { CardIconBadge } from '@studio/components/common/SelectableCard';
 import {
-  providerForModel,
+  providerForSelection,
   validateModelAlias,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
@@ -21,8 +20,7 @@ const EMPTY_INFERENCE_PARAMS: Partial<InferenceParams> = {};
 
 export interface ModelConfigPanelProps {
   modelId: string;
-  modelGroups: ModelWorkspaceGroup[];
-  isLoadingModels?: boolean;
+  workspace: string;
   onRemove: () => void;
   onClose: () => void;
 }
@@ -30,8 +28,7 @@ export interface ModelConfigPanelProps {
 /** Right-hand config panel for a model, with subscriptions scoped to its individual fields. */
 export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
   modelId,
-  modelGroups,
-  isLoadingModels,
+  workspace,
   onRemove,
   onClose,
 }) => {
@@ -61,7 +58,7 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
 
   const handleModelChange = (selection: ModelSelection) => {
     modelField.onChange(selection.model);
-    providerField.onChange(providerForModel(modelGroups, selection.model));
+    providerField.onChange(providerForSelection(selection));
   };
 
   return (
@@ -114,11 +111,10 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
         />
 
         <FormField slotLabel="Model" required slotInfo="Model and inference parameters.">
-          <ModelSelectV2
+          <WorkspaceModelSelect
+            workspace={workspace}
             value={modelValue}
             onValueChange={handleModelChange}
-            groups={modelGroups}
-            loading={isLoadingModels}
             placeholder="Select a model"
             showParams
             fullWidth

@@ -1,17 +1,25 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
 import { MAX_COMPLETION_TOKENS_DEFAULT } from '@nemo/common/src/constants/inferenceParameters';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
+import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
 import type {
   ChatCompletionInferenceParams,
   EmbeddingInferenceParams,
   EmbeddingInferenceParamsExtraBody,
   ModelConfig,
 } from '@nemo/sdk/generated/data-designer/schema';
-import type { InferenceParams, ModelProvider } from '@nemo/sdk/generated/platform/schema';
+import { modelsListModels } from '@nemo/sdk/generated/platform/api';
+import type {
+  InferenceParams,
+  ModelEntity,
+  ModelEntityFilter,
+  ModelProvider,
+} from '@nemo/sdk/generated/platform/schema';
 import type { TemplateModelSpec } from '@studio/components/CreateFilesetStart/types';
 
 /** Mirrors the SDK ModelConfig shape; `alias` is what LLM columns reference via `model_alias`. */
@@ -27,19 +35,57 @@ export interface BuilderModel {
 export type BuilderModelPatch = Partial<Omit<BuilderModel, 'id'>>;
 
 /**
- * Resolves the provider for a model URN from the platform model list: the model's first
- * `model_providers` entry (a `workspace/provider-name` resource ref). Data Designer needs
- * an explicit provider on each model config — an unset provider is deprecated and the job
- * fails with "the model does not have a provider". Returns '' when the model isn't found
- * or has no provider (the user can still fill it in manually).
+ * The provider a dropdown selection carries: the picked model's first `model_providers` entry
+ * (a `workspace/provider-name` resource ref). Data Designer needs an explicit provider on each
+ * model config — an unset provider is deprecated and the job fails with "the model does not have
+ * a provider". Returns '' when the entry has no provider, or when the selection arrived without
+ * its entity (the user can still fill it in manually).
  */
-export const providerForModel = (modelGroups: ModelWorkspaceGroup[], model: string): string => {
-  for (const group of modelGroups) {
-    for (const entity of group.models) {
-      if (getURNFromNamedEntityRef(entity) === model) return entity.model_providers?.[0] ?? '';
-    }
-  }
-  return '';
+export const providerForSelection = (selection: ModelSelection): string =>
+  selection.entity?.model_providers?.[0] ?? '';
+
+/** One page is plenty: auto-fill only ever needs a name match or a first choice. */
+const AUTO_FILL_PAGE_SIZE = 25;
+
+/**
+ * The models {@link resolveTemplateModel} should consider: those whose name matches `preferred`,
+ * plus the first page of the workspace as a fallback. Two small requests instead of walking the
+ * whole catalogue, which is all the resolver needs to make its choice.
+ */
+export const fetchAutoFillCandidates = async (
+  workspace: string,
+  preferred?: string
+): Promise<ModelWorkspaceGroup[]> => {
+  const listPage = async (filter?: ModelEntityFilter): Promise<ModelEntity[]> => {
+    const page = await modelsListModels(workspace, {
+      page_size: AUTO_FILL_PAGE_SIZE,
+      sort: 'name',
+      ...(filter ? { filter } : {}),
+    });
+    return page.data ?? [];
+  };
+
+  // Template specs name a model without its workspace prefix or version suffix; match on that.
+  const preferredName = preferred
+    ? (preferred.split('/').pop() ?? preferred).split('@')[0]
+    : undefined;
+
+  const [matches, firstPage] = await Promise.all([
+    preferredName
+      ? listPage(withOperators<ModelEntityFilter>({ name: { $like: preferredName } }))
+      : Promise.resolve<ModelEntity[]>([]),
+    listPage(),
+  ]);
+
+  const seen = new Set<string>();
+  const models = [...matches, ...firstPage].filter((entity) => {
+    const urn = getURNFromNamedEntityRef(entity);
+    if (!urn || seen.has(urn)) return false;
+    seen.add(urn);
+    return true;
+  });
+
+  return groupModelsByWorkspace(models);
 };
 
 export const buildServedModelNames = (providers: ModelProvider[]): Map<string, string> => {

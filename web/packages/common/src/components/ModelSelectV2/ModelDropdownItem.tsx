@@ -62,11 +62,11 @@ const AdapterItem: FC<{
       <DropdownSubTrigger
         slotEnd={false}
         data-testid="model-dropdown-adapter-option"
-        onSelect={() => onSelect({ model: modelUrn, adapter: adapter.name })}
+        onSelect={() => onSelect({ model: modelUrn, adapter: adapter.name, entity: model })}
       >
         <Flex className="w-full" align="center" justify="between" gap="density-md">
           <Flex align="center" gap="density-sm" className="min-w-0">
-            {isSelected && <Check size={14} className="flex-shrink-0" />}
+            {isSelected && <Check size={14} className="shrink-0" />}
             <Text className="truncate">{adapter.name}</Text>
           </Flex>
           {adapter.created_at && (
@@ -99,7 +99,7 @@ export const ModelDropdownItem: FC<ModelDropdownItemProps> = ({
         <DropdownSubTrigger
           slotEnd={false}
           data-testid="model-dropdown-item"
-          onClick={() => onSelect({ model: modelUrn })}
+          onClick={() => onSelect({ model: modelUrn, entity: model })}
         >
           <ModelName name={model.name} />
         </DropdownSubTrigger>
@@ -128,10 +128,10 @@ export const ModelDropdownItem: FC<ModelDropdownItemProps> = ({
         <DropdownHeading>Base Model</DropdownHeading>
         <DropdownItem
           data-testid="model-dropdown-base-option"
-          onSelect={() => onSelect({ model: modelUrn })}
+          onSelect={() => onSelect({ model: modelUrn, entity: model })}
         >
           <Flex align="center" gap="density-sm">
-            {isBaseSelected && <Check size={14} className="flex-shrink-0" />}
+            {isBaseSelected && <Check size={14} className="shrink-0" />}
             <Text>{modelUrn}</Text>
           </Flex>
         </DropdownItem>

@@ -13,7 +13,7 @@ import {
   defaultModelAlias,
   firstAvailableModel,
   modelIdForModel,
-  providerForModel,
+  providerForSelection,
   resolveTemplateModel,
   validateModelAlias,
   validateModels,
@@ -35,7 +35,7 @@ describe('defaultModelAlias', () => {
   });
 });
 
-describe('providerForModel', () => {
+describe('model resolution', () => {
   const groups = [
     {
       workspace: 'steramae',
@@ -51,13 +51,17 @@ describe('providerForModel', () => {
     },
   ] as unknown as ModelWorkspaceGroup[];
 
-  it('returns the model’s first provider ref', () => {
-    expect(providerForModel(groups, 'steramae/nemotron-oss')).toBe('steramae/build');
+  it('providerForSelection returns the picked entity’s first provider ref', () => {
+    expect(
+      providerForSelection({ model: 'steramae/nemotron-oss', entity: groups[0].models[0] })
+    ).toBe('steramae/build');
   });
 
-  it('returns empty string when the model or its provider is missing', () => {
-    expect(providerForModel(groups, 'steramae/no-provider')).toBe('');
-    expect(providerForModel(groups, 'steramae/unknown')).toBe('');
+  it('providerForSelection returns empty string without an entity or provider', () => {
+    expect(
+      providerForSelection({ model: 'steramae/no-provider', entity: groups[0].models[2] })
+    ).toBe('');
+    expect(providerForSelection({ model: 'steramae/unknown' })).toBe('');
   });
 
   it('firstAvailableModel picks the first model and its provider', () => {

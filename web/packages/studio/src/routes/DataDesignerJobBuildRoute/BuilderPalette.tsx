@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
 import { SegmentedControl } from '@nvidia/foundations-react-core';
 import { AddColumnPalette } from '@studio/components/AddColumnPalette';
@@ -18,8 +17,7 @@ export interface BuilderPaletteProps {
   tab: PaletteTab;
   onTabChange: (tab: PaletteTab) => void;
   selectedModelId: string | null;
-  modelGroups: ModelWorkspaceGroup[];
-  isLoadingModels?: boolean;
+  workspace: string;
   onAddColumn: (selection: AddColumnSelection) => void;
   onAddModel: (selection: ModelSelection, provider: string) => void;
   onSelectModel: (id: string | null) => void;
@@ -30,8 +28,7 @@ export const BuilderPalette: FC<BuilderPaletteProps> = ({
   tab,
   onTabChange,
   selectedModelId,
-  modelGroups,
-  isLoadingModels,
+  workspace,
   onAddColumn,
   onAddModel,
   onSelectModel,
@@ -64,8 +61,7 @@ export const BuilderPalette: FC<BuilderPaletteProps> = ({
           <AddModelPalette
             models={models}
             selectedId={selectedModelId}
-            modelGroups={modelGroups}
-            isLoadingModels={isLoadingModels}
+            workspace={workspace}
             onAddModel={onAddModel}
             onSelectModel={onSelectModel}
           />

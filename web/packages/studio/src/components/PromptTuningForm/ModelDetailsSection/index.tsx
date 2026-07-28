@@ -5,7 +5,7 @@ import {
   type ModelWorkspaceGroup,
   QUERY_PROMPT_TUNEABLE_MODELS,
 } from '@nemo/common/src/api/models/useModels';
-import { useModelsFromWorkspace } from '@nemo/common/src/api/models/useModelsFromWorkspace';
+import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { compileSystemPrompt } from '@nemo/common/src/models/utils';
@@ -38,10 +38,10 @@ export const ModelDetailsSection: FC<
     rules: { required: 'Base model is required' },
   });
 
-  const { groups, isFetching: isLoadingModels } = useModelsFromWorkspace({
+  const { groups, ...modelSearch } = useModelSearch({
     workspace: workspace ?? null,
-    query: QUERY_PROMPT_TUNEABLE_MODELS,
-    queryOptions: { enabled: open },
+    filter: QUERY_PROMPT_TUNEABLE_MODELS.filter,
+    enabled: open,
   });
 
   const iclFewShotExamples = useWatch({ control, name: 'iclFewShotExamples' });
@@ -109,12 +109,12 @@ export const ModelDetailsSection: FC<
         required
       >
         <ModelSelectV2
+          {...modelSearch}
           value={value}
           onValueChange={handleValueChange}
           groups={groupsWithBaseModel}
-          loading={isLoadingModels}
           disabled={disabled}
-          placeholder={isLoadingModels ? 'Loading models...' : 'Select a model to get started'}
+          placeholder={modelSearch.loading ? 'Loading models...' : 'Select a model to get started'}
           hideAdapters
           fullWidth
           onOpenChange={handleOpenChange}

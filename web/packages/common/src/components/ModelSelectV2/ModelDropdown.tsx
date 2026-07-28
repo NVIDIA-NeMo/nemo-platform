@@ -1,61 +1,64 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
-import { ModelDropdownItem } from '@nemo/common/src/components/ModelSelectV2/ModelDropdownItem';
+import { ModelDropdownList } from '@nemo/common/src/components/ModelSelectV2/ModelDropdownList';
 import { ModelDropdownSearch } from '@nemo/common/src/components/ModelSelectV2/ModelDropdownSearch';
-import type { ModelSelection, ModelType } from '@nemo/common/src/components/ModelSelectV2/types';
+import type {
+  ModelSelectV2Props,
+  ModelSelection,
+  ModelType,
+} from '@nemo/common/src/components/ModelSelectV2/types';
 import { creatorToIcon } from '@nemo/common/src/constants/modelMetadata';
-import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
+import { getPartsFromReference, getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { filterModel, isBaseModel } from '@nemo/common/src/utils/models';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import {
   Button,
   DropdownContent,
-  DropdownHeading,
   DropdownRoot,
-  DropdownSection,
   DropdownTrigger,
   Flex,
   SegmentedControl,
-  Stack,
   Text,
 } from '@nvidia/foundations-react-core';
 import { ChevronDown, LoaderCircle } from 'lucide-react';
-import { useMemo, useState, type FC } from 'react';
+import { useEffect, useMemo, useState, type FC } from 'react';
+import { useDebounce } from 'use-debounce';
 
 const MODEL_TYPE_ITEMS = [
   { value: 'custom', children: 'Custom Models' },
   { value: 'base', children: 'Base Models' },
 ];
 
+const DEFAULT_SEARCH_DEBOUNCE_MS = 300;
+
 const isCustomModel = (model: ModelEntity): boolean => !isBaseModel(model);
 
-interface ModelDropdownProps {
-  value: ModelSelection | null;
-  onValueChange: (selection: ModelSelection) => void;
-  groups: ModelWorkspaceGroup[];
-  loading?: boolean;
-  disabled?: boolean;
-  placeholder?: string;
-  showModelTypeToggle?: boolean;
-  defaultModelType?: ModelType;
-  hideAdapters?: boolean;
-  fullWidth?: boolean;
-  dropdownSide?: 'top' | 'bottom';
+type ModelDropdownProps = Omit<
+  ModelSelectV2Props,
+  'showParams' | 'inferenceParams' | 'onInferenceParamsChange' | 'onOpenChange' | 'aria-label'
+> & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}
+};
 
 export const ModelDropdown: FC<ModelDropdownProps> = ({
   value,
   onValueChange,
   groups,
+  onSearchChange,
+  searchDebounceMs = DEFAULT_SEARCH_DEBOUNCE_MS,
+  onLoadMore,
+  hasMore = false,
+  isLoadingMore = false,
+  doneLoadingMessage,
+  emptyMessage,
   loading = false,
   disabled = false,
   placeholder = 'Select a model',
   showModelTypeToggle = false,
   defaultModelType = 'custom',
+  onModelTypeChange,
   hideAdapters = false,
   fullWidth = false,
   dropdownSide = 'bottom',
@@ -64,35 +67,49 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
 }) => {
   const [search, setSearch] = useState('');
   const [modelType, setModelType] = useState<ModelType>(defaultModelType);
+  const [debouncedSearch] = useDebounce(search, searchDebounceMs);
+
+  useEffect(() => {
+    onSearchChange?.(debouncedSearch);
+  }, [debouncedSearch, onSearchChange]);
+
+  const localGroups = useMemo(() => groups ?? [], [groups]);
 
   const selectedModel = useMemo(() => {
     if (!value) return undefined;
-    return groups.flatMap((g) => g.models).find((m) => getURNFromNamedEntityRef(m) === value.model);
-  }, [groups, value]);
+    if (value.entity) return value.entity;
+    return localGroups
+      .flatMap((g) => g.models)
+      .find((m) => getURNFromNamedEntityRef(m) === value.model);
+  }, [localGroups, value]);
 
   const filteredGroups = useMemo(() => {
-    return groups
+    const filterType = showModelTypeToggle && !onModelTypeChange;
+    const filterSearch = !onSearchChange && search.length > 0;
+    if (!filterType && !filterSearch) return localGroups;
+
+    return localGroups
       .map((group) => {
         let models = group.models;
-
-        // Apply model type filter
-        if (showModelTypeToggle) {
+        if (filterType) {
           models = modelType === 'base' ? models.filter(isBaseModel) : models.filter(isCustomModel);
         }
-
-        // Apply search filter
-        if (search) {
+        if (filterSearch) {
           models = models.filter((m) => filterModel(m, search));
         }
-
         return { ...group, models };
       })
       .filter((group) => group.models.length > 0);
-  }, [groups, showModelTypeToggle, modelType, search]);
+  }, [localGroups, modelType, onModelTypeChange, onSearchChange, search, showModelTypeToggle]);
 
   const handleSelect = (selection: ModelSelection) => {
     onValueChange(selection);
     onOpenChange(false);
+  };
+
+  const handleModelTypeChange = (val: string) => {
+    setModelType(val as ModelType);
+    onModelTypeChange?.(val as ModelType);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -102,9 +119,10 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
     }
   };
 
-  const triggerLabel = selectedModel
-    ? (selectedModel.name?.split('@')[0] ?? selectedModel.name)
-    : placeholder;
+  const selectedParts = value?.model ? getPartsFromReference(value.model) : undefined;
+  const selectedName = selectedModel?.name ?? selectedParts?.name;
+  const selectedWorkspace = selectedModel?.workspace ?? selectedParts?.workspace;
+  const triggerLabel = selectedName ? (selectedName.split('@')[0] ?? selectedName) : placeholder;
 
   return (
     <DropdownRoot open={open} onOpenChange={handleOpenChange}>
@@ -118,7 +136,7 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
           disabled={disabled}
           aria-label="Select a model"
           data-testid="model-select-v2-trigger"
-          className="overflow-hidden [&[data-state=open]]:border-[var(--border-color-feedback-success)] [&[data-state=open]]:bg-[var(--background-color-interaction-base)]"
+          className="overflow-hidden data-[state=open]:border-(--border-color-feedback-success) data-[state=open]:bg-(--background-color-interaction-base)"
         >
           <Flex
             align="center"
@@ -126,20 +144,18 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
             className={`min-w-0 ${fullWidth ? 'w-full justify-between' : ''}`}
           >
             <Flex align="center" gap="density-sm" className="min-w-0 flex-1">
-              {selectedModel &&
-                creatorToIcon(selectedModel.workspace ?? '', {
-                  className: 'text-base flex-shrink-0',
-                })}
-              {loading ? (
+              {selectedWorkspace &&
+                creatorToIcon(selectedWorkspace, { className: 'text-base flex-shrink-0' })}
+              {loading && !selectedName ? (
                 <>
-                  <LoaderCircle size={16} className="animate-spin flex-shrink-0" />
+                  <LoaderCircle size={16} className="animate-spin shrink-0" />
                   <Text className="truncate">{placeholder}</Text>
                 </>
               ) : (
                 <Text className="truncate">{triggerLabel}</Text>
               )}
             </Flex>
-            <ChevronDown size={16} className="flex-shrink-0" />
+            <ChevronDown size={16} className="shrink-0" />
           </Flex>
         </Button>
       </DropdownTrigger>
@@ -157,39 +173,22 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
               className="w-full"
               value={modelType}
               items={MODEL_TYPE_ITEMS}
-              onValueChange={(val: string) => setModelType(val as ModelType)}
+              onValueChange={handleModelTypeChange}
             />
           </Flex>
         )}
-        <Stack className="overflow-auto max-h-[300px] w-full">
-          {filteredGroups.length > 0 ? (
-            filteredGroups.map((group) => (
-              <DropdownSection key={group.workspace}>
-                <DropdownHeading>
-                  <Flex gap="density-sm" align="center">
-                    {creatorToIcon(group.workspace, { className: 'text-base' })}
-                    <Text>{group.workspace}</Text>
-                  </Flex>
-                </DropdownHeading>
-                {group.models.map((model) => (
-                  <ModelDropdownItem
-                    key={getURNFromNamedEntityRef(model)}
-                    model={model}
-                    value={value}
-                    onSelect={handleSelect}
-                    hideAdapters={hideAdapters}
-                  />
-                ))}
-              </DropdownSection>
-            ))
-          ) : (
-            <DropdownSection>
-              <DropdownHeading>
-                <Text>{loading ? 'Loading models...' : 'No models found'}</Text>
-              </DropdownHeading>
-            </DropdownSection>
-          )}
-        </Stack>
+        <ModelDropdownList
+          groups={filteredGroups}
+          value={value}
+          onSelect={handleSelect}
+          hideAdapters={hideAdapters}
+          loading={loading}
+          onLoadMore={onLoadMore}
+          hasMore={hasMore}
+          isLoadingMore={isLoadingMore}
+          doneLoadingMessage={doneLoadingMessage}
+          emptyMessage={emptyMessage}
+        />
       </DropdownContent>
     </DropdownRoot>
   );
