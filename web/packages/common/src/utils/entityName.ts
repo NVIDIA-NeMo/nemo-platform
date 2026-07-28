@@ -3,15 +3,9 @@
 
 import { z } from 'zod';
 
-/**
- * Mirrors the entity store's RFC-1035-ish name pattern from
- * `packages/nmp_common/src/nmp/common/entities/constants.py` (`NAME_PATTERN`).
- *
- * Several service DTOs advertise a looser pattern (`^[\w\-.]+$`, max 255), which
- * is what OpenAPI/orval pulls into the generated zod schemas. The stricter
- * pattern is only enforced downstream by the entity store, so validating against
- * the generated schema lets invalid names through to a confusing 422.
- */
+// Mirrors NAME_PATTERN in packages/nmp_common/src/nmp/common/entities/constants.py.
+// The generated zod uses the looser pattern the service DTOs advertise, which lets
+// invalid names through to a 422 from the entity store.
 export const ENTITY_NAME_REGEXP = /^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$/;
 
 export const ENTITY_NAME_MIN_LENGTH = 2;
@@ -51,10 +45,7 @@ function listInvalidChars(value: string): string[] {
   return [...new Set(found)].map((char) => (char === ' ' ? 'spaces' : `"${char}"`));
 }
 
-/**
- * First specific rule the value breaks, phrased for a form field, or `undefined`
- * when the value is valid.
- */
+/** First rule the value breaks, phrased for a form field, or `undefined` if valid. */
 export function getEntityNameError(value: string, label = 'Name'): string | undefined {
   if (!value) return `${label} is required.`;
   if (ENTITY_NAME_REGEXP.test(value)) return undefined;

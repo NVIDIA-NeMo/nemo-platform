@@ -7,12 +7,8 @@ import { FilesCreateFilesetBody } from '@nemo/sdk/generated/platform/zod/files';
 import { DATASET_TYPE_CUSTOM, DATASET_TYPE_SAMPLE } from '@studio/routes/FilesetNewRoute/constants';
 import { z } from 'zod';
 
-/**
- * Override the SDK-generated name validation. The generated zod uses the Files
- * service DTO's loose pattern (`^[\w\-.]+$`, max 255); the entity store
- * downstream enforces a stricter RFC-1035-ish pattern. Validate against the
- * strict pattern here so the user sees a useful inline error instead of a 422.
- */
+// Override the SDK-generated name validation, which uses a looser pattern than the
+// entity store enforces.
 export const DatasetCreateFilesetFormSchema = FilesCreateFilesetBody.extend({
   name: z.string().trim().pipe(entityNameSchema('Name')),
   purpose: z.nativeEnum(FilesetPurpose),

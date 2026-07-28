@@ -13,10 +13,8 @@ export enum StorageMode {
 
 export type SupportedPurpose = typeof FilesetPurpose.dataset | typeof FilesetPurpose.model;
 
-// Override the SDK-generated `name` validation. The generated zod uses the
-// Files service DTO's loose pattern (`^[\w\-.]+$`, max 255); the entity store
-// downstream enforces a stricter RFC-1035-ish pattern. We validate against the
-// strict one here so the user sees a useful error instead of a 422 toast.
+// Override the SDK-generated `name` validation, which uses a looser pattern than the
+// entity store enforces.
 export const filesetCreateFormSchema = FilesCreateFilesetBody.pick({
   name: true,
   description: true,
