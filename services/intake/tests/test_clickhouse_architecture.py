@@ -9,12 +9,17 @@ from pathlib import Path
 _SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src" / "nmp" / "intake"
 _RAW_CLIENT_MODULE = "nmp.intake.spans.clickhouse_client"
 
-# Shrink this allowlist as each legacy repository moves behind ClickHouseExecutor.
-_ALLOWED_RAW_CLIENT_IMPORTS = {
+# Only service composition roots and the executor may depend on the raw runtime client.
+_EXPECTED_RAW_CLIENT_IMPORTS = {
     "api/v2/experiments/dependencies.py",
     "repository/clickhouse/executor.py",
     "service.py",
     "spans/api/dependencies.py",
+}
+_EXPECTED_LOW_LEVEL_CALL_MODULES = {
+    "repository/clickhouse/executor.py",
+    "spans/clickhouse_client.py",
+    "spans/clickhouse_migrations.py",
 }
 
 
@@ -23,8 +28,27 @@ def test_raw_clickhouse_client_imports_are_confined_to_approved_modules() -> Non
         path.relative_to(_SOURCE_ROOT).as_posix() for path in _SOURCE_ROOT.rglob("*.py") if _imports_raw_client(path)
     }
 
-    unexpected = imports - _ALLOWED_RAW_CLIENT_IMPORTS
-    assert not unexpected, f"Use ClickHouseExecutor instead of the raw client in: {sorted(unexpected)}"
+    unexpected = imports - _EXPECTED_RAW_CLIENT_IMPORTS
+    missing = _EXPECTED_RAW_CLIENT_IMPORTS - imports
+    assert imports == _EXPECTED_RAW_CLIENT_IMPORTS, (
+        f"Raw client boundary changed; use ClickHouseExecutor for unexpected imports: "
+        f"{sorted(unexpected)}; remove stale expected imports: {sorted(missing)}"
+    )
+
+
+def test_low_level_clickhouse_calls_are_confined_to_executor_client_and_migrations() -> None:
+    callers = {
+        path.relative_to(_SOURCE_ROOT).as_posix()
+        for path in _SOURCE_ROOT.rglob("*.py")
+        if _calls_low_level_clickhouse(path)
+    }
+
+    unexpected = callers - _EXPECTED_LOW_LEVEL_CALL_MODULES
+    missing = _EXPECTED_LOW_LEVEL_CALL_MODULES - callers
+    assert callers == _EXPECTED_LOW_LEVEL_CALL_MODULES, (
+        f"Low-level ClickHouse boundary changed; route runtime operations through ClickHouseExecutor: "
+        f"{sorted(unexpected)}; remove stale expected callers: {sorted(missing)}"
+    )
 
 
 def _imports_raw_client(path: Path) -> bool:
@@ -34,4 +58,20 @@ def _imports_raw_client(path: Path) -> bool:
             return True
         if isinstance(node, ast.Import) and any(alias.name == _RAW_CLIENT_MODULE for alias in node.names):
             return True
+    return False
+
+
+def _calls_low_level_clickhouse(path: Path) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr in {"query", "command"}:
+            return True
+        if node.func.attr != "insert":
+            continue
+        receiver = node.func.value
+        if isinstance(receiver, ast.Attribute) and receiver.attr == "_executor":
+            continue
+        return True
     return False
