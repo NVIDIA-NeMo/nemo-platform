@@ -454,6 +454,8 @@ class TestStopInstance:
             assert proc.pid in result.stopped_pids
             proc.wait(timeout=5)
             assert proc.poll() is not None
+            assert not is_instance_alive(scope, base_dir=base_dir)
+            assert read_descriptor(scope, base_dir=base_dir) is None
         finally:
             if proc.poll() is None:
                 proc.kill()
