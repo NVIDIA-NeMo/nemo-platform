@@ -62,8 +62,11 @@ function ControlledComboboxHarness({
 
   const selected = Array.isArray(value) ? value : [];
   const typed = inputValue.trim();
+  const offered = (items ?? []).flatMap((item) =>
+    typeof item === 'string' ? [item] : 'items' in item ? item.items : []
+  );
   const showTyped =
-    offerTypedValue && typed && !LABELS.includes(typed) && !selected.includes(typed);
+    offerTypedValue && typed && !offered.includes(typed) && !selected.includes(typed);
   const resolvedItems = showTyped
     ? [{ kind: 'section' as const, slotHeading: 'Custom', items: [typed] }, ...(items as [])]
     : items;
