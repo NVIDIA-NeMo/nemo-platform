@@ -42,18 +42,21 @@ export const AnonymizerJobDetailRoute: FC | null = ANONYMIZER_ENABLED
 
       const isTerminal = isJobTerminated(job?.status);
 
-      const { data: results, isLoading: isLoadingResults } = useAnonymizerListRunJobResults(
-        workspace,
-        anonymizerJobName,
-        { query: { enabled: isTerminal } }
-      );
+      const {
+        data: results,
+        isLoading: isLoadingResults,
+        error: resultsError,
+      } = useAnonymizerListRunJobResults(workspace, anonymizerJobName, {
+        query: { enabled: isTerminal },
+      });
 
-      const { data: logs, isLoading: isLoadingLogs } = useAnonymizerGetRunJobLogs(
-        workspace,
-        anonymizerJobName,
-        undefined,
-        { query: { refetchInterval: isTerminal ? false : ANONYMIZER_POLLING_INTERVAL_MS } }
-      );
+      const {
+        data: logs,
+        isLoading: isLoadingLogs,
+        error: logsError,
+      } = useAnonymizerGetRunJobLogs(workspace, anonymizerJobName, undefined, {
+        query: { refetchInterval: isTerminal ? false : ANONYMIZER_POLLING_INTERVAL_MS },
+      });
 
       useBreadcrumbs({
         items: [
@@ -92,14 +95,21 @@ export const AnonymizerJobDetailRoute: FC | null = ANONYMIZER_ENABLED
                     results={results?.data ?? []}
                     isLoading={isLoadingResults}
                     isTerminal={isTerminal}
+                    loadError={!!resultsError}
                   />
                 </Grid>
                 <Panel slotHeading="Logs" elevation="high" density="compact">
-                  <LogViewer
-                    logs={logs?.data ?? []}
-                    isLoading={isLoadingLogs}
-                    downloadFilename={`anonymizer-${anonymizerJobName}-logs.txt`}
-                  />
+                  {logsError ? (
+                    <Banner kind="inline" status="error">
+                      Could not load logs for this job.
+                    </Banner>
+                  ) : (
+                    <LogViewer
+                      logs={logs?.data ?? []}
+                      isLoading={isLoadingLogs}
+                      downloadFilename={`anonymizer-${anonymizerJobName}-logs.txt`}
+                    />
+                  )}
                 </Panel>
               </Stack>
             )}

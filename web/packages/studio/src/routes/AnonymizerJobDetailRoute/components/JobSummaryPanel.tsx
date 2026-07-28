@@ -11,7 +11,7 @@ import { jobSource, jobStrategy } from '@studio/routes/AnonymizerJobDetailRoute/
 import type { FC } from 'react';
 
 interface JobSummaryPanelProps {
-  job: RunJob;
+  readonly job: RunJob;
 }
 
 export const JobSummaryPanel: FC<JobSummaryPanelProps> = ({ job }) => {

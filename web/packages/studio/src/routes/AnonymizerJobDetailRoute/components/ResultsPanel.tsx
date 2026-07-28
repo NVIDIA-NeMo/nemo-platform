@@ -9,11 +9,12 @@ import { Download } from 'lucide-react';
 import { useState, type FC } from 'react';
 
 interface ResultsPanelProps {
-  workspace: string;
-  jobName: string;
-  results: PlatformJobResultResponse[];
-  isLoading: boolean;
-  isTerminal: boolean;
+  readonly workspace: string;
+  readonly jobName: string;
+  readonly results: readonly PlatformJobResultResponse[];
+  readonly isLoading: boolean;
+  readonly isTerminal: boolean;
+  readonly loadError: boolean;
 }
 
 export const ResultsPanel: FC<ResultsPanelProps> = ({
@@ -22,6 +23,7 @@ export const ResultsPanel: FC<ResultsPanelProps> = ({
   results,
   isLoading,
   isTerminal,
+  loadError,
 }) => {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -47,7 +49,11 @@ export const ResultsPanel: FC<ResultsPanelProps> = ({
             {error}
           </Banner>
         )}
-        {isLoading ? (
+        {loadError ? (
+          <Banner kind="inline" status="error">
+            Could not load results for this job.
+          </Banner>
+        ) : isLoading ? (
           <Spinner aria-label="Loading results" />
         ) : results.length ? (
           results.map((result) => (
