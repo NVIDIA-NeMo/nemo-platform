@@ -48,7 +48,10 @@ def test_shipped_suite_covers_canonical_count_and_fast_subset() -> None:
     assert "install-windows-3-11" not in canonical_ids
 
 
-@pytest.mark.parametrize("name", ["smoke.yaml", "quality.yaml", "tau3-smoke.yaml", "tau3-quality.yaml"])
+@pytest.mark.parametrize(
+    "name",
+    ["terminal-bench-smoke.yaml", "terminal-bench-quality.yaml", "tau3-smoke.yaml", "tau3-quality.yaml"],
+)
 def test_shipped_benchmark_configs_use_current_contracts(name: str) -> None:
     runner = _load_runner()
 

@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, model_validator
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_ROOT = Path(__file__).resolve().parent
 DEFAULT_SUITE = BENCHMARK_ROOT / "suites" / "terminal-bench-2.1.yaml"
-DEFAULT_CONFIG = BENCHMARK_ROOT / "configs" / "smoke.yaml"
+DEFAULT_CONFIG = BENCHMARK_ROOT / "configs" / "terminal-bench-smoke.yaml"
 DEFAULT_AGENT = PLUGIN_ROOT / "examples" / "terminal-bench-agent"
 DEFAULT_DATASET_CACHE = PLUGIN_ROOT / "tmp" / "benchmark-datasets"
 DEFAULT_RUNTIME_CACHE = PLUGIN_ROOT / "tmp" / "runtime-cache"
