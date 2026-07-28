@@ -23,21 +23,18 @@ export const ControlledCheckbox: FC<Props> = ({
       status={error ? 'error' : isValid ? 'success' : undefined}
       {...formFieldProps}
     >
-      {(props) => (
-        <Checkbox
-          checked={field.value ?? false}
-          onCheckedChange={(checked) => {
-            field.onChange(checked ?? false);
-          }}
-          attributes={{
-            CheckboxInput: {
-              className: 'cursor-pointer',
-            },
-          }}
-          {...props}
-          {...checkboxProps}
-        />
-      )}
+      <Checkbox
+        checked={field.value ?? false}
+        onCheckedChange={(checked) => {
+          field.onChange(checked ?? false);
+        }}
+        attributes={{
+          CheckboxInput: {
+            className: 'cursor-pointer',
+          },
+        }}
+        {...checkboxProps}
+      />
     </FormField>
   );
 };

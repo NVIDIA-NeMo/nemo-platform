@@ -12,7 +12,7 @@ self-managed Kubernetes deployments installed with the NeMo Platform Helm chart.
 | Area | Supported | Notes |
 |------|-----------|-------|
 | Deployment mode | `nemo setup` local install; Helm chart on Kubernetes | `nemo setup` starts local services, registers a model provider, and configures the CLI and SDK. The Helm chart is the supported path for self-managed Kubernetes clusters. |
-| Python | 3.11, 3.12, 3.13, 3.14 (`>=3.11,<3.15`) | Use an isolated virtual environment. On Python 3.14, prefix `pip install "nemo-platform[all]"` with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust extension catches up to Python 3.14. Python 3.11 is the lowest supported Python version and Python 3.14 is the highest supported Python version for the OSS local install path. |
+| Python | 3.11, 3.12, 3.13 | Use an isolated virtual environment. Python 3.11 is the lowest supported Python version and Python 3.13 is the highest supported Python version. |
 | Linux | Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, RHEL 9, Rocky Linux 9, Debian 12 | Supported for CLI, SDK, local services, and NVIDIA GPU workloads. |
 | macOS | [macOS Tahoe 26](https://support.apple.com/en-us/122868) and macOS Sequoia 15 | Supported for CLI, SDK, local services, and cloud/provider workflows. Local NVIDIA GPU workloads are not supported on macOS. |
 | Architecture | x86_64 Linux; Apple Silicon and Intel macOS | NVIDIA GPU workloads require x86_64 Linux. |
@@ -23,7 +23,7 @@ self-managed Kubernetes deployments installed with the NeMo Platform Helm chart.
 
 | Area | Supported | Notes |
 |------|-----------|-------|
-| Package installation | `uv` recommended; `pip` supported | The one-line installer sets up `uv` automatically. Published packages can also be installed with `pip install "nemo-platform[all]"`. |
+| Package installation | `uv>=0.9.14,<0.10.0` recommended; `pip` supported | The one-line installer sets up `uv` automatically. Published packages can also be installed with `pip install "nemo-platform[all]"`. |
 | Shell | Bash or zsh | Used by the installer, setup commands, and documented examples. |
 | Browser | Current Chrome, Edge, Firefox, or Safari | Required for the Studio UI and generated documentation. |
 
@@ -31,8 +31,8 @@ self-managed Kubernetes deployments installed with the NeMo Platform Helm chart.
 
 | Area | Supported | Notes |
 |------|-----------|-------|
-| CUDA | CUDA 12.8 or later | GPU Python dependencies are built for CUDA 12.8. |
-| NVIDIA driver | CUDA 12.8-capable driver, R570 branch or later | See the [CUDA 12.8 release notes](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-toolkit-release-notes/index.html) for exact driver minimums by operating system. |
+| CUDA | CUDA 13 or later | GPU workloads require CUDA 13 or later. |
+| NVIDIA driver | CUDA 13-capable driver, R580 branch or later | See the [CUDA 13.0 release notes](https://docs.nvidia.com/cuda/archive/13.0.0/cuda-toolkit-release-notes/index.html) for exact driver minimums by operating system. |
 | GPU memory | 40 GB VRAM minimum; 80 GB VRAM recommended | Smaller GPUs can run provider or client workflows, but local model and GPU-accelerated jobs require larger GPUs. |
 | Recommended GPUs | NVIDIA A100 80GB, H100 80GB, B200 180GB | Use comparable data center GPUs that meet the CUDA and memory requirements for the model or job. |
 | GPU platform | Linux x86_64 | macOS and Windows are not supported for local NVIDIA GPU workloads. |
@@ -63,5 +63,5 @@ The following are not part of the OSS support matrix:
 - Docker Compose deployment guides.
 - WSL-based local install or GPU validation.
 - macOS local GPU workloads.
-- Python earlier than 3.11 or Python 3.15 and later for the documented OSS local install path.
-- CUDA versions earlier than 12.8 for GPU-enabled Python dependencies.
+- Python earlier than 3.11 or Python 3.14 and later.
+- CUDA versions earlier than 13 for GPU workloads.

@@ -46,6 +46,11 @@ class ControllerConfig(BaseModel):
         ge=0,
         description="Max seconds in STARTING before FAILED (0 disables).",
     )
+    deleting_timeout_seconds: int = Field(
+        default=300,
+        ge=0,
+        description="Max seconds in DELETING before FAILED (0 disables).",
+    )
 
     @model_validator(mode="after")
     def _validate_backoff(self) -> ControllerConfig:
@@ -67,3 +72,18 @@ class DeploymentsConfig(NemoConfig):
         description="Default executor when Deployment.executor is unset.",
     )
     controller: ControllerConfig = Field(default_factory=ControllerConfig)
+    auth_proxy_image_name: str = Field(
+        default="nmp-api",
+        description=(
+            "Image name for the auth-proxy sidecar (qualified with the platform image registry/tag). "
+            "Must be an nmp-api image (runs `nemo services run --sidecars auth-proxy`)."
+        ),
+    )
+    auth_proxy_image: str = Field(
+        default="",
+        description="Optional fully-qualified image override for the auth-proxy sidecar.",
+    )
+    auth_proxy_port: int = Field(
+        default=8090,
+        description="Loopback port the auth-proxy sidecar listens on; workloads target it as their platform base URL.",
+    )

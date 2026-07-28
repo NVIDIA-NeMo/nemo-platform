@@ -67,11 +67,22 @@ type secretClient struct {
 }
 
 func NewSecretClient(apiBaseURL string, principal *Principal) SecretClient {
+	return NewSecretClientWithHTTPClient(apiBaseURL, principal, http.DefaultClient)
+}
+
+func NewSecretClientWithHTTPClient(apiBaseURL string, principal *Principal, httpClient *http.Client) SecretClient {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
 	return &secretClient{
-		httpClient: http.DefaultClient,
+		httpClient: httpClient,
 		principal:  principal,
 		apiBaseURL: apiBaseURL,
 	}
+}
+
+func NewSecretClientForEndpoint(endpoint Endpoint, principal *Principal) SecretClient {
+	return NewSecretClientWithHTTPClient(endpoint.ConnectBaseURL, principal, endpoint.HTTPClient())
 }
 
 func (c *secretClient) GetSecret(workspaceID, secretName string) (*PlatformSecretAccessResponse, error) {

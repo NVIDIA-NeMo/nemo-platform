@@ -8,13 +8,19 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from nemo_platform import AsyncNeMoPlatform
 from nmp.common.service.dependencies import get_sdk_client
-from nmp.intake.spans.annotations_repository import AnnotationsRepository
+from nmp.intake.repository.annotations import AnnotationsRepository
+from nmp.intake.repository.clickhouse.annotations import ClickHouseAnnotationsRepository
+from nmp.intake.repository.clickhouse.evaluator_results import ClickHouseEvaluatorResultsRepository
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor
+from nmp.intake.repository.clickhouse.session import ClickHouseSessionRepository
+from nmp.intake.repository.clickhouse.span import ClickHouseSpanRepository
+from nmp.intake.repository.clickhouse.trace import ClickHouseTraceRepository
+from nmp.intake.repository.evaluator_results import EvaluatorResultsRepository
+from nmp.intake.repository.session import SessionRepository
+from nmp.intake.repository.span import SpanRepository
+from nmp.intake.repository.trace import TraceRepository
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient, get_clickhouse_client
-from nmp.intake.spans.evaluator_results_repository import EvaluatorResultsRepository
 from nmp.intake.spans.service import IntakeSpansService
-from nmp.intake.spans.session_repository import SessionRepository
-from nmp.intake.spans.span_repository import SpanRepository
-from nmp.intake.spans.trace_repository import TraceRepository
 
 
 async def require_workspace_access(
@@ -46,34 +52,40 @@ def validate_list_query_params(request: Request, additional_params: set[str] | N
         )
 
 
-def get_span_repository(
+def get_clickhouse_executor(
     client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
+) -> ClickHouseExecutor:
+    return ClickHouseExecutor(client)
+
+
+def get_span_repository(
+    executor: Annotated[ClickHouseExecutor, Depends(get_clickhouse_executor)],
 ) -> SpanRepository:
-    return SpanRepository(client)
+    return ClickHouseSpanRepository(executor)
 
 
 def get_trace_repository(
-    client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
+    executor: Annotated[ClickHouseExecutor, Depends(get_clickhouse_executor)],
 ) -> TraceRepository:
-    return TraceRepository(client)
+    return ClickHouseTraceRepository(executor)
 
 
 def get_session_repository(
-    client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
+    executor: Annotated[ClickHouseExecutor, Depends(get_clickhouse_executor)],
 ) -> SessionRepository:
-    return SessionRepository(client)
+    return ClickHouseSessionRepository(executor)
 
 
 def get_evaluator_results_repository(
-    client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
+    executor: Annotated[ClickHouseExecutor, Depends(get_clickhouse_executor)],
 ) -> EvaluatorResultsRepository:
-    return EvaluatorResultsRepository(client)
+    return ClickHouseEvaluatorResultsRepository(executor)
 
 
 def get_annotations_repository(
-    client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
+    executor: Annotated[ClickHouseExecutor, Depends(get_clickhouse_executor)],
 ) -> AnnotationsRepository:
-    return AnnotationsRepository(client)
+    return ClickHouseAnnotationsRepository(executor)
 
 
 def get_spans_service(

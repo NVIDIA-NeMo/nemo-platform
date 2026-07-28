@@ -16,16 +16,18 @@ import {
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { DataDesignerJobActionsMenu } from '@studio/components/DataDesignerJobActionsMenu';
+import { CreateFileSplitsModal } from '@studio/components/FilesTable/CreateFileSplitsModal';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { DataDesignerConfigPanel } from '@studio/routes/DataDesignerJobDetailsRoute/DataDesignerConfigPanel';
 import { DatasetProfilerSection } from '@studio/routes/DataDesignerJobDetailsRoute/DatasetProfilerSection';
 import { JobDatasetEditorSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobDatasetEditorSection';
 import { JobOutputFilesetSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobOutputFilesetSection';
+import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerArtifactsFileset';
 import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobFromRoute';
 import { getDataDesignerJobListRoute } from '@studio/routes/utils';
 import { formatDateTime } from '@studio/util/date';
-import { ArrowLeft, FileJson } from 'lucide-react';
+import { ArrowLeft, Split } from 'lucide-react';
 import { useState, type FC } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -41,7 +43,16 @@ export const DataDesignerJobDetailsRoute: FC = () => {
 
   const navigate = useNavigate();
   const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
   const [cancelError, setCancelError] = useState<string | undefined>(undefined);
+
+  const { filesetWorkspace, filesetName, files } = useDataDesignerArtifactsFileset();
+  const splitDatasetId =
+    filesetWorkspace && filesetName ? `${filesetWorkspace}/${filesetName}` : undefined;
+  const splitFileOptions = files
+    .map((file) => file.path)
+    .filter((path) => /\.(json|jsonl|parquet)$/i.test(path));
+  const canSplit = Boolean(splitDatasetId) && splitFileOptions.length > 0;
 
   useBreadcrumbs({
     items: [
@@ -92,11 +103,18 @@ export const DataDesignerJobDetailsRoute: FC = () => {
               {job.status ? <StatusBadge status={job.status} /> : null}
             </Flex>
             <Flex gap="density-md" align="center">
-              <Button type="button" kind="secondary" onClick={() => setIsConfigPanelOpen(true)}>
-                <FileJson /> View config
+              <Button
+                type="button"
+                kind="primary"
+                color="brand"
+                disabled={!canSplit}
+                onClick={() => setIsSplitModalOpen(true)}
+              >
+                <Split /> Split
               </Button>
               <DataDesignerJobActionsMenu
                 job={job}
+                onViewConfig={() => setIsConfigPanelOpen(true)}
                 onDeleted={() => navigate(getDataDesignerJobListRoute(workspace))}
                 onCancelError={setCancelError}
               />
@@ -151,6 +169,15 @@ export const DataDesignerJobDetailsRoute: FC = () => {
         open={isConfigPanelOpen}
         onClose={() => setIsConfigPanelOpen(false)}
       />
+
+      {isSplitModalOpen && (
+        <CreateFileSplitsModal
+          open
+          onClose={() => setIsSplitModalOpen(false)}
+          datasetId={splitDatasetId}
+          fileOptions={splitFileOptions}
+        />
+      )}
     </AccessibleTitle>
   );
 };

@@ -15,6 +15,7 @@ from nmp.intake.spans.api.query_filters import (
     filter_comparisons,
     require_datetime_value,
     require_enum_value,
+    require_string_or_list_value,
     require_string_value,
 )
 from nmp.intake.spans.api.traces_schemas import Trace, TraceFilter, TraceMode, TraceSortField
@@ -113,7 +114,7 @@ def _trace_filter(workspace: str, parsed: ParsedFilter) -> TraceListFilter:
     filters = TraceListFilter(workspace=workspace)
     for comparison in filter_comparisons(parsed):
         if comparison.field == "id":
-            filters.trace_id = require_string_value(comparison)
+            filters.trace_ids = require_string_or_list_value(comparison)
         elif comparison.field == "session_id":
             filters.session_id = require_string_value(comparison)
         elif comparison.field == "status":

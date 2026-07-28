@@ -20,7 +20,6 @@ import asyncio
 import logging
 from typing import Any
 
-from langchain_core.language_models.base import BaseLanguageModel
 from nemo_guardrails_plugin.constants import DEFAULT_MAIN_ENGINE, W3C_TRACE_CONTEXT_HEADERS
 from nemo_guardrails_plugin.llmrails_cache import InferenceTargetResolver
 from nemo_guardrails_plugin.transforms import GenerationResponseMapper
@@ -33,6 +32,7 @@ from nemoguardrails.llm.models.initializer import init_llm_model
 from nemoguardrails.rails.llm.config import Model
 from nemoguardrails.rails.llm.llmrails import LLMRails
 from nemoguardrails.rails.llm.options import GenerationOptions, GenerationResponse
+from nemoguardrails.types import LLMModel
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ def build_main_llm(
     request_headers: dict[str, str],
     resolve_inference_target: InferenceTargetResolver,
     main_model_template: Model | None = None,
-) -> BaseLanguageModel:
+) -> LLMModel:
     """Construct the per-request main LangChain LLM client.
 
     Injected into the cached :class:`LLMRails` via ``rails.update_llm``.

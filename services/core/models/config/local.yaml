@@ -4,7 +4,9 @@ models:
     interval_seconds: 5   # Faster iteration for development
     model_deployment_garbage_collection_ttl_seconds: 30
     backends:
-      docker:
+      deployments_plugin:
         enabled: true
+        docker_executor: local-docker
+        default_executor: local-docker
 
 inference_gateway: {}

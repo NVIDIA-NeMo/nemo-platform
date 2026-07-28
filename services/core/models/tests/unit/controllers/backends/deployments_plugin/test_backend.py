@@ -134,7 +134,7 @@ def _resolved_docker_lora() -> ResolvedPluginDeployment:
         deployment=SimpleNamespace(name="my-dep", workspace="default"),
         config=SimpleNamespace(engine="vllm"),
         model_entity=None,
-        view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=True),
+        view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=True, gpu=1),
         weights_type=ModelWeightsType.FILES_SERVICE,
         model_namespace="org",
         model_name="model",
@@ -146,23 +146,63 @@ def _resolved_docker_lora() -> ResolvedPluginDeployment:
 
 
 @pytest.mark.asyncio
-async def test_docker_lora_fails_fast_before_touching_substrate() -> None:
+async def test_docker_lora_creates_substrate() -> None:
+    """Docker + LoRA is now supported: it creates substrate like any other deploy.
+
+    The docker backend runs the LoRA shape as a multi-container group (server +
+    adapters sidecar) so there is no longer a fast-fail guardrail.
+    """
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
     backend.init()
     backend._entities = AsyncMock()
+    created: list[object] = []
+
+    async def _create(entity: object) -> object:
+        created.append(entity)
+        return entity
+
+    backend._entities.create = AsyncMock(side_effect=_create)
+    backend._entities.get = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
+    backend._entities.delete = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
     with (
         patch(
             "nmp.core.models.controllers.backends.deployments_plugin.backend.resolve_plugin_deployment",
             return_value=_resolved_docker_lora(),
         ),
-        patch.object(backend, "delete_model_deployment", AsyncMock()) as delete_mock,
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.executor_for_runtime",
+            return_value="local-docker",
+        ),
     ):
         result = await backend.create_model_deployment(_ctx())
-    assert result.status == "ERROR"
-    assert "docker" in result.status_message.lower()
-    assert "lora" in result.status_message.lower()
-    delete_mock.assert_not_called()
-    backend._entities.create.assert_not_called()
+
+    assert result.status == "PENDING"
+    # Substrate is created (volume(s) + puller + server configs/deployments),
+    # not rejected. The server config carries the multi-container LoRA shape.
+    assert any(isinstance(item, Deployment) and item.name == "my-dep-server" for item in created)
+
+    # Assert the full multi-container LoRA contract on the server DeploymentConfig,
+    # so a regression that drops the adapters sidecar / init / its port/GPU
+    # settings fails here rather than silently passing.
+    server_config = next(
+        item for item in created if isinstance(item, DeploymentConfig) and item.name.endswith("-server")
+    )
+    container_names = [c.name for c in server_config.containers]
+    assert container_names == ["server", "lora-adapters"]
+
+    server_container = server_config.containers[0]
+    sidecar_container = server_config.containers[1]
+
+    # The adapters sidecar publishes no ports and requests no GPU (it shares the
+    # server's network namespace and GPU); only the server owns those.
+    assert not sidecar_container.ports
+    assert not sidecar_container.resources.limits.get("nvidia.com/gpu")
+    assert server_container.ports  # server exposes the inference port
+    assert server_container.resources.limits.get("nvidia.com/gpu") == "1"
+
+    # The lora-cache-init init container prepares the shared scratch volume.
+    init_names = [c.name for c in server_config.init_containers]
+    assert "lora-cache-init" in init_names
 
 
 @pytest.mark.asyncio
@@ -249,9 +289,9 @@ async def test_pending_timeout_escalates_stuck_deployment() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_waits_for_server_before_config() -> None:
+async def test_delete_returns_deleting_when_server_still_exists() -> None:
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
-    backend._backend_config = DeploymentsPluginConfig(delete_wait_seconds=0.02, delete_poll_seconds=0.005)
+    backend.init()
     backend._entities = AsyncMock()
     server = Deployment(
         name="my-dep-server",
@@ -261,8 +301,10 @@ async def test_delete_waits_for_server_before_config() -> None:
     )
 
     async def _get(entity_type: type, name: str, workspace: str | None = None) -> Deployment:
-        del entity_type, name, workspace
-        return server
+        del entity_type, workspace
+        if name == "my-dep-server":
+            return server
+        raise NemoEntityNotFoundError("missing")
 
     backend._entities.get = AsyncMock(side_effect=_get)
     backend._entities.update = AsyncMock(side_effect=lambda entity: entity)
@@ -271,3 +313,107 @@ async def test_delete_waits_for_server_before_config() -> None:
     result = await backend.delete_model_deployment("default", "my-dep")
     assert result.status == "DELETING"
     backend._entities.delete.assert_not_called()
+    backend._entities.update.assert_awaited_once()
+    assert server.status == "DELETING"
+    assert server.desired_state == "STOPPED"
+
+
+@pytest.mark.asyncio
+async def test_delete_returns_deleting_without_blocking_poll() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="READY",
+    )
+    backend._entities.get = AsyncMock(return_value=server)
+    backend._entities.update = AsyncMock(side_effect=lambda entity: entity)
+    backend._entities.delete = AsyncMock()
+
+    with patch("asyncio.sleep", AsyncMock()) as sleep_mock:
+        result = await backend.delete_model_deployment("default", "my-dep")
+
+    assert result.status == "DELETING"
+    sleep_mock.assert_not_called()
+    backend._entities.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_retries_on_next_call_when_deployment_still_exists() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="DELETING",
+        desired_state="STOPPED",
+    )
+    seen_server = False
+
+    async def _get(entity_type: type, name: str, workspace: str | None = None) -> Deployment:
+        del entity_type, workspace
+        nonlocal seen_server
+        if name == "my-dep-server":
+            if not seen_server:
+                seen_server = True
+                return server
+            raise NemoEntityNotFoundError("missing")
+        raise NemoEntityNotFoundError("missing")
+
+    backend._entities.get = AsyncMock(side_effect=_get)
+    backend._entities.update = AsyncMock(side_effect=lambda entity: entity)
+    backend._entities.delete = AsyncMock()
+
+    first = await backend.delete_model_deployment("default", "my-dep")
+    assert first.status == "DELETING"
+
+    second = await backend.delete_model_deployment("default", "my-dep")
+    assert second.status == "DELETED"
+
+
+@pytest.mark.asyncio
+async def test_delete_completes_when_plugin_deployment_failed() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="FAILED",
+        desired_state="STOPPED",
+    )
+    backend._entities.get = AsyncMock(return_value=server)
+    backend._entities.delete = AsyncMock()
+
+    result = await backend.delete_model_deployment("default", "my-dep")
+
+    assert result.status == "DELETED"
+    backend._entities.delete.assert_any_await(Deployment, name="my-dep-server", workspace="default")
+
+
+@pytest.mark.asyncio
+async def test_delete_escalates_to_error_after_deleting_timeout() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._backend_config = DeploymentsPluginConfig(deleting_timeout_seconds=60)
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="DELETING",
+    )
+    backend._entities.get = AsyncMock(return_value=server)
+    backend._entities.update = AsyncMock(side_effect=lambda entity: entity)
+
+    result = await backend.delete_model_deployment("default", "my-dep", deleting_elapsed_seconds=120)
+    assert result.status == "ERROR"
+    assert result.error_details is not None
+    assert result.error_details["reason"] == "deleting_timeout"
+    assert result.error_details["timeout_seconds"] == 60

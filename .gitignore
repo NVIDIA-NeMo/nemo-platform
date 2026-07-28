@@ -146,6 +146,9 @@ site/
 
 # Generated Fern-only public API reference spec
 docs/fern/openapi/openapi.public.yaml
+docs/fern/generated/
+docs/fern/versions/[0-9]*.yml
+docs/fern/versions/v[0-9]*.yml
 
 # Generated from k8s/helm/values.yaml + README.md at docs build time (docs/fern/scripts/sync-helm-docs.mjs)
 docs/helm/index.mdx
@@ -153,4 +156,3 @@ docs/helm/index.mdx
 # nektos/act files commonly used
 .act-variables
 .act-secrets
-

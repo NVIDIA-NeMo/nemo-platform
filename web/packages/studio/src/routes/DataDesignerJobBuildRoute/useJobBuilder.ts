@@ -8,21 +8,46 @@ import type { FilesetTemplate } from '@studio/components/CreateFilesetStart/type
 import {
   type BuilderColumn,
   buildColumnsFromTemplate,
-  buildGraph,
   defaultColumnName,
   findColumnOption,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
 import {
   type BuilderModel,
-  type BuilderModelPatch,
   buildModelsFromTemplate,
   builderModelFromSelection,
   resolveTemplateModel,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { type UseFormReturn, useFieldArray, useForm } from 'react-hook-form';
 
 /** Which palette the left aside shows. */
 export type PaletteTab = 'columns' | 'models';
+
+/** All mutable values in the build route, owned by React Hook Form. */
+export interface JobBuilderFormValues {
+  name: string;
+  rows: string;
+  columns: BuilderColumn[];
+  models: BuilderModel[];
+}
+
+export interface JobBuilderValues {
+  columns: BuilderColumn[];
+  models: BuilderModel[];
+  name: string;
+  rows: string;
+}
+
+/**
+ * Fully-formed initial builder state used to clone an existing job. When present it seeds the
+ * form instead of the template, so the canvas opens pre-filled with the source job's schema.
+ */
+export interface JobBuilderSeed {
+  name: string;
+  rows: string;
+  columns: BuilderColumn[];
+  models: BuilderModel[];
+}
 
 /**
  * Column/model state for the recipe builder. Selecting a column and selecting a model are
@@ -33,149 +58,157 @@ export type PaletteTab = 'columns' | 'models';
  *
  * `modelGroups` auto-fills a template's seeded models once the platform model list loads.
  * `modelsSettled` gates that auto-fill on the full (all-pages) model list being available.
+ *
+ * `seed`, when provided (cloning a job), takes precedence over the template and pre-fills the
+ * form with the source job's columns, models, name, and row count.
  */
 export const useJobBuilder = (
   template: FilesetTemplate | null,
   modelGroups: ModelWorkspaceGroup[],
-  modelsSettled: boolean
+  modelsSettled: boolean,
+  seed: JobBuilderSeed | null = null
 ) => {
-  // Seed once from the template (if any). `useState` initializer runs a single time, so
-  // navigating with a template preloads its columns without re-seeding on every render.
-  const [columns, setColumns] = useState<BuilderColumn[]>(() =>
-    template ? buildColumnsFromTemplate(template.columns) : []
+  // Seed once from the clone source, else the template (if any). `useForm` keeps these values
+  // outside the route's render cycle, so a field edit notifies only subscribing components.
+  const initialColumns = useRef(
+    seed ? seed.columns : template ? buildColumnsFromTemplate(template.columns) : []
   );
+  const initialModels = useRef(seed ? seed.models : buildModelsFromTemplate(template?.models));
+  const form = useForm<JobBuilderFormValues>({
+    defaultValues: {
+      name: seed?.name ?? template?.id ?? 'untitled-dataset',
+      rows: seed?.rows ?? '100',
+      columns: initialColumns.current,
+      models: initialModels.current,
+    },
+  });
+  const { getValues, setValue } = form;
+  const {
+    fields: columnFields,
+    append: appendColumn,
+    remove: removeColumnField,
+  } = useFieldArray({
+    control: form.control,
+    name: 'columns',
+    keyName: 'fieldId',
+  });
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Set only when a column is added, so the canvas centers new nodes but not clicked ones.
   const [focusId, setFocusId] = useState<string | null>(null);
   // Continue numbering after any preloaded template columns so ids stay unique.
-  const nextId = useRef(columns.length);
+  const nextId = useRef(initialColumns.current.length);
 
   // The models referenced by LLM columns via `model_alias`; part of the same job config.
   // Seeded once from the template (if any); providers/models are auto-filled below.
-  const [models, setModels] = useState<BuilderModel[]>(() =>
-    buildModelsFromTemplate(template?.models)
-  );
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
-  const nextModelId = useRef(models.length);
+  const nextModelId = useRef(initialModels.current.length);
   const [paletteTab, setPaletteTab] = useState<PaletteTab>('columns');
 
   const autoFilled = useRef(false);
   useEffect(() => {
     if (autoFilled.current || !modelsSettled || modelGroups.length === 0) return;
     autoFilled.current = true;
-    setModels((prev) => {
-      let changed = false;
-      const next = prev.map((model) => {
-        if (model.provider) return model;
-        const resolved = resolveTemplateModel(modelGroups, model.model || undefined);
-        changed = true;
-        return resolved ? { ...model, ...resolved } : { ...model, model: '' };
-      });
-      return changed ? next : prev;
+    const models = getValues('models');
+    const nextModels = models.map((model) => {
+      if (model.provider) return model;
+      const resolved = resolveTemplateModel(modelGroups, model.model || undefined);
+      return resolved ? { ...model, ...resolved } : { ...model, model: '' };
     });
-  }, [modelGroups, modelsSettled]);
+    setValue('models', nextModels);
+  }, [getValues, modelGroups, modelsSettled, setValue]);
 
-  const selectedColumn = columns.find((column) => column.id === selectedId) ?? null;
-  const selectedModel = models.find((model) => model.id === selectedModelId) ?? null;
-
-  // Model aliases used by models other than the selected one (uniqueness check).
-  const takenAliases = useMemo(
-    () =>
-      new Set(
-        models.filter((model) => model.id !== selectedModelId).map((model) => model.alias.trim())
-      ),
-    [models, selectedModelId]
-  );
-
-  // Names taken by columns other than the selected one (uniqueness check).
-  const takenNames = useMemo(
-    () =>
-      new Set(columns.filter((column) => column.id !== selectedId).map((column) => column.name)),
-    [columns, selectedId]
-  );
-
-  const { nodes, edges } = useMemo(() => buildGraph(columns), [columns]);
-
-  const selectColumn = (id: string | null) => {
+  const selectColumn = useCallback((id: string | null) => {
     setSelectedId(id);
     if (id !== null) setSelectedModelId(null);
-  };
-  const selectModel = (id: string | null) => {
+  }, []);
+  const selectModel = useCallback((id: string | null) => {
     setSelectedModelId(id);
     if (id !== null) setSelectedId(null);
-  };
+  }, []);
 
-  const hasSeedColumn = columns.some((column) => column.option.columnType === 'seed-dataset');
-  const disabledColumnReasons = hasSeedColumn
-    ? { 'seed-dataset': 'Only one seed dataset is supported per recipe.' }
-    : undefined;
+  const handleAddColumn = useCallback(
+    (selection: AddColumnSelection) => {
+      const columns = getValues('columns');
+      if (
+        selection.columnType === 'seed-dataset' &&
+        columns.some((column) => column.option.columnType === 'seed-dataset')
+      ) {
+        return;
+      }
+      const option = findColumnOption(selection);
+      if (!option) return;
+      const id = `col-${nextId.current++}`;
+      const name = defaultColumnName(option, new Set(columns.map((column) => column.name)));
+      appendColumn({ id, option, name, values: {} });
+      selectColumn(id);
+      setFocusId(id);
+    },
+    [appendColumn, getValues, selectColumn]
+  );
 
-  const handleAddColumn = (selection: AddColumnSelection) => {
-    if (selection.columnType === 'seed-dataset' && hasSeedColumn) return;
-    const option = findColumnOption(selection);
-    if (!option) return;
-    const id = `col-${nextId.current++}`;
-    setColumns((prev) => {
-      const name = defaultColumnName(option, new Set(prev.map((column) => column.name)));
-      return [...prev, { id, option, name, values: {} }];
-    });
-    selectColumn(id);
-    setFocusId(id);
-  };
+  const removeColumn = useCallback(
+    (id: string) => {
+      const index = getValues('columns').findIndex((column) => column.id === id);
+      if (index >= 0) removeColumnField(index);
+      setSelectedId((current) => (current === id ? null : current));
+    },
+    [getValues, removeColumnField]
+  );
 
-  const patchColumn = (id: string, patch: { name?: string; values?: Record<string, string> }) =>
-    setColumns((prev) =>
-      prev.map((column) => (column.id === id ? { ...column, ...patch } : column))
-    );
+  const handleAddModel = useCallback(
+    (selection: ModelSelection, provider: string) => {
+      const id = `model-${nextModelId.current++}`;
+      const models = getValues('models');
+      setValue('models', [
+        ...models,
+        builderModelFromSelection(
+          id,
+          selection,
+          provider,
+          new Set(models.map((model) => model.alias.trim()))
+        ),
+      ]);
+      selectModel(id);
+    },
+    [getValues, selectModel, setValue]
+  );
 
-  const removeColumn = (id: string) => {
-    setColumns((prev) => prev.filter((column) => column.id !== id));
-    setSelectedId((current) => (current === id ? null : current));
-  };
+  const removeModel = useCallback(
+    (id: string) => {
+      setValue(
+        'models',
+        getValues('models').filter((model) => model.id !== id)
+      );
+      setSelectedModelId((current) => (current === id ? null : current));
+    },
+    [getValues, setValue]
+  );
 
-  const handleAddModel = (selection: ModelSelection, provider: string) => {
-    const id = `model-${nextModelId.current++}`;
-    setModels((prev) => [
-      ...prev,
-      builderModelFromSelection(
-        id,
-        selection,
-        provider,
-        new Set(prev.map((model) => model.alias.trim()))
-      ),
-    ]);
-    selectModel(id);
-  };
-
-  const patchModel = (id: string, patch: BuilderModelPatch) =>
-    setModels((prev) => prev.map((model) => (model.id === id ? { ...model, ...patch } : model)));
-
-  const removeModel = (id: string) => {
-    setModels((prev) => prev.filter((model) => model.id !== id));
-    setSelectedModelId((current) => (current === id ? null : current));
-  };
+  const getBuilderValues = useCallback((): JobBuilderValues => {
+    const values = getValues();
+    return {
+      name: values.name,
+      rows: values.rows,
+      columns: values.columns,
+      models: values.models,
+    };
+  }, [getValues]);
 
   return {
-    columns,
-    models,
-    selectedColumn,
-    selectedModel,
+    form: form as UseFormReturn<JobBuilderFormValues>,
+    getBuilderValues,
+    columnCount: columnFields.length,
+    selectedColumnId: selectedId,
     selectedModelId,
     focusId,
     paletteTab,
     setPaletteTab,
-    nodes,
-    edges,
-    takenNames,
-    takenAliases,
-    disabledColumnReasons,
     selectColumn,
     selectModel,
     handleAddColumn,
-    patchColumn,
     removeColumn,
     handleAddModel,
-    patchModel,
     removeModel,
   };
 };

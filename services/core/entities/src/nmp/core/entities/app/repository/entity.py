@@ -112,6 +112,20 @@ class EntityRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    async def count_entities_by(
+        self,
+        *,
+        workspace: str,
+        entity_type: str,
+        group_by: str,
+        filter_op: FilterOperation | None = None,
+        relationship_child_workspaces: set[str] | None = None,
+        session: AsyncSession | None = None,
+    ) -> dict[str, int]:
+        """Count filtered entities grouped by a direct string data field."""
+        pass
+
+    @abstractmethod
     async def update_entity(
         self,
         *,

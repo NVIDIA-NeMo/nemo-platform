@@ -542,7 +542,7 @@ components:
       - path
       - content
       title: ConfigFile
-    ContainerInput:
+    Container:
       properties:
         name:
           type: string
@@ -594,60 +594,7 @@ components:
       required:
       - name
       - image
-      title: ContainerInput
-    ContainerOutput:
-      properties:
-        name:
-          type: string
-          title: Name
-        image:
-          type: string
-          title: Image
-        command:
-          items:
-            type: string
-          type: array
-          title: Command
-        args:
-          items:
-            type: string
-          type: array
-          title: Args
-        env:
-          items:
-            $ref: '#/components/schemas/EnvVar'
-          type: array
-          title: Env
-        ports:
-          items:
-            $ref: '#/components/schemas/ContainerPort'
-          type: array
-          title: Ports
-        resources:
-          $ref: '#/components/schemas/ResourceRequirements'
-        volumeMounts:
-          items:
-            $ref: '#/components/schemas/VolumeMount'
-          type: array
-          title: Volumemounts
-        livenessProbe:
-          $ref: '#/components/schemas/Probe'
-        readinessProbe:
-          $ref: '#/components/schemas/Probe'
-        restartPolicy:
-          title: Restartpolicy
-          description: Per-container restart policy for init containers; Always enables
-            k8s native sidecar.
-          type: string
-          enum:
-          - Always
-          - OnFailure
-          - Never
-      type: object
-      required:
-      - name
-      - image
-      title: ContainerOutput
+      title: Container
     ContainerPort:
       properties:
         name:
@@ -674,12 +621,12 @@ components:
           title: Name
         containers:
           items:
-            $ref: '#/components/schemas/ContainerInput'
+            $ref: '#/components/schemas/RequestContainer'
           type: array
           title: Containers
         init_containers:
           items:
-            $ref: '#/components/schemas/ContainerInput'
+            $ref: '#/components/schemas/RequestContainer'
           type: array
           title: Init Containers
         volume_mounts:
@@ -922,12 +869,12 @@ components:
           type: string
         containers:
           items:
-            $ref: '#/components/schemas/ContainerOutput'
+            $ref: '#/components/schemas/Container'
           type: array
           title: Containers
         initContainers:
           items:
-            $ref: '#/components/schemas/ContainerOutput'
+            $ref: '#/components/schemas/Container'
           type: array
           title: Initcontainers
         volumeMounts:
@@ -961,6 +908,20 @@ components:
           title: Labels
         backendConfig:
           $ref: '#/components/schemas/DeploymentBackendConfigOutput'
+        authProxySidecar:
+          type: boolean
+          title: Authproxysidecar
+          description: Inject a loopback auth-proxy sidecar that stamps a service-principal
+            identity header on the workload's platform calls. No-op when platform
+            auth is disabled. The workload must target the proxy on localhost (see
+            auth_proxy_sidecar_port).
+          default: false
+        authProxySidecarIdentity:
+          title: Authproxysidecaridentity
+          description: 'Service-principal name the auth-proxy sidecar stamps (interpolated
+            into ''X-NMP-Principal-Id: service:<identity>''). Required when auth_proxy_sidecar
+            is True.'
+          type: string
         id:
           type: string
           title: Id
@@ -1022,6 +983,17 @@ components:
           default: local
         mount_point:
           title: Mount Point
+          type: string
+        initChmod:
+          title: Initchmod
+          description: "When set, an init container chmods the freshly created (root-owned)\
+            \ named volume to this mode (e.g. '0777') so a non-root workload (e.g.\
+            \ the HF weight-puller) can write to it \u2014 the docker analogue of\
+            \ a k8s fsGroup."
+          type: string
+        initImage:
+          title: Initimage
+          description: Image used for the init_chmod container (e.g. busybox).
           type: string
       type: object
       title: DockerVolumeConfig
@@ -1086,6 +1058,8 @@ components:
           title: Valuefrom
           additionalProperties: true
           type: object
+        secretRef:
+          $ref: '#/components/schemas/SecretRef'
       type: object
       required:
       - name
@@ -1316,6 +1290,80 @@ components:
           default: 3
       type: object
       title: Probe
+    RequestContainer:
+      properties:
+        name:
+          type: string
+          title: Name
+        image:
+          type: string
+          title: Image
+        command:
+          items:
+            type: string
+          type: array
+          title: Command
+        args:
+          items:
+            type: string
+          type: array
+          title: Args
+        env:
+          items:
+            $ref: '#/components/schemas/RequestEnvVar'
+          type: array
+          title: Env
+        ports:
+          items:
+            $ref: '#/components/schemas/ContainerPort'
+          type: array
+          title: Ports
+        resources:
+          $ref: '#/components/schemas/ResourceRequirements'
+        volumeMounts:
+          items:
+            $ref: '#/components/schemas/VolumeMount'
+          type: array
+          title: Volumemounts
+        livenessProbe:
+          $ref: '#/components/schemas/Probe'
+        readinessProbe:
+          $ref: '#/components/schemas/Probe'
+        restartPolicy:
+          title: Restartpolicy
+          type: string
+          enum:
+          - Always
+          - OnFailure
+          - Never
+      type: object
+      required:
+      - name
+      - image
+      title: RequestContainer
+      description: Public request container; env entries cannot carry secretRef.
+    RequestEnvVar:
+      not:
+        required:
+        - value
+        - valueFrom
+      properties:
+        name:
+          type: string
+          title: Name
+        value:
+          title: Value
+          type: string
+        valueFrom:
+          title: Valuefrom
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: RequestEnvVar
+      description: Public request env vars; secretRef is controller-managed and response-only.
     ResourceRequirements:
       properties:
         limits:
@@ -1330,6 +1378,20 @@ components:
           title: Requests
       type: object
       title: ResourceRequirements
+    SecretRef:
+      properties:
+        workspace:
+          type: string
+          title: Workspace
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - workspace
+      - name
+      title: SecretRef
+      description: Reference to a Platform secret resolved by the substrate backend.
     StatusEvent:
       properties:
         status:

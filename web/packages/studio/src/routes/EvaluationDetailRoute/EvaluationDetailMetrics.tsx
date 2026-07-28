@@ -6,6 +6,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { useGetEvaluation } from '@nemo/sdk/generated/platform/api';
 import { Divider, Flex, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { ChangesetBadge } from '@studio/components/ChangesetBadge';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
 import { type FC, type ReactNode } from 'react';
@@ -40,6 +41,17 @@ export const EvaluationDetailMetrics: FC<EvaluationDetailMetricsProps> = ({ eval
   return (
     <Flex align="stretch" justify="between" gap="density-3xl">
       <Flex align="stretch" gap="density-3xl">
+        {experiment?.source_link ? (
+          <>
+            <KVPair
+              label="Source"
+              value={<ChangesetBadge href={experiment.source_link} />}
+              loading={isLoading}
+              orientation="vertical"
+            />
+            <Divider orientation="vertical" className="grow-0 self-stretch" />
+          </>
+        ) : null}
         <KVPair
           label="Dataset Name"
           value={

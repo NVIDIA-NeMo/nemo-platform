@@ -1,0 +1,61 @@
+name: Finalize Kind e2e
+description: Collects diagnostics, uploads artifacts, and deletes a Kind cluster.
+
+inputs:
+  kind-cluster-name:
+    description: Kind cluster name to inspect and delete.
+    required: true
+  artifact-name:
+    description: Uploaded artifact name.
+    required: true
+  junit-report:
+    description: JUnit XML report path to include in uploaded artifacts.
+    required: true
+  services-log-dir:
+    description: E2E services log directory to include in uploaded artifacts.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Collect Kubernetes logs
+      if: always()
+      shell: bash
+      run: e2e/k8s/scripts/collect_k8s_logs.sh
+
+    - name: Disk usage summary
+      if: always()
+      shell: bash
+      env:
+        KIND_CLUSTER_NAME: ${{ inputs.kind-cluster-name }}
+      run: |
+        echo "=== Host disk ==="
+        df -h /
+        echo "=== Docker system ==="
+        docker system df
+        echo "=== kind node storage ==="
+        for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
+          echo "--- ${node} ---"
+          docker exec "${node}" sh -c "du -sh /var/lib/containerd /var/lib/kubelet /var/log 2>/dev/null | sort -h" || true
+        done
+
+    - name: Upload Kubernetes artifacts
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+        retention-days: 7
+        if-no-files-found: ignore
+        path: |
+          k8s-logs/
+          ${{ inputs.junit-report }}
+          ${{ inputs.services-log-dir }}
+
+    - name: Delete kind cluster
+      if: always()
+      shell: bash
+      env:
+        KIND_CLUSTER_NAME: ${{ inputs.kind-cluster-name }}
+      run: |
+        docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
+        kind delete cluster --name "${KIND_CLUSTER_NAME}" || true

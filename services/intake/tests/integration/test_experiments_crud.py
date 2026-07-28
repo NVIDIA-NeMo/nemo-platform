@@ -9,12 +9,10 @@ from typing import Any, cast
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nmp.intake.api.v2.experiments.endpoints import get_evaluation_rollup_repository
+from nmp.intake.api.v2.experiments.dependencies import get_evaluation_rollup_repository
 
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-# Deprecated URL alias: the child endpoints moved /experiments -> /evaluations.
-EXPERIMENTS_ALIAS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _evaluation_body(*, experiment_group_id: str, **overrides: Any) -> dict:
@@ -65,6 +63,19 @@ def test_experiment_group_crud(client: TestClient) -> None:
     assert missing.status_code == 404
 
 
+def test_filter_groups_by_insight_id(client: TestClient) -> None:
+    """The groups list can be filtered server-side by the seeding insight id."""
+    seeded = client.post(GROUPS, json={"name": "seeded-group", "insight_id": "insight-abc"})
+    assert seeded.status_code == 201, seeded.text
+    other = client.post(GROUPS, json={"name": "unseeded-group"})
+    assert other.status_code == 201, other.text
+
+    listed = client.get(GROUPS, params={"filter[insight_id]": "insight-abc"})
+    assert listed.status_code == 200, listed.text
+    names = {g["name"] for g in listed.json()["data"]}
+    assert names == {"seeded-group"}
+
+
 def test_experiment_group_update_description(client: TestClient) -> None:
     client.post(GROUPS, json={"name": "grp", "description": "old"})
     updated = client.put(f"{GROUPS}/grp", json={"name": "grp", "description": "new"})
@@ -75,6 +86,44 @@ def test_experiment_group_update_description(client: TestClient) -> None:
     assert renamed.status_code == 409
     missing = client.put(f"{GROUPS}/missing", json={"name": "missing"})
     assert missing.status_code == 404
+
+
+def test_experiment_group_pareto_defaults_and_round_trips(client: TestClient) -> None:
+    # Omitting pareto defaults to cost (x) vs latency (y), so the chart always has something to render.
+    created = client.post(GROUPS, json={"name": "pareto-cfg"})
+    assert created.status_code == 201, created.text
+    assert created.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "latency_ms"}
+    assert client.get(f"{GROUPS}/pareto-cfg").json()["pareto"] == {
+        "x_metric": "cost_usd",
+        "y_metric": "latency_ms",
+    }
+
+    # A custom selection round-trips through PUT.
+    updated = client.put(
+        f"{GROUPS}/pareto-cfg",
+        json={"name": "pareto-cfg", "pareto": {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}
+
+    # An update that omits pareto preserves the saved axes rather than resetting them to the default.
+    preserved = client.put(f"{GROUPS}/pareto-cfg", json={"name": "pareto-cfg", "summary": "unrelated edit"})
+    assert preserved.status_code == 200, preserved.text
+    assert preserved.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}
+
+
+def test_experiment_group_pareto_rejects_unknown_metric(client: TestClient) -> None:
+    # Studio can only plot cost_usd, latency_ms, or evaluators.<name>; anything else is rejected so it
+    # can't be persisted as an unusable chart default.
+    rejected = client.post(
+        GROUPS, json={"name": "bad-pareto", "pareto": {"x_metric": "made_up", "y_metric": "latency_ms"}}
+    )
+    assert rejected.status_code == 422, rejected.text
+    # A dynamic evaluator metric is allowed.
+    ok = client.post(
+        GROUPS, json={"name": "ok-pareto", "pareto": {"x_metric": "evaluators.safety", "y_metric": "cost_usd"}}
+    )
+    assert ok.status_code == 201, ok.text
 
 
 def test_evaluation_update_moves_between_groups_and_edits(client: TestClient) -> None:
@@ -180,39 +229,6 @@ def test_delete_group_cascades_to_evaluations(client: TestClient) -> None:
     for child_name in ("exp-doomed-1", "exp-doomed-2"):
         missing = client.get(f"{EVALUATIONS}/{child_name}")
         assert missing.status_code == 404
-
-
-def test_legacy_experiments_url_alias_still_works(client: TestClient) -> None:
-    """The child endpoints moved /experiments -> /evaluations; the old paths remain as hidden aliases."""
-    group = _create_group(client, name="legacy-alias-group")
-
-    # Create via the deprecated /experiments URL.
-    created = client.post(
-        EXPERIMENTS_ALIAS,
-        json=_evaluation_body(name="legacy-alias-eval", experiment_group_id=group["id"]),
-    )
-    assert created.status_code == 201, created.text
-    assert created.json()["name"] == "legacy-alias-eval"
-
-    # The deprecated URL and the canonical URL resolve to the same entity.
-    via_legacy = client.get(f"{EXPERIMENTS_ALIAS}/legacy-alias-eval")
-    via_canonical = client.get(f"{EVALUATIONS}/legacy-alias-eval")
-    assert via_legacy.status_code == 200, via_legacy.text
-    assert via_canonical.status_code == 200
-    assert via_legacy.json() == via_canonical.json()
-
-
-def test_legacy_experiments_url_aliases_are_hidden_from_schema() -> None:
-    from fastapi.routing import APIRoute
-    from nmp.intake.api.v2.experiments.endpoints import router
-
-    alias_routes = [
-        route
-        for route in router.routes
-        if isinstance(route, APIRoute) and "/experiments" in route.path and "/experiment-groups" not in route.path
-    ]
-    assert alias_routes, "expected legacy /experiments alias routes to be registered"
-    assert all(route.include_in_schema is False for route in alias_routes)
 
 
 def test_deprecated_field_aliases_are_backwards_compatible(client: TestClient) -> None:
@@ -517,3 +533,117 @@ def test_sort_by_pinned_at_most_recent_first(client: TestClient) -> None:
     assert pinned_asc.status_code == 200, pinned_asc.text
     names_asc = [e["name"] for e in pinned_asc.json()["data"]]
     assert names_asc.index("exp-old-pin") < names_asc.index("exp-new-pin")
+
+
+def test_evaluation_belongs_to_multiple_groups(client: TestClient) -> None:
+    """An evaluation created with multiple experiment_ids appears in each group's leaderboard."""
+    group_a = client.post(GROUPS, json={"name": "multi-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "multi-b"}).json()
+    body = _evaluation_body(name="multi-member", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    body["experiment_ids"] = [group_a["id"], group_b["id"]]
+
+    created = client.post(EVALUATIONS, json=body)
+    assert created.status_code == 201, created.text
+    assert set(created.json()["experiment_ids"]) == {group_a["id"], group_b["id"]}
+    # Deprecated single-group alias still resolves (to the first membership).
+    assert created.json()["experiment_group_id"] == group_a["id"]
+
+    for gid in (group_a["id"], group_b["id"]):
+        listed = client.get(EVALUATIONS, params={"filter[experiment_group_id]": gid})
+        assert listed.status_code == 200, listed.text
+        assert any(e["name"] == "multi-member" for e in listed.json()["data"])
+
+
+def test_evaluation_create_rejects_empty_experiment_ids(client: TestClient) -> None:
+    """The >=1-group invariant: an empty experiment_ids list is rejected."""
+    body = _evaluation_body(name="no-groups", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    body["experiment_ids"] = []
+    resp = client.post(EVALUATIONS, json=body)
+    assert resp.status_code == 422, resp.text
+
+
+def test_delete_group_reference_counted_cascade(client: TestClient) -> None:
+    """Deleting a group deletes only its sole-membership members; shared members survive elsewhere."""
+    group_a = client.post(GROUPS, json={"name": "rc-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "rc-b"}).json()
+
+    shared = _evaluation_body(name="rc-shared", experiment_group_id="placeholder")
+    shared.pop("experiment_group_id")
+    shared["experiment_ids"] = [group_a["id"], group_b["id"]]
+    client.post(EVALUATIONS, json=shared)
+    client.post(EVALUATIONS, json=_evaluation_body(name="rc-sole", experiment_group_id=group_a["id"]))
+
+    assert client.delete(f"{GROUPS}/rc-a").status_code == 204
+
+    # Sole member gone; shared member survives, now only in group b.
+    assert client.get(f"{EVALUATIONS}/rc-sole").status_code == 404
+    survivor = client.get(f"{EVALUATIONS}/rc-shared")
+    assert survivor.status_code == 200, survivor.text
+    assert survivor.json()["experiment_ids"] == [group_b["id"]]
+
+    in_b = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_b["id"]})
+    assert any(e["name"] == "rc-shared" for e in in_b.json()["data"])
+
+
+def test_patch_evaluation_adds_to_group(client: TestClient) -> None:
+    """PATCH .../evaluations/{name} with a merged experiment_ids adds a membership; the run shows on the board."""
+    group_a = client.post(GROUPS, json={"name": "add-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "add-b"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="add-eval", experiment_group_id=group_a["id"]))
+
+    added = client.patch(f"{EVALUATIONS}/add-eval", json={"experiment_ids": [group_a["id"], group_b["id"]]})
+    assert added.status_code == 200, added.text
+    assert set(added.json()["experiment_ids"]) == {group_a["id"], group_b["id"]}
+
+    in_b = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_b["id"]})
+    assert any(e["name"] == "add-eval" for e in in_b.json()["data"])
+
+
+def test_patch_evaluation_unknown_group_rejected(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "add-known"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="add-eval-2", experiment_group_id=group["id"]))
+    resp = client.patch(f"{EVALUATIONS}/add-eval-2", json={"experiment_ids": [group["id"], "experiment_group-nope"]})
+    assert resp.status_code == 400, resp.text
+
+
+def test_patch_evaluation_rejects_empty_experiment_ids(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "empty-ids"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="empty-ids-eval", experiment_group_id=group["id"]))
+    resp = client.patch(f"{EVALUATIONS}/empty-ids-eval", json={"experiment_ids": []})
+    assert resp.status_code == 400, resp.text
+    # The >=1-group invariant holds: membership is unchanged.
+    assert client.get(f"{EVALUATIONS}/empty-ids-eval").json()["experiment_ids"] == [group["id"]]
+
+
+def test_patch_evaluation_leaves_omitted_fields_unchanged(client: TestClient) -> None:
+    """Partial semantics: PATCHing experiment_ids alone must not clobber omitted fields (e.g. description)."""
+    group_a = client.post(GROUPS, json={"name": "patch-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "patch-b"}).json()
+    body = _evaluation_body(name="patch-eval", experiment_group_id=group_a["id"])
+    body["description"] = "keep me"
+    body["metadata"] = {"team": "switchyard"}
+    client.post(EVALUATIONS, json=body)
+
+    patched = client.patch(f"{EVALUATIONS}/patch-eval", json={"experiment_ids": [group_a["id"], group_b["id"]]})
+    assert patched.status_code == 200, patched.text
+    data = patched.json()
+    assert set(data["experiment_ids"]) == {group_a["id"], group_b["id"]}
+    assert data["description"] == "keep me"  # omitted from the PATCH -> unchanged
+    assert data["metadata"] == {"team": "switchyard"}
+
+
+def test_patch_evaluation_dedupes_experiment_ids(client: TestClient) -> None:
+    """Membership is a set: duplicate ids are stored once, so a group can't double-count an evaluation."""
+    group = client.post(GROUPS, json={"name": "dedupe-grp"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="dedupe-eval", experiment_group_id=group["id"]))
+
+    patched = client.patch(f"{EVALUATIONS}/dedupe-eval", json={"experiment_ids": [group["id"], group["id"]]})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["experiment_ids"] == [group["id"]]
+
+    # The group counts the evaluation once, not twice.
+    listed = client.get(GROUPS)
+    grp = next(g for g in listed.json()["data"] if g["id"] == group["id"])
+    assert grp["evaluation_count"] == 1

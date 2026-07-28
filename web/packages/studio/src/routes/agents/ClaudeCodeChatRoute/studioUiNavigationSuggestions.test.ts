@@ -48,10 +48,6 @@ describe('getStudioUiNavigationSuggestion', () => {
   it('keeps navigation shortcuts when prompts include Studio product context', () => {
     const cases = [
       {
-        prompt: 'Review model sizing for an agent',
-        id: 'agent-optimizations',
-      },
-      {
         prompt: 'Show agent token usage',
         id: 'agent-monitor',
       },

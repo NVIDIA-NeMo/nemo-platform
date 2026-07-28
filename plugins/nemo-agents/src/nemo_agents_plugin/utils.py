@@ -171,6 +171,17 @@ def get_base_url() -> str:
     )
 
 
+def get_internal_base_url() -> str | None:
+    """Return the in-cluster platform base URL reachable from inside agent pods, or None.
+
+    This is the API Service DNS used to reach the platform from a deployed agent
+    when :func:`get_base_url` is not routable from inside the container. Read from
+    ``NEMO_INTERNAL_BASE_URL``, then ``NMP_INTERNAL_BASE_URL``.
+    """
+    internal = os.environ.get("NEMO_INTERNAL_BASE_URL") or os.environ.get("NMP_INTERNAL_BASE_URL")
+    return internal.rstrip("/") if internal else None
+
+
 def get_default_model() -> str | None:
     """Return the default model for the platform from the SDK context."""
     from nemo_platform.config import get_context
@@ -221,6 +232,39 @@ def inject_gateway_url(
             llm_cfg.setdefault("api_key", "not-used")
 
     return config
+
+
+def inject_fabric_gateway_url(
+    config: dict[str, Any],
+    workspace: str,
+    base_url: str | None = None,
+) -> dict[str, Any]:
+    """Deep-copy a Platform agent config and bind its models to the Inference Gateway."""
+    if base_url is None:
+        base_url = get_base_url()
+    gateway_url = f"{base_url.rstrip('/')}/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1"
+
+    resolved = copy.deepcopy(config)
+    model_configs: list[Any] = []
+
+    models = resolved.get("models")
+    if isinstance(models, dict):
+        model_configs.extend(models.values())
+
+    harnesses = resolved.get("harnesses")
+    if isinstance(harnesses, dict):
+        for harness in harnesses.values():
+            if isinstance(harness, dict) and "model" in harness:
+                model_configs.append(harness["model"])
+
+    for model_config in model_configs:
+        if not isinstance(model_config, dict):
+            continue
+        settings = model_config.setdefault("settings", {})
+        if isinstance(settings, dict):
+            settings.setdefault("base_url", gateway_url)
+
+    return resolved
 
 
 def inject_nemo_trace_fields(

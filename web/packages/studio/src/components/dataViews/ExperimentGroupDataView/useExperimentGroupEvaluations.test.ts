@@ -5,10 +5,12 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getListEvaluationsQueryKey,
   useListEvaluations,
+  usePatchEvaluation,
   usePinEvaluation,
   useUnpinEvaluation,
 } from '@nemo/sdk/generated/platform/api';
 import {
+  type EvaluationRow,
   useExperimentGroupEvaluations,
   type UseExperimentGroupEvaluationsParams,
 } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
@@ -27,6 +29,7 @@ const mockUseToast = vi.mocked(useToast);
 const mockUseListEvaluations = vi.mocked(useListEvaluations);
 const mockUsePinEvaluation = vi.mocked(usePinEvaluation);
 const mockUseUnpinEvaluation = vi.mocked(useUnpinEvaluation);
+const mockUsePatchEvaluation = vi.mocked(usePatchEvaluation);
 const mockGetListEvaluationsQueryKey = vi.mocked(getListEvaluationsQueryKey);
 
 interface Row {
@@ -79,6 +82,9 @@ describe('useExperimentGroupEvaluations', () => {
     mockUseUnpinEvaluation.mockReturnValue({
       mutate: vi.fn(),
     } as unknown as ReturnType<typeof useUnpinEvaluation>);
+    mockUsePatchEvaluation.mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof usePatchEvaluation>);
   });
 
   it('paginates over the unpinned set only, so pinned rows do not inflate the page count', () => {
@@ -223,5 +229,44 @@ describe('useExperimentGroupEvaluations', () => {
       filter: { experiment_group_id: 'grp' },
     });
     expect(invalidateQueries).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks removing an evaluation whose only group is this one, without patching', () => {
+    mockLists({ rows: [], total: 0 }, { rows: [], total: 0 });
+    const patch = vi.fn();
+    mockUsePatchEvaluation.mockReturnValue({
+      mutate: patch,
+    } as unknown as ReturnType<typeof usePatchEvaluation>);
+    const error = vi.fn();
+    mockUseToast.mockReturnValue({ error } as unknown as ReturnType<typeof useToast>);
+
+    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    result.current.removeFromGroup({
+      name: 'only-here',
+      experiment_ids: ['grp'],
+    } as unknown as EvaluationRow);
+
+    expect(patch).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalled();
+  });
+
+  it('removes this group from an evaluation that has others, patching the remaining ids', () => {
+    mockLists({ rows: [], total: 0 }, { rows: [], total: 0 });
+    const patch = vi.fn();
+    mockUsePatchEvaluation.mockReturnValue({
+      mutate: patch,
+    } as unknown as ReturnType<typeof usePatchEvaluation>);
+
+    const { result } = renderHook(() => useExperimentGroupEvaluations(baseParams));
+    result.current.removeFromGroup({
+      name: 'multi',
+      experiment_ids: ['grp', 'other'],
+    } as unknown as EvaluationRow);
+
+    expect(patch).toHaveBeenCalledWith({
+      workspace: 'ws',
+      name: 'multi',
+      data: { experiment_ids: ['other'] },
+    });
   });
 });

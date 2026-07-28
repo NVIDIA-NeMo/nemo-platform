@@ -65,22 +65,25 @@ The pool implementation itself lives in ``e2e.services_pool`` so this file can
 stay focused on pytest hooks and fixtures.
 """
 
-import logging
 import os
-import tempfile
 import uuid
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 
-from e2e.services_pool import E2EServicesPool, RunningServices, admin_headers
-
-_services_pool_manager_key = pytest.StashKey[E2EServicesPool]()
-_services_metadata_key = pytest.StashKey[dict[str, str]]()
+from e2e.services_pool_fixtures import (  # noqa: F401
+    _services,
+    _services_instance,
+    _services_log_key,
+    _services_pool_manager,
+    append_services_pool_report_sections,
+    configure_services_pool,
+    register_services_pool_items,
+    services_pool_sdk,
+)
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -91,28 +94,13 @@ def pytest_configure(config: pytest.Config) -> None:
     cleared because the config module evaluates ``get_service_config()``
     at import time, which may run before this hook.
     """
-    os.environ.setdefault("NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX", "igw-mock-")
-
-    from nemo_platform_plugin.config import Configuration
-
-    Configuration.clear_cache()
-    config.stash[_services_pool_manager_key] = E2EServicesPool()
+    configure_services_pool(config)
 
 
 def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list[pytest.Item]) -> None:
     """Register collected E2E modules with the services pool manager."""
-    config.stash[_services_pool_manager_key].register_collected_items(items)
+    register_services_pool_items(config, items)
 
-
-logger = logging.getLogger(__name__)
-_E2E_HARNESS_DEBUG = os.environ.get("E2E_HARNESS_DEBUG") == "1"
-
-_SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
-
-# Number of log lines to dump from the services log on test failure.
-_TAIL_LINES_ON_FAILURE = 100
-
-_services_log_key = pytest.StashKey[Path]()
 
 NGC_API_KEY_ENV = "NGC_API_KEY"
 
@@ -155,104 +143,13 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa
     """
     outcome = yield
     report = outcome.get_result()
-
-    if not report.failed:
-        return
-
-    metadata: dict[str, str] | None = None
-    module = item.getparent(pytest.Module)
-    if module is not None:
-        manager = item.config.stash[_services_pool_manager_key]
-        active_metadata = manager.describe_active_module_binding(module.nodeid)
-        if active_metadata:
-            metadata = {key: str(value) for key, value in active_metadata.items() if value is not None}
-
-    log_path: Path | None = None
-    if metadata and metadata.get("service_log_path"):
-        log_path = Path(metadata["service_log_path"])
-    if log_path is None:
-        log_path = item.session.stash.get(_services_log_key, None)
-    if log_path and log_path.exists():
-        lines = log_path.read_text().splitlines(keepends=True)
-        tail = lines[-_TAIL_LINES_ON_FAILURE:]
-        if tail:
-            header = f"--- services log (last {len(tail)} lines) [{log_path}] ---"
-            report.sections.append(("Services Log", f"{header}\n{''.join(tail)}"))
-    if metadata:
-        report.sections.append(
-            (
-                "E2E Services Binding",
-                "\n".join(f"{key}: {value}" for key, value in sorted(metadata.items())),
-            )
-        )
+    append_services_pool_report_sections(item, report, metadata_section_name="E2E Services Binding")
 
 
-# ---- Fixtures --------------------------------------------------------------
-@pytest.fixture(scope="session")
-def _services_pool_manager(
-    request: pytest.FixtureRequest,
-    tmp_path_factory: pytest.TempPathFactory,
-) -> Iterator[E2EServicesPool]:
-    manager = request.config.stash[_services_pool_manager_key]
-    manager.bind_tmp_path_factory(tmp_path_factory)
-    yield manager
-    manager.shutdown_all()
-
-
-@pytest.fixture(scope="module")
-def _services_instance(
-    request: pytest.FixtureRequest,
-    _services_pool_manager: E2EServicesPool,
-) -> Iterator[RunningServices]:
-    """Return the running services instance for the current module's config.
-
-    Skipped when ``NMP_BASE_URL`` is already set (external services).
-
-    Modules do not each get a dedicated services process. Instead, the harness
-    computes the effective config hash for the module and reuses any existing
-    process already started for that hash within the pytest session. A new
-    process is started only when the module resolves to a config that no prior
-    module has used.
-    """
-    module = request.node.getparent(pytest.Module)
-    if module is None:
-        raise RuntimeError("Expected module-scoped E2E fixture to have a pytest module parent")
-    services = _services_pool_manager.acquire_for_module(module)
-    if services.log_path is not None:
-        request.session.stash[_services_log_key] = services.log_path
-    try:
-        yield services
-    finally:
-        _services_pool_manager.release_for_module(module)
-
-
-@pytest.fixture(scope="module")
-def _services(_services_instance: RunningServices) -> Iterator[str]:
-    yield _services_instance.url
-
-
-@pytest.fixture(scope="module")
-def sdk(_services: str, _services_instance: RunningServices) -> NeMoPlatform:
-    """Provide an SDK client connected to the running platform.
-
-    When connecting to an external cluster (via ``NMP_BASE_URL``), authentication
-    can be provided through:
-    - ``NMP_ACCESS_TOKEN`` env var (e.g. from ``nemo auth token``)
-    - ``NMP_CONTEXT_NAME`` env var (e.g. ``tot``) to read credentials from CLI config
-
-    For local auth-enabled deployments, admin headers are injected via
-    ``default_headers`` based on the rendered platform config.
-    """
-    access_token = os.environ.get("NMP_ACCESS_TOKEN")
-    context_name = os.environ.get("NMP_CONTEXT_NAME")
-    headers = admin_headers() if _services_instance.auth_enabled else {}
-    return NeMoPlatform(
-        base_url=_services,
-        access_token=access_token,
-        context_name=context_name,
-        max_retries=2,
-        default_headers=headers,
-    )
+@pytest.fixture(scope="module", name="sdk")
+def e2e_sdk(request: pytest.FixtureRequest) -> NeMoPlatform:
+    """Provide the conventional e2e SDK fixture name."""
+    return request.getfixturevalue("services_pool_sdk")
 
 
 @pytest.fixture(scope="module")

@@ -11,12 +11,6 @@ import {
 } from '@nemo/sdk/generated/platform/api';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema/ModelEntity';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
-import {
-  SAMPLE_EVAL_CONFIG_PATH,
-  SAMPLE_EVAL_DATA_JSON,
-  SAMPLE_EVAL_DATA_PATH,
-  SAMPLE_EVAL_YAML,
-} from '@studio/routes/agents/AgentSuggestionsRoute/constants';
 import type {
   AgentListing,
   ApplyResult,
@@ -220,52 +214,6 @@ export const uploadToFileset = async (
     if (isCanceledError(err)) throw err;
   }
   await filesUploadFile(workspace, OPTIMIZER_FILESET, path, blob, signal);
-};
-
-// Ensure the named fileset exists and contains the bundled sample eval config.
-// Idempotent: existing files are left untouched (the fileset may have been
-// customized by the user). Failures here surface as the apply step failing —
-// the agent + deployment are already in place at that point.
-export interface EvalSeedFile {
-  path: string;
-  content: string;
-  type: string;
-}
-
-/** Default seed files: the bundled react sample. Used by the optimizer apply
- *  flow and by the eval modal's fallback. */
-const defaultEvalSeedFiles = (): EvalSeedFile[] => [
-  { path: SAMPLE_EVAL_CONFIG_PATH, content: SAMPLE_EVAL_YAML, type: 'application/yaml' },
-  { path: SAMPLE_EVAL_DATA_PATH, content: SAMPLE_EVAL_DATA_JSON, type: 'application/json' },
-];
-
-export const ensureEvalConfigFileset = async (
-  workspace: string,
-  fileset: string,
-  signal: AbortSignal,
-  files: EvalSeedFile[] = defaultEvalSeedFiles(),
-  description?: string
-): Promise<void> => {
-  let existingPaths = new Set<string>();
-  try {
-    const listing = await filesListFilesetFiles(workspace, fileset, undefined, signal);
-    existingPaths = new Set((listing?.data ?? []).map((f) => f.path));
-  } catch (err) {
-    if (isCanceledError(err)) throw err;
-    if (!isNotFoundError(err)) throw err;
-    try {
-      await filesCreateFileset(workspace, { name: fileset, description }, signal);
-    } catch (createErr) {
-      if (isCanceledError(createErr)) throw createErr;
-      // 409 is fine — a parallel apply already created it.
-    }
-  }
-  // Idempotent: never overwrite files already present in the fileset.
-  const uploads = files.filter((f) => !existingPaths.has(f.path));
-  for (const u of uploads) {
-    const blob = new Blob([u.content], { type: u.type });
-    await filesUploadFile(workspace, fileset, u.path, blob, signal);
-  }
 };
 
 const ALLOWED_APPLY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

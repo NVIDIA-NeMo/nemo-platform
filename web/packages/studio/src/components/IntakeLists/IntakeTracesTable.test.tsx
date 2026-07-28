@@ -7,6 +7,14 @@ import { server } from '@studio/mocks/node';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import { useLocation } from 'react-router-dom';
+
+const LocationProbe = () => {
+  const location = useLocation();
+  return (
+    <output data-testid="trace-detail-location">{`${location.pathname}${location.search}`}</output>
+  );
+};
 
 describe('IntakeTracesTable', () => {
   it('loads trace rows in preview mode for bounded payloads and aggregate metrics', async () => {
@@ -33,6 +41,30 @@ describe('IntakeTracesTable', () => {
     await waitFor(() => expect(requestedModes).toContain('preview'));
     expect(requestedModes).not.toContain('detailed');
     expect(requestedModes).not.toContain('summary');
+  });
+
+  it('opens trace rows in the canonical session detail route', async () => {
+    const user = userEvent.setup();
+
+    renderRoute(undefined, {
+      history: '/workspaces/default/intake/traces',
+      routes: [
+        {
+          path: '/workspaces/:workspace/intake/traces',
+          element: <IntakeTracesTable workspace="default" />,
+        },
+        {
+          path: '/workspaces/:workspace/intake/sessions/:sessionId',
+          element: <LocationProbe />,
+        },
+      ],
+    });
+
+    await user.click(await screen.findByText('Answer customer policy question'));
+
+    expect(await screen.findByTestId('trace-detail-location')).toHaveTextContent(
+      '/workspaces/default/intake/sessions/session-agent-run-001?traceId=trace-agent-run-001'
+    );
   });
 
   it('seeds a clearable 30-day started_at filter into trace list requests', async () => {

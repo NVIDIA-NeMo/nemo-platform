@@ -36,7 +36,14 @@ from pathlib import Path
 import cloudpickle
 import httpx
 import pytest
-from nemo_evaluator.api.schemas import MetricInline
+from nemo_evaluator.api.schemas import (
+    MetricInline,
+    TaskInput,
+    TaskInputs,
+    TaskRef,
+    TasksetInput,
+    TasksetRef,
+)
 from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
 from nemo_evaluator.jobs.agent_spec import (
     AgentEvalInputSpec,
@@ -45,11 +52,14 @@ from nemo_evaluator.jobs.agent_spec import (
     CodexRunnerTarget,
     ModelTarget,
 )
+from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob
 from nemo_evaluator.metric_refs import MetricRef
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+from nemo_evaluator.shared.metric_bundles.inline import InlineMetricBundlePackager
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
+from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel
 from nemo_platform import NeMoPlatform
@@ -118,6 +128,31 @@ def _output_contains_metric(expected: str) -> MetricInline:
     """An inline, user-defined metric that validates the agent's output text."""
     bundle = bundle_metric(_OutputContainsMetric(expected), CloudpickleMetricBundlePackager())
     return MetricInline.model_validate(bundle.model_dump(mode="json"))
+
+
+class _OutputScoreMetric:
+    """Custom *numeric* metric: 1.0 iff the trial's output contains the expected token, else 0.0.
+
+    The continuous-score counterpart to :class:`_OutputContainsMetric`. A numeric output aggregates
+    into a real ``count``/``mean`` on the run result (a boolean output lands in ``nan_count`` instead),
+    so a caller can assert on how many samples scored and their mean.
+    """
+
+    def __init__(self, expected: str) -> None:
+        self.expected = expected
+
+    @property
+    def type(self) -> str:
+        return "output-score"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("match")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:  # noqa: A002
+        text = input.candidate.output_text or ""
+        return MetricResult(
+            outputs=[MetricOutput(name="match", value=1.0 if self.expected.lower() in text.lower() else 0.0)]
+        )
 
 
 def _bundle_dir(run_result: dict) -> Path:
@@ -290,6 +325,104 @@ def _offline_trials_input_spec() -> dict:
     ).model_dump(mode="json")
 
 
+def _offline_row_eval_spec() -> dict:
+    """An offline row (``EvaluateJob``) spec built with a JSON-native (inline-bundled) built-in metric.
+
+    ExactMatch is in ``MetricsUnion``, so ``InlineMetricBundlePackager`` serializes it as declarative
+    JSON — no cloudpickle bytes to survive on the create request body. No target — the dataset's
+    ``model_output`` is scored directly. Seeds a *row* job alongside an agent-eval job so the mixed
+    collection list endpoints can be exercised.
+    """
+    bundle = bundle_metric(
+        ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}"),
+        InlineMetricBundlePackager(),
+    )
+    return EvaluateInputSpec.model_validate(
+        {
+            "metrics": [bundle.model_dump(mode="json")],
+            "dataset": [{"expected": "blue", "model_output": "blue"}],
+        }
+    ).model_dump(mode="json")
+
+
+def _offline_agent_eval_spec_no_metrics() -> dict:
+    """An offline agent-eval spec: one task (no metrics) scored against one precomputed trial.
+
+    Metrics are optional on an agent task, so omitting them keeps the spec fully JSON-native (no
+    cloudpickle) — enough to *create* a persisted AgentEvalJob record, which is all the list-endpoint
+    regression needs.
+    """
+    return AgentEvalInputSpec(
+        tasks=[
+            AgentEvalTaskInput(
+                id="say-done",
+                intent="Agent follows a trivial instruction and exits cleanly.",
+                inputs={"instruction": "Reply with the single word DONE and nothing else."},
+            )
+        ],
+        trials=[
+            AgentEvalTrial(
+                id="t-1",
+                task_id="say-done",
+                status=AgentEvalTrialStatus.COMPLETED,
+                output=AgentOutput(output_text="DONE"),
+            )
+        ],
+    ).model_dump(mode="json")
+
+
+@pytest.mark.timeout(300)
+def test_mixed_job_types_list_endpoints_do_not_cross_render(subprocess_platform: str) -> None:
+    """Regression (reported by Studio): a workspace holding BOTH a row ``EvaluateJob`` and an
+    ``AgentEvalJob`` must not 500 either collection's list endpoint.
+
+    Both job types are owned by the evaluator plugin. Before the fix they shared one ``source`` tag,
+    so ``GET .../agent-evaluate/jobs`` returned every evaluator job and then rendered each against
+    ``AgentEvalSpec`` — a row spec failed validation and the list 500'd (and vice versa). The fix
+    gives agent-evaluate jobs a distinct ``source`` (``service.AGENT_EVAL_JOB_SOURCE``), so each list
+    is scoped to its own collection. The list bug fires on *persisted* records, so this only creates
+    one job of each type (no run/wait) and asserts the list endpoints; JSON-native specs keep create
+    off the cloudpickle path.
+
+    Runs in a fresh workspace so the assertions see only these two jobs — the shared subprocess DB may
+    hold legacy agent-eval records written under the old shared source (the documented pre-fix caveat),
+    which would otherwise still cross-render into the row list.
+    """
+    workspace = _unique("mixed-list")
+    client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
+    client.workspaces.create(name=workspace, exist_ok=True)
+
+    row_resp = NemoJobScheduler().submit_remote(
+        EvaluateJob, _offline_row_eval_spec(), base_url=subprocess_platform, workspace=workspace, profile="default"
+    )
+    row_name = row_resp.get("name") or row_resp.get("id")
+    agent_resp = NemoJobScheduler().submit_remote(
+        AgentEvalJob,
+        _offline_agent_eval_spec_no_metrics(),
+        base_url=subprocess_platform,
+        workspace=workspace,
+        profile="default",
+    )
+    agent_name = agent_resp.get("name") or agent_resp.get("id")
+    assert row_name and agent_name, f"submit responses carried no name/id: {row_resp}, {agent_resp}"
+
+    base = f"{subprocess_platform}/apis/evaluator/v2/workspaces/{workspace}"
+    # The core regression: the agent-evaluate list must 200 (not 500) in a mixed workspace, and it
+    # must contain only the agent job — the row job is filtered out by the distinct source.
+    agent_list = httpx.get(f"{base}/agent-evaluate/jobs", params={"page_size": 100}, timeout=30)
+    assert agent_list.status_code == 200, agent_list.text
+    agent_names = {item["name"] for item in agent_list.json()["data"]}
+    assert agent_name in agent_names
+    assert row_name not in agent_names
+
+    # And symmetrically: the row list must 200 and exclude the agent job.
+    row_list = httpx.get(f"{base}/evaluate/jobs", params={"page_size": 100}, timeout=30)
+    assert row_list.status_code == 200, row_list.text
+    row_names = {item["name"] for item in row_list.json()["data"]}
+    assert row_name in row_names
+    assert agent_name not in row_names
+
+
 def _codex_eval_input_spec() -> dict:
     """Submitter-facing spec: one Codex-runner task scored by one inline metric."""
     return AgentEvalInputSpec(
@@ -375,6 +508,79 @@ def test_submit_with_stored_metric_ref_resolves_and_scores(subprocess_platform: 
 
     job = wait_for_platform_job(client, job_name, WORKSPACE, timeout=480)
     assert job.status == "completed", f"job {job_name} ended {job.status!r}: {getattr(job, 'status_details', None)}"
+
+
+@pytest.mark.timeout(420)
+def test_submit_over_taskset_ref_resolves_and_scores(subprocess_platform: str) -> None:
+    # dim 2 (stored taskset ref) x dim 3 (submit): store a metric + two tasks + a taskset, then submit
+    # an agent eval whose `tasks` is a TasksetRef (no inline tasks). Server-side to_spec must load the
+    # taskset, expand BOTH member tasks, and resolve each task's stored MetricRef — all against the
+    # live entity store — before the job runs. A Model target -> IGW mock provider keeps it codex-free.
+    client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
+    client.workspaces.create(name=WORKSPACE, exist_ok=True)
+
+    model_name = _unique("taskset-model")
+    add_mock_provider(client, workspace=WORKSPACE, name=model_name, mock_response_body=_chat_completion("DONE"))
+
+    # Store the metric that both tasks will reference. Numeric, so the run aggregate carries a real
+    # count/mean (a boolean output would land in nan_count and obscure whether scoring succeeded). The
+    # cloudpickle packager is explicit: storing a custom metric to the service requires opting in.
+    metric_name = _unique("done-score")
+    client.evaluator.metrics.create(
+        metric_name,
+        metric=_OutputScoreMetric("DONE"),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
+        workspace=WORKSPACE,
+    )
+
+    # Store two tasks that reference the metric, then group them in a taskset.
+    task_names = [_unique("ask-a"), _unique("ask-b")]
+    for name in task_names:
+        client.evaluator.tasks.create(
+            name,
+            task=TaskInput(
+                intent="Obtain a one-word reply from the model.",
+                inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
+                metrics=[MetricRef(f"{WORKSPACE}/{metric_name}")],
+            ),
+        )
+    taskset_name = _unique("done-suite")
+    client.evaluator.tasksets.create(
+        taskset_name,
+        taskset=TasksetInput(tasks=[TaskRef(f"{WORKSPACE}/{name}") for name in task_names]),
+    )
+
+    # The point of the test: reference the stored taskset instead of inlining the tasks.
+    spec = AgentEvalInputSpec(
+        tasks=TasksetRef(f"{WORKSPACE}/{taskset_name}"),
+        target=ModelTarget(
+            model=Model(
+                url=_igw_chat_url(subprocess_platform, model_name), name=model_name, format=ModelFormat.OPEN_AI
+            ),
+            prompt_template={"messages": [{"role": "user", "content": "{{item.instruction}}"}]},
+            params=RunConfigOnlineModel(),
+        ),
+    ).model_dump(mode="json")
+
+    response = NemoJobScheduler().submit_remote(
+        AgentEvalJob, spec, base_url=subprocess_platform, workspace=WORKSPACE, profile="default"
+    )
+    job_name = response.get("name") or response.get("id")
+    assert job_name, f"submit response carried no job name/id: {response}"
+
+    job = wait_for_platform_job(client, job_name, WORKSPACE, timeout=360)
+    assert job.status == "completed", f"job {job_name} ended {job.status!r}: {getattr(job, 'status_details', None)}"
+
+    # The taskset expanded to BOTH members and both were scored: the numeric metric aggregates to
+    # count == number of members (one sample per task, one trial each), with no NaNs, and mean == 1.0
+    # because the mock model returns "DONE" for every task (so every task's output contains "DONE").
+    result = client.evaluator.agent_eval_results.retrieve(job_name, workspace=WORKSPACE)
+    assert (result.target_kind, result.target_name) == ("model", model_name)
+    assert result.scores.scores, "run produced no aggregated scores"
+    aggregate = result.scores.scores[0]
+    assert aggregate.nan_count == 0, f"metric failed to score some samples: nan_count={aggregate.nan_count}"
+    assert aggregate.count == len(task_names), f"expected one scored sample per member, got count={aggregate.count}"
+    assert aggregate.mean == 1.0, f"every member's output should score 1.0, got mean={aggregate.mean}"
 
 
 @pytest.mark.timeout(420)

@@ -26,15 +26,22 @@ EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 
 
-def _exp(name: str, *, run_count: int = 0, cost_mean: float | None = None) -> EvaluationResponse:
+def _exp(
+    name: str,
+    *,
+    run_count: int = 0,
+    cost_mean: float | None = None,
+    tokens_mean: float | None = None,
+) -> EvaluationResponse:
     return EvaluationResponse(
         id=name,
         name=name,
         workspace="default",
-        experiment_group_id="grp",
+        experiment_ids=["grp"],
         dataset_name="ds",
         run_count=run_count,
         cost_usd=EvaluatorAggregate(mean=cost_mean) if cost_mean is not None else None,
+        tokens=EvaluatorAggregate(mean=tokens_mean) if tokens_mean is not None else None,
     )
 
 
@@ -150,6 +157,19 @@ def test_matches_predicates_excludes_missing_metric() -> None:
     assert _matches_metric_predicates(cheap, predicates)
     assert not _matches_metric_predicates(pricey, predicates)
     assert not _matches_metric_predicates(norun, predicates)  # missing metric never matches
+
+
+def test_matches_predicates_resolves_tokens_metric() -> None:
+    # Regression: tokens.mean must resolve off response.tokens, not fall through to the evaluator
+    # branch (which returned None → "missing metric never matches" → filtered everything out).
+    wordy = _exp("wordy", tokens_mean=942803)
+    terse = _exp("terse", tokens_mean=200)
+    _, gte = _extract_metric_predicates(_cmp("tokens.mean", FilterOperator.GTE, "500"))
+    assert _matches_metric_predicates(wordy, gte)
+    assert not _matches_metric_predicates(terse, gte)
+    _, lte = _extract_metric_predicates(_cmp("tokens.mean", FilterOperator.LTE, "500"))
+    assert not _matches_metric_predicates(wordy, lte)
+    assert _matches_metric_predicates(terse, lte)
 
 
 # ----------------------------- endpoint wiring -----------------------------

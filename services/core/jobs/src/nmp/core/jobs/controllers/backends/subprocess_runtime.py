@@ -6,15 +6,20 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from time import time_ns
-from typing import IO
+from typing import IO, Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
+import httpx
+import requests
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
 from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR, Principal
 from nmp.common.jobs.constants import NEMO_JOB_SECRETS_ENVVAR
 from opentelemetry._logs import Logger
@@ -25,6 +30,11 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 
 logger = logging.getLogger(__name__)
+
+NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT"
+NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH"
+NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT"
+SERVICE_JOBS_BEARER_HEADERS = {"Authorization": "Bearer service:jobs"}
 
 
 @dataclass(frozen=True)
@@ -53,6 +63,79 @@ class SubprocessOtelLogger:
     def close(self) -> None:
         self.provider.force_flush()
         self.provider.shutdown()
+
+
+class _UnixSocketOTLPSession(requests.Session):
+    def __init__(self, socket_path: str) -> None:
+        super().__init__()
+        self._client = httpx.Client(
+            transport=httpx.HTTPTransport(uds=socket_path),
+            follow_redirects=True,
+        )
+
+    def request(
+        self,
+        method: Any,
+        url: Any,
+        params: Any = None,
+        data: Any = None,
+        headers: Any = None,
+        cookies: Any = None,
+        files: Any = None,
+        auth: Any = None,
+        timeout: Any = None,
+        allow_redirects: bool = True,
+        proxies: Any = None,
+        hooks: Any = None,
+        stream: Any = None,
+        verify: Any = None,
+        cert: Any = None,
+        json: Any = None,
+    ) -> requests.Response:
+        try:
+            response = self._client.request(
+                str(method),
+                str(url),
+                params=params,
+                content=data,
+                headers=_merge_headers(self.headers, headers),
+                json=json,
+                timeout=timeout,
+                follow_redirects=allow_redirects,
+            )
+        except httpx.TimeoutException as error:
+            raise requests.exceptions.Timeout(str(error)) from error
+        except httpx.TransportError as error:
+            raise requests.exceptions.ConnectionError(str(error)) from error
+        except httpx.HTTPError as error:
+            raise requests.exceptions.RequestException(str(error)) from error
+        return _to_requests_response(response)
+
+    def close(self) -> None:
+        self._client.close()
+        super().close()
+
+
+def _merge_headers(base_headers: Mapping[Any, Any], extra_headers: Any) -> dict[str, str]:
+    headers = {str(key): str(value) for key, value in base_headers.items()}
+    if extra_headers is None:
+        return headers
+    if isinstance(extra_headers, Mapping):
+        headers.update({str(key): str(value) for key, value in extra_headers.items()})
+        return headers
+    headers.update({str(key): str(value) for key, value in extra_headers})
+    return headers
+
+
+def _to_requests_response(response: httpx.Response) -> requests.Response:
+    requests_response = requests.Response()
+    requests_response.status_code = response.status_code
+    requests_response.reason = response.reason_phrase
+    requests_response.url = str(response.url)
+    requests_response.headers.update(response.headers)
+    requests_response._content = response.content
+    requests_response.encoding = response.encoding
+    return requests_response
 
 
 def parse_secret_references(secrets_env: str) -> list[SecretReference]:
@@ -155,11 +238,10 @@ def create_otel_logger(
     step: str,
     task_id: str,
 ) -> SubprocessOtelLogger | None:
-    endpoint = env.get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") or env.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    endpoint = env.get(NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR)
     if not endpoint:
         return None
 
-    headers = _parse_otel_headers(env.get("OTEL_EXPORTER_OTLP_LOGS_HEADERS", ""))
     resource = Resource.create(
         {
             "workspace": workspace,
@@ -170,27 +252,43 @@ def create_otel_logger(
         }
     )
     logger_provider = LoggerProvider(resource=resource)
-    logger_provider.add_log_record_processor(
-        BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint, headers=headers or None))
-    )
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(_build_otlp_log_exporter(env, endpoint)))
     logger.info("Created local OTEL logger", extra={"endpoint": endpoint, "job": job, "step": step})
     return SubprocessOtelLogger(logger_provider.get_logger("nmp.jobs.subprocess"), logger_provider)
 
 
-def _parse_otel_headers(headers_env: str) -> dict[str, str]:
-    if not headers_env:
-        return {}
+def _build_otlp_log_exporter(env: dict[str, str], endpoint: str) -> OTLPLogExporter:
+    headers = _otlp_log_auth_headers(env)
+    transport = env.get(NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR, "tcp")
+    if transport == "tcp":
+        return OTLPLogExporter(endpoint=endpoint, headers=headers)
+    if transport != "uds":
+        raise ValueError(f"unsupported OTLP logs transport: {transport!r}")
 
-    headers: dict[str, str] = {}
-    for item in headers_env.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        key, sep, value = item.partition("=")
-        if sep != "=" or not key:
-            continue
-        headers[key] = unquote(value)
-    return headers
+    socket_path = env.get(NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR)
+    if not socket_path:
+        raise ValueError(f"{NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR} is required for UDS OTLP logs")
+    return OTLPLogExporter(
+        endpoint=endpoint,
+        headers=headers,
+        session=_UnixSocketOTLPSession(socket_path),
+    )
+
+
+def _otlp_log_auth_headers(env: dict[str, str]) -> dict[str, str]:
+    subject_token_file = env.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR)
+    if not subject_token_file:
+        return dict(SERVICE_JOBS_BEARER_HEADERS)
+
+    base_url = env.get("NMP_AUTH_URL") or env.get("NMP_BASE_URL")
+    if not base_url:
+        raise ValueError(f"NMP_AUTH_URL or NMP_BASE_URL is required when {WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} is set")
+
+    provider = resolve_workload_exchange_provider(
+        base_url=base_url,
+        subject_token_file=Path(subject_token_file),
+    )
+    return {"Authorization": f"Bearer {provider.get_access_token()}"}
 
 
 def _principal_from_env(env: dict[str, str]) -> Principal | None:

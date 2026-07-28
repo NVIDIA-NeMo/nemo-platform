@@ -75,6 +75,10 @@ spec:
               {{- else }}
               value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
               {{- end }}
+            # In-cluster API Service DNS. Deployed agents use this as their inference
+            # endpoint, since NMP_BASE_URL may not be reachable from an agent pod.
+            - name: NMP_INTERNAL_BASE_URL
+              value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
             - name: NMP_AUTOMODEL_DEFAULT_TRAINING_EXECUTION_PROFILE
               value: {{ dig "automodel" "default_training_execution_profile" "default" $platformConfig | quote }}
             - name: NMP_UNSLOTH_DEFAULT_TRAINING_EXECUTION_PROFILE

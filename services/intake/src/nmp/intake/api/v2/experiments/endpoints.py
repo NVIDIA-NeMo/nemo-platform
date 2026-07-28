@@ -3,10 +3,10 @@
 
 """Create, list, get, and delete endpoints for Evaluations and ExperimentGroups.
 
-Entity-store (Postgres) operations are wired directly onto ``EntityClient``,
-following the inline pattern used by the core services. PUT updates only the
-mutable fields; an Evaluation's identity and the dataset/agent it ran against
-are fixed. Rollup fields on read models are hydrated from ClickHouse.
+Entity-store writes use ``EntityClient`` directly. Evaluation reads use an
+application service that composes Entities with ClickHouse-backed rollups and
+sessions. PUT updates only mutable fields; an Evaluation's identity and the
+dataset/agent it ran against are fixed.
 """
 
 from __future__ import annotations
@@ -18,15 +18,15 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, NamedTuple, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.routing import APIRoute
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
-from nmp.common.service.dependencies import get_entity_client
+from nmp.intake.api.v2.experiments.dependencies import EntityClientDep, EvaluationReadServiceDep
 from nmp.intake.api.v2.experiments.schemas import (
     EvaluationFilter,
+    EvaluationPatchRequest,
     EvaluationRequest,
     EvaluationResponse,
     EvaluationSessionFilter,
@@ -43,22 +43,20 @@ from nmp.intake.api.v2.experiments.schemas import (
 # layer uses; only the entity's own field names (e.g. parent_experiment_id) reference Experiment directly.
 from nmp.intake.entities.experiments import Experiment as Evaluation
 from nmp.intake.entities.experiments import ExperimentGroup
-from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.domain import SpanStatus
-from nmp.intake.spans.evaluation_rollup_repository import (
-    EvaluationRollup,
-    EvaluationRollupRepository,
-    ScoreRollup,
+from nmp.intake.experiments.read_service import (
+    EvaluationNotFoundError,
+    EvaluationRead,
+    EvaluationReadLimitExceededError,
+    EvaluationTelemetryUnavailableError,
+    InvalidEvaluationSessionStatusError,
 )
-from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRepository, MetricSortTooLargeError
+from nmp.intake.repository.evaluation_rollup import EvaluationRollup, ScoreRollup
+from nmp.intake.repository.evaluation_session import MetricSortTooLargeError
+from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
+from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.storage import make_pagination
 
 logger = logging.getLogger(__name__)
-
-
-def _sanitize_for_log(value: str) -> str:
-    return value.replace("\r", "").replace("\n", "")
 
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
@@ -74,7 +72,7 @@ ExperimentGroupSortField = Literal["-created_at", "created_at", "-updated_at", "
 _ENTITY_SORT_FIELDS = frozenset({"name", "created_at", "updated_at", "pinned_at"})
 # Sessions are sorted in ClickHouse (ORDER BY before LIMIT/OFFSET) so sort composes
 # correctly with pagination. These are the allowed field names; each maps to an SQL
-# expression in the repository - see _list_sql in evaluation_session_repository.py.
+# expression in the ClickHouse repository.
 _SESSION_SORT_FIELDS = frozenset(
     {
         "test_case_id",
@@ -94,37 +92,9 @@ _MAX_GROUP_EVALUATIONS = 1000
 
 EntityT = TypeVar("EntityT", Evaluation, ExperimentGroup)
 
-EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 ExperimentGroupFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentGroupFilter))]
 EvaluationFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(EvaluationFilter))]
 EvaluationSessionFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(EvaluationSessionFilter))]
-
-
-def _get_clickhouse_client(request: Request) -> ClickHouseSpanClient | None:
-    service = getattr(request.app.state, "intake_service", None) or getattr(request.app.state, "service", None)
-    if service is None:
-        return None
-    return getattr(service, "clickhouse_client", None)
-
-
-def get_evaluation_rollup_repository(request: Request) -> EvaluationRollupRepository | None:
-    # Rollups are enrichment only. Evaluation entity reads should continue when
-    # ClickHouse is disabled or temporarily unavailable.
-    client = _get_clickhouse_client(request)
-    return EvaluationRollupRepository(client) if client is not None else None
-
-
-EvaluationRollupRepositoryDep = Annotated[EvaluationRollupRepository | None, Depends(get_evaluation_rollup_repository)]
-
-
-def get_evaluation_session_repository(request: Request) -> EvaluationSessionRepository | None:
-    client = _get_clickhouse_client(request)
-    return EvaluationSessionRepository(client) if client is not None else None
-
-
-EvaluationSessionRepositoryDep = Annotated[
-    EvaluationSessionRepository | None, Depends(get_evaluation_session_repository)
-]
 
 
 @router.post(
@@ -148,6 +118,7 @@ async def create_experiment_group(
         summary=body.summary,
         metadata=body.metadata,
         default_sort=body.default_sort,
+        pareto=body.pareto,
     )
     try:
         created = await entity_client.create(entity)
@@ -166,7 +137,9 @@ async def create_experiment_group(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentGroupFilter,
         filter_description=(
-            "Filter experiment groups by name, or by a metadata key/value: filter[metadata.<key>]=<value>."
+            "Filter experiment groups by name, insight_id, is_deleted, or a metadata key/value "
+            "(filter[metadata.<key>]=<value>). "
+            "Pass is_deleted=true to return only soft-deleted groups; omit to see only live ones."
         ),
     ),
 )
@@ -265,6 +238,10 @@ async def update_experiment_group(
     existing.summary = body.summary
     existing.metadata = body.metadata
     existing.default_sort = body.default_sort
+    # Only overwrite the saved axes when the client actually sent them; an omitted `pareto` (older
+    # clients) must not silently reset customized axes to the cost/latency default.
+    if body.pareto is not None:
+        existing.pareto = body.pareto
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
     response.evaluation_count = await _count_live_evaluations_in_group(
@@ -296,21 +273,16 @@ async def delete_experiment_group(
     )
     _reject_if_deleted(group, workspace=workspace, name=name, label="Experiment group")
 
-    # Cascade is sequential — one update per child. Linear in group size, fine for now. If
-    # groups routinely hold more than a few hundred evaluations, add a bulk update endpoint on
-    # the entity store rather than parallelizing here (gather hides partial-failure state
-    # without removing the per-row API contract).
-    #
-    # Each ``_soft_delete`` renames the row and flips ``is_deleted=True``, which drops it out of
-    # the live filter — so re-fetching page 1 keeps returning the next batch until nothing is
-    # left. No fixed cap on group size.
-    #
-    # ``data.experiment_group_id`` is the entity-store field name; the URL filter dep auto-
-    # prefixes ``data.`` but manually-constructed ComparisonOperations don't get that translation.
+    # Reference-counted cascade, sequential — one update per member. Linear in group size, fine for
+    # now. A member whose *sole* membership was this group is soft-deleted; a member also in another
+    # group just drops this membership and survives there. Both outcomes remove the member from the
+    # live-membership filter below (soft-delete renames + flips is_deleted; membership removal drops
+    # the group id from experiment_ids and leaves no legacy scalar), so re-fetching page 1 keeps
+    # returning the next unprocessed batch until nothing is left. No fixed cap on group size.
     live_children_filter = LogicalOperation(
         operator=FilterOperator.AND,
         operations=[
-            ComparisonOperation(operator=FilterOperator.EQ, field="data.experiment_group_id", value=group.id),
+            _group_membership_filter(group.id),
             LogicalOperation(
                 operator=FilterOperator.NOT,
                 operations=[
@@ -330,7 +302,14 @@ async def delete_experiment_group(
         if not page.data:
             break
         for child in page.data:
-            await _soft_delete(entity_client, child)
+            remaining = [gid for gid in child.experiment_ids if gid != group.id]
+            if remaining:
+                # Shared with another group — drop only this membership; the member lives on there.
+                child.experiment_ids = remaining
+                await entity_client.update(child)
+            else:
+                # This group was the member's sole membership — cascade the delete.
+                await _soft_delete(entity_client, child)
     await _soft_delete(entity_client, group)
 
 
@@ -346,12 +325,12 @@ async def create_evaluation(
     body: EvaluationRequest,
     entity_client: EntityClientDep,
 ) -> EvaluationResponse:
-    await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
+    await _validate_groups_exist(entity_client, group_ids=body.experiment_ids)
     await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
     entity = Evaluation(
         workspace=workspace,
         name=body.name,
-        experiment_group_id=body.experiment_group_id,
+        experiment_ids=body.experiment_ids,
         dataset_name=body.dataset_name,
         dataset_version=body.dataset_version,
         source_link=body.source_link,
@@ -390,15 +369,15 @@ async def create_evaluation(
             "Filter by a metadata key/value: filter[metadata.<key>]=<value>. "
             "Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): "
             "filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, "
-            "filter[latency_ms.p95][$lte]=1000, or filter[evaluators.<name>.mean][$gte]=0.8."
+            "filter[latency_ms.p95][$lte]=1000, filter[tokens.mean][$lte]=5000, "
+            "or filter[evaluators.<name>.mean][$gte]=0.8."
         ),
     ),
 )
 async def list_evaluations(
     workspace: str,
     request: Request,
-    entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
     parsed: EvaluationFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
@@ -408,8 +387,8 @@ async def list_evaluations(
             "Comma-separated list of fields to sort by, applied in order (the first field dominates); "
             "prefix any field with '-' for descending — e.g. '-evaluators.reward.mean,cost_usd.mean'. "
             "Each field is an evaluation attribute (name, created_at, updated_at, pinned_at) or an "
-            "aggregate metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>, or "
-            "evaluators.<name>.<stat>, "
+            "aggregate metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>, "
+            "tokens.<stat>, or evaluators.<name>.<stat>, "
             "where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted, defaults to "
             "-created_at with pinned evaluations first."
         ),
@@ -433,37 +412,37 @@ async def list_evaluations(
     # the metric ones are applied in memory after hydration. parsed (the full user filter) is left
     # intact so the response still echoes it.
     entity_operation, metric_predicates = _extract_metric_predicates(parsed.operation)
+    # Translate the exposed `experiment_group_id` filter into a membership match over `experiment_ids`
+    # (plus the legacy scalar), so listing a group returns every evaluation that belongs to it.
+    entity_operation = _rewrite_group_filter(entity_operation)
     # Compute-on-read: fetch the whole (entity-filtered) group, hydrate every rollup, then filter, sort,
     # and paginate in memory so a single request can sort/filter by a ClickHouse metric that lives
     # outside the entity store. Bounded to hundreds of evaluations per group (see _MAX_GROUP_EVALUATIONS).
-    result = await entity_client.list(
-        Evaluation,
-        workspace=workspace,
-        filter_operation=entity_operation,
-        page=1,
-        page_size=_MAX_GROUP_EVALUATIONS,
-    )
-    responses = [EvaluationResponse.from_entity(e) for e in result.data]
-    total_selected = result.pagination.total_results
-    if total_selected > _MAX_GROUP_EVALUATIONS:
+    try:
+        result = await read_service.list_evaluations(
+            workspace=workspace,
+            filter_operation=entity_operation,
+            limit=_MAX_GROUP_EVALUATIONS,
+        )
+    except EvaluationReadLimitExceededError as exc:
         # The whole filtered set is sorted in memory; anything past the fetch cap can't be sorted, so a
         # returned page would be silently incomplete. Fail loudly and tell the caller how to scope the
         # query instead (or denormalize rollup metrics for entity-store sorting once groups grow this big).
         logger.warning(
             "Evaluation list selected %d evaluations, over the %d-row in-memory sort cap; refusing "
             "to return a partially sorted result.",
-            total_selected,
-            _MAX_GROUP_EVALUATIONS,
+            exc.selected,
+            exc.limit,
         )
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=(
-                f"This query selects {total_selected} evaluations, exceeding the maximum of "
-                f"{_MAX_GROUP_EVALUATIONS} that can be sorted in one request. Narrow the result with a "
+                f"This query selects {exc.selected} evaluations, exceeding the maximum of "
+                f"{exc.limit} that can be sorted in one request. Narrow the result with a "
                 "filter (e.g. experiment_group_id)."
             ),
-        )
-    hydrated = await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
+        ) from exc
+    responses = [_to_evaluation_response(evaluation) for evaluation in result.evaluations]
     # A metric-backed sort or filter is meaningless without rollups: if hydration was skipped (ClickHouse
     # disabled or down) every metric value would be unset, so a metric sort would silently collapse to
     # name order and a metric filter would drop everything. Reject the request instead of returning a
@@ -471,7 +450,7 @@ async def list_evaluations(
     # An explicit metric sort or metric filter genuinely can't be served without rollups → 503. A
     # default sort degrades gracefully instead: its metric values come back unset, so the appended
     # -created_at key orders the list (the documented fallback), no error.
-    if not hydrated and (explicit_metric_sort or metric_predicates):
+    if not result.rollups_available and (explicit_metric_sort or metric_predicates):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cannot sort or filter evaluations by a rollup metric: the telemetry store is unavailable.",
@@ -500,20 +479,13 @@ async def list_evaluations(
 async def get_evaluation(
     workspace: str,
     name: str,
-    entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
 ) -> EvaluationResponse:
-    entity = await _get_or_404(
-        entity_client,
-        Evaluation,
-        workspace=workspace,
-        name=name,
-        label="Evaluation",
-    )
-    _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
-    response = EvaluationResponse.from_entity(entity)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
+    try:
+        evaluation = await read_service.get_evaluation(workspace=workspace, name=name)
+    except EvaluationNotFoundError as exc:
+        raise _evaluation_not_found_http_error(exc) from exc
+    return _to_evaluation_response(evaluation)
 
 
 # Identity and the dataset it was run against are fixed for the life of an
@@ -536,7 +508,7 @@ async def update_evaluation(
     name: str,
     body: EvaluationRequest,
     entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
 ) -> EvaluationResponse:
     existing = await _get_or_404(
         entity_client,
@@ -546,8 +518,9 @@ async def update_evaluation(
         label="Evaluation",
     )
     _reject_if_deleted(existing, workspace=workspace, name=name, label="Evaluation")
-    if body.experiment_group_id != existing.experiment_group_id:
-        await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
+    new_group_ids = [gid for gid in body.experiment_ids if gid not in existing.experiment_ids]
+    if new_group_ids:
+        await _validate_groups_exist(entity_client, group_ids=new_group_ids)
     await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
 
     changed = [f for f in _IMMUTABLE_EVALUATION_FIELDS if getattr(body, f) != getattr(existing, f)]
@@ -560,7 +533,7 @@ async def update_evaluation(
             ),
         )
 
-    existing.experiment_group_id = body.experiment_group_id
+    existing.experiment_ids = body.experiment_ids
     existing.source_link = body.source_link
     existing.metadata = body.metadata
     existing.description = body.description
@@ -568,9 +541,64 @@ async def update_evaluation(
     existing.status = body.status
     existing.root_cause = body.root_cause
     updated = await entity_client.update(existing)
-    response = EvaluationResponse.from_entity(updated)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
+    return await _evaluation_response_with_rollup(read_service, workspace=workspace, evaluation=updated)
+
+
+@router.patch(
+    "/v2/workspaces/{workspace}/evaluations/{name}",
+    response_model=EvaluationResponse,
+    tags=[EVALUATIONS_TAG],
+    responses={
+        400: {"description": "A referenced ExperimentGroup does not exist, or experiment_ids is empty"},
+        404: {"description": "Evaluation not found"},
+    },
+)
+async def patch_evaluation(
+    workspace: str,
+    name: str,
+    body: EvaluationPatchRequest,
+    entity_client: EntityClientDep,
+    read_service: EvaluationReadServiceDep,
+) -> EvaluationResponse:
+    """Partially update an evaluation: only fields present in the request are changed.
+
+    The common case is curating an evaluation into another ExperimentGroup — PATCH with the merged
+    ``experiment_ids``. Membership is replaced (not appended), so send the full desired set; any new
+    group must exist and the set must be non-empty (an evaluation always belongs to >=1 group). Omitted
+    fields are left untouched (unlike the full-body PUT, which overwrites them).
+    """
+    existing = await _get_or_404(entity_client, Evaluation, workspace=workspace, name=name, label="Evaluation")
+    _reject_if_deleted(existing, workspace=workspace, name=name, label="Evaluation")
+
+    fields_set = body.model_fields_set
+    if "experiment_ids" in fields_set:
+        if not body.experiment_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="experiment_ids must be non-empty: an evaluation must belong to at least one group.",
+            )
+        new_group_ids = [gid for gid in body.experiment_ids if gid not in existing.experiment_ids]
+        if new_group_ids:
+            await _validate_groups_exist(entity_client, group_ids=new_group_ids)
+        # Membership is a set — store deduped so a duplicated id can't inflate a group's count.
+        existing.experiment_ids = list(dict.fromkeys(body.experiment_ids))
+    if "parent_evaluation_id" in fields_set:
+        await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
+        existing.parent_experiment_id = body.parent_evaluation_id
+    if "source_link" in fields_set:
+        existing.source_link = body.source_link
+    if "metadata" in fields_set:
+        # Entity metadata is a non-null dict; a client clearing it (explicit null) resets to empty.
+        existing.metadata = body.metadata or {}
+    if "description" in fields_set:
+        existing.description = body.description
+    if "status" in fields_set:
+        existing.status = body.status
+    if "root_cause" in fields_set:
+        existing.root_cause = body.root_cause
+
+    updated = await entity_client.update(existing)
+    return await _evaluation_response_with_rollup(read_service, workspace=workspace, evaluation=updated)
 
 
 @router.delete(
@@ -605,7 +633,7 @@ async def pin_evaluation(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
 ) -> EvaluationResponse:
     """Pin an evaluation to the top of the list (workspace-shared).
 
@@ -622,9 +650,7 @@ async def pin_evaluation(
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
     entity.pinned_at = datetime.now(timezone.utc)
     updated = await entity_client.update(entity)
-    response = EvaluationResponse.from_entity(updated)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
+    return await _evaluation_response_with_rollup(read_service, workspace=workspace, evaluation=updated)
 
 
 @router.delete(
@@ -637,7 +663,7 @@ async def unpin_evaluation(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
 ) -> EvaluationResponse:
     """Unpin an evaluation. Idempotent: unpinning an already-unpinned evaluation is a no-op."""
     entity = await _get_or_404(
@@ -650,9 +676,7 @@ async def unpin_evaluation(
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
     entity.pinned_at = None
     updated = await entity_client.update(entity)
-    response = EvaluationResponse.from_entity(updated)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
+    return await _evaluation_response_with_rollup(read_service, workspace=workspace, evaluation=updated)
 
 
 @router.get(
@@ -673,8 +697,7 @@ async def list_evaluation_sessions(
     workspace: str,
     name: str,
     request: Request,
-    entity_client: EntityClientDep,
-    session_repository: EvaluationSessionRepositoryDep,
+    read_service: EvaluationReadServiceDep,
     parsed: EvaluationSessionFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
@@ -697,39 +720,26 @@ async def list_evaluation_sessions(
 ) -> Page[EvaluationSessionResponse]:
     validate_list_query_params(request, additional_params={"mode"})
     sort_keys = _parse_session_sort_keys(sort) if sort is not None else None
-    evaluation = await _get_or_404(
-        entity_client,
-        Evaluation,
-        workspace=workspace,
-        name=name,
-        label="Evaluation",
-    )
-    _reject_if_deleted(evaluation, workspace=workspace, name=name, label="Evaluation")
-    if session_repository is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="ClickHouse is unavailable; per-session reads require telemetry storage.",
-        )
     test_case_id: str | None = parsed.extract("test_case_id")
     status_raw: str | None = parsed.extract("status")
     try:
-        status_filter = SpanStatus(status_raw) if status_raw is not None else None
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status '{status_raw}'. Valid values: {[s.value for s in SpanStatus]}",
-        )
-    try:
-        result = await session_repository.list_sessions(
+        result = await read_service.list_sessions(
             workspace=workspace,
             evaluation_name=name,
-            status=status_filter,
+            status=status_raw,
             test_case_id=test_case_id,
             page=page,
             page_size=page_size,
             mode=mode,
             sort_keys=sort_keys,
         )
+    except EvaluationNotFoundError as exc:
+        raise _evaluation_not_found_http_error(exc) from exc
+    except InvalidEvaluationSessionStatusError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status '{exc.value}'. Valid values: {[s.value for s in SpanStatus]}",
+        ) from exc
     except MetricSortTooLargeError as exc:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -740,18 +750,15 @@ async def list_evaluation_sessions(
                 "different field (started_at, latency_ms, status, test_case_id)."
             ),
         ) from exc
-    except Exception as exc:
-        # Sessions are the response payload (not enrichment), so we can't silently degrade like
-        # _hydrate_rollups does. Convert backend failures (ClickHouse connection drop, query
-        # timeout, etc.) to a deterministic 503 instead of letting them bubble as 500s.
-        logger.exception(
-            "Per-session read failed for workspace=%s evaluation=%s",
-            _sanitize_for_log(workspace),
-            _sanitize_for_log(name),
+    except EvaluationTelemetryUnavailableError as exc:
+        detail = (
+            "Telemetry store unavailable."
+            if exc.configured
+            else "ClickHouse is unavailable; per-session reads require telemetry storage."
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Telemetry store unavailable.",
+            detail=detail,
         ) from exc
     data = [EvaluationSessionResponse.from_row(row, mode=mode) for row in result.rows]
     return Page(
@@ -851,7 +858,7 @@ async def _count_live_evaluations_in_group(entity_client: EntityClient, *, works
         filter_operation=LogicalOperation(
             operator=FilterOperator.AND,
             operations=[
-                ComparisonOperation(operator=FilterOperator.EQ, field="data.experiment_group_id", value=group_id),
+                _group_membership_filter(group_id),
                 LogicalOperation(
                     operator=FilterOperator.NOT,
                     operations=[
@@ -889,7 +896,10 @@ async def _count_live_evaluations_by_group(
     filter_operation = LogicalOperation(
         operator=FilterOperator.AND,
         operations=[
-            ComparisonOperation(operator=FilterOperator.IN, field="data.experiment_group_id", value=list(group_ids)),
+            LogicalOperation(
+                operator=FilterOperator.OR,
+                operations=[_group_membership_filter(gid) for gid in dict.fromkeys(group_ids)],
+            ),
             LogicalOperation(
                 operator=FilterOperator.NOT,
                 operations=[
@@ -906,8 +916,11 @@ async def _count_live_evaluations_by_group(
             page=page,
             page_size=page_size,
         )
+        # An evaluation may belong to several of the requested groups; count it once per membership.
         for evaluation in result.data:
-            counts[evaluation.experiment_group_id] = counts.get(evaluation.experiment_group_id, 0) + 1
+            for gid in evaluation.experiment_ids:
+                if gid in counts:
+                    counts[gid] += 1
         if page >= result.pagination.total_pages:
             break
         page += 1
@@ -941,6 +954,50 @@ async def _validate_group_exists(entity_client: EntityClient, *, group_id: str) 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"ExperimentGroup '{group_id}' has been deleted and can no longer accept new Evaluations.",
         )
+
+
+async def _validate_groups_exist(entity_client: EntityClient, *, group_ids: list[str]) -> None:
+    """Reject with 400 if any referenced ExperimentGroup doesn't exist or is deleted (deduped)."""
+    for group_id in dict.fromkeys(group_ids):
+        await _validate_group_exists(entity_client, group_id=group_id)
+
+
+def _group_membership_filter(group_id: str) -> LogicalOperation:
+    """Match evaluations that belong to ``group_id`` across both membership representations.
+
+    New rows store membership as the ``experiment_ids`` list (matched with ``$contains``); legacy
+    rows that predate many-to-many still store a scalar ``experiment_group_id`` and are matched by
+    equality until they are next rewritten. The OR keeps un-migrated rows queryable, no migration.
+    """
+    return LogicalOperation(
+        operator=FilterOperator.OR,
+        operations=[
+            ComparisonOperation(operator=FilterOperator.CONTAINS, field="data.experiment_ids", value=group_id),
+            ComparisonOperation(operator=FilterOperator.EQ, field="data.experiment_group_id", value=group_id),
+        ],
+    )
+
+
+def _rewrite_group_filter(operation: FilterOperation | None) -> FilterOperation | None:
+    """Rewrite an ``experiment_group_id`` equality in a parsed filter into a membership match.
+
+    The API still exposes an ``experiment_group_id`` filter param; with many-to-many membership it
+    means "belongs to this group", which spans the ``experiment_ids`` list and the legacy scalar.
+    """
+    if operation is None:
+        return None
+    if isinstance(operation, ComparisonOperation):
+        if operation.field == "data.experiment_group_id" and operation.operator == FilterOperator.EQ:
+            return _group_membership_filter(operation.value)
+        return operation
+    if isinstance(operation, LogicalOperation):
+        return LogicalOperation(
+            operator=operation.operator,
+            operations=[
+                rewritten for op in operation.operations if (rewritten := _rewrite_group_filter(op)) is not None
+            ],
+        )
+    return operation
 
 
 def _apply_is_deleted_filter(parsed: ParsedFilter) -> None:
@@ -1000,7 +1057,7 @@ def _apply_is_pinned_filter(parsed: ParsedFilter) -> None:
 
 # Metric heads whose dotted sub-paths address a ClickHouse rollup (not an entity column). Declared as
 # self-mapping namespaces on EvaluationFilter so paths survive filter validation untranslated.
-_METRIC_NAMESPACES = frozenset({"cost_usd", "latency_ms", "evaluators"})
+_METRIC_NAMESPACES = frozenset({"cost_usd", "latency_ms", "tokens", "evaluators"})
 _NUMERIC_FILTER_OPERATORS = frozenset(
     {FilterOperator.GTE, FilterOperator.LTE, FilterOperator.GT, FilterOperator.LT, FilterOperator.EQ}
 )
@@ -1018,7 +1075,7 @@ def _is_valid_metric_path(field: str) -> bool:
     if field in ("run_count", "test_case_count"):
         return True
     head, _, rest = field.partition(".")
-    if head in ("cost_usd", "latency_ms"):
+    if head in ("cost_usd", "latency_ms", "tokens"):
         return rest in _METRIC_STATS
     if head == "evaluators":
         # Evaluator names can contain dots (e.g. "harbor.verifier"); the stat is the last segment.
@@ -1198,6 +1255,8 @@ def _evaluation_sort_value(response: EvaluationResponse, field: str) -> Any:
         return getattr(response.cost_usd, rest, None) if response.cost_usd is not None else None
     if head == "latency_ms":
         return getattr(response.latency_ms, rest, None) if response.latency_ms is not None else None
+    if head == "tokens":
+        return getattr(response.tokens, rest, None) if response.tokens is not None else None
     name, _, stat = rest.rpartition(".")  # head == "evaluators"
     score = (response.aggregate_scores or {}).get(name)
     return getattr(score, stat, None) if score is not None else None
@@ -1249,35 +1308,28 @@ def _sort_evaluations(
     return ordered
 
 
-async def _hydrate_rollups(
+def _to_evaluation_response(evaluation: EvaluationRead) -> EvaluationResponse:
+    response = EvaluationResponse.from_entity(evaluation.entity)
+    if evaluation.rollup is not None:
+        _apply_rollup(response, evaluation.rollup)
+    return response
+
+
+async def _evaluation_response_with_rollup(
+    read_service: EvaluationReadServiceDep,
     *,
     workspace: str,
-    responses: list[EvaluationResponse],
-    rollup_repository: EvaluationRollupRepository | None,
-) -> bool:
-    """Enrich responses with ClickHouse rollups in place.
+    evaluation: Evaluation,
+) -> EvaluationResponse:
+    batch = await read_service.attach_rollups(workspace=workspace, evaluations=[evaluation])
+    return _to_evaluation_response(batch.evaluations[0])
 
-    Returns True when hydration completed (including the no-op empty-list case) and False when it was
-    skipped because the rollup store is unavailable (repository absent or query failed). Callers that
-    sort by a rollup metric use the flag to reject the request rather than silently degrade; callers
-    that only display metrics can ignore it.
-    """
-    if not responses:
-        return True
-    if rollup_repository is None:
-        return False
-    try:
-        rollups = await rollup_repository.get_rollups(
-            workspace=workspace, evaluation_ids=[response.name for response in responses]
-        )
-    except Exception:
-        logger.exception("Skipping evaluation rollup hydration because ClickHouse is unavailable")
-        return False
-    for response in responses:
-        rollup = rollups.get(response.name)
-        if rollup is not None:
-            _apply_rollup(response, rollup)
-    return True
+
+def _evaluation_not_found_http_error(exc: EvaluationNotFoundError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Evaluation '{exc.workspace}/{exc.name}' not found.",
+    )
 
 
 def _apply_rollup(response: EvaluationResponse, rollup: EvaluationRollup) -> None:
@@ -1290,6 +1342,7 @@ def _apply_rollup(response: EvaluationResponse, rollup: EvaluationRollup) -> Non
     response.test_case_count = rollup.test_case_count
     response.cost_usd = _aggregate(rollup.cost_usd) if rollup.cost_usd is not None else None
     response.latency_ms = _aggregate(rollup.latency_ms) if rollup.latency_ms is not None else None
+    response.tokens = _aggregate(rollup.tokens) if rollup.tokens is not None else None
 
 
 def _aggregate(rollup: ScoreRollup) -> EvaluatorAggregate:
@@ -1302,23 +1355,3 @@ def _aggregate(rollup: ScoreRollup) -> EvaluatorAggregate:
         p99=rollup.p99,
         count=rollup.count,
     )
-
-
-# ---------------------------------------------------------------------------
-# Backwards-compatible URL aliases (TEMPORARY — remove in a follow-up PR)
-#
-# The child endpoints moved from `/experiments` to `/evaluations`. Register the old
-# `/experiments...` paths as hidden aliases (``include_in_schema=False``) that point at the
-# same handlers, so existing callers keep working until they migrate to `/evaluations`.
-# ---------------------------------------------------------------------------
-for _legacy_route in list(router.routes):
-    if isinstance(_legacy_route, APIRoute) and "/evaluations" in _legacy_route.path:
-        router.add_api_route(
-            _legacy_route.path.replace("/evaluations", "/experiments", 1),
-            _legacy_route.endpoint,
-            methods=sorted(_legacy_route.methods),
-            response_model=_legacy_route.response_model,
-            status_code=_legacy_route.status_code,
-            include_in_schema=False,
-            name=f"{_legacy_route.name}_experiments_alias",
-        )

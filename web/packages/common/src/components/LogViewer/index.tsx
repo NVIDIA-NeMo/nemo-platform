@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useStickToBottom } from '@nemo/common/src/hooks/useStickToBottom';
+import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { triggerDownload } from '@nemo/common/src/utils/file';
 import { formatLogs } from '@nemo/common/src/utils/logs';
 import type { PlatformJobLog } from '@nemo/sdk/generated/platform/schema';
@@ -44,6 +45,8 @@ export const LogViewer: FC<LogViewerProps> = ({
 
   const isShowingLogs = useMemo(() => logs.length > 0 && !isLoading, [logs.length, isLoading]);
 
+  const { success } = useToast();
+
   const { ref: codeScrollRef, scrollToBottom } = useStickToBottom<HTMLDivElement>({
     enabled: isShowingLogs,
     resetKey: showAllLogs,
@@ -84,6 +87,7 @@ export const LogViewer: FC<LogViewerProps> = ({
         kind="block"
         collapsible={false}
         rows={rows}
+        onCopySuccess={() => success('Copied to clipboard!', { durationMs: 3000 })}
         attributes={{
           CodeSnippetCode: {
             ref: codeScrollRef,

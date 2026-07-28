@@ -30,7 +30,7 @@ def nmp_base_url() -> str:
 @pytest.fixture(scope="module")
 def nemo_sdk(nmp_base_url: str) -> Generator[NeMoPlatform, None, None]:
     """Create NeMo SDK client for direct API validation."""
-    client = get_platform_sdk(nmp_base_url)
+    client = get_platform_sdk(base_url=nmp_base_url)
     yield client
 
 

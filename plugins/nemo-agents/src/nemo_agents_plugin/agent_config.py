@@ -62,6 +62,32 @@ class TelemetryConfig(BaseModel):
     atof: dict[str, Any] | None = None
 
 
+class SkillsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paths: list[str] = Field(default_factory=list)
+
+
+class McpServerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transport: str
+    url: str
+    exposure: Literal["harness_native", "fabric_managed"] = "harness_native"
+
+
+class McpConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    servers: dict[str, McpServerConfig] = Field(default_factory=dict)
+
+
+class ToolsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    blocked: list[str] = Field(default_factory=list)
+
+
 class AgentConfig(BaseModel):
     """Platform-owned agent.yaml config for nemo-agents-spec-v1."""
 
@@ -74,7 +100,9 @@ class AgentConfig(BaseModel):
     harnesses: dict[str, HarnessConfig]
     models: dict[str, ModelConfig] = Field(default_factory=dict)
     prompts: dict[str, str] = Field(default_factory=dict)
-    skills: dict[str, Any] | list[Any] | None = None
+    skills: SkillsConfig | None = None
+    mcp: McpConfig | None = None
+    tools: ToolsConfig | None = None
     environment: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 

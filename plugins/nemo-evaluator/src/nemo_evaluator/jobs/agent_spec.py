@@ -18,7 +18,7 @@ from typing import Any, Literal, Self, TypeAlias
 # payload kind so MetricBundle payloads round-trip through validation.
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
-from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList
+from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList, TasksetRef
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
@@ -108,9 +108,45 @@ class FabricRunnerTarget(BaseModel):
     )
 
 
+class HarborRunnerTarget(BaseModel):
+    """Generate trials by driving a Harbor job through the SDK's :class:`HarborAgentTaskRunner`.
+
+    Runs in *native* mode: Harbor builds and runs its own ``JobConfig`` (executing each task in a
+    Docker environment, retrying, and writing a per-trial results tree), then the runtime adapts that
+    tree into SDK trials. The dataset Harbor runs against is recovered from each task's
+    ``harbor_dataset_path`` metadata, so it is not configured here. The runtime-only jobs directory is
+    injected from the job's storage at run time; only the harness-selection and run knobs live here.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["harbor"] = "harbor"
+    agent_name: str | None = Field(
+        default="oracle",
+        description="Built-in Harbor agent to run (e.g. 'oracle'). Ignored when `agent_import_path` is set.",
+    )
+    agent_import_path: str | None = Field(
+        default=None,
+        description="Custom Harbor agent import path (e.g. 'harbor_wrapper:WrappedAgent'); overrides `agent_name`. "
+        "The module must already be importable in the run environment.",
+    )
+    agent_model_name: str | None = Field(default=None, description="Optional model slug passed to the Harbor agent.")
+    n_attempts: int = Field(default=1, ge=1, description="Number of attempts Harbor runs per task.")
+    n_concurrent_trials: int = Field(default=4, ge=1, description="Maximum concurrent Harbor trials.")
+    max_retries: int = Field(default=0, ge=0, description="Harbor per-trial retry attempts on transient failures.")
+    artifacts: list[str] = Field(default_factory=list, description="Harbor artifact sources to collect per trial.")
+    trace_dir: str | None = Field(
+        default=None,
+        description="Container path of agent traces to collect as the 'traces' artifact (e.g. '/app/traces').",
+    )
+    reward_key: str = Field(
+        default="reward", description="Key read from Harbor's per-trial rewards mapping to score against."
+    )
+
+
 #: The agent-runner slot of the target union — the spec-side mirror of ``AgentTaskRunner``, resolved
 #: to a runtime at run time. ``kind``-discriminated; widen with more members as runners land.
-AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget
+AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget | HarborRunnerTarget
 
 #: What generates trials: a Model or Agent endpoint, or an agent runner. ``kind``-discriminated, and
 #: the spec-level analog of the SDK's runtime ``AgentEvalTarget`` (Model | Agent | AgentTaskRunner).
@@ -212,9 +248,24 @@ class _AgentEvalSpecCommon(BaseModel):
 
 
 class AgentEvalInputSpec(_AgentEvalSpecCommon):
-    """Submitter-facing agent-evaluation input: tasks whose metrics may be inline or references."""
+    """Submitter-facing agent-evaluation input.
 
-    tasks: list[AgentEvalTaskInput] = Field(min_length=1, description="Tasks to evaluate; at least one is required.")
+    ``tasks`` is either an inline list of tasks (whose metrics may be inline or references) or a
+    :class:`TasksetRef` naming a stored taskset whose member tasks are loaded and expanded during spec
+    resolution. Either way it hydrates to the canonical ``AgentEvalSpec.tasks`` list.
+    """
+
+    tasks: TasksetRef | list[AgentEvalTaskInput] = Field(
+        description="Tasks to evaluate: an inline list (at least one) or a reference to a stored taskset.",
+    )
+
+    @model_validator(mode="after")
+    def _reject_empty_inline_tasks(self) -> Self:
+        # A TasksetRef is validated (and required non-empty) when it is expanded during resolution; an
+        # inline list must carry at least one task, mirroring the canonical spec's ``min_length=1``.
+        if isinstance(self.tasks, list) and not self.tasks:
+            raise ValueError("provide at least one task, or a `tasks` taskset reference")
+        return self
 
 
 class AgentEvalSpec(_AgentEvalSpecCommon):

@@ -13,11 +13,11 @@ import os
 import socket
 from pathlib import Path
 from types import ModuleType
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from nemo_platform.cli.app import app
-from nemo_platform.cli.commands.services._process import (
+from nemo_platform.local.process import (
     ForegroundInstanceError,
     InstanceDescriptor,
     StopResult,
@@ -26,16 +26,17 @@ from nemo_platform.cli.commands.services._process import (
     read_descriptor,
     write_descriptor,
 )
+from nmp.platform_runner.config import PlatformAppConfig
 from typer.testing import CliRunner
 
 runner = CliRunner()
 
-_PROCESS_MODULE = "nemo_platform.cli.commands.services._process"
+_PROCESS_MODULE = "nemo_platform.local.process"
 _CLI_MODULE = "nemo_platform.cli.commands.services.cli"
 
 
 def _seed_stopped_scope(base_dir: Path, scope: str, *, log_content: str = "x\n") -> Path:
-    """Create a stopped instance directory with service logs."""
+    """Create a stopped scope directory with service logs."""
     d = instance_dir(scope, base_dir=base_dir)
     (d / "services.log").write_text(log_content)
     return d
@@ -118,17 +119,18 @@ def test_run_invokes_runner(base_dir: Path):
         )
 
     assert result.exit_code == 0, result.stderr
-    mock_run_platform.assert_called_once_with(
-        services=["auth", "entities"],
-        service_group=None,
-        controllers=["jobs", "models"],
-        controller_group=None,
-        sidecars=None,
-        config_path=None,
-        host="127.0.0.1",
-        port=9000,
-        on_shutdown=ANY,
-    )
+    mock_run_platform.assert_called_once()
+    _, kwargs = mock_run_platform.call_args
+    config = kwargs["config"]
+    assert config.services == ["auth", "entities"]
+    assert config.service_group is None
+    assert config.controllers == ["jobs", "models"]
+    assert config.controller_group is None
+    assert config.sidecars is None
+    assert config.config_path is None
+    assert config.host == "127.0.0.1"
+    assert config.port == 9000
+    assert kwargs["on_shutdown"] is not None
 
 
 def test_run_refuses_when_already_running(base_dir: Path):
@@ -163,7 +165,7 @@ def test_run_writes_descriptor(base_dir: Path):
     desc = read_descriptor("desc-test", base_dir=base_dir)
     assert desc is not None
     assert desc.mode == "foreground"
-    assert desc.port == 9999
+    assert desc.config.port == 9999
 
 
 def test_run_records_background_mode_when_launched_by_start(base_dir: Path):
@@ -382,7 +384,7 @@ class TestServicesRestart:
                 ["services", "restart", "--instance", "ghost"],
             )
         assert result.exit_code == 1
-        assert "No instance found" in result.stderr
+        assert "No instance found for scope" in result.stderr
         assert "nemo services start" in result.stderr
 
     def test_restart_stops_and_starts(self, base_dir: Path):
@@ -390,9 +392,7 @@ class TestServicesRestart:
         fd = acquire_lock(scope, base_dir=base_dir)
         desc = InstanceDescriptor(
             pid=os.getpid(),
-            scope=scope,
-            host="127.0.0.1",
-            port=8080,
+            config=PlatformAppConfig(scope=scope),
             mode="background",
             create_time=1.0,
         )
@@ -429,9 +429,7 @@ class TestServicesRestart:
 
             desc = InstanceDescriptor(
                 pid=99999,
-                scope=scope,
-                host="127.0.0.1",
-                port=port,
+                config=PlatformAppConfig(scope=scope, host="127.0.0.1", port=port),
                 mode="background",
                 create_time=1.0,
             )
@@ -459,13 +457,15 @@ class TestServicesRestart:
         fd = acquire_lock(scope, base_dir=base_dir)
         desc = InstanceDescriptor(
             pid=os.getpid(),
-            scope=scope,
-            host="127.0.0.1",
-            port=9000,
+            config=PlatformAppConfig(
+                scope=scope,
+                services=["entities", "models"],
+                controllers=["jobs"],
+                host="127.0.0.1",
+                port=9000,
+            ),
             mode="background",
             create_time=1.0,
-            services=["entities", "models"],
-            controllers=["jobs"],
         )
         write_descriptor(desc, base_dir=base_dir)
 
@@ -488,11 +488,12 @@ class TestServicesRestart:
             os.close(fd)
 
         assert result.exit_code == 0
-        _, kwargs = mock_start.call_args
-        assert kwargs["services"] == ["entities", "models"]
-        assert kwargs["controllers"] == ["jobs"]
-        assert kwargs["host"] == "127.0.0.1"
-        assert kwargs["port"] == 9000
+        args, _kwargs = mock_start.call_args
+        config = args[0]
+        assert config.services == ["entities", "models"]
+        assert config.controllers == ["jobs"]
+        assert config.host == "127.0.0.1"
+        assert config.port == 9000
 
 
 # ---------------------------------------------------------------------------
@@ -504,16 +505,14 @@ class TestServicesStatus:
     def test_not_running(self, base_dir: Path):
         result = runner.invoke(app, ["services", "status", "--instance", "none"])
         assert result.exit_code == 0
-        assert "No running instance" in result.stdout
+        assert "No running instance for scope" in result.stdout
 
     def test_running_instance(self, base_dir: Path):
         scope = "status-test"
         fd = acquire_lock(scope, base_dir=base_dir)
         desc = InstanceDescriptor(
             pid=os.getpid(),
-            scope=scope,
-            host="127.0.0.1",
-            port=8080,
+            config=PlatformAppConfig(scope=scope),
             mode="foreground",
             create_time=1.0,
         )
@@ -548,9 +547,7 @@ class TestServicesLs:
         fd = acquire_lock(scope, base_dir=base_dir)
         desc = InstanceDescriptor(
             pid=os.getpid(),
-            scope=scope,
-            host="127.0.0.1",
-            port=8080,
+            config=PlatformAppConfig(scope=scope),
             mode="background",
             create_time=1.0,
         )
@@ -594,9 +591,7 @@ class TestServicesLs:
         write_descriptor(
             InstanceDescriptor(
                 pid=os.getpid(),
-                scope=running_scope,
-                host="127.0.0.1",
-                port=8080,
+                config=PlatformAppConfig(scope=running_scope),
                 mode="background",
                 create_time=1.0,
             ),
@@ -658,7 +653,7 @@ class TestServicesRm:
     def test_rm_rejects_invalid_scope(self, base_dir: Path):
         result = runner.invoke(app, ["services", "rm", "../escape"])
         assert result.exit_code == 1
-        assert "Invalid instance scope" in result.stderr
+        assert "Invalid scope" in result.stderr
 
     def test_rm_rejects_conflicting_scope_args(self, base_dir: Path):
         result = runner.invoke(app, ["services", "rm", "scope-a", "--instance", "scope-b"])
@@ -747,7 +742,7 @@ def test_default_host_is_loopback(base_dir: Path):
 
     assert result.exit_code == 0, result.stderr
     _, kwargs = mock_run_platform.call_args
-    assert kwargs["host"] == "127.0.0.1"
+    assert kwargs["config"].host == "127.0.0.1"
 
 
 def test_bind_all_warning(base_dir: Path):

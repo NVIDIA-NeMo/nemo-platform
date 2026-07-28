@@ -26,6 +26,7 @@ class FilterOperator(str, Enum):
     GTE = "$gte"
     IN = "$in"
     NIN = "$nin"
+    CONTAINS = "$contains"
 
     # Logical operators
     OR = "$or"
@@ -70,6 +71,14 @@ class FilterRepository(ABC):
     @abstractmethod
     def nin(self, field: str, values: List[Any]) -> Any:
         pass
+
+    def contains(self, field: str, value: Any) -> Any:
+        """Array membership: match rows where the array at ``field`` contains scalar ``value``.
+
+        Optional — additive to the base contract, so repositories that don't support
+        array-valued fields may leave it unimplemented.
+        """
+        raise NotImplementedError("$contains not supported by this repository")
 
     @abstractmethod
     def and_op(self, operations: List[Any]) -> Any:
@@ -133,6 +142,8 @@ class ComparisonOperation(FilterOperation):
             return repository.in_op(self.field, self.value)
         elif self.operator == FilterOperator.NIN:
             return repository.nin(self.field, self.value)
+        elif self.operator == FilterOperator.CONTAINS:
+            return repository.contains(self.field, self.value)
         elif self.operator == FilterOperator.EXISTS:
             raise NotImplementedError(
                 "$exists requires a relationship-aware repository (use the entities service parser)"

@@ -233,6 +233,14 @@ class EntityClientProtocol(Protocol[EntityT]):
         page: int = 1,
         page_size: int = 100,
     ) -> ListResponse[EntityT]: ...
+    async def count_by(
+        self,
+        entity_type: EntityTypeLike,
+        field: str,
+        *,
+        workspace: str = DEFAULT_WORKSPACE,
+        filter_obj: dict[str, Any] | None = None,
+    ) -> dict[str, int]: ...
     async def get(self, entity_type: EntityTypeLike, name: str, *, workspace: Optional[str] = None) -> EntityT: ...
     async def get_by_id(self, entity_type: EntityTypeLike, entity_id: str) -> EntityT: ...
     async def update(self, entity: EntityT, *, original_name: str | None = None) -> EntityT: ...
@@ -492,6 +500,34 @@ class EntityClient:
         )
 
         return ListResponse(data=entities, pagination=pagination)
+
+    async def count_by(
+        self,
+        entity_type: EntityTypeLike,
+        field: str,
+        *,
+        workspace: str = DEFAULT_WORKSPACE,
+        filter_obj: dict[str, Any] | None = None,
+    ) -> dict[str, int]:
+        """Return the number of matching entities grouped by ``field``."""
+        if not field.isidentifier():
+            raise ValueError(f"Field '{field}' is not a direct entity data field")
+
+        filter_dict = _convert_filter_obj_to_filter_str(filter_obj) if filter_obj else {}
+        effective_filter = json.dumps(filter_dict) if filter_dict else omit
+
+        response = await self.entities_api.list(
+            _get_entity_type(entity_type),
+            workspace=workspace,
+            filter=effective_filter,
+            page=1,
+            page_size=1,
+            extra_query={"count_by": f"data.{field}"},
+        )
+        group_counts = getattr(response, "group_counts", None)
+        if group_counts is None:
+            raise EntityStoreError("Grouped counts not found in response")
+        return TypeAdapter(dict[str, int]).validate_python(group_counts)
 
     async def create(self, entity: EntityT) -> EntityT:
         """Create a new entity.

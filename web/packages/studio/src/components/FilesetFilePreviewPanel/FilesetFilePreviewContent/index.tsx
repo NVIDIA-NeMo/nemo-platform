@@ -6,8 +6,10 @@ import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { FilesetFilePreviewHeader } from '@studio/components/FilesetFilePreviewPanel/components/FilesetFilePreviewHeader';
+import { FilesetImagePreview } from '@studio/components/FilesetFilePreviewPanel/FilesetImagePreview';
 import { useIsBinaryFile } from '@studio/components/filesets/hooks/useIsBinaryFile';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
+import { isImageExtension } from '@studio/util/binaryFile';
 import { useMemo, type FC } from 'react';
 
 export interface FilesetFilePreviewContentProps {
@@ -64,6 +66,7 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
   enabled = true,
 }) => {
   const { isBinary: binary, isLoading: isBinaryLoading } = useIsBinaryFile(filePath);
+  const isImage = isImageExtension(filePath);
 
   const {
     data: internalContent,
@@ -73,7 +76,7 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
     workspace,
     name: filesetName,
     path: filePath,
-    enabled: externalContent === undefined && enabled && !binary && !isBinaryLoading,
+    enabled: externalContent === undefined && enabled && !binary && !isImage && !isBinaryLoading,
   });
 
   const { data: allFilesResponse } = useFilesListFilesetFiles(workspace, filesetName, undefined, {
@@ -89,7 +92,14 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
 
   const body = useMemo(
     () =>
-      binary ? (
+      isImage ? (
+        <FilesetImagePreview
+          workspace={workspace}
+          filesetName={filesetName}
+          filePath={filePath}
+          enabled={enabled}
+        />
+      ) : binary ? (
         <Flex align="center" justify="center" className="h-full">
           <Text kind="body/regular/md" className="text-fg-subdued">
             Text preview not available for binary files.
@@ -103,7 +113,18 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
           error={error ?? null}
         />
       ),
-    [binary, isBinaryLoading, filePath, fileContent, isLoading, error]
+    [
+      binary,
+      enabled,
+      error,
+      fileContent,
+      filePath,
+      filesetName,
+      isBinaryLoading,
+      isImage,
+      isLoading,
+      workspace,
+    ]
   );
 
   if (hideHeader) {

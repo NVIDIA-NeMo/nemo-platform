@@ -67,6 +67,7 @@ pull the answer out with JSONPath. Full walkthrough:
 | `trajectory_path` | no | JSONPath selecting a trajectory to score |
 | `api_key_secret` | no | credential reference (env var locally, platform secret for a job); its value is sent as a bearer token |
 | `stream` | no | read JSON SSE `data:` frames instead of a single JSON body (default `false`) |
+| `response_aggregation` | no | how streamed `data:` frames combine: `last` keeps the final matched value (default; snapshot-per-frame endpoints), `concat` joins matched string values in order (token-delta endpoints) |
 
 ### `NemoAgentToolkitAgent`
 
@@ -79,7 +80,7 @@ workflow's URL.
 | `url` | yes | the NAT workflow endpoint |
 | `name` | yes | agent identifier, stamped on trials |
 | `format` | no | `AgentFormat.NEMO_AGENT_TOOLKIT` (the default and only value) |
-| `nat` | no | `NatAgentConfig` — endpoint / query-param / response-path overrides; defaults preserve `/generate/full` |
+| `nat` | no | `NatAgentConfig` — endpoint / query-param / response-path / aggregation overrides; defaults target `/generate/full` and `concat` token-delta frames into the full response |
 | `api_key_secret` | no | credential reference (env var locally, platform secret for a job); its value is sent as a bearer token |
 
 ## `AgentTaskRunner` (callable, Harbor, or your own)

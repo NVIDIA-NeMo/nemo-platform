@@ -1,9 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Publishes the Fern documentation site when a docs tag is pushed or manually triggered.
+# Publishes the Fern documentation site from the default branch when docs
+# change, a release tag is pushed, a docs republish tag is pushed, or the
+# workflow is manually triggered.
 #
-# To publish:  git tag docs/v1.2.0 && git push origin docs/v1.2.0
+# To publish a release version: push a stable SemVer release tag, for example
+# `git tag 1.2.0 && git push origin 1.2.0`.
+# To republish docs without creating a release version: push a docs tag, for
+# example `git tag docs/v1.2.0 && git push origin docs/v1.2.0`.
 # Or use the "Run workflow" button in the Actions tab.
 #
 # Required configuration:
@@ -18,6 +23,7 @@ on:
     paths:
       - 'docs/**'
     tags:
+      - '*.*.*'
       - 'docs/v*'
   workflow_dispatch: {}
 
@@ -35,6 +41,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Node.js
@@ -42,7 +50,28 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Fern dependencies
+        working-directory: ./docs/fern
+        run: npm ci
+
+      - name: Check release tag eligibility
+        id: release-tag
+        if: ${{ github.ref_type == 'tag' && !startsWith(github.ref_name, 'docs/') }}
+        working-directory: ./docs/fern
+        run: |
+          node scripts/materialize-release-versions.mjs --check-tag "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Materialize release versions
+        if: ${{ steps.release-tag.outputs.eligible != 'false' }}
+        working-directory: ./docs/fern
+        run: npm run materialize:versions
+
+      - name: Check Fern docs
+        if: ${{ steps.release-tag.outputs.eligible != 'false' }}
+        run: make docs-check
+
       - name: Publish Docs
+        if: ${{ steps.release-tag.outputs.eligible != 'false' }}
         env:
           FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
         working-directory: ./docs/fern

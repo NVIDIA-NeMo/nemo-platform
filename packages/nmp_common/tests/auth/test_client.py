@@ -228,6 +228,48 @@ class TestAuthorizeRequestPdpPayloadWithDelegation:
         assert body["on_behalf_of_principal_id"] == "user@example.com"
 
 
+class TestWaitRole:
+    @pytest.mark.asyncio
+    async def test_wait_role_requires_pdp_url_before_creating_client(self, principal):
+        auth_config = AuthConfig(enabled=True, policy_decision_point_base_url="")
+        auth_client = AuthClient(principal=principal, config=auth_config)
+
+        with patch.object(auth_client, "_new_pdp_http_client") as new_client:
+            with pytest.raises(RuntimeError, match="Policy Decision Point URL not configured"):
+                await auth_client.wait_role(
+                    "user@example.com",
+                    "test-workspace",
+                    "Viewer",
+                    timeout=0.01,
+                    poll_interval=0.01,
+                )
+
+        new_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_wait_role_reuses_provided_http_client(self, auth_config, principal):
+        mock_http_client = httpx.AsyncClient()
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": {"has_role": True}}
+        mock_response.raise_for_status = MagicMock()
+
+        with (
+            patch.object(mock_http_client, "post", new_callable=AsyncMock, return_value=mock_response),
+            patch.object(mock_http_client, "aclose", new_callable=AsyncMock) as close,
+        ):
+            auth_client = AuthClient(principal=principal, config=auth_config)
+            assert await auth_client.wait_role(
+                "user@example.com",
+                "test-workspace",
+                "Viewer",
+                timeout=0.01,
+                poll_interval=0.01,
+                http_client=mock_http_client,
+            )
+
+        close.assert_not_called()
+
+
 class TestOnBehalfOfHasPermissions:
     """Tests for the on_behalf_of_has_permissions method."""
 

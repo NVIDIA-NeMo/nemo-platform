@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
-import { Flex, FormField, Select, Tag, Text } from '@nvidia/foundations-react-core';
+import { Flex, FormField, Tag, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {
@@ -13,20 +14,14 @@ import {
   SEED_FILESET_REF_KEY,
   SEED_SAMPLING_STRATEGY_KEY,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
+import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import { FilesetSearchableSelect } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/FilesetSearchableSelect';
 import { getContentColumns, getFileExtension } from '@studio/util/files';
-import { type FC, useEffect, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { type FC, useEffect, useMemo, useRef } from 'react';
+import { useFormContext, useWatch } from 'react-hook-form';
 
 export interface SeedDatasetConfigProps {
-  /** The seed-dataset column's current field values. */
-  values: Record<string, string>;
-  /** Merges the given keys into the column's values (parent spreads onto the rest). */
-  onPatch: (patch: Record<string, string>) => void;
-}
-
-interface SeedFilesetForm {
-  [SEED_FILESET_REF_KEY]: string;
+  columnIndex: number;
 }
 
 /**
@@ -37,31 +32,32 @@ interface SeedFilesetForm {
  * fileset and the in-fileset file as separate picks (stored under {@link SEED_FILESET_REF_KEY} /
  * {@link SEED_FILE_PATH_KEY}). `buildSeedConfig` assembles them into the composite path at submit.
  *
- * The fileset uses {@link FilesetSearchableSelect} for server-side `$like` search + paging. It is
- * react-hook-form based, so a local form holds its value and pushes changes up via `onPatch`.
- * The panel keys this component by column id, so each column mounts a form seeded from its values.
+ * Every control is registered directly on the build form. This keeps the fileset controls in the
+ * same state tree as the rest of the column and isolates updates to their own subscribers.
  */
-export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ values, onPatch }) => {
+export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) => {
   const workspace = useWorkspaceFromPath();
-  const filesetRef = values[SEED_FILESET_REF_KEY] ?? '';
-  const filePath = values[SEED_FILE_PATH_KEY] ?? '';
-  const samplingStrategy = values[SEED_SAMPLING_STRATEGY_KEY] ?? '';
-
-  const { control, watch } = useForm<SeedFilesetForm>({
-    defaultValues: { [SEED_FILESET_REF_KEY]: filesetRef },
+  const { control, setValue } = useFormContext<JobBuilderFormValues>();
+  const filesetRefPath = `columns.${columnIndex}.values.${SEED_FILESET_REF_KEY}` as const;
+  const filePathPath = `columns.${columnIndex}.values.${SEED_FILE_PATH_KEY}` as const;
+  const samplingStrategyPath =
+    `columns.${columnIndex}.values.${SEED_SAMPLING_STRATEGY_KEY}` as const;
+  const availableColumnsPath =
+    `columns.${columnIndex}.values.${SEED_AVAILABLE_COLUMNS_KEY}` as const;
+  const filesetRef = useWatch({ control, name: filesetRefPath }) ?? '';
+  const filePath = useWatch({ control, name: filePathPath }) ?? '';
+  const availableColumnsValue = useWatch({
+    control,
+    name: availableColumnsPath,
   });
 
+  const previousFilesetRef = useRef(filesetRef);
   useEffect(() => {
-    const subscription = watch((formValues, { name }) => {
-      if (name !== SEED_FILESET_REF_KEY) return;
-      onPatch({
-        [SEED_FILESET_REF_KEY]: formValues[SEED_FILESET_REF_KEY] ?? '',
-        [SEED_FILE_PATH_KEY]: '',
-        [SEED_AVAILABLE_COLUMNS_KEY]: '',
-      });
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, onPatch]);
+    if (previousFilesetRef.current === filesetRef) return;
+    previousFilesetRef.current = filesetRef;
+    setValue(filePathPath, '');
+    setValue(availableColumnsPath, '');
+  }, [availableColumnsPath, filePathPath, filesetRef, setValue]);
 
   const { workspace: filesetWorkspace, name: filesetName } = getPartsFromReference(filesetRef);
   const { data: filesResponse, isLoading: isLoadingFiles } = useFilesListFilesetFiles(
@@ -95,10 +91,10 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ values, onPatch 
 
   useEffect(() => {
     const joined = availableColumns.join(',');
-    if ((values[SEED_AVAILABLE_COLUMNS_KEY] ?? '') !== joined) {
-      onPatch({ [SEED_AVAILABLE_COLUMNS_KEY]: joined });
+    if (availableColumnsValue !== joined) {
+      setValue(availableColumnsPath, joined);
     }
-  }, [availableColumns, values, onPatch]);
+  }, [availableColumns, availableColumnsPath, availableColumnsValue, setValue]);
 
   const samplingItems = SAMPLING_STRATEGY_OPTIONS.map((option) => ({
     children: option.label,
@@ -109,7 +105,7 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ values, onPatch 
     <>
       <FilesetSearchableSelect
         workspace={workspace}
-        useControllerProps={{ control, name: SEED_FILESET_REF_KEY }}
+        useControllerProps={{ control, name: filesetRefPath }}
         formFieldProps={{
           slotLabel: 'Fileset',
           slotInfo: 'The platform fileset to seed rows from.',
@@ -117,31 +113,25 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ values, onPatch 
         triggerPlaceholder="Select a fileset"
       />
 
-      <FormField
-        slotLabel="File"
-        required
-        slotInfo="The file within the fileset to read rows from."
-      >
-        <Select
-          aria-label="Seed file"
-          disabled={!filesetRef}
-          items={fileItems}
-          value={filePath || undefined}
-          onValueChange={(value) =>
-            onPatch({
-              [SEED_FILE_PATH_KEY]: value ?? '',
-              [SEED_AVAILABLE_COLUMNS_KEY]: '',
-            })
-          }
-          placeholder={
-            !filesetRef
-              ? 'Select a fileset first'
-              : isLoadingFiles
-                ? 'Loading files…'
-                : 'Select a file'
-          }
-        />
-      </FormField>
+      <ControlledSelect
+        aria-label="Seed file"
+        disabled={!filesetRef}
+        items={fileItems}
+        useControllerProps={{ name: filePathPath }}
+        formFieldProps={{
+          slotLabel: 'File',
+          required: true,
+          slotInfo: 'The file within the fileset to read rows from.',
+        }}
+        onChange={() => setValue(availableColumnsPath, '')}
+        placeholder={
+          !filesetRef
+            ? 'Select a fileset first'
+            : isLoadingFiles
+              ? 'Loading files…'
+              : 'Select a file'
+        }
+      />
 
       {filePath && (
         <FormField
@@ -172,18 +162,16 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ values, onPatch 
         </FormField>
       )}
 
-      <FormField
-        slotLabel="Sampling strategy"
-        slotInfo="How rows are read from the seed dataset. Defaults to ordered."
-      >
-        <Select
-          aria-label="Sampling strategy"
-          items={samplingItems}
-          value={samplingStrategy || undefined}
-          onValueChange={(value) => onPatch({ [SEED_SAMPLING_STRATEGY_KEY]: value ?? '' })}
-          placeholder="Ordered"
-        />
-      </FormField>
+      <ControlledSelect
+        aria-label="Sampling strategy"
+        items={samplingItems}
+        useControllerProps={{ name: samplingStrategyPath }}
+        formFieldProps={{
+          slotLabel: 'Sampling strategy',
+          slotInfo: 'How rows are read from the seed dataset. Defaults to ordered.',
+        }}
+        placeholder="Ordered"
+      />
     </>
   );
 };

@@ -32,7 +32,7 @@ export const FilesetFilePreviewHeader: FC<FilesetFilePreviewHeaderProps> = ({
 }) => (
   <Flex justify="between" align="center" gap="density-sm" className="shrink-0 w-full">
     <Flex gap="density-sm" align="center" className="min-w-0">
-      <FolderOpen width={16} height={16} />
+      <FolderOpen className="shrink-0" width={16} height={16} />
       <FileBreadcrumbs
         filesetName={filesetName}
         filePath={filePath}

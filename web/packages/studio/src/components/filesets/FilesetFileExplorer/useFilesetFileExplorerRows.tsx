@@ -83,12 +83,12 @@ export function useFilesetFileExplorerRows({
                   <Flex gap="density-sm" align="center">
                     {node.type === 'directory' ? (
                       expandedFolders.has(node.path) ? (
-                        <FolderOpen />
+                        <FolderOpen className="shrink-0" />
                       ) : (
-                        <FolderClosed />
+                        <FolderClosed className="shrink-0" />
                       )
                     ) : (
-                      <File />
+                      <File className="shrink-0" />
                     )}
                     <div>{searchQuery ? node.path : node.path.split('/').pop()}</div>
                   </Flex>

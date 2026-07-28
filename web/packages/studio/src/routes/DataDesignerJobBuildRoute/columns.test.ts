@@ -7,12 +7,14 @@ import type { ColumnTypeOption } from '@studio/components/AddColumnPalette/types
 import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
 import {
   type BuilderColumn,
+  buildColumnsFromConfig,
   buildColumnsFromTemplate,
   buildDataDesignerConfig,
   buildGraph,
   defaultColumnName,
   extractJinjaReferences,
   findColumnOption,
+  topologicalSortColumns,
   validateColumnName,
   validateColumns,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
@@ -491,6 +493,127 @@ describe('preference-pairs template', () => {
         ],
       })
     );
+  });
+});
+
+describe('topologicalSortColumns', () => {
+  const ids = (columns: BuilderColumn[]) => columns.map((c) => c.id);
+
+  it('places each column after the columns it references', () => {
+    // Input order deliberately reversed: judge → response → instruction → topic.
+    const input = [
+      column('c3', 'quality', 'llm-judge', { prompt: 'Rate {{ response }}', model_alias: 'm' }),
+      column('c2', 'response', 'llm-text', {
+        prompt: 'Answer {{ instruction }}',
+        model_alias: 'm',
+      }),
+      column('c1', 'instruction', 'llm-text', {
+        prompt: 'Ask about {{ topic }}',
+        model_alias: 'm',
+      }),
+      column('c0', 'topic', 'sampler', { values: 'a, b' }, SamplerType.category),
+    ];
+    expect(ids(topologicalSortColumns(input))).toEqual(['c0', 'c1', 'c2', 'c3']);
+  });
+
+  it('keeps independent columns and ties in their original relative order', () => {
+    const input = [
+      column('a', 'alpha', 'sampler', { values: 'x' }, SamplerType.category),
+      column('b', 'beta', 'sampler', { values: 'y' }, SamplerType.category),
+      column('c', 'gamma', 'sampler', { values: 'z' }, SamplerType.category),
+    ];
+    expect(ids(topologicalSortColumns(input))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('groups by dependency depth, not add order — a shallow dependent sorts above a deeper one', () => {
+    // entity_type → description → structured is a depth-2 chain; llm_text_1 depends only on
+    // entity_type (depth 1). Even though it was added last, it must sort above `structured`.
+    const input = [
+      column('c0', 'entity_type', 'sampler', { values: 'a, b' }, SamplerType.category),
+      column('c1', 'description', 'llm-text', {
+        prompt: 'Describe {{ entity_type }}',
+        model_alias: 'm',
+      }),
+      column('c2', 'structured', 'llm-structured', {
+        prompt: 'Structure {{ description }}',
+        model_alias: 'm',
+        output_format: '{}',
+      }),
+      column('c3', 'llm_text_1', 'llm-text', {
+        prompt: 'Another {{ entity_type }}',
+        model_alias: 'm',
+      }),
+    ];
+    // depths: entity_type 0, description 1, llm_text_1 1, structured 2.
+    expect(ids(topologicalSortColumns(input))).toEqual(['c0', 'c1', 'c3', 'c2']);
+  });
+
+  it('emits cyclic references without looping', () => {
+    const input = [
+      column('c1', 'one', 'expression', { expr: '{{ two }}' }),
+      column('c2', 'two', 'expression', { expr: '{{ one }}' }),
+    ];
+    expect(ids(topologicalSortColumns(input)).sort()).toEqual(['c1', 'c2']);
+  });
+});
+
+describe('buildColumnsFromConfig', () => {
+  it('round-trips a mixed recipe: config → columns → config is stable', () => {
+    const original = [
+      column('a', 'domain', 'sampler', { values: 'a, b, c', weights: '3, 1, 1' }, 'category'),
+      column('b', 'score', 'sampler', { mean: '1.5', stddev: '0.25' }, 'gaussian'),
+      column('c', 'answer', 'llm-text', {
+        prompt: 'Answer about {{ domain }}',
+        model_alias: 'default',
+      }),
+      column('d', 'structured', 'llm-structured', {
+        prompt: 'Structure {{ answer }}',
+        model_alias: 'default',
+        output_format: '{ "type": "object" }',
+      }),
+    ];
+    const config = buildDataDesignerConfig(original);
+
+    const rebuilt = buildColumnsFromConfig(config);
+    expect(rebuilt.map((c) => c.name)).toEqual(['domain', 'score', 'answer', 'structured']);
+    expect(rebuilt.map((c) => c.option.columnType)).toEqual([
+      'sampler',
+      'sampler',
+      'llm-text',
+      'llm-structured',
+    ]);
+    expect(buildDataDesignerConfig(rebuilt)).toEqual(config);
+  });
+
+  it('reconstructs the seed-dataset column from seed_config', () => {
+    const config = buildDataDesignerConfig([
+      column('a', 'seed', 'seed-dataset', {
+        fileset_ref: 'default/my-fileset',
+        file_path: 'data.parquet',
+        sampling_strategy: 'shuffle',
+      }),
+      column('b', 'graded', 'llm-text', { prompt: 'Grade {{ answer }}', model_alias: 'default' }),
+    ]);
+
+    const rebuilt = buildColumnsFromConfig(config);
+    const seed = rebuilt.find((c) => c.option.columnType === 'seed-dataset');
+    expect(seed?.values).toEqual({
+      fileset_ref: 'default/my-fileset',
+      file_path: 'data.parquet',
+      sampling_strategy: 'shuffle',
+    });
+    expect(buildDataDesignerConfig(rebuilt).seed_config).toEqual(config.seed_config);
+  });
+
+  it('numbers ids from startId and skips column types absent from the palette', () => {
+    const config = buildDataDesignerConfig([
+      column('a', 'answer', 'llm-text', { prompt: 'Hi', model_alias: 'default' }),
+    ]);
+    config.columns.push({ name: 'mystery', column_type: 'not-a-type' } as never);
+
+    const rebuilt = buildColumnsFromConfig(config, 5);
+    expect(rebuilt).toHaveLength(1);
+    expect(rebuilt[0]).toMatchObject({ id: 'col-5', name: 'answer' });
   });
 });
 

@@ -78,7 +78,7 @@ from nmp.core.jobs.app.constants import (
 )
 from nmp.core.jobs.app.providers import ComputeResources, ContainerSpec
 from nmp.core.jobs.controllers.backends.base import (
-    JOB_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
     WORKLOAD_IDENTITY_VOLUME_NAME,
@@ -1001,7 +1001,7 @@ def create_pod_template_spec(
             ),
             client.V1EnvVar(name=EPHEMERAL_TASK_STORAGE_PATH_ENVVAR, value=DEFAULT_TASK_STORAGE_PATH),
             client.V1EnvVar(
-                name=JOB_LOGS_ENDPOINT_ENVVAR,
+                name=NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
                 value=get_logs_endpoint_from_fileset(
                     platform_config,
                     step.workspace,

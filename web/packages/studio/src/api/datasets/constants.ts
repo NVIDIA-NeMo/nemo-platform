@@ -3,18 +3,26 @@
 
 export const ALLOWED_CONTENT_FILE_TYPES = new Set(['csv', 'json', 'jsonl', 'parquet']); // File types that the platform parses as structured data.
 
+/** Image formats that browsers can render directly in the fileset preview. */
+export const IMAGE_FILE_EXTENSIONS = new Set([
+  'avif',
+  'bmp',
+  'gif',
+  'ico',
+  'jpeg',
+  'jpg',
+  'png',
+  'svg',
+  'webp',
+]);
+
 // Fast-path blocklist for extensions that are unambiguously binary. Files
 // matching these are rejected immediately without a HEAD request. Unknown
 // extensions fall through to Content-Type detection (see useIsBinaryFile).
 // Keep this list short — it's a hint, not an authoritative registry.
 export const BINARY_FILE_EXTENSIONS = new Set([
   // Images
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'ico',
+  ...IMAGE_FILE_EXTENSIONS,
   // Archives
   'zip',
   'tar',

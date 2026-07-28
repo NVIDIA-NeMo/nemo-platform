@@ -4,7 +4,7 @@
 """Backend registry for Models Controller service."""
 
 from logging import getLogger
-from typing import Dict, Self, Union
+from typing import Dict, Self
 
 from nemo_platform import AsyncNeMoPlatform
 from nmp.core.models.controllers.backends.backends import ServiceBackend
@@ -14,62 +14,19 @@ from nmp.core.models.controllers.backends.backends import ServiceBackend
 # `nemo_deployments_plugin` dependency. The backend class itself is resolved
 # lazily in `from_config` only when the deployments_plugin backend is selected.
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginBackendConfigModel
-from nmp.core.models.controllers.backends.docker import DockerBackendConfig as DockerConfig
-from nmp.core.models.controllers.backends.docker import DockerServiceBackend
-from nmp.core.models.controllers.backends.k8s_nim_operator import K8sNimOperatorConfig, K8sNimOperatorServiceBackend
-from nmp.core.models.controllers.backends.none_backend import NoneServiceBackend
-from pydantic import BaseModel, Field
 
 logger = getLogger(__name__)
 
-
-class K8sNimOperatorBackendConfigModel(K8sNimOperatorConfig):
-    """Configuration for Kubernetes NIM Operator backend (flat: enabled + operator fields at top level)."""
-
-    enabled: bool = Field(default=False, description="Whether this backend is enabled")
-
-
-class DockerBackendConfigModel(DockerConfig):
-    """Configuration for Docker backend (flat: enabled + Docker config fields at top level)."""
-
-    enabled: bool = Field(default=False, description="Whether this backend is enabled")
-
-
-class NoneBackendConfigModel(BaseModel):
-    """Configuration for the ``none`` backend (no deployment substrate).
-
-    Used when ``platform.runtime`` is ``none``. The backend is a deliberate
-    no-op: create/update/delete raise ``NotImplementedError``, status returns
-    ``UNKNOWN``, and orphan reconciliation sees no managed deployments.
-    """
-
-    enabled: bool = Field(default=False, description="Whether this backend is enabled")
-
-
-# Union of all backend configurations (no discriminator needed since dict key is the backend name)
-BackendConfig = Union[
-    DockerBackendConfigModel,
-    K8sNimOperatorBackendConfigModel,
-    DeploymentsPluginBackendConfigModel,
-    NoneBackendConfigModel,
-]
-
+# Union of all backend configurations (dict key is the backend name).
+BackendConfig = DeploymentsPluginBackendConfigModel
 
 # Type alias for the backend name
 BackendName = str
 
-# Global registry of always-importable backend implementations. The
-# `deployments_plugin` backend is intentionally excluded here because it imports
-# the optional `nemo_deployments_plugin` package; it is resolved lazily by
-# `_resolve_backend_class` when selected.
-backend_classes: Dict[BackendName, type[ServiceBackend]] = {
-    "docker": DockerServiceBackend,
-    "nim_operator": K8sNimOperatorServiceBackend,
-    "none": NoneServiceBackend,
-}
+# The deployments_plugin backend is resolved lazily because it imports the
+# optional `nemo_deployments_plugin` package.
+backend_classes: Dict[BackendName, type[ServiceBackend]] = {}
 
-# Backends whose implementation lives behind an optional dependency and must be
-# imported lazily.
 _LAZY_BACKEND_NAMES = frozenset({"deployments_plugin"})
 
 _DEPLOYMENTS_PLUGIN_IMPORT_ERROR = (
@@ -128,7 +85,7 @@ class BackendRegistry:
         nmp_sdk: AsyncNeMoPlatform,
         backend_configs: Dict[BackendName, BackendConfig],
         huggingface_model_puller: str,
-        available_backends: Dict[BackendName, type[ServiceBackend]] = backend_classes,
+        available_backends: Dict[BackendName, type[ServiceBackend]] | None = None,
     ) -> Self:
         """Create a BackendRegistry from backend configurations.
 
@@ -145,6 +102,9 @@ class BackendRegistry:
             KeyError: If a backend configuration references an unknown backend type
             ValueError: If zero or multiple backends are enabled
         """
+        if available_backends is None:
+            available_backends = backend_classes
+
         if not backend_configs:
             raise ValueError("At least one backend must be configured")
 
@@ -166,10 +126,7 @@ class BackendRegistry:
 
             logger.info(f"Initializing backend: {backend_name}")
             config_dict = backend_config.model_dump(exclude={"enabled"})
-            if backend_name in {"nim_operator", "deployments_plugin"}:
-                registry[backend_name] = backend_class(nmp_sdk, config_dict, huggingface_model_puller)
-            else:
-                registry[backend_name] = backend_class(nmp_sdk, config_dict)
+            registry[backend_name] = backend_class(nmp_sdk, config_dict, huggingface_model_puller)
 
         logger.info(f"Backend registry initialized with {len(registry)} backend(s)")
         return cls(registry)
@@ -178,7 +135,7 @@ class BackendRegistry:
         """Retrieve a configured backend by name.
 
         Args:
-            name: The backend name (e.g., "docker", "nim_operator").
+            name: The backend name (e.g., "deployments_plugin").
                 If None, returns the default backend.
 
         Returns:

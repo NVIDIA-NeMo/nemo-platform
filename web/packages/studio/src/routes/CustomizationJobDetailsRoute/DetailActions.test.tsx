@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import { CustomizationBackend } from '@nemo/sdk/vendored/customizer/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { customizationJob1 } from '@studio/mocks/customizer/customization-jobs';
@@ -11,6 +10,7 @@ import { server } from '@studio/mocks/node';
 import { DetailActions } from '@studio/routes/CustomizationJobDetailsRoute/DetailActions';
 import { mockUseNavigate, mockUseParams } from '@studio/tests/util/mockUseParams';
 import { TestProviders } from '@studio/tests/util/TestProviders';
+import { CustomizationBackend } from '@studio/util/customizationBackend';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
@@ -33,7 +33,7 @@ describe('DetailActions', () => {
         />
       </TestProviders>
     );
-    expect(screen.getByRole('button', { name: 'Cancel Job' })).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: 'Cancel Job' })).toBeEnabled();
   });
   it('should render evaluate button when status is launchable', () => {
     render(
@@ -70,10 +70,11 @@ describe('DetailActions', () => {
       </TestProviders>
     );
 
-    await user.click(screen.getByRole('button', { name: 'Cancel Job' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Cancel Job' }));
 
-    // Wait for the loading state to appear (Spinner has role="status")
-    expect(await screen.findByRole('status')).toBeInTheDocument();
+    // While the mutation is pending the item becomes disabled and its label changes
+    const cancellingItem = await screen.findByRole('menuitem', { name: 'Cancelling…' });
+    expect(cancellingItem).toBeDisabled();
   });
   it.each([
     PlatformJobStatus.cancelled,

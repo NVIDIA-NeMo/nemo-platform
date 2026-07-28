@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  EVALUATION_SAMPLE_AGENTS,
+  evaluationSampleAgentKeyForAgentName,
   isSampleAgentName,
   SAMPLE_AGENTS,
   sampleAgentKeyForAgentName,
@@ -63,5 +65,19 @@ describe('isSampleAgentName', () => {
   it('requires the prefix separator', () => {
     expect(isSampleAgentName('calculator-demo-agent-abc123')).toBe(true);
     expect(isSampleAgentName('calculator-demo-agentxyz')).toBe(false);
+  });
+});
+
+describe('evaluation samples', () => {
+  it('keeps creation-only samples out of the evaluation picker', () => {
+    expect(SAMPLE_AGENTS.some((agent) => agent.key === 'calculator')).toBe(true);
+    expect(EVALUATION_SAMPLE_AGENTS.map((agent) => agent.key)).toEqual([
+      'calculator',
+      'email_phishing_analyzer',
+    ]);
+    expect(evaluationSampleAgentKeyForAgentName('calculator-demo-agent-abc123')).toBe('calculator');
+    expect(evaluationSampleAgentKeyForAgentName('email-phishing-demo-agent-abc123')).toBe(
+      'email_phishing_analyzer'
+    );
   });
 });
