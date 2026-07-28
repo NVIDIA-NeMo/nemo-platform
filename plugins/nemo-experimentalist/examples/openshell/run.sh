@@ -14,6 +14,7 @@ if [[ $# -lt 2 ]]; then
 fi
 
 workspace_dir="$(cd "$1" && pwd)"
+remote_workspace="/sandbox/project/$(basename "$workspace_dir")"
 subcommand="$2"
 shift 2
 
@@ -28,11 +29,32 @@ if ! command -v openshell >/dev/null 2>&1; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-policy_path="$script_dir/policy.yaml"
 image="${NEMO_EXPERIMENTALIST_IMAGE:-nmp-experimentalist:local}"
-sandbox_name="${NEMO_EXPERIMENTALIST_SANDBOX_NAME:-experimentalist-${USER:-user}-$$}"
+sandbox_name="${NEMO_EXPERIMENTALIST_SANDBOX_NAME:-nemo-exp-$$}"
 platform_url="${NMP_BASE_URL:-http://host.docker.internal:8080}"
+bridge_url="${NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL:-http://host.docker.internal:8765}"
+bridge_provider="${NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_PROVIDER:-nemo-experimentalist-harbor-bridge}"
 output_dir="${NEMO_EXPERIMENTALIST_OUTPUT_DIR:-$workspace_dir/tmp/experimentalist-openshell}"
+policy_mode="${NEMO_EXPERIMENTALIST_POLICY_MODE:-strict}"
+
+if (( ${#sandbox_name} > 19 )); then
+  echo "OpenShell sandbox names are limited to 19 characters: $sandbox_name" >&2
+  exit 2
+fi
+
+case "$policy_mode" in
+  strict)
+    policy_path="$script_dir/policy.yaml"
+    ;;
+  docker-desktop)
+    policy_path="$script_dir/policy.docker-desktop.yaml"
+    echo "WARNING: Docker Desktop mode continues without Landlock filesystem enforcement." >&2
+    ;;
+  *)
+    echo "NEMO_EXPERIMENTALIST_POLICY_MODE must be 'strict' or 'docker-desktop'" >&2
+    exit 2
+    ;;
+esac
 
 cleanup() {
   if [[ "${NEMO_EXPERIMENTALIST_KEEP_SANDBOX:-0}" != "1" ]]; then
@@ -47,8 +69,10 @@ create_args=(
   --from "$image"
   --policy "$policy_path"
   --no-auto-providers
+  --provider "$bridge_provider"
   --upload "$workspace_dir:/sandbox/project"
   --env "NMP_BASE_URL=$platform_url"
+  --env "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL=$bridge_url"
   --env "EXPERIMENTALIST_API_BASE=https://inference.local/v1"
   --env "EXPERIMENTALIST_API_KEY=not-used"
 )
@@ -68,16 +92,13 @@ done
 openshell "${create_args[@]}" -- /bin/true
 
 if [[ "$subcommand" == "doctor" ]]; then
-  openshell sandbox exec --name "$sandbox_name" --workdir /sandbox/project -- \
-    nemo experimentalist doctor "$@"
+  openshell sandbox exec --name "$sandbox_name" --workdir "$remote_workspace" -- \
+    /app/.venv/bin/nemo experimentalist doctor "$@"
   exit
 fi
 
-# The current local Harbor evaluator will fail its Docker preflight in this
-# sandbox by design. Once the platform-evaluator adapter lands, this same
-# invocation becomes the full sandboxed control-plane path.
-openshell sandbox exec --name "$sandbox_name" --workdir /sandbox/project -- \
-  nemo experimentalist run --experiment-dir /sandbox/output "$@"
+openshell sandbox exec --name "$sandbox_name" --workdir "$remote_workspace" -- \
+  /app/.venv/bin/nemo experimentalist run --experiment-dir /sandbox/output "$@"
 
 mkdir -p "$output_dir"
 openshell sandbox download "$sandbox_name" /sandbox/output "$output_dir"

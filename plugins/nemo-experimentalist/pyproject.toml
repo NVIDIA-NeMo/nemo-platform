@@ -8,6 +8,7 @@ description = "NeMo Experimentalist plugin for NeMo Platform."
 # dependency group in the workspace root.
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "fastapi>=0.115.4",
     "pydantic>=2",
     "httpx",
     "harbor>=0.16 ; python_full_version >= '3.12'",
@@ -18,8 +19,13 @@ dependencies = [
     "nemo-insights-plugin",
     "nemo-platform",
     "nemo-platform-plugin",
+    "python-multipart>=0.0.20",
     "tomlkit>=0.13.3",
+    "uvicorn>=0.34.0",
 ]
+
+[project.scripts]
+nemo-experimentalist-harbor-bridge = "nemo_experimentalist_plugin.harbor_bridge.service:main"
 
 [project.entry-points."nemo.cli"]
 experimentalist = "nemo_experimentalist_plugin.cli:ExperimentalistCLI"

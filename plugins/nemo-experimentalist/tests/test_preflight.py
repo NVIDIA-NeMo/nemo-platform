@@ -107,6 +107,63 @@ def test_docker_down_is_required_failure(tmp_path: Path) -> None:
     assert any(r.severity == "required" and r.status == "fail" and "docker" in r.name for r in results)
 
 
+def test_remote_harbor_preflight_checks_bridge_without_local_docker(tmp_path: Path) -> None:
+    commands: list[list[str]] = []
+    urls: list[str] = []
+
+    def run_cmd(argv: list[str]) -> tuple[int, str]:
+        commands.append(argv)
+        return 1, "docker unavailable"
+
+    def http_ok(url: str) -> bool:
+        urls.append(url)
+        return True
+
+    results = check_environment(
+        profile=full_profile(tmp_path),
+        insight=None,
+        base_url="http://platform",
+        harbor_bridge_url="http://bridge:8765",
+        probes=Probes(
+            run_cmd=run_cmd,
+            http_ok=http_ok,
+            env={
+                "EXPERIMENTALIST_API_BASE": "http://llm",
+                "EXPERIMENTALIST_API_KEY": "key",
+                "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN": "placeholder",
+            },
+        ),
+    )
+
+    assert commands == []
+    assert urls == [
+        "http://llm/models",
+        "http://platform/health/ready",
+        "http://bridge:8765/health/ready",
+    ]
+    assert next(result for result in results if result.name == "harbor-bridge").status == "pass"
+    assert not any(result.name in ("docker", "harbor-import") for result in results)
+
+
+def test_remote_harbor_preflight_requires_bridge_token(tmp_path: Path) -> None:
+    results = check_environment(
+        profile=full_profile(tmp_path),
+        insight=None,
+        base_url="http://platform",
+        harbor_bridge_url="http://bridge:8765",
+        probes=make_probes(
+            env={
+                "EXPERIMENTALIST_API_BASE": "http://llm",
+                "EXPERIMENTALIST_API_KEY": "key",
+            }
+        ),
+    )
+
+    token = next(result for result in results if result.name == "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN")
+    assert token.status == "fail"
+    assert token.severity == "required"
+
+
 def test_unreachable_platform_is_advisory(tmp_path: Path) -> None:
     results = check_environment(
         profile=full_profile(tmp_path),

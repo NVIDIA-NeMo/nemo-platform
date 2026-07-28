@@ -23,6 +23,10 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
     TrialStatus,
     local_path_from_uri,
 )
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_harbor import (
+    RemoteHarborEvaluator,
+    RemoteHarborEvaluatorConfig,
+)
 
 __all__ = [
     "CommandSpec",
@@ -35,6 +39,8 @@ __all__ = [
     "Evaluator",
     "EvaluatorConfig",
     "EvaluatorType",
+    "RemoteHarborEvaluator",
+    "RemoteHarborEvaluatorConfig",
     "MetricResult",
     "MetricSpec",
     "MetricValue",

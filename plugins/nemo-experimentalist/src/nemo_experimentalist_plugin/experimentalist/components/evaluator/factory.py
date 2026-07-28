@@ -3,6 +3,7 @@
 
 """Factories for evaluator-specific datasets and evaluators."""
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,11 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluatorConfig,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Dataset, DatasetRef, Task
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_harbor import (
+    BRIDGE_URL_ENV,
+    RemoteHarborEvaluator,
+    RemoteHarborEvaluatorConfig,
+)
 
 _SUPPORTED_EVALUATOR_TYPES = {
     "harbor": (HarborDataset, HarborEvaluator, HarborEvaluatorConfig),
@@ -94,6 +100,21 @@ class EvaluatorFactory:
             ValueError: If the evaluator type is not supported.
             TypeError: If the evaluator config is not an EvaluatorConfig or dict.
         """
+        bridge_url = os.environ.get(BRIDGE_URL_ENV)
+        if evaluator_type == "harbor" and (
+            isinstance(config, RemoteHarborEvaluatorConfig)
+            or (isinstance(config, dict) and config.get("bridge_url") is not None)
+            or bridge_url
+        ):
+            if isinstance(config, RemoteHarborEvaluatorConfig):
+                remote_config = config
+            else:
+                remote_payload = config.model_dump() if isinstance(config, EvaluatorConfig) else dict(config)
+                if bridge_url:
+                    remote_payload.setdefault("bridge_url", bridge_url)
+                remote_config = RemoteHarborEvaluatorConfig.model_validate(remote_payload)
+            return RemoteHarborEvaluator(options=remote_config, experiment_dir=experiment_dir)
+
         if evaluator_type in _SUPPORTED_EVALUATOR_TYPES:
             if isinstance(config, EvaluatorConfig):
                 config = config.model_dump()

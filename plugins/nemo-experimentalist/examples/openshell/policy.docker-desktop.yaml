@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Fail-closed policy for the Experimentalist control plane. Harbor evaluation
-# does not run here, so neither the Docker socket nor a Docker daemon endpoint
-# is allowed.
+# Explicit local-development fallback for Docker Desktop kernels that do not
+# expose Landlock. Process, seccomp, and network controls remain active, but
+# filesystem access is not kernel-enforced when Landlock is unavailable.
 version: 1
 
 filesystem_policy:
@@ -26,15 +26,12 @@ filesystem_policy:
     - /tmp
 
 landlock:
-  compatibility: hard_requirement
+  compatibility: best_effort
 
 process:
   run_as_user: sandbox
   run_as_group: sandbox
 
-# Model calls use the gateway-managed inference.local route. Direct Platform
-# access is limited to the readiness probe. Harbor work crosses only the
-# narrow bridge contract; the sandbox never receives Docker API access.
 network_policies:
   nemo_platform:
     name: nemo-platform

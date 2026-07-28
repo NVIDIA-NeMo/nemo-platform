@@ -3,8 +3,8 @@
 
 # Experimentalist in OpenShell
 
-This prototype separates the Experimentalist control plane from Harbor task
-execution:
+This research-preview path separates the Experimentalist control plane from
+Harbor task execution:
 
 ```text
 developer files
@@ -16,81 +16,103 @@ OpenShell sandbox: nmp-experimentalist
   - no Docker CLI
   - no Docker socket
       |
-      | narrow evaluation request (not wired yet)
+      | authenticated, typed POST /v1/evaluations
       v
-NeMo Evaluator Harbor worker
-  - trusted evaluator code
-  - Harbor and Docker CLI
-  - dedicated Docker-owning execution profile
+local Harbor bridge
+  - fixed trusted candidate adapter
+  - validates and hardens Harbor tasks
+  - owns Harbor and the host Docker client
       |
       v
 Harbor task containers
 ```
 
-The container and sandbox boundary are runnable. A full optimization currently
-stops at Experimentalist's required `docker info` preflight because its
-`HarborEvaluator` still executes in-process. That failure is intentional: do
-not mount the host Docker socket into the OpenShell sandbox.
+The OpenShell sandbox has no Docker CLI or socket. Candidate Python is archived
+as data, authenticated through a narrow bridge request, and uploaded by fixed
+bridge code into each Harbor task container. The Docker-owning bridge never
+imports the candidate's `harbor_wrapper.py`.
 
-## Build the image
+## Start the local components
 
-Install the OpenShell CLI and select a running gateway first. From the
-repository root, build the Experimentalist image:
+Install the OpenShell CLI and select a running gateway. From the repository
+root, build the Experimentalist image:
 
 ```bash
+export NEMO_EXPERIMENTALIST_PLATFORM=linux/arm64  # use linux/amd64 on x86 hosts
 IMAGE_REGISTRY=local BAKE_TAG=local \
-  docker buildx bake nmp-experimentalist-docker --load
+  docker buildx bake nmp-experimentalist-docker \
+    --set "*.platform=$NEMO_EXPERIMENTALIST_PLATFORM" \
+    --load
 ```
 
 The resulting local tag is `local/nmp-experimentalist:local`. Point the launcher
-at it:
+at it. Generate one bridge token and keep it in the shell used for both the
+bridge and provider setup:
+
+```bash
+export NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN="$(openssl rand -hex 32)"
+export NEMO_EXPERIMENTALIST_IMAGE=local/nmp-experimentalist:local
+```
+
+Start the trusted bridge on the developer host:
+
+```bash
+uv run --frozen nemo-experimentalist-harbor-bridge --host 0.0.0.0
+```
+
+`0.0.0.0` is required for Docker Desktop sandboxes to reach the host through
+`host.docker.internal`. The bearer token is required on every evaluation
+request; use a host firewall on untrusted networks.
+
+In another shell with the same token, create the OpenShell provider. Supplying
+the credential name without a value makes the CLI read it from the environment
+instead of placing the value in the process arguments:
+
+```bash
+openshell provider create \
+  --name nemo-experimentalist-harbor-bridge \
+  --type generic \
+  --credential NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN
+```
+
+Then launch Experimentalist:
 
 ```bash
 export NEMO_EXPERIMENTALIST_IMAGE=local/nmp-experimentalist:local
 plugins/nemo-experimentalist/examples/openshell/run.sh /path/to/agent doctor
+plugins/nemo-experimentalist/examples/openshell/run.sh /path/to/agent run
 ```
 
 The launcher uploads the selected agent workspace into `/sandbox/project`,
-applies [`policy.yaml`](policy.yaml), and runs the command as the non-root
-`sandbox` user. It defaults the Platform API to
-`http://host.docker.internal:8080` and model traffic to OpenShell's
-`https://inference.local/v1` route. Direct Platform access is limited to
-`GET /health/ready`; the future evaluation submission route must be added only
-after its request contract is narrowed and validated.
+applies [`policy.yaml`](policy.yaml), attaches the bridge provider, and runs as
+the non-root `sandbox` user. The provider exposes only a placeholder token to
+the sandbox; OpenShell replaces it in the outbound Authorization header for
+the allowed REST endpoint. The launcher sets
+`NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL`, which selects the remote evaluator
+and makes preflight probe the bridge instead of local Docker.
 
-## What NeMo Evaluator already provides
+For Docker Desktop, set
+`NEMO_EXPERIMENTALIST_POLICY_MODE=docker-desktop`. That uses
+[`policy.docker-desktop.yaml`](policy.docker-desktop.yaml), which keeps process
+and network enforcement but falls back to best-effort filesystem isolation
+because the Docker Desktop kernel does not expose Landlock.
 
-`AgentEvalJob` already accepts `HarborRunnerTarget`, and
-`HarborAgentTaskRunner` already creates the Harbor job and converts its result
-tree into evaluator trials. It is the right service boundary for Docker.
+## Boundary and remaining risk
 
-The submitted-job path still needs five pieces before Experimentalist can use
-it:
+The bridge accepts only bounded evaluator settings, candidate/dataset archives,
+and task IDs. It rejects caller-selected import paths, Docker Compose,
+host-environment interpolation, MCP servers, and accelerators, and forces
+Harbor's verifier into a separate container.
 
-1. A narrow Experimentalist evaluation API backed by `AgentEvalJob`. It should
-   accept candidate/dataset references and construct a fixed
-   `HarborRunnerTarget` and metrics server-side. The generic job contract must
-   not be exposed directly to the sandbox: it currently accepts
-   `agent_import_path` and bundled metric implementations. The exposed
-   `--mode remote` option also exits as unimplemented, and the Docker preflight
-   is still an unconditional local check.
-2. A Harbor task image. The shipped `nmp-cpu-tasks` image does not install the
-   `nemo-evaluator-sdk[harbor]` extra or Docker CLI.
-3. A dedicated job execution profile that grants only that worker Docker
-   access. The standard CPU task profile does not mount the socket.
-4. Fileset materialization for the Harbor dataset and candidate bundle. The
-   current runner expects local paths inside the worker.
-5. A trusted candidate adapter. `agent_import_path` currently imports the
-   candidate's Python wrapper in the Docker-owning worker process. LLM-mutated
-   code must instead be treated as data and uploaded into Harbor's task
-   container by a fixed, allowlisted adapter.
+The bridge still owns a host-root-equivalent Docker socket. Uploaded Harbor
+tasks can contain arbitrary Dockerfiles, and the candidate receives its model
+credential inside the Harbor task container. This preview therefore reduces
+the Docker API surface and removes Docker authority from Experimentalist; it
+does not make untrusted Harbor tasks safe against Docker/Harbor escapes,
+resource exhaustion, or credential exfiltration from their own task
+container. Production follow-up should move the same API to a dedicated
+evaluator worker with resource quotas, approved task sources/images, scoped
+task-network policy, and short-lived inference credentials.
 
-Even a deterministic worker with `/var/run/docker.sock` remains host-root
-equivalent if compromised. "Only Harbor tasks" therefore requires a narrow
-request schema plus validation/authorization of Docker operations; the socket
-mount alone is not that control.
-
-This policy also deliberately supports an uploaded local workspace only. Git
-clone, registry download, and winner publication need separately scoped
-OpenShell provider policies; they are not granted by the prototype's single
-NeMo Platform endpoint.
+Git clone, registry download, and winner publication also need separately
+scoped OpenShell providers and are not granted by this policy.

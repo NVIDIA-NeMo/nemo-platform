@@ -623,6 +623,14 @@ def profile_storage_flags(profile: AgentProfile) -> dict:
     return _resolve_config(None, profile).storage.model_dump(exclude_defaults=True)
 
 
+def resolve_experiment_config(
+    config_payload: Any | None,
+    profile: AgentProfile | None,
+) -> EvolutionaryOptimizerConfig:
+    """Resolve and validate optimizer configuration without materializing inputs."""
+    return _resolve_config(config_payload, profile)
+
+
 def pick_agent_spec(profile: AgentProfile) -> str | None:
     """Resolve and read-check the configured or conventional agent spec."""
     try:

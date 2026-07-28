@@ -27,6 +27,7 @@ from nemo_experimentalist_plugin.resolve import (
     ResolveError,
     build_effective_experiment_plan,
     resolve_effective_insight,
+    resolve_experiment_config,
     resolve_experiment_inputs,
 )
 from nemo_insights_plugin.contracts.checks import (
@@ -233,6 +234,13 @@ class ExperimentalistCLI(NemoCLI):
                         err=True,
                     )
                 _announce_credential_defaults()
+                config_payload = _load_config_payload(config)
+                effective_config = resolve_experiment_config(config_payload, profile)
+                bridge_url = effective_config.evaluator.get("bridge_url")
+                bridge_token_env = effective_config.evaluator.get(
+                    "bridge_token_env",
+                    "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN",
+                )
                 # Phase 1 — cheap environment checks BEFORE resolution: certain failures
                 # (missing creds, docker down, harbor absent) surface as the grouped
                 # report before any dataset download or the loop-chain import (which
@@ -245,11 +253,12 @@ class ExperimentalistCLI(NemoCLI):
                         insight=effective_insight.ref,
                         insight_id=effective_insight.selector,
                         base_url=base_url_resolved,
+                        harbor_bridge_url=str(bridge_url) if bridge_url is not None else None,
+                        harbor_bridge_token_env=str(bridge_token_env),
                         enforce_insight_agent=agent is None,
                         probes=_PREFLIGHT_PROBES,
                     )
                 )
-                config_payload = _load_config_payload(config)
                 try:
                     plan = build_effective_experiment_plan(
                         profile=profile,
@@ -413,6 +422,21 @@ class ExperimentalistCLI(NemoCLI):
                 insight=effective_insight.ref if effective_insight is not None else None,
                 insight_id=effective_insight.selector if effective_insight is not None else None,
                 base_url=base_url_resolved,
+                harbor_bridge_url=(
+                    str(plan.config.evaluator.get("bridge_url"))
+                    if plan is not None and plan.config.evaluator.get("bridge_url") is not None
+                    else None
+                ),
+                harbor_bridge_token_env=(
+                    str(
+                        plan.config.evaluator.get(
+                            "bridge_token_env",
+                            "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN",
+                        )
+                    )
+                    if plan is not None
+                    else "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN"
+                ),
                 probes=_PREFLIGHT_PROBES,
             )
             if profile_obj is not None:
