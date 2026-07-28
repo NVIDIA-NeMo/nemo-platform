@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Integration tests for task-side auth propagation via ``NMP_PRINCIPAL``.
+"""Integration tests for task-side auth propagation via task auth environment variables.
 
 These tests cover the runtime half of the jobs auth propagation story:
 
 - the task receives ``NMP_PRINCIPAL``
+- the task receives ``NMP_ORIGIN_WORKSPACE``
 - ``get_task_sdk(as_service=...)`` converts that into service + on-behalf-of headers
 - downstream services authorize based on the delegated user's permissions
 """
@@ -90,6 +91,7 @@ class TestTaskRuntimeAuthPropagation:
             ):
                 monkeypatch.setenv("NEMO_JOB_WORKSPACE", workspace)
                 monkeypatch.setenv("NEMO_TEST_SECRET_NAME", secret_name)
+                monkeypatch.setenv("NMP_ORIGIN_WORKSPACE", workspace)
                 monkeypatch.setenv(
                     "NMP_PRINCIPAL",
                     json.dumps(
@@ -136,6 +138,7 @@ class TestTaskRuntimeAuthPropagation:
             ):
                 monkeypatch.setenv("NEMO_JOB_WORKSPACE", workspace)
                 monkeypatch.setenv("NEMO_TEST_SECRET_NAME", secret_name)
+                monkeypatch.setenv("NMP_ORIGIN_WORKSPACE", workspace)
                 monkeypatch.setenv(
                     "NMP_PRINCIPAL",
                     json.dumps(

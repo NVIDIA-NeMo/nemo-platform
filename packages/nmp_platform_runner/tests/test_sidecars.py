@@ -187,7 +187,7 @@ def test_real_adapters_sidecar_entrypoint_starts_and_stops_with_required_env(
     monkeypatch.delenv("VLLM_ENDPOINT", raising=False)
 
     monkeypatch.setattr(adapters_main, "get_platform_config", lambda: MagicMock(base_url="http://platform.local"))
-    monkeypatch.setattr(adapters_main, "get_platform_sdk", lambda **_kwargs: MagicMock())
+    monkeypatch.setattr(adapters_main, "get_task_sdk", lambda *_args, **_kwargs: MagicMock())
     monkeypatch.setattr(adapters_main.asyncio, "new_event_loop", lambda: MagicMock())
     monkeypatch.setattr(adapters_main, "Loop", FakeLoop)
     monkeypatch.setattr(adapters_main, "TimedLoopWaiter", lambda *_args, **_kwargs: object())

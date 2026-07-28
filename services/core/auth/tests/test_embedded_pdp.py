@@ -682,6 +682,48 @@ class TestGenericEntitiesApiBlocked:
         result = evaluate("allow", {"principal_id": "service:evaluator", "method": method, "path": path})
         assert result["allowed"] is True, f"Service principal should be allowed {method} {path}"
 
+    def test_same_workspace_delegated_service_principal_allowed(self, static_authz_data):
+        static_authz_data["authz"]["principals"] = {
+            "editor@test.com": {"workspaces": {"my-ws": ["Editor"]}},
+        }
+        set_policy_data(static_authz_data)
+
+        result = evaluate(
+            "allow",
+            {
+                "principal_id": "service:models",
+                "principal_email": "editor@test.com",
+                "on_behalf_of_principal_id": "editor@test.com",
+                "origin_workspace": "my-ws",
+                "method": "GET",
+                "path": "/apis/entities/v2/workspaces/my-ws/entities/model/model-a",
+                "scopes": ["entities:read", "platform:read"],
+            },
+        )
+
+        assert result["allowed"] is True
+
+    def test_delegated_entities_wildcard_list_allowed_for_endpoint_filtering(self, static_authz_data):
+        static_authz_data["authz"]["principals"] = {
+            "editor@test.com": {"workspaces": {"my-ws": ["Editor"]}},
+        }
+        set_policy_data(static_authz_data)
+
+        result = evaluate(
+            "allow",
+            {
+                "principal_id": "service:models",
+                "principal_email": "editor@test.com",
+                "on_behalf_of_principal_id": "editor@test.com",
+                "origin_workspace": "my-ws",
+                "method": "GET",
+                "path": "/apis/entities/v2/workspaces/-/entities/adapter",
+                "scopes": ["entities:read", "platform:read"],
+            },
+        )
+
+        assert result["allowed"] is True
+
     def test_viewer_can_still_list_workspaces(self, static_authz_data):
         """Non-entity endpoints under /apis/entities/ are unaffected."""
         # Listing workspaces is a no-{workspace} GET, so its permission is checked in the

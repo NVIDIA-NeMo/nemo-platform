@@ -115,3 +115,22 @@ async def test_count_by_rejects_non_direct_field() -> None:
 
     with pytest.raises(ValueError, match="direct entity data field"):
         await client.count_by(ExperimentGroup, "data.insight_id")
+
+
+@pytest.mark.asyncio
+async def test_get_by_id_with_workspace_uses_qualified_lookup() -> None:
+    mock_api = Mock()
+    mock_api.get_entity_by_id = AsyncMock()
+    client = EntityClient(mock_api)
+    expected = Mock()
+    client.get_by_field = AsyncMock(return_value=expected)  # type: ignore[method-assign]
+
+    result = await client.get_by_id(ExperimentGroup, "entity-id", workspace="workspace-a")
+
+    assert result is expected
+    client.get_by_field.assert_awaited_once_with(  # type: ignore[attr-defined]
+        ExperimentGroup,
+        workspace="workspace-a",
+        id="entity-id",
+    )
+    mock_api.get_entity_by_id.assert_not_awaited()

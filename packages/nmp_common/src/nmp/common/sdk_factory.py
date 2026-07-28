@@ -4,13 +4,21 @@
 """SDK factory functions for creating NeMo Platform SDK instances."""
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, TypeVar, cast
 
 import httpx
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.constants import is_workload_identity_token_file_set
-from nmp.common.auth import Principal, get_principal_auth_headers, principal_from_env
+from nmp.common.auth import (
+    NMP_ORIGIN_WORKSPACE_ENVVAR,
+    NMP_ORIGIN_WORKSPACE_HEADER,
+    Principal,
+    build_service_principal_headers,
+    get_principal_auth_headers,
+    principal_from_env,
+)
 from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.http_clients import shared_async_http_client, shared_sync_http_client
 from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
@@ -173,12 +181,18 @@ def _should_bootstrap_workload_identity(
     )
 
 
-def _workload_identity_extra_headers(*, internal: bool) -> dict[str, str]:
-    return MARK_INTERNAL_REQUEST_HEADERS.copy() if internal else {}
+def _workload_identity_extra_headers(*, internal: bool, origin_workspace: str | None = None) -> dict[str, str]:
+    headers = MARK_INTERNAL_REQUEST_HEADERS.copy() if internal else {}
+    if origin_workspace:
+        headers[NMP_ORIGIN_WORKSPACE_HEADER] = origin_workspace
+    return headers
 
 
 def _get_default_headers(
-    as_service: str | None = None, internal: bool = False, on_behalf_of: str | Principal | None = None
+    as_service: str | None = None,
+    internal: bool = False,
+    on_behalf_of: str | Principal | None = None,
+    origin_workspace: str | None = None,
 ) -> dict[str, str]:
     """Get default headers for SDK requests.
 
@@ -235,6 +249,9 @@ def _get_default_headers(
             else:
                 headers["X-NMP-Principal-On-Behalf-Of"] = on_behalf_of
 
+    if origin_workspace:
+        headers[NMP_ORIGIN_WORKSPACE_HEADER] = origin_workspace
+
     return headers
 
 
@@ -244,6 +261,7 @@ def get_platform_sdk(
     http_client: httpx.Client | None = None,
     on_behalf_of: str | Principal | None = None,
     base_url: str | None = None,
+    origin_workspace: str | None = None,
 ) -> NeMoPlatform:
     """
     Returns an instance of the NeMoPlatform SDK configured with the platform's base URL.
@@ -269,14 +287,14 @@ def get_platform_sdk(
         http_client=http_client,
         endpoint=endpoint,
     ):
-        headers = _workload_identity_extra_headers(internal=internal)
+        headers = _workload_identity_extra_headers(internal=internal, origin_workspace=origin_workspace)
         sdk = NeMoPlatform(
             base_url=base_url or endpoint.connect_base_url,
             default_headers=headers if headers else None,
         )
         return attach_platform_request_router(sdk)
 
-    headers = _get_default_headers(as_service, internal, on_behalf_of)
+    headers = _get_default_headers(as_service, internal, on_behalf_of, origin_workspace)
     sdk = NeMoPlatform(
         base_url=base_url or endpoint.connect_base_url,
         http_client=_sync_http_client_for_endpoint(endpoint, http_client),
@@ -300,7 +318,10 @@ def get_task_sdk(as_service: str, http_client: httpx.Client | None = None) -> Ne
         Configured NeMoPlatform SDK with internal + on-behalf-of headers.
     """
     if http_client is None and is_workload_identity_token_file_set():
-        return get_platform_sdk(internal=True)
+        return get_platform_sdk(
+            internal=True,
+            origin_workspace=os.environ.get(NMP_ORIGIN_WORKSPACE_ENVVAR),
+        )
 
     if http_client is None:
         http_client = resolve_platform_endpoint().sync_sdk_http_client()
@@ -316,6 +337,7 @@ def get_task_sdk(as_service: str, http_client: httpx.Client | None = None) -> Ne
         internal=True,
         http_client=http_client,
         on_behalf_of=principal.effective_principal if principal else None,
+        origin_workspace=os.environ.get(NMP_ORIGIN_WORKSPACE_ENVVAR),
     )
 
 
@@ -334,7 +356,10 @@ def get_async_task_sdk(as_service: str, http_client: Optional[httpx.AsyncClient]
         Configured AsyncNeMoPlatform SDK with internal + on-behalf-of headers.
     """
     if http_client is None and is_workload_identity_token_file_set():
-        return get_async_platform_sdk(internal=True)
+        return get_async_platform_sdk(
+            internal=True,
+            origin_workspace=os.environ.get(NMP_ORIGIN_WORKSPACE_ENVVAR),
+        )
 
     if http_client is None:
         http_client = resolve_platform_endpoint().async_sdk_http_client()
@@ -350,6 +375,7 @@ def get_async_task_sdk(as_service: str, http_client: Optional[httpx.AsyncClient]
         internal=True,
         http_client=http_client,
         on_behalf_of=principal.effective_principal if principal else None,
+        origin_workspace=os.environ.get(NMP_ORIGIN_WORKSPACE_ENVVAR),
     )
 
 
@@ -359,6 +385,7 @@ def get_async_platform_sdk(
     http_client: Optional[httpx.AsyncClient] = None,
     on_behalf_of: Optional[str | Principal] = None,
     base_url: str | None = None,
+    origin_workspace: str | None = None,
 ) -> AsyncNeMoPlatform:
     """
     Returns an instance of the AsyncNeMoPlatform SDK configured with the platform's base URL.
@@ -384,7 +411,7 @@ def get_async_platform_sdk(
         http_client=http_client,
         endpoint=endpoint,
     ):
-        headers = _workload_identity_extra_headers(internal=internal)
+        headers = _workload_identity_extra_headers(internal=internal, origin_workspace=origin_workspace)
         if _test_http_client is None:
             sdk = AsyncNeMoPlatform(
                 base_url=base_url or endpoint.connect_base_url,
@@ -398,7 +425,7 @@ def get_async_platform_sdk(
             )
         return attach_platform_request_router(sdk)
 
-    headers = _get_default_headers(as_service, internal, on_behalf_of)
+    headers = _get_default_headers(as_service, internal, on_behalf_of, origin_workspace)
 
     # Use explicitly provided http_client (from DependencyProvider) or fall back to
     # module-level _test_http_client for backward compatibility with direct callers.
@@ -414,16 +441,25 @@ def get_async_platform_sdk(
 
 def get_request_scoped_sdk(
     base_sdk: AsyncNeMoPlatform,
+    *,
+    as_service: str | None = None,
+    origin_workspace: str | None = None,
 ) -> AsyncNeMoPlatform:
     """Create a request-scoped SDK with current auth and observability headers.
 
     Takes a base SDK (with shared HTTP client) and returns a new SDK instance
-    with the current request's auth headers applied via .with_options().
+    with the current request's auth headers applied via .with_options(). When
+    ``as_service`` is provided, the request is authenticated as that service on
+    behalf of the current user, making its origin workspace a trusted
+    service-to-service signal.
 
     This is lightweight - the underlying HTTP client is reused.
 
     Args:
         base_sdk: The base SDK instance (typically cached by DependencyProvider)
+        as_service: Optional calling service name for delegated downstream requests.
+        origin_workspace: Trusted workspace from the current route, used when
+            middleware context cannot infer the mounted route's full path.
 
     Returns:
         SDK instance with auth + OTEL headers, or base_sdk if no headers to add.
@@ -433,9 +469,14 @@ def get_request_scoped_sdk(
         for FastAPI dependency injection.
     """
 
-    # Combine OTEL headers (tracing) + auth headers (user identity)
+    # Combine OTEL headers (tracing) + auth headers (direct user or delegated service).
     headers = get_otel_headers().copy()
-    headers.update(get_principal_auth_headers())
+    if as_service:
+        headers.update(build_service_principal_headers(as_service))
+        if origin_workspace:
+            headers[NMP_ORIGIN_WORKSPACE_HEADER] = origin_workspace
+    else:
+        headers.update(get_principal_auth_headers())
 
     # If we have headers to add, create a new SDK with them
     # This reuses the underlying HTTP client (lightweight operation)
@@ -446,9 +487,11 @@ def get_request_scoped_sdk(
 
 
 def get_sdk_on_behalf_of(
-    base_sdk: NeMoPlatform | AsyncNeMoPlatform,
+    base_sdk: PlatformSDKT,
     on_behalf_of: str | Principal,
-) -> NeMoPlatform | AsyncNeMoPlatform:
+    *,
+    origin_workspace: str | None = None,
+) -> PlatformSDKT:
     """Create an SDK with on-behalf-of headers for delegated access.
 
     Takes an existing SDK (typically created as a service principal) and returns
@@ -462,6 +505,7 @@ def get_sdk_on_behalf_of(
     Args:
         base_sdk: The base SDK instance (typically created with as_service)
         on_behalf_of: The principal ID to act on behalf of (e.g., user email)
+        origin_workspace: Workspace that initiated the delegated operation.
 
     Returns:
         SDK instance with on-behalf-of header added and all original headers preserved.
@@ -496,6 +540,8 @@ def get_sdk_on_behalf_of(
         merged_headers = {**headers, "X-NMP-Principal-On-Behalf-Of": on_behalf_of}
         merged_headers.pop("X-NMP-Principal-On-Behalf-Of-Groups", None)
         merged_headers.pop("X-NMP-Principal-On-Behalf-Of-Email", None)
+    if origin_workspace:
+        merged_headers[NMP_ORIGIN_WORKSPACE_HEADER] = origin_workspace
     return with_options_preserving_request_router(base_sdk, set_default_headers=merged_headers)
 
 

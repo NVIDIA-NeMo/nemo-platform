@@ -23,7 +23,7 @@ import data.common
 # }
 has_permissions := result if {
 	# Platform admin bypass - has access to everything
-	applicable_principals := common.get_applicable_principals
+	applicable_principals := common.get_effective_applicable_principals
 	count(applicable_principals) > 0
 
 	# Check if any principal is a platform admin
@@ -36,7 +36,7 @@ has_permissions := result if {
 	required_permissions := input.permissions
 
 	# Get all applicable principals
-	applicable_principals := common.get_applicable_principals
+	applicable_principals := common.get_effective_applicable_principals
 	count(applicable_principals) > 0
 
 	# Check if any principal has all required permissions in the workspace

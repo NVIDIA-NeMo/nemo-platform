@@ -5,11 +5,15 @@
 
 from typing import Dict
 
-from nmp.common.auth import build_service_principal_headers
+from nmp.common.auth import NMP_ORIGIN_WORKSPACE_HEADER, build_service_principal_headers
 from nmp.common.observability.otel import get_otel_headers
 
 
-def build_downstream_service_headers(service_name: str) -> Dict[str, str]:
+def build_downstream_service_headers(
+    service_name: str,
+    *,
+    origin_workspace: str | None = None,
+) -> Dict[str, str]:
     """Build the full set of headers for HTTP requests to downstream NeMo Platform services.
 
     This is used when constructing the SDK client for entity operations
@@ -23,6 +27,8 @@ def build_downstream_service_headers(service_name: str) -> Dict[str, str]:
 
     Args:
         service_name: The calling service's name (e.g. ``"guardrails"``).
+        origin_workspace: Trusted workspace from the current route for delegated
+            downstream requests.
 
     Returns:
         Header dictionary ready to merge into an outbound request.
@@ -36,4 +42,7 @@ def build_downstream_service_headers(service_name: str) -> Dict[str, str]:
         #   "X-NMP-Principal-On-Behalf-Of": "<user-id>",   # if user in context
         # }
     """
-    return {**get_otel_headers(), **build_service_principal_headers(service_name)}
+    headers = {**get_otel_headers(), **build_service_principal_headers(service_name)}
+    if origin_workspace:
+        headers[NMP_ORIGIN_WORKSPACE_HEADER] = origin_workspace
+    return headers

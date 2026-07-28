@@ -6,6 +6,7 @@ import data.authz.extract_method
 import data.authz.extract_path
 import data.authz.extract_principal_email
 import data.authz.extract_principal_groups
+import data.authz.extract_effective_principal_id
 import data.authz.extract_principal_id
 
 # PERMISSIONS HELPERS
@@ -175,8 +176,9 @@ get_all_roles_in_chain(role_name) := all_roles if {
 	all_roles := (((level_0 | level_1) | level_2) | level_3) | level_4
 }
 
-# Get all applicable principals (id, email, groups)
-# Returns a set of all principal identifiers that should be checked
+# Get all applicable principals (authenticated id, effective email, effective groups).
+# The authenticated service identity remains applicable to ordinary downstream
+# authorization; delegated read boundaries are enforced in authz.rego.
 get_applicable_principals := principals if {
 	# Start with empty set
 	base := set()
@@ -202,6 +204,32 @@ get_applicable_principals := principals if {
 	principals := ((base | id_set) | email_set) | groups_set
 
 	# Ensure we have at least one principal
+	count(principals) > 0
+} else := set()
+
+# Get only the effective user identifiers for delegated authorization boundaries.
+# This intentionally excludes the authenticated service identity so its
+# ServiceSystem wildcard cannot satisfy an export permission for the user.
+# Structurally identical to get_applicable_principals but resolves the effective
+# (delegated) principal ID instead of the authenticated caller ID.
+get_effective_applicable_principals := principals if {
+	base := set()
+
+	principal_id := extract_effective_principal_id
+	id_set := {principal_id | principal_id != ""}
+
+	email_set := {email |
+		email := extract_principal_email
+		email != ""
+	}
+
+	groups_set := {g |
+		groups := extract_principal_groups
+		g := groups[_]
+		g != ""
+	}
+
+	principals := ((base | id_set) | email_set) | groups_set
 	count(principals) > 0
 } else := set()
 

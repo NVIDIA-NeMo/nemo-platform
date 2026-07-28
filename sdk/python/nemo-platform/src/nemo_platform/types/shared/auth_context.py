@@ -32,6 +32,9 @@ class AuthContext(BaseModel):
     principal_id: str
     """The principal's unique identifier"""
 
+    origin_workspace: Optional[str] = None
+    """Workspace that initiated the operation captured by this auth context"""
+
     principal_email: Optional[str] = None
     """The principal's email address"""
 

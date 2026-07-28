@@ -58,6 +58,8 @@ def _default_roles_for_permission(permission_id: str) -> list[str]:
     suffix = permission_id.rsplit(".", 1)[-1]
     if suffix in {"list", "read"}:
         return ["Viewer", "Editor"]
+    if suffix == "export":
+        return ["Exporter"]
     return ["Editor"]
 
 
@@ -71,8 +73,9 @@ def merge_authz_contributions(
 
     - ``permissions``: flat ``permission_id -> description`` for the registry
     - ``endpoints``: ``path -> {method: {permissions, scopes?}}``
-    - ``role_permissions``: optional ``role -> [permission_id, ...]`` extra grants
-      (defaults: ``.list``/``.read`` → Viewer+Editor, else Editor only)
+    - ``role_permissions``: optional ``role -> [permission_id, ...]`` extra grants.
+      Export permissions must be declared explicitly and granted to ``Exporter``;
+      readable resources never become cross-workspace exportable implicitly.
 
     Later contributions override endpoint methods for the same path+method.
     """

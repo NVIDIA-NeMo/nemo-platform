@@ -193,7 +193,8 @@ class OIDCConfig(BaseSettings):
         default=None,
         description=(
             "Path to a PEM-encoded RSA private key used by the NeMo auth service to sign workload identity "
-            "access tokens. Intended for mounted shared secrets."
+            "access tokens and by API services to authenticate Files HF runtime downloads. "
+            "Required for model downloads when authorization is enabled; intended for mounted shared secrets."
         ),
     )
 

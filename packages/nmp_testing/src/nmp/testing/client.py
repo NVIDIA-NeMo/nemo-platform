@@ -15,12 +15,14 @@ from pathlib import Path
 from typing import Callable, Generator, Mapping, Protocol, TypeVar
 
 import httpx
+from fastapi import Request
 from fastapi.testclient import TestClient
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, NotGiven, not_given
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nmp.common.config.base import AuthConfig, Configuration, DatabaseConfig, PlatformConfig, ServiceConfig
 from nmp.common.entities.client import EntityClient
+from nmp.common.observability.context import get_app_ctx
 from nmp.common.service import Service
 from nmp.common.service.dependencies import get_entity_client, get_sdk_client
 from nmp.core.entities.config import EntitiesConfig
@@ -507,8 +509,18 @@ def create_test_client(
         if get_sdk_client not in all_overrides:
             from nmp.common.sdk_factory import get_request_scoped_sdk
 
-            def _get_request_scoped_test_sdk() -> AsyncNeMoPlatform:
-                return get_request_scoped_sdk(async_sdk)
+            def _get_request_scoped_test_sdk(request: Request) -> AsyncNeMoPlatform:
+                app_ctx = get_app_ctx()
+                service_name = app_ctx.service_name if app_ctx is not None and app_ctx.service_name else "platform"
+                workspace_param = request.path_params.get("workspace")
+                workspace_origin = (
+                    workspace_param if isinstance(workspace_param, str) and workspace_param != "-" else None
+                )
+                return get_request_scoped_sdk(
+                    async_sdk,
+                    as_service=service_name if workspace_origin else None,
+                    origin_workspace=workspace_origin,
+                )
 
             all_overrides[get_sdk_client] = _get_request_scoped_test_sdk
 
@@ -519,14 +531,23 @@ def create_test_client(
         # apps get service:<name> and on-behalf-of the same as real deployments;
         # routes without that context (e.g. /health) fall back to "platform".
         if get_entity_client not in all_overrides:
-            from nmp.common.observability.context import get_app_ctx
             from nmp.common.service.headers import build_downstream_service_headers
 
-            def _get_entity_client_on_behalf_of() -> EntityClient:
+            def _get_entity_client_on_behalf_of(request: Request) -> EntityClient:
                 app_ctx = get_app_ctx()
                 service_name = app_ctx.service_name if app_ctx is not None and app_ctx.service_name else "platform"
-                headers = build_downstream_service_headers(service_name)
-                sdk = async_sdk.with_options(set_default_headers=headers)
+                workspace_param = request.path_params.get("workspace")
+                workspace_origin = (
+                    workspace_param if isinstance(workspace_param, str) and workspace_param != "-" else None
+                )
+                if workspace_origin:
+                    headers = build_downstream_service_headers(
+                        service_name,
+                        origin_workspace=workspace_origin,
+                    )
+                    sdk = async_sdk.with_options(set_default_headers=headers)
+                else:
+                    sdk = get_request_scoped_sdk(async_sdk)
                 return EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
             all_overrides[get_entity_client] = _get_entity_client_on_behalf_of

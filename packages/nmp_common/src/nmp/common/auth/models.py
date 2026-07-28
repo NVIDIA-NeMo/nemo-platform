@@ -19,6 +19,8 @@ from .exceptions import InvalidPrincipalHeader
 logger = logging.getLogger(__name__)
 
 NMP_PRINCIPAL_ENVVAR = "NMP_PRINCIPAL"
+NMP_ORIGIN_WORKSPACE_ENVVAR = "NMP_ORIGIN_WORKSPACE"
+NMP_ORIGIN_WORKSPACE_HEADER = "X-NMP-Origin-Workspace"
 
 MAX_PRINCIPAL_ID_LENGTH = 256
 MAX_EMAIL_LENGTH = 320
@@ -317,26 +319,41 @@ class AuthContext(BaseModel):
     principal_on_behalf_of_email: Optional[str] = Field(
         default=None, description="The on-behalf-of principal's email address"
     )
+    origin_workspace: Optional[str] = Field(
+        default=None,
+        description="Workspace that initiated the operation captured by this auth context",
+    )
 
     @classmethod
-    def from_principal(cls, principal: Principal) -> Self:
-        """Create from a runtime Principal."""
+    def from_principal(cls, principal: Principal, *, origin_workspace: str | None = None) -> Self:
+        """Create a durable context without replayable identity-provider group claims."""
         return cls(
             principal_id=principal.id,
             principal_email=principal.email,
-            principal_groups=principal.groups,
+            principal_groups=[],
             principal_on_behalf_of=principal.on_behalf_of,
-            principal_on_behalf_of_groups=principal.on_behalf_of_groups,
+            principal_on_behalf_of_groups=None,
             principal_on_behalf_of_email=principal.on_behalf_of_email,
+            # Some callers use protocol-like or mocked AuthClient objects whose
+            # optional origin attribute is not a real string. Treat that the
+            # same as an absent origin instead of leaking it into persistence.
+            origin_workspace=origin_workspace if isinstance(origin_workspace, str) else None,
         )
 
     def to_principal(self) -> Principal:
-        """Convert back to a Principal for SDK calls."""
+        """Convert back without trusting group snapshots from stored resources."""
         return Principal(
             id=self.principal_id,
             email=self.principal_email,
-            groups=self.principal_groups,
+            groups=[],
             on_behalf_of=self.principal_on_behalf_of,
-            on_behalf_of_groups=self.principal_on_behalf_of_groups,
+            on_behalf_of_groups=None,
             on_behalf_of_email=self.principal_on_behalf_of_email,
         )
+
+    def get_env_vars(self) -> Dict[str, str]:
+        """Serialize the stored identity and origin workspace for a task runtime."""
+        env = self.to_principal().get_env_var()
+        if self.origin_workspace:
+            env[NMP_ORIGIN_WORKSPACE_ENVVAR] = self.origin_workspace
+        return env

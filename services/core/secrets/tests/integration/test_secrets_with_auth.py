@@ -717,11 +717,12 @@ class TestDelegatedSecretAccess:
     These tests verify that when a principal acts on behalf of another user,
     the delegated user's permissions are checked for secret access.
 
-    Note: Viewer role includes secrets.read permission (see static-authz.yaml).
+    Viewer can read secret metadata but cannot authorize retrieval of secret values.
+    Editor and Exporter explicitly include secrets.access for delegated retrieval.
     """
 
-    def test_service_principal_can_access_on_behalf_of_viewer(self, sdk: NeMoPlatform):
-        """Test service principal accessing secret on behalf of a Viewer who has secrets.read.
+    def test_service_principal_cannot_access_on_behalf_of_viewer(self, sdk: NeMoPlatform):
+        """Test service principal cannot access a secret value on behalf of a Viewer.
 
         Only service principals can call the /access endpoint. PlatformAdmin is denied
         direct access by OPA policy, so delegation must use a service principal as caller.
@@ -745,37 +746,34 @@ class TestDelegatedSecretAccess:
             workspace=workspace_name,
         ).data()
 
-        # Service principal accesses secret on behalf of viewer
-        # Viewer has secrets.read permission, so this should succeed
-        delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, SERVICE_PRINCIPAL), viewer_email)
-        result = (
-            client_from_platform(delegated_sdk, SecretsClient)
-            .access_secret(name=secret_name, workspace=workspace_name)
-            .data()
+        # Viewer can read secret metadata but does not have secrets.access.
+        delegated_sdk = get_sdk_on_behalf_of(
+            as_user(sdk, SERVICE_PRINCIPAL), viewer_email, origin_workspace=workspace_name
         )
+        with pytest.raises(ClientPermissionDeniedError):
+            client_from_platform(delegated_sdk, SecretsClient).access_secret(name=secret_name, workspace=workspace_name)
 
-        assert result.name == secret_name
-        assert result.value == secret_value
-
-    def test_service_principal_can_access_on_behalf_of_group_bound_viewer(self, sdk: NeMoPlatform):
-        """Test delegated access succeeds when the delegated user's group has Viewer."""
-        workspace_name = short_unique_name("del-grp")
+    def test_service_principal_can_access_exported_secret_on_behalf_of_group_bound_exporter(self, sdk: NeMoPlatform):
+        """Test cross-workspace access when the delegated user's group has Exporter."""
+        source_workspace = short_unique_name("del-grp-src")
+        origin_workspace = short_unique_name("del-grp-dst")
         secret_name = short_unique_name("secret")
         secret_value = "delegated-group-secret"
-        delegated_email = unique_email("viewer")
-        delegated_group = f"group-{short_unique_name('vw')}"
+        delegated_email = unique_email("exporter")
+        delegated_group = f"group-{short_unique_name('exp')}"
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        platform_admin_sdk.workspaces.create(name=workspace_name)
+        platform_admin_sdk.workspaces.create(name=source_workspace)
+        platform_admin_sdk.workspaces.create(name=origin_workspace)
         grant_workspace_role(
             platform_admin_sdk,
-            workspace=workspace_name,
+            workspace=source_workspace,
             principal=delegated_group,
-            roles=["Viewer"],
+            roles=["Exporter"],
         )
         client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
             body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
-            workspace=workspace_name,
+            workspace=source_workspace,
         ).data()
 
         delegated_sdk = get_sdk_on_behalf_of(
@@ -785,11 +783,12 @@ class TestDelegatedSecretAccess:
                 email=delegated_email,
                 groups=[delegated_group],
             ),
+            origin_workspace=origin_workspace,
         )
 
         result = (
             client_from_platform(delegated_sdk, SecretsClient)
-            .access_secret(name=secret_name, workspace=workspace_name)
+            .access_secret(name=secret_name, workspace=source_workspace)
             .data()
         )
 
@@ -813,7 +812,9 @@ class TestDelegatedSecretAccess:
 
         # Platform admin accesses secret on behalf of non-member
         # Non-member doesn't have any role in workspace, so this should fail
-        delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, TEST_ADMIN_EMAIL), non_member_email)
+        delegated_sdk = get_sdk_on_behalf_of(
+            as_user(sdk, TEST_ADMIN_EMAIL), non_member_email, origin_workspace=workspace_name
+        )
         with pytest.raises(ClientPermissionDeniedError):
             client_from_platform(delegated_sdk, SecretsClient).access_secret(name=secret_name, workspace=workspace_name)
 
@@ -845,6 +846,7 @@ class TestDelegatedSecretAccess:
                 email=delegated_email,
                 groups=[other_group],
             ),
+            origin_workspace=workspace_name,
         )
 
         with pytest.raises(ClientPermissionDeniedError):
@@ -871,9 +873,10 @@ class TestDelegatedSecretAccess:
             workspace=workspace_name,
         ).data()
 
-        # Service principal accesses secret on behalf of editor
-        # Editor has secrets.read permission (inherits from Viewer), so this should succeed
-        delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, SERVICE_PRINCIPAL), editor_email)
+        # Editor explicitly has secrets.access, so delegated retrieval succeeds.
+        delegated_sdk = get_sdk_on_behalf_of(
+            as_user(sdk, SERVICE_PRINCIPAL), editor_email, origin_workspace=workspace_name
+        )
         result = (
             client_from_platform(delegated_sdk, SecretsClient)
             .access_secret(name=secret_name, workspace=workspace_name)
@@ -933,7 +936,9 @@ class TestDelegatedSecretAccess:
 
         # Service accesses secret on behalf of another service
         # Both services have elevated permissions, so this should succeed
-        delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, SERVICE_PRINCIPAL), other_service)
+        delegated_sdk = get_sdk_on_behalf_of(
+            as_user(sdk, SERVICE_PRINCIPAL), other_service, origin_workspace=workspace_name
+        )
         result = (
             client_from_platform(delegated_sdk, SecretsClient)
             .access_secret(name=secret_name, workspace=workspace_name)
@@ -966,7 +971,9 @@ class TestDelegatedSecretAccess:
         ).data()
 
         # Editor tries to access secret on behalf of non-member
-        delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, editor_email), non_member_email)
+        delegated_sdk = get_sdk_on_behalf_of(
+            as_user(sdk, editor_email), non_member_email, origin_workspace=workspace_name
+        )
         with pytest.raises(ClientPermissionDeniedError):
             client_from_platform(delegated_sdk, SecretsClient).access_secret(name=secret_name, workspace=workspace_name)
 

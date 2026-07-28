@@ -249,7 +249,6 @@ class EntityDeleteClientProtocol(EntityGetterProtocol[EntityT], Protocol[EntityT
         page: int = 1,
         page_size: int = 100,
     ) -> ListResponse[EntityT]: ...
-
     async def delete(
         self,
         entity_type: Type[EntityT],
@@ -264,6 +263,13 @@ class EntityClientProtocol(EntityDeleteClientProtocol[EntityT], Protocol[EntityT
     """Protocol for the common entity CRUD operations used by plugins."""
 
     async def create(self, entity: EntityT) -> EntityT: ...
+    async def get_by_id(
+        self,
+        entity_type: Type[EntityT],
+        entity_id: str,
+        *,
+        workspace: Optional[str] = None,
+    ) -> EntityT: ...
 
 
 class AnyEntityGetterProtocol(Protocol):
@@ -661,12 +667,18 @@ class EntityClient:
         self,
         entity_type: EntityTypeLike,
         entity_id: str,
+        *,
+        workspace: Optional[str] = None,
     ) -> EntityT:
         """Get entity by ID (for debugging/internal use).
 
         Args:
             entity_type: The entity class to return
             entity_id: Entity UUID
+            workspace: When provided, constrain the lookup to this workspace.
+                This uses the workspace-qualified list endpoint so delegated
+                callers do not need to use the fail-closed workspace-less
+                entity-by-ID endpoint.
 
         Returns:
             Entity with the given ID
@@ -674,6 +686,9 @@ class EntityClient:
         Raises:
             EntityNotFoundError: Entity not found
         """
+        if workspace is not None:
+            return await self.get_by_field(entity_type, workspace=workspace, id=entity_id)
+
         try:
             response = await self._client.get_entity_by_id(entity_id=entity_id)
             return self._convert_api_entity_to_model(response.data(), entity_type)

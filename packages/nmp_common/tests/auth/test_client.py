@@ -227,6 +227,30 @@ class TestAuthorizeRequestPdpPayloadWithDelegation:
         assert body["principal_groups"] == ["workspace-editors"]
         assert body["on_behalf_of_principal_id"] == "user@example.com"
 
+    @pytest.mark.asyncio
+    async def test_authorize_request_sends_origin_workspace(self, auth_config, principal_service_delegating):
+        mock_http_client = httpx.AsyncClient()
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": {"allowed": True}}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(mock_http_client, "post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_response
+            auth_client = AuthClient(
+                principal=principal_service_delegating,
+                config=auth_config,
+                http_client=mock_http_client,
+            )
+            await auth_client.authorize_request(
+                "GET",
+                "/v2/workspaces/source/models",
+                http_client=mock_http_client,
+                origin_workspace="destination",
+            )
+
+        body = mock_post.call_args[1]["json"]["input"]
+        assert body["origin_workspace"] == "destination"
+
 
 class TestWaitRole:
     @pytest.mark.asyncio
