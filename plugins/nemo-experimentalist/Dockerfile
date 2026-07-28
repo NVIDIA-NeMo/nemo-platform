@@ -15,6 +15,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM ${NMP_PYTHON_BASE} AS runtime
 
+LABEL com.nvidia.nemo.experimentalist.openshell-runtime="1"
+
 # OpenShell's supervisor resolves the sandbox user by name. iproute2 and
 # nftables are required for full network-policy enforcement. Experimentalist
 # calls gh/glab directly when publishing the winning candidate.
@@ -28,7 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && groupadd --system sandbox \
     && useradd --system --gid sandbox --create-home --home-dir /home/sandbox --shell /bin/bash sandbox \
     && mkdir -p /sandbox \
-    && chown sandbox:sandbox /sandbox
+    && chown sandbox:sandbox /sandbox \
+    && touch /etc/nemo-experimentalist-container
 
 COPY --from=builder /app/.venv /app/.venv
 COPY --chmod=0755 plugins/nemo-experimentalist/src/nemo_experimentalist_plugin/openshell/git-askpass.sh \

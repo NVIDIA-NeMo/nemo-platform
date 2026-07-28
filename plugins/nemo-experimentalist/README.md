@@ -54,18 +54,21 @@ effective inputs:
 $NEMO experimentalist doctor
 ```
 
-## Run the Experimentalist locally
+## Run the Experimentalist
 
-`nemo experimentalist run` runs the local Experimentalist loop. It evaluates
-a baseline agent on Harbor-compatible train and validation datasets, proposes
-candidate mutations, and records its artifacts under the selected experiment
-directory.
+`nemo experimentalist run` runs Experimentalist inside OpenShell by default.
+The sandbox contains the optimization agents but has no Docker CLI or socket.
+Harbor evaluation crosses a narrow API to the local bridge described in the
+[OpenShell setup](src/nemo_experimentalist_plugin/openshell/README.md).
 
-Configure the models before running an experiment:
+From a source checkout, the CLI reuses a compatible
+`local/nmp-experimentalist:local` image and otherwise builds that image for the
+host architecture. Set `NEMO_EXPERIMENTALIST_IMAGE` to use a different image.
+
+Configure the OpenShell inference and bridge providers before running an
+experiment. Model names remain ordinary environment settings:
 
 ```bash
-export EXPERIMENTALIST_API_BASE=https://inference-api.nvidia.com/v1
-export EXPERIMENTALIST_API_KEY=sk-...
 export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5.5
 export EXPERIMENTALIST_FAST_MODEL_NAME=openai/openai/openai/gpt-5-mini
 ```
@@ -121,15 +124,9 @@ the agent needs framework-specific modification guidance. The checked-in Tau2
 profile demonstrates profile-owned datasets and task template configuration:
 [`examples/tau2-nemo-oo-agent/optimizer.yaml`](examples/tau2-nemo-oo-agent/optimizer.yaml).
 
-Each run writes its local artifacts under `--experiment-dir`, or under
-`.nemo-optimizer/experiments/` beside the governing profile by default.
-
-## OpenShell container prototype
-
-The [`openshell`](src/nemo_experimentalist_plugin/openshell) runtime packages
-the Experimentalist control plane as a non-root container and runs it under a
-fail-closed OpenShell policy without Docker access. Harbor evaluation crosses
-an authenticated, narrow API to a Docker-owning bridge outside the sandbox; do
-not mount the host Docker socket into Experimentalist.
+Each OpenShell run downloads its artifacts to `--experiment-dir`, or to
+`./tmp/experimentalist-openshell` by default.
+There is no host-execution mode or automatic fallback when OpenShell setup or
+image preparation fails.
 
 License: Apache-2.0.

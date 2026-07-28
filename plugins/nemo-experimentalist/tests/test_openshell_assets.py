@@ -12,6 +12,7 @@ REPO_ROOT = PLUGIN_ROOT.parents[1]
 OPENSHELL_ROOT = PLUGIN_ROOT / "src" / "nemo_experimentalist_plugin" / "openshell"
 POLICY_PATH = OPENSHELL_ROOT / "policy.yaml"
 DOCKER_DESKTOP_POLICY_PATH = OPENSHELL_ROOT / "policy.docker-desktop.yaml"
+LAUNCHER_PATH = OPENSHELL_ROOT / "launcher.py"
 RUNNER_PATH = OPENSHELL_ROOT / "run.sh"
 PROVIDER_SETUP_PATH = OPENSHELL_ROOT / "configure-providers.sh"
 ASKPASS_PATH = OPENSHELL_ROOT / "git-askpass.sh"
@@ -56,7 +57,9 @@ def test_experimentalist_image_has_no_docker_client_or_socket() -> None:
     assert "gh" in dockerfile
     assert "glab" in dockerfile
     assert "nemo-experimentalist-git-askpass" in dockerfile
+    assert "touch /etc/nemo-experimentalist-container" in dockerfile
     assert "USER sandbox" in dockerfile
+    assert 'com.nvidia.nemo.experimentalist.openshell-runtime="1"' in dockerfile
     assert "docker.sock" not in dockerfile
     assert "docker-ce-cli" not in dockerfile
     assert 'dockerfile = "plugins/nemo-experimentalist/Dockerfile"' in docker_bake
@@ -87,7 +90,11 @@ def test_openshell_launcher_uses_policy_and_inference_route() -> None:
     assert 'glab config set git_protocol https --host "$GITLAB_HOST"' in runner
     assert 'remote_workspace="/sandbox/project/$(basename "$workspace_dir")"' in runner
     assert "/app/.venv/bin/nemo experimentalist" in runner
+    assert "--runtime" not in runner
+    assert "local/nmp-experimentalist:local" in runner
+    assert "--no-git-ignore" not in runner
     assert "docker.sock" not in runner
+    assert LAUNCHER_PATH.is_file()
 
 
 def test_provider_setup_imports_scoped_profiles_and_keeps_inference_on_gateway() -> None:

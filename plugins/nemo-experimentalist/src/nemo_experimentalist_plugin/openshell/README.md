@@ -1,10 +1,11 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Experimentalist in OpenShell
+# Default Experimentalist OpenShell runtime
 
-This research-preview path separates the Experimentalist control plane from
-Harbor task execution:
+`nemo experimentalist run` and `nemo experimentalist doctor` use this runtime
+by default. It separates the Experimentalist control plane from Harbor task
+execution:
 
 ```text
 developer files
@@ -35,25 +36,26 @@ imports the candidate's `harbor_wrapper.py`.
 
 ## Start the local components
 
-Install the OpenShell CLI and select a running gateway. From the repository
-root, build the Experimentalist image defined by
-[`plugins/nemo-experimentalist/Dockerfile`](../../../Dockerfile):
+Install the OpenShell CLI and select a running gateway.
+
+The command needs an Experimentalist container image. It first looks for
+`local/nmp-experimentalist:local` with the current runtime compatibility label.
+When that image is absent or stale and the command is running from a NeMo
+Platform source checkout, the CLI builds it for the host architecture. To
+build it ahead of time:
 
 ```bash
 export NEMO_EXPERIMENTALIST_PLATFORM=linux/arm64  # use linux/amd64 on x86 hosts
-IMAGE_REGISTRY=local BAKE_TAG=local \
-  docker buildx bake nmp-experimentalist-docker \
-    --set "*.platform=$NEMO_EXPERIMENTALIST_PLATFORM" \
-    --load
+IMAGE_REGISTRY=local BAKE_TAG=local BUILD_ARCH=$NEMO_EXPERIMENTALIST_PLATFORM \
+  docker buildx bake nmp-experimentalist-docker --load
 ```
 
-The resulting local tag is `local/nmp-experimentalist:local`. Point the launcher
-at it. Generate one bridge token and keep it in the shell used for both the
+Set `NEMO_EXPERIMENTALIST_IMAGE` to use a published or differently tagged
+image. Generate one bridge token and keep it in the shell used for both the
 bridge and provider setup:
 
 ```bash
 export NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN="$(openssl rand -hex 32)"
-export NEMO_EXPERIMENTALIST_IMAGE=local/nmp-experimentalist:local
 ```
 
 Start the trusted bridge on the developer host:
@@ -96,12 +98,12 @@ provider. To use another OpenShell inference profile, set
 `NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER_TYPE` and the credential environment
 variables that profile discovers.
 
-Then launch Experimentalist. Source control is disabled by default:
+Then run the normal Experimentalist commands. Source control is disabled by
+default:
 
 ```bash
-export NEMO_EXPERIMENTALIST_IMAGE=local/nmp-experimentalist:local
-plugins/nemo-experimentalist/src/nemo_experimentalist_plugin/openshell/run.sh /path/to/agent doctor
-plugins/nemo-experimentalist/src/nemo_experimentalist_plugin/openshell/run.sh /path/to/agent run
+nemo experimentalist doctor
+nemo experimentalist run
 ```
 
 For a GitHub or GitLab agent source, attach one provider with the least
@@ -124,12 +126,23 @@ self-managed GitLab hostname configured before provider setup and launch. SSH,
 Git LFS, and GitHub Enterprise are not included in this research-preview
 policy.
 
-The launcher uploads the selected agent workspace into `/sandbox/project`,
-applies [`policy.yaml`](policy.yaml), attaches the bridge provider, and runs as
-the non-root `sandbox` user. When selected, it also attaches exactly one
-source-control provider. The launcher sets
+Run the command from a directory that contains every local input passed on the
+command line. The launcher rejects existing local paths outside that directory,
+uploads the directory into `/sandbox/project`, applies
+[`policy.yaml`](policy.yaml), attaches the bridge provider, and runs as the
+non-root `sandbox` user. When selected, it also attaches exactly one
+source-control provider. `--experiment-dir` remains a host path: the launcher
+downloads sandbox artifacts there after the run. The launcher sets
 `NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL`, which selects the remote evaluator
 and makes preflight probe the bridge instead of local Docker.
+
+OpenShell applies `.gitignore` filtering to uploads inside Git repositories.
+The sandbox can read every file that is uploaded, so secrets must remain in
+ignored files or in the configured providers rather than tracked workspace
+files.
+
+The packaged `run.sh` is the lower-level launcher used by the CLI. Invoke it
+directly only when debugging the OpenShell integration.
 
 Experimentalist itself calls `git` for clone, fetch, checkout, commit, and
 push. It calls `gh pr create` for a GitHub winner and `glab mr create` for a
@@ -173,3 +186,7 @@ host; neither endpoint reflects the resolved Authorization header. Endpoint
 binding in OpenShell would make this defense stronger.
 
 Registry download is not granted by this policy.
+
+The host CLI has no direct-execution option. Experimentalist's in-process
+command path is enabled only inside the marked container image used by the
+OpenShell launcher.

@@ -593,9 +593,8 @@ target "nmp-cpu-tasks-docker" {
   platforms  = get_platforms()
 }
 
-# Experimentalist control plane. This target is intentionally not part of the
-# default docker groups while the OpenShell/evaluator split remains a research
-# prototype.
+# Experimentalist control plane. This target is built on demand by the default
+# OpenShell runtime and remains outside the platform's default image groups.
 target "nmp-experimentalist-docker" {
   target     = "runtime"
   context    = "."

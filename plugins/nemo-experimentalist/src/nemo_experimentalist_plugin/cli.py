@@ -15,6 +15,10 @@ from urllib.parse import urlsplit
 import typer
 import yaml
 from nemo_experimentalist_plugin.client import make_client
+from nemo_experimentalist_plugin.openshell.launcher import (
+    OpenShellLaunchError,
+    launch_in_openshell,
+)
 from nemo_experimentalist_plugin.preflight import (
     Probes,
     check_artifacts,
@@ -46,8 +50,11 @@ from nemo_insights_plugin.contracts.profile import (
 from nemo_platform_plugin.cli import NemoCLI
 
 DEFAULT_WORKSPACE = "default"
+_CONTAINER_MARKER = Path("/etc/nemo-experimentalist-container")
 
 _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
+_OPEN_SHELL_LAUNCHER = launch_in_openshell  # test seam
+_CONTAINER_RUNTIME: bool | None = None  # test seam; None → inspect image marker
 
 # Lazily imported in the experiment command: importing experimentalist.run reaches model
 # construction that requires EXPERIMENTALIST_API_* env at import time, and this module
@@ -56,6 +63,117 @@ _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
 run_experimentalist = None
 
 # TODO: Add remote train/validation dataset support when remote experiment mode is implemented.
+
+
+def _inside_experimentalist_container() -> bool:
+    return _CONTAINER_RUNTIME if _CONTAINER_RUNTIME is not None else _CONTAINER_MARKER.is_file()
+
+
+def _sandbox_path(value: str | Path, *, workspace_dir: Path, option: str) -> str:
+    """Translate an existing host path into the uploaded OpenShell workspace."""
+    text = str(value)
+    candidate = Path(text).expanduser()
+    if not candidate.exists():
+        return text
+
+    resolved_workspace = workspace_dir.resolve()
+    resolved_candidate = candidate.resolve()
+    try:
+        relative = resolved_candidate.relative_to(resolved_workspace)
+    except ValueError as exc:
+        raise OpenShellLaunchError(
+            f"{option} resolves outside the OpenShell workspace {resolved_workspace}: {resolved_candidate}. "
+            "Run from a directory that contains every local input."
+        ) from exc
+    return str(Path("/sandbox/project") / resolved_workspace.name / relative)
+
+
+def _openshell_run_args(
+    *,
+    workspace_dir: Path,
+    agent: str | None,
+    agent_spec: str | None,
+    insight: str | None,
+    insight_id: str | None,
+    no_insight: bool,
+    profile_path: Path | None,
+    train_dataset: str | None,
+    validation_dataset: str | None,
+    task_template: str | None,
+    mode: Literal["local", "remote"],
+    workspace: str | None,
+    config: Path | None,
+    framework_skills: list[Path],
+) -> list[str]:
+    args: list[str] = []
+    path_options: tuple[tuple[str, str | Path | None], ...] = (
+        ("--agent", agent),
+        ("--agent-spec", agent_spec),
+        ("--insight", insight),
+        ("--profile", profile_path),
+        ("--train-dataset", train_dataset),
+        ("--validation-dataset", validation_dataset),
+        ("--task-template", task_template),
+        ("--config", config),
+    )
+    for option, value in path_options:
+        if value is not None:
+            args.extend([option, _sandbox_path(value, workspace_dir=workspace_dir, option=option)])
+    if insight_id is not None:
+        args.extend(["--insight-id", insight_id])
+    if no_insight:
+        args.append("--no-insight")
+    args.extend(["--mode", mode])
+    if workspace is not None:
+        args.extend(["--workspace", workspace])
+    for skills_dir in framework_skills:
+        args.extend(
+            [
+                "--framework-skills",
+                _sandbox_path(skills_dir, workspace_dir=workspace_dir, option="--framework-skills"),
+            ]
+        )
+    return args
+
+
+def _openshell_doctor_args(
+    *,
+    workspace_dir: Path,
+    insight: str | None,
+    insight_id: str | None,
+    profile_path: Path | None,
+) -> list[str]:
+    args: list[str] = []
+    if insight is not None:
+        args.extend(["--insight", _sandbox_path(insight, workspace_dir=workspace_dir, option="--insight")])
+    if insight_id is not None:
+        args.extend(["--insight-id", insight_id])
+    if profile_path is not None:
+        args.extend(
+            [
+                "--profile",
+                _sandbox_path(profile_path, workspace_dir=workspace_dir, option="--profile"),
+            ]
+        )
+    return args
+
+
+def _run_in_openshell(
+    command: Literal["run", "doctor"],
+    args: list[str],
+    *,
+    output_dir: Path | None,
+    platform_url: str | None,
+) -> None:
+    exit_code = _OPEN_SHELL_LAUNCHER(
+        command,
+        args,
+        workspace_dir=Path.cwd(),
+        output_dir=output_dir,
+        platform_url=platform_url,
+    )
+    if exit_code != 0:
+        raise typer.Exit(code=exit_code)
 
 
 def _default_experiment_dir(profile: AgentProfile | None) -> Path:
@@ -159,9 +277,8 @@ class ExperimentalistCLI(NemoCLI):
                 "--experiments-output",
                 "-o",
                 help=(
-                    "Local experiment directory; writes eval-and-optimize/ here. "
-                    "Default: <profile-dir>/.nemo-optimizer/experiments/<timestamp> "
-                    "when a profile governs the run, else ./tmp."
+                    "Host experiment directory. OpenShell downloads its artifacts here "
+                    "(default: ./tmp/experimentalist-openshell)."
                 ),
                 file_okay=False,
                 dir_okay=True,
@@ -212,6 +329,34 @@ class ExperimentalistCLI(NemoCLI):
             if mode == "remote":
                 typer.echo("Remote mode is not implemented yet", err=True)
                 raise typer.Exit(code=1)
+            if not _inside_experimentalist_container():
+                try:
+                    forwarded_args = _openshell_run_args(
+                        workspace_dir=Path.cwd(),
+                        agent=agent,
+                        agent_spec=agent_spec,
+                        insight=insight,
+                        insight_id=insight_id,
+                        no_insight=no_insight,
+                        profile_path=profile_path,
+                        train_dataset=train_dataset,
+                        validation_dataset=validation_dataset,
+                        task_template=task_template,
+                        mode=mode,
+                        workspace=workspace,
+                        config=config,
+                        framework_skills=framework_skills,
+                    )
+                    _run_in_openshell(
+                        "run",
+                        forwarded_args,
+                        output_dir=experiment_dir,
+                        platform_url=base_url,
+                    )
+                except (OpenShellLaunchError, OSError) as exc:
+                    typer.echo(str(exc), err=True)
+                    raise typer.Exit(code=1) from None
+                return
 
             async def _flow() -> str:
                 """Resolve inputs (profile + flags) and run the Experimentalist."""
@@ -355,6 +500,23 @@ class ExperimentalistCLI(NemoCLI):
             ),
         ) -> None:
             """Diagnose Experimentalist setup: profile, artifacts, credentials, platform, runtime."""
+            if not _inside_experimentalist_container():
+                try:
+                    _run_in_openshell(
+                        "doctor",
+                        _openshell_doctor_args(
+                            workspace_dir=Path.cwd(),
+                            insight=insight,
+                            insight_id=insight_id,
+                            profile_path=profile_path,
+                        ),
+                        output_dir=None,
+                        platform_url=base_url,
+                    )
+                except (OpenShellLaunchError, OSError) as exc:
+                    typer.echo(str(exc), err=True)
+                    raise typer.Exit(code=1) from None
+                return
             found = profile_path or discover_profile()
             profile_obj, profile_error = None, None
             env_results: list[CheckResult] = []
