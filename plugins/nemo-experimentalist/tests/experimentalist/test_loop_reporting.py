@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
     EvaluationResult,
@@ -16,7 +17,6 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     TrialStatus,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
-from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist.components.insight_promotion import (
     _task_evidence,
     insight_suite_provenance,

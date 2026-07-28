@@ -59,7 +59,9 @@ class _PipelineCalls:
     analyzer_init: list[_AnalyzerInitCall]
     analyzer_run: list[_AnalyzerRunCall]
     discovered_datasets: list[Dataset]
-    author_args: list[tuple[Insight, list[tuple[str, Diagnostic]], Dataset, str, str | None]]
+    author_args: list[
+        tuple[Insight, list[tuple[str, Diagnostic]], Dataset, str, str | None]
+    ]
     suite_discards: int
 
 
@@ -103,7 +105,9 @@ def _eval_author(
 
 
 def _diagnostic(summary: str) -> Diagnostic:
-    return Diagnostic(outcome="FAILURE", summary=summary, failure_point=1, root_cause="wrong tool")
+    return Diagnostic(
+        outcome="FAILURE", summary=summary, failure_point=1, root_cause="wrong tool"
+    )
 
 
 def _prompt(method: Any) -> str:
@@ -118,16 +122,24 @@ def test_eval_author_prompts_scope_metrics_to_materialized_insight_suite() -> No
 
     assert "read it first" in discover_prompt
     assert "inspect the actual files" in discover_prompt
-    assert "authoritative reference for what artifacts exist at evaluation runtime" in author_prompt
+    assert (
+        "authoritative reference for what artifacts exist at evaluation runtime"
+        in author_prompt
+    )
     assert "how tasks are structured, and how to add metrics" in author_prompt
-    assert "Add at least one new Insight-specific metric key to every task in ``insight_suite``" in author_prompt
+    assert (
+        "Add at least one new Insight-specific metric key to every task in ``insight_suite``"
+        in author_prompt
+    )
     assert "Preserve every existing verifier metric" in author_prompt
     assert "Do not modify the user's train or validation datasets" in author_prompt
     assert "call ``await insight_suite.validate()``" in author_prompt
     assert "fix every reported failure and revalidate the suite" in author_prompt
 
 
-def test_eval_author_prompts_retain_root_cause_and_normalized_scoring_guidance() -> None:
+def test_eval_author_prompts_retain_root_cause_and_normalized_scoring_guidance() -> (
+    None
+):
     prompt = _prompt(EvalAuthor.author_insight_metrics)
 
     assert "Focus the metric on the root cause, not the surface symptom" in prompt
@@ -175,7 +187,11 @@ def _install_pipeline(
                 type(
                     "StagedTask",
                     (),
-                    {"trace_ref": trace_ref, "task": self.task_template, "result": None},
+                    {
+                        "trace_ref": trace_ref,
+                        "task": self.task_template,
+                        "result": None,
+                    },
                 )()
                 for trace_ref in trace_refs
             ]
@@ -184,7 +200,9 @@ def _install_pipeline(
         def validate(self, staged: Any) -> None:
             staged.result = calls.fill_task_template[-1].result
 
-        def promote_local(self, trace_refs: list[str], staged_tasks: list[Any]) -> Dataset:
+        def promote_local(
+            self, trace_refs: list[str], staged_tasks: list[Any]
+        ) -> Dataset:
             assert trace_refs == [staged.trace_ref for staged in staged_tasks]
             tasks = [staged.result for staged in staged_tasks]
             if materialized_dataset is not None:
@@ -243,11 +261,15 @@ def _install_pipeline(
             return result
 
     class FakeTraceAnalyzer:
-        def __init__(self, *, experiment_dir: Path, config: TraceAnalyzerConfig) -> None:
+        def __init__(
+            self, *, experiment_dir: Path, config: TraceAnalyzerConfig
+        ) -> None:
             nonlocal next_analyzer
             self._index = next_analyzer
             next_analyzer += 1
-            calls.analyzer_init.append(_AnalyzerInitCall(experiment_dir=experiment_dir, config=config))
+            calls.analyzer_init.append(
+                _AnalyzerInitCall(experiment_dir=experiment_dir, config=config)
+            )
 
         async def run(
             self,
@@ -308,7 +330,9 @@ def _install_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_run_without_traces_returns_input_datasets_unchanged(tmp_path: Path) -> None:
+async def test_run_without_traces_returns_input_datasets_unchanged(
+    tmp_path: Path,
+) -> None:
     eval_author = _eval_author(tmp_path)
     train_dataset = Dataset(id="train")
     validation_dataset = Dataset(id="validation")
@@ -368,8 +392,14 @@ async def test_run_enforces_max_traces(
         client=cast(Any, object()),
     )
 
-    assert [call.trace_ref for call in calls.fill_task_template] == ["trace-1", "trace-2"]
-    assert [call.trial.metadata["trace_ref"] for call in calls.analyzer_run] == ["trace-1", "trace-2"]
+    assert [call.trace_ref for call in calls.fill_task_template] == [
+        "trace-1",
+        "trace-2",
+    ]
+    assert [call.trial.metadata["trace_ref"] for call in calls.analyzer_run] == [
+        "trace-1",
+        "trace-2",
+    ]
 
 
 @pytest.mark.asyncio
@@ -403,7 +433,9 @@ async def test_run_discards_staged_suite_when_filling_fails(
 def test_trace_trial_uses_intake_uri_and_insight_metadata(tmp_path: Path) -> None:
     insight = _insight(["trace-7"])
 
-    trial = _eval_author(tmp_path)._trace_trial(insight, Task(id="task-7"), "trace-7", 3, insight.id)
+    trial = _eval_author(tmp_path)._trace_trial(
+        insight, Task(id="task-7"), "trace-7", 3, insight.id
+    )
 
     assert trial.id == "insight-trace-3"
     assert trial.task_id == "task-7"
@@ -428,7 +460,9 @@ async def test_run_caches_each_successful_diagnostic(
     eval_author = _eval_author(tmp_path)
     _install_pipeline(monkeypatch, [first, second], eval_author)
     stored: list[tuple[Path, str, Diagnostic]] = []
-    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: stored.append(args))
+    monkeypatch.setattr(
+        eval_author_module.cache, "store", lambda *args: stored.append(args)
+    )
 
     await eval_author.run(
         _insight(["trace-a", "trace-b"]),
@@ -453,9 +487,15 @@ async def test_run_skips_failed_trace_analysis_and_keeps_successes(
 ) -> None:
     successful = _diagnostic("successful")
     eval_author = _eval_author(tmp_path)
-    calls = _install_pipeline(monkeypatch, [RuntimeError("analysis failed"), successful], eval_author)
+    calls = _install_pipeline(
+        monkeypatch, [RuntimeError("analysis failed"), successful], eval_author
+    )
     stored: list[Diagnostic] = []
-    monkeypatch.setattr(eval_author_module.cache, "store", lambda workspace, key, value: stored.append(value))
+    monkeypatch.setattr(
+        eval_author_module.cache,
+        "store",
+        lambda workspace, key, value: stored.append(value),
+    )
     insight = _insight(["trace-bad", "trace-good"])
 
     result = await eval_author.run(
@@ -600,7 +640,9 @@ async def test_run_feeds_validation_failures_back_for_one_repair_attempt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     eval_author = _eval_author(tmp_path)
-    insight_dataset = _RepairableDataset("insight-suite", "task 'insight-a': check.py:2:1: invalid syntax")
+    insight_dataset = _RepairableDataset(
+        "insight-suite", "task 'insight-a': check.py:2:1: invalid syntax"
+    )
     _install_pipeline(
         monkeypatch,
         [_diagnostic("diagnostic")],
@@ -652,7 +694,9 @@ async def test_run_raises_after_validation_repair_budget_is_exhausted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     eval_author = _eval_author(tmp_path, max_validation_repair_attempts=1)
-    insight_dataset = _RepairableDataset("insight-suite", "task 'insight-a': check.py:2:1: invalid syntax")
+    insight_dataset = _RepairableDataset(
+        "insight-suite", "task 'insight-a': check.py:2:1: invalid syntax"
+    )
     calls = _install_pipeline(
         monkeypatch,
         [_diagnostic("diagnostic")],
@@ -679,6 +723,11 @@ async def test_run_raises_after_validation_repair_budget_is_exhausted(
 
 
 def test_eval_author_config_bounds_validation_repair_attempts() -> None:
-    assert EvalAuthorConfig(max_validation_repair_attempts=10).max_validation_repair_attempts == 10
+    assert (
+        EvalAuthorConfig(
+            max_validation_repair_attempts=10
+        ).max_validation_repair_attempts
+        == 10
+    )
     with pytest.raises(ValueError, match="less than or equal to 10"):
         EvalAuthorConfig(max_validation_repair_attempts=11)

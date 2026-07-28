@@ -12,7 +12,9 @@ def _clear_model_cache() -> None:
     model_config.get_fast_model.cache_clear()
 
 
-def test_api_base_prefers_eval_author_over_experimentalist(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_base_prefers_eval_author_over_experimentalist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
     monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://experimentalist.example/v1")
     monkeypatch.setenv("AUTHOR_API_KEY", "eval-key")
@@ -20,7 +22,9 @@ def test_api_base_prefers_eval_author_over_experimentalist(monkeypatch: pytest.M
     assert model_config._api_base() == "https://eval-author.example/v1"
 
 
-def test_api_base_falls_back_to_experimentalist(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_base_falls_back_to_experimentalist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("AUTHOR_API_BASE", raising=False)
     monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://experimentalist.example/v1")
     monkeypatch.setenv("EXPERIMENTALIST_API_KEY", "exp-key")
@@ -28,7 +32,9 @@ def test_api_base_falls_back_to_experimentalist(monkeypatch: pytest.MonkeyPatch)
     assert model_config._api_base() == "https://experimentalist.example/v1"
 
 
-def test_api_key_accepts_inference_key_on_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_key_accepts_inference_key_on_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://inference-api.nvidia.com/v1")
     monkeypatch.delenv("AUTHOR_API_KEY", raising=False)
     monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
@@ -37,7 +43,9 @@ def test_api_key_accepts_inference_key_on_gateway(monkeypatch: pytest.MonkeyPatc
     assert model_config._api_key() == "sk-gateway"
 
 
-def test_api_key_requires_credentials_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_key_requires_credentials_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://custom.example/v1")
     monkeypatch.delenv("AUTHOR_API_KEY", raising=False)
     monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
@@ -47,7 +55,9 @@ def test_api_key_requires_credentials_when_missing(monkeypatch: pytest.MonkeyPat
         model_config._api_key()
 
 
-def test_bridge_author_env_fills_unset_experimentalist_slots(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bridge_author_env_fills_unset_experimentalist_slots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
     monkeypatch.setenv("AUTHOR_API_KEY", "eval-key")
     monkeypatch.delenv("EXPERIMENTALIST_API_BASE", raising=False)
@@ -55,7 +65,10 @@ def test_bridge_author_env_fills_unset_experimentalist_slots(monkeypatch: pytest
 
     model_config.bridge_author_env_to_experimentalist()
 
-    assert model_config.os.environ["EXPERIMENTALIST_API_BASE"] == "https://eval-author.example/v1"
+    assert (
+        model_config.os.environ["EXPERIMENTALIST_API_BASE"]
+        == "https://eval-author.example/v1"
+    )
     assert model_config.os.environ["EXPERIMENTALIST_API_KEY"] == "eval-key"
 
 
@@ -67,4 +80,7 @@ def test_bridge_author_env_does_not_overwrite_existing_experimentalist(
 
     model_config.bridge_author_env_to_experimentalist()
 
-    assert model_config.os.environ["EXPERIMENTALIST_API_BASE"] == "https://experimentalist.example/v1"
+    assert (
+        model_config.os.environ["EXPERIMENTALIST_API_BASE"]
+        == "https://experimentalist.example/v1"
+    )

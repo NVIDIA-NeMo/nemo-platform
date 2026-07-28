@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
     EvaluationResult,
@@ -17,7 +18,6 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import local_path_from_uri
-from nemo_experimentalist_plugin.entities import Candidate
 
 _GENERIC_METRIC_NAMES = frozenset({"reward", "score"})
 _MAX_REPEAT_SPREAD = 0.1

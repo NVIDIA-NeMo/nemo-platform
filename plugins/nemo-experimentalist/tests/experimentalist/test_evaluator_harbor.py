@@ -1400,7 +1400,9 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
     def fake_rmtree(path, **kwargs):
         rmtree_calls.append(path)
 
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.shutil.rmtree", fake_rmtree)
+    monkeypatch.setattr(
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.shutil.rmtree", fake_rmtree
+    )
 
     class FakeJob:
         created_config = None

@@ -24,12 +24,12 @@ from typing import Any, Literal, TypeVar, cast
 from urllib.parse import urlparse
 
 import httpx
+from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
     EvaluationResult,
     ResourceRef,
     TrialResult,
 )
-from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
 from nemo_experimentalist_plugin.experimentalist.components.repository import (
     AgentSource,
     PRPublisher,

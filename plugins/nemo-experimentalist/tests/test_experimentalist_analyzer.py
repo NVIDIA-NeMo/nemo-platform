@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import pytest
-from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 from nemo_experimentalist_plugin.experimentalist.components import analyzer as analyzer_module
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
     AgentAnalyzer,
@@ -30,6 +29,7 @@ from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
     PeerComparison,
 )
 from nemo_experimentalist_plugin.experimentalist.components.rationalizer import Rationale
+from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 
 
 @dataclass

@@ -645,18 +645,25 @@ exclude = [
 
 # nooa agents declare their LLM-generated methods as annotated signatures with an
 # ellipsis body; the framework fills them in at runtime. ty reads that as a missing
-# return, so the rule is off for the Experimentalist's agent classes only.
+# return, so the rule is off for the Experimentalist and Eval Author agent classes only.
 [[tool.ty.overrides]]
-include = ["plugins/nemo-experimentalist/src/**"]
+include = [
+  "plugins/nemo-experimentalist/src/**",
+  "plugins/nemo-eval-author/src/**",
+]
 
 [tool.ty.overrides.rules]
 empty-body = "ignore"
 
 # The Experimentalist's agent framework (nooa) and evaluator (harbor) are both
 # 3.12-only, so uv skips them when the lint job resolves on 3.11 and every import
-# of them goes unresolved. Everything else about the plugin still gets checked.
+# of them goes unresolved. Eval Author shares both. Everything else about the
+# plugins still gets checked.
 [[tool.ty.overrides]]
-include = ["plugins/nemo-experimentalist/**"]
+include = [
+  "plugins/nemo-experimentalist/**",
+  "plugins/nemo-eval-author/**",
+]
 
 [tool.ty.overrides.rules]
 unresolved-import = "ignore"

@@ -17,7 +17,11 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic, TraceAnalyzer, TraceAnalyzerConfig  # noqa: F401
+from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (  # noqa: F401
+    Diagnostic,
+    TraceAnalyzer,
+    TraceAnalyzerConfig,
+)
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy

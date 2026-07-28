@@ -20,8 +20,8 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 from nemo_experimentalist_plugin.experimentalist.components.model_config import get_fast_model
+from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 from nemo_insights_plugin.entities import Insight
 
 _HAS_EXPERIMENTALIST_LLM = bool(
