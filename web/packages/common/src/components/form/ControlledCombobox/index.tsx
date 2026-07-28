@@ -83,7 +83,6 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
   const handleTempValueChange = (newValue: string) => {
     onInputValueChange?.(newValue);
     if (hasCallerInputValue) return;
-    // A string[] can't take per-keystroke writes, so multi-select commits on Enter instead.
     if (addsOnEnter) {
       setTypedValue(newValue);
     } else if (freeForm) {
