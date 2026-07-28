@@ -48,7 +48,12 @@ NVIDIA OpenShell (once it exposes a programmatic file-I/O API; CLI/SSH-only toda
 - `tests/agent_eval/test_sandbox_docker_provider.py` — hermetic; asserts the exact `docker` argv.
 - `tests/agent_eval/test_sandbox_api.py` — facade lifecycle over a fake provider.
 - `tests/agent_eval/test_sandbox_docker_provider_live.py` — real `docker`; skipped without a daemon.
-- `tests/agent_eval/test_sandbox_compose_provider.py` — hermetic Compose lifecycle and command tests.
+- `tests/agent_eval/test_sandbox_compose_contracts.py` — public API and configuration contracts.
+- `tests/agent_eval/test_sandbox_compose_cli.py` — image-first policy and Compose command execution.
+- `tests/agent_eval/test_sandbox_compose_inspection.py` — rendered-config, readiness, and port checks.
+- `tests/agent_eval/test_sandbox_compose_lifecycle.py` — session, lock, teardown, and cleanup behavior.
+- `tests/agent_eval/test_sandbox_compose_transfer.py` — command execution and file-transfer behavior.
+- `tests/agent_eval/test_sandbox_compose_vendored_import.py` — standalone vendored import compatibility.
 
 - `tests/agent_eval/test_sandbox_compose_provider_live.py` — real image-first/build/profile Compose
   flows; skipped without a Compose-capable daemon.

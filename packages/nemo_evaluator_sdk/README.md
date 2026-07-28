@@ -51,3 +51,17 @@ metric = ExactMatchMetric.from_template(
 
 result = evaluate_offline_sync(metric=metric, dataset=[{"expected": "4", "prediction": "4"}])
 ```
+
+## Docker Compose sandbox provider
+
+`compose.py` is the stable public facade for the production Docker Compose
+provider. Focused private modules separate contracts, lifecycle state, CLI and
+subprocess behavior, inspection and readiness, file transfer and ownership,
+lifecycle primitives, and provider orchestration.
+
+## Docker Compose sandbox tests
+
+The hermetic tests for `DockerComposeSandboxProvider` are organized by the
+provider component they exercise: contracts, CLI execution, inspection,
+lifecycle, and file transfer. Shared Compose fakes live in the agent-eval test
+kit, while the vendored-import test remains a standalone compatibility check.
