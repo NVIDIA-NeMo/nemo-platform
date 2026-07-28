@@ -40,9 +40,10 @@ from uuid import uuid4
 from nemo_platform.beta.evaluator.agent_eval.runtimes.fabric.skills import (
     SKILL_MODE_CODEX_SKILLS_DIR,
     AgentSkill,
+    SkillMode,
     SkillProvenance,
+    SkillSet,
     install_skills,
-    require_unique_skill_names,
     resolve_skill_mode,
 )
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
@@ -139,8 +140,7 @@ class FabricAgentRuntime:
         self._timeout_s = timeout_s
         self._capture_trajectory = capture_trajectory
         self._runtime_name = runtime_name
-        self._skills = list(skills or [])
-        require_unique_skill_names(self._skills)
+        self._skill_set = SkillSet(tuple(skills or ()))
 
     def with_skills(self, skills: Sequence[AgentSkill]) -> FabricAgentRuntime:
         """Return a copy of this runtime with ``skills`` *added* to its skill set; ``self`` is not modified.
@@ -151,10 +151,8 @@ class FabricAgentRuntime:
         set — two bundles claiming the same ``<name>/`` would collide — so re-adding a skill already
         present raises. A shallow copy suffices — the shared fields are immutable config/paths.
         """
-        combined = [*self._skills, *skills]
-        require_unique_skill_names(combined)
         clone = copy.copy(self)
-        clone._skills = combined
+        clone._skill_set = self._skill_set.with_skills(skills)
         return clone
 
     def with_skill(self, skill: AgentSkill) -> FabricAgentRuntime:
@@ -205,8 +203,8 @@ class FabricAgentRuntime:
         # or an end-user's — is picked up automatically instead of via a hardcoded allow-list. Fail fast
         # rather than silently run a skill-free trial mislabeled as "with skill", which would corrupt an
         # A/B comparison. Only touched when a skill is set, so the no-skill path is unaffected.
-        skill_mode: str | None = None
-        if self._skills:
+        skill_mode: SkillMode | None = None
+        if self._skill_set.skills:
             skill_mode = self._resolve_skill_mode(client, agent_config, base_profiles)
             if skill_mode is None:
                 adapter_id = agent_config.harness.adapter_id
@@ -231,7 +229,7 @@ class FabricAgentRuntime:
         client: Fabric,
         agent_config: FabricConfig,
         base_profiles: list[FabricProfileConfig],
-    ) -> str | None:
+    ) -> SkillMode | None:
         """Ask Fabric how a skill would reach the selected harness, or ``None`` if it can't.
 
         Probes Fabric's capability planner: plan a copy of the config with a sentinel skill path attached
@@ -269,7 +267,7 @@ class FabricAgentRuntime:
         index: int,
         task: AgentEvalTask,
         config: AgentEvalRunConfig,
-        skill_mode: str | None,
+        skill_mode: SkillMode | None,
     ) -> AgentEvalTrial:
         # nemo_fabric is already imported+validated in ``run_tasks``; this is a cached sys.modules
         # lookup, not a re-load, so the types are used where they're constructed instead of threaded down.
@@ -297,10 +295,10 @@ class FabricAgentRuntime:
             # workspace and emits no overlay. One provenance per skill is stamped on the trial for the A/B
             # diff. Blocking file I/O, off the event loop.
             skill_profiles: list[FabricProfileConfig] = []
-            if self._skills and skill_mode is not None:
+            if self._skill_set.skills and skill_mode is not None:
                 installation = await asyncio.to_thread(
                     install_skills,
-                    skills=self._skills,
+                    skills=self._skill_set.skills,
                     adapter_id=agent_config.harness.adapter_id,
                     mode=skill_mode,
                     workspace_dir=workspace_dir,
