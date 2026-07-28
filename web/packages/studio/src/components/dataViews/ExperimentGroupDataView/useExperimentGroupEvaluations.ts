@@ -96,7 +96,7 @@ export function useExperimentGroupEvaluations({
     ...filter,
     ...(search && { name: { $like: search } }),
     // Spread last so the group scope can't be overridden by a user filter.
-    experiment_group_id: experimentGroupId,
+    experiment_id: experimentGroupId,
   };
   const listQueryOptions = {
     query: {
@@ -147,14 +147,14 @@ export function useExperimentGroupEvaluations({
   const pendingRef = useRef<Set<string>>(new Set());
 
   // Scope invalidation to this group's experiment lists (any page/sort/filter, pinned and unpinned)
-  // via a partial key match on experiment_group_id, so a pin/unpin doesn't refetch other groups'
+  // via a partial key match on experiment_id, so a pin/unpin doesn't refetch other groups'
   // lists. Returned (not voided) so the mutation's onSuccess awaits the refetch before onSettled
   // re-enables the row.
   const invalidateList = useCallback(
     () =>
       queryClient.invalidateQueries({
         queryKey: getListEvaluationsQueryKey(workspace, {
-          filter: { experiment_group_id: experimentGroupId },
+          filter: { experiment_id: experimentGroupId },
         }),
       }),
     [queryClient, workspace, experimentGroupId]

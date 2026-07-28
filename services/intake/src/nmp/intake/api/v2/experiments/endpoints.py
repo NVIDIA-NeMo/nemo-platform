@@ -362,7 +362,8 @@ async def create_evaluation(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=EvaluationFilter,
         filter_description=(
-            "Filter evaluations by name, experiment_group_id, "
+            "Filter evaluations by name, experiment_id (experiment group membership; "
+            "experiment_group_id is a deprecated alias), "
             "dataset_name, dataset_version, created_by, created_at, or updated_at. "
             "Pass is_deleted=true to return only soft-deleted evaluations; omit to see only live ones. "
             "Pass is_pinned=true (or false) to filter by pinned state; omit to return both. "
@@ -979,15 +980,19 @@ def _group_membership_filter(group_id: str) -> LogicalOperation:
 
 
 def _rewrite_group_filter(operation: FilterOperation | None) -> FilterOperation | None:
-    """Rewrite an ``experiment_group_id`` equality in a parsed filter into a membership match.
+    """Rewrite a group-membership equality in a parsed filter into a membership match.
 
-    The API still exposes an ``experiment_group_id`` filter param; with many-to-many membership it
-    means "belongs to this group", which spans the ``experiment_ids`` list and the legacy scalar.
+    Both the canonical ``experiment_id`` filter param and its deprecated ``experiment_group_id`` alias
+    mean "belongs to this group"; with many-to-many membership that spans the ``experiment_ids`` list
+    and the legacy scalar, so both route through the same ``_group_membership_filter``.
     """
     if operation is None:
         return None
     if isinstance(operation, ComparisonOperation):
-        if operation.field == "data.experiment_group_id" and operation.operator == FilterOperator.EQ:
+        if (
+            operation.field in ("data.experiment_id", "data.experiment_group_id")
+            and operation.operator == FilterOperator.EQ
+        ):
             return _group_membership_filter(operation.value)
         return operation
     if isinstance(operation, LogicalOperation):

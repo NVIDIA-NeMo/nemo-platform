@@ -29,7 +29,7 @@ export function useSessionCompareRuns(
   const { data: group } = useGetExperimentGroup(workspace, experimentGroupName);
   const { data: evaluationsPage } = useListEvaluations(
     workspace,
-    { filter: { experiment_group_id: group?.id }, page_size: 1000 },
+    { filter: { experiment_id: group?.id }, page_size: 1000 },
     { query: { enabled: Boolean(group?.id) } }
   );
   const evaluationNames = useMemo(

@@ -226,7 +226,7 @@ describe('useExperimentGroupEvaluations', () => {
     onSuccess?.();
 
     expect(mockGetListEvaluationsQueryKey).toHaveBeenCalledWith('ws', {
-      filter: { experiment_group_id: 'grp' },
+      filter: { experiment_id: 'grp' },
     });
     expect(invalidateQueries).toHaveBeenCalledTimes(1);
   });
