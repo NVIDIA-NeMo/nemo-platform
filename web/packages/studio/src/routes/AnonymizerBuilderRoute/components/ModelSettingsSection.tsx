@@ -7,10 +7,12 @@ import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import { Divider, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import {
   activeRolesForStrategy,
+  GLINER_ROLE,
   ROLE_LABELS,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { useAnonymizerModels } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerModels';
+import { isGlinerModel } from '@studio/routes/AnonymizerBuilderRoute/utils';
 import { useMemo, useState, type FC } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
@@ -21,7 +23,14 @@ export const ModelSettingsSection: FC = () => {
   const [openParamsRole, setOpenParamsRole] = useState<string | null>(null);
 
   const roles = useMemo(() => activeRolesForStrategy(strategy), [strategy]);
-  const { items, isLoading, applyModel } = useAnonymizerModels();
+  const { models, items, isLoading, applyModel } = useAnonymizerModels();
+
+  const glinerItems = useMemo(
+    () => items.filter((item) => models.some((m) => m.id === item.value && isGlinerModel(m))),
+    [items, models]
+  );
+
+  const missingGliner = !isLoading && !glinerItems.length;
 
   return (
     <Stack gap="density-2xl">
@@ -33,7 +42,7 @@ export const ModelSettingsSection: FC = () => {
             <div className="grow">
               <ControlledSearchableSelect
                 aria-label={ROLE_LABELS[role] ?? role}
-                options={items}
+                options={role === GLINER_ROLE ? glinerItems : items}
                 isLoading={isLoading}
                 triggerPlaceholder="Select a model"
                 searchPlaceholder="Search models..."
@@ -43,7 +52,15 @@ export const ModelSettingsSection: FC = () => {
                   name: `roleModels.${role}.modelId`,
                   control,
                 }}
-                formFieldProps={{ slotLabel: 'Model', required: true }}
+                formFieldProps={{
+                  slotLabel: 'Model',
+                  required: true,
+                  ...(role === GLINER_ROLE &&
+                    missingGliner && {
+                      status: 'error' as const,
+                      slotError: 'Requires a GLiNER model',
+                    }),
+                }}
               />
             </div>
             <ParamsDropdown
