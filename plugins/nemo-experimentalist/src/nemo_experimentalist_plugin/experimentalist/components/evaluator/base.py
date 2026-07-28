@@ -17,7 +17,18 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-EvaluatorType: TypeAlias = Literal["harbor"]
+EvaluatorType: TypeAlias = Literal["harbor", "harbor_agent_task_runner"]
+"""Selects which evaluator drives the run.
+
+``harbor_agent_task_runner`` is the default: orchestration belongs to the NeMo
+Evaluator SDK's ``HarborAgentTaskRunner``, which owns the ``JobConfig``, the
+success-aware job-dir cache, and agent import scoping. ``harbor`` builds and runs
+Harbor's ``Job`` directly — the original behaviour, kept for comparison and as a
+fallback when the SDK is unavailable.
+
+Harbor runs the trials either way; only orchestration ownership differs. Both read
+results back off the same job directory, so the trials the loop sees are equivalent.
+"""
 
 
 class EvaluatorConfig(BaseModel):
@@ -43,10 +54,13 @@ class Evaluator(ABC):
         """
         Aggregate evaluation results from multiple runs.
 
-        Defaults to averaging each metric across all trials, treating trials that
-        did not emit a metric (e.g. failed trials) as contributing 0. The denominator
-        is always ``len(results)``, not the number of trials that reported each metric,
-        so failure counts against the aggregate score.
+        Averages each metric over the trials that did **not** fail. Failed trials are
+        excluded from both the sum and the denominator, so a crash does not pull the
+        mean down — it shrinks the sample the mean is taken over, and a round where
+        every trial failed aggregates to ``{}`` rather than to zeros.
+
+        Completed trials must all report the same metric keys; a mismatch raises
+        rather than silently averaging over different denominators per metric.
 
         Args:
             results(Sequence[TrialResult]): List of trial results to aggregate.

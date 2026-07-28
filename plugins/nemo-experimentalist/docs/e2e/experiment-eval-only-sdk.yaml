@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# experiment-eval-only.yaml, but the evaluation is orchestrated by the NeMo
+# Evaluator SDK's HarborAgentTaskRunner instead of Harbor's Job directly.
+# Pass via (from the platform root):
+#   uv run nemo experimentalist run \
+#     --config plugins/nemo-experimentalist/docs/e2e/experiment-eval-only-sdk.yaml
+# Maps to EvolutionaryOptimizerConfig (src/nemo_experimentalist_plugin/resolve.py).
+#
+# Harbor still runs the trials. What changes is who owns the orchestration: the
+# SDK builds the JobConfig, scopes the agent import, and caches the job dir.
+# Results are read back off the same Harbor job directory, so the trials and the
+# aggregate metrics are identical to the plain-Harbor config. Use both against
+# the same agent to A/B the seam.
+
+max_rounds: 0                     # stop at the top of the first iteration
+disable_trajectory_scoring: true  # no goal tree, no GRA trace scoring
+disable_convergence_check: true   # no qualitative LLM stop check
+
+# Stated explicitly for contrast with experiment-eval-only.yaml, though this is
+# now the default and could be omitted.
+evaluator_type: harbor_agent_task_runner
+
+evaluator:
+  # Optional. Every key here maps 1:1 onto the SDK's HarborRuntimeConfig, and
+  # unknown keys are rejected rather than ignored — notably the plain evaluator's
+  # `retry` model, which has no SDK equivalent (use `max_retries` instead).
+  quiet: false
+  n_attempts: 1
+  max_retries: 0
+
+storage:
+  archive_candidates: false       # git-only; a local --agent has nothing to push
+  publish_winner: false

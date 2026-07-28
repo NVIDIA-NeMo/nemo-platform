@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Minimal Experimentalist profile — the onboarding/debug target.
+#
+# Everything here is local: no dataset registry, no NeMo Platform, no LLM inside
+# the task container. Only the Experimentalist's own agents call an LLM.
+#
+#   nemo experimentalist doctor --profile examples/hello-harbor-agent/optimizer.yaml
+#   nemo experimentalist run --profile examples/hello-harbor-agent/optimizer.yaml \
+#       --no-insight --config docs/e2e/experiment-eval-only.yaml
+
+# Logical agent name. In Mode 1 it must match the Insight's agent; in Mode 2
+# (--no-insight) it is only a label.
+agent: hello-harbor-agent
+
+# Where the baseline agent's code lives, relative to this file. "." means this
+# directory — dataset/ is excluded from the copy by the loop's ignore rules.
+agent_source: .
+
+# Markdown description of the agent under test, threaded to the analyzer and
+# goal-tree components.
+agent_spec: ./AGENT-SPEC.md
+
+# Required by the profile schema even in Mode 2, where it is never read. It
+# points at a single Harbor task directory used as the shape for Eval Author
+# generated tasks in Mode 1.
+task_template: ./dataset/task-template
+
+datasets:
+  # A "./" prefix always classifies as a local path, so no registry_url is
+  # needed and nothing is downloaded.
+  train: ./dataset/train
+  validation: ./dataset/validation
+
+workspace: default

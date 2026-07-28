@@ -10,7 +10,7 @@
 workspace: default
 base_url: http://localhost:8080
 mode: local
-evaluator_type: harbor
+evaluator_type: harbor_agent_task_runner
 
 # Required per run.
 insight: ""

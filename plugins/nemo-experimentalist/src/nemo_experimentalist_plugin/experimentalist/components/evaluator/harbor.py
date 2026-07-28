@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType, TracebackType
-from typing import Any, TypeAlias, TypedDict
+from typing import Any, Protocol, TypeAlias, TypedDict
 from uuid import uuid4
 
 from harbor.constants import MAIN_SERVICE_NAME
@@ -712,6 +712,161 @@ def _trial_resources(trial_dir: Path) -> tuple[dict[str, ResourceRef], ResourceR
     return resources, trace_ref
 
 
+class HarborJobOptions(Protocol):
+    """The two fields any Harbor-backed evaluator config must supply to locate a run.
+
+    Declared structurally so :func:`resolve_harbor_run_inputs` can serve both
+    evaluator configs without importing either — the SDK-backed one lives in a
+    module that already imports this one.
+    """
+
+    jobs_dir: Path
+    job_name: str | None
+
+
+@dataclass(frozen=True)
+class HarborRunInputs:
+    """Validated inputs both Harbor-backed evaluators resolve the same way.
+
+    ``dataset`` is carried through already narrowed to :class:`HarborDataset` so
+    callers need no second ``isinstance`` check to satisfy a type checker — the
+    validation happened once, in :func:`resolve_harbor_run_inputs`.
+    """
+
+    dataset: HarborDataset
+    dataset_path: Path
+    agent_path: Path
+    jobs_dir: Path
+    job_name: str
+
+    @property
+    def job_dir(self) -> Path:
+        """Directory Harbor writes this run's per-trial results into."""
+        return self.jobs_dir / self.job_name
+
+
+async def resolve_harbor_run_inputs(
+    agent: Path,
+    dataset: Dataset,
+    options: HarborJobOptions,
+    experiment_dir: Path | None,
+) -> HarborRunInputs:
+    """Validate an evaluation request and resolve the paths Harbor needs.
+
+    The counterpart to :func:`trials_from_job_dir`: that one owns reading results
+    back, this one owns getting in. Both evaluator types must agree on what "the
+    same inputs" means — if one tightened its agent-path check or moved the
+    verifier preflight, the A/B parity tests would still pass while the two
+    silently diverged. Keeping the entry symmetric with the exit is what stops that.
+
+    Verifier syntax is validated here, before any caller starts Docker: a typo in
+    ``tests/test.sh`` is far cheaper to catch now than after an image build.
+
+    Args:
+        agent: Candidate directory to evaluate.
+        dataset: Must be a :class:`HarborDataset` with a resolvable source.
+        options: Evaluator options supplying ``jobs_dir`` and optional ``job_name``.
+        experiment_dir: Experiment root that ``jobs_dir`` resolves against; the
+            current working directory when ``None``.
+
+    Returns:
+        HarborRunInputs: Resolved dataset/agent paths and the run's job location.
+
+    Raises:
+        ValueError: If the dataset is not a Harbor dataset or has no source.
+        FileNotFoundError: If the agent directory does not exist.
+        DatasetValidationError: If a selected task's verifier fails preflight.
+    """
+    if not isinstance(dataset, HarborDataset):
+        raise ValueError("Dataset must be a Harbor dataset")
+    if dataset.source is None:
+        raise ValueError("Harbor dataset source is required")
+
+    agent_path = agent.expanduser().resolve()
+    if not agent_path.is_dir():
+        raise FileNotFoundError(f"Harbor agent path not found: {agent_path}")
+
+    await dataset.validate()
+
+    return HarborRunInputs(
+        dataset=dataset,
+        dataset_path=local_path_from_uri(dataset.source.uri, context="Harbor dataset reference").resolve(),
+        agent_path=agent_path,
+        jobs_dir=(experiment_dir or Path.cwd()) / options.jobs_dir,
+        job_name=options.job_name or f"{agent.name}-{dataset.id}",
+    )
+
+
+def trials_from_job_dir(job_dir: Path, tasks: Sequence[Task]) -> list[TrialResult]:
+    """Adapt a finished Harbor job directory into evaluator-domain trial results.
+
+    The job directory is the authoritative source for both Harbor-backed
+    evaluators: it carries every verifier metric (not just the primary reward),
+    the attempt index, the trial's error shape, and the on-disk trace and
+    artifact references that the Analyzer and the Coder read. Whoever
+    orchestrated the run — Harbor's ``Job`` directly or the SDK's
+    ``HarborAgentTaskRunner`` — writes the same tree, so both evaluators share
+    this adapter and produce equivalent :class:`TrialResult` objects.
+
+    Args:
+        job_dir: Harbor job directory holding one ``<trial>/result.json`` per attempt.
+        tasks: Dataset tasks the run was asked to cover, used to resolve each
+            trial back to its short Experimentalist task id and metric spec.
+
+    Returns:
+        list[TrialResult]: One result per trial directory that wrote a ``result.json``.
+
+    Raises:
+        FileNotFoundError: If the job directory does not exist. Returning no trials
+            would be aggregated as an empty-but-valid result and read as a run that
+            legitimately scored nothing, so an orchestrator that produced no job
+            directory at all is surfaced instead of swallowed.
+    """
+    if not job_dir.is_dir():
+        raise FileNotFoundError(
+            f"Harbor job directory not found: {job_dir}. The run produced no results — "
+            "check the orchestrator's logs for a job that failed before writing any trial."
+        )
+
+    task_map = {task.id: task for task in tasks}
+    trials: list[TrialResult] = []
+    for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
+        result_path = trial_dir / "result.json"
+        if not result_path.is_file():
+            continue
+
+        trial_data = json.loads(result_path.read_text(encoding="utf-8"))
+        trial_id = trial_data.get("trial_name")
+        if not isinstance(trial_id, str) or not trial_id:
+            trial_id = trial_dir.name
+
+        task_id = _resolve_trial_task_id(trial_id, trial_data, task_map)
+        task = task_map.get(task_id)
+        # Prefer the dataset's own spec, but only when it points at a verifier;
+        # a ref-less spec carries no more than the one derived from the trial dir.
+        metric_spec = task.metric_specs.get("reward") if task is not None else None
+        if metric_spec is None or metric_spec.ref is None:
+            metric_spec = _trial_metric_spec(trial_dir, trial_data)
+
+        exception_info = trial_data.get("exception_info")
+        resources, trace = _trial_resources(trial_dir)
+
+        trials.append(
+            TrialResult(
+                id=trial_id,
+                task_id=task_id,
+                attempt=_trial_attempt(trial_id),
+                status="completed" if exception_info is None else "failed",
+                error=_trial_error(exception_info),
+                trace=trace,
+                outputs={},
+                resources=resources,
+                metrics=_trial_metrics(trial_dir, trial_data, metric_spec),
+            )
+        )
+    return trials
+
+
 class HarborDataset(Dataset):
     """Harbor task collection mapped onto generic evaluator-domain objects.
 
@@ -1247,33 +1402,30 @@ class HarborEvaluator(Evaluator):
     def __init__(self, options: HarborEvaluatorConfig | None = None, experiment_dir: Path | None = None) -> None:
         super().__init__(options or HarborEvaluatorConfig(), experiment_dir=experiment_dir)
 
-    async def _run(self, agent: Path, dataset: Dataset, options: HarborEvaluatorConfig) -> Sequence[TrialResult]:
-        if not isinstance(dataset, HarborDataset):
-            raise ValueError("Dataset must be a Harbor dataset")
+    async def _run(self, agent: Path, dataset: Dataset, options: EvaluatorConfig) -> Sequence[TrialResult]:
+        # Widened from HarborEvaluatorConfig to match the base class contract:
+        # Evaluator.run() passes an EvaluatorConfig instance through unchanged, so
+        # narrowing here would be an unsound override. The guard is defensive only —
+        # both the factory and the loop build this config via type(self.options).
+        if not isinstance(options, HarborEvaluatorConfig):
+            raise TypeError("Options must be a HarborEvaluatorConfig")
 
-        if dataset.source is None:
-            raise ValueError("Harbor dataset source is required")
-        dataset_path = local_path_from_uri(dataset.source.uri, context="Harbor dataset reference").resolve()
+        inputs = await resolve_harbor_run_inputs(agent, dataset, options, self.experiment_dir)
+        harbor_dataset = inputs.dataset
+        dataset_path = inputs.dataset_path
+        agent_path = inputs.agent_path
 
         options_dict = options.model_dump()
-        experiment_dir = self.experiment_dir or Path.cwd()
-        options_dict["jobs_dir"] = experiment_dir / options.jobs_dir
-        options_dict["job_name"] = options.job_name or f"{agent.name}-{dataset.id}"
+        options_dict["jobs_dir"] = inputs.jobs_dir
+        options_dict["job_name"] = inputs.job_name
         import_path: str = options_dict.pop("import_path")
         trace_dir: str = options_dict.pop("trace_dir", _TRACE_ARTIFACT_SOURCE)
         options_dict["artifacts"] = _with_trace_artifact(options_dict.get("artifacts") or [], trace_dir)
         force_rerun: bool = options_dict.pop("force_rerun", False)
 
-        agent_path = agent.expanduser().resolve()
-
-        if not agent_path.is_dir():
-            raise FileNotFoundError(f"Harbor agent path not found: {agent_path}")
-
-        await dataset.validate()
-
         scoped_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
         agents_config = [AgentConfig(import_path=scoped_import_path)]
-        datasets_config = [DatasetConfig(path=dataset_path, task_names=[task.id for task in dataset.tasks])]
+        datasets_config = [DatasetConfig(path=dataset_path, task_names=[task.id for task in harbor_dataset.tasks])]
         job_config = JobConfig(**options_dict, agents=agents_config, datasets=datasets_config)
         if force_rerun:
             job_dir = job_config.jobs_dir / job_config.job_name
@@ -1286,43 +1438,8 @@ class HarborEvaluator(Evaluator):
         finally:
             _cleanup_scoped_imports(scoped_package)
 
-        trials = await self._trials_from_dir(job.job_dir, dataset.tasks)
+        trials = await self._trials_from_dir(job.job_dir, harbor_dataset.tasks)
         return trials
 
     async def _trials_from_dir(self, job_dir: Path, tasks: Sequence[Task]) -> Sequence[TrialResult]:
-        task_map = {task.id: task for task in tasks}
-        trials: list[TrialResult] = []
-        for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
-            result_path = trial_dir / "result.json"
-            if not result_path.is_file():
-                continue
-
-            trial_data = json.loads(result_path.read_text(encoding="utf-8"))
-            trial_id = trial_data.get("trial_name")
-            if not isinstance(trial_id, str) or not trial_id:
-                trial_id = trial_dir.name
-
-            task_id = _resolve_trial_task_id(trial_id, trial_data, task_map)
-            task = task_map.get(task_id)
-            metric_spec = task.metric_specs["reward"] if task is not None and "reward" in task.metric_specs else None
-            if metric_spec is not None and metric_spec.ref is None:
-                metric_spec = None
-            metric_spec = metric_spec or _trial_metric_spec(trial_dir, trial_data)
-
-            exception_info = trial_data.get("exception_info")
-            resources, trace = _trial_resources(trial_dir)
-
-            trials.append(
-                TrialResult(
-                    id=trial_id,
-                    task_id=task_id,
-                    attempt=_trial_attempt(trial_id),
-                    status="completed" if exception_info is None else "failed",
-                    error=_trial_error(exception_info),
-                    trace=trace,
-                    outputs={},
-                    resources=resources,
-                    metrics=_trial_metrics(trial_dir, trial_data, metric_spec),
-                )
-            )
-        return trials
+        return trials_from_job_dir(job_dir, tasks)

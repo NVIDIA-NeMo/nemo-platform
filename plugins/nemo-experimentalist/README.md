@@ -10,26 +10,17 @@ or Git-backed agent against Harbor-compatible train and validation datasets.
 
 ## Install and develop
 
-From the root of this checkout:
+This plugin is a workspace member of the NeMo Platform monorepo. Its agent
+framework (NOOA) and evaluator (Harbor) are both Python 3.12-only, so the whole
+plugin sits behind an optional dependency group. From the **platform root**:
 
 ```bash
-uv sync
+uv sync --group experimentalist
 export NEMO="$PWD/.venv/bin/nemo"
 ```
 
-For a NeMo Platform source checkout, use the
-[source-Platform installer](docs/e2e/install-experimentalist-plugin.sh), which keeps
-Platform packages editable while installing both plugins' direct runtime
-dependencies:
-
-```bash
-REPO="$PWD" PLAT=/path/to/nemo-platform bash docs/e2e/install-experimentalist-plugin.sh
-export NEMO=/path/to/nemo-platform/.venv/bin/nemo
-```
-
-The source dependencies are pinned to tagged or immutable revisions in
-`pyproject.toml`. NVIDIA-labs OO Agents (NOOA) is pinned to its public
-GitHub `v0.0.6` release.
+Verify with `$NEMO experimentalist doctor`. Harbor evaluation also needs a
+running Docker daemon — `doctor` treats both as required checks.
 
 ## Insight-to-experiment flow
 
@@ -120,6 +111,22 @@ Pass one or more framework skill directories with `--framework-skills` when
 the agent needs framework-specific modification guidance. The checked-in Tau2
 profile demonstrates profile-owned datasets and task template configuration:
 [`examples/tau2-nemo-oo-agent/optimizer.yaml`](examples/tau2-nemo-oo-agent/optimizer.yaml).
+
+For a first run, prefer the fully local example — no dataset registry, no
+Platform, and a validation evaluation that finishes in seconds. From the
+platform root:
+
+```bash
+$NEMO experimentalist run \
+  --profile plugins/nemo-experimentalist/examples/hello-harbor-agent/optimizer.yaml \
+  --no-insight \
+  --config plugins/nemo-experimentalist/docs/e2e/experiment-eval-only.yaml \
+  --experiment-dir tmp/exp-hello-eval-plain
+```
+
+See [`examples/hello-harbor-agent/README.md`](examples/hello-harbor-agent/README.md)
+for what it contains and [`docs/architecture.md`](docs/architecture.md) for how a
+run flows through the code, including the VS Code debug configurations.
 
 Each run writes its local artifacts under `--experiment-dir`, or under
 `.nemo-optimizer/experiments/` beside the governing profile by default.

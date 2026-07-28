@@ -49,7 +49,7 @@ async def run_eval_author(
     base_url: str | None,
     config: EvalAuthorConfig,
     agent: Path | str | None = None,
-    evaluator_type: EvaluatorType = "harbor",
+    evaluator_type: EvaluatorType = "harbor_agent_task_runner",
     mode: Literal["local", "remote"] = "local",
 ) -> EvalAuthorResult:
     """Build and run the Eval Author against an Insight and evaluator datasets.

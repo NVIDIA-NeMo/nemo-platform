@@ -7,6 +7,9 @@ dependencies = [
     "pydantic>=2",
     "httpx",
     "harbor>=0.16",
+    # Backs the default evaluator_type: harbor_agent_task_runner. The plain `harbor`
+    # dependency above stays: evaluator_type: harbor drives Harbor's Job directly.
+    "nemo-evaluator-sdk",
     "opentelemetry-proto>=1.42.1",
     "protobuf>=6.0.0",
     "nooa",
@@ -34,3 +37,10 @@ packages = ["src/nemo_experimentalist_plugin"]
 asyncio_mode = "auto"
 pythonpath = ["src"]
 testpaths = ["tests"]
+# Mirrors the subset of the repo-root pytest.ini markers this suite uses, so the
+# plugin's tests carry the same meaning whichever rootdir pytest resolves.
+markers = [
+  "e2e: End-to-end tests - test complete customer workflows on deployed infrastructure",
+  "slow: Tests that take a long time to run",
+  "skip_in_ci: Tests that should be skipped in CI environment",
+]

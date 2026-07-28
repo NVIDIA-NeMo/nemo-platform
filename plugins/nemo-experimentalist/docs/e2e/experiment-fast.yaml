@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Fast experimentalist config for integration testing.
+# Pass via: uv run nemo experimentalist run --config plugins/nemo-experimentalist/docs/e2e/experiment-fast.yaml
+# Maps to EvolutionaryOptimizerConfig (flat fields + eval_author/analyzer/proposer/coder/goal_config blocks).
+# Pair with a tiny dataset (2 tasks) and a fast smart model:
+#   export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5-mini
+# Quality is intentionally sacrificed for speed.
+
+max_rounds: 1               # single evolutionary round
+max_candidates: 1           # propose 1 candidate
+max_survivors: 1
+max_train_batch_tasks: 1    # 1 train task per round (validation still evals the full split)
+max_trajectory_tasks: 1
+disable_trajectory_scoring: true   # skip goal-tree + trajectory evals
+disable_convergence_check: true
+
+# Candidate git storage (needs --agent <git-url>@<ref>; no-op for a local dir).
+# Archives every candidate as a branch and opens a draft MR for the winner.
+storage:
+  archive_candidates: true   # push optimizer/<run-id>/<label> per candidate
+  publish_winner: true       # draft MR for the winner (only if a real candidate beats baseline)
+  # candidate_branch_prefix: optimizer
+  # pr_draft: true
+  # pr_base_branch: null      # null -> targets the source rev (main)
+
+eval_author:
+  max_traces: 1             # analyze 1 insight trace_ref instead of up to 10
+
+analyzer:
+  max_trials: 1             # analyze 1 failing trial in depth (each spawns Rationalizer+TraceAnalyzer)
+  max_divergent_pairs: 1
+
+coder:
+  max_fix_attempts: 0       # skip LLM repair loops after candidate generation

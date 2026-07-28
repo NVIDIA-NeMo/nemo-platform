@@ -39,6 +39,9 @@ class ExperimentalistDeps(BaseModel):
             A :class:`~pathlib.Path` means a local directory; a plain string
             means a fileset ID that the backend will resolve at evaluation time.
             Defaults to None and must be set before ``run()``.
+        evaluator_type: Which evaluator drives the run. ``run_experimentalist``
+            passes the value resolved from ``EvolutionaryOptimizerConfig``; the
+            default here only applies to callers that construct deps directly.
         backend: Shared data-access backend used by every tool. The CLI
             owns the backend's client lifecycle — tools must not close it.
         config: Optional per-run override of the EvolutionaryOptimizerConfig.
@@ -53,7 +56,7 @@ class ExperimentalistDeps(BaseModel):
     train_dataset: DatasetRef
     validation_dataset: DatasetRef
     task_template: DatasetRef | None = None
-    evaluator_type: EvaluatorType = "harbor"
+    evaluator_type: EvaluatorType = "harbor_agent_task_runner"
     agent_spec: str | None = None
     backend: ExperimentalistBackend | None = None
     config: EvolutionaryOptimizerConfig | None = None

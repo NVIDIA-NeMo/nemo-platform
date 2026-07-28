@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The evaluator slice — the smallest run that still exercises a real evaluation.
+# Pass via: uv run nemo experimentalist run --config plugins/nemo-experimentalist/docs/e2e/experiment-eval-only.yaml
+# Maps to EvolutionaryOptimizerConfig (src/nemo_experimentalist_plugin/resolve.py).
+#
+# What actually happens with max_rounds: 0
+#   1. baseline agent-0 is materialized into eval-and-optimize/agents/agent-0
+#   2. Coder writes agent-0/architecture.md                      [LLM call 1]
+#   3. ONE evaluator run over the whole validation split         [Harbor + Docker]
+#   4. Terminator.assess_round_budget stops immediately (0 >= 0), so the
+#      analyze/propose/implement body of the loop never runs
+#   5. agent-0 wins by default; write_final_report emits OPTIMIZATION.md [LLM call 2]
+#
+# Use this to breakpoint the evaluator seam without waiting on the full loop.
+
+max_rounds: 0                     # stop at the top of the first iteration
+disable_trajectory_scoring: true  # no goal tree, no GRA trace scoring
+disable_convergence_check: true   # no qualitative LLM stop check
+
+# Pinned, not inherited: harbor_agent_task_runner is the default now, and this
+# file is the *plain Harbor* arm of the A/B against experiment-eval-only-sdk.yaml.
+# Without this line both arms would run the same evaluator.
+evaluator_type: harbor
+
+storage:
+  archive_candidates: false       # git-only; a local --agent has nothing to push
+  publish_winner: false

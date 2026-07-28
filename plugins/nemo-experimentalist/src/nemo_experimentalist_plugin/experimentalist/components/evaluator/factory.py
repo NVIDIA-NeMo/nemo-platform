@@ -16,10 +16,21 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_agent_task_runner import (
+    HarborRunnerConfig,
+    HarborRunnerEvaluator,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Dataset, DatasetRef, Task
 
-_SUPPORTED_EVALUATOR_TYPES = {
+# Both Harbor-backed types read the same Harbor dataset layout; only who drives
+# the run differs, so they share ``HarborDataset``.
+_SUPPORTED_EVALUATOR_TYPES: dict[EvaluatorType, tuple[type[Dataset], type[Evaluator], type[EvaluatorConfig]]] = {
     "harbor": (HarborDataset, HarborEvaluator, HarborEvaluatorConfig),
+    "harbor_agent_task_runner": (
+        HarborDataset,
+        HarborRunnerEvaluator,
+        HarborRunnerConfig,
+    ),
 }
 
 

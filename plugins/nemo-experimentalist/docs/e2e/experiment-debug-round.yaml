@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# One full evolutionary round, tuned as small as the loop allows.
+# Pass via: uv run nemo experimentalist run --config plugins/nemo-experimentalist/docs/e2e/experiment-debug-round.yaml
+# Maps to EvolutionaryOptimizerConfig (src/nemo_experimentalist_plugin/resolve.py).
+#
+# Same shape as experiment-fast.yaml, but with candidate git storage off so it
+# works against a local (non-git) agent source.
+#
+# What actually happens
+#   round 0 setup : baseline agent-0 + architecture.md + validation eval
+#   round 0 body  : select survivors -> train eval -> AgentAnalyzer -> merge
+#                   analysis -> Proposer -> agent-1 -> Coder -> validation eval
+#   round 1       : Terminator stops (1 >= max_rounds), winner is picked on the
+#                   validation split, OPTIMIZATION.md is written
+#
+# Expect roughly a dozen LLM calls and several container runs.
+
+max_rounds: 1
+max_candidates: 1                 # propose exactly one child per round
+max_survivors: 1                  # carry exactly one parent forward
+max_train_batch_tasks: 1          # sample 1 train task per round (validation stays full)
+max_trajectory_tasks: 1
+
+disable_trajectory_scoring: true  # skip goal-tree generation and GRA scoring
+disable_convergence_check: true   # skip the qualitative LLM stop check
+
+storage:
+  archive_candidates: false       # git-only; a local --agent has nothing to push
+  publish_winner: false
+
+analyzer:
+  max_trials: 1                   # deep-analyze 1 failing trial (spawns Rationalizer + TraceAnalyzer)
+  max_divergent_pairs: 1
+
+coder:
+  max_fix_attempts: 0             # no LLM repair loop after the candidate is written

@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Agent optimization profile — `nemo insights analyze` writes
+# .nemo-optimizer/insights.yaml here; `nemo experimentalist run` reads it
+# by default. Both commands run flag-free from this directory.
+# Use each command's `doctor` verb for owned prerequisites.
+
+agent: nemo-oo-airline
+task_template: ./dataset/template/task_template
+datasets:
+  # Registry refs auto-download to ~/.cache/nemo-experimentalist/datasets/ on first use.
+  # validation is a distinct held-out split: the loop reacts to train scores,
+  # so the winner must be picked on data it never optimized against
+  # (tau2-bench-live-test stays untouched for final evaluation).
+  train: tau2-bench-live-train@1.0
+  validation: tau2-bench-live-validation@1.0
+  registry_url: "https://gitlab-master.nvidia.com/gdilorenzo/optimization-datasets/-/raw/main/registry.json?ref_type=heads"
+# Developers: use the Platform Insights testbed's documented fixture-recovery
+# workflow to populate this workspace. Experimentalist does not vendor or invoke that
+# testbed; real deployments already have their traces in this workspace.
+workspace: tau2-airline
