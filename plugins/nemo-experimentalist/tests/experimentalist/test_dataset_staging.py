@@ -6,11 +6,11 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from nemo_eval_author_plugin.dataset_staging import (
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import (
     stage_eval_author_inputs,
     stage_task_template,
 )
-from nemo_eval_author_plugin.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_platform import AsyncNeMoPlatform
 
 

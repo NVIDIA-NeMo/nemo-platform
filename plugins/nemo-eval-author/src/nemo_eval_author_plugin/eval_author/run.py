@@ -7,14 +7,14 @@ import importlib
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
-from nemo_eval_author_plugin.backend import make_eval_author_backend
-from nemo_eval_author_plugin.client import make_client
-from nemo_eval_author_plugin.dataset_staging import stage_task_template
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_eval_author_plugin.evaluator import Dataset, Task
-from nemo_eval_author_plugin.evaluator.base import EvaluatorType
-from nemo_eval_author_plugin.evaluator.factory import DatasetFactory
-from nemo_eval_author_plugin.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.client import make_client
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset, Task
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import make_experimentalist_backend
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
 
@@ -76,7 +76,7 @@ async def run_eval_author(
 
     client = make_client(base_url)
     try:
-        backend = make_eval_author_backend(
+        backend = make_experimentalist_backend(
             client=client,
             experiments_output=str(experiment_dir),
             mode=mode,

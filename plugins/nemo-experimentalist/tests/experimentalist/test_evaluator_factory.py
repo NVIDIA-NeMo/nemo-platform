@@ -6,19 +6,19 @@ from pathlib import Path
 from typing import Sequence
 
 import pytest
-from nemo_eval_author_plugin.evaluator import DatasetRef
-from nemo_eval_author_plugin.evaluator.base import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import DatasetRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
     Dataset,
     Evaluator,
     EvaluatorConfig,
     TrialResult,
 )
-from nemo_eval_author_plugin.evaluator.factory import DatasetFactory, EvaluatorFactory
-from nemo_eval_author_plugin.evaluator.harbor import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory, EvaluatorFactory
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_eval_author_plugin.evaluator.models import Task
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Task
 
 _UNSUPPORTED_TYPE = "unsupported"
 _SUPPORTED_TYPE = "concrete"

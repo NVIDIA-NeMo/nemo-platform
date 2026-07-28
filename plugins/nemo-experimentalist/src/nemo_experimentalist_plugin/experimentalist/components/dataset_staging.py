@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from nemo_eval_author_plugin.evaluator.models import DatasetRef, local_path_from_uri
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef, local_path_from_uri
 from nemo_platform import AsyncNeMoPlatform
 
 

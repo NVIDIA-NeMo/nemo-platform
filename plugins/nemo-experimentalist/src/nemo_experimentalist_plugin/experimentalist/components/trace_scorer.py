@@ -5,8 +5,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nemo_eval_author_plugin.evaluator import Dataset, TrialResult
-from nemo_eval_author_plugin.trace_explorer import TraceExplorer  # noqa: F401
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset, TrialResult
+from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc

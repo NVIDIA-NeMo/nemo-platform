@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import pytest
-from nemo_eval_author_plugin.trace_analyzer import Diagnostic
+from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 from nemo_experimentalist_plugin.experimentalist.components import analyzer as analyzer_module
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
     AgentAnalyzer,

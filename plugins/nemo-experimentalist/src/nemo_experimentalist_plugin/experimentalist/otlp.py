@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from google.protobuf.json_format import ParseDict
-from nemo_eval_author_plugin.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
 logger = logging.getLogger(__name__)

@@ -23,7 +23,7 @@ from typing import Any, Literal
 
 import yaml
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
-from nemo_eval_author_plugin.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.repository import looks_like_git
 from nemo_experimentalist_plugin.profile import AgentProfile
 from nemo_insights_plugin.contracts.insights import InsightsFileError, load_insights_document

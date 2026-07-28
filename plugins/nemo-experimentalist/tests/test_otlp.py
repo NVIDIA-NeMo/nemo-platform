@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from nemo_eval_author_plugin.evaluator import ResourceRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import ResourceRef
 from nemo_experimentalist_plugin.experimentalist.otlp import (
     jsonl_to_protobuf,
     read_trace_id,

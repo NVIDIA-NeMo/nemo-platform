@@ -11,16 +11,16 @@ from pathlib import Path
 import pytest
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
-from nemo_eval_author_plugin.evaluator import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     DatasetValidationError,
     local_path_from_uri,
 )
-from nemo_eval_author_plugin.evaluator.harbor import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_eval_author_plugin.trace_analyzer import Diagnostic
+from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 from nemo_experimentalist_plugin.experimentalist.components.model_config import get_fast_model
 from nemo_insights_plugin.entities import Insight
 

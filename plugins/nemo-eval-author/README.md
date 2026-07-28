@@ -1,8 +1,16 @@
 # NeMo Eval Author Plugin
 
-Library-only plugin that owns the Eval Author agent, Harbor evaluator stack, trace analysis helpers, and dataset staging used to author evaluation suites from Insights.
+Library-only plugin that owns the Eval Author agent (`eval_author/`). Shared
+evaluator, trace, staging, tools, and client helpers stay in
+`nemo-experimentalist-plugin`; this package takes a hard dependency on
+Experimentalist and imports those modules from there.
 
-Experimentalist depends on this plugin the same way it depends on `nemo-insights-plugin`.
+Experimentalist insight mode imports `EvalAuthor` from this plugin at runtime.
+Install both via the workspace group (avoids a circular package dependency):
+
+```bash
+uv sync --group experimentalist
+```
 
 ## Public API
 
@@ -10,27 +18,28 @@ Experimentalist depends on this plugin the same way it depends on `nemo-insights
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor, build_eval_author_agent
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_eval_author_plugin.eval_author.run import run_eval_author
-from nemo_eval_author_plugin.evaluator import Dataset, DatasetRef, Evaluator
-from nemo_eval_author_plugin.evaluator.factory import DatasetFactory, EvaluatorFactory
-from nemo_eval_author_plugin.dataset_staging import stage_eval_author_inputs, stage_task_template
-from nemo_eval_author_plugin.trace_analyzer import TraceAnalyzer, TraceAnalyzerConfig, Diagnostic
-from nemo_eval_author_plugin.trace_explorer import TraceExplorer
+
+# Shared infrastructure lives in Experimentalist:
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
+from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import TraceAnalyzer
+from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
 ```
 
-## Install
+## Credentials (standalone)
 
-From the repository root:
+Copy [`.example.env`](.example.env) to `.env` and set `AUTHOR_API_KEY` (and optionally model names / `NMP_BASE_URL`):
 
 ```bash
-uv sync --group experimentalist
+cp plugins/nemo-eval-author/.example.env plugins/nemo-eval-author/.env
 ```
 
-## TODO(shared-module)
+`model_config` prefers `AUTHOR_*`. If those are unset it falls back to
+`EXPERIMENTALIST_*` so Experimentalist insight-mode keeps working with a single
+Experimentalist profile `.env`. On construction, Eval Author also bridges
+`AUTHOR_*` into unset `EXPERIMENTALIST_*` slots so Experimentalist helpers such
+as `TraceAnalyzer` see credentials during standalone runs. When the API base is
+the NVIDIA Inference Gateway, `INFERENCE_API_KEY` is also accepted.
 
-The following modules are exact copies of Experimentalist helpers and should eventually live in a shared package:
-
-- `tools.py`
-- `model_config.py`
-- `cache.py`
-- `client.py`
-- `repository.py` (agent clone helpers used by `backend.py`)
+A `nemo eval-author` CLI that auto-loads this `.env` is not wired yet.

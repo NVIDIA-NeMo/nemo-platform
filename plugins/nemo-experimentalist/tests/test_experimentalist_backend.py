@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from nemo_eval_author_plugin.evaluator.models import EvaluationResult
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import EvaluationResult
 from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist import experimentalist_backend as beim
 from nemo_experimentalist_plugin.experimentalist.components.repository import AgentCloneError, AgentSource

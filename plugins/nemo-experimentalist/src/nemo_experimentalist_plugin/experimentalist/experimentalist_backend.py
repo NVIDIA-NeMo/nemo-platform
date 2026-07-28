@@ -24,7 +24,7 @@ from typing import Any, Literal, TypeVar, cast
 from urllib.parse import urlparse
 
 import httpx
-from nemo_eval_author_plugin.evaluator.models import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
     EvaluationResult,
     ResourceRef,
     TrialResult,

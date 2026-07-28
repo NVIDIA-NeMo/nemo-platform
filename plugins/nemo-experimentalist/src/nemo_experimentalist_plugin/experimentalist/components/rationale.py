@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# TODO(shared-module): Rationale models copied from experimentalist rationalizer.py; unify with rationalizer module.
+"""Task-level rationale models shared by Rationalizer and TraceAnalyzer."""
 
 from pydantic import BaseModel, Field
 

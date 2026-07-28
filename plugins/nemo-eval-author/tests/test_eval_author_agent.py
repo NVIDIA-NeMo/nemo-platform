@@ -15,13 +15,13 @@ import pytest
 from nemo_eval_author_plugin.eval_author import agent as eval_author_module
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
-from nemo_eval_author_plugin.evaluator import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
     DatasetValidationError,
     Task,
     TrialResult,
 )
-from nemo_eval_author_plugin.trace_analyzer import (
+from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
     TraceAnalyzerConfig,
 )

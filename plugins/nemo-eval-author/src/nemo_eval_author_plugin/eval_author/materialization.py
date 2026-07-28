@@ -18,8 +18,8 @@ from uuid import uuid4
 
 import tomlkit
 from harbor.models.task.task import Task as HarborTask
-from nemo_eval_author_plugin.evaluator.harbor import HarborDataset
-from nemo_eval_author_plugin.evaluator.models import Task, local_path_from_uri
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Task, local_path_from_uri
 
 _MANIFEST_SCHEMA_VERSION = 3
 _CONTENT_HASH_SCHEMA_VERSION = 1

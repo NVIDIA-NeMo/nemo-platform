@@ -12,24 +12,33 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nemo_eval_author_plugin import cache
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_eval_author_plugin.evaluator import (
+from nemo_eval_author_plugin.model_config import (
+    bridge_author_env_to_experimentalist,
+    get_fast_model,
+    get_smart_model,
+)
+
+# Bridge before importing Experimentalist agents that read EXPERIMENTALIST_* at
+# class-definition time (e.g. helpers pulled in by TraceAnalyzer).
+bridge_author_env_to_experimentalist()
+
+from nemo_experimentalist_plugin.experimentalist.components import cache
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
     DatasetValidationError,
     Task,
     TrialResult,
 )
-from nemo_eval_author_plugin.evaluator.models import ResourceRef
-from nemo_eval_author_plugin.model_config import get_fast_model, get_smart_model
-from nemo_eval_author_plugin.tools import GuardedShellTools
-from nemo_eval_author_plugin.trace_analyzer import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
+from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
     TraceAnalyzer,
     TraceAnalyzerConfig,
 )
-from nemo_eval_author_plugin.trace_explorer import (
+from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import (
     SearchResult,
     SessionData,
     SessionSummary,
@@ -63,6 +72,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             config: Tuning parameters; defaults to ``EvalAuthorConfig()``.
             **kwargs: Forwarded to ``Agent.__init__``.
         """
+        bridge_author_env_to_experimentalist()
         super().__init__(**kwargs)
         self._config = config or EvalAuthorConfig()
         self.experiment_dir = experiment_dir

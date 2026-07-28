@@ -7,15 +7,15 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from nemo_eval_author_plugin.evaluator import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
     EvaluationResult,
     MetricResult,
     Task,
     TrialResult,
 )
-from nemo_eval_author_plugin.evaluator.harbor import HarborEvaluatorConfig
-from nemo_eval_author_plugin.evaluator.models import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborEvaluatorConfig
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
     DatasetRef,
     DataValue,
     ResourceRef,

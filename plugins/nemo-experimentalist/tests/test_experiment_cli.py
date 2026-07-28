@@ -7,7 +7,7 @@ from typing import Literal, cast
 
 import pytest
 from click.testing import Result
-from nemo_eval_author_plugin.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin import cli
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.preflight import Probes

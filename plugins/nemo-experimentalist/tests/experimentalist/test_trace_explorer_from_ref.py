@@ -13,8 +13,8 @@ the platform client/workspace are correctly plumbed in.
 from typing import Any, cast
 
 import pytest
-from nemo_eval_author_plugin.evaluator.models import ResourceRef
-from nemo_eval_author_plugin.trace_explorer import TraceExplorer
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
 
 
 @pytest.fixture

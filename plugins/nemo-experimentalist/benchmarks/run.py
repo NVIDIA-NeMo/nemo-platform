@@ -15,12 +15,12 @@ from typing import Any, Literal, Self
 
 import yaml
 from harbor.registry.client.package import PackageDatasetClient
-from nemo_eval_author_plugin.evaluator.harbor import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_eval_author_plugin.evaluator.models import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
     DatasetRef,
     EvaluationResult,
     TrialResult,
