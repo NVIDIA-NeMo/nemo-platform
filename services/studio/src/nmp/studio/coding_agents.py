@@ -67,6 +67,8 @@ MCP_KEEPALIVE_INTERVAL_SECONDS = 15
 DEFAULT_STUDIO_CODING_AGENT_NAME = "nemo-agent-local-poc"
 DEFAULT_STUDIO_CODING_AGENT_BASE_URL = "http://127.0.0.1:8080"
 STUDIO_CODING_AGENT_TIMEOUT_SECONDS = 600.0
+MAX_RETAINED_SESSIONS = 100
+MAX_RETAINED_TURNS_PER_SESSION = 50
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SERVER_CWD = Path(os.getcwd()).resolve()
@@ -138,6 +140,32 @@ _pending_agent_inputs: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {
 _session_conversations: dict[str, list[dict[str, str]]] = {}
 _session_mtimes: dict[str, float] = {}
 _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
+
+
+def _evict_oldest_sessions(*, protected_session_ids: set[str] | None = None) -> None:
+    """Evict least-recently-updated inactive sessions from in-memory history."""
+    protected = (protected_session_ids or set()) | set(_session_streams)
+    while len(_session_conversations) > MAX_RETAINED_SESSIONS:
+        candidates = set(_session_conversations) - protected
+        if not candidates:
+            break
+        oldest_session_id = min(
+            candidates,
+            key=lambda session_id: (_session_mtimes.get(session_id, 0), session_id),
+        )
+        _session_conversations.pop(oldest_session_id, None)
+        _session_mtimes.pop(oldest_session_id, None)
+        _initialized_sessions.discard(oldest_session_id)
+
+    for session_id in set(_session_mtimes) - set(_session_conversations):
+        _session_mtimes.pop(session_id, None)
+
+
+def _retain_recent_turns(conversation: list[dict[str, str]]) -> None:
+    """Keep only the most recent complete user/assistant turns."""
+    max_messages = MAX_RETAINED_TURNS_PER_SESSION * 2
+    if len(conversation) > max_messages:
+        del conversation[:-max_messages]
 
 
 @dataclass
@@ -445,9 +473,8 @@ def _build_nemo_agent_system_prompt(
             ),
             "Do not reveal the Studio session id to the user.",
             (
-                f"When you call nemo_api from this Studio conversation, always pass "
-                f"studio_session_id='{session_id}'. Read-only calls run immediately; mutating calls "
-                "will automatically pause for the user's approval."
+                "The approval context for nemo_api is injected by Studio and is not a tool argument. "
+                "Read-only calls run immediately; mutating calls will automatically pause for the user's approval."
             ),
         ]
     )
@@ -656,12 +683,14 @@ def create_session() -> NewSessionResponse:
     session_id = str(uuid.uuid4())
     _session_conversations[session_id] = []
     _session_mtimes[session_id] = time.time()
+    _evict_oldest_sessions(protected_session_ids={session_id})
     return NewSessionResponse(session_id=session_id)
 
 
 @router.get("/history/sessions", response_model=list[HistorySessionResponse])
 def list_history_sessions() -> list[HistorySessionResponse]:
-    """List NeMo Agent sessions plus legacy Claude histories."""
+    """List active retained NeMo Agent sessions."""
+    _evict_oldest_sessions()
     sessions: list[HistorySessionResponse] = []
     for session_id, messages in _session_conversations.items():
         user_messages = [item["content"] for item in messages if item.get("role") == "user"]
@@ -679,40 +708,6 @@ def list_history_sessions() -> list[HistorySessionResponse]:
                 tool_call_count=0,
                 tool_calls=[],
                 chat_artifacts=ChatArtifactsResponse(),
-            )
-        )
-
-    project_dir = _project_history_dir()
-    history_files = project_dir.glob("*.jsonl") if project_dir.is_dir() else []
-    current_session_ids = set(_session_conversations)
-    for history_file in history_files:
-        if history_file.stem in current_session_ids:
-            continue
-        try:
-            uuid.UUID(history_file.stem)
-        except ValueError:
-            continue
-
-        summary = _summarize_history_session(history_file)
-        if summary.message_count == 0:
-            continue
-
-        try:
-            mtime = history_file.stat().st_mtime
-        except OSError:
-            continue
-
-        sessions.append(
-            HistorySessionResponse(
-                session_id=history_file.stem,
-                mtime=mtime,
-                title=summary.title,
-                first_prompt=summary.first_prompt or "",
-                message_count=summary.message_count,
-                token_count=summary.token_count,
-                tool_call_count=summary.tool_call_count,
-                tool_calls=summary.tool_calls,
-                chat_artifacts=summary.chat_artifacts,
             )
         )
     sessions.sort(key=lambda session: session.mtime, reverse=True)
@@ -799,7 +794,7 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
     sid = _validate_session_id(session_id)
     conversation = _session_conversations.get(sid)
     if conversation is not None:
-        items = []
+        items: list[dict[str, Any]] = []
         for message in conversation:
             if message.get("role") == "user":
                 items.append({"kind": "user", "text": message["content"]})
@@ -821,7 +816,7 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="no such session history")
 
-    items: list[dict[str, Any]] = []
+    items = []
     summary = _summarize_history_session(path)
     tool_uses: dict[str, HistoryToolUse] = {}
     try:
@@ -1282,10 +1277,22 @@ def _nemo_agent_error_detail(exc: httpx.HTTPError | RuntimeError | ValueError) -
     return "The deployed NeMo Agent returned an invalid response."
 
 
+def _nemo_agent_request_payload(
+    messages: list[dict[str, str]],
+    studio_session_id: str,
+) -> dict[str, Any]:
+    return {
+        "messages": messages,
+        "stream": False,
+        "studio_session_id": studio_session_id,
+    }
+
+
 async def _invoke_nemo_agent(
     agent_url: str,
     headers: Mapping[str, str],
     messages: list[dict[str, str]],
+    studio_session_id: str,
 ) -> tuple[str, str]:
     timeout = httpx.Timeout(
         connect=10.0,
@@ -1297,7 +1304,7 @@ async def _invoke_nemo_agent(
         response = await client.post(
             agent_url,
             headers=dict(headers),
-            json={"messages": messages, "stream": False},
+            json=_nemo_agent_request_payload(messages, studio_session_id),
         )
         response.raise_for_status()
         return _nemo_agent_response(response.json())
@@ -1331,7 +1338,14 @@ async def _stream_nemo_agent(
         ]
     )
     request_messages = [*conversation, {"role": "user", "content": contextual_message}]
-    invocation = asyncio.create_task(_invoke_nemo_agent(agent_url, headers, request_messages))
+    invocation = asyncio.create_task(
+        _invoke_nemo_agent(
+            agent_url,
+            headers,
+            request_messages,
+            studio_session_id=session_id,
+        )
+    )
     queued_event = asyncio.create_task(queue.get())
 
     try:
@@ -1365,6 +1379,7 @@ async def _stream_nemo_agent(
                 {"role": "assistant", "content": assistant_text},
             ]
         )
+        _retain_recent_turns(conversation)
         _session_mtimes[session_id] = time.time()
         _initialized_sessions.add(session_id)
         yield _sse(
@@ -1395,6 +1410,7 @@ async def _stream_nemo_agent(
             invocation.cancel()
         if not queued_event.done():
             queued_event.cancel()
+        _evict_oldest_sessions()
 
 
 @router.post("/sessions/{session_id}/messages")

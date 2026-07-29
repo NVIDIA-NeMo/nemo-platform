@@ -47,12 +47,11 @@ llms:
   # only meaningful when something resolves it back to the upstream model.
   #
   # Caveat: the agent's tools (`nemo_api`, `check_status`) still call platform
-  # APIs via the Python SDK for any task that touches
-  # workspaces, secrets, providers, etc. To run a "fully self-contained"
-  # eval, the dataset would also need to consist of pure-LLM questions that
-  # don't exercise those tools — most of `nemo-eval-data.json` does. So
-  # bypassing the gateway works as an LLM-only smoke test, not as a full
-  # platform-management eval.
+  # APIs via the Python SDK. The current `nemo-eval-data.json` exercises
+  # platform resources, including workspace and model/provider operations, so
+  # bypassing the gateway is not an LLM-only smoke test. A fully self-contained
+  # bypass run requires a separate pure-LLM dataset that does not invoke
+  # platform tools.
   #
   #   agent:
   #     _type: openai

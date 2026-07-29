@@ -1,7 +1,7 @@
 [
   {
-    "input_message": "Create a workspace called 'test-workspace' with description 'A workspace for testing'",
-    "expected_output": "workspace created successfully"
+    "input_message": "Show the details for the default workspace without making any changes.",
+    "expected_output": "details for the default workspace"
   },
   {
     "input_message": "List all workspaces on the platform",

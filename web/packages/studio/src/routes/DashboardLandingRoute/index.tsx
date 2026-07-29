@@ -7,27 +7,16 @@ import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { writeStoredActiveSessionId } from '@studio/routes/agents/ClaudeCodeChatRoute/activeSessionStorage';
-import {
-  CLAUDE_CODE_SKILLS_QUERY_KEY,
-  listClaudeCodeSkills,
-} from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import {
-  SkillActionSection,
-  type SkillActionCard,
-} from '@studio/routes/DashboardLandingRoute/SkillActionSection';
-import { getSkillActionSuggestions } from '@studio/routes/DashboardLandingRoute/skillActionSuggestions';
 import { getClaudeCodeChatRoute } from '@studio/routes/utils';
-import { useQuery } from '@tanstack/react-query';
-import { GitBranch, Hammer, Search, Send, Terminal } from 'lucide-react';
+import { Send, Terminal } from 'lucide-react';
 import {
   type ChangeEvent,
   type FC,
   type FormEvent,
   type KeyboardEvent,
   useCallback,
-  useMemo,
   useState,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -104,54 +93,14 @@ const LandingComposer = ({
   );
 };
 
-const DEFAULT_LANDING_ACTIONS = [
-  {
-    title: 'Explore repo',
-    description: 'Give me a concise map of this repo and the main places I should know about.',
-    prompt: 'Give me a concise map of this repo and the main places I should know about.',
-    icon: <Search size={18} />,
-  },
-  {
-    title: 'Draft a change',
-    description: 'Help me plan and implement the next small product improvement in nemo-platform.',
-    prompt: 'Help me plan and implement the next small product improvement in nemo-platform.',
-    icon: <Hammer size={18} />,
-  },
-  {
-    title: 'Review recent work',
-    description: 'Review the current working tree and call out anything risky or unfinished.',
-    prompt: 'Review the current working tree and call out anything risky or unfinished.',
-    icon: <GitBranch size={18} />,
-  },
-] satisfies SkillActionCard[];
-
 export const DashboardLandingRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const [input, setInput] = useState('');
-  const {
-    data: skills,
-    isError: isSkillsError,
-    isLoading: isSkillsLoading,
-  } = useQuery({
-    queryKey: CLAUDE_CODE_SKILLS_QUERY_KEY,
-    queryFn: listClaudeCodeSkills,
-  });
-  const skillActionSuggestions = useMemo(
-    () => (isSkillsError ? DEFAULT_LANDING_ACTIONS : getSkillActionSuggestions(skills ?? [])),
-    [isSkillsError, skills]
-  );
-  const totalActionSourceCount = isSkillsError
-    ? DEFAULT_LANDING_ACTIONS.length
-    : (skills?.length ?? 0);
 
   useBreadcrumbs({
     items: [{ slotLabel: 'Dashboard' }],
   });
-
-  const handlePromptSelect = useCallback((prompt: string) => {
-    setInput(prompt);
-  }, []);
 
   const handleSubmit = useCallback(
     (prompt: string) => {
@@ -175,13 +124,6 @@ export const DashboardLandingRoute: FC = () => {
               </Flex>
 
               <LandingComposer input={input} onChange={setInput} onSubmit={handleSubmit} />
-
-              <SkillActionSection
-                actions={skillActionSuggestions}
-                isLoading={isSkillsLoading}
-                onSelect={handlePromptSelect}
-                totalSkillCount={totalActionSourceCount}
-              />
             </Flex>
           </main>
         </GradientBackground>

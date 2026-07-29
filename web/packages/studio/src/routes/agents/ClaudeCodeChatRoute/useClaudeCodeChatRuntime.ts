@@ -595,7 +595,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         void queryClient.invalidateQueries({ queryKey: CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY });
         if (!doneReceived && !signal.aborted) {
           throw new Error(
-            'Connection to Claude was interrupted. Your response may still be processing — check History to see the result.'
+            'Connection to NeMo Agent was interrupted. Your response may still be processing — check History to see the result.'
           );
         }
       } finally {

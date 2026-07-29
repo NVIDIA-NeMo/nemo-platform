@@ -20,6 +20,7 @@ from deepagents.backends import (  # ty: ignore[unresolved-import]
     StateBackend,
 )
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nemo_platform import NeMoPlatform
 from pydantic import BaseModel
@@ -227,12 +228,47 @@ def _call_sdk_method(resource: Any, action: str, params: dict[str, Any] | None =
     return method()
 
 
+def _trusted_studio_session_id(config: RunnableConfig) -> str | None:
+    configurable = config.get("configurable")
+    if not isinstance(configurable, dict):
+        return None
+    value = configurable.get("studio_session_id")
+    if not isinstance(value, str):
+        return None
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        return None
+
+
+def _request_mutation_approval(
+    config: RunnableConfig,
+    *,
+    tool_name: str,
+    tool_input: dict[str, Any],
+) -> str | None:
+    session_id = _trusted_studio_session_id(config)
+    if session_id is None:
+        return "Denied: mutating operations require a trusted Studio approval context"
+    approval = _call_studio_tool(
+        session_id,
+        "approval_prompt",
+        {
+            "tool_name": tool_name,
+            "input": tool_input,
+        },
+    )
+    if approval.get("behavior") != "allow":
+        return f"Denied by user: {approval.get('message') or 'operation was not approved'}"
+    return None
+
+
 @tool
 def nemo_api(
     resource: str,
     action: str,
+    config: RunnableConfig,
     params: str | None = None,
-    studio_session_id: str | None = None,
 ) -> str:
     """Call any NeMo Platform SDK method.
 
@@ -250,10 +286,6 @@ def nemo_api(
             '{"name": "my-workspace", "description": "test"}'
             '{"name": "my-secret", "value": "secret-payload"}'
             '{"content": "hello", "remote_path": "verify.txt", "fileset": "my-fileset"}'
-        studio_session_id: Studio callback session from the invocation context.
-            When present, mutating actions are shown to the user for approval
-            before execution. Always pass it when invoked from NeMo Studio.
-
         Useful paths:
             - Fileset CRUD: resource="files.filesets"
             - In-memory upload: resource="files", action="upload_content"
@@ -264,21 +296,19 @@ def nemo_api(
     """
     client = _get_client()
     try:
-        if studio_session_id and action.lower() not in _READ_ONLY_SDK_ACTIONS:
-            approval = _call_studio_tool(
-                studio_session_id,
-                "approval_prompt",
-                {
-                    "tool_name": "nemo_api",
-                    "input": {
-                        "resource": resource,
-                        "action": action,
-                        "params": params,
-                    },
+        normalized_action = action.strip().lower()
+        if normalized_action not in _READ_ONLY_SDK_ACTIONS:
+            denial = _request_mutation_approval(
+                config,
+                tool_name="nemo_api",
+                tool_input={
+                    "resource": resource,
+                    "action": action,
+                    "params": params,
                 },
             )
-            if approval.get("behavior") != "allow":
-                return f"Denied by user: {approval.get('message') or 'operation was not approved'}"
+            if denial is not None:
+                return denial
 
         resolved = _resolve_resource(client, resource)
         parsed_params = json.loads(params) if params else None
@@ -581,7 +611,7 @@ class _StreamSafeGraph:
         }
 
     @staticmethod
-    async def _direct_response(input_data: Any) -> str | None:
+    async def _direct_response(input_data: Any, config: RunnableConfig) -> str | None:
         if not isinstance(input_data, dict):
             return None
         messages = input_data.get("messages")
@@ -589,6 +619,19 @@ class _StreamSafeGraph:
             return None
         fileset_name = _direct_fileset_delete_name(messages)
         if fileset_name is not None:
+            if _trusted_studio_session_id(config) is not None:
+                denial = await asyncio.to_thread(
+                    _request_mutation_approval,
+                    config,
+                    tool_name="nemo_api",
+                    tool_input={
+                        "resource": "files.filesets",
+                        "action": "delete",
+                        "params": json.dumps({"name": fileset_name}),
+                    },
+                )
+                if denial is not None:
+                    return denial
             return await asyncio.to_thread(_delete_fileset, fileset_name)
         resource_path = _direct_list_resource(messages)
         if resource_path is None:
@@ -596,13 +639,15 @@ class _StreamSafeGraph:
         return await asyncio.to_thread(_list_resource_names, resource_path)
 
     async def ainvoke(self, input_data, config=None, **kwargs):
-        direct_response = await self._direct_response(input_data)
+        bounded_config = self._bounded_config(config)
+        direct_response = await self._direct_response(input_data, bounded_config)
         if direct_response is not None:
             return {"messages": [AIMessage(content=direct_response)]}
-        return await self._graph.ainvoke(input_data, config=self._bounded_config(config), **kwargs)
+        return await self._graph.ainvoke(input_data, config=bounded_config, **kwargs)
 
     async def astream(self, input_data, config=None, **kwargs):
-        direct_response = await self._direct_response(input_data)
+        bounded_config = self._bounded_config(config)
+        direct_response = await self._direct_response(input_data, bounded_config)
         if direct_response is not None:
             yield {"messages": [AIMessageChunk(content=direct_response)]}
             return
@@ -610,7 +655,7 @@ class _StreamSafeGraph:
         if "stream_mode" not in kwargs:
             async for message, _metadata in self._graph.astream(
                 input_data,
-                config=self._bounded_config(config),
+                config=bounded_config,
                 stream_mode="messages",
                 **kwargs,
             ):
@@ -618,7 +663,7 @@ class _StreamSafeGraph:
                     yield {"messages": [message]}
             return
 
-        async for chunk in self._graph.astream(input_data, config=self._bounded_config(config), **kwargs):
+        async for chunk in self._graph.astream(input_data, config=bounded_config, **kwargs):
             yield chunk
 
     async def astream_events(self, *args, **kwargs):

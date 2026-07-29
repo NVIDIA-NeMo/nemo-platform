@@ -8,6 +8,7 @@ import httpx
 import pytest
 import yaml
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from nat.data_models.api_server import ChatRequest
 from nemo_agent.register import (
     DEFAULT_RECURSION_LIMIT,
     SKILLS_DIR,
@@ -28,7 +29,7 @@ from nemo_agent.register import (
     create_nemo_agent,
     nemo_api,
 )
-from nemo_agent.wrapper import NemoAgentWrapperConfig, NemoAgentWrapperFunction
+from nemo_agent.wrapper import NemoAgentWrapperConfig, NemoAgentWrapperFunction, NemoAgentWrapperOutput
 from pydantic import BaseModel
 
 # The underlying functions wrapped by langchain's @tool decorator.
@@ -38,6 +39,8 @@ _nemo_api = nemo_api.func  # ty: ignore[unresolved-attribute]
 _check_status = check_status.func  # ty: ignore[unresolved-attribute]
 
 AGENT_CONFIG = Path(__file__).parents[1] / "src" / "nemo_agent" / "nemo-agent.yml"
+TRUSTED_SESSION_ID = "00000000-0000-4000-8000-000000000001"
+TRUSTED_CONFIG = {"configurable": {"studio_session_id": TRUSTED_SESSION_ID}}
 
 
 class TestAgentConfig:
@@ -187,10 +190,17 @@ class TestNemoApiTool:
         assert platform_client.call_args.kwargs["workspace"] == "default"
 
     def test_workspace_create(self, mock_client):
-        with patch("nemo_agent.register._get_client", return_value=mock_client):
+        with (
+            patch("nemo_agent.register._get_client", return_value=mock_client),
+            patch(
+                "nemo_agent.register._call_studio_tool",
+                return_value={"behavior": "allow"},
+            ),
+        ):
             result = _nemo_api(
                 resource="workspaces",
                 action="create",
+                config=TRUSTED_CONFIG,
                 params='{"name": "new-ws"}',
             )
         mock_client.workspaces.create.assert_called_once_with(name="new-ws")
@@ -201,6 +211,7 @@ class TestNemoApiTool:
             result = _nemo_api(
                 resource="workspaces",
                 action="list",
+                config={},
             )
         mock_client.workspaces.list.assert_called_once()
         assert isinstance(result, str)
@@ -210,6 +221,7 @@ class TestNemoApiTool:
             _nemo_api(
                 resource="inference.providers",
                 action="list",
+                config={},
             )
         mock_client.inference.providers.list.assert_called_once()
 
@@ -224,13 +236,40 @@ class TestNemoApiTool:
             result = _nemo_api(
                 resource="workspaces",
                 action="create",
+                config=TRUSTED_CONFIG,
                 params='{"name": "blocked"}',
-                studio_session_id="studio-session",
             )
 
         assert result == "Denied by user: not now"
         mock_client.workspaces.create.assert_not_called()
-        studio_tool.assert_called_once()
+        studio_tool.assert_called_once_with(
+            TRUSTED_SESSION_ID,
+            "approval_prompt",
+            {
+                "tool_name": "nemo_api",
+                "input": {
+                    "resource": "workspaces",
+                    "action": "create",
+                    "params": '{"name": "blocked"}',
+                },
+            },
+        )
+
+    def test_mutation_without_trusted_session_is_denied(self, mock_client):
+        with patch("nemo_agent.register._get_client", return_value=mock_client):
+            result = _nemo_api(
+                resource="workspaces",
+                action="create",
+                config={},
+                params='{"name": "blocked"}',
+            )
+
+        assert result == "Denied: mutating operations require a trusted Studio approval context"
+        mock_client.workspaces.create.assert_not_called()
+
+    def test_model_tool_schema_does_not_expose_approval_context(self):
+        assert "studio_session_id" not in nemo_api.args_schema.model_fields
+        assert "config" not in nemo_api.args_schema.model_fields
 
     def test_studio_callback_uses_deployment_reachable_base_url(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://host.docker.internal:8080/")
@@ -604,25 +643,105 @@ class TestDirectFilesetDeleteFastPath:
         assert "I couldn't delete fileset 'phishing_dataset'" in result
         assert "service unavailable" in result
 
+    def test_delete_fileset_without_studio_session_retains_direct_behavior(self):
+        resource = MagicMock()
+        resource.list.return_value = []
+
+        with patch("nemo_agent.register._resolve_resource", return_value=resource):
+            result = _delete_fileset("phishing_dataset")
+
+        assert result == "Deleted fileset 'phishing_dataset' from workspace 'default'."
+        resource.delete.assert_called_once_with(name="phishing_dataset")
+
     @pytest.mark.asyncio
-    async def test_stream_graph_bypasses_model_for_explicit_fileset_delete(self):
+    async def test_stream_graph_requires_studio_approval_before_direct_fileset_delete(self):
         inner = MagicMock()
         graph = _StreamSafeGraph(inner)
 
-        with patch(
-            "nemo_agent.register._delete_fileset",
-            return_value="Deleted fileset 'phishing_dataset' from workspace 'default'.",
+        with (
+            patch(
+                "nemo_agent.register._delete_fileset",
+                return_value="Deleted fileset 'phishing_dataset' from workspace 'default'.",
+            ) as delete_fileset,
+            patch(
+                "nemo_agent.register._call_studio_tool",
+                return_value={"behavior": "allow"},
+            ) as studio_tool,
         ):
             chunks = [
                 chunk
                 async for chunk in graph.astream(
-                    {"messages": [HumanMessage(content="Can you delete the phishing_dataset fileset?")]}
+                    {"messages": [HumanMessage(content="Can you delete the phishing_dataset fileset?")]},
+                    config=TRUSTED_CONFIG,
                 )
             ]
 
         assert chunks == [
             {"messages": [AIMessageChunk(content="Deleted fileset 'phishing_dataset' from workspace 'default'.")]}
         ]
+        studio_tool.assert_called_once_with(
+            TRUSTED_SESSION_ID,
+            "approval_prompt",
+            {
+                "tool_name": "nemo_api",
+                "input": {
+                    "resource": "files.filesets",
+                    "action": "delete",
+                    "params": '{"name": "phishing_dataset"}',
+                },
+            },
+        )
+        delete_fileset.assert_called_once_with("phishing_dataset")
+        inner.astream.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stream_graph_stops_when_studio_denies_direct_fileset_delete(self):
+        inner = MagicMock()
+        graph = _StreamSafeGraph(inner)
+
+        with (
+            patch("nemo_agent.register._delete_fileset") as delete_fileset,
+            patch(
+                "nemo_agent.register._call_studio_tool",
+                return_value={"behavior": "deny", "message": "not now"},
+            ),
+        ):
+            chunks = [
+                chunk
+                async for chunk in graph.astream(
+                    {"messages": [HumanMessage(content="Delete phishing_dataset fileset")]},
+                    config=TRUSTED_CONFIG,
+                )
+            ]
+
+        assert chunks == [{"messages": [AIMessageChunk(content="Denied by user: not now")]}]
+        delete_fileset.assert_not_called()
+        inner.astream.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stream_graph_without_studio_session_retains_direct_fileset_delete(self):
+        inner = MagicMock()
+        graph = _StreamSafeGraph(inner)
+
+        with (
+            patch(
+                "nemo_agent.register._delete_fileset",
+                return_value="Deleted fileset 'phishing_dataset' from workspace 'default'.",
+            ) as delete_fileset,
+            patch("nemo_agent.register._call_studio_tool") as studio_tool,
+        ):
+            chunks = [
+                chunk
+                async for chunk in graph.astream(
+                    {"messages": [HumanMessage(content="Delete phishing_dataset fileset")]},
+                )
+            ]
+
+        assert chunks == [
+            {"messages": [AIMessageChunk(content="Deleted fileset 'phishing_dataset' from workspace 'default'.")]}
+        ]
+        studio_tool.assert_not_called()
+        delete_fileset.assert_called_once_with("phishing_dataset")
         inner.astream.assert_not_called()
 
 
@@ -630,9 +749,11 @@ class FakeWrapperGraph:
     def __init__(self, outputs):
         self.outputs = list(outputs)
         self.inputs = []
+        self.configs = []
 
-    async def ainvoke(self, state):
+    async def ainvoke(self, state, config=None):
         self.inputs.append(state)
+        self.configs.append(config)
         return self.outputs.pop(0)
 
 
@@ -640,13 +761,56 @@ class FailingStreamingGraph:
     def __init__(self, error):
         self.error = error
 
-    async def astream(self, state):
+    async def astream(self, state, config=None):
         if False:
             yield state
         raise self.error
 
 
 class TestNemoAgentWrapper:
+    @pytest.mark.parametrize(
+        ("messages", "expected"),
+        [
+            ([], ""),
+            ([AIMessage(content="base message")], "base message"),
+            ([{"role": "assistant", "content": "dict message"}], "dict message"),
+        ],
+    )
+    def test_convert_to_str_normalizes_message_representations(self, messages, expected):
+        output = NemoAgentWrapperOutput.model_construct(messages=messages)
+
+        assert NemoAgentWrapperFunction.convert_to_str(output) == expected
+
+    def test_chat_request_converts_trusted_session_to_invocation_config(self):
+        request = ChatRequest.model_validate(
+            {
+                "messages": [{"role": "user", "content": "hello"}],
+                "studio_session_id": TRUSTED_SESSION_ID,
+            }
+        )
+
+        value = NemoAgentWrapperFunction.convert_chat_request(request)
+
+        assert NemoAgentWrapperFunction._invocation_config(value) == TRUSTED_CONFIG
+
+    @pytest.mark.asyncio
+    async def test_wrapper_passes_trusted_session_config_to_graph(self):
+        graph = FakeWrapperGraph([{"messages": [AIMessage(content="done")]}])
+        wrapper = NemoAgentWrapperFunction(config=NemoAgentWrapperConfig(), graph=graph)
+        value = wrapper.convert_chat_request(
+            ChatRequest.model_validate(
+                {
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "studio_session_id": TRUSTED_SESSION_ID,
+                }
+            )
+        )
+
+        result = await wrapper._ainvoke(value)
+
+        assert result.value == "done"
+        assert graph.configs == [TRUSTED_CONFIG]
+
     @pytest.mark.parametrize(
         "message",
         [

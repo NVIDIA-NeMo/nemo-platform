@@ -63,10 +63,12 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
+from uuid import UUID
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, MessageLikeRepresentation
 from langchain_core.messages.utils import convert_to_messages
 from langchain_core.prompt_values import PromptValue
+from langchain_core.runnables import RunnableConfig
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.function import Function
@@ -132,6 +134,7 @@ class NemoAgentWrapperInput(BaseModel):
 
     messages: list[MessageLikeRepresentation] | PromptValue | None = None
     input_message: str | None = None
+    studio_session_id: UUID | None = None
 
     @model_validator(mode="after")
     def _ensure_messages(self) -> "NemoAgentWrapperInput":
@@ -237,6 +240,16 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
         return {"messages": convert_to_messages(messages)}
 
     @staticmethod
+    def _invocation_config(value: NemoAgentWrapperInput) -> RunnableConfig:
+        if value.studio_session_id is None:
+            return {}
+        return {
+            "configurable": {
+                "studio_session_id": str(value.studio_session_id),
+            }
+        }
+
+    @staticmethod
     def _has_tool_calls(message: AIMessage | dict[str, Any]) -> bool:
         if isinstance(message, AIMessage):
             if message.tool_calls:
@@ -276,7 +289,11 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
             sanitized.pop()
         return sanitized
 
-    async def _ainvoke_with_empty_response_retry(self, state: dict[str, Any]) -> NemoAgentWrapperOutput:
+    async def _ainvoke_with_empty_response_retry(
+        self,
+        state: dict[str, Any],
+        config: RunnableConfig | None = None,
+    ) -> NemoAgentWrapperOutput:
         """Retry once when the graph silently stops with an empty final answer.
 
         Random-routed weaker models can occasionally emit an empty ``stop``
@@ -285,7 +302,7 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
         short continuation prompt preserves the prior tool history and gives the
         agent a chance to complete the task instead of ending silently.
         """
-        output = await self._graph.ainvoke(state)
+        output = await self._graph.ainvoke(state, config=config)
         parsed = self._parse(output)
         if parsed.value.strip():
             return parsed
@@ -303,11 +320,14 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
             **state,
             "messages": retry_messages,
         }
-        return self._parse(await self._graph.ainvoke(retry_state))
+        return self._parse(await self._graph.ainvoke(retry_state, config=config))
 
     async def _ainvoke(self, value: NemoAgentWrapperInput) -> NemoAgentWrapperOutput:
         try:
-            return await self._ainvoke_with_empty_response_retry(self._build_state(value))
+            return await self._ainvoke_with_empty_response_retry(
+                self._build_state(value),
+                self._invocation_config(value),
+            )
         except Exception as e:
             logger.exception("nemo_agent_wrapper _ainvoke failed")
             return self._error_output(e)
@@ -317,7 +337,10 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
         # empty-final-response retry lives only on the non-streaming
         # ``_ainvoke`` path because it requires having the full final state.
         try:
-            async for chunk in self._graph.astream(self._build_state(value)):
+            async for chunk in self._graph.astream(
+                self._build_state(value),
+                config=self._invocation_config(value),
+            ):
                 yield self._parse(chunk)
         except Exception as e:
             logger.exception("nemo_agent_wrapper _astream failed")
@@ -390,7 +413,7 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
     def convert_to_str(value: NemoAgentWrapperOutput) -> str:
         if not value.messages:
             return ""
-        return value.messages[-1].text
+        return value.value
 
     @staticmethod
     def _extract_usage(value: NemoAgentWrapperOutput) -> Usage:
@@ -481,7 +504,11 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
             if isinstance(content, list):
                 content = [part.model_dump() if hasattr(part, "model_dump") else part for part in content]
             message_dicts.append({"role": role, "content": content})
-        return NemoAgentWrapperInput(messages=message_dicts)
+        extras = value.model_extra or {}
+        return NemoAgentWrapperInput(
+            messages=message_dicts,
+            studio_session_id=extras.get("studio_session_id"),
+        )
 
     @staticmethod
     def convert_str(value: str) -> NemoAgentWrapperInput:
