@@ -14,19 +14,19 @@ from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers import _compose_tr
 
 from packages.nemo_evaluator_sdk.tests.agent_eval._compose_testkit import _compose_suffix, _create, _provider, _Runner
 
-_FILE_PARENT_CREATED = "__NEMO_COMPOSE_FILE_PARENT_CREATED__"
-_FILE_PARENT_OPERATION = "nemo-compose-file-parent"
+_FILE_TARGET_OPERATION = "nemo-compose-file-target"
 
 
-def _assert_file_parent_operation(command: tuple[str, ...], parent: str) -> None:
-    assert command[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c")
-    script, operation, parent_arg, identity = command[7:]
-    assert operation == _FILE_PARENT_OPERATION
+def _assert_file_target_operation(command: tuple[str, ...], parent: str, target: str) -> None:
+    assert command[:5] == ("exec", "--no-TTY", "agent", "sh", "-c")
+    script, operation, parent_arg, target_arg = command[5:]
+    assert operation == _FILE_TARGET_OPERATION
     assert parent_arg == parent
-    assert identity == "1001:1002"
+    assert target_arg == target
     assert parent not in script
-    assert identity not in script
-    assert 'chown -h "$identity" -- "$parent"' in script
+    assert target not in script
+    assert 'mkdir -p "$parent"' in script
+    assert '[ -L "$target" ]' in script
 
 
 @pytest.mark.parametrize(
@@ -60,7 +60,7 @@ def test_upload_target_validation_normalizes_once() -> None:
     assert compose_transfer._normalized_upload_target("ignored/../work", directory=True) == "/work"
 
 
-async def test_exec_transfer_and_status_target_configured_service(
+async def test_upload_file_prepares_parent_as_runtime_user(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -68,31 +68,29 @@ async def test_exec_transfer_and_status_target_configured_service(
     provider = _provider(tmp_path)
     handle = await _create(monkeypatch, provider, runner)
 
-    result = await provider.exec(handle, "echo ok", cwd="/work", env={"A": "b"}, stdin=b"x")
-    assert result.ok
     source = tmp_path / "seed.txt"
     source.write_text("seed", encoding="utf-8")
     transfer_start = len(runner.calls)
     await provider.upload_file(handle, source, "/missing/parent/seed.txt")
-    await provider.download_file(handle, "/work/out.txt", tmp_path / "out" / "out.txt")
-    assert await provider.status(handle) == SandboxStatus.RUNNING
 
-    suffixes = [_compose_suffix(argv) for argv, _, _ in runner.calls if argv[:2] == ("docker", "compose")]
-    assert any(args[-4:] == ("agent", "sh", "-lc", "echo ok") for args in suffixes)
     transfer_suffixes = [
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
-    assert transfer_suffixes[0] == (
-        "exec",
-        "--no-TTY",
-        "agent",
-        "sh",
-        "-c",
-        'printf "%s:%s" "$(id -u)" "$(id -g)"',
+    _assert_file_target_operation(
+        transfer_suffixes[0],
+        "/missing/parent",
+        "/missing/parent/seed.txt",
     )
-    _assert_file_parent_operation(transfer_suffixes[1], "/missing/parent")
-    assert transfer_suffixes[2:4] == [
+    assert transfer_suffixes[1:] == [
         ("cp", str(source), "agent:/missing/parent/seed.txt"),
+        (
+            "exec",
+            "--no-TTY",
+            "agent",
+            "sh",
+            "-c",
+            'printf "%s:%s" "$(id -u)" "$(id -g)"',
+        ),
         (
             "exec",
             "--no-TTY",
@@ -105,6 +103,30 @@ async def test_exec_transfer_and_status_target_configured_service(
             "/missing/parent/seed.txt",
         ),
     ]
+    assert not any(
+        args[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c")
+        and ("mkdir" in args[7] or "chown" in args[7] or "chmod" in args[7])
+        for args in transfer_suffixes
+    )
+    await provider.close(handle)
+
+
+async def test_exec_download_and_status_target_configured_service(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+
+    result = await provider.exec(handle, "echo ok", cwd="/work", env={"A": "b"}, stdin=b"x")
+    await provider.download_file(handle, "/work/out.txt", tmp_path / "out" / "out.txt")
+
+    assert result.ok
+    assert await provider.status(handle) == SandboxStatus.RUNNING
+    suffixes = [_compose_suffix(argv) for argv, _, _ in runner.calls if argv[:2] == ("docker", "compose")]
+    assert any(args[-4:] == ("agent", "sh", "-lc", "echo ok") for args in suffixes)
+    assert ("cp", "agent:/work/out.txt", str(tmp_path / "out" / "out.txt")) in suffixes
     await provider.close(handle)
 
 
@@ -164,17 +186,21 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
     suffixes = [
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
-    assert suffixes[0] == (
-        "exec",
-        "--no-TTY",
-        "agent",
-        "sh",
-        "-c",
-        'printf "%s:%s" "$(id -u)" "$(id -g)"',
+    _assert_file_target_operation(
+        suffixes[0],
+        "/missing/parent",
+        "/missing/parent/seed.txt",
     )
-    _assert_file_parent_operation(suffixes[1], "/missing/parent")
-    assert suffixes[2:4] == [
+    assert suffixes[1:4] == [
         ("cp", str(source_file), "agent:/missing/parent/seed.txt"),
+        (
+            "exec",
+            "--no-TTY",
+            "agent",
+            "sh",
+            "-c",
+            'printf "%s:%s" "$(id -u)" "$(id -g)"',
+        ),
         (
             "exec",
             "--no-TTY",
@@ -187,6 +213,7 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
             "/missing/parent/seed.txt",
         ),
     ]
+    _assert_file_target_operation(suffixes[4], "/", "/root-seed.txt")
     assert ("cp", str(source_file), "agent:/root-seed.txt") in suffixes
     assert (
         "exec",
@@ -220,7 +247,7 @@ async def test_upload_file_derives_parent_from_normalized_target(
     suffixes = [
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
-    assert not any(args[-3:] == ("-p", "--", "/") for args in suffixes)
+    _assert_file_target_operation(suffixes[0], "/", "/root-seed.txt")
     assert ("cp", str(source), "agent:/root-seed.txt") in suffixes
     assert (
         "exec",
@@ -253,17 +280,21 @@ async def test_upload_file_does_not_repair_a_preexisting_parent(
     suffixes = [
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
-    assert suffixes[0] == (
-        "exec",
-        "--no-TTY",
-        "agent",
-        "sh",
-        "-c",
-        'printf "%s:%s" "$(id -u)" "$(id -g)"',
+    _assert_file_target_operation(
+        suffixes[0],
+        "/existing/parent",
+        "/existing/parent/seed.txt",
     )
-    _assert_file_parent_operation(suffixes[1], "/existing/parent")
-    assert suffixes[2:] == [
+    assert suffixes[1:] == [
         ("cp", str(source), "agent:/existing/parent/seed.txt"),
+        (
+            "exec",
+            "--no-TTY",
+            "agent",
+            "sh",
+            "-c",
+            'printf "%s:%s" "$(id -u)" "$(id -g)"',
+        ),
         (
             "exec",
             "--no-TTY",
@@ -280,27 +311,22 @@ async def test_upload_file_does_not_repair_a_preexisting_parent(
 
 
 @pytest.mark.parametrize(
-    ("return_code", "stdout", "stderr", "timed_out"),
+    ("return_code", "stderr", "timed_out"),
     [
-        (1, "", "token=sensitive-value", False),
-        (2, "", "", False),
-        (0, "", "", False),
-        (0, "unexpected-parent-result", "", False),
-        (0, f"{_FILE_PARENT_CREATED}\n", "", False),
-        (0, _FILE_PARENT_CREATED, "token=sensitive-value", False),
-        (0, _FILE_PARENT_CREATED, "", True),
+        (1, "token=sensitive-value", False),
+        (2, "", False),
+        (0, "", True),
     ],
 )
-async def test_upload_file_stops_after_unconfirmed_parent_preparation(
+async def test_upload_file_preparation_failure_stops_before_copy(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     return_code: int,
-    stdout: str,
     stderr: str,
     timed_out: bool,
 ) -> None:
     runner = _Runner()
-    runner.parent_prepare_result = (return_code, stdout, stderr, timed_out)
+    runner.file_prepare_result = (return_code, "", stderr, timed_out)
     provider = _provider(tmp_path, environment_defaults={"TEST_TOKEN": "sensitive-value"})
     handle = await _create(monkeypatch, provider, runner)
     source = tmp_path / "seed.txt"
@@ -314,25 +340,23 @@ async def test_upload_file_stops_after_unconfirmed_parent_preparation(
     suffixes = [
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
-    assert suffixes[0] == (
-        "exec",
-        "--no-TTY",
-        "agent",
-        "sh",
-        "-c",
-        'printf "%s:%s" "$(id -u)" "$(id -g)"',
+    _assert_file_target_operation(
+        suffixes[0],
+        "/existing/parent",
+        "/existing/parent/seed.txt",
     )
-    _assert_file_parent_operation(suffixes[1], "/existing/parent")
-    assert len(suffixes) == 2
+    assert len(suffixes) == 1
     await provider.close(handle)
 
 
-async def test_upload_file_rejects_a_parent_replaced_during_preparation(
+@pytest.mark.parametrize("target_kind", ["directory", "symlink", "other"])
+async def test_upload_file_rejects_unsafe_exact_target_before_copy(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    target_kind: str,
 ) -> None:
     runner = _Runner()
-    runner.parent_replaced_during_preparation = True
+    runner.file_target_kinds["/existing/parent/seed.txt"] = target_kind
     provider = _provider(tmp_path)
     handle = await _create(monkeypatch, provider, runner)
     source = tmp_path / "seed.txt"
@@ -340,17 +364,21 @@ async def test_upload_file_rejects_a_parent_replaced_during_preparation(
     transfer_start = len(runner.calls)
 
     with pytest.raises(RuntimeError, match="Compose upload target preparation failed"):
-        await provider.upload_file(handle, source, "/replaced/parent/seed.txt")
+        await provider.upload_file(handle, source, "/existing/parent/seed.txt")
 
     suffixes = [
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
     assert not any(args[:1] == ("cp",) for args in suffixes)
-    assert not any(args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "chown") for args in suffixes)
+    assert not any(
+        args[:5] == ("exec", "--no-TTY", "--user", "0", "agent")
+        and any("chown" in arg or "chmod" in arg for arg in args[5:])
+        for args in suffixes
+    )
     await provider.close(handle)
 
 
-async def test_second_file_upload_treats_the_created_parent_as_existing(
+async def test_repeated_file_upload_never_repairs_the_parent_as_root(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -372,11 +400,20 @@ async def test_second_file_upload_treats_the_created_parent_as_existing(
     parent_operations = [
         args
         for args in suffixes
-        if args[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c") and args[-3] == _FILE_PARENT_OPERATION
+        if args[:5] == ("exec", "--no-TTY", "agent", "sh", "-c") and args[-3] == _FILE_TARGET_OPERATION
     ]
     assert len(parent_operations) == 2
     assert runner.directories == {"/shared/parent"}
-    assert runner.parent_ownership_repairs == [("/shared/parent", "1001:1002")]
+    assert runner.prepared_file_targets == [
+        ("/shared/parent", "/shared/parent/first.txt"),
+        ("/shared/parent", "/shared/parent/second.txt"),
+    ]
+    assert not any(
+        args[:5] == ("exec", "--no-TTY", "--user", "0", "agent")
+        and "/shared/parent" == args[-1]
+        and any("chown" in arg or "chmod" in arg for arg in args[5:])
+        for args in suffixes
+    )
     assert [args for args in suffixes if args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "chown")] == [
         (
             "exec",
@@ -461,7 +498,7 @@ async def test_upload_failures_are_ordered_and_redacted(
             assert suffixes[-1][:1] == ("cp",)
             assert not any(args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "chown") for args in suffixes)
         elif failure == "identity":
-            assert not any(args[:1] == ("cp",) for args in suffixes)
+            assert any(args[:1] == ("cp",) for args in suffixes)
             assert not any("chown" in args for args in suffixes)
     finally:
         runner.failures.clear()

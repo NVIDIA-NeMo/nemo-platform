@@ -17,29 +17,15 @@ from ._compose_cli import _ComposeCli
 from ._compose_contracts import ComposeCommandResult
 from ._compose_state import _ComposeSession
 
-_FILE_PARENT_CREATED = "__NEMO_COMPOSE_FILE_PARENT_CREATED__"
-_FILE_PARENT_EXISTING = "__NEMO_COMPOSE_FILE_PARENT_EXISTING__"
-_FILE_PARENT_OPERATION = "nemo-compose-file-parent"
-_PREPARE_FILE_PARENT_SCRIPT = """\
+_FILE_TARGET_OPERATION = "nemo-compose-file-target"
+_PREPARE_FILE_TARGET_SCRIPT = """\
 parent=$1
-identity=$2
-ancestor=${parent%/*}
-[ -n "$ancestor" ] || ancestor=/
-mkdir -p -- "$ancestor" || exit 1
-cursor=$ancestor
-while [ "$cursor" != / ]; do
-    [ -d "$cursor" ] && [ ! -L "$cursor" ] || exit 1
-    cursor=${cursor%/*}
-    [ -n "$cursor" ] || cursor=/
-done
-if mkdir -- "$parent" 2>/dev/null; then
-    [ -d "$parent" ] && [ ! -L "$parent" ] || exit 1
-    chown -h "$identity" -- "$parent" || exit 1
-    [ -d "$parent" ] && [ ! -L "$parent" ] || exit 1
-    printf '%s' '__NEMO_COMPOSE_FILE_PARENT_CREATED__'
-elif [ -d "$parent" ] && [ ! -L "$parent" ]; then
-    printf '%s' '__NEMO_COMPOSE_FILE_PARENT_EXISTING__'
-else
+target=$2
+mkdir -p "$parent" || exit 1
+if [ -L "$target" ] || [ -d "$target" ]; then
+    exit 1
+fi
+if [ -e "$target" ] && [ ! -f "$target" ]; then
     exit 1
 fi
 """
@@ -70,43 +56,42 @@ async def _run_target_root(
     )
 
 
-async def _prepare_file_parent(
+async def _prepare_file_target(
     cli: _ComposeCli,
     session: _ComposeSession,
     parent: str,
-    identity: str,
+    target: str,
     *,
     command_timeout_seconds: float,
 ) -> None:
-    """Atomically classify a file parent and repair only a directory this operation creates.
-
-    The target shell receives all dynamic values as positional arguments. Its exact
-    sentinel is accepted only after the complete create/classify operation succeeds.
+    """Prepare and validate a file target as the configured service user.
 
     Args:
         cli: Command gateway bound to the active Compose lifecycle.
         session: Active lifecycle identifying the target service and environment.
         parent: Normalized absolute parent path for the uploaded file.
-        identity: Numeric target-service ``UID:GID``.
-        command_timeout_seconds: Deadline for the privileged operation.
+        target: Normalized absolute file path to validate.
+        command_timeout_seconds: Deadline for target preparation.
 
     Raises:
-        RuntimeError: If the operation fails, times out, or emits unexpected output.
+        RuntimeError: If the service user cannot prepare a safe exact target.
     """
-    result = await _run_target_root(
-        cli,
-        session,
+    result = await cli.run_compose(
         [
+            "exec",
+            "--no-TTY",
+            session.target_service,
             "sh",
             "-c",
-            _PREPARE_FILE_PARENT_SCRIPT,
-            _FILE_PARENT_OPERATION,
+            _PREPARE_FILE_TARGET_SCRIPT,
+            _FILE_TARGET_OPERATION,
             parent,
-            identity,
+            target,
         ],
-        command_timeout_seconds=command_timeout_seconds,
+        environment=session.environment,
+        timeout=command_timeout_seconds,
     )
-    if not result.ok or result.stderr or result.stdout not in {_FILE_PARENT_CREATED, _FILE_PARENT_EXISTING}:
+    if not result.ok:
         raise RuntimeError(
             cli.failure_message(
                 "Compose upload target preparation failed",
@@ -146,36 +131,29 @@ async def _copy_to_service(
     """
     container_target = _normalized_upload_target(target, directory=directory)
     remote_directory = container_target if directory else posixpath.dirname(container_target)
-    if remote_directory != "/":
-        if directory:
-            prepared = await _run_target_root(
-                cli,
-                session,
-                ["mkdir", "-p", "--", remote_directory],
-                command_timeout_seconds=command_timeout_seconds,
-            )
-            if not prepared.ok:
-                raise RuntimeError(
-                    cli.failure_message(
-                        "Compose upload target preparation failed",
-                        prepared,
-                        session.environment,
-                    )
+    if directory:
+        prepared = await _run_target_root(
+            cli,
+            session,
+            ["mkdir", "-p", "--", remote_directory],
+            command_timeout_seconds=command_timeout_seconds,
+        )
+        if not prepared.ok:
+            raise RuntimeError(
+                cli.failure_message(
+                    "Compose upload target preparation failed",
+                    prepared,
+                    session.environment,
                 )
-        else:
-            if session.target_identity is None:
-                session.target_identity = await _target_identity(
-                    cli,
-                    session,
-                    command_timeout_seconds=command_timeout_seconds,
-                )
-            await _prepare_file_parent(
-                cli,
-                session,
-                remote_directory,
-                session.target_identity,
-                command_timeout_seconds=command_timeout_seconds,
             )
+    else:
+        await _prepare_file_target(
+            cli,
+            session,
+            remote_directory,
+            container_target,
+            command_timeout_seconds=command_timeout_seconds,
+        )
     copy_source = f"{source}{os.sep}." if directory else str(source)
     result = await cli.run_compose(
         ["cp", copy_source, f"{session.target_service}:{container_target}"],
