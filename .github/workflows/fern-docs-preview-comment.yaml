@@ -104,7 +104,6 @@ jobs:
           PREVIEW_ID: ${{ steps.metadata.outputs.preview_id }}
         working-directory: ./docs/fern
         run: |
-          npm --prefix docs/fern run prepare
           set +e
           OUTPUT=$(npx -y fern-api@latest generate --docs --preview --id "$PREVIEW_ID" 2>&1)
           STATUS=$?
