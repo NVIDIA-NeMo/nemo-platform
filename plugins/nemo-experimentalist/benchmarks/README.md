@@ -64,10 +64,10 @@ A canonical ID is `tau3-bench__` plus the name Harbor's `adapters/tau3-bench` gi
 the task, `tau3-<domain>-<slugified upstream task ID>`. Running that adapter's naming
 rule over a `tau2-bench` checkout reproduces the banking manifest exactly, and its
 `adapter_metadata.json` records the same per-domain counts this directory claims
-(`airline=50, retail=114, telecom=114, banking_knowledge=97`). Those two checks agree
-on every ID and count, but neither is the published package: only
-`run.py --validate-only` compares a manifest against the Hub, and banking is the one
-domain the adapter enumerates from a task directory rather than from
+(`airline=50, retail=114, telecom=114, banking_knowledge=97`). The naming rule accounts
+for every ID and that metadata for every count, but neither is the published package:
+only `run.py --validate-only` compares a manifest against the Hub, and banking is the
+one domain the adapter enumerates from a task directory rather than from
 `split_tasks.json`, so reproducing it does not exercise that selection path.
 
 Every fast partition is 6/3/3. Banking picks from a filtered subset; the other three
