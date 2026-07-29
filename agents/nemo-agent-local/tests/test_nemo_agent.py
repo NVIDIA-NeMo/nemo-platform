@@ -466,7 +466,7 @@ class TestAgentGraph:
         assert SKILLS_DIR.name == "skills"
 
     def test_create_agent_passes_backend_visible_skills(self, mock_graph):
-        from deepagents.middleware.skills import _list_skills_with_errors
+        from deepagents.middleware.skills import _list_skills_with_errors  # ty: ignore[unresolved-import]
 
         graph = create_nemo_agent()
         assert graph is not None

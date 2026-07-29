@@ -1523,10 +1523,7 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
                                         {
                                             "type": "tool_use",
                                             "id": f"tool-{uuid.uuid4()}",
-                                            "name": (
-                                                f"mcp__{CLAUDE_MCP_SERVER_NAME}__"
-                                                f"{JOB_PROGRESS_TOOL_NAME}"
-                                            ),
+                                            "name": (f"mcp__{CLAUDE_MCP_SERVER_NAME}__{JOB_PROGRESS_TOOL_NAME}"),
                                             "input": args,
                                         }
                                     ],

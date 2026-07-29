@@ -1699,8 +1699,7 @@ def test_platform_route_stream_uses_deployed_nemo_agent(monkeypatch: pytest.Monk
     assert "event: done" in response.text
     assert captured["session_id"] == session_id
     assert captured["agent_url"] == (
-        "http://testserver/apis/agents/v2/workspaces/default/"
-        "agents/nemo-agent-local-poc/-/v1/chat/completions"
+        "http://testserver/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
     )
     assert captured["headers"] == {}
     assert captured["message"] == "hello"

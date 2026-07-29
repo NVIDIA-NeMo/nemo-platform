@@ -13,8 +13,12 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from deepagents import create_deep_agent
-from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+from deepagents import create_deep_agent  # ty: ignore[unresolved-import]
+from deepagents.backends import (  # ty: ignore[unresolved-import]
+    CompositeBackend,
+    FilesystemBackend,
+    StateBackend,
+)
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.tools import tool
 from nemo_platform import NeMoPlatform
