@@ -27,23 +27,36 @@ def _load_runner() -> ModuleType:
     return module
 
 
-def test_shipped_suite_covers_canonical_count_and_fast_subset() -> None:
+@pytest.mark.parametrize(
+    "suite_path",
+    sorted((BENCHMARK_ROOT / "suites").glob("*.yaml")),
+    ids=lambda path: path.stem,
+)
+def test_shipped_suite_agrees_with_its_own_partitions(suite_path: Path) -> None:
+    """Check each manifest against the runner's canonical rules, minus the live Hub.
+
+    Substituting the quality partition for the Hub's task list still catches an
+    ``expected_task_count`` that disagrees with the split, a fast entry outside the
+    domain, and overlapping splits — the ways a hand-written manifest goes wrong.
+    """
     runner = _load_runner()
-    suite = runner.load_suite(BENCHMARK_ROOT / "suites" / "terminal-bench-2.1.yaml")
-    canonical_ids = set(suite.partitions.quality.all_ids())
+    suite = runner.load_suite(suite_path)
 
     runner.validate_canonical_suite(
         suite,
-        canonical_task_ids=canonical_ids,
+        canonical_task_ids=set(suite.partitions.quality.all_ids()),
         resolved_ref=suite.dataset.resolved_ref,
     )
 
-    assert len(suite.partitions.quality.train) == 38
-    assert len(suite.partitions.quality.validation) == 25
-    assert len(suite.partitions.quality.test) == 26
-    assert len(suite.partitions.fast.train) == 35
-    assert len(suite.partitions.fast.validation) == 12
-    assert len(suite.partitions.fast.test) == 12
+    assert suite.framework_skills_dirs(PLUGIN_ROOT)
+
+
+def test_terminal_bench_suite_corrects_the_upstream_task_id() -> None:
+    runner = _load_runner()
+    suite = runner.load_suite(BENCHMARK_ROOT / "suites" / "terminal-bench-2.1.yaml")
+
+    canonical_ids = set(suite.partitions.quality.all_ids())
+
     assert "install-windows-3.11" in canonical_ids
     assert "install-windows-3-11" not in canonical_ids
 
