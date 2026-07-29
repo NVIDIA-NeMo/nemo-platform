@@ -1,0 +1,14 @@
+[
+  {
+    "input_message": "Create a workspace called 'test-workspace' with description 'A workspace for testing'",
+    "expected_output": "workspace created successfully"
+  },
+  {
+    "input_message": "List all workspaces on the platform",
+    "expected_output": "list of workspaces"
+  },
+  {
+    "input_message": "List the available models and inference providers using the platform API.",
+    "expected_output": "list of available models and inference providers"
+  }
+]

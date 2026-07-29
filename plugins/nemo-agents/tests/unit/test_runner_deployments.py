@@ -135,6 +135,7 @@ def test_build_deployment_config_always_single_container() -> None:
         image="nat-runtime:latest",
         port=8000,
         nat_config={"llms": {"nim": {"_type": "nim"}}},
+        platform_base_url="http://host.docker.internal:8080",
         config_mount_path="/workspace/config.yaml",
         mode="docker",
     )
@@ -145,6 +146,7 @@ def test_build_deployment_config_always_single_container() -> None:
     # Docker materializes config from NAT_CONFIG_YAML because config_files are not mounted.
     assert container.command == ["sh", "-c"]
     assert any(e.name == "NAT_CONFIG_YAML" for e in container.env)
+    assert next(e.value for e in container.env if e.name == "NMP_BASE_URL") == "http://host.docker.internal:8080"
     assert container.readiness_probe is not None
     assert cfg.init_containers == []
     assert len(cfg.config_files) == 1
@@ -160,6 +162,7 @@ def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:
         image="nat-runtime:latest",
         port=8000,
         nat_config={},
+        platform_base_url="http://nmp-api:8080",
         config_mount_path="/workspace/config.yaml",
         mode="k8s",
     )
@@ -175,6 +178,7 @@ def test_build_deployment_config_k8s_option_b_when_image_set() -> None:
         image="nat-runtime:latest",
         port=8000,
         nat_config={},
+        platform_base_url="http://nmp-api:8080",
         config_mount_path="/workspace/config.yaml",
         mode="k8s",
         plugin_wheels_init_image="busybox:1.36",
@@ -191,6 +195,7 @@ def test_build_deployment_config_docker_never_emits_init_containers() -> None:
         image="nat-runtime:latest",
         port=8000,
         nat_config={},
+        platform_base_url="http://host.docker.internal:8080",
         config_mount_path="/workspace/config.yaml",
         mode="docker",
         plugin_wheels_init_image="busybox:1.36",
@@ -254,6 +259,9 @@ async def test_create_deployment_docker_rewrites_loopback_base_url() -> None:
     assert baked["llms"]["llm"]["base_url"] == (
         "http://host.docker.internal:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
     )
+    assert next(e.value for e in created_config.containers[0].env if e.name == "NMP_BASE_URL") == (
+        "http://host.docker.internal:8080"
+    )
 
 
 @pytest.mark.asyncio
@@ -283,6 +291,7 @@ async def test_create_deployment_k8s_rewrites_loopback_to_internal() -> None:
     assert baked["llms"]["llm"]["base_url"] == (
         "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
     )
+    assert next(e.value for e in created_config.containers[0].env if e.name == "NMP_BASE_URL") == "http://nmp-api:8080"
 
 
 @pytest.mark.asyncio

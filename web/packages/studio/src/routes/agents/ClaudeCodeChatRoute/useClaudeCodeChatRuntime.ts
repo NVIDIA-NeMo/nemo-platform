@@ -674,7 +674,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       } catch (error: unknown) {
         dispatchBlocking({ type: 'set_input_status', status: 'pending' });
         const errorMessage =
-          error instanceof Error ? error.message : 'Failed to resolve Claude Code input';
+          error instanceof Error ? error.message : 'Failed to resolve NeMo Agent input';
         onError?.(new Error(errorMessage));
       }
     },
@@ -716,7 +716,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       } catch (error: unknown) {
         dispatchBlocking({ type: 'set_decision_status', status: 'pending' });
         const errorMessage =
-          error instanceof Error ? error.message : 'Failed to resolve Claude Code permission';
+          error instanceof Error ? error.message : 'Failed to resolve NeMo Agent permission';
         onError?.(new Error(errorMessage));
         return false;
       }

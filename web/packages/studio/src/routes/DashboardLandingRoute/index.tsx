@@ -68,10 +68,10 @@ const LandingComposer = ({
       data-tour="dashboard-get-started"
     >
       <TextArea
-        aria-label="Message Claude"
+        aria-label="Message NeMo Agent"
         value={input}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}
-        placeholder="Message Claude"
+        placeholder="Message NeMo Agent"
         rows={3}
         resizeable="auto"
         className="max-h-56 w-full border-0 bg-transparent shadow-none focus-within:outline-none focus-within:ring-0 [&:has(:focus-visible)]:outline-none [&:has(:focus-visible)]:ring-0"
@@ -86,7 +86,7 @@ const LandingComposer = ({
       <Flex className="flex items-center justify-between gap-3 px-1 pt-2">
         <Flex className="flex items-center gap-2 text-secondary">
           <Terminal size={16} />
-          <Text kind="body/regular/sm">Claude Code</Text>
+          <Text kind="body/regular/sm">NeMo Agent</Text>
         </Flex>
         <Tooltip slotContent="Send">
           <Button

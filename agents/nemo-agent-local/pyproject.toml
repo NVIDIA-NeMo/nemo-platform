@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "builtin-nemo-agent"
+version = "0.1.0"
+description = "Built-in NeMo Platform agent — a LangChain Deep Agent that uses the NeMo SDK to perform platform tasks."
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "nvidia-nat-core>=1.8.0,<1.9",
+    "nvidia-nat-langchain>=1.8.0,<1.9",
+    "nemo-platform",
+    "deepagents",
+    "langchain-openai",
+    "langchain-core",
+    "httpx",
+]
+
+[project.entry-points."nat.components"]
+nemo_agents_nemo_agent = "nemo_agent.register"
+# Custom NAT workflow type that wraps the nemo-agent graph with permissive
+# input/output schemas. See src/nemo_agent/wrapper.py for the full rationale —
+# in short, NAT 1.6.0's stock `langgraph_wrapper` doesn't accept the
+# `{"input_message": ...}` shape that `nvidia-nat-eval` posts and crashes on
+# deep-agent state deltas that don't carry `messages`.
+nemo_agents_nemo_agent_wrapper = "nemo_agent.wrapper"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_agent"]

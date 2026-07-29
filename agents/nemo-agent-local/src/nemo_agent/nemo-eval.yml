@@ -1,0 +1,99 @@
+# Eval config for the built-in nemo-agent.
+#
+# Uses the custom `nemo_agent_wrapper` workflow type (defined in
+# src/nemo_agent/wrapper.py) so the same config works whether the agent runs
+# inline (no --agent) or against the deployed agent's `/generate/full` endpoint
+# (--agent nemo-agent). The wrapper accepts both the `{"messages": [...]}`
+# shape used by chat clients and the `{"input_message": "..."}` shape that
+# `nvidia-nat-eval`'s remote workflow client posts to `/generate/full`.
+#
+# base_url and api_key for both LLMs are auto-injected by EvaluateAgentJob,
+# routing through the platform inference gateway. See:
+#   plugins/nemo-agents/src/nemo_agents_plugin/utils.py::inject_gateway_url
+#
+# Run inline (in-process, no deployed agent needed):
+#   nemo agents evaluate run \
+#       --eval-config plugins/nemo-agents/builtin_agents/nemo-agent/src/nemo_agent/nemo-eval.yml \
+#       --output ./eval-out
+#
+# Run against the deployed agent (requires `nemo agents deploy nemo-agent`):
+#   nemo agents evaluate run \
+#       --eval-config plugins/nemo-agents/builtin_agents/nemo-agent/src/nemo_agent/nemo-eval.yml \
+#       --agent nemo-agent \
+#       --output ./eval-out
+
+llms:
+  agent:
+    _type: openai
+    # `base_url` and `api_key` are auto-injected by EvaluateAgentJob unless
+    # already set, routing this LLM through the platform Inference Gateway.
+    # See plugins/nemo-agents/src/nemo_agents_plugin/utils.py::inject_gateway_url
+    model_name: nvidia-nemotron-3-super-120b-a12b
+
+  judge_llm:
+    _type: openai
+    model_name: aws-anthropic-bedrock-claude-opus-4-7
+    # NOTE: do not set `temperature` for this model — Bedrock claude-opus-4-7
+    # returns 400 with "`temperature` is deprecated for this model." for any
+    # value (including 0.0 / 0.001).
+    max_tokens: 1024
+
+  # ─── Bypassing the Inference Gateway ──────────────────────────────────────
+  # To run the eval against NVIDIA's hosted inference directly (no platform
+  # Inference Gateway in the loop), set `base_url` and `api_key` explicitly
+  # on each LLM. Because the auto-injection uses setdefault semantics, fields
+  # you set here are left alone. Use the *served* model name (slashes) — the
+  # gateway-mapped entity name (`aws-anthropic-bedrock-claude-opus-4-7`) is
+  # only meaningful when something resolves it back to the upstream model.
+  #
+  # Caveat: the agent's tools (`nemo_api`, `check_status`) still call platform
+  # APIs via the Python SDK for any task that touches
+  # workspaces, secrets, providers, etc. To run a "fully self-contained"
+  # eval, the dataset would also need to consist of pure-LLM questions that
+  # don't exercise those tools — most of `nemo-eval-data.json` does. So
+  # bypassing the gateway works as an LLM-only smoke test, not as a full
+  # platform-management eval.
+  #
+  #   agent:
+  #     _type: openai
+  #     base_url: https://inference-api.nvidia.com/v1
+  #     api_key: ${INFERENCE_NVIDIA_API_KEY}     # `sk-…` LiteLLM virtual key
+  #     model_name: aws/anthropic/bedrock-claude-opus-4-7
+  #
+  #   judge_llm:
+  #     _type: openai
+  #     base_url: https://inference-api.nvidia.com/v1
+  #     api_key: ${INFERENCE_NVIDIA_API_KEY}
+  #     model_name: aws/anthropic/bedrock-claude-opus-4-7
+  #     max_tokens: 1024
+
+workflow:
+  _type: nemo_agent_wrapper
+  description: NeMo Platform assistant using LangChain Deep Agents
+
+eval:
+  general:
+    max_concurrency: 1
+    output_dir: eval/nemo-agent
+    dataset:
+      _type: json
+      file_path: nemo-eval-data.json
+      structure:
+        question_key: input_message
+        answer_key: expected_output
+  evaluators:
+    accuracy:
+      _type: tunable_rag_evaluator
+      llm_name: judge_llm
+      default_scoring: true
+      default_score_weights:
+        coverage: 0.5
+        correctness: 0.3
+        relevance: 0.2
+      judge_llm_prompt: >
+        You are an evaluator. Score whether the generated answer correctly
+        addresses the question compared to the expected answer description.
+        Rules:
+        - Score is a float between 0.0 and 1.0.
+        - 1.0 means the answer fully satisfies the expected answer criteria.
+        - Provide a 1-2 sentence reasoning.

@@ -1,0 +1,10 @@
+---
+name: entities
+description: NeMo Platform model and dataset CRUD lifecycle through the platform SDK, with strict field matching on final verification entities.
+---
+Entity tasks
+
+- Use `nemo_api` with the `models` or `datasets` resource as appropriate.
+- Use the exact entity type and name from the instruction.
+- For model/dataset CRUD, create the temporary entity, verify/list/update/delete it, then create the final verification entity.
+- Keep JSON params valid and compact. Final dataset checks often require fields such as `format` and `size` to match exactly.

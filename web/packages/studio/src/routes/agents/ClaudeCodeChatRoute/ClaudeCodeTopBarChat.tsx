@@ -13,8 +13,8 @@ import { type FC, type MouseEvent, useCallback, useEffect, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 
-const OPEN_LABEL = 'Open Code Agent chat';
-const CLOSE_LABEL = 'Close Code Agent chat';
+const OPEN_LABEL = 'Open NeMo Agent chat';
+const CLOSE_LABEL = 'Close NeMo Agent chat';
 
 const TopBarChatIcon = () => <Terminal size={16} />;
 

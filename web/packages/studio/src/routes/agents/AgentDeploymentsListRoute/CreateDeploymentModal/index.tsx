@@ -17,16 +17,30 @@ import { type FC, useEffect } from 'react';
 import { type SubmitHandler, useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-const deploymentFormSchema = z.object({
-  name: z.string().optional(),
-  agent: z.string().min(1, 'Agent is required'),
-});
+const deploymentFormSchema = z
+  .object({
+    name: z.string().optional(),
+    agent: z.string().min(1, 'Agent is required'),
+    deploymentMode: z.enum(['subprocess', 'docker', 'k8s']),
+    image: z.string().optional(),
+  })
+  .superRefine(({ deploymentMode, image }, context) => {
+    if (deploymentMode !== 'subprocess' && !image?.trim()) {
+      context.addIssue({
+        code: 'custom',
+        path: ['image'],
+        message: 'Container image is required for Docker and Kubernetes deployments',
+      });
+    }
+  });
 
 type DeploymentFormData = z.infer<typeof deploymentFormSchema>;
 
 const makeDefaultValues = (agent?: string): DeploymentFormData => ({
   name: '',
   agent: agent ?? '',
+  deploymentMode: 'subprocess',
+  image: '',
 });
 
 interface CreateDeploymentModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
@@ -75,6 +89,8 @@ export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
       data: {
         agent: data.agent,
         ...(data.name ? { name: data.name } : {}),
+        deployment_mode: data.deploymentMode,
+        ...(data.deploymentMode !== 'subprocess' && data.image ? { image: data.image.trim() } : {}),
       },
     });
 
@@ -82,6 +98,7 @@ export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
     control,
     reset: resetForm,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(deploymentFormSchema),
@@ -89,6 +106,7 @@ export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
     disabled: isPending,
     mode: 'onChange',
   });
+  const deploymentMode = watch('deploymentMode');
 
   useEffect(() => {
     resetForm(makeDefaultValues(agentProp));
@@ -139,6 +157,31 @@ export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
             slotError: errors.name?.message,
           }}
         />
+        <ControlledSelect
+          useControllerProps={{ control, name: 'deploymentMode' }}
+          items={[
+            { value: 'subprocess', children: 'Subprocess' },
+            { value: 'docker', children: 'Docker' },
+            { value: 'k8s', children: 'Kubernetes' },
+          ]}
+          formFieldProps={{
+            slotLabel: 'Runtime',
+            slotInfo:
+              'Use Docker for a local container image or Kubernetes for a cluster deployment.',
+          }}
+        />
+        {deploymentMode !== 'subprocess' && (
+          <ControlledTextInput
+            useControllerProps={{ control, name: 'image' }}
+            name="image"
+            label="Container Image"
+            placeholder="nvcr.io/org/team/agent:tag"
+            formFieldProps={{
+              slotError: errors.image?.message,
+              slotInfo: 'The backend pulls this image using its configured registry credentials.',
+            }}
+          />
+        )}
         {!agentProp && (
           <ControlledSelect
             useControllerProps={{ control, name: 'agent' }}

@@ -26,11 +26,15 @@ def reset_coding_agent_state():
     coding_agents._session_streams.clear()
     coding_agents._pending_permissions.clear()
     coding_agents._pending_agent_inputs.clear()
+    coding_agents._session_conversations.clear()
+    coding_agents._session_mtimes.clear()
     yield
     coding_agents._initialized_sessions.clear()
     coding_agents._session_streams.clear()
     coding_agents._pending_permissions.clear()
     coding_agents._pending_agent_inputs.clear()
+    coding_agents._session_conversations.clear()
+    coding_agents._session_mtimes.clear()
 
 
 @pytest.fixture
@@ -808,7 +812,7 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
         {},
     )
 
-    assert "Required message-summary behavior:" in prompt
+    assert "Conditional message-summary behavior:" in prompt
     assert coding_agents.STUDIO_MESSAGE_SUMMARY_START in prompt
     assert coding_agents.STUDIO_MESSAGE_SUMMARY_END in prompt
     assert "title: <meaningful 3-7 word title" in prompt
@@ -818,15 +822,34 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
     assert "behind a 'worked for <time>' accordion" in prompt
     assert "Never end a message with only a plain-text question" in prompt
     assert "call the matching select_* tool before completing the message" in prompt
-    assert "use Claude Code's AskUserQuestion tool" in prompt
-    assert "For AskUserQuestion, provide input shaped as" in prompt
+    assert "ask one concise plain-text question" in prompt
+    assert "AskUserQuestion" not in prompt
     assert "A timeout, disconnect, or other interactive-tool error is not permission to continue" in prompt
     assert "summary's final sentence MUST state the exact unresolved selection or action" in prompt
     assert "Never show only the investigation result" in prompt
     assert "use a numbered or bulleted list" in prompt
     assert "repeat those links at the bottom of the summary" in prompt
     assert "Put repeated links on separate lines without a heading" in prompt
-    assert "Do not omit the summary block because the message is short." in prompt
+    assert "A summary block is required when you called one or more tools" in prompt
+    assert "For a short informational answer" in prompt
+    assert "omit the summary block entirely" in prompt
+    assert "Do not emit the summary markers with a shortened duplicate" in prompt
+    assert "ask it normally without a summary block" in prompt
+    assert "Do not omit the summary block because the message is short." not in prompt
+
+
+def test_build_nemo_agent_system_prompt_uses_nemo_agent_identity():
+    prompt = coding_agents._build_nemo_agent_system_prompt(
+        str(uuid.uuid4()),
+        "default",
+        "https://studio.test",
+        "/workspaces/default/dashboard/code-agent",
+        {},
+    )
+
+    assert "Your identity in this interface is NeMo Agent." in prompt
+    assert "Claude" not in prompt
+    assert "Code Agent" not in prompt
 
 
 def test_history_summary_reads_model_generated_session_title(tmp_path: Path):
@@ -1631,7 +1654,7 @@ async def test_blocking_mcp_tool_response_streams_keepalives_until_user_responds
         await anext(iterator)
 
 
-def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.MonkeyPatch):
+def test_platform_route_stream_uses_deployed_nemo_agent(monkeypatch: pytest.MonkeyPatch):
     service = StudioService()
     app = FastAPI()
     app.include_router(service.app.router, prefix="/apis/studio")
@@ -1640,19 +1663,26 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
     session_id = str(uuid.uuid4())
     captured: dict[str, Any] = {}
 
-    async def fake_stream(session_id: str, message: str, mcp_url: str, studio_system_prompt: str | None = None):
+    async def fake_stream(
+        session_id: str,
+        message: str,
+        agent_url: str,
+        headers: dict[str, str],
+        studio_system_prompt: str,
+    ):
         captured.update(
             {
                 "session_id": session_id,
                 "message": message,
-                "mcp_url": mcp_url,
+                "agent_url": agent_url,
+                "headers": headers,
                 "studio_system_prompt": studio_system_prompt,
             }
         )
         yield coding_agents._sse(json.dumps({"type": "system", "subtype": "init"}))
         yield coding_agents._sse("", event="done")
 
-    monkeypatch.setattr(coding_agents, "_stream_claude", fake_stream)
+    monkeypatch.setattr(coding_agents, "_stream_nemo_agent", fake_stream)
 
     response = client.post(
         f"/apis/studio/v2/coding-agents/sessions/{session_id}/messages",
@@ -1668,22 +1698,17 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: done" in response.text
     assert captured["session_id"] == session_id
-    assert captured["mcp_url"] == (
-        f"http://testserver/studio/api/coding-agents/mcp/{session_id}"
-        "?workspace=default&studio_base_url=https%3A%2F%2Fstudio.test%2Fstudio"
+    assert captured["agent_url"] == (
+        "http://testserver/apis/agents/v2/workspaces/default/"
+        "agents/nemo-agent-local-poc/-/v1/chat/completions"
     )
-    assert coding_agents._strip_studio_context_from_prompt(captured["message"]) == "hello"
-    assert "Current Studio workspace: default" in captured["message"]
-    assert "Studio UI base URL: https://studio.test/studio" in captured["message"]
-    assert "Never answer a Studio link request by saying you cannot generate URLs" in captured["message"]
+    assert captured["headers"] == {}
+    assert captured["message"] == "hello"
     assert "Current Studio workspace: default" in captured["studio_system_prompt"]
     assert "Studio UI base URL: https://studio.test/studio" in captured["studio_system_prompt"]
     assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
-    assert "use Claude Code's AskUserQuestion tool" in captured["studio_system_prompt"]
-    assert "you MUST call mcp__nemo_studio__select_agent" in captured["studio_system_prompt"]
-    assert "never use AskUserQuestion for an agent choice" in captured["studio_system_prompt"]
-    assert "you MUST call mcp__nemo_studio__select_model" in captured["studio_system_prompt"]
-    assert "ask multiple AskUserQuestion questions" in captured["studio_system_prompt"]
+    assert "you MUST call select_agent" in captured["studio_system_prompt"]
+    assert "you MUST call select_model" in captured["studio_system_prompt"]
     assert "no dedicated Studio picker" in captured["studio_system_prompt"]
     assert "Prefer NeMo Studio MCP tools and Studio views over CLI commands" in captured["studio_system_prompt"]
     assert "Do not tell the user to run nemo CLI commands" in captured["studio_system_prompt"]
@@ -1707,9 +1732,11 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
         in captured["studio_system_prompt"]
     )
     assert "Before your final response" in captured["studio_system_prompt"]
-    assert "mcp__nemo_studio__studio_link" in captured["studio_system_prompt"]
+    assert "studio_link" in captured["studio_system_prompt"]
     assert "Required job-progress behavior:" in captured["studio_system_prompt"]
-    assert "you MUST call mcp__nemo_studio__job_progress" in captured["studio_system_prompt"]
+    assert "you MUST call job_progress" in captured["studio_system_prompt"]
+    assert f"studio_session_id='{session_id}'" in captured["studio_system_prompt"]
+    assert "mutating calls will automatically pause for the user's approval" in captured["studio_system_prompt"]
     assert (
         "For a newly created agent, use studio_link with destination='agent_chat'" in captured["studio_system_prompt"]
     )
@@ -1725,19 +1752,26 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
     session_id = str(uuid.uuid4())
     captured: dict[str, Any] = {}
 
-    async def fake_stream(session_id: str, message: str, mcp_url: str, studio_system_prompt: str | None = None):
+    async def fake_stream(
+        session_id: str,
+        message: str,
+        agent_url: str,
+        headers: dict[str, str],
+        studio_system_prompt: str,
+    ):
         captured.update(
             {
                 "session_id": session_id,
                 "message": message,
-                "mcp_url": mcp_url,
+                "agent_url": agent_url,
+                "headers": headers,
                 "studio_system_prompt": studio_system_prompt,
             }
         )
         yield coding_agents._sse(json.dumps({"type": "system", "subtype": "init"}))
         yield coding_agents._sse("", event="done")
 
-    monkeypatch.setattr(coding_agents, "_stream_claude", fake_stream)
+    monkeypatch.setattr(coding_agents, "_stream_nemo_agent", fake_stream)
 
     response = client.post(
         f"/apis/studio/v2/coding-agents/sessions/{session_id}/messages",
@@ -1752,13 +1786,12 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
     )
 
     assert response.status_code == 200
-    assert captured["mcp_url"] == (
-        f"http://testserver/studio/api/coding-agents/mcp/{session_id}"
-        "?workspace=default&studio_base_url=http%3A%2F%2Fns.local.aire.nvidia.com%3A5173"
+    assert captured["agent_url"].endswith(
+        "/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
     )
-    assert "Studio UI base URL: http://ns.local.aire.nvidia.com:5173" in captured["message"]
-    assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["message"]
+    assert captured["message"] == "can you give me a link to it?"
     assert "Studio UI base URL: http://ns.local.aire.nvidia.com:5173" in captured["studio_system_prompt"]
+    assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
 
 
 def test_public_mcp_route_is_mounted_before_static_fallback():

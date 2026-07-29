@@ -50,7 +50,7 @@ export const SkillsPanelContents = () => {
       {error && (
         <div className="px-density-md py-density-sm">
           <Banner kind="inline" status="error">
-            Could not load Claude skills.
+            Could not load NeMo Agent skills.
           </Banner>
         </div>
       )}
@@ -66,7 +66,7 @@ export const SkillsPanelContents = () => {
         </div>
       ) : !error ? (
         <Flex className="min-h-0 flex-1" align="center" justify="center">
-          <Empty title="No skills found" description="Claude Code skills will appear here." />
+          <Empty title="No skills found" description="NeMo Agent skills will appear here." />
         </Flex>
       ) : null}
     </>
