@@ -68,8 +68,14 @@ version = "0.0.0"
 [dependency-groups]
 # Optional Insights analyst plugin.
 insights = ["nemo-insights-plugin"]
-# Optional Experimentalist agent-optimization plugin.
-experimentalist = ["nemo-experimentalist-plugin"]
+# Optional Experimentalist agent-optimization plugin. Experimentalist depends on Eval Author
+# because insight mode imports it at module scope; Eval Author still depends back on
+# Experimentalist for evaluator/trace helpers, but that arrow is being removed (see
+# plugins/nemo-eval-author/README.md).
+experimentalist = [
+  "nemo-experimentalist-plugin",
+  "nemo-eval-author-plugin",
+]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -365,6 +371,7 @@ nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
+nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
 # Not published to PyPI yet, so this pins an immutable public commit. It is a commit
 # rather than a tag because the MCP transport-timeout fix landed after v0.0.6; move
@@ -436,6 +443,7 @@ members = [
   "plugins/nemo-agents",
   "plugins/nemo-deployments",
   "plugins/nemo-insights",
+  "plugins/nemo-eval-author",
   "plugins/nemo-experimentalist",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
@@ -559,6 +567,8 @@ extra-paths = [
   "plugins/nemo-evaluator/src",
   # The optional Insights analyst is not part of the default environment.
   "plugins/nemo-insights/src",
+  # Same for the optional Eval Author plugin.
+  "plugins/nemo-eval-author/src",
   # Same for the optional Experimentalist; its tests also import the benchmark runner.
   "plugins/nemo-experimentalist/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
@@ -634,9 +644,12 @@ exclude = [
 
 # nooa agents declare their LLM-generated methods as annotated signatures with an
 # ellipsis body; the framework fills them in at runtime. ty reads that as a missing
-# return, so the rule is off for the Experimentalist's agent classes only.
+# return, so the rule is off for the Experimentalist and Eval Author agent classes only.
 [[tool.ty.overrides]]
-include = ["plugins/nemo-experimentalist/src/**"]
+include = [
+  "plugins/nemo-experimentalist/src/**",
+  "plugins/nemo-eval-author/src/**",
+]
 
 [tool.ty.overrides.rules]
 empty-body = "ignore"

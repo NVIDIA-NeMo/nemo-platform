@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
-from nemo_experimentalist_plugin.eval_author import run as eval_author_run
-from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
+from nemo_eval_author_plugin.eval_author import run as eval_author_run
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Dataset, DatasetRef, Task
 from nemo_insights_plugin.entities import Insight
 

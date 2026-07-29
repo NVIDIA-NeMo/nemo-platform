@@ -7,8 +7,8 @@ import importlib
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.client import make_client
-from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset, Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
@@ -113,7 +113,7 @@ async def run_eval_author(
 
 def build_eval_author_agent(*, experiment_dir: Path, config: EvalAuthorConfig) -> _EvalAuthorAgent:
     """Build the LLM-backed Eval Author agent lazily."""
-    from nemo_experimentalist_plugin.eval_author.agent import build_eval_author_agent as _build_eval_author_agent
+    from nemo_eval_author_plugin.eval_author.agent import build_eval_author_agent as _build_eval_author_agent
 
     return _build_eval_author_agent(experiment_dir=experiment_dir, config=config)
 
