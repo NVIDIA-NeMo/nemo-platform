@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
 
 """Docker Compose sandbox provider orchestration."""
 
