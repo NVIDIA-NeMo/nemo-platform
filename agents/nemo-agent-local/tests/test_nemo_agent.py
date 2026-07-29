@@ -719,7 +719,7 @@ class TestDirectFilesetDeleteFastPath:
         inner.astream.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_stream_graph_without_studio_session_retains_direct_fileset_delete(self):
+    async def test_stream_graph_without_studio_session_rejects_direct_fileset_delete(self):
         inner = MagicMock()
         graph = _StreamSafeGraph(inner)
 
@@ -738,10 +738,14 @@ class TestDirectFilesetDeleteFastPath:
             ]
 
         assert chunks == [
-            {"messages": [AIMessageChunk(content="Deleted fileset 'phishing_dataset' from workspace 'default'.")]}
+            {
+                "messages": [
+                    AIMessageChunk(content="Denied: mutating operations require a trusted Studio approval context")
+                ]
+            }
         ]
         studio_tool.assert_not_called()
-        delete_fileset.assert_called_once_with("phishing_dataset")
+        delete_fileset.assert_not_called()
         inner.astream.assert_not_called()
 
 

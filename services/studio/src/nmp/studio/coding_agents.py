@@ -77,6 +77,7 @@ STUDIO_CONTEXT_END = "</nemo_studio_context>"
 STUDIO_CONTEXT_USER_REQUEST_PREFIX = "User request:"
 STUDIO_MESSAGE_SUMMARY_START = "<<<NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
 STUDIO_MESSAGE_SUMMARY_END = "<<<END_NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
+WORKSPACE_NAME_RE = re.compile(NAME_PATTERN)
 
 
 class NewSessionResponse(BaseModel):
@@ -1230,8 +1231,17 @@ def _studio_coding_agent_base_url() -> str:
     return base_url.rstrip("/")
 
 
+def _validated_workspace_or_default(value: str | None) -> str:
+    workspace = _trimmed_string(value)
+    if not workspace:
+        return "default"
+    if WORKSPACE_NAME_RE.fullmatch(workspace) is None:
+        raise HTTPException(status_code=400, detail="workspace must match the expected entity-name pattern")
+    return workspace
+
+
 def _workspace_path_segment(workspace: str) -> str:
-    if re.fullmatch(NAME_PATTERN, workspace) is None:
+    if WORKSPACE_NAME_RE.fullmatch(workspace) is None:
         raise ValueError("Invalid workspace name")
     return quote(workspace, safe="")
 
@@ -1417,7 +1427,7 @@ async def _stream_nemo_agent(
 async def send_message(session_id: str, body: MessageRequest, request: Request) -> StreamingResponse:
     """Send a message to the deployed NeMo Agent and stream Studio events."""
     sid = _validate_session_id(session_id)
-    workspace = _trimmed_string(body.workspace) or "default"
+    workspace = _validated_workspace_or_default(body.workspace)
     studio_base_url = _studio_base_url_from_request(body, request)
     studio_pathname = _studio_pathname_from_request(body, request)
     enabled_destinations = studio_links.enabled_destinations_from_request(request)

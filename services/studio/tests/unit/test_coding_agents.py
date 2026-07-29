@@ -1830,6 +1830,14 @@ def test_coding_agent_url_uses_only_configured_base_url(monkeypatch: pytest.Monk
     )
 
 
+def test_validated_workspace_uses_default_and_rejects_path_injection():
+    assert coding_agents._validated_workspace_or_default(None) == "default"
+    assert coding_agents._validated_workspace_or_default(" default ") == "default"
+
+    with pytest.raises(HTTPException, match="workspace must match the expected entity-name pattern"):
+        coding_agents._validated_workspace_or_default("../internal?target=metadata")
+
+
 def test_platform_route_rejects_workspace_path_injection(service_client: TestClient):
     session_id = str(uuid.uuid4())
 

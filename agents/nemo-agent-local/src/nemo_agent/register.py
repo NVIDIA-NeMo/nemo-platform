@@ -619,19 +619,18 @@ class _StreamSafeGraph:
             return None
         fileset_name = _direct_fileset_delete_name(messages)
         if fileset_name is not None:
-            if _trusted_studio_session_id(config) is not None:
-                denial = await asyncio.to_thread(
-                    _request_mutation_approval,
-                    config,
-                    tool_name="nemo_api",
-                    tool_input={
-                        "resource": "files.filesets",
-                        "action": "delete",
-                        "params": json.dumps({"name": fileset_name}),
-                    },
-                )
-                if denial is not None:
-                    return denial
+            denial = await asyncio.to_thread(
+                _request_mutation_approval,
+                config,
+                tool_name="nemo_api",
+                tool_input={
+                    "resource": "files.filesets",
+                    "action": "delete",
+                    "params": json.dumps({"name": fileset_name}),
+                },
+            )
+            if denial is not None:
+                return denial
             return await asyncio.to_thread(_delete_fileset, fileset_name)
         resource_path = _direct_list_resource(messages)
         if resource_path is None:
