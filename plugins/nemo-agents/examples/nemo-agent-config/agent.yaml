@@ -5,6 +5,13 @@ description: Test agent config
 default_harness: codex
 
 harnesses:
+  claude:
+    kind: claude
+    model:
+      provider: anthropic
+      model: anthropic/claude-sonnet-4-5
+    settings:
+      permission_mode: dontAsk
   hermes:
     kind: hermes
     model:

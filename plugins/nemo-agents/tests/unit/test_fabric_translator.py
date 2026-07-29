@@ -76,10 +76,13 @@ class TestTranslateAgentConfig:
         config = load_agent_config(example_path)
 
         codex_config = translate_agent_config(config, harness_name="codex")
+        claude_config = translate_agent_config(config, harness_name="claude")
         hermes_config = translate_agent_config(config, harness_name="hermes")
 
         assert codex_config.harness.adapter_id == "nvidia.fabric.codex"
         assert "skip_git_repo_check" not in codex_config.harness.settings
+        assert claude_config.harness.adapter_id == "nvidia.fabric.claude"
+        assert claude_config.harness.settings["permission_mode"] == "dontAsk"
         assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert hermes_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
 
