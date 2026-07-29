@@ -144,6 +144,29 @@ async def test_streaming_command_redacts_output_and_retains_raw_result(
     assert progress.getvalue().count("<redacted>") == 2
 
 
+async def test_streaming_command_supports_stdout_lines_larger_than_64_kib(
+    tmp_path: Path,
+) -> None:
+    secret = "large-stream-secret"
+    line = "x" * (64 * 1024) + f" token={secret}"
+    progress = io.StringIO()
+    script = f'import sys; sys.stdout.write("x" * {64 * 1024} + " token={secret}\\n")'
+
+    result = await compose_cli._run_command(
+        (sys.executable, "-c", script),
+        cwd=tmp_path,
+        environment={**os.environ, "TEST_TOKEN": secret},
+        timeout=5,
+        stdin=None,
+        stream_output=progress,
+    )
+
+    assert result.ok
+    assert result.stdout == f"{line}\n"
+    assert secret not in progress.getvalue()
+    assert progress.getvalue() == f"{'x' * (64 * 1024)} token=<redacted>\n"
+
+
 async def test_streaming_timeout_retains_partial_output(tmp_path: Path) -> None:
     progress = io.StringIO()
     script = 'import time; print("started", flush=True); time.sleep(30)'

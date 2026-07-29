@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
 
 """Docker and Compose command execution for the Compose sandbox provider."""
 
@@ -326,11 +327,23 @@ async def _drain_stream(
         redact: Function applied before a decoded line leaves the provider.
         output: Optional text sink that receives redacted lines and is flushed immediately.
     """
-    while line := await stream.readline():
-        chunks.append(line)
-        if output is not None:
+    if output is None:
+        while chunk := await stream.read(64 * 1024):
+            chunks.append(chunk)
+        return
+
+    pending_line = bytearray()
+    while chunk := await stream.read(64 * 1024):
+        chunks.append(chunk)
+        pending_line.extend(chunk)
+        while (newline := pending_line.find(b"\n")) >= 0:
+            line = bytes(pending_line[: newline + 1])
+            del pending_line[: newline + 1]
             output.write(redact(line.decode("utf-8", errors="replace")))
             output.flush()
+    if pending_line:
+        output.write(redact(pending_line.decode("utf-8", errors="replace")))
+        output.flush()
 
 
 async def _retry_command(
