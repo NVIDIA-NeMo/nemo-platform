@@ -62,10 +62,13 @@ nat_openclaw_agent_adapter = "nat_openclaw_agent_adapter.register"
 fabric = [
     # TODO(AIRCORE-932): Move Fabric into the default plugin dependencies once evaluator has migrated
     # to the 0.1.0a20260724+ config-first SDK API and Fabric packaging is stable across Platform environments.
-    # TODO(AIRCORE-897): Move this to a stable Fabric version before release once available.
-    "nemo-fabric[runtime]>=0.1.0rc2,<0.2.0",
-    "nemo-fabric-adapters-codex>=0.1.0rc2,<0.2.0",
-    "nemo-fabric-adapters-hermes>=0.1.0rc2,<0.2.0; python_version < '3.14'",
+    # TODO(AIRCORE-897): Move this to a stable Fabric version before release once available. and add [relay]
+    "nemo-fabric>=0.1.0rc4,<0.2.0",
+    "nemo-fabric-adapters-claude[harness]>=0.1.0rc4,<0.2.0",
+    "nemo-fabric-adapters-codex[harness]>=0.1.0rc4,<0.2.0",
+    "nemo-fabric-adapters-deepagents[harness]>=0.1.0rc4,<0.2.0",
+    # TODO(AIRCORE-952): Switch to [harness] once hermes-agent packaging resolves its Pillow constraints.
+    "nemo-fabric-adapters-hermes>=0.1.0rc4,<0.2.0; python_version < '3.14'",
 ]
 container = [
     "jinja2>=3.1",
