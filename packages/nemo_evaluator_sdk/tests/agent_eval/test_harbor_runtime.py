@@ -7,6 +7,7 @@ import hashlib
 import importlib
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -581,3 +582,140 @@ async def test_inputs_changing_mid_run_leaves_the_job_unstamped(
     assert not (job_dir / harbor_runtime.CACHE_STAMP_FILENAME).exists(), (
         "results produced from pre-edit sources must not be stamped with the post-edit fingerprint"
     )
+
+
+def test_digest_is_injective_over_separator_bearing_contents(tmp_path: Path) -> None:
+    """Distinct trees must never share a digest, even when contents embed the framing.
+
+    A collision here fails CLOSED - the digest matches, so stale results are served.
+    The historical bug was concatenating ``name \\0 content \\0`` with no length
+    framing: because file *contents* may contain NUL, ``{a: b"", b: b"Z"}`` and
+    ``{a: b"\\0b\\0Z"}`` produced an identical byte stream.
+
+    Rather than pin one hand-built pair to one encoding, this asserts the property:
+    every tree below is structurally different, so every digest must differ. The
+    contents are chosen to embed the separators an unframed encoding would rely on.
+    """
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _digest_directory
+
+    trees: dict[str, dict[str, bytes]] = {
+        "two_files_empty_then_z": {"a": b"", "b": b"Z"},
+        "one_file_absorbing_nul": {"a": b"\0b\0Z"},
+        "one_file_absorbing_nul_and_mode": {"a": b"\0b\0-\0Z"},
+        "three_files": {"a": b"", "b": b"", "c": b"Z"},
+        "two_files_swapped": {"a": b"Z", "b": b""},
+        "one_file_named_b": {"b": b"Z"},
+    }
+
+    digests: dict[str, str] = {}
+    for name, files in trees.items():
+        root = tmp_path / name
+        root.mkdir()
+        for filename, content in files.items():
+            (root / filename).write_bytes(content)
+        digests[name] = _digest_directory(root)
+
+    collisions = {
+        (left, right) for left in digests for right in digests if left < right and digests[left] == digests[right]
+    }
+    assert not collisions, f"distinct trees produced identical digests: {sorted(collisions)}"
+
+
+def test_digest_tracks_the_execute_bit(tmp_path: Path) -> None:
+    # Harbor discovers and runs tests/test.sh; flipping +x changes what happens
+    # without changing a single byte of content.
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _digest_directory
+
+    task = tmp_path / "task"
+    task.mkdir()
+    script = task / "test.sh"
+    script.write_text("#!/bin/sh\necho hi\n")
+
+    script.chmod(0o644)
+    non_executable = _digest_directory(task)
+    script.chmod(0o755)
+    assert _digest_directory(task) != non_executable, "+x must invalidate"
+
+
+def test_digest_ignores_read_write_permission_noise(tmp_path: Path) -> None:
+    # Only the execute bit is tracked, mirroring git: umask differences between two
+    # checkouts of the same sources must not evict a usable cache.
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _digest_directory
+
+    task = tmp_path / "task"
+    task.mkdir()
+    source = task / "a.py"
+    source.write_text("x = 1\n")
+
+    source.chmod(0o644)
+    before = _digest_directory(task)
+    source.chmod(0o600)
+    assert _digest_directory(task) == before
+
+
+def test_digest_covers_vendored_dependencies_but_not_the_environment(tmp_path: Path) -> None:
+    # node_modules ships with the agent and changes what it does, so it counts.
+    # .venv is environment the Harbor wrapper never uploads, so it does not.
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _digest_directory
+
+    agent = tmp_path / "agent"
+    (agent / "node_modules" / "lib").mkdir(parents=True)
+    (agent / ".venv").mkdir()
+    (agent / "main.js").write_text("x")
+    (agent / "node_modules" / "lib" / "index.js").write_text("v1")
+    (agent / ".venv" / "marker").write_text("1")
+
+    before = _digest_directory(agent)
+    (agent / "node_modules" / "lib" / "index.js").write_text("v2-DIFFERENT")
+    assert _digest_directory(agent) != before, "a vendored dependency change must invalidate"
+
+    after_dep = _digest_directory(agent)
+    (agent / ".venv" / "marker").write_text("2")
+    assert _digest_directory(agent) == after_dep, ".venv churn must not evict the cache"
+
+
+def test_digest_survives_a_dangling_symlink(tmp_path: Path) -> None:
+    # A link whose *target* is missing: is_dir()/is_file() are both False, so it is
+    # recorded as a marker. (readlink still succeeds here - see the test below for
+    # the case where readlink itself fails.)
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _digest_directory
+
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    (agent / "real.py").write_text("x")
+    (agent / "dangling").symlink_to(tmp_path / "does-not-exist")
+
+    assert _digest_directory(agent)  # no raise
+
+
+def test_digest_distinguishes_a_file_from_a_directory_of_the_same_name(tmp_path: Path) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _digest_directory
+
+    as_file = tmp_path / "as_file"
+    as_file.mkdir()
+    (as_file / "thing").write_text("")
+
+    as_dir = tmp_path / "as_dir"
+    as_dir.mkdir()
+    (as_dir / "thing").mkdir()
+
+    assert _digest_directory(as_file) != _digest_directory(as_dir)
+
+
+def test_digest_survives_readlink_failing_mid_walk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The link itself disappearing between is_symlink() and readlink is a real race
+    # against any process cleaning up the tree. It must degrade to a marker rather
+    # than raise out of run_tasks and kill an otherwise-good evaluation.
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _digest_directory
+
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    (agent / "real.py").write_text("x")
+    (agent / "link").symlink_to(agent / "real.py")
+
+    def exploding_readlink(*_args: object, **_kwargs: object) -> str:
+        raise OSError(2, "No such file or directory")
+
+    monkeypatch.setattr(os, "readlink", exploding_readlink)
+
+    assert _digest_directory(agent)  # must not raise

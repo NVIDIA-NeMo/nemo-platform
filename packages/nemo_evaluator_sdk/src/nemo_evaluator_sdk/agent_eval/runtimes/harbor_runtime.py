@@ -82,8 +82,11 @@ CACHE_STAMP_VERSION = 1
 _CACHE_IRRELEVANT_OPTIONS = frozenset(
     {"jobs_dir", "job_name", "force_rerun", "quiet", "n_concurrent_trials", "agent_dir", "reward_key"}
 )
-# Build/VCS noise skipped when digesting a directory.
-_DIGEST_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", ".uv", "node_modules", ".mypy_cache", ".pytest_cache"})
+# Derived/VCS noise skipped when digesting a directory. Deliberately NOT skipped:
+# `node_modules` and other vendored dependency trees, which ship with the agent and
+# change what it does. `.venv`/`.uv` stay skipped because they are environment, not
+# deliverable — the Harbor wrapper does not upload them into the task container.
+_DIGEST_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", ".uv", ".mypy_cache", ".pytest_cache"})
 _DIGEST_CHUNK_BYTES = 1 << 20
 
 RunJob = Callable[[], Awaitable[None]]
@@ -338,6 +341,46 @@ def _all_tasks_cached(job_dir: Path, tasks: Sequence[AgentEvalTask], *, n_attemp
     return all(counts.get(task.id, 0) >= n_attempts for task in tasks)
 
 
+def _feed(digest: "hashlib._Hash", label: bytes, payload: bytes) -> None:
+    """Append a length-framed field to ``digest``.
+
+    Framing matters: concatenating ``name \0 content \0`` is ambiguous because file
+    *contents* may contain NUL, so two different trees can produce an identical byte
+    stream. Prefixing every variable-length field with its length makes the encoding
+    injective, which is what stops a collision from being read as "unchanged".
+    """
+    digest.update(label)
+    digest.update(len(payload).to_bytes(8, "big"))
+    digest.update(payload)
+
+
+def _safe_resolve(path: Path) -> Path:
+    """``Path.resolve()`` that degrades instead of raising.
+
+    ``resolve()`` calls ``os.readlink`` internally, so a symlink that disappears
+    mid-walk propagates ``OSError`` out of it. The digest is a best-effort guard, not
+    a reason to fail a run that would otherwise succeed, so fall back to the
+    unresolved absolute path.
+    """
+    try:
+        return path.resolve()
+    except OSError:
+        return path.absolute()
+
+
+def _is_executable(path: Path) -> bool:
+    """Whether the owner-execute bit is set, following symlinks.
+
+    Only the execute bit, mirroring what git tracks: read/write bits vary with umask
+    and would evict the cache for nothing, but flipping +x on ``tests/test.sh`` or an
+    agent entrypoint genuinely changes what Harbor does.
+    """
+    try:
+        return bool(path.stat().st_mode & 0o100)
+    except OSError:
+        return False
+
+
 def _digest_directory(root: Path, *, exclude: frozenset[Path] = frozenset()) -> str:
     """Content-hash a directory tree, skipping build/VCS noise and excluded roots.
 
@@ -368,17 +411,17 @@ def _digest_directory(root: Path, *, exclude: frozenset[Path] = frozenset()) -> 
     # which is exactly the failure this function exists to prevent. jobs_dir being
     # a parent of the agent/task dir is a legitimate layout, not a reason to stop
     # hashing it.
-    root_resolved = root.resolve()
+    root_resolved = _safe_resolve(root)
     excluded = {
         resolved
-        for resolved in (path.resolve() for path in exclude)
+        for resolved in (_safe_resolve(path) for path in exclude)
         if resolved != root_resolved and resolved.is_relative_to(root_resolved)
     }
     # Resolved dirs already walked, so a symlink cycle terminates instead of hanging.
     visited: set[Path] = set()
 
     def walk(directory: Path) -> None:
-        resolved_dir = directory.resolve()
+        resolved_dir = _safe_resolve(directory)
         if resolved_dir in visited:
             return
         visited.add(resolved_dir)
@@ -386,39 +429,47 @@ def _digest_directory(root: Path, *, exclude: frozenset[Path] = frozenset()) -> 
             entries = sorted(directory.iterdir())
         except OSError as exc:
             logger.warning("Could not list %s while fingerprinting %s: %s", directory, root, exc)
-            digest.update(b"<unlistable>\0")
+            _feed(digest, b"unlistable", b"")
             return
         for path in entries:
             if path.name in _DIGEST_SKIP_DIRS:
                 continue
-            resolved = path.resolve()
+            resolved = _safe_resolve(path)
             if any(resolved == item or item in resolved.parents for item in excluded):
                 continue
 
-            digest.update(path.relative_to(root).as_posix().encode("utf-8"))
-            digest.update(b"\0")
+            _feed(digest, b"name", path.relative_to(root).as_posix().encode("utf-8"))
+            _feed(digest, b"mode", b"x" if _is_executable(path) else b"-")
             if path.is_symlink():
                 # Record where the link points, so retargeting counts as a change.
-                digest.update(b"<symlink>")
-                digest.update(os.readlink(path).encode("utf-8"))
-                digest.update(b"\0")
+                try:
+                    target = os.readlink(path).encode("utf-8")
+                except OSError as exc:
+                    # The link vanished mid-walk. Same contract as an unreadable
+                    # file: degrade to a marker rather than kill the run.
+                    logger.warning("Could not read link %s while fingerprinting %s: %s", path, root, exc)
+                    target = b"<unreadable-link>"
+                _feed(digest, b"symlink", target)
             if path.is_dir():
-                digest.update(b"<dir>\0")
+                _feed(digest, b"dir", b"")
                 walk(path)
                 continue
             if not path.is_file():
                 # Broken link, socket, fifo: nothing to hash, but its presence counts.
-                digest.update(b"<not-a-file>\0")
+                _feed(digest, b"not-a-file", b"")
                 continue
+            content = hashlib.sha256()
             try:
                 with path.open("rb") as handle:
                     # Streamed: Harbor datasets may ship large seeds or build contexts.
                     for chunk in iter(lambda: handle.read(_DIGEST_CHUNK_BYTES), b""):
-                        digest.update(chunk)
+                        content.update(chunk)
             except OSError as exc:
                 logger.warning("Could not read %s while fingerprinting %s: %s", path, root, exc)
-                digest.update(b"<unreadable>")
-            digest.update(b"\0")
+                content.update(b"<unreadable>")
+            # The sub-digest is fixed width, so file bytes can never be confused with
+            # the framing around them.
+            _feed(digest, b"file", content.digest())
 
     walk(root)
     return digest.hexdigest()
