@@ -538,6 +538,17 @@ async def _score_metric(
         metric_type=metric_type,
         status=AgentEvalScoreStatus.COMPLETED,
         outputs=metric_result.outputs,
+        # Persist the metric's own diagnostics (e.g. per-criterion judge verdicts) — the failure path
+        # already records diagnostics; the success path dropped them.
+        diagnostics=[
+            AgentEvalDiagnostic(
+                severity=AgentEvalDiagnosticSeverity.INFO,
+                message=diagnostic.message,
+                source=metric_type,
+                details=diagnostic.details or {},
+            )
+            for diagnostic in metric_result.diagnostics
+        ],
         metadata={
             "row_index": row_index,
             "trial_metadata": trial.metadata,

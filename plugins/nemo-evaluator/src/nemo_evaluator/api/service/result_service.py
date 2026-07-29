@@ -14,10 +14,12 @@ methods so the API contract (and generated SDK) sees the real DTO.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TypeVar
 
 from nemo_evaluator.api.schemas import AgentEvalResult, EvaluateResult
 from nemo_evaluator.entities import AgentEvalResultEntity, EvaluateResultEntity
-from nemo_platform_plugin.entities import EntityBase, EntityClient, EntityNotFoundError, PaginationInfo
+from nemo_platform_plugin.entities import PaginationInfo
+from nemo_platform_plugin.entity_client import NemoAnyEntityDeleteClientProtocol, NemoEntityNotFoundError
 from nemo_platform_plugin.filter_ops import FilterOperation
 from nemo_platform_plugin.schema import Page, PaginationData
 
@@ -80,10 +82,13 @@ def _pagination(src: PaginationInfo, current_page_size: int) -> PaginationData:
     )
 
 
+_ResultEntityT = TypeVar("_ResultEntityT", AgentEvalResultEntity, EvaluateResultEntity)
+
+
 class ResultService:
     """List/get/delete for persisted eval-result entities, exposed as API DTOs."""
 
-    def __init__(self, entity_client: EntityClient):
+    def __init__(self, entity_client: NemoAnyEntityDeleteClientProtocol):
         self.entity_client = entity_client
 
     # --- agent-eval results --------------------------------------------------
@@ -111,7 +116,7 @@ class ResultService:
     async def get_agent_eval_result(self, workspace: str, name: str) -> AgentEvalResult | None:
         try:
             entity = await self.entity_client.get(AgentEvalResultEntity, workspace=workspace, name=name)
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             return None
         return _to_agent_eval(entity)
 
@@ -143,17 +148,17 @@ class ResultService:
     async def get_eval_result(self, workspace: str, name: str) -> EvaluateResult | None:
         try:
             entity = await self.entity_client.get(EvaluateResultEntity, workspace=workspace, name=name)
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             return None
         return _to_evaluate(entity)
 
     async def delete_eval_result(self, workspace: str, name: str) -> bool:
         return await self._delete(EvaluateResultEntity, workspace, name)
 
-    async def _delete(self, entity_cls: type[EntityBase], workspace: str, name: str) -> bool:
+    async def _delete(self, entity_cls: type[_ResultEntityT], workspace: str, name: str) -> bool:
         """Delete by workspace/name; ``False`` if absent. Type-agnostic (delete takes no body)."""
         try:
             await self.entity_client.delete(entity_cls, name, workspace=workspace)
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             return False
         return True

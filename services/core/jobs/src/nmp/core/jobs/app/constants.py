@@ -22,7 +22,7 @@ JOB_EXECUTION_BACKEND_LABEL = "nmp.nvidia.com/job_execution_backend"
 JOB_EXECUTION_PROFILE_LABEL = "nmp.nvidia.com/job_execution_profile"
 
 NEMO_JOB_TASK_CONTAINER_NAME = "nemo-job-task"
-DEFAULT_VOLUME_PERMISSIONS_IMAGE = "busybox"
+DEFAULT_VOLUME_PERMISSIONS_IMAGE = "docker.io/library/busybox:stable"
 
 KUBE_JOB_SELECTOR_LABELS = {
     "app": "nemo-job",

@@ -822,6 +822,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -833,6 +838,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: Deployment
       description: Desired and observed deployment state.
     DeploymentBackendConfigInput:
@@ -908,6 +914,20 @@ components:
           title: Labels
         backendConfig:
           $ref: '#/components/schemas/DeploymentBackendConfigOutput'
+        authProxySidecar:
+          type: boolean
+          title: Authproxysidecar
+          description: Inject a loopback auth-proxy sidecar that stamps a service-principal
+            identity header on the workload's platform calls. No-op when platform
+            auth is disabled. The workload must target the proxy on localhost (see
+            auth_proxy_sidecar_port).
+          default: false
+        authProxySidecarIdentity:
+          title: Authproxysidecaridentity
+          description: 'Service-principal name the auth-proxy sidecar stamps (interpolated
+            into ''X-NMP-Principal-Id: service:<identity>''). Required when auth_proxy_sidecar
+            is True.'
+          type: string
         id:
           type: string
           title: Id
@@ -942,6 +962,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -952,6 +977,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: DeploymentConfig
       description: Immutable PodSpec-shaped deployment template.
     DockerDeploymentConfig:
@@ -1605,6 +1631,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -1615,6 +1646,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: Volume
       description: Persistent volume request and observed state.
     VolumeBackendConfig:

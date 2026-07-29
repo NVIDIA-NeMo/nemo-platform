@@ -58,7 +58,7 @@ Methods:
 Types:
 
 ```python
-from nemo_platform.types.intake import EvaluationContext, ExperimentContext
+from nemo_platform.types.intake import EvaluationContext
 ```
 
 ### Atif

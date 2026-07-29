@@ -61,7 +61,18 @@ class EvaluationFilterParam(TypedDict, total=False):
     """
 
     experiment_group_id: str
-    """Filter evaluations by owning group id."""
+    """
+    Deprecated alias for `experiment_id`; filter evaluations by experiment group
+    membership.
+    """
+
+    experiment_id: str
+    """
+    Filter evaluations by experiment group membership: matches evaluations whose
+    `experiment_ids` include this group id (legacy rows still on
+    `experiment_group_id` also match). This is the canonical membership filter — it
+    mirrors the write-side `experiment_ids`.
+    """
 
     is_deleted: bool
     """When true, returns only soft-deleted evaluations.
@@ -96,6 +107,16 @@ class EvaluationFilterParam(TypedDict, total=False):
 
     run_count: NumberFilterParam
     """Filter by run count, e.g. filter[run_count][$gte]=5."""
+
+    tokens: MetricStatFiltersParam
+    """Numeric range filters keyed by rollup aggregate stat.
+
+    Declaring each stat explicitly (rather than an open `dict[str, NumberFilter]`)
+    makes the valid stats visible in the OpenAPI schema, e.g.
+    `filter[cost_usd.mean][$lte]=0.5`. These stats must stay in sync with the
+    runtime sort/filter grammar (`_METRIC_STATS` in the evaluations endpoints); a
+    unit test guards the parity.
+    """
 
     updated_at: DatetimeFilter
     """

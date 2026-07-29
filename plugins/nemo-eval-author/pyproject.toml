@@ -2,16 +2,11 @@
 name = "nemo-eval-author-plugin"
 version = "0.1.0"
 description = "Eval Author agent for NeMo Platform (hard-depends on Experimentalist for evaluator/trace helpers)."
-# Like Experimentalist, this plugin really needs 3.12 (so do nooa and harbor), but a
-# workspace member cannot raise its floor above the workspace's without dragging every
-# other package up with it. The floor is declared here and enforced by the markers below
-# plus the `experimentalist` dependency group in the workspace root, which installs both
-# plugins together.
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "pydantic>=2",
-    "harbor>=0.16 ; python_full_version >= '3.12'",
-    "nooa ; python_full_version >= '3.12'",
+    "harbor>=0.16",
+    "nooa",
     "nemo-experimentalist-plugin",
     "nemo-insights-plugin",
     "nemo-platform",

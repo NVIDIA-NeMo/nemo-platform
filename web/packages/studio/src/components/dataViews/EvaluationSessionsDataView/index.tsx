@@ -39,7 +39,7 @@ type SessionRow = EvaluationSessionResponse & { _rowId: string };
 
 interface EvaluationSessionsDataViewProps {
   evaluationName: string;
-  experimentGroupName: string;
+  experimentName: string;
 }
 
 const mapStatusForBadge = (status: EvaluationSessionResponse['status']) =>
@@ -97,7 +97,7 @@ const getSessionSortParam = (sortingState: { id: string; desc: boolean }[]): str
 
 export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = ({
   evaluationName,
-  experimentGroupName,
+  experimentName,
 }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
@@ -303,7 +303,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
           navigate(
             getEvaluationSessionTraceDetailRoute(
               workspace,
-              experimentGroupName,
+              experimentName,
               evaluationName,
               row.session_id,
               row.trace_id
@@ -355,7 +355,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
             }
             return (
               <Empty
-                experimentGroupName={experimentGroupName}
+                experimentName={experimentName}
                 datasetName={experiment?.dataset_name ?? '<dataset>'}
               />
             );

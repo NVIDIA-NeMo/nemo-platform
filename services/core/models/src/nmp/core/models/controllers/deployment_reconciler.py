@@ -20,6 +20,7 @@ from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import deleting_elapsed_seconds
 from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.core.models.controllers.context import ModelContext
+from nmp.core.models.controllers.entity_cache import ModelEntityCache
 
 logger = getLogger(__name__)
 
@@ -144,6 +145,8 @@ class ModelDeploymentReconciler:
         models_sdk: AsyncNeMoPlatform,
         backend_registry: BackendRegistry,
         controller_config: ControllerConfig,
+        entity_cache: ModelEntityCache,
+        emit_heartbeat: Callable[[], None],
     ) -> None:
         """Initialize the deployment reconciler.
 
@@ -151,10 +154,15 @@ class ModelDeploymentReconciler:
             models_sdk: SDK client for Models API interactions
             backend_registry: Registry of available service backends
             controller_config: Controller configuration containing deployment settings
+            entity_cache: Model Entity reads and staged writes for the current phase
+            emit_heartbeat: Called as each unit of work finishes so a long pass is
+                distinguishable from a stalled one
         """
         self._models_sdk = models_sdk
         self._backend_registry = backend_registry
         self._controller_config = controller_config
+        self._entity_cache = entity_cache
+        self._emit_heartbeat = emit_heartbeat
         self._drift_recovery_cache = DriftRecoveryCache(
             max_attempts=controller_config.drift_recovery_max_attempts,
             base_delay_seconds=controller_config.drift_recovery_base_delay_seconds,
@@ -242,6 +250,8 @@ class ModelDeploymentReconciler:
                         await self._handle_deleted_deployment(deployment)
             except Exception as e:
                 logger.exception(f"Error processing deployment {model_deployment_id}: {e}")
+            finally:
+                self._emit_heartbeat()
 
     async def reconcile_orphans(self, known_deployment_ids: set[str]) -> None:
         """Delete backend deployments that are not in the known set (orphans).
@@ -277,6 +287,8 @@ class ModelDeploymentReconciler:
                     e,
                     exc_info=True,
                 )
+            finally:
+                self._emit_heartbeat()
 
     async def gc_error_deployments(self, error_deployments: list[ModelDeployment]) -> None:
         """Garbage-collect backend resources for ERROR deployments past their TTL.
@@ -381,6 +393,8 @@ class ModelDeploymentReconciler:
                     extra={"deployment": deployment_id},
                     exc_info=True,
                 )
+            finally:
+                self._emit_heartbeat()
 
     async def _reconcile_individual_deployment(
         self,
@@ -785,21 +799,24 @@ class ModelDeploymentReconciler:
                     _model_ref = parse_entity_ref(served_model.model_entity_id)
                     model_workspace, model_name = _model_ref.workspace, _model_ref.name
 
-                    # Get the Model Entity
-                    model_entity = await self._models_sdk.models.retrieve(
-                        name=model_name,
-                        workspace=model_workspace,
-                    )
-
-                    # Remove this provider from the model_providers list
-                    current_providers = model_entity.model_providers or []
-                    if provider_id in current_providers:
-                        updated_providers = [p for p in current_providers if p != provider_id]
-                        await self._models_sdk.models.update(
-                            name=model_name,
-                            workspace=model_workspace,
-                            model_providers=updated_providers,
+                    if not self._entity_cache.loaded:
+                        # Without a snapshot, a lookup miss is indistinguishable from
+                        # "does not exist", and dropping the unlink here would leave a
+                        # dangling provider reference once the provider is deleted.
+                        logger.warning(
+                            "Model Entity cache holds no snapshot; skipping unlink of %s from %s",
+                            provider_id,
+                            served_model.model_entity_id,
                         )
+                        continue
+
+                    model_entity = self._entity_cache.get(model_workspace, model_name)
+                    if model_entity is None:
+                        logger.debug(f"Model Entity {served_model.model_entity_id} not found, nothing to unlink")
+                        continue
+
+                    if provider_id in (model_entity.model_providers or []):
+                        self._entity_cache.stage_provider_unlink(model_workspace, model_name, provider_id)
                         logger.info(f"Removed provider {provider_id} from Model Entity {served_model.model_entity_id}")
                     else:
                         logger.debug(
@@ -810,6 +827,8 @@ class ModelDeploymentReconciler:
                     logger.warning(
                         f"Failed to cleanup Model Entity {served_model.model_entity_id} for provider {provider_id}: {e}"
                     )
+                finally:
+                    self._emit_heartbeat()
 
         except NotFoundError:
             logger.debug(f"Provider {provider_id} not found during cleanup, skipping Model Entity cleanup")

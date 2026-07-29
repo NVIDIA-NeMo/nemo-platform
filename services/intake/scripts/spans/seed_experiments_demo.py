@@ -452,7 +452,7 @@ def _create_group_if_missing(
     client: httpx.Client, base_url: str, workspace: str, spec: GroupSpec
 ) -> tuple[str | None, bool]:
     """Returns (group_id, created). On 409, returns (None, False) and leaves the existing group alone."""
-    url = _intake_url(base_url, workspace, "/experiment-groups")
+    url = _intake_url(base_url, workspace, "/experiments")
     body = {"name": spec.name, "description": spec.description}
     response = client.post(url, json=body)
     if response.status_code == 409:
@@ -651,8 +651,8 @@ def _wipe_workspace(client: httpx.Client, base_url: str, workspace: str) -> None
         if _delete(client, base_url, workspace, f"/evaluations/{name}"):
             deleted_evaluations += 1
     deleted_groups = 0
-    for name in _list_all_names(client, base_url, workspace, "/experiment-groups"):
-        if _delete(client, base_url, workspace, f"/experiment-groups/{name}"):
+    for name in _list_all_names(client, base_url, workspace, "/experiments"):
+        if _delete(client, base_url, workspace, f"/experiments/{name}"):
             deleted_groups += 1
     print(f"deleted {deleted_evaluations} evaluation(s) and {deleted_groups} group(s)\n")
 

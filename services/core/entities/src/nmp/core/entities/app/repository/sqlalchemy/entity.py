@@ -361,6 +361,7 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
         entity_type: str,
         name: str,
         parent: Optional[str] = None,
+        expected_db_version: int | None = None,
         session: AsyncSession | None = None,
     ) -> int:
         """Delete an entity by name."""
@@ -380,6 +381,18 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
             if existing_entity is None:
                 return 0
 
-            await sess.delete(existing_entity)
-            await sess.commit()
+            if expected_db_version is not None and existing_entity.db_version != expected_db_version:
+                raise EntityVersionConflictError(
+                    f"Entity '{name}' of type '{entity_type}' in workspace '{workspace}' was modified by another request. "
+                    f"Expected version {expected_db_version}, but current version is {existing_entity.db_version}. Please refetch and retry."
+                )
+
+            try:
+                await sess.delete(existing_entity)
+                await sess.commit()
+            except StaleDataError as err:
+                await sess.rollback()
+                raise EntityVersionConflictError(
+                    f"Entity '{name}' of type '{entity_type}' in workspace '{workspace}' was modified by another request. Please refetch and retry."
+                ) from err
             return 1

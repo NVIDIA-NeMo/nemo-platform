@@ -300,10 +300,11 @@ test: test-unit  ## Run all Python unit tests (fast tests without infrastructure
 PYTEST_VERBOSITY := $(if $(filter true,$(CI)),-q,-v)
 PYTEST_WORKERS ?= auto
 PYTEST_MAX_WORKERS ?= 16
-PYTEST_CMD := env PYTHONWARNINGS="ignore::UserWarning:pytest_only.version" uv run --frozen \
+PYTEST_DIST ?= loadscope
+PYTEST_CMD = env PYTHONWARNINGS="ignore::UserWarning:pytest_only.version" uv run --frozen \
 	pytest \
 	-n $(PYTEST_WORKERS) --maxprocesses=$(PYTEST_MAX_WORKERS) --max-worker-restart=2 \
-	--dist loadscope --timeout=120 $(PYTEST_VERBOSITY) $(PYTEST_EXTRA)
+	--dist $(PYTEST_DIST) --timeout=120 $(PYTEST_VERBOSITY) $(PYTEST_EXTRA)
 
 PYTEST_CI_OPTS := --cov=src --cov=packages \
 	--junitxml=report.xml \
@@ -315,7 +316,16 @@ PYTEST_CI_OPTS := --cov=src --cov=packages \
 # a pytest-xdist worker crashes (e.g. SIGABRT from wasmtime) and doesn't exit.
 # timeout sends SIGTERM after PYTEST_CI_TIMEOUT seconds, then SIGKILL after 60s.
 PYTEST_CI_TIMEOUT ?= 1800
-PYTEST_CI_CMD := timeout --kill-after=60s $(PYTEST_CI_TIMEOUT)s $(PYTEST_CMD)
+PYTEST_CI_CMD = timeout --kill-after=60s $(PYTEST_CI_TIMEOUT)s $(PYTEST_CMD)
+
+# Unit/default runs keep ``loadscope`` so tests from the same module/class stay
+# on one worker and reuse normal pytest fixtures efficiently. The integration
+# targets collect tests that share real external resources (Docker containers,
+# service ports, etc.). Those tests can mark the resource with ``xdist_group``,
+# but pytest-xdist only honors those labels under ``loadgroup``. Both local and
+# CI integration runs therefore use ``loadgroup`` while unit runs keep
+# ``loadscope``.
+test-integration test-integration-ci: PYTEST_DIST := loadgroup
 
 .PHONY: test-unit
 test-unit: ## Run Python unit tests across all packages and services

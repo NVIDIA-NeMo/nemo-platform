@@ -12,7 +12,7 @@ const renderSessionDetail = (search = '') =>
     history: `/workspaces/default/experiment/my-group/my-experiment/sessions/session-agent-run-001${search}`,
     routes: [
       {
-        path: '/workspaces/:workspace/experiment/:experimentGroupName/:evaluationName/sessions/:sessionId',
+        path: '/workspaces/:workspace/experiment/:experimentName/:evaluationName/sessions/:sessionId',
         element: <EvaluationSessionDetailRoute />,
       },
     ],

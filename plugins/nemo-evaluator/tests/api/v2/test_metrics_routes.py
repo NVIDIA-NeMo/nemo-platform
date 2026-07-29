@@ -10,8 +10,10 @@ the get_metric_service dependency, and status-code mapping (201/204/404/409).
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -25,12 +27,11 @@ from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator.shared.metric_bundles.inline import InlineMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_platform_plugin.entities import (
-    EntityConflictError,
-    EntityNotFoundError,
-    ListResponse,
-    PaginationInfo,
-)
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.entities import ListResponse, PaginationInfo
+from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
+from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.filter_ops import FilterOperation
 
 # ---- in-memory fakes -------------------------------------------------------
 
@@ -39,53 +40,94 @@ class _FakeAsyncFilesClient:
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], dict[str, bytes]] = {}
 
-    async def create_fileset(self, *, body, workspace=None, exist_ok=False):
-        self._store.setdefault((workspace, body.name), {})
-        return AsyncMock(data=lambda: object())
+    async def create_fileset(
+        self, *, body: CreateFilesetRequest, workspace: str | None = None, exist_ok: bool = False
+    ) -> _FakeOperationResponse:
+        self._store.setdefault((workspace or "default", body.name), {})
+        return _FakeOperationResponse()
 
-    async def delete_fileset(self, *, name, workspace=None):
-        self._store.pop((workspace, name), None)
-        return AsyncMock(data=lambda: object())
+    async def delete_fileset(self, *, name: str, workspace: str | None = None) -> _FakeOperationResponse:
+        self._store.pop((workspace or "default", name), None)
+        return _FakeOperationResponse()
 
-    async def upload_file(self, *, path, content, workspace, name):
+    async def upload_file(self, *, path: str, content: bytes, workspace: str, name: str) -> _FakeOperationResponse:
         self._store.setdefault((workspace, name), {})[path] = bytes(content)
-        return AsyncMock(data=lambda: object())
+        return _FakeOperationResponse()
 
-    async def download_file(self, *, path, workspace, name):
-        class _Resp:
-            async def read(self):
-                return self._data
+    async def download_file(self, *, path: str, workspace: str, name: str) -> _FakeResponse:
+        return _FakeResponse(self._store[(workspace, name)][path])
 
-        resp = _Resp()
-        resp._data = self._store[(workspace, name)][path]
-        return resp
+
+class _FakeResponse:
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    async def read(self) -> bytes:
+        return self._data
+
+
+class _FakeOperationResponse:
+    def data(self) -> object:
+        return object()
 
 
 class _FakeEntityClient:
     def __init__(self) -> None:
         self.entities: dict[tuple[str, str], MetricBundleEntity] = {}
+        self.entity_versions: dict[tuple[str, str], int] = {}
+        self.bump_version_on_next_delete = False
+        self.delete_expected_db_versions: list[int | None] = []
 
-    async def get(self, entity_cls, *, workspace, name):
+    async def get(self, entity_type: type[MetricBundleEntity], *, workspace: str, name: str) -> MetricBundleEntity:
         key = (workspace, name)
         if key not in self.entities:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
         return self.entities[key]
 
-    async def create(self, entity):
+    async def create(self, entity: MetricBundleEntity) -> MetricBundleEntity:
         key = (entity.workspace, entity.name)
         if key in self.entities:
-            raise EntityConflictError(f"{key} exists")
+            raise NemoEntityConflictError(f"{key} exists")
         now = datetime.now(timezone.utc)
         entity._id = f"metric_bundle-{entity.name}"
         entity._created_at = now
         entity._updated_at = now
+        entity._db_version = 1
         self.entities[key] = entity
+        self.entity_versions[key] = entity.db_version
         return entity
 
-    async def delete(self, entity_cls, name, *, workspace):
-        self.entities.pop((workspace, name), None)
+    async def delete(
+        self,
+        entity_type: type[MetricBundleEntity],
+        name: str,
+        *,
+        workspace: str,
+        expected_db_version: int | None = None,
+    ) -> None:
+        key = (workspace, name)
+        if key not in self.entities:
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
+        if self.bump_version_on_next_delete:
+            self.entity_versions[key] += 1
+            self.entities[key]._db_version = self.entity_versions[key]
+            self.bump_version_on_next_delete = False
+        self.delete_expected_db_versions.append(expected_db_version)
+        if expected_db_version is not None and self.entity_versions[key] != expected_db_version:
+            raise NemoEntityConflictError(f"{workspace}/{name} changed")
+        del self.entities[key]
+        del self.entity_versions[key]
 
-    async def list(self, entity_cls, *, workspace, filter_operation=None, sort=None, page=1, page_size=100):
+    async def list(
+        self,
+        entity_type: type[MetricBundleEntity],
+        *,
+        workspace: str,
+        filter_operation: FilterOperation | None = None,
+        sort: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> ListResponse[MetricBundleEntity]:
         items = [e for (ws, _), e in self.entities.items() if ws == workspace]
         return ListResponse(
             data=items,
@@ -99,15 +141,35 @@ class _FakeEntityClient:
         )
 
 
+class _FakePlatform(AsyncNeMoPlatform):
+    pass
+
+
+def _fake_platform() -> _FakePlatform:
+    return _FakePlatform.__new__(_FakePlatform)
+
+
+@dataclass(frozen=True)
+class _MetricsRouteHarness:
+    client: TestClient
+    entity_client: _FakeEntityClient
+
+
 @pytest.fixture
-def client() -> TestClient:
+def metrics_route_harness() -> Iterator[_MetricsRouteHarness]:
     app = FastAPI()
     app.include_router(metrics_routes.router, prefix="/v2/workspaces/{workspace}")
     fake_files = _FakeAsyncFilesClient()
-    service = MetricService(_FakeEntityClient(), object())
+    entity_client = _FakeEntityClient()
+    service = MetricService(entity_client, _fake_platform())
     app.dependency_overrides[get_metric_service] = lambda: service
     with patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_files):
-        yield TestClient(app)
+        yield _MetricsRouteHarness(TestClient(app), entity_client)
+
+
+@pytest.fixture
+def client(metrics_route_harness: _MetricsRouteHarness) -> TestClient:
+    return metrics_route_harness.client
 
 
 def _create_body() -> dict:
@@ -166,6 +228,20 @@ def test_create_then_delete(client: TestClient) -> None:
     deleted = client.delete(f"{_BASE}/exact")
     assert deleted.status_code == 204
     assert client.get(f"{_BASE}/exact").status_code == 404
+
+
+def test_delete_stale_version_returns_409_and_keeps_metric(metrics_route_harness: _MetricsRouteHarness) -> None:
+    client = metrics_route_harness.client
+    entity_client = metrics_route_harness.entity_client
+    assert client.post(f"{_BASE}/exact", json=_create_body()).status_code == 201
+
+    entity_client.bump_version_on_next_delete = True
+    deleted = client.delete(f"{_BASE}/exact")
+
+    assert deleted.status_code == 409
+    assert entity_client.delete_expected_db_versions == [1]
+    assert ("default", "exact") in entity_client.entities
+    assert client.get(f"{_BASE}/exact").status_code == 200
 
 
 def test_delete_missing_returns_404(client: TestClient) -> None:

@@ -1,6 +1,6 @@
 ---
 name: nemo-experiments-upload
-description: End-to-end guide for getting evaluation data into NeMo Platform Intake so it shows up as Experiments. Create an Experiment Group, create an Evaluation, then log traces and evaluator results via the ATIF (Harbor), chat-completions, or OTLP ingest endpoint — and view the rollups in Studio. Use when a user wants to upload, log, ingest, publish, or send evaluation runs, agent traces, or scores to NeMo Experiments / Intake.
+description: End-to-end guide for getting evaluation data into NeMo Platform Intake so it shows up as Experiments. Create an Experiment, create an Evaluation, then log traces and evaluator results via the ATIF (Harbor), chat-completions, or OTLP ingest endpoint — and view the rollups in Studio. Use when a user wants to upload, log, ingest, publish, or send evaluation runs, agent traces, or scores to NeMo Experiments / Intake.
 triggers:
   - log traces to intake
   - upload experiment results
@@ -24,7 +24,7 @@ allowed-tools: [Bash, Read, Write]
 
 # Log evaluation data to NeMo Intake
 
-Get evaluation runs into the platform end-to-end: **create an Experiment Group → create an Evaluation → log traces + scores to an ingest endpoint → see the rollups.** The API says "Evaluation" and "Experiment Group"; the whole feature is called **Experiments**.
+Get evaluation runs into the platform end-to-end: **create an Experiment → create an Evaluation → log traces + scores to an ingest endpoint → see the rollups.** The API calls the parent (the leaderboard) an **Experiment** and each row an **Evaluation**; the whole feature is called **Experiments**.
 
 Everything below uses `${NMP_BASE_URL}` (default `http://localhost:8080`) and a `${WORKSPACE}` (default `default`). All routes are under `/apis/intake/v2/workspaces/${WORKSPACE}`.
 
@@ -48,33 +48,33 @@ fi
 
 Run the steps in order. Steps 1–2 create the entities; step 3 logs the data; steps 4–5 verify.
 
-### 1. Create an Experiment Group
+### 1. Create an Experiment
 
-A group is the leaderboard container. You need its `id` for the next step.
+An Experiment is the leaderboard container. You need its `id` for the next step.
 
 ```bash
 set -euo pipefail
 : "${NMP_BASE_URL:=http://localhost:8080}"
 : "${WORKSPACE:=default}"
-groups="${NMP_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/experiment-groups"
-# Create the group. 201 = created, 409 = already exists; any other status is a real failure.
-code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${groups}" \
+experiments="${NMP_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/experiments"
+# Create the experiment. 201 = created, 409 = already exists; any other status is a real failure.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${experiments}" \
   -H 'Content-Type: application/json' \
-  -d '{"name": "my-experiment-group", "description": "example run"}')
+  -d '{"name": "my-experiment", "description": "example run"}')
 case "${code}" in
   201|409) ;;
-  *) echo "group create failed: HTTP ${code}" >&2; exit 1 ;;
+  *) echo "experiment create failed: HTTP ${code}" >&2; exit 1 ;;
 esac
 # Fetch the id (works whether it was just created or already existed).
-GROUP_ID=$(curl -sf "${groups}/my-experiment-group" \
+EXPERIMENT_ID=$(curl -sf "${experiments}/my-experiment" \
   | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
-[ -n "${GROUP_ID}" ] || { echo "could not resolve experiment group id" >&2; exit 1; }
-echo "group id: ${GROUP_ID}"
+[ -n "${EXPERIMENT_ID}" ] || { echo "could not resolve experiment id" >&2; exit 1; }
+echo "experiment id: ${EXPERIMENT_ID}"
 ```
 
 The POST accepts only `201` (created) or `409` (already exists) — any other status stops the step
 instead of masking it. The `id` is then read with a GET, so this works on both first run and re-run;
-`set -euo pipefail` + the `[ -n ]` guard keep it from continuing with an empty `GROUP_ID`.
+`set -euo pipefail` + the `[ -n ]` guard keep it from continuing with an empty `EXPERIMENT_ID`.
 
 ### 2. Create an Evaluation
 
@@ -85,13 +85,13 @@ curl -sf -X POST \
   "${NMP_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/evaluations" \
   -H 'Content-Type: application/json' \
   -d "{\"name\": \"my-eval-baseline\",
-       \"experiment_group_id\": \"${GROUP_ID}\",
+       \"experiment_ids\": [\"${EXPERIMENT_ID}\"],
        \"dataset_name\": \"my-dataset\",
        \"dataset_version\": \"v1\",
        \"metadata\": {\"model\": \"provider/model\", \"job_name\": \"baseline\"}}"
 ```
 
-- `experiment_group_id` is the group's **`id`** (from step 1).
+- `experiment_ids` is a list holding the Experiment's **`id`** (from step 1).
 - `metadata` values must be **strings** (`dict[str, str]`).
 - **You must create the Evaluation before you can log to it** — ingesting with an unknown `evaluation_id` returns `400 "…must be created before it can be logged."`
 
@@ -128,7 +128,7 @@ curl -sf "${NMP_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/evaluations/my-
 
 ### 5. View in Studio
 
-Open Studio → the **Experiments** area (behind the `VITE_FF_EXPERIMENT` flag) → your group → your evaluation. You'll see the leaderboard row with score/cost/latency rollups and can drill into individual sessions and traces.
+Open Studio → the **Experiments** area (behind the `VITE_FF_EXPERIMENT` flag) → your experiment → your evaluation. You'll see the leaderboard row with score/cost/latency rollups and can drill into individual sessions and traces.
 
 ## Reference files
 
@@ -159,8 +159,8 @@ If `run_count` is 0 after ingesting, the traces didn't associate — almost alwa
 ## Gotchas
 
 - **Create before you log.** The Evaluation entity must exist before any ingest referencing it — otherwise `400`.
-- **`evaluation_id` is the Evaluation's `name`, not its entity id.** But **`experiment_group_id` is the group's `id`.** Different identifiers; easy to swap.
+- **`evaluation_id` is the Evaluation's `name`, not its entity id.** But **`experiment_ids` holds the Experiment's `id`.** Different identifiers; easy to swap.
 - **OTLP uses the attribute key `nemo.experiment.id`** (and `nemo.test_case.id`) — the span-attribute key still says "experiment" even though the JSON body field is `evaluation_context`. Set `nemo.experiment.id` on your root span.
-- **Use `/evaluations`, not `/experiments`.** `/experiments` still works as a deprecated hidden alias but you should log to `/evaluations`.
+- **The parent lives at `/experiments`; `/experiment-groups` is a deprecated hidden alias.** Prefer `/experiments`. Evaluations are created and logged under `/evaluations`.
 - **`metadata` is `dict[str, str]`** — stringify non-string values or you'll get a `422`.
 - **ATIF and chat-completions are `extra="forbid"`** (unknown keys → 422); `evaluation_context` itself is lenient (`extra="ignore"`).

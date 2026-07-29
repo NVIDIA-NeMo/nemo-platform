@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -45,6 +46,77 @@ def test_no_args_prints_help_successfully() -> None:
     assert result.exit_code == 0
     assert "Usage:" in result.stdout
     assert "Agent lifecycle management" in result.stdout
+
+
+def test_run_starts_nat_server_for_nat_config(tmp_path: Path) -> None:
+    config = tmp_path / "workflow.yaml"
+    config.write_text("workflow:\n  _type: chat_completion\n")
+
+    app = AgentsCLI().get_cli()
+    with patch("subprocess.run") as run:
+        result = CliRunner().invoke(
+            app,
+            ["run", "--agent-config", str(config), "--host", "127.0.0.1", "--port", "8081"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    run.assert_called_once_with(
+        [
+            "nat",
+            "start",
+            "fastapi",
+            "--config_file",
+            config.name,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8081",
+        ],
+        check=True,
+        cwd=tmp_path,
+    )
+
+
+def test_run_starts_fabric_server_for_platform_config(tmp_path: Path) -> None:
+    config = tmp_path / "agent.yaml"
+    config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+
+    app = AgentsCLI().get_cli()
+    with patch("subprocess.run") as run:
+        result = CliRunner().invoke(
+            app,
+            ["run", "--agent-config", str(config), "--host", "127.0.0.1", "--port", "8081"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    run.assert_called_once_with(
+        [
+            sys.executable,
+            "-m",
+            "nemo_agents_plugin.fabric.server",
+            "--agent-config",
+            config.name,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8081",
+        ],
+        check=True,
+        cwd=tmp_path,
+    )
+
+
+def test_run_rejects_empty_yaml_config(tmp_path: Path) -> None:
+    config = tmp_path / "agent.yaml"
+    config.write_text("")
+
+    app = AgentsCLI().get_cli()
+    with patch("subprocess.run") as run:
+        result = CliRunner().invoke(app, ["run", "--agent-config", str(config)])
+
+    assert result.exit_code == 1
+    assert f"agent config {config} root must be a YAML mapping" in result.stderr
+    run.assert_not_called()
 
 
 def test_list_404_prints_request_context_and_hint() -> None:

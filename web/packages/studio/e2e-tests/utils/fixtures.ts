@@ -4,11 +4,11 @@
 import { DatasetsAPI } from '@e2e-tests/api/datasets';
 import { EvaluationsAPI } from '@e2e-tests/api/evaluations';
 import { ModelsAPI } from '@e2e-tests/api/models';
-import { ProjectsAPI } from '@e2e-tests/api/projects';
+import { WorkspacesAPI } from '@e2e-tests/api/workspaces';
 import {
   CreateModelEntityRequest,
   ModelEntity,
-  Project,
+  Workspace,
 } from '@nemo/sdk/generated/platform/schema';
 import { APIRequestContext } from '@playwright/test';
 
@@ -19,39 +19,34 @@ type EvaluationConfig = Record<string, unknown>;
 /** Evaluation config input for create. */
 type EvaluationConfigInput = Record<string, unknown>;
 
-export interface TestProjectFixture {
-  project: Project;
+export interface TestWorkspaceFixture {
+  workspace: Workspace;
 }
 
 /**
- * Common fixture that creates a test project to use for an individual test.
- * The test will receive an argument of type `TestProjectFixture`.
- * Deletes the project after the test runs.
+ * Common fixture that creates a test workspace to use for an individual test.
+ * The test will receive an argument of type `TestWorkspaceFixture`.
+ * Deletes the workspace after the test runs.
  */
-export const testProjectFixture = async (
+export const testWorkspaceFixture = async (
   request: APIRequestContext,
-  runFixture: (returnValue: TestProjectFixture) => Promise<void>,
-  projectNamespace: string,
-  projectDisplayName: string,
-  projectDescription: string
+  runFixture: (returnValue: TestWorkspaceFixture) => Promise<void>,
+  workspaceName: string,
+  workspaceDescription: string
 ) => {
-  // Create a test project
-  const projectsApi = new ProjectsAPI(request);
-  const testProject = await projectsApi.createProject(projectNamespace, {
-    name: projectDisplayName,
-    description: projectDescription,
+  const workspacesApi = new WorkspacesAPI(request);
+  const testWorkspace = await workspacesApi.createWorkspace({
+    name: workspaceName,
+    description: workspaceDescription,
   });
-  const projectName = testProject.name || '';
 
-  // Execute test
-  await runFixture({ project: testProject });
+  await runFixture({ workspace: testWorkspace });
 
-  // Clean up the test project
-  await projectsApi.deleteProject(projectNamespace, projectName);
+  await workspacesApi.deleteWorkspace(testWorkspace.name);
 };
 
 export interface TestModelFixture {
-  project: Project;
+  workspace: Workspace;
   model: ModelEntity;
 }
 
@@ -63,17 +58,17 @@ export interface TestModelFixture {
 export const testModelFixture = async (
   request: APIRequestContext,
   runFixture: (returnValue: TestModelFixture) => Promise<void>,
-  project: Project,
-  workspace: string,
+  workspace: Workspace,
+  namespace: string,
   modelRequestBody: CreateModelEntityRequest
 ) => {
   // Create a test model
   const modelsApi = new ModelsAPI(request);
-  const testModel = await modelsApi.createModel(workspace, modelRequestBody);
+  const testModel = await modelsApi.createModel(namespace, modelRequestBody);
 
   // Execute test
   await runFixture({
-    project,
+    workspace,
     model: testModel,
   });
 
@@ -82,7 +77,7 @@ export const testModelFixture = async (
 };
 
 export interface TestDatasetFixture {
-  project: Project;
+  workspace: Workspace;
   dataset: Dataset;
 }
 
@@ -94,7 +89,7 @@ export interface TestDatasetFixture {
 export const testDatasetFixture = async (
   request: APIRequestContext,
   runFixture: (returnValue: TestDatasetFixture) => Promise<void>,
-  project: Project,
+  workspace: Workspace,
   datasetName: string,
   datasetNamespace: string,
   datasetDescription: string
@@ -104,13 +99,13 @@ export const testDatasetFixture = async (
   const testDataset = await datasetsApi.createDataset(
     datasetName,
     datasetNamespace,
-    `${project.workspace}/${project.name}`,
+    workspace.name,
     datasetDescription
   );
 
   // Execute test
   await runFixture({
-    project,
+    workspace,
     dataset: testDataset,
   });
 
@@ -119,7 +114,7 @@ export const testDatasetFixture = async (
 };
 
 export interface TestDatasetFilesFixture {
-  project: Project;
+  workspace: Workspace;
   dataset: Dataset;
 }
 
@@ -129,8 +124,8 @@ export interface TestDatasetFilesFixture {
  */
 export const testDatasetFilesFixture = async (
   request: APIRequestContext,
-  runFixture: (returnValue: TestDatasetFixture) => Promise<void>,
-  project: Project,
+  runFixture: (returnValue: TestDatasetFilesFixture) => Promise<void>,
+  workspace: Workspace,
   dataset: Dataset,
   files: {
     // Path to local test file
@@ -149,13 +144,13 @@ export const testDatasetFilesFixture = async (
 
   // Execute test
   await runFixture({
-    project,
+    workspace,
     dataset,
   });
 };
 
 export interface TestEvaluationConfigFixture {
-  project: Project;
+  workspace: Workspace;
   evaluationConfig: EvaluationConfig;
 }
 
@@ -167,7 +162,7 @@ export interface TestEvaluationConfigFixture {
 export const testEvaluationConfigFixture = async (
   request: APIRequestContext,
   runFixture: (returnValue: TestEvaluationConfigFixture) => Promise<void>,
-  project: Project,
+  workspace: Workspace,
   evaluationConfigRequestBody: EvaluationConfigInput
 ) => {
   // Create the evaluation config
@@ -176,7 +171,7 @@ export const testEvaluationConfigFixture = async (
 
   // Execute test
   await runFixture({
-    project,
+    workspace,
     evaluationConfig,
   });
 

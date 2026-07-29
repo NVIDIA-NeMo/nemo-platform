@@ -252,6 +252,7 @@ def _manually_add_provider_to_cache(
             workspace=ws,
             name=entity_name,
             parent=ws,
+            db_version=1,
             default_model_entity=f"{ws}/{entity_name}",
             autoprovisioned=True,
             created_at=now_iso,

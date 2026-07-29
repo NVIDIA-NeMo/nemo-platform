@@ -11,7 +11,7 @@ from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nmp.common.api.filter import ComparisonOperation, FilterOperator
-from nmp.common.controller.controller import Controller
+from nmp.common.controller.controller import Controller, HeartbeatMixin
 from nmp.common.observability import start_span_with_ctx
 from nmp.core.entities.app.ctx import WorkspaceCleanupContext
 from nmp.core.entities.app.repository.workspace import WorkspaceRepositoryInterface
@@ -27,7 +27,7 @@ _TERMINAL_JOB_STATUSES: frozenset[PlatformJobStatus] = frozenset(
 )
 
 
-class WorkspaceCleanup(Controller):
+class WorkspaceCleanup(HeartbeatMixin, Controller):
     def __init__(
         self,
         nmp_sdk: AsyncNeMoPlatform,
@@ -101,8 +101,11 @@ class WorkspaceCleanup(Controller):
                     return
 
                 await self._cleanup_jobs(workspace)
+                self.emit_heartbeat()
                 await self._cleanup_deployments(workspace)
+                self.emit_heartbeat()
                 await self._cleanup_filesets(workspace)
+                self.emit_heartbeat()
 
                 await self._workspace_repository.delete_workspace(name=workspace.name)
                 logger.info(f"Successfully deleted workspace: {workspace.name}")
@@ -147,6 +150,8 @@ class WorkspaceCleanup(Controller):
                     )
                 except Exception as e:
                     logger.warning(f"Failed to delete job {job.name}: {e}")
+                finally:
+                    self.emit_heartbeat()
 
         except Exception as e:
             logger.error(f"Failed to list jobs for workspace {workspace.name}: {e}")
@@ -168,6 +173,8 @@ class WorkspaceCleanup(Controller):
                     )
                 except Exception as e:
                     logger.warning(f"Failed to delete deployment {deployment.name}: {e}")
+                finally:
+                    self.emit_heartbeat()
 
         except Exception as e:
             logger.error(f"Failed to list deployments for workspace {workspace.name}: {e}")
@@ -189,6 +196,8 @@ class WorkspaceCleanup(Controller):
                     )
                 except Exception as e:
                     logger.warning(f"Failed to delete fileset {fileset.name}: {e}")
+                finally:
+                    self.emit_heartbeat()
 
         except Exception as e:
             logger.error(f"Failed to list filesets for workspace {workspace.name}: {e}")

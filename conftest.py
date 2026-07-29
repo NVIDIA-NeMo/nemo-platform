@@ -347,4 +347,9 @@ LoadScopeScheduling._reschedule = _patched_reschedule  # type: ignore[invalid-as
 
 
 def pytest_xdist_make_scheduler(config, log):
-    return LoadGroupScheduling(config, log)
+    dist = config.getvalue("dist")
+    if dist == "loadgroup":
+        return LoadGroupScheduling(config, log)
+    if dist == "loadscope":
+        return LoadScopeScheduling(config, log)
+    return None

@@ -2,7 +2,7 @@
 name = "nemoplatform"
 description = "NeMo Platform"
 readme = "README.md"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.15"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 
@@ -17,7 +17,6 @@ classifiers = [
 
   "License :: OSI Approved :: Apache Software License",
 
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -69,17 +68,13 @@ version = "0.0.0"
 [dependency-groups]
 # Optional Insights analyst plugin.
 insights = ["nemo-insights-plugin"]
-# Optional Experimentalist agent-optimization plugin. Its agent framework (nooa) and
-# evaluator (harbor) are both 3.12-only, so the whole plugin is gated rather than
-# installed half-resolved on 3.11.
-# Install Experimentalist and Eval Author together. Experimentalist depends on Eval Author
+# Optional Experimentalist agent-optimization plugin. Experimentalist depends on Eval Author
 # because insight mode imports it at module scope; Eval Author still depends back on
 # Experimentalist for evaluator/trace helpers, but that arrow is being removed (see
-# plugins/nemo-eval-author/README.md). Both are listed here so the 3.12 marker is applied
-# consistently, not because the current cycle needs help resolving.
+# plugins/nemo-eval-author/README.md).
 experimentalist = [
-  "nemo-experimentalist-plugin ; python_full_version >= '3.12'",
-  "nemo-eval-author-plugin ; python_full_version >= '3.12'",
+  "nemo-experimentalist-plugin",
+  "nemo-eval-author-plugin",
 ]
 dev = [
   "pre-commit>=3.8.0",
@@ -546,7 +541,7 @@ executionEnvironments = [
 ]
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.12"
 extra-paths = [
   # nemo-data-designer plugin is a workspace member; add its src so ty can
   # resolve nemo_data_designer_plugin imports from plugin test files.
@@ -656,16 +651,3 @@ include = [
 
 [tool.ty.overrides.rules]
 empty-body = "ignore"
-
-# The Experimentalist's agent framework (nooa) and evaluator (harbor) are both
-# 3.12-only, so uv skips them when the lint job resolves on 3.11 and every import
-# of them goes unresolved. Eval Author shares both. Everything else about the
-# plugins still gets checked.
-[[tool.ty.overrides]]
-include = [
-  "plugins/nemo-experimentalist/**",
-  "plugins/nemo-eval-author/**",
-]
-
-[tool.ty.overrides.rules]
-unresolved-import = "ignore"

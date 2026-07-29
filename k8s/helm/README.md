@@ -154,7 +154,7 @@ secrets will not decrypt with a new key.
 | core.storage.existingPersistentVolumeName | string | `""` | If set, pods will mount this persistent volume for job-scoped storage and we will not create a new persistent volume claim. |
 | core.storage.size | string | `"200Gi"` | size of the persistent volume claim used for persistent storage |
 | core.storage.storageClass | string | `""` | Which storageClass to use when creating a new persistent volume claim. Empty string uses the cluster's default StorageClass. |
-| core.storage.volumePermissionsImage | string | `"docker.io/library/busybox"` | volumePermissionsImage is the image used to set permissions on the volume |
+| core.storage.volumePermissionsImage | string | `"docker.io/library/busybox:stable"` | volumePermissionsImage is the image used to set permissions on the volume |
 | core.telemetry | object | `{}` | OpenTelemetry configuration overrides for the platform deployment. |
 | env | object | `{}` | Environment variables that will be applied to every deployment pod. Uses a simple key value map structure like MY_ENV_VAR: the-key and works with valueFrom as well. |
 | envFromSecret | string | `""` | Optional. Name of an existing Kubernetes Secret to load as env vars (envFrom) for the API pod. When set, the chart does not create or generate the default api-env Secret; use your own Secret (for example, from Vault or sealed-secrets). |

@@ -142,6 +142,10 @@ func (s *workloadAuthTokenSource) authHeaders(ctx context.Context) (map[string]s
 	return map[string]string{"Authorization": authHeader}, nil
 }
 
+func (s *workloadAuthTokenSource) Headers(ctx context.Context) (map[string]string, error) {
+	return s.authHeaders(ctx)
+}
+
 func (s *workloadAuthTokenSource) AuthorizationHeader(ctx context.Context) (string, error) {
 	accessToken, err := s.accessToken(ctx)
 	if err != nil {

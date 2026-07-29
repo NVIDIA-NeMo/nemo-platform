@@ -4,8 +4,8 @@
 """One-way, best-effort projection of the plugin's run/candidate entities onto the
 platform's native ``ExperimentGroup``/``Experiment``.
 
-This module is the *only* place that talks to ``client.experiment_groups`` /
-``client.experiments``; the optimization loop never imports it. Mapping is
+This module is the *only* place that talks to ``client.experiments`` /
+``client.evaluations``; the optimization loop never imports it. Mapping is
 ``ExperimentRun → ExperimentGroup`` (1:1) and ``Candidate → Experiment[]`` (one per
 evaluated split). It mirrors **structure only** (identity/lineage/status/description);
 eval results (reward/trials) are NOT copied into ``Experiment.metadata`` — those arrive
@@ -120,7 +120,7 @@ class ExperimentMirror:
     async def ensure_group(self, run: ExperimentRun) -> None:
         gname = group_name(run.id)
         try:
-            grp = await self._client.experiment_groups.create(
+            grp = await self._client.experiments.create(
                 workspace=self._workspace,
                 name=gname,
                 insight_id=run.insight or omit,
@@ -128,14 +128,14 @@ class ExperimentMirror:
                 metadata=group_metadata(run),
             )
         except ConflictError:
-            grp = await self._client.experiment_groups.retrieve(gname, workspace=self._workspace)
+            grp = await self._client.experiments.retrieve(gname, workspace=self._workspace)
         self._group_ids[run.id] = grp.id
 
     async def update_group(self, run: ExperimentRun) -> None:
         gname = group_name(run.id)
-        # experiment_groups.update is a full-replace PUT: omitted fields reset to None
+        # experiments.update is a full-replace PUT: omitted fields reset to None
         # server-side, so re-supply the whole body (we have the run).
-        await self._client.experiment_groups.update(
+        await self._client.experiments.update(
             gname,
             workspace=self._workspace,
             body_name=gname,
@@ -147,7 +147,7 @@ class ExperimentMirror:
     async def _group_id_for(self, run_id: str) -> str:
         gid = self._group_ids.get(run_id)
         if gid is None:  # resume path: group exists, look it up by deterministic name
-            grp = await self._client.experiment_groups.retrieve(group_name(run_id), workspace=self._workspace)
+            grp = await self._client.experiments.retrieve(group_name(run_id), workspace=self._workspace)
             gid = self._group_ids[run_id] = grp.id
         return gid
 
@@ -212,7 +212,7 @@ class ExperimentMirror:
                 dataset_name=self._dataset_name(split),
                 dataset_version="v1",
                 workspace=self._workspace,
-                experiment_group_id=group_id,
+                experiment_ids=[group_id],
                 source_link=link,
                 description=candidate.optimization,
                 parent_evaluation_id=parent_id,
@@ -227,7 +227,7 @@ class ExperimentMirror:
                 dataset_name=self._dataset_name(split),
                 dataset_version="v1",
                 body_name=name,
-                experiment_group_id=group_id,
+                experiment_ids=[group_id],
                 source_link=link,
                 description=candidate.optimization,
                 parent_evaluation_id=parent_id,
@@ -284,12 +284,12 @@ class ExperimentMirror:
     async def finalize(self, *, run_id: str, summary: str, winner: Candidate | None, pr_url: str | None = None) -> None:
         gname = group_name(run_id)
         gid = await self._group_id_for(run_id)
-        # experiment_groups.update is a full-replace PUT: omitted fields reset to None
+        # experiments.update is a full-replace PUT: omitted fields reset to None
         # server-side. finalize has no `run`, so read-preserve-write the current
         # insight_id/metadata before writing the summary (stays within the mirror; no
         # data flows back into the loop).
-        grp = await self._client.experiment_groups.retrieve(gname, workspace=self._workspace)
-        await self._client.experiment_groups.update(
+        grp = await self._client.experiments.retrieve(gname, workspace=self._workspace)
+        await self._client.experiments.update(
             gname,
             workspace=self._workspace,
             body_name=gname,

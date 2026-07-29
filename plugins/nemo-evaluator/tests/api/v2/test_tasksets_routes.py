@@ -18,23 +18,20 @@ from nemo_evaluator.api.dependencies import get_taskset_service
 from nemo_evaluator.api.schemas import TaskRef, TasksetInput
 from nemo_evaluator.api.service.taskset_service import TasksetService
 from nemo_evaluator.api.v2 import tasksets as tasksets_routes
-from nemo_platform_plugin.entities import (
-    EntityBase,
-    EntityConflictError,
-    EntityNotFoundError,
-    ListResponse,
-    PaginationInfo,
-)
+from nemo_evaluator.entities import TasksetEntity
+from nemo_platform_plugin.entities import ListResponse, PaginationInfo
+from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
+from nemo_platform_plugin.filter_ops import FilterOperation
 
 
 class _FakeEntityClient:
     def __init__(self) -> None:
-        self.entities: dict[tuple[str, str, str], EntityBase] = {}
+        self.entities: dict[tuple[str, str, str], TasksetEntity] = {}
 
-    async def create(self, entity):
+    async def create(self, entity: TasksetEntity) -> TasksetEntity:
         key = (entity.__entity_type__, entity.workspace, entity.name)
         if key in self.entities:
-            raise EntityConflictError(f"{key} exists")
+            raise NemoEntityConflictError(f"{key} exists")
         now = datetime.now(timezone.utc)
         entity._id = f"{entity.__entity_type__}-{entity.name}"
         entity._created_at = now
@@ -42,21 +39,37 @@ class _FakeEntityClient:
         self.entities[key] = entity
         return entity
 
-    async def get(self, entity_cls, *, workspace, name):
-        key = (entity_cls.__entity_type__, workspace, name)
+    async def get(self, entity_type: type[TasksetEntity], *, workspace: str, name: str) -> TasksetEntity:
+        key = (entity_type.__entity_type__, workspace, name)
         if key not in self.entities:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
         return self.entities[key]
 
-    async def delete(self, entity_cls, name, *, workspace):
-        key = (entity_cls.__entity_type__, workspace, name)
+    async def delete(
+        self,
+        entity_type: type[TasksetEntity],
+        name: str,
+        *,
+        workspace: str,
+        expected_db_version: int | None = None,
+    ) -> None:
+        key = (entity_type.__entity_type__, workspace, name)
         if key not in self.entities:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
         del self.entities[key]
 
-    async def list(self, entity_cls, *, workspace, filter_operation=None, sort=None, page=1, page_size=100):
+    async def list(
+        self,
+        entity_type: type[TasksetEntity],
+        *,
+        workspace: str,
+        filter_operation: FilterOperation | None = None,
+        sort: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> ListResponse[TasksetEntity]:
         items = [
-            e for (etype, ws, _), e in self.entities.items() if etype == entity_cls.__entity_type__ and ws == workspace
+            e for (etype, ws, _), e in self.entities.items() if etype == entity_type.__entity_type__ and ws == workspace
         ]
         return ListResponse(
             data=items,
@@ -170,3 +183,16 @@ def test_delete_then_get_404(client: TestClient) -> None:
 
 def test_delete_missing_returns_404(client: TestClient) -> None:
     assert client.delete(f"{_BASE}/nope").status_code == 404
+
+
+def test_delete_conflict_returns_409() -> None:
+    class _Service:
+        async def delete_taskset(self, workspace: str, name: str) -> bool:
+            raise NemoEntityConflictError("changed")
+
+    app = FastAPI()
+    app.include_router(tasksets_routes.router, prefix="/v2/workspaces/{workspace}")
+    app.dependency_overrides[get_taskset_service] = lambda: _Service()
+    client = TestClient(app)
+
+    assert client.delete(f"{_BASE}/ts-1").status_code == 409

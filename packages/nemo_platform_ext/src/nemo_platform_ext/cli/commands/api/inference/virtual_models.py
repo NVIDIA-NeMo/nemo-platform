@@ -177,6 +177,13 @@ def delete_virtual_models(
     ctx: typer.Context,
     name: Annotated[str, typer.Argument()],
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    expected_db_version: Annotated[
+        int | None,
+        typer.Option(
+            "--expected-db-version",
+            help="Optional database version for optimistic locking. Delete only succeeds if the VirtualModel still has this version.",
+        ),
+    ] = None,
 ) -> None:
     """Permanently delete a VirtualModel.
 
@@ -187,6 +194,7 @@ def delete_virtual_models(
 
     kwargs = build_kwargs(
         workspace=workspace,
+        expected_db_version=expected_db_version,
     )
     client.inference.virtual_models.delete(name, **kwargs)
 

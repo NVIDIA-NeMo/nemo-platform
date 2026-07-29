@@ -391,6 +391,7 @@ def _make_deployment(
 class TestDeleteAgent:
     def test_delete_existing_returns_204(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
         mock_entity_client.delete = AsyncMock(return_value=None)
 
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
@@ -399,11 +400,16 @@ class TestDeleteAgent:
 
     def test_delete_calls_entity_client_delete(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
         mock_entity_client.delete = AsyncMock(return_value=None)
 
         client.delete("/apis/agents/v2/workspaces/default/agents/calc")
 
-        mock_entity_client.delete.assert_called_once_with(Agent, name="calc", workspace="default")
+        mock_entity_client.delete.assert_called_once_with(
+            Agent,
+            name="calc",
+            workspace="default",
+        )
 
     def test_delete_not_found_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
@@ -412,6 +418,14 @@ class TestDeleteAgent:
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/nonexistent")
 
         assert resp.status_code == 404
+
+    def test_delete_conflict_returns_409(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        mock_entity_client.delete = AsyncMock(side_effect=NemoEntityConflictError("changed"))
+
+        resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
+
+        assert resp.status_code == 409
 
     def test_delete_blocks_on_running_deployment(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         """DELETE /agents/{name} returns 409 when a running deployment references the agent."""
@@ -445,6 +459,7 @@ class TestDeleteAgent:
         """failed deployments do not block deletion — they are terminal."""
         dep = _make_deployment(agent="calc", status="failed")
         mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
         mock_entity_client.delete = AsyncMock(return_value=None)
 
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
@@ -457,6 +472,7 @@ class TestDeleteAgent:
         """deleting deployments do not block — they are already being cleaned up."""
         dep = _make_deployment(agent="calc", status="deleting")
         mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
         mock_entity_client.delete = AsyncMock(return_value=None)
 
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
@@ -469,6 +485,7 @@ class TestDeleteAgent:
         """A running deployment for a *different* agent must not block deletion."""
         other_dep = _make_deployment(name="other-dep", agent="other-agent", status="running")
         mock_entity_client.list = AsyncMock(return_value=_list_response([other_dep]))
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
         mock_entity_client.delete = AsyncMock(return_value=None)
 
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
@@ -477,6 +494,7 @@ class TestDeleteAgent:
 
     def test_delete_server_error_on_delete_returns_500(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
         mock_entity_client.delete = AsyncMock(side_effect=RuntimeError("db error"))
 
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")

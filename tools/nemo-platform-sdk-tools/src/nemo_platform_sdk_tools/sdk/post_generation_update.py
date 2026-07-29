@@ -195,22 +195,22 @@ def update_pyproject_toml(sdk_info: SdkInfo) -> bool:
 
     project["urls"] = {"Homepage": "https://docs.nvidia.com/nemo/microservices/latest/about/index.html"}
 
-    # Drop support for Python versions older than 3.11.
-    version_to_remove = ["3.8", "3.9", "3.10"]
+    # Drop support for Python versions older than 3.12.
+    version_to_remove = ["3.8", "3.9", "3.10", "3.11"]
     for ver in version_to_remove:
         try:
             project["classifiers"].remove(f"Programming Language :: Python :: {ver}")
         except ValueError:
             pass
 
-    project["requires-python"] = ">= 3.11"
+    project["requires-python"] = ">= 3.12"
     dependencies = project.get("dependencies")
     if dependencies is not None:
         for dep in list(dependencies):
             if dep.startswith("exceptiongroup"):
                 dependencies.remove(dep)
-    pyproject["tool"]["ruff"]["target-version"] = "py311"
-    pyproject["tool"]["pyright"]["pythonVersion"] = "3.11"
+    pyproject["tool"]["ruff"]["target-version"] = "py312"
+    pyproject["tool"]["pyright"]["pythonVersion"] = "3.12"
 
     # Handle versioning
     project.pop("version", None)

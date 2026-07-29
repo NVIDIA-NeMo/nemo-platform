@@ -47,21 +47,12 @@ def test_trace_filter_accepts_evaluation_id():
     assert filters.evaluation_id == "experiment-a"
 
 
-def test_trace_filter_accepts_deprecated_experiment_id_alias():
-    filters = _trace_filter(
-        "workspace-a",
-        _parsed_filter({"experiment_id": "experiment-a"}),
-    )
-
-    assert filters.evaluation_id == "experiment-a"
-
-
-def test_trace_filter_schema_exposes_evaluation_id_with_deprecated_experiment_id_alias():
+def test_trace_filter_schema_exposes_evaluation_id():
     properties = TraceFilter.model_json_schema()["properties"]
 
     assert properties["evaluation_id"]["description"] == "Filter by root-span evaluation id."
     assert "deprecated" not in properties["evaluation_id"]
-    assert properties["experiment_id"]["deprecated"] is True
+    assert "experiment_id" not in properties
     assert properties["test_case_id"]["description"] == "Filter by root-span evaluation test case id."
     assert "deprecated" not in properties["test_case_id"]
 

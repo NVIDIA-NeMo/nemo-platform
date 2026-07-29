@@ -125,7 +125,7 @@ const STUDIO_LINK_ARGUMENT_ALIASES = {
     'span_id',
     'spanId',
     'experiment_group_id',
-    'experimentGroupId',
+    'experimentId',
   ],
   experiment_name: ['experimentName', 'experiment_id', 'experimentId'],
   file_path: ['file', 'filePath', 'file_path_encoded', 'filePathEncoded', 'path'],

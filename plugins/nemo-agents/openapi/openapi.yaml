@@ -2322,6 +2322,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -2332,6 +2337,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: Agent
       description: "An agent definition \u2014 stores agent config and metadata.\n\
         \nEntity type: ``agent``\nPrimary lookup: by ``name`` within a ``workspace``.\n\
@@ -2460,6 +2466,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -2470,6 +2481,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: AgentDeployment
       description: "A running (or pending) deployment of an Agent.\n\nEntity type:\
         \ ``agent_deployment``\nLifecycle: pending \u2192 starting \u2192 running\
