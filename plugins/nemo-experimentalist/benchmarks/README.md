@@ -6,13 +6,19 @@
 These benchmarks measure M2 Experimentalist optimization on unmodified Harbor Hub
 packages. They do not cover M1 Insight → Eval Author behavior.
 
-Two suites ship today. Both store only task IDs and download task definitions into
+Five suites ship today. All store only task IDs and download task definitions into
 a local cache; no task content is vendored here.
 
 | Suite | Package | Tasks | Agent under test |
 | --- | --- | --- | --- |
 | `suites/terminal-bench-2.1.yaml` (default) | `terminal-bench/terminal-bench-2-1@6` | 89 | `examples/terminal-bench-agent` |
 | `suites/tau3-banking.yaml` | `sierra-research/tau3-bench@1`, banking scoped | 97 | `examples/tau3-nooa-agent` |
+| `suites/tau3-airline.yaml` | `sierra-research/tau3-bench@1`, airline scoped | 50 | `examples/tau3-nooa-agent` |
+| `suites/tau3-retail.yaml` | `sierra-research/tau3-bench@1`, retail scoped | 114 | `examples/tau3-nooa-agent` |
+| `suites/tau3-telecom.yaml` | `sierra-research/tau3-bench@1`, telecom scoped | 114 | `examples/tau3-nooa-agent` |
+
+The four tau3 suites share one agent: its `AGENT-SPEC.md` is domain-generic because
+the domain policy arrives at runtime in the task instruction.
 
 ## Terminal-Bench provenance
 
@@ -31,23 +37,41 @@ The 38/25/26 quality partition and 35/12/12 fast partition came from Gaia's
 the runner asks Harbor Hub for revision 6, verifies its content hash, and
 asserts that the quality partition covers all 89 canonical IDs exactly once.
 
-## tau3 banking provenance
+## tau3 provenance
 
-The suite scopes `sierra-research/tau3-bench@1` to its `banking_knowledge` domain:
+Each tau3 suite scopes one domain of `sierra-research/tau3-bench@1` by task-ID prefix.
+All four share the package's 375 tasks, its content hash
+`sha256:a57304f682894ac061090769af771a3617664f3ff6e5417d4eadf8e30433e4d9`, and its
+Harbor Hub record
+<https://hub.harborframework.com/datasets/sierra-research/tau3-bench/1>:
 
-- 97 of the package's 375 tasks, selected by the
-  `tau3-bench__tau3-banking_knowledge-` task-ID prefix
-- dataset content hash
-  `sha256:a57304f682894ac061090769af771a3617664f3ff6e5417d4eadf8e30433e4d9`
-- Harbor Hub record:
-  <https://hub.harborframework.com/datasets/sierra-research/tau3-bench/1>
+| Suite | Task-ID prefix | Tasks | Quality split |
+| --- | --- | --- | --- |
+| `tau3-banking.yaml` | `tau3-bench__tau3-banking_knowledge-` | 97 | 41/28/28 |
+| `tau3-airline.yaml` | `tau3-bench__tau3-airline-` | 50 | 20/10/20 |
+| `tau3-retail.yaml` | `tau3-bench__tau3-retail-` | 114 | 50/24/40 |
+| `tau3-telecom.yaml` | `tau3-bench__tau3-telecom-` | 114 | 50/24/40 |
 
-The 41/28/28 quality partition came from `optimization-datasets`
-`feat/tau2-other-domains` commit `025ecd2ef2b518ad81f6b22d3f3937af8906fb01`,
-whose `tau2-banking-knowledge-NNN` names map onto the canonical
-`tau3-bench__tau3-banking_knowledge-task-NNN` IDs. The 6/3/3 fast partition draws
-only from the 87 tasks whose `reward_basis` is pure database state, so smoke runs
-score deterministically without an LLM judge.
+Banking's partition came from `optimization-datasets` `feat/tau2-other-domains`
+commit `025ecd2ef2b518ad81f6b22d3f3937af8906fb01`, whose
+`tau2-banking-knowledge-NNN` names map onto the canonical
+`tau3-bench__tau3-banking_knowledge-task-NNN` IDs. The other three take `test`
+from the domain's upstream `split_tasks.json` test list and carve `validation` out
+of its train list, every third entry in upstream order; that file's train and test
+lists partition the domain exactly, so the quality split needs nothing invented
+beyond the validation stride.
+
+A canonical ID is `tau3-bench__` plus the name Harbor's `adapters/tau3-bench` gives
+the task, `tau3-<domain>-<slugified upstream task ID>`. Re-deriving IDs from that
+adapter against a `tau2-bench` checkout reproduces the banking manifest exactly,
+which is how the other three manifests were built.
+
+A domain's `reward_basis` decides whether scoring needs an LLM judge. Banking's 6/3/3
+fast partition draws only from its 87 pure-database-state tasks. Airline scores on
+database state and a substring check of the agent's messages, and telecom on
+environment assertions and expected actions, so both are judge-free in either
+partition. 112 of retail's 114 tasks carry an `NL_ASSERTION`, so retail always
+scores through the judge.
 
 Each task also runs a `tau3-runtime` sidecar hosting the tau2 environment and user
 simulator. Tau-style suites set `models.user_simulator`, which makes the runner
@@ -110,6 +134,9 @@ uv run python benchmarks/run.py \
   --config benchmarks/configs/tau3-smoke.yaml \
   --agent examples/tau3-nooa-agent
 ```
+
+The other tau3 domains change only `--suite`; the two tau3 configs and the agent are
+domain-independent.
 
 Both setup and agent execution require network access. Each AUT installs its own
 dependencies from its committed `uv.lock` inside the task container and does not
