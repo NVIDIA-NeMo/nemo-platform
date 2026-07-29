@@ -4157,7 +4157,7 @@ requires-dist = [
     { name = "nemo-insights-plugin", editable = "plugins/nemo-insights" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
-    { name = "nooa", git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?tag=v0.0.6" },
+    { name = "nooa", git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?rev=bea4614a0e2a6cf88f76225466159af883da80a0" },
     { name = "opentelemetry-proto", specifier = ">=1.42.1" },
     { name = "protobuf", specifier = ">=6.0.0" },
     { name = "pydantic", specifier = ">=2" },
@@ -7507,8 +7507,8 @@ wheels = [
 
 [[package]]
 name = "nooa"
-version = "0.0.6"
-source = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?tag=v0.0.6#be0aad9db6cbce9b6a62ff08e3680284af091d6f" }
+version = "0.0.7.dev46"
+source = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?rev=bea4614a0e2a6cf88f76225466159af883da80a0#bea4614a0e2a6cf88f76225466159af883da80a0" }
 dependencies = [
     { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "litellm", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
