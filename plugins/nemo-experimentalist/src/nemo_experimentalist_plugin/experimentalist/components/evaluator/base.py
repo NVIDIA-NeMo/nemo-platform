@@ -54,10 +54,10 @@ class Evaluator(ABC):
         """
         Aggregate evaluation results from multiple runs.
 
-        Averages each metric over the trials that did **not** fail. Failed trials are
-        excluded from both the sum and the denominator, so a crash does not pull the
-        mean down — it shrinks the sample the mean is taken over, and a round where
-        every trial failed aggregates to ``{}`` rather than to zeros.
+        Averages each metric over trials with ``status == "completed"``. Anything
+        else is excluded from both the sum and the denominator, so a crash does not
+        pull the mean down — it shrinks the sample the mean is taken over, and a
+        round with no completed trial aggregates to ``{}`` rather than to zeros.
 
         Completed trials must all report the same metric keys; a mismatch raises
         rather than silently averaging over different denominators per metric.
@@ -71,7 +71,10 @@ class Evaluator(ABC):
         if not results:
             return {}
 
-        completed = [r for r in results if r.status != "failed"]
+        # Positive predicate on purpose: `!= "failed"` is equivalent while TrialStatus
+        # is Literal["completed", "failed"], but it would silently start averaging any
+        # third status someone adds. Opt statuses in, do not opt "failed" out.
+        completed = [r for r in results if r.status == "completed"]
         if not completed:
             return {}
 

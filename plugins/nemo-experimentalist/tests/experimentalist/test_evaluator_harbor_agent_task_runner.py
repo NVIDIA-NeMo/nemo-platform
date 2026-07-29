@@ -356,23 +356,20 @@ async def test_errored_cached_job_is_rerun(
     tmp_path: Path,
     dataset: HarborDataset,
     agent_dir: Path,
+    cached_job_dir: Path,
     fake_job: type[_FakeJob],
 ) -> None:
-    job_dir = tmp_path / "jobs" / f"{agent_dir.name}-{dataset.id}"
-    _write_trial(
-        job_dir,
-        trial_name="sum-two__0",
-        task_name="hello/sum-two",
-        task_dir=tmp_path / "dataset" / "validation" / "sum-two",
-        rewards={"reward": 1.0},
-    )
-    _write_trial(
-        job_dir,
-        trial_name="sum-three__0",
-        task_name="hello/sum-three",
-        task_dir=tmp_path / "dataset" / "validation" / "sum-three",
-        exception_info={"exception_type": "TimeoutError"},
-    )
+    """An errored trial must force a rerun even when the cache is otherwise valid.
+
+    Built on the *stamped* `cached_job_dir` on purpose. A hand-rolled job dir has
+    no fingerprint, so it is rejected as untrusted and the run happens for that
+    reason instead — the assertion would then hold even if error-awareness were
+    completely broken. Mutating one trial in place keeps the stamp valid, so the
+    error is the only thing left that can trigger the rerun.
+    """
+    errored = json.loads((cached_job_dir / "sum-three__0" / "result.json").read_text(encoding="utf-8"))
+    errored["exception_info"] = {"exception_type": "TimeoutError"}
+    _write(cached_job_dir / "sum-three__0" / "result.json", json.dumps(errored))
 
     await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))

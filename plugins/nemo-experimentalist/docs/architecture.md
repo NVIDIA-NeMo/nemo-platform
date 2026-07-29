@@ -305,8 +305,8 @@ Contracts your `_run` must honor, because the loop depends on them:
   `ValueError` on inconsistent metric sets across completed trials
   ([`base.py:65`](../src/nemo_experimentalist_plugin/experimentalist/components/evaluator/base.py:64)).
   Emit a 0 rather than omitting a key.
-- **Failed trials are excluded, not zeroed.** Only `status != "failed"` trials are
-  averaged, and failures leave the denominator too — a crash shrinks the sample
+- **Failed trials are excluded, not zeroed.** Only `status == "completed"` trials
+  are averaged, and failures leave the denominator too — a crash shrinks the sample
   rather than pulling the mean down, and an all-failed round aggregates to `{}`.
   If you want a failure to score against a candidate, emit a completed trial with
   a `0` metric rather than failing it.
