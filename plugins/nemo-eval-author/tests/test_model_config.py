@@ -135,8 +135,8 @@ def test_model_name_prefers_author_then_experimentalist_then_default(
 
 
 def test_tiers_pointing_at_one_model_share_a_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The @functools.cache on each getter only promises one client per tier. Caching the
-    # factory on the resolved triple is what collapses tiers that resolve identically.
+    # The @functools.cache on each getter only promises one client per tier. Keying the
+    # factory on the resolved name, base URL, and key is what collapses identical tiers.
     monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
     monkeypatch.setenv("AUTHOR_API_KEY", "eval-key")
     monkeypatch.setenv("AUTHOR_SMART_MODEL_NAME", "vendor/one-model")

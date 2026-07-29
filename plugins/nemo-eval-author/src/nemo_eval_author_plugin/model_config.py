@@ -114,11 +114,19 @@ def _api_key() -> str:
 
 @functools.cache
 def _completion_client(name: str, api_base: str, api_key: str) -> CompletionClient:
-    """Return Eval Author's client for an already-resolved model triple.
+    """Return Eval Author's client for an already-resolved model name, base URL, and key.
 
-    Cached on the triple rather than per tier so that two tiers pointing at the same model
-    share a connection pool. Experimentalist caches its own clients separately; that
-    duplication is the price of Eval Author not importing from it.
+    Those three arguments are the cache key, so any tier resolving to the same model gets the
+    same client. The tier getters below are cached as well, but that alone only promises one
+    client per tier: two tiers configured with the same model would each build their own, and
+    every ``CompletionClient`` opens its own pool of keepalive connections. The base URL and
+    key belong in the key too, since the same model reached through a different endpoint, or
+    with different credentials, is a different client and must not be reused.
+
+    Experimentalist caches its clients separately, so an insight-mode run holds two clients
+    for what is usually the same model. Sharing one factory across the plugins would fix
+    that, but only by importing Experimentalist into the one Eval Author module that has no
+    such import (see the module docstring). A duplicate connection pool is the cheaper cost.
 
     Args:
         name: Fully qualified model name, as ``CompletionClient`` expects it.
@@ -126,7 +134,7 @@ def _completion_client(name: str, api_base: str, api_key: str) -> CompletionClie
         api_key: Resolved API key.
 
     Returns:
-        CompletionClient: the client for this triple.
+        CompletionClient: the client for this name, base URL, and key.
 
     """
     return CompletionClient(name, api_base=api_base, api_key=api_key)
