@@ -1311,6 +1311,9 @@ async def _invoke_nemo_agent(
         pool=10.0,
     )
     async with httpx.AsyncClient(timeout=timeout) as client:
+        # The origin and agent name are server-configured. The only request-derived URL
+        # component is a NAME_PATTERN-validated, percent-encoded workspace path segment.
+        # codeql[py/partial-ssrf]
         response = await client.post(
             agent_url,
             headers=dict(headers),
