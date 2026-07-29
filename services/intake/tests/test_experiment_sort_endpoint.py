@@ -3,7 +3,7 @@
 
 """Endpoint-level guards for the evaluations list sort (rollups unavailable / bad field).
 
-The shared ``client`` fixture overrides ``get_evaluation_rollup_repository`` to return ``None``,
+The shared ``client`` fixture disables the Evaluation rollup repository,
 which is exactly the "ClickHouse disabled / unavailable" condition. A metric-backed sort cannot be
 computed without rollups, so it must fail loudly rather than silently degrade to name order.
 """

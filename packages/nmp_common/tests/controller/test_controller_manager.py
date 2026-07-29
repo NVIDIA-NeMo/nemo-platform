@@ -288,3 +288,77 @@ def test_stop_without_shutdown_func():
 
     assert not loop.is_alive()
     assert controller.step_count > 0
+
+
+class _ToggleLoop:
+    """Loop stand-in whose health and reason are set by the test."""
+
+    def __init__(self, healthy: bool = True, reason: str | None = None) -> None:
+        self.is_healthy = healthy
+        self.unhealthy_reason = reason
+
+
+def test_health_transition_logs_only_on_change(caplog):
+    """Health is evaluated on every probe, so only the edges may be logged."""
+    manager = ControllerManager.get_instance()
+    manager.clear()
+    loop = _ToggleLoop(healthy=True)
+    manager.register("toggle", loop)
+
+    with caplog.at_level("INFO"):
+        manager.validate_all_healthy()
+        manager.validate_all_healthy()
+        assert [r for r in caplog.records if "toggle" in r.getMessage()] == []
+
+        loop.is_healthy = False
+        loop.unhealthy_reason = "no progress for 44.20s (max allowed: 15.00s)"
+        manager.validate_all_healthy()
+        manager.validate_all_healthy()
+        manager.validate_all_healthy()
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING" and "toggle" in r.getMessage()]
+        assert len(warnings) == 1
+        assert "no progress for 44.20s" in warnings[0].getMessage()
+
+        loop.is_healthy = True
+        loop.unhealthy_reason = None
+        manager.validate_all_healthy()
+        manager.validate_all_healthy()
+
+        recoveries = [r for r in caplog.records if r.levelname == "INFO" and "healthy again" in r.getMessage()]
+        assert len(recoveries) == 1
+
+    manager.clear()
+
+
+def test_health_transition_reports_placeholder_when_reason_missing(caplog):
+    manager = ControllerManager.get_instance()
+    manager.clear()
+    manager.register("no-reason", _ToggleLoop(healthy=False, reason=None))
+
+    with caplog.at_level("WARNING"):
+        manager.validate_all_healthy()
+
+    warnings = [r for r in caplog.records if r.levelname == "WARNING" and "no-reason" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "reason unavailable" in warnings[0].getMessage()
+
+    manager.clear()
+
+
+def test_clear_resets_transition_state(caplog):
+    """After clear(), a re-registered unhealthy loop is reported again."""
+    manager = ControllerManager.get_instance()
+    manager.clear()
+    manager.register("recycled", _ToggleLoop(healthy=False, reason="stuck"))
+    with caplog.at_level("WARNING"):
+        manager.validate_all_healthy()
+    manager.clear()
+
+    manager.register("recycled", _ToggleLoop(healthy=False, reason="stuck"))
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        manager.validate_all_healthy()
+
+    assert [r for r in caplog.records if "recycled" in r.getMessage()]
+    manager.clear()

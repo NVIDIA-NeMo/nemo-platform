@@ -212,7 +212,6 @@ class TestInstall:
         assert result.exit_code != 0
 
     def test_install_claude_project_creates_multiple_files(self, tmp_path: Path, monkeypatch):
-        (tmp_path / ".git").mkdir()
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, "skills install --agent claude")
         assert_exit_code(result, 0)
@@ -223,22 +222,67 @@ class TestInstall:
         assert "Installed" in result.stdout
 
     def test_install_selective_skills(self, tmp_path: Path, monkeypatch):
-        (tmp_path / ".git").mkdir()
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, "skills install --agent claude --skill inference")
         assert_exit_code(result, 0)
         assert (tmp_path / ".claude" / "skills" / "nemo-inference" / "SKILL.md").exists()
         assert not (tmp_path / ".claude" / "skills" / "nemo-setup" / "SKILL.md").exists()
 
-    def test_install_invalid_skill_name_errors(self, tmp_path: Path, monkeypatch):
+    @pytest.mark.parametrize(
+        ("agent", "relative_path"),
+        [
+            ("claude", ".claude/skills/nemo-inference/SKILL.md"),
+            ("codex", ".agents/skills/nemo-inference/SKILL.md"),
+            ("cursor", ".cursor/rules/nemo-inference/SKILL.md"),
+            ("opencode", ".opencode/commands/nemo-inference/SKILL.md"),
+        ],
+    )
+    def test_install_uses_cwd_when_parent_has_git_directory(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+        agent: str,
+        relative_path: str,
+    ):
         (tmp_path / ".git").mkdir()
+        project_dir = tmp_path / "project" / "subdir"
+        project_dir.mkdir(parents=True)
+        monkeypatch.chdir(project_dir)
+
+        result = runner.invoke(app, ["skills", "install", "--agent", agent, "--skill", "inference"])
+
+        assert_exit_code(result, 0)
+        expected_path = project_dir / relative_path
+        assert expected_path.exists()
+        assert str(expected_path) in result.stdout
+        assert not (tmp_path / relative_path).exists()
+
+    @pytest.mark.parametrize("option", ["--project-dir", "--project-root"])
+    def test_install_accepts_explicit_project_dir(self, tmp_path: Path, monkeypatch, option: str):
+        cwd = tmp_path / "cwd"
+        project_dir = tmp_path / "project"
+        cwd.mkdir()
+        project_dir.mkdir()
+        monkeypatch.chdir(cwd)
+
+        result = runner.invoke(
+            app,
+            ["skills", "install", "--agent", "claude", "--skill", "inference", option, str(project_dir)],
+        )
+
+        assert_exit_code(result, 0)
+        expected_path = project_dir / ".claude" / "skills" / "nemo-inference" / "SKILL.md"
+        assert expected_path.exists()
+        assert str(expected_path) in result.stdout
+        assert not (cwd / ".claude").exists()
+
+    def test_install_invalid_skill_name_errors(self, tmp_path: Path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, "skills install --agent claude --skill nonexistent")
         assert_exit_code(result, 1)
         assert "Unknown skill" in result.output
 
     def test_install_duplicate_skill_error_is_clean(self, tmp_path: Path, monkeypatch):
-        (tmp_path / ".git").mkdir()
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
             "nemo_platform_ext.cli.commands.skills.cli.load_skills",
@@ -249,7 +293,6 @@ class TestInstall:
         assert "Error: duplicate skill" in result.output
 
     def test_install_plugin_skill_copies_companion_files(self, tmp_path: Path, monkeypatch, example_plugin_skills):
-        (tmp_path / ".git").mkdir()
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, "skills install --agent claude --skill example-debug")
         assert_exit_code(result, 0)
@@ -258,7 +301,6 @@ class TestInstall:
         assert (skill_dir / "resources" / "notes.md").exists()
 
     def test_install_codex_writes_per_skill_directories(self, tmp_path: Path, monkeypatch):
-        (tmp_path / ".git").mkdir()
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, "skills install --agent codex")
         assert_exit_code(result, 0)
@@ -269,14 +311,12 @@ class TestInstall:
         assert not (tmp_path / "AGENTS.md").exists()
 
     def test_install_unknown_agent_errors(self, tmp_path: Path, monkeypatch):
-        (tmp_path / ".git").mkdir()
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, "skills install --agent unknown")
         assert_exit_code(result, 1)
         assert "Unsupported agent" in result.output
 
     def test_install_cursor_user_scope_errors(self, tmp_path: Path, monkeypatch):
-        (tmp_path / ".git").mkdir()
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, "skills install --agent cursor --user")
         assert_exit_code(result, 1)
@@ -284,20 +324,25 @@ class TestInstall:
 
 
 class TestFindProjectRoot:
-    def test_finds_git_root(self, tmp_path: Path, monkeypatch):
+    def test_uses_cwd_even_when_parent_has_git_directory(self, tmp_path: Path, monkeypatch):
         (tmp_path / ".git").mkdir()
         subdir = tmp_path / "a" / "b"
         subdir.mkdir(parents=True)
         monkeypatch.chdir(subdir)
         from nemo_platform_ext.cli.commands.skills.cli import _find_project_root
 
-        assert _find_project_root() == tmp_path
+        assert _find_project_root() == subdir
 
-    def test_falls_back_to_cwd_without_git(self, tmp_path: Path, monkeypatch):
+    def test_uses_cwd_without_git(self, tmp_path: Path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         from nemo_platform_ext.cli.commands.skills.cli import _find_project_root
 
         assert _find_project_root() == tmp_path
+
+    def test_uses_explicit_project_dir(self, tmp_path: Path):
+        from nemo_platform_ext.cli.commands.skills.cli import _find_project_root
+
+        assert _find_project_root(tmp_path) == tmp_path
 
 
 class TestHelpText:

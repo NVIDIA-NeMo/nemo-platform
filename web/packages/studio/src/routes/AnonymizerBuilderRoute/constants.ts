@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RiskTolerance } from '@nemo/sdk/generated/anonymizer/schema';
+import type { Tag } from '@nvidia/foundations-react-core';
+import type { ComponentProps } from 'react';
 
 export const SOURCE_TYPE_URL = 'url';
 export const SOURCE_TYPE_DATASET = 'dataset';
@@ -102,6 +104,132 @@ export const ENTITY_MODE_OPTIONS: { value: EntityMode; children: string }[] = [
   { value: ENTITY_MODE_CUSTOM, children: 'Custom' },
   { value: ENTITY_MODE_AUTO, children: 'Auto-detect' },
 ];
+
+export type EntityTagColor = NonNullable<ComponentProps<typeof Tag>['color']>;
+
+interface EntityCategory {
+  readonly label: string;
+  readonly color: EntityTagColor;
+  readonly labels: readonly string[];
+}
+
+/**
+ * The entity-labels endpoint returns a flat list, so the grouping shown in the picker is
+ * curated here to match the design. Anything the API adds that isn't listed falls into Other.
+ */
+export const ENTITY_CATEGORIES: readonly EntityCategory[] = [
+  {
+    label: 'Personal Identity',
+    color: 'blue',
+    labels: [
+      'first_name',
+      'last_name',
+      'date_of_birth',
+      'age',
+      'gender',
+      'nationality',
+      'language',
+    ],
+  },
+  {
+    label: 'Demographics & Beliefs',
+    color: 'purple',
+    labels: ['race_ethnicity', 'sexuality', 'political_view', 'religious_belief'],
+  },
+  {
+    label: 'Contact & Communication',
+    color: 'teal',
+    labels: ['email', 'phone_number', 'fax_number'],
+  },
+  {
+    label: 'Location & Address',
+    color: 'green',
+    labels: [
+      'street_address',
+      'city',
+      'state',
+      'county',
+      'country',
+      'postcode',
+      'coordinate',
+      'place_name',
+      'landmark',
+    ],
+  },
+  { label: 'Date & Time', color: 'yellow', labels: ['date', 'time', 'date_time'] },
+  {
+    label: 'Government & Legal IDs',
+    color: 'red',
+    labels: ['ssn', 'national_id', 'tax_id', 'employee_id', 'certificate_license_number', 'pin'],
+  },
+  {
+    label: 'Financial',
+    color: 'blue',
+    labels: [
+      'credit_debit_card',
+      'cvv',
+      'account_number',
+      'bank_routing_number',
+      'swift_bic',
+      'monetary_amount',
+    ],
+  },
+  {
+    label: 'Medical & Health',
+    color: 'purple',
+    labels: [
+      'medical_record_number',
+      'health_plan_beneficiary_number',
+      'blood_type',
+      'biometric_identifier',
+    ],
+  },
+  {
+    label: 'Digital & Network',
+    color: 'teal',
+    labels: [
+      'ipv4',
+      'ipv6',
+      'mac_address',
+      'url',
+      'api_key',
+      'http_cookie',
+      'device_identifier',
+      'user_name',
+      'password',
+      'unique_id',
+    ],
+  },
+  { label: 'Vehicle & Transport', color: 'green', labels: ['license_plate', 'vehicle_identifier'] },
+  {
+    label: 'Employment & Organization',
+    color: 'yellow',
+    labels: ['occupation', 'employment_status', 'company_name', 'organization_name', 'customer_id'],
+  },
+  {
+    label: 'Education',
+    color: 'red',
+    labels: ['university', 'education_level', 'degree', 'field_of_study'],
+  },
+  {
+    label: 'Legal & Institutional',
+    color: 'blue',
+    labels: ['court_name', 'prison_detention_facility'],
+  },
+];
+
+export const ENTITY_CATEGORY_OTHER = 'Other';
+export const ENTITY_CUSTOM_TAG_COLOR: EntityTagColor = 'gray';
+
+const COLOR_BY_LABEL = new Map<string, EntityTagColor>(
+  ENTITY_CATEGORIES.flatMap((category) =>
+    category.labels.map((label) => [label, category.color] as const)
+  )
+);
+
+/** Custom labels have no category, so they fall back to the neutral chip colour. */
+export const entityTagColor = (label: string): EntityTagColor =>
+  COLOR_BY_LABEL.get(label) ?? ENTITY_CUSTOM_TAG_COLOR;
 
 export const DEFAULT_PREVIEW_ROWS = 1;
 

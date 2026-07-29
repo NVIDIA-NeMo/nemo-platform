@@ -27,7 +27,7 @@ export function useParetoEvaluations(
     {
       page: 1,
       page_size: DEFAULT_LARGE_PAGE_SIZE,
-      filter: { experiment_group_id: experimentId } as EvaluationFilter,
+      filter: { experiment_id: experimentId } as EvaluationFilter,
     },
     { query: { enabled } }
   );

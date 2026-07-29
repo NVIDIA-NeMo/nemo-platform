@@ -61,7 +61,18 @@ class EvaluationFilterParam(TypedDict, total=False):
     """
 
     experiment_group_id: str
-    """Filter evaluations by owning experiment id."""
+    """
+    Deprecated alias for `experiment_id`; filter evaluations by experiment group
+    membership.
+    """
+
+    experiment_id: str
+    """
+    Filter evaluations by experiment group membership: matches evaluations whose
+    `experiment_ids` include this group id (legacy rows still on
+    `experiment_group_id` also match). This is the canonical membership filter — it
+    mirrors the write-side `experiment_ids`.
+    """
 
     is_deleted: bool
     """When true, returns only soft-deleted evaluations.

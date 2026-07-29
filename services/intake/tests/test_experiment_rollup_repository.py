@@ -3,111 +3,79 @@
 
 """Evaluation rollup repository tests."""
 
-from typing import cast
-
 import pytest
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.evaluation_rollup_repository import EvaluationRollupRepository
+from nmp.intake.repository.clickhouse.evaluation_rollup import ClickHouseEvaluationRollupRepository
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
 
 
-class _QueryResult:
-    def __init__(self, rows: list[tuple[object, ...]], columns: list[str]) -> None:
-        self.result_rows = rows
-        self.column_names = columns
-
-
-class _Client:
-    def __init__(self, query_results: list[_QueryResult]) -> None:
-        self.queries: list[str] = []
-        self.parameters: list[dict[str, object]] = []
+class _Executor(ClickHouseExecutor):
+    def __init__(self, query_results: list[list[dict[str, object]]]) -> None:
+        self.queries: list[ClickHouseQuery] = []
         self.query_results = query_results
 
-    def table(self, name: str) -> str:
-        return name
+    def table(self, table: ClickHouseTable) -> str:
+        return table.value
 
-    async def query(self, query: str, *, parameters: dict[str, object]) -> _QueryResult:
+    async def fetch_all(self, query: ClickHouseQuery) -> list[dict[str, object]]:
         self.queries.append(query)
-        self.parameters.append(parameters)
         return self.query_results.pop(0)
 
 
-def _repository(client: _Client) -> EvaluationRollupRepository:
-    return EvaluationRollupRepository(cast(ClickHouseSpanClient, client))
+def _repository(executor: _Executor) -> ClickHouseEvaluationRollupRepository:
+    return ClickHouseEvaluationRollupRepository(executor)
 
 
 @pytest.mark.asyncio
 async def test_evaluation_rollups_anchor_on_root_session_membership():
-    client = _Client(
+    executor = _Executor(
         [
-            _QueryResult(
-                [("exp-a", 3, 2)],
-                ["evaluation_id", "run_count", "test_case_count"],
-            ),
-            _QueryResult(
-                [("exp-a", "reward", 3.0, 0.75, 0.8, 1.0, 1.0, 1.0, 4)],
-                ["evaluation_id", "evaluator_name", "sum", "mean", "median", "p90", "p95", "p99", "count"],
-            ),
-            _QueryResult(
-                [
-                    (
-                        "exp-a",
-                        ["model-b", "model-a"],
-                        ["agent-a"],
-                        ["1.0.0", "1.0.1"],
-                        0.65,
-                        0.1625,
-                        0.2,
-                        0.3,
-                        0.3,
-                        0.3,
-                        4,
-                        7000.0,
-                        1750.0,
-                        2000.0,
-                        3000.0,
-                        3000.0,
-                        3000.0,
-                        4,
-                        6000.0,
-                        1500.0,
-                        1500.0,
-                        2500.0,
-                        2500.0,
-                        2500.0,
-                        4,
-                    )
-                ],
-                [
-                    "evaluation_id",
-                    "model_names",
-                    "agent_names",
-                    "agent_versions",
-                    "cost_sum",
-                    "cost_mean",
-                    "cost_median",
-                    "cost_p90",
-                    "cost_p95",
-                    "cost_p99",
-                    "cost_count",
-                    "latency_sum",
-                    "latency_mean",
-                    "latency_median",
-                    "latency_p90",
-                    "latency_p95",
-                    "latency_p99",
-                    "latency_count",
-                    "tokens_sum",
-                    "tokens_mean",
-                    "tokens_median",
-                    "tokens_p90",
-                    "tokens_p95",
-                    "tokens_p99",
-                    "tokens_count",
-                ],
-            ),
+            [{"evaluation_id": "exp-a", "run_count": 3, "test_case_count": 2}],
+            [
+                {
+                    "evaluation_id": "exp-a",
+                    "evaluator_name": "reward",
+                    "sum": 3.0,
+                    "mean": 0.75,
+                    "median": 0.8,
+                    "p90": 1.0,
+                    "p95": 1.0,
+                    "p99": 1.0,
+                    "count": 4,
+                }
+            ],
+            [
+                {
+                    "evaluation_id": "exp-a",
+                    "model_names": ["model-b", "model-a"],
+                    "agent_names": ["agent-a"],
+                    "agent_versions": ["1.0.0", "1.0.1"],
+                    "cost_sum": 0.65,
+                    "cost_mean": 0.1625,
+                    "cost_median": 0.2,
+                    "cost_p90": 0.3,
+                    "cost_p95": 0.3,
+                    "cost_p99": 0.3,
+                    "cost_count": 4,
+                    "latency_sum": 7000.0,
+                    "latency_mean": 1750.0,
+                    "latency_median": 2000.0,
+                    "latency_p90": 3000.0,
+                    "latency_p95": 3000.0,
+                    "latency_p99": 3000.0,
+                    "latency_count": 4,
+                    "tokens_sum": 6000.0,
+                    "tokens_mean": 1500.0,
+                    "tokens_median": 1500.0,
+                    "tokens_p90": 2500.0,
+                    "tokens_p95": 2500.0,
+                    "tokens_p99": 2500.0,
+                    "tokens_count": 4,
+                }
+            ],
         ]
     )
-    repository = _repository(client)
+    repository = _repository(executor)
 
     rollups = await repository.get_rollups(workspace="default", evaluation_ids=["exp-a"])
 
@@ -150,47 +118,48 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert rollup.tokens.p99 == 2500
     assert rollup.tokens.count == 4
 
-    assert len(client.queries) == 3
-    assert "FROM trace_index FINAL" in client.queries[0]
-    assert "count() AS run_count" in client.queries[0]
-    assert "uniqExactIf(test_case_id, test_case_id != '')" in client.queries[0]
-    assert "AS test_case_count" in client.queries[0]
-    assert "evaluation_id IN (%(evaluation_id_0)s)" in client.queries[0]
-    assert "ORDER BY root_started_at ASC, root_span_id ASC" in client.queries[0]
-    assert "FROM evaluator_results FINAL" in client.queries[1]
-    assert "quantileExact(0.5)(value) AS median" in client.queries[1]
-    assert "quantileExact(0.99)(value) AS p99" in client.queries[1]
-    assert "AND (workspace, session_id) IN (" in client.queries[1]
-    assert "sessions.session_id = results.session_id" in client.queries[1]
+    assert [query.name for query in executor.queries] == [
+        "evaluation_rollups.run_counts",
+        "evaluation_rollups.scores",
+        "evaluation_rollups.metrics",
+    ]
+    statements = [query.statement for query in executor.queries]
+    assert "FROM trace_index FINAL" in statements[0]
+    assert "count() AS run_count" in statements[0]
+    assert "uniqExactIf(test_case_id, test_case_id != '')" in statements[0]
+    assert "AS test_case_count" in statements[0]
+    assert "evaluation_id IN (%(evaluation_id_0)s)" in statements[0]
+    assert "ORDER BY root_started_at ASC, root_span_id ASC" in statements[0]
+    assert "FROM evaluator_results FINAL" in statements[1]
+    assert "quantileExact(0.5)(value) AS median" in statements[1]
+    assert "quantileExact(0.99)(value) AS p99" in statements[1]
+    assert "AND (workspace, session_id) IN (" in statements[1]
+    assert "sessions.session_id = results.session_id" in statements[1]
     # Scores are reduced to one value per (session, evaluator), then averaged per test case before the
     # distribution rollup, so the mean is test-case-weighted and count tracks test cases.
-    assert (
-        "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in client.queries[1]
-    )
-    assert "test_case_scores AS" in client.queries[1]
-    assert "WHERE sessions.test_case_id != ''" in client.queries[1]
-    assert "test_case_metrics AS" in client.queries[2]
-    assert "current_session_spans AS" in client.queries[2]
-    assert (
-        "(workspace, session_id) IN (SELECT DISTINCT workspace, session_id FROM scoped_sessions)" in client.queries[2]
-    )
-    assert "LEFT JOIN current_session_spans AS spans" in client.queries[2]
-    assert "sessions.session_id = spans.dedup_session_id" in client.queries[2]
-    assert "arraySort(arrayDistinct(arrayFlatten(groupArray(model_names)))) AS model_names" in client.queries[2]
-    assert "quantileExactIf(0.5)" in client.queries[2]
-    assert "cost_median" in client.queries[2]
-    assert "quantileExactIf(0.99)" in client.queries[2]
-    assert "latency_p99" in client.queries[2]
-    assert "tokens_p99" in client.queries[2]
-    assert "sessions.trace_id = spans.trace_id" not in client.queries[2]
-    assert client.parameters[0]["evaluation_id_0"] == "exp-a"
-    assert client.parameters[2]["model_key"] == "gen_ai.request.model"
-    assert "input_tokens_key" in client.parameters[2]
-    assert "output_tokens_key" in client.parameters[2]
+    assert "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in statements[1]
+    assert "test_case_scores AS" in statements[1]
+    assert "WHERE sessions.test_case_id != ''" in statements[1]
+    assert "test_case_metrics AS" in statements[2]
+    assert "current_session_spans AS" in statements[2]
+    assert "(workspace, session_id) IN (SELECT DISTINCT workspace, session_id FROM scoped_sessions)" in statements[2]
+    assert "LEFT JOIN current_session_spans AS spans" in statements[2]
+    assert "sessions.session_id = spans.dedup_session_id" in statements[2]
+    assert "arraySort(arrayDistinct(arrayFlatten(groupArray(model_names)))) AS model_names" in statements[2]
+    assert "quantileExactIf(0.5)" in statements[2]
+    assert "cost_median" in statements[2]
+    assert "quantileExactIf(0.99)" in statements[2]
+    assert "latency_p99" in statements[2]
+    assert "tokens_p99" in statements[2]
+    assert "sessions.trace_id = spans.trace_id" not in statements[2]
+    assert executor.queries[0].parameters["evaluation_id_0"] == "exp-a"
+    assert executor.queries[2].parameters["model_key"] == "gen_ai.request.model"
+    assert "input_tokens_key" in executor.queries[2].parameters
+    assert "output_tokens_key" in executor.queries[2].parameters
 
 
 def test_score_rollup_cte_builders_compose_the_pipeline():
-    from nmp.intake.spans.evaluation_rollup_repository import (
+    from nmp.intake.repository.clickhouse.evaluation_rollup import (
         _evaluators_cte,
         _session_scores_cte,
         _test_case_scores_cte,

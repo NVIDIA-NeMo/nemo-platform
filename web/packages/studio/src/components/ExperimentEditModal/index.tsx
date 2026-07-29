@@ -42,7 +42,7 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
   // Offer the group's discovered evaluators as first-class sort fields (only fetched while open).
   const { data: experimentsPage } = useListEvaluations(
     workspace,
-    { filter: { experiment_group_id: group.id }, page_size: 100 },
+    { filter: { experiment_id: group.id }, page_size: 100 },
     { query: { enabled: open && !!group.id } }
   );
   const evaluatorOptions = useMemo(

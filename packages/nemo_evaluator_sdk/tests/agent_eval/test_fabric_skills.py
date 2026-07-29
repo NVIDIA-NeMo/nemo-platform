@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric import skills as skills_module
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     CODEX_SKILLS_DIR,
     SKILL_MODE_CODEX_SKILLS_DIR,
@@ -16,6 +17,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     AgentSkill,
     SkillInjectionError,
     install_skill,
+    install_skills,
     native_skills_route,
     resolve_skill_mode,
 )
@@ -265,3 +267,82 @@ def test_hash_is_content_sensitive(tmp_path: Path) -> None:
         skill_stage_dir=tmp_path / "sb",
     )
     assert a.provenance["hash"] != b.provenance["hash"]
+
+
+def test_install_skills_rolls_back_staged_bundles_on_failure(tmp_path: Path) -> None:
+    # All-or-nothing: a later skill failing to stage rolls back the bundles already staged in this call,
+    # so a partial skill set never lingers on disk.
+    good = AgentSkill.from_directory(_make_bundle(tmp_path / "src", name="good"))
+    (tmp_path / "missing").mkdir()
+    bad = AgentSkill(name="bad", directory=tmp_path / "missing")  # no SKILL.md -> stages fail
+    stage_dir = tmp_path / "stage"
+
+    with pytest.raises(SkillInjectionError):
+        install_skills(
+            skills=[good, bad],
+            adapter_id="nvidia.fabric.hermes.sdk",
+            mode=SKILL_MODE_NATIVE,
+            workspace_dir=tmp_path / "ws",
+            skill_stage_dir=stage_dir,
+        )
+
+    # The first skill was staged, then rolled back when the second failed.
+    assert not (stage_dir / "good").exists()
+
+
+def test_install_skills_rolls_back_the_bundle_that_failed_mid_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # install_skill can raise AFTER writing files (a copytree failing partway, an unreadable file while
+    # hashing). That skill's own partially staged bundle must be rolled back too, not just the bundles
+    # from earlier iterations. Hashing runs once the bundle is fully copied, so failing it there puts
+    # real files on disk before the error.
+    good = AgentSkill.from_directory(_make_bundle(tmp_path / "src", name="good"))
+    late = AgentSkill.from_directory(_make_bundle(tmp_path / "src2", name="late"))
+    stage_dir = tmp_path / "stage"
+
+    real_hash = skills_module._hash_directory
+
+    def _fail_on_late(directory: Path) -> str:
+        if directory.name == "late":
+            raise OSError("unreadable file in bundle")
+        return real_hash(directory)
+
+    monkeypatch.setattr(skills_module, "_hash_directory", _fail_on_late)
+
+    with pytest.raises(OSError):
+        install_skills(
+            skills=[good, late],
+            adapter_id="nvidia.fabric.hermes.sdk",
+            mode=SKILL_MODE_NATIVE,
+            workspace_dir=tmp_path / "ws",
+            skill_stage_dir=stage_dir,
+        )
+
+    assert not (stage_dir / "good").exists()  # earlier bundle rolled back, as before
+    assert not (stage_dir / "late").exists()  # ...and so is the one that failed after staging files
+
+
+def test_install_skills_rollback_never_deletes_preexisting_seed_file(tmp_path: Path) -> None:
+    # Codex reserved-path collision: the second skill's target already holds a task-seeded file. Rollback
+    # must remove only the bundle THIS call staged (the first skill), never the pre-existing seed file.
+    good = AgentSkill.from_directory(_make_bundle(tmp_path / "src", name="good"))
+    collide = AgentSkill.from_directory(_make_bundle(tmp_path / "src2", name="collide"))
+    workspace = tmp_path / "ws"
+    seeded = workspace / CODEX_SKILLS_DIR / "collide"  # a task-seeded file on the reserved codex path
+    seeded.mkdir(parents=True)
+    (seeded / "seed.txt").write_text("task data", encoding="utf-8")
+
+    with pytest.raises(SkillInjectionError):
+        install_skills(
+            skills=[good, collide],
+            adapter_id="nvidia.fabric.codex.cli",
+            mode=SKILL_MODE_CODEX_SKILLS_DIR,
+            workspace_dir=workspace,
+            skill_stage_dir=tmp_path / "stage",
+        )
+
+    # The staged first bundle is rolled back...
+    assert not (workspace / CODEX_SKILLS_DIR / "good").exists()
+    # ...but the pre-existing task-seeded file is untouched.
+    assert (seeded / "seed.txt").read_text(encoding="utf-8") == "task data"

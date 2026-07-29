@@ -3531,12 +3531,13 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/EvaluationFilter'
-        description: 'Filter evaluations by name, experiment_group_id, dataset_name,
-          dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
-          to return only soft-deleted evaluations; omit to see only live ones. Pass
-          is_pinned=true (or false) to filter by pinned state; omit to return both.
-          Filter by a metadata key/value: filter[metadata.<key>]=<value>. Filter by
-          a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+        description: 'Filter evaluations by name, experiment_id (experiment group
+          membership; experiment_group_id is a deprecated alias), dataset_name, dataset_version,
+          created_by, created_at, or updated_at. Pass is_deleted=true to return only
+          soft-deleted evaluations; omit to see only live ones. Pass is_pinned=true
+          (or false) to filter by pinned state; omit to return both. Filter by a metadata
+          key/value: filter[metadata.<key>]=<value>. Filter by a rollup metric with
+          numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
           filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, filter[tokens.mean][$lte]=5000,
           or filter[evaluators.<name>.mean][$gte]=0.8.'
       responses:
@@ -10495,8 +10496,17 @@ components:
           description: Filter evaluations by name.
           title: Name
           type: string
+        experiment_id:
+          description: "Filter evaluations by experiment group membership: matches\
+            \ evaluations whose `experiment_ids` include this group id (legacy rows\
+            \ still on `experiment_group_id` also match). This is the canonical membership\
+            \ filter \u2014 it mirrors the write-side `experiment_ids`."
+          title: Experiment Id
+          type: string
         experiment_group_id:
-          description: Filter evaluations by owning experiment id.
+          deprecated: true
+          description: Deprecated alias for `experiment_id`; filter evaluations by
+            experiment group membership.
           title: Experiment Group Id
           type: string
         dataset_name:

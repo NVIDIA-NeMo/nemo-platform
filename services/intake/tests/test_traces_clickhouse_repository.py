@@ -5,49 +5,45 @@
 
 import json
 from datetime import datetime, timedelta, timezone
-from typing import cast
 
 import pytest
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseExternalData, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
+from nmp.intake.repository.clickhouse.trace import TRACE_COLUMNS, ClickHouseTraceRepository, _order_by
 from nmp.intake.spans.domain import TraceListFilter
-from nmp.intake.spans.trace_repository import TRACE_COLUMNS, TraceRepository, _order_by
 
 
 class _QueryResult:
     def __init__(self, rows: list[tuple[object, ...]], columns: list[str] | None = None) -> None:
         self.result_rows = rows
-        self.column_names = columns or []
+        self.column_names = columns or (["count()"] if rows and len(rows[0]) == 1 else [])
 
 
-class _Client:
+class _Client(ClickHouseExecutor):
     def __init__(self, query_results: list[_QueryResult] | None = None) -> None:
         self.queries: list[str] = []
         self.parameters: list[dict[str, object]] = []
-        self.external_data: list[object | None] = []
+        self.external_data: list[ClickHouseExternalData | None] = []
         self.query_results = query_results or []
 
-    def table(self, name: str) -> str:
-        return name
+    def table(self, table: ClickHouseTable) -> str:
+        return table.value
 
-    async def query(
-        self,
-        query: str,
-        *,
-        parameters: dict[str, object],
-        external_data: object | None = None,
-    ) -> _QueryResult:
-        self.queries.append(query)
-        self.parameters.append(parameters)
-        self.external_data.append(external_data)
+    async def fetch_all(self, query: ClickHouseQuery) -> list[dict[str, object]]:
+        self.queries.append(query.statement)
+        self.parameters.append(dict(query.parameters))
+        self.external_data.append(query.external_data)
         if self.query_results:
-            return self.query_results.pop(0)
-        if query.lstrip().startswith("SELECT count()"):
-            return _QueryResult([(0,)])
-        return _QueryResult([])
+            result = self.query_results.pop(0)
+        elif query.statement.lstrip().startswith("SELECT count()"):
+            result = _QueryResult([(0,)], ["count()"])
+        else:
+            result = _QueryResult([])
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
 
 
-def _repository(client: _Client) -> TraceRepository:
-    return TraceRepository(cast(ClickHouseSpanClient, client))
+def _repository(client: _Client) -> ClickHouseTraceRepository:
+    return ClickHouseTraceRepository(client)
 
 
 def test_order_by_whitelists_supported_trace_sort_keys():
@@ -95,7 +91,7 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
 @pytest.mark.asyncio
 async def test_latest_trace_started_at_by_group_aggregates_all_references_in_one_query():
     latest = datetime(2026, 1, 2, tzinfo=timezone.utc)
-    client = _Client(query_results=[_QueryResult([("insight-a", latest)])])
+    client = _Client(query_results=[_QueryResult([("insight-a", latest)], ["group_id", "started_at"])])
     repository = _repository(client)
 
     result = await repository.latest_trace_started_at_by_group(
@@ -115,11 +111,9 @@ async def test_latest_trace_started_at_by_group_aggregates_all_references_in_one
     assert client.parameters[0] == {"workspace": "workspace-a"}
     external_data = client.external_data[0]
     assert external_data is not None
-    assert external_data.query_params == {
-        "trace_refs_format": "JSONEachRow",
-        "trace_refs_structure": "group_id String, trace_id String",
-    }
-    assert [json.loads(line) for line in external_data.form_data["trace_refs"][1].splitlines()] == [
+    assert external_data.fmt == "JSONEachRow"
+    assert external_data.structure == "group_id String, trace_id String"
+    assert [json.loads(line) for line in external_data.data.splitlines()] == [
         {"group_id": "insight-a", "trace_id": "trace-old"},
         {"group_id": "insight-a", "trace_id": "trace-new"},
         {"group_id": "insight-missing", "trace_id": "trace-missing"},

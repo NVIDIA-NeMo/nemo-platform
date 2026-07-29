@@ -85,6 +85,20 @@ export const anonymizerFormSchema = z
         });
       }
     }
+
+    // Without this the request would carry no detect config and the server would fall back to
+    // its own defaults — the opposite of the restricted set Custom mode promises.
+    if (
+      data.entityMode === ENTITY_MODE_CUSTOM &&
+      !data.includeDefaultEntities &&
+      !data.entityLabels.length
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['entityLabels'],
+        message: 'Select at least one entity label, or include the default entities',
+      });
+    }
   });
 
 export type AnonymizerFormData = z.infer<typeof anonymizerFormSchema>;
@@ -168,18 +182,41 @@ const buildRewriteConfig = (form: AnonymizerFormData): Rewrite => {
   return rewrite;
 };
 
-export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobRequest => {
+/**
+ * entity_labels replaces the default set server-side, so "include defaults" has to send the
+ * defaults alongside the custom picks. Omitted entirely when the selection adds nothing, which
+ * leaves the server on its own defaults.
+ */
+const buildDetectConfig = (
+  form: AnonymizerFormData,
+  defaultEntityLabels: string[]
+): AnonymizerConfigInput['detect'] => {
+  if (form.entityMode !== ENTITY_MODE_CUSTOM) return undefined;
+
+  const labels = form.includeDefaultEntities
+    ? [...new Set([...defaultEntityLabels, ...form.entityLabels])]
+    : form.entityLabels;
+
+  if (!labels.length) return undefined;
+  if (form.includeDefaultEntities && labels.length === new Set(defaultEntityLabels).size) {
+    return undefined;
+  }
+
+  return { entity_labels: labels };
+};
+
+export const buildAnonymizerJobRequest = (
+  form: AnonymizerFormData,
+  defaultEntityLabels: string[] = []
+): RunJobRequest => {
   const config: AnonymizerConfigInput =
     form.strategy === REWRITE_STRATEGY
       ? { rewrite: buildRewriteConfig(form) }
       : { replace: buildReplaceConfig(form) };
 
-  const useCustomLabels =
-    form.entityMode === ENTITY_MODE_CUSTOM &&
-    !form.includeDefaultEntities &&
-    form.entityLabels.length > 0;
-  if (useCustomLabels) {
-    config.detect = { entity_labels: form.entityLabels };
+  const detect = buildDetectConfig(form, defaultEntityLabels);
+  if (detect) {
+    config.detect = detect;
   }
 
   const aliasByModel = new Map<string, string>();

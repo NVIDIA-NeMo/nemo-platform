@@ -3531,12 +3531,13 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/EvaluationFilter'
-        description: 'Filter evaluations by name, experiment_group_id, dataset_name,
-          dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
-          to return only soft-deleted evaluations; omit to see only live ones. Pass
-          is_pinned=true (or false) to filter by pinned state; omit to return both.
-          Filter by a metadata key/value: filter[metadata.<key>]=<value>. Filter by
-          a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+        description: 'Filter evaluations by name, experiment_id (experiment group
+          membership; experiment_group_id is a deprecated alias), dataset_name, dataset_version,
+          created_by, created_at, or updated_at. Pass is_deleted=true to return only
+          soft-deleted evaluations; omit to see only live ones. Pass is_pinned=true
+          (or false) to filter by pinned state; omit to return both. Filter by a metadata
+          key/value: filter[metadata.<key>]=<value>. Filter by a rollup metric with
+          numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
           filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, filter[tokens.mean][$lte]=5000,
           or filter[evaluators.<name>.mean][$gte]=0.8.'
       responses:
@@ -4015,12 +4016,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiments:
+  /apis/intake/v2/workspaces/{workspace}/experiment-groups:
     post:
       tags:
-      - Experiments
-      summary: Create Experiment
-      operationId: create_experiment_apis_intake_v2_workspaces__workspace__experiments_post
+      - Experiment Groups
+      summary: Create Experiment Group
+      operationId: create_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups_post
       parameters:
       - name: workspace
         in: path
@@ -4033,16 +4034,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExperimentRequest'
+              $ref: '#/components/schemas/ExperimentGroupRequest'
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentResponse'
+                $ref: '#/components/schemas/ExperimentGroupResponse'
         '409':
-          description: Experiment already exists
+          description: Experiment group already exists
         '422':
           description: Validation Error
           content:
@@ -4051,9 +4052,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     get:
       tags:
-      - Experiments
-      summary: List Experiments
-      operationId: list_experiments_apis_intake_v2_workspaces__workspace__experiments_get
+      - Experiment Groups
+      summary: List Experiment Groups
+      operationId: list_experiment_groups_apis_intake_v2_workspaces__workspace__experiment_groups_get
       parameters:
       - name: workspace
         in: path
@@ -4104,29 +4105,29 @@ paths:
         required: false
         explode: true
         schema:
-          $ref: '#/components/schemas/ExperimentFilter'
-        description: Filter experiments by name, insight_id, is_deleted, or a metadata
-          key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return
-          only soft-deleted experiments; omit to see only live ones.
+          $ref: '#/components/schemas/ExperimentGroupFilter'
+        description: Filter experiment groups by name, insight_id, is_deleted, or
+          a metadata key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true
+          to return only soft-deleted groups; omit to see only live ones.
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentResponsesPage'
+                $ref: '#/components/schemas/ExperimentGroupResponsesPage'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
+  /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}:
     get:
       tags:
-      - Experiments
-      summary: Get Experiment
-      operationId: get_experiment_apis_intake_v2_workspaces__workspace__experiments__name__get
+      - Experiment Groups
+      summary: Get Experiment Group
+      operationId: get_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__get
       parameters:
       - name: workspace
         in: path
@@ -4146,9 +4147,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentResponse'
+                $ref: '#/components/schemas/ExperimentGroupResponse'
         '404':
-          description: Experiment not found
+          description: Experiment group not found
         '422':
           description: Validation Error
           content:
@@ -4157,9 +4158,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     put:
       tags:
-      - Experiments
-      summary: Update Experiment
-      operationId: update_experiment_apis_intake_v2_workspaces__workspace__experiments__name__put
+      - Experiment Groups
+      summary: Update Experiment Group
+      operationId: update_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__put
       parameters:
       - name: workspace
         in: path
@@ -4178,18 +4179,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExperimentRequest'
+              $ref: '#/components/schemas/ExperimentGroupRequest'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentResponse'
+                $ref: '#/components/schemas/ExperimentGroupResponse'
         '404':
-          description: Experiment not found
+          description: Experiment group not found
         '409':
-          description: Attempt to rename the experiment
+          description: Attempt to rename the group
         '422':
           description: Validation Error
           content:
@@ -4198,9 +4199,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
       tags:
-      - Experiments
-      summary: Delete Experiment
-      operationId: delete_experiment_apis_intake_v2_workspaces__workspace__experiments__name__delete
+      - Experiment Groups
+      summary: Delete Experiment Group
+      operationId: delete_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__delete
       parameters:
       - name: workspace
         in: path
@@ -4218,7 +4219,7 @@ paths:
         '204':
           description: Successful Response
         '404':
-          description: Experiment not found
+          description: Experiment group not found
         '422':
           description: Validation Error
           content:
@@ -4655,7 +4656,8 @@ paths:
         schema:
           $ref: '#/components/schemas/TraceFilter'
         description: Filter root-span-backed traces by id, session_id, root status,
-          root span started_at, evaluation_id, and test_case_id.
+          root span started_at, evaluation_id (or its deprecated alias experiment_id),
+          and test_case_id.
       responses:
         '200':
           description: Successful Response
@@ -8169,6 +8171,12 @@ components:
       properties:
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
+        experiment_context:
+          allOf:
+          - $ref: '#/components/schemas/ExperimentContext'
+          description: Deprecated. Use evaluation_context; when both are sent, evaluation_context
+            takes precedence.
+          deprecated: true
         schema_version:
           type: string
           enum:
@@ -8983,6 +8991,12 @@ components:
       properties:
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
+        experiment_context:
+          allOf:
+          - $ref: '#/components/schemas/ExperimentContext'
+          description: Deprecated. Use evaluation_context; when both are sent, evaluation_context
+            takes precedence.
+          deprecated: true
         request:
           $ref: '#/components/schemas/CapturedChatCompletionsRequest'
         response:
@@ -10495,8 +10509,17 @@ components:
           description: Filter evaluations by name.
           title: Name
           type: string
+        experiment_id:
+          description: "Filter evaluations by experiment group membership: matches\
+            \ evaluations whose `experiment_ids` include this group id (legacy rows\
+            \ still on `experiment_group_id` also match). This is the canonical membership\
+            \ filter \u2014 it mirrors the write-side `experiment_ids`."
+          title: Experiment Id
+          type: string
         experiment_group_id:
-          description: Filter evaluations by owning experiment id.
+          deprecated: true
+          description: Deprecated alias for `experiment_id`; filter evaluations by
+            experiment group membership.
           title: Experiment Group Id
           type: string
         dataset_name:
@@ -10565,8 +10588,8 @@ components:
       properties:
         experiment_ids:
           title: Experiment Ids
-          description: Replace the Experiments this Evaluation belongs to. Must be
-            non-empty when provided; each experiment must already exist. Omit to leave
+          description: Replace the ExperimentGroups this Evaluation belongs to. Must
+            be non-empty when provided; each group must already exist. Omit to leave
             membership unchanged.
           items:
             type: string
@@ -10609,7 +10632,7 @@ components:
         \ \u2014 same pattern as the models service's PATCH).\nImmutable fields (name,\
         \ dataset_name, dataset_version) aren't accepted here. ``experiment_ids``,\n\
         when provided, must be non-empty: an evaluation must always belong to at least\
-        \ one experiment."
+        \ one group."
     EvaluationRequest:
       properties:
         name:
@@ -10621,13 +10644,13 @@ components:
             type: string
           type: array
           title: Experiment Ids
-          description: Entity ids of the Experiments this Evaluation belongs to (>=1).
-            Preferred; each experiment must already exist. When omitted, the deprecated
-            experiment_group_id is used instead.
+          description: Entity ids of the ExperimentGroups this Evaluation belongs
+            to (>=1). Preferred; each group must already exist. When omitted, the
+            deprecated experiment_group_id is used instead.
         experiment_group_id:
           title: Experiment Group Id
-          description: Deprecated single-experiment field; provide experiment_ids
-            instead. Coalesced into experiment_ids when experiment_ids is omitted.
+          description: Deprecated single-group field; provide experiment_ids instead.
+            Coalesced into experiment_ids when experiment_ids is omitted.
           deprecated: true
           type: string
         dataset_name:
@@ -10658,6 +10681,11 @@ components:
           title: Parent Evaluation Id
           description: Entity id of the evaluation this one was derived from (e.g.
             a variant of a baseline), if any.
+          type: string
+        parent_experiment_id:
+          title: Parent Experiment Id
+          description: Deprecated alias for parent_evaluation_id.
+          deprecated: true
           type: string
         status:
           title: Status
@@ -10691,7 +10719,8 @@ components:
             type: string
           type: array
           title: Experiment Ids
-          description: Entity ids of the Experiments this Evaluation belongs to (>=1).
+          description: Entity ids of the ExperimentGroups this Evaluation belongs
+            to (>=1).
         dataset_name:
           type: string
           title: Dataset Name
@@ -10792,10 +10821,16 @@ components:
           - $ref: '#/components/schemas/EvaluatorAggregate'
           description: Average total tokens (input + output) per test case, aggregated
             across the evaluation.
+        parent_experiment_id:
+          title: Parent Experiment Id
+          description: Deprecated alias for parent_evaluation_id.
+          deprecated: true
+          readOnly: true
+          type: string
         experiment_group_id:
           type: string
           title: Experiment Group Id
-          description: Deprecated single-experiment alias; the first of experiment_ids.
+          description: Deprecated single-group alias; the first of experiment_ids.
             Use experiment_ids.
           deprecated: true
           readOnly: true
@@ -10806,6 +10841,7 @@ components:
       - workspace
       - experiment_ids
       - dataset_name
+      - parent_experiment_id
       - experiment_group_id
       title: EvaluationResponse
       description: Evaluation as served by the API, including ClickHouse-hydrated
@@ -10918,6 +10954,12 @@ components:
           title: Evaluator Scores
           description: Per-evaluator session-mean score. Includes NUMERIC and BOOLEAN
             evaluator results only; text/categorical results are omitted.
+        experiment_name:
+          type: string
+          title: Experiment Name
+          description: Deprecated alias for evaluation_name.
+          deprecated: true
+          readOnly: true
       type: object
       required:
       - workspace
@@ -10927,6 +10969,7 @@ components:
       - root_span_id
       - started_at
       - status
+      - experiment_name
       title: EvaluationSessionResponse
       description: "One ingested session of an Evaluation \u2014 a single test case\
         \ execution.\n\nHydrated from ClickHouse at read time by reading root/session\
@@ -11190,21 +11233,38 @@ components:
       - action_name
       title: ExecutedAction
       description: Information about an action that was executed.
-    ExperimentFilter:
+    ExperimentContext:
+      properties:
+        experiment_id:
+          type: string
+          title: Experiment Id
+          description: Name of an existing Experiment entity.
+        test_case_id:
+          title: Test Case Id
+          description: Optional producer-supplied test case id.
+          type: string
       additionalProperties: false
-      description: Filter for listing Experiments.
+      type: object
+      required:
+      - experiment_id
+      title: ExperimentContext
+      description: Deprecated alias for :class:`EvaluationContext`. Producers should
+        send ``evaluation_context``.
+    ExperimentGroupFilter:
+      additionalProperties: false
+      description: Filter for listing ExperimentGroups.
       properties:
         name:
-          description: Filter experiments by name.
+          description: Filter groups by name.
           title: Name
           type: string
         insight_id:
-          description: Filter experiments by the id of the insight that seeded them.
+          description: Filter groups by the id of the insight that seeded them.
           title: Insight Id
           type: string
         is_deleted:
-          description: When true, returns only soft-deleted experiments. Omit (or
-            false) to see only live experiments.
+          description: When true, returns only soft-deleted groups. Omit (or false)
+            to see only live groups.
           title: Is Deleted
           type: boolean
         metadata:
@@ -11213,56 +11273,55 @@ components:
           additionalProperties:
             type: string
           type: object
-      title: ExperimentFilter
+      title: ExperimentGroupFilter
       type: object
-    ExperimentRequest:
+    ExperimentGroupRequest:
       properties:
         name:
           type: string
           title: Name
-          description: Workspace-unique experiment name.
+          description: Workspace-unique group name.
         description:
           title: Description
-          description: Human-readable purpose of the experiment.
+          description: Human-readable purpose of the group.
           type: string
         insight_id:
           title: Insight Id
-          description: Reference to an external insight that seeded this experiment,
-            if any.
+          description: Reference to an external insight that seeded this group, if
+            any.
           type: string
         summary:
           title: Summary
-          description: Human- or agent-authored summary of the experiment's findings.
+          description: Human- or agent-authored summary of the group's findings.
           type: string
         metadata:
           title: Metadata
-          description: Free-form producer metadata for the experiment.
+          description: Free-form producer metadata for the group.
           additionalProperties:
             type: string
           type: object
         default_sort:
           type: string
           title: Default Sort
-          description: 'Default sort for this experiment''s evaluations list, as a
-            `sort`-param string: a comma-separated, ordered list of fields where the
-            first is the primary sort and the rest break ties (leading ''-'' on a
-            field = descending), e.g. ''-evaluators.reward.mean,cost_usd.mean''. Defaults
-            to ''-created_at''. Accepts any field the evaluations list `sort` param
-            does; clients apply it as the list `sort` param.'
+          description: 'Default sort for this group''s evaluations list, as a `sort`-param
+            string: a comma-separated, ordered list of fields where the first is the
+            primary sort and the rest break ties (leading ''-'' on a field = descending),
+            e.g. ''-evaluators.reward.mean,cost_usd.mean''. Defaults to ''-created_at''.
+            Accepts any field the evaluations list `sort` param does; clients apply
+            it as the list `sort` param.'
           default: -created_at
         pareto:
           allOf:
           - $ref: '#/components/schemas/ParetoConfig'
-          description: Default X/Y metrics for the experiment's Pareto view. Omit
-            to preserve the existing value on update; on create, defaults to cost
-            vs. latency.
+          description: Default X/Y metrics for the group's Pareto view. Omit to preserve
+            the existing value on update; on create, defaults to cost vs. latency.
       additionalProperties: false
       type: object
       required:
       - name
-      title: ExperimentRequest
-      description: Request body for creating an Experiment.
-    ExperimentResponse:
+      title: ExperimentGroupRequest
+      description: Request body for creating an ExperimentGroup.
+    ExperimentGroupResponse:
       properties:
         id:
           type: string
@@ -11303,21 +11362,28 @@ components:
         evaluation_count:
           type: integer
           title: Evaluation Count
-          description: Number of live (non-soft-deleted) evaluations in this experiment.
+          description: Number of live (non-soft-deleted) evaluations in this group.
           default: 0
+        experiment_count:
+          type: integer
+          title: Experiment Count
+          description: Deprecated alias for evaluation_count.
+          deprecated: true
+          readOnly: true
       type: object
       required:
       - id
       - name
       - workspace
       - default_sort
-      title: ExperimentResponse
-      description: Experiment as served by the API.
-    ExperimentResponsesPage:
+      - experiment_count
+      title: ExperimentGroupResponse
+      description: ExperimentGroup as served by the API.
+    ExperimentGroupResponsesPage:
       properties:
         data:
           items:
-            $ref: '#/components/schemas/ExperimentResponse'
+            $ref: '#/components/schemas/ExperimentGroupResponse'
           type: array
           title: Data
         pagination:
@@ -11336,7 +11402,7 @@ components:
       type: object
       required:
       - data
-      title: ExperimentResponsesPage
+      title: ExperimentGroupResponsesPage
     FactCheckingRailConfig:
       properties:
         parameters:
@@ -18506,6 +18572,12 @@ components:
           type: string
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
+        experiment_context:
+          allOf:
+          - $ref: '#/components/schemas/ExperimentContext'
+          description: Deprecated alias for evaluation_context; will be removed in
+            a future release.
+          deprecated: true
         started_at:
           type: string
           format: date-time
@@ -18581,6 +18653,12 @@ components:
         evaluation_id:
           description: Filter by root-span evaluation id.
           title: Evaluation Id
+          type: string
+        experiment_id:
+          deprecated: true
+          description: Deprecated alias for evaluation_id. Filter by root-span evaluation
+            id.
+          title: Experiment Id
           type: string
         test_case_id:
           description: Filter by root-span evaluation test case id.

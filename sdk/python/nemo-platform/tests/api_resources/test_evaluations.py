@@ -365,6 +365,7 @@ class TestEvaluations:
                     }
                 },
                 "experiment_group_id": "experiment_group_id",
+                "experiment_id": "experiment_id",
                 "is_deleted": True,
                 "is_pinned": True,
                 "latency_ms": {
@@ -1082,6 +1083,7 @@ class TestAsyncEvaluations:
                     }
                 },
                 "experiment_group_id": "experiment_group_id",
+                "experiment_id": "experiment_id",
                 "is_deleted": True,
                 "is_pinned": True,
                 "latency_ms": {

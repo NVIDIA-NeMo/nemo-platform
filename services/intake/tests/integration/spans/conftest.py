@@ -16,6 +16,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from nmp.intake.config import ClickHouseConfig, IntakeConfig
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable, qualified_table
 from nmp.intake.service import IntakeService
 from nmp.intake.spans.clickhouse_client import (
     ClickHouseSettings,
@@ -97,11 +98,12 @@ def clickhouse_client(clickhouse_settings: ClickHouseSettings):
 
 @pytest.fixture(autouse=True)
 def clean_clickhouse(clickhouse_client: ClickHouseSpanClient):
-    for table in ("spans", "evaluator_results", "trace_index"):
-        _run(clickhouse_client.command(f"TRUNCATE TABLE {clickhouse_client.table(table)}"))
+    tables = (ClickHouseTable.SPANS, ClickHouseTable.EVALUATOR_RESULTS, ClickHouseTable.TRACE_INDEX)
+    for table in tables:
+        _run(clickhouse_client.command(f"TRUNCATE TABLE {qualified_table(clickhouse_client.database, table)}"))
     yield
-    for table in ("spans", "evaluator_results", "trace_index"):
-        _run(clickhouse_client.command(f"TRUNCATE TABLE {clickhouse_client.table(table)}"))
+    for table in tables:
+        _run(clickhouse_client.command(f"TRUNCATE TABLE {qualified_table(clickhouse_client.database, table)}"))
 
 
 @pytest.fixture

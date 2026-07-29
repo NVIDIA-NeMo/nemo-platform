@@ -3,10 +3,10 @@
 
 """Create, list, get, and delete endpoints for Evaluations and Experiments.
 
-Entity-store (Postgres) operations are wired directly onto ``EntityClient``,
-following the inline pattern used by the core services. PUT updates only the
-mutable fields; an Evaluation's identity and the dataset/agent it ran against
-are fixed. Rollup fields on read models are hydrated from ClickHouse.
+Entity-store writes use ``EntityClient`` directly. Evaluation reads use an
+application service that composes Entities with ClickHouse-backed rollups and
+sessions. PUT updates only mutable fields; an Evaluation's identity and the
+dataset/agent it ran against are fixed.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOp
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
-from nmp.common.service.dependencies import get_entity_client
+from nmp.intake.api.v2.experiments.dependencies import EntityClientDep, EvaluationReadServiceDep
 from nmp.intake.api.v2.experiments.schemas import (
     EvaluationFilter,
     EvaluationPatchRequest,
@@ -44,22 +44,20 @@ from nmp.intake.api.v2.experiments.schemas import (
 # layer uses; only the entity's own field names (e.g. parent_experiment_id) reference Experiment directly.
 from nmp.intake.entities.experiments import Experiment as Evaluation
 from nmp.intake.entities.experiments import ExperimentGroup
-from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.domain import SpanStatus
-from nmp.intake.spans.evaluation_rollup_repository import (
-    EvaluationRollup,
-    EvaluationRollupRepository,
-    ScoreRollup,
+from nmp.intake.experiments.read_service import (
+    EvaluationNotFoundError,
+    EvaluationRead,
+    EvaluationReadLimitExceededError,
+    EvaluationTelemetryUnavailableError,
+    InvalidEvaluationSessionStatusError,
 )
-from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRepository, MetricSortTooLargeError
+from nmp.intake.repository.evaluation_rollup import EvaluationRollup, ScoreRollup
+from nmp.intake.repository.evaluation_session import MetricSortTooLargeError
+from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
+from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.storage import make_pagination
 
 logger = logging.getLogger(__name__)
-
-
-def _sanitize_for_log(value: str) -> str:
-    return value.replace("\r", "").replace("\n", "")
 
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
@@ -75,7 +73,7 @@ ExperimentSortField = Literal["-created_at", "created_at", "-updated_at", "updat
 _ENTITY_SORT_FIELDS = frozenset({"name", "created_at", "updated_at", "pinned_at"})
 # Sessions are sorted in ClickHouse (ORDER BY before LIMIT/OFFSET) so sort composes
 # correctly with pagination. These are the allowed field names; each maps to an SQL
-# expression in the repository - see _list_sql in evaluation_session_repository.py.
+# expression in the ClickHouse repository.
 _SESSION_SORT_FIELDS = frozenset(
     {
         "test_case_id",
@@ -95,37 +93,9 @@ _MAX_GROUP_EVALUATIONS = 1000
 
 EntityT = TypeVar("EntityT", Evaluation, ExperimentGroup)
 
-EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 ExperimentFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentFilter))]
 EvaluationFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(EvaluationFilter))]
 EvaluationSessionFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(EvaluationSessionFilter))]
-
-
-def _get_clickhouse_client(request: Request) -> ClickHouseSpanClient | None:
-    service = getattr(request.app.state, "intake_service", None) or getattr(request.app.state, "service", None)
-    if service is None:
-        return None
-    return getattr(service, "clickhouse_client", None)
-
-
-def get_evaluation_rollup_repository(request: Request) -> EvaluationRollupRepository | None:
-    # Rollups are enrichment only. Evaluation entity reads should continue when
-    # ClickHouse is disabled or temporarily unavailable.
-    client = _get_clickhouse_client(request)
-    return EvaluationRollupRepository(client) if client is not None else None
-
-
-EvaluationRollupRepositoryDep = Annotated[EvaluationRollupRepository | None, Depends(get_evaluation_rollup_repository)]
-
-
-def get_evaluation_session_repository(request: Request) -> EvaluationSessionRepository | None:
-    client = _get_clickhouse_client(request)
-    return EvaluationSessionRepository(client) if client is not None else None
-
-
-EvaluationSessionRepositoryDep = Annotated[
-    EvaluationSessionRepository | None, Depends(get_evaluation_session_repository)
-]
 
 
 @router.post(
@@ -391,7 +361,8 @@ async def create_evaluation(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=EvaluationFilter,
         filter_description=(
-            "Filter evaluations by name, experiment_group_id, "
+            "Filter evaluations by name, experiment_id (experiment group membership; "
+            "experiment_group_id is a deprecated alias), "
             "dataset_name, dataset_version, created_by, created_at, or updated_at. "
             "Pass is_deleted=true to return only soft-deleted evaluations; omit to see only live ones. "
             "Pass is_pinned=true (or false) to filter by pinned state; omit to return both. "
@@ -406,8 +377,7 @@ async def create_evaluation(
 async def list_evaluations(
     workspace: str,
     request: Request,
-    entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
     parsed: EvaluationFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
@@ -448,34 +418,31 @@ async def list_evaluations(
     # Compute-on-read: fetch the whole (entity-filtered) group, hydrate every rollup, then filter, sort,
     # and paginate in memory so a single request can sort/filter by a ClickHouse metric that lives
     # outside the entity store. Bounded to hundreds of evaluations per group (see _MAX_GROUP_EVALUATIONS).
-    result = await entity_client.list(
-        Evaluation,
-        workspace=workspace,
-        filter_operation=entity_operation,
-        page=1,
-        page_size=_MAX_GROUP_EVALUATIONS,
-    )
-    responses = [EvaluationResponse.from_entity(e) for e in result.data]
-    total_selected = result.pagination.total_results
-    if total_selected > _MAX_GROUP_EVALUATIONS:
+    try:
+        result = await read_service.list_evaluations(
+            workspace=workspace,
+            filter_operation=entity_operation,
+            limit=_MAX_GROUP_EVALUATIONS,
+        )
+    except EvaluationReadLimitExceededError as exc:
         # The whole filtered set is sorted in memory; anything past the fetch cap can't be sorted, so a
         # returned page would be silently incomplete. Fail loudly and tell the caller how to scope the
         # query instead (or denormalize rollup metrics for entity-store sorting once groups grow this big).
         logger.warning(
             "Evaluation list selected %d evaluations, over the %d-row in-memory sort cap; refusing "
             "to return a partially sorted result.",
-            total_selected,
-            _MAX_GROUP_EVALUATIONS,
+            exc.selected,
+            exc.limit,
         )
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=(
-                f"This query selects {total_selected} evaluations, exceeding the maximum of "
-                f"{_MAX_GROUP_EVALUATIONS} that can be sorted in one request. Narrow the result with a "
+                f"This query selects {exc.selected} evaluations, exceeding the maximum of "
+                f"{exc.limit} that can be sorted in one request. Narrow the result with a "
                 "filter (e.g. experiment_group_id)."
             ),
-        )
-    hydrated = await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
+        ) from exc
+    responses = [_to_evaluation_response(evaluation) for evaluation in result.evaluations]
     # A metric-backed sort or filter is meaningless without rollups: if hydration was skipped (ClickHouse
     # disabled or down) every metric value would be unset, so a metric sort would silently collapse to
     # name order and a metric filter would drop everything. Reject the request instead of returning a
@@ -483,7 +450,7 @@ async def list_evaluations(
     # An explicit metric sort or metric filter genuinely can't be served without rollups → 503. A
     # default sort degrades gracefully instead: its metric values come back unset, so the appended
     # -created_at key orders the list (the documented fallback), no error.
-    if not hydrated and (explicit_metric_sort or metric_predicates):
+    if not result.rollups_available and (explicit_metric_sort or metric_predicates):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cannot sort or filter evaluations by a rollup metric: the telemetry store is unavailable.",
@@ -512,20 +479,13 @@ async def list_evaluations(
 async def get_evaluation(
     workspace: str,
     name: str,
-    entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
 ) -> EvaluationResponse:
-    entity = await _get_or_404(
-        entity_client,
-        Evaluation,
-        workspace=workspace,
-        name=name,
-        label="Evaluation",
-    )
-    _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
-    response = EvaluationResponse.from_entity(entity)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
+    try:
+        evaluation = await read_service.get_evaluation(workspace=workspace, name=name)
+    except EvaluationNotFoundError as exc:
+        raise _evaluation_not_found_http_error(exc) from exc
+    return _to_evaluation_response(evaluation)
 
 
 # Identity and the dataset it was run against are fixed for the life of an
@@ -548,7 +508,7 @@ async def update_evaluation(
     name: str,
     body: EvaluationRequest,
     entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
 ) -> EvaluationResponse:
     existing = await _get_or_404(
         entity_client,
@@ -581,9 +541,7 @@ async def update_evaluation(
     existing.status = body.status
     existing.root_cause = body.root_cause
     updated = await entity_client.update(existing)
-    response = EvaluationResponse.from_entity(updated)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
+    return await _evaluation_response_with_rollup(read_service, workspace=workspace, evaluation=updated)
 
 
 @router.patch(
@@ -600,7 +558,7 @@ async def patch_evaluation(
     name: str,
     body: EvaluationPatchRequest,
     entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
 ) -> EvaluationResponse:
     """Partially update an evaluation: only fields present in the request are changed.
 
@@ -640,9 +598,7 @@ async def patch_evaluation(
         existing.root_cause = body.root_cause
 
     updated = await entity_client.update(existing)
-    response = EvaluationResponse.from_entity(updated)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
+    return await _evaluation_response_with_rollup(read_service, workspace=workspace, evaluation=updated)
 
 
 @router.delete(
@@ -677,7 +633,7 @@ async def pin_evaluation(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
 ) -> EvaluationResponse:
     """Pin an evaluation to the top of the list (workspace-shared).
 
@@ -694,9 +650,7 @@ async def pin_evaluation(
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
     entity.pinned_at = datetime.now(timezone.utc)
     updated = await entity_client.update(entity)
-    response = EvaluationResponse.from_entity(updated)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
+    return await _evaluation_response_with_rollup(read_service, workspace=workspace, evaluation=updated)
 
 
 @router.delete(
@@ -709,7 +663,7 @@ async def unpin_evaluation(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
+    read_service: EvaluationReadServiceDep,
 ) -> EvaluationResponse:
     """Unpin an evaluation. Idempotent: unpinning an already-unpinned evaluation is a no-op."""
     entity = await _get_or_404(
@@ -722,9 +676,7 @@ async def unpin_evaluation(
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
     entity.pinned_at = None
     updated = await entity_client.update(entity)
-    response = EvaluationResponse.from_entity(updated)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
+    return await _evaluation_response_with_rollup(read_service, workspace=workspace, evaluation=updated)
 
 
 @router.get(
@@ -745,8 +697,7 @@ async def list_evaluation_sessions(
     workspace: str,
     name: str,
     request: Request,
-    entity_client: EntityClientDep,
-    session_repository: EvaluationSessionRepositoryDep,
+    read_service: EvaluationReadServiceDep,
     parsed: EvaluationSessionFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
@@ -769,39 +720,26 @@ async def list_evaluation_sessions(
 ) -> Page[EvaluationSessionResponse]:
     validate_list_query_params(request, additional_params={"mode"})
     sort_keys = _parse_session_sort_keys(sort) if sort is not None else None
-    evaluation = await _get_or_404(
-        entity_client,
-        Evaluation,
-        workspace=workspace,
-        name=name,
-        label="Evaluation",
-    )
-    _reject_if_deleted(evaluation, workspace=workspace, name=name, label="Evaluation")
-    if session_repository is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="ClickHouse is unavailable; per-session reads require telemetry storage.",
-        )
     test_case_id: str | None = parsed.extract("test_case_id")
     status_raw: str | None = parsed.extract("status")
     try:
-        status_filter = SpanStatus(status_raw) if status_raw is not None else None
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status '{status_raw}'. Valid values: {[s.value for s in SpanStatus]}",
-        )
-    try:
-        result = await session_repository.list_sessions(
+        result = await read_service.list_sessions(
             workspace=workspace,
             evaluation_name=name,
-            status=status_filter,
+            status=status_raw,
             test_case_id=test_case_id,
             page=page,
             page_size=page_size,
             mode=mode,
             sort_keys=sort_keys,
         )
+    except EvaluationNotFoundError as exc:
+        raise _evaluation_not_found_http_error(exc) from exc
+    except InvalidEvaluationSessionStatusError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status '{exc.value}'. Valid values: {[s.value for s in SpanStatus]}",
+        ) from exc
     except MetricSortTooLargeError as exc:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -812,18 +750,15 @@ async def list_evaluation_sessions(
                 "different field (started_at, latency_ms, status, test_case_id)."
             ),
         ) from exc
-    except Exception as exc:
-        # Sessions are the response payload (not enrichment), so we can't silently degrade like
-        # _hydrate_rollups does. Convert backend failures (ClickHouse connection drop, query
-        # timeout, etc.) to a deterministic 503 instead of letting them bubble as 500s.
-        logger.exception(
-            "Per-session read failed for workspace=%s evaluation=%s",
-            _sanitize_for_log(workspace),
-            _sanitize_for_log(name),
+    except EvaluationTelemetryUnavailableError as exc:
+        detail = (
+            "Telemetry store unavailable."
+            if exc.configured
+            else "ClickHouse is unavailable; per-session reads require telemetry storage."
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Telemetry store unavailable.",
+            detail=detail,
         ) from exc
     data = [EvaluationSessionResponse.from_row(row, mode=mode) for row in result.rows]
     return Page(
@@ -1044,15 +979,19 @@ def _group_membership_filter(group_id: str) -> LogicalOperation:
 
 
 def _rewrite_group_filter(operation: FilterOperation | None) -> FilterOperation | None:
-    """Rewrite an ``experiment_group_id`` equality in a parsed filter into a membership match.
+    """Rewrite a group-membership equality in a parsed filter into a membership match.
 
-    The API still exposes an ``experiment_group_id`` filter param; with many-to-many membership it
-    means "belongs to this group", which spans the ``experiment_ids`` list and the legacy scalar.
+    Both the canonical ``experiment_id`` filter param and its deprecated ``experiment_group_id`` alias
+    mean "belongs to this group"; with many-to-many membership that spans the ``experiment_ids`` list
+    and the legacy scalar, so both route through the same ``_group_membership_filter``.
     """
     if operation is None:
         return None
     if isinstance(operation, ComparisonOperation):
-        if operation.field == "data.experiment_group_id" and operation.operator == FilterOperator.EQ:
+        if (
+            operation.field in ("data.experiment_id", "data.experiment_group_id")
+            and operation.operator == FilterOperator.EQ
+        ):
             return _group_membership_filter(operation.value)
         return operation
     if isinstance(operation, LogicalOperation):
@@ -1373,35 +1312,28 @@ def _sort_evaluations(
     return ordered
 
 
-async def _hydrate_rollups(
+def _to_evaluation_response(evaluation: EvaluationRead) -> EvaluationResponse:
+    response = EvaluationResponse.from_entity(evaluation.entity)
+    if evaluation.rollup is not None:
+        _apply_rollup(response, evaluation.rollup)
+    return response
+
+
+async def _evaluation_response_with_rollup(
+    read_service: EvaluationReadServiceDep,
     *,
     workspace: str,
-    responses: list[EvaluationResponse],
-    rollup_repository: EvaluationRollupRepository | None,
-) -> bool:
-    """Enrich responses with ClickHouse rollups in place.
+    evaluation: Evaluation,
+) -> EvaluationResponse:
+    batch = await read_service.attach_rollups(workspace=workspace, evaluations=[evaluation])
+    return _to_evaluation_response(batch.evaluations[0])
 
-    Returns True when hydration completed (including the no-op empty-list case) and False when it was
-    skipped because the rollup store is unavailable (repository absent or query failed). Callers that
-    sort by a rollup metric use the flag to reject the request rather than silently degrade; callers
-    that only display metrics can ignore it.
-    """
-    if not responses:
-        return True
-    if rollup_repository is None:
-        return False
-    try:
-        rollups = await rollup_repository.get_rollups(
-            workspace=workspace, evaluation_ids=[response.name for response in responses]
-        )
-    except Exception:
-        logger.exception("Skipping evaluation rollup hydration because ClickHouse is unavailable")
-        return False
-    for response in responses:
-        rollup = rollups.get(response.name)
-        if rollup is not None:
-            _apply_rollup(response, rollup)
-    return True
+
+def _evaluation_not_found_http_error(exc: EvaluationNotFoundError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Evaluation '{exc.workspace}/{exc.name}' not found.",
+    )
 
 
 def _apply_rollup(response: EvaluationResponse, rollup: EvaluationRollup) -> None:

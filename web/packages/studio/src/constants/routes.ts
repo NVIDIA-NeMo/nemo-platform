@@ -118,6 +118,7 @@ export const ROUTES = {
     optimizer: `/workspaces/:${P.workspace}/optimizer`,
     optimizerInsight: `/workspaces/:${P.workspace}/optimizer/:${P.insightId}`,
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,
+    guardrailConfig: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/config`,
     settings: `/workspaces/:${P.workspace}/settings`,
     /** Workspace members and role-based access (Entities role bindings) */
     members: `/workspaces/:${P.workspace}/members`,

@@ -14,12 +14,12 @@ from typing import Annotated, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup, ParetoConfig
+from nmp.intake.repository.evaluation_session import EvaluationSessionRow
 from nmp.intake.spans.domain import (
     INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
     IntakeResponseMode,
     SpanStatus,
 )
-from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRow
 from nmp.intake.spans.storage import text_for_mode
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -329,7 +329,19 @@ class EvaluationFilter(Filter):
     """Filter for listing Evaluations."""
 
     name: str | None = Field(default=None, description="Filter evaluations by name.")
-    experiment_group_id: str | None = Field(default=None, description="Filter evaluations by owning experiment id.")
+    experiment_id: str | None = Field(
+        default=None,
+        description=(
+            "Filter evaluations by experiment group membership: matches evaluations whose "
+            "`experiment_ids` include this group id (legacy rows still on `experiment_group_id` also "
+            "match). This is the canonical membership filter — it mirrors the write-side `experiment_ids`."
+        ),
+    )
+    experiment_group_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated alias for `experiment_id`; filter evaluations by experiment group membership.",
+    )
     dataset_name: str | None = Field(default=None, description="Filter evaluations by dataset name.")
     dataset_version: str | None = Field(default=None, description="Filter evaluations by dataset version.")
     created_by: str | None = Field(default=None, description="Filter evaluations by the principal that created them.")
