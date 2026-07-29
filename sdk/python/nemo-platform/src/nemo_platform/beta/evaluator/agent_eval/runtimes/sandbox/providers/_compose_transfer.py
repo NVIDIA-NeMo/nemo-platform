@@ -72,7 +72,16 @@ async def _copy_to_service(
     """
     container_target = _absolute_container_path(target)
     remote_directory = container_target if directory else posixpath.dirname(container_target)
+    created_file_parent = False
     if remote_directory != "/":
+        if not directory:
+            existing_parent = await _run_target_root(
+                cli,
+                session,
+                ["test", "-d", "--", remote_directory],
+                command_timeout_seconds=command_timeout_seconds,
+            )
+            created_file_parent = not existing_parent.ok
         prepared = await _run_target_root(
             cli,
             session,
@@ -101,10 +110,16 @@ async def _copy_to_service(
             session,
             command_timeout_seconds=command_timeout_seconds,
         )
+    ownership_command = ["chown", "-R", session.target_identity, "--", container_target]
+    if not directory:
+        ownership_command = ["chown", session.target_identity, "--"]
+        if created_file_parent:
+            ownership_command.append(remote_directory)
+        ownership_command.append(container_target)
     ownership = await _run_target_root(
         cli,
         session,
-        ["chown", "-R", session.target_identity, "--", container_target],
+        ownership_command,
         command_timeout_seconds=command_timeout_seconds,
     )
     if not ownership.ok:
@@ -175,7 +190,7 @@ async def _target_identity(
             "--no-TTY",
             session.target_service,
             "sh",
-            "-lc",
+            "-c",
             'printf "%s:%s" "$(id -u)" "$(id -g)"',
         ],
         environment=session.environment,

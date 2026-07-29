@@ -97,6 +97,11 @@ async def test_no_build_runs_prebuilt_image_without_source_context(tmp_path: Pat
             "echo -n '-modified' >> /home/app/missing/parent/seed.txt && cat /home/app/missing/parent/seed.txt",
         )
         assert modified.ok and modified.stdout == "seed-modified"
+        sibling = await provider.exec(
+            handle,
+            "echo -n sibling > /home/app/missing/parent/sibling.txt && cat /home/app/missing/parent/sibling.txt",
+        )
+        assert sibling.ok and sibling.stdout == "sibling"
 
         await provider.upload_file(handle, seed, "relative/missing/seed.txt")
         relative_modified = await provider.exec(

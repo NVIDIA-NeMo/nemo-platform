@@ -36,11 +36,23 @@ async def test_exec_transfer_and_status_target_configured_service(
     transfer_suffixes = [
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
-    assert transfer_suffixes[:4] == [
+    assert transfer_suffixes[:5] == [
+        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "--", "/missing/parent"),
         ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/missing/parent"),
         ("cp", str(source), "agent:/missing/parent/seed.txt"),
-        ("exec", "--no-TTY", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
-        ("exec", "--no-TTY", "--user", "0", "agent", "chown", "-R", "1001:1002", "--", "/missing/parent/seed.txt"),
+        ("exec", "--no-TTY", "agent", "sh", "-c", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
+        (
+            "exec",
+            "--no-TTY",
+            "--user",
+            "0",
+            "agent",
+            "chown",
+            "1001:1002",
+            "--",
+            "/missing/parent",
+            "/missing/parent/seed.txt",
+        ),
     ]
     await provider.close(handle)
 
@@ -70,7 +82,7 @@ async def test_directory_transfers_copy_contents_into_prepared_targets(
     assert suffixes[:4] == [
         ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/work/existing"),
         ("cp", f"{source}{os.sep}.", "agent:/work/existing"),
-        ("exec", "--no-TTY", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
+        ("exec", "--no-TTY", "agent", "sh", "-c", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
         ("exec", "--no-TTY", "--user", "0", "agent", "chown", "-R", "1001:1002", "--", "/work/existing"),
     ]
     assert ("cp", "agent:/out/.", str(existing_download)) in suffixes
@@ -101,10 +113,11 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
     suffixes = [
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
-    assert suffixes[:4] == [
+    assert suffixes[:5] == [
+        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "--", "/missing/parent"),
         ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/missing/parent"),
         ("cp", str(source_file), "agent:/missing/parent/seed.txt"),
-        ("exec", "--no-TTY", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
+        ("exec", "--no-TTY", "agent", "sh", "-c", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
         (
             "exec",
             "--no-TTY",
@@ -112,9 +125,9 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
             "0",
             "agent",
             "chown",
-            "-R",
             "1001:1002",
             "--",
+            "/missing/parent",
             "/missing/parent/seed.txt",
         ),
     ]
@@ -126,7 +139,6 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
         "0",
         "agent",
         "chown",
-        "-R",
         "1001:1002",
         "--",
         "/root-seed.txt",
@@ -161,11 +173,67 @@ async def test_upload_file_derives_parent_from_normalized_target(
         "0",
         "agent",
         "chown",
-        "-R",
         "1001:1002",
         "--",
         "/root-seed.txt",
     ) in suffixes
+    await provider.close(handle)
+
+
+async def test_upload_file_does_not_repair_a_preexisting_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    runner.directories.add("/existing/parent")
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+    source = tmp_path / "seed.txt"
+    source.write_text("seed", encoding="utf-8")
+    transfer_start = len(runner.calls)
+
+    await provider.upload_file(handle, source, "/existing/parent/seed.txt")
+
+    suffixes = [
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
+    ]
+    assert suffixes == [
+        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "--", "/existing/parent"),
+        ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/existing/parent"),
+        ("cp", str(source), "agent:/existing/parent/seed.txt"),
+        ("exec", "--no-TTY", "agent", "sh", "-c", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
+        (
+            "exec",
+            "--no-TTY",
+            "--user",
+            "0",
+            "agent",
+            "chown",
+            "1001:1002",
+            "--",
+            "/existing/parent/seed.txt",
+        ),
+    ]
+    await provider.close(handle)
+
+
+async def test_upload_file_uses_non_login_shell_for_identity_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+    source = tmp_path / "seed.txt"
+    source.write_text("seed", encoding="utf-8")
+    transfer_start = len(runner.calls)
+
+    await provider.upload_file(handle, source, "/seed.txt")
+
+    suffixes = [
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
+    ]
+    assert ("exec", "--no-TTY", "agent", "sh", "-c", 'printf "%s:%s" "$(id -u)" "$(id -g)"') in suffixes
     await provider.close(handle)
 
 

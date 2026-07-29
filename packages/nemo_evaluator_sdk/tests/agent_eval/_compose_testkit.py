@@ -45,6 +45,7 @@ class _Runner:
         self.up_failure = False
         self.down_failures = 0
         self.failures: set[str] = set()
+        self.directories: set[str] = set()
         self._down_attempts = 0
 
     async def __call__(
@@ -79,6 +80,8 @@ class _Runner:
             self._down_attempts += 1
             if self._down_attempts <= self.down_failures:
                 return ComposeCommandResult(argv, 1, "", "temporary failure")
+        if args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "test"):
+            return ComposeCommandResult(argv, int(args[-1] not in self.directories), "", "")
         if args[:1] == ("cp",) and "copy" in self.failures:
             return ComposeCommandResult(argv, 1, "", f"token={environment.get('TEST_TOKEN', 'copy failed')}")
         if args[:1] == ("exec",) and "printf" in args[-1]:
