@@ -81,7 +81,16 @@ async def _copy_to_service(
                 ["test", "-d", "--", remote_directory],
                 command_timeout_seconds=command_timeout_seconds,
             )
-            created_file_parent = not existing_parent.ok
+            if existing_parent.return_code == 1 and not existing_parent.timed_out:
+                created_file_parent = True
+            elif not existing_parent.ok:
+                raise RuntimeError(
+                    cli.failure_message(
+                        "Compose upload target parent check failed",
+                        existing_parent,
+                        session.environment,
+                    )
+                )
         prepared = await _run_target_root(
             cli,
             session,

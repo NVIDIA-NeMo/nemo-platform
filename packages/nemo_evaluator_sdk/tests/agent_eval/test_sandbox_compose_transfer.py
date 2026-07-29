@@ -217,6 +217,34 @@ async def test_upload_file_does_not_repair_a_preexisting_parent(
     await provider.close(handle)
 
 
+@pytest.mark.parametrize(("return_code", "timed_out"), [(2, False), (1, True)])
+async def test_upload_file_stops_after_an_unconfirmed_parent_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    return_code: int,
+    timed_out: bool,
+) -> None:
+    runner = _Runner()
+    runner.parent_probe_failure = (return_code, timed_out)
+    provider = _provider(tmp_path, environment_defaults={"TEST_TOKEN": "sensitive-value"})
+    handle = await _create(monkeypatch, provider, runner)
+    source = tmp_path / "seed.txt"
+    source.write_text("seed", encoding="utf-8")
+    transfer_start = len(runner.calls)
+
+    with pytest.raises(RuntimeError, match="Compose upload target parent check failed") as caught:
+        await provider.upload_file(handle, source, "/existing/parent/seed.txt")
+
+    assert "sensitive-value" not in str(caught.value)
+    suffixes = [
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
+    ]
+    assert suffixes == [
+        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "--", "/existing/parent"),
+    ]
+    await provider.close(handle)
+
+
 async def test_upload_file_uses_non_login_shell_for_identity_lookup(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

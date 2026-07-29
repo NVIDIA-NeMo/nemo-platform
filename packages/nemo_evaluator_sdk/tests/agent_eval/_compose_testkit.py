@@ -46,6 +46,7 @@ class _Runner:
         self.down_failures = 0
         self.failures: set[str] = set()
         self.directories: set[str] = set()
+        self.parent_probe_failure: tuple[int, bool] | None = None
         self._down_attempts = 0
 
     async def __call__(
@@ -81,6 +82,15 @@ class _Runner:
             if self._down_attempts <= self.down_failures:
                 return ComposeCommandResult(argv, 1, "", "temporary failure")
         if args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "test"):
+            if self.parent_probe_failure is not None:
+                return_code, timed_out = self.parent_probe_failure
+                return ComposeCommandResult(
+                    argv,
+                    return_code,
+                    "",
+                    f"token={environment.get('TEST_TOKEN', 'parent probe failed')}",
+                    timed_out,
+                )
             return ComposeCommandResult(argv, int(args[-1] not in self.directories), "", "")
         if args[:1] == ("cp",) and "copy" in self.failures:
             return ComposeCommandResult(argv, 1, "", f"token={environment.get('TEST_TOKEN', 'copy failed')}")
