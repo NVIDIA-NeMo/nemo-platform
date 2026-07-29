@@ -24,6 +24,10 @@ _TOPOLOGY = ComposeServiceTopology(
     one_shot_services=frozenset({"init"}),
 )
 
+_FILE_PARENT_CREATED = "__NEMO_COMPOSE_FILE_PARENT_CREATED__"
+_FILE_PARENT_EXISTING = "__NEMO_COMPOSE_FILE_PARENT_EXISTING__"
+_FILE_PARENT_OPERATION = "nemo-compose-file-parent"
+
 
 class _Runner:
     def __init__(self) -> None:
@@ -46,7 +50,10 @@ class _Runner:
         self.down_failures = 0
         self.failures: set[str] = set()
         self.directories: set[str] = set()
-        self.parent_probe_failure: tuple[int, bool] | None = None
+        self.parent_prepare_result: tuple[int, str, str, bool] | None = None
+        self.parent_replaced_during_preparation = False
+        self.parent_ownership_repairs: list[tuple[str, str]] = []
+        self.symlinks: set[str] = set()
         self._down_attempts = 0
 
     async def __call__(
@@ -81,17 +88,33 @@ class _Runner:
             self._down_attempts += 1
             if self._down_attempts <= self.down_failures:
                 return ComposeCommandResult(argv, 1, "", "temporary failure")
-        if args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "test"):
-            if self.parent_probe_failure is not None:
-                return_code, timed_out = self.parent_probe_failure
+        if args[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c") and args[-3] == _FILE_PARENT_OPERATION:
+            parent, identity = args[-2:]
+            if self.parent_prepare_result is not None:
+                return_code, stdout, stderr, timed_out = self.parent_prepare_result
                 return ComposeCommandResult(
                     argv,
                     return_code,
-                    "",
-                    f"token={environment.get('TEST_TOKEN', 'parent probe failed')}",
+                    stdout,
+                    stderr,
                     timed_out,
                 )
-            return ComposeCommandResult(argv, int(args[-1] not in self.directories), "", "")
+            if "mkdir" in self.failures:
+                return ComposeCommandResult(
+                    argv,
+                    1,
+                    "",
+                    f"token={environment.get('TEST_TOKEN', 'parent preparation failed')}",
+                )
+            if self.parent_replaced_during_preparation:
+                self.symlinks.add(parent)
+            if parent in self.symlinks:
+                return ComposeCommandResult(argv, 1, "", "parent was replaced")
+            if parent in self.directories:
+                return ComposeCommandResult(argv, 0, _FILE_PARENT_EXISTING, "")
+            self.directories.add(parent)
+            self.parent_ownership_repairs.append((parent, identity))
+            return ComposeCommandResult(argv, 0, _FILE_PARENT_CREATED, "")
         if args[:1] == ("cp",) and "copy" in self.failures:
             return ComposeCommandResult(argv, 1, "", f"token={environment.get('TEST_TOKEN', 'copy failed')}")
         if args[:1] == ("exec",) and "printf" in args[-1]:

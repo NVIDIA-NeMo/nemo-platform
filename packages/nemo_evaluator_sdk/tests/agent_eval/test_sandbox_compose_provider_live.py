@@ -103,6 +103,11 @@ async def test_no_build_runs_prebuilt_image_without_source_context(tmp_path: Pat
         )
         assert sibling.ok and sibling.stdout == "sibling"
 
+        assert (await provider.exec(handle, "ln -s /tmp /home/app/replaced-parent")).ok
+        with pytest.raises(RuntimeError, match="Compose upload target preparation failed"):
+            await provider.upload_file(handle, seed, "/home/app/replaced-parent/blocked.txt")
+        assert (await provider.exec(handle, "test ! -e /tmp/blocked.txt")).ok
+
         await provider.upload_file(handle, seed, "relative/missing/seed.txt")
         relative_modified = await provider.exec(
             handle,
