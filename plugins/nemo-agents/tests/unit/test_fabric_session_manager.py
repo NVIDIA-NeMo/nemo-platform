@@ -26,13 +26,27 @@ class _FakeRuntime:
         self.stop_calls += 1
 
 
+class _FakeFabricConfig:
+    def __init__(self, *, copied: bool = False) -> None:
+        self.copied = copied
+        self.relay_enabled = False
+
+    def model_copy(self, *, deep: bool) -> "_FakeFabricConfig":
+        assert deep is True
+        return _FakeFabricConfig(copied=True)
+
+    def enable_relay(self) -> "_FakeFabricConfig":
+        self.relay_enabled = True
+        return self
+
+
 class _FakeFabric:
     def __init__(self, runtime: _FakeRuntime) -> None:
         self.runtime = runtime
-        self.start_calls: list[tuple[Any, Path]] = []
+        self.start_calls: list[dict[str, Any]] = []
 
-    async def start_runtime(self, config: Any, *, base_dir: Path) -> _FakeRuntime:
-        self.start_calls.append((config, base_dir))
+    async def start_runtime(self, config: Any, *, base_dir: Path, streaming: bool = False) -> _FakeRuntime:
+        self.start_calls.append({"base_dir": base_dir, "config": config, "streaming": streaming})
         return self.runtime
 
 
@@ -60,7 +74,7 @@ async def test_open_session_materializes_config_and_starts_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fabric_config = object()
+    fabric_config = _FakeFabricConfig()
     translation_calls: list[AgentConfig] = []
 
     def translate(config: AgentConfig) -> Any:
@@ -86,7 +100,13 @@ async def test_open_session_materializes_config_and_starts_runtime(
 
     assert translation_calls == [agent_config]
     assert (tmp_path / "workspace").is_dir()
-    assert fabric.start_calls == [(fabric_config, tmp_path)]
+    assert len(fabric.start_calls) == 1
+    assert fabric.start_calls[0]["base_dir"] == tmp_path
+    assert fabric.start_calls[0]["streaming"] is True
+    started_config = fabric.start_calls[0]["config"]
+    assert started_config is not fabric_config
+    assert started_config.copied is True
+    assert started_config.relay_enabled is True
     assert session.runtime is runtime
     assert await registry.get(session.session_id) is session
 
@@ -96,7 +116,7 @@ async def test_open_session_stops_runtime_when_registration_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: object())
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
     runtime = _FakeRuntime()
     fabric = _FakeFabric(runtime)
     registry = FabricSessionRegistry()
@@ -124,7 +144,7 @@ async def test_resolve_session_opens_session_when_id_is_absent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: object())
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
     runtime = _FakeRuntime()
     fabric = _FakeFabric(runtime)
     registry = FabricSessionRegistry()

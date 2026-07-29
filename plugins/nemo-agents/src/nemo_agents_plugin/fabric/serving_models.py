@@ -29,8 +29,6 @@ class ChatCompletionRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_current_turn(self) -> ChatCompletionRequest:
-        if self.stream:
-            raise ValueError("Streaming chat completions are not supported.")
         if self.messages[-1].role != "user":
             raise ValueError("The final chat message must have role 'user'.")
         return self
