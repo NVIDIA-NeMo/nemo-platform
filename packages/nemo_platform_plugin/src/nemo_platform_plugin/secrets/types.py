@@ -14,19 +14,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import NotRequired, Self, TypedDict
 
+from nemo_platform_plugin.entity_naming import NAME_MAX_LENGTH, NAME_PATTERN, NAME_PATTERN_DESCRIPTION
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_serializer, model_validator
-
-# Mirrors ``nmp.common.entities.constants.NAME_PATTERN`` — the rule the entity
-# store enforces downstream. Inlined rather than imported so this package stays
-# free of an ``nmp_common`` dependency (matching the ``files.types`` boundary —
-# plugin types own their own contract).
-_NAME_REGEX = r"^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$"
-_NAME_DESCRIPTION = (
-    "Name must start with a lowercase letter, be 2-63 characters, "
-    "and contain only lowercase letters, digits, and hyphens "
-    "(no consecutive hyphens, cannot end with a hyphen)."
-)
-_NAME_MAX_LENGTH = 63
 
 # ---------------------------------------------------------------------------
 # Response types
@@ -75,9 +64,9 @@ class PlatformSecretCreateRequest(BaseModel):
     model_config = ConfigDict(regex_engine="python-re")
 
     name: str = Field(
-        description=f"The name of the secret to create. {_NAME_DESCRIPTION}",
-        max_length=_NAME_MAX_LENGTH,
-        pattern=_NAME_REGEX,
+        description=f"The name of the secret to create. {NAME_PATTERN_DESCRIPTION}",
+        max_length=NAME_MAX_LENGTH,
+        pattern=NAME_PATTERN,
         examples=["hf-token", "wandb-api-key"],
     )
     description: str | None = Field(default=None, description="An optional description of the secret")

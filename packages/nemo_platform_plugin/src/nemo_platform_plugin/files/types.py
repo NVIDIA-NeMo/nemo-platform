@@ -13,6 +13,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, NotRequired, TypedDict
 
+from nemo_platform_plugin.entity_naming import NAME_MAX_LENGTH, NAME_PATTERN, NAME_PATTERN_DESCRIPTION
 from nemo_platform_plugin.files.metadata import FilesetMetadata
 from nemo_platform_plugin.files.storage_config import StorageConfig
 from nemo_platform_plugin.schema import Page
@@ -74,16 +75,6 @@ FilesetPage = Page[FilesetOutput]
 # Request types
 # ---------------------------------------------------------------------------
 
-# Mirrors ``nmp.common.entities.constants.NAME_PATTERN`` — the rule the entity
-# store enforces downstream. Inlined rather than imported so this package stays
-# free of an ``nmp_common`` dependency.
-NAME_PATTERN = r"^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$"
-NAME_PATTERN_DESCRIPTION = (
-    "Name must start with a lowercase letter, be 2-63 characters, "
-    "and contain only lowercase letters, digits, and hyphens "
-    "(no consecutive hyphens, cannot end with a hyphen)."
-)
-NAME_MAX_LENGTH = 63
 MAX_LENGTH = 255
 
 

@@ -17,20 +17,10 @@ from __future__ import annotations
 
 from typing import Optional, Self
 
+from nemo_platform_plugin.entity_naming import NAME_PATTERN, NAME_PATTERN_DESCRIPTION
 from nemo_platform_plugin.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.jobs.providers import Provider
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-# RFC 1035 compliant pattern with temporary support for special characters.
-# Mirrors ``nmp.common.entities.constants.NAME_PATTERN`` — inlined so this
-# module stays a dependency-free leaf node (see files/types.py for the same
-# pattern of inlining name constraints into the plugin).
-NAME_PATTERN = r"^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$"
-NAME_PATTERN_DESCRIPTION = (
-    "Name must start with a lowercase letter, be 2-63 characters, "
-    "and contain only lowercase letters, digits, and hyphens "
-    "(no consecutive hyphens, cannot end with a hyphen)."
-)
 
 
 class PlatformJobSecretEnvironmentVariableRef(BaseModel):
