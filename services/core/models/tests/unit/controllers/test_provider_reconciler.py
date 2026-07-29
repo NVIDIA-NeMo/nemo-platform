@@ -1994,12 +1994,15 @@ def _virtual_model(
     workspace: str = "ws",
     default_model_entity: str | None = None,
     autoprovisioned: bool = True,
+    db_version: int | None = 1,
 ):
     vm = MagicMock()
     vm.name = name
     vm.workspace = workspace
     vm.default_model_entity = default_model_entity
     vm.autoprovisioned = autoprovisioned
+    if db_version is not None:
+        vm.db_version = db_version
     return vm
 
 
@@ -2045,7 +2048,11 @@ async def test_reconcile_with_no_providers_deletes_orphaned_autoprovisioned_virt
     await reconciler.reconcile_model_providers([])
 
     mock_models_sdk.inference.virtual_models.list.assert_called_once_with(workspace="-", page_size=200)
-    mock_models_sdk.inference.virtual_models.delete.assert_awaited_once_with(name="model-a", workspace="ws")
+    mock_models_sdk.inference.virtual_models.delete.assert_awaited_once_with(
+        name="model-a",
+        workspace="ws",
+        expected_db_version=1,
+    )
 
 
 @pytest.mark.asyncio
@@ -2119,7 +2126,11 @@ async def test_cleanup_lost_provider_does_not_protect_autoprovisioned_virtual_mo
     vm_snapshot, _ = await reconciler._load_virtual_models()
     await reconciler._cleanup_orphaned_virtual_models([ctx], vm_snapshot)
 
-    mock_models_sdk.inference.virtual_models.delete.assert_awaited_once_with(name="model-a", workspace="ws")
+    mock_models_sdk.inference.virtual_models.delete.assert_awaited_once_with(
+        name="model-a",
+        workspace="ws",
+        expected_db_version=1,
+    )
 
 
 @pytest.mark.asyncio
@@ -2163,8 +2174,39 @@ async def test_cleanup_delete_failure_is_logged_and_non_fatal(reconciler, mock_m
         vm_snapshot, _ = await reconciler._load_virtual_models()
     await reconciler._cleanup_orphaned_virtual_models([], vm_snapshot)
 
-    mock_models_sdk.inference.virtual_models.delete.assert_awaited_once_with(name="model-a", workspace="ws")
+    mock_models_sdk.inference.virtual_models.delete.assert_awaited_once_with(
+        name="model-a",
+        workspace="ws",
+        expected_db_version=1,
+    )
     assert any("Failed to delete orphaned autoprovisioned VirtualModel ws/model-a" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_skips_orphaned_virtual_model_without_db_version(reconciler, mock_models_sdk, caplog):
+    """Cleanup must not fall back to an unconditional delete when the listed VM has no version."""
+    mock_models_sdk.inference.virtual_models.list = MagicMock(
+        return_value=_AsyncPaginator(
+            [
+                _virtual_model(
+                    "model-a",
+                    default_model_entity="ws/model-a",
+                    autoprovisioned=True,
+                    db_version=None,
+                )
+            ]
+        )
+    )
+
+    with caplog.at_level(logging.WARNING):
+        vm_snapshot, _ = await reconciler._load_virtual_models()
+        await reconciler._cleanup_orphaned_virtual_models([], vm_snapshot)
+
+    mock_models_sdk.inference.virtual_models.delete.assert_not_awaited()
+    assert any(
+        "Skipping orphaned autoprovisioned VirtualModel ws/model-a because it has no database version" in r.message
+        for r in caplog.records
+    )
 
 
 # =============================================================================

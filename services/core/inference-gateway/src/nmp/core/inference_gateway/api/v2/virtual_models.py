@@ -511,12 +511,17 @@ async def update_virtual_model(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         404: {"description": "VirtualModel not found."},
+        409: {"description": "VirtualModel was modified before it could be deleted."},
     },
 )
 async def delete_virtual_model(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
+    expected_db_version: int | None = Query(
+        default=None,
+        description="Optional database version for optimistic locking. Delete only succeeds if the VirtualModel still has this version.",
+    ),
 ) -> None:
     """Permanently delete a VirtualModel.
 
@@ -524,11 +529,21 @@ async def delete_virtual_model(
     this VirtualModel.  IGW's model cache is refreshed on its next polling cycle.
     """
     try:
-        await entity_client.delete(VirtualModel, name=name, workspace=workspace)
+        await entity_client.delete(
+            VirtualModel,
+            name=name,
+            workspace=workspace,
+            expected_db_version=expected_db_version,
+        )
     except EntityNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"VirtualModel '{name}' not found in workspace '{workspace}'.",
+        ) from exc
+    except EntityConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Concurrent modification - please retry.",
         ) from exc
     except HTTPException:
         raise

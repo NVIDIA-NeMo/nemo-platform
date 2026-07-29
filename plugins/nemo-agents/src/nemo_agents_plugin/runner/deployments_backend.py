@@ -417,7 +417,12 @@ class DeploymentsRunnerBackend(RunnerBackend):
         except Exception:
             # Avoid orphaning the config if Deployment create fails.
             try:
-                await entities.delete(DeploymentConfig, name=name, workspace=workspace)
+                await entities.delete(
+                    DeploymentConfig,
+                    name=name,
+                    workspace=workspace,
+                    expected_db_version=deployment_config.db_version,
+                )
             except Exception:
                 logger.exception(
                     "Failed to clean up DeploymentConfig '%s/%s' after Deployment create failure",
@@ -476,7 +481,13 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 return False
 
         try:
-            await entities.delete(DeploymentConfig, name=name, workspace=workspace)
+            deployment_config = await entities.get(DeploymentConfig, name=name, workspace=workspace)
+            await entities.delete(
+                DeploymentConfig,
+                name=name,
+                workspace=workspace,
+                expected_db_version=deployment_config.db_version,
+            )
         except NemoEntityNotFoundError:
             pass
         return True

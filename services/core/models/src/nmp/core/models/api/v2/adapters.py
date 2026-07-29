@@ -10,7 +10,7 @@ from nemo_platform import AsyncNeMoPlatform
 from nmp.common.api.common import Page
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
-from nmp.common.entities.client import EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityValidationError
 from nmp.common.service.dependencies import get_sdk_client
 from nmp.core.models.api.dependencies import get_adapter_entity_service
 from nmp.core.models.api.permissions import check_fileset_access
@@ -165,6 +165,10 @@ async def delete_adapter(
         deleted = await service.delete_adapter_in_workspace(workspace, name)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except EntityConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Concurrent modification - please retry."
+        ) from e
     if deleted == -2:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

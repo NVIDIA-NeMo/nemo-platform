@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from nemo_evaluator.api.schemas import MetricInline
@@ -14,12 +15,11 @@ from nemo_evaluator.metric_storage import parse_bundle_ref
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_platform_plugin.entities import (
-    EntityConflictError,
-    EntityNotFoundError,
-    ListResponse,
-    PaginationInfo,
-)
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.entities import ListResponse, PaginationInfo
+from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
+from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.filter_ops import FilterOperation
 
 # ---- in-memory fakes -------------------------------------------------------
 
@@ -32,40 +32,49 @@ class _FakeResponse:
         return self._data
 
 
+class _FakeOperationResponse:
+    def data(self) -> object:
+        return object()
+
+
 class _FakeAsyncFilesClient:
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], dict[str, bytes]] = {}
 
-    async def create_fileset(self, *, body, workspace=None, exist_ok=False):
-        self._store.setdefault((workspace, body.name), {})
-        return AsyncMock(data=lambda: object())
+    async def create_fileset(
+        self, *, body: CreateFilesetRequest, workspace: str | None = None, exist_ok: bool = False
+    ) -> _FakeOperationResponse:
+        self._store.setdefault((workspace or "default", body.name), {})
+        return _FakeOperationResponse()
 
-    async def delete_fileset(self, *, name, workspace=None):
-        self._store.pop((workspace, name), None)
-        return AsyncMock(data=lambda: object())
+    async def delete_fileset(self, *, name: str, workspace: str | None = None) -> _FakeOperationResponse:
+        self._store.pop((workspace or "default", name), None)
+        return _FakeOperationResponse()
 
-    async def upload_file(self, *, path, content, workspace, name):
+    async def upload_file(self, *, path: str, content: bytes, workspace: str, name: str) -> _FakeOperationResponse:
         self._store.setdefault((workspace, name), {})[path] = bytes(content)
-        return AsyncMock(data=lambda: object())
+        return _FakeOperationResponse()
 
-    async def download_file(self, *, path, workspace, name):
+    async def download_file(self, *, path: str, workspace: str, name: str) -> _FakeResponse:
         return _FakeResponse(self._store[(workspace, name)][path])
 
 
 class _FakeEntityClient:
     def __init__(self) -> None:
         self.entities: dict[tuple[str, str], MetricBundleEntity] = {}
+        self.delete_error: Exception | None = None
+        self.list_filter_operations: list[FilterOperation | None] = []
 
-    async def get(self, entity_cls, *, workspace, name):
+    async def get(self, entity_type: type[MetricBundleEntity], *, workspace: str, name: str) -> MetricBundleEntity:
         key = (workspace, name)
         if key not in self.entities:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
         return self.entities[key]
 
-    async def create(self, entity):
+    async def create(self, entity: MetricBundleEntity) -> MetricBundleEntity:
         key = (entity.workspace, entity.name)
         if key in self.entities:
-            raise EntityConflictError(f"{key} exists")
+            raise NemoEntityConflictError(f"{key} exists")
         now = datetime.now(timezone.utc)
         entity._id = f"metric_bundle-{entity.name}"
         entity._created_at = now
@@ -73,10 +82,29 @@ class _FakeEntityClient:
         self.entities[key] = entity
         return entity
 
-    async def delete(self, entity_cls, name, *, workspace):
+    async def delete(
+        self,
+        entity_type: type[MetricBundleEntity],
+        name: str,
+        *,
+        workspace: str,
+        expected_db_version: int | None = None,
+    ) -> None:
+        if self.delete_error is not None:
+            raise self.delete_error
         self.entities.pop((workspace, name), None)
 
-    async def list(self, entity_cls, *, workspace, filter_operation=None, sort=None, page=1, page_size=100):
+    async def list(
+        self,
+        entity_type: type[MetricBundleEntity],
+        *,
+        workspace: str,
+        filter_operation: FilterOperation | None = None,
+        sort: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> ListResponse[MetricBundleEntity]:
+        self.list_filter_operations.append(filter_operation)
         items = [e for (ws, _), e in self.entities.items() if ws == workspace]
         return ListResponse(
             data=items,
@@ -90,15 +118,27 @@ class _FakeEntityClient:
         )
 
 
+class _FakePlatform(AsyncNeMoPlatform):
+    pass
+
+
+def _fake_platform() -> _FakePlatform:
+    return _FakePlatform.__new__(_FakePlatform)
+
+
 @pytest.fixture
-def fake_files():
+def fake_files() -> _FakeAsyncFilesClient:
     return _FakeAsyncFilesClient()
 
 
 @pytest.fixture
-def service(fake_files):
-    svc = MetricService(_FakeEntityClient(), object())
-    svc._fake_files = fake_files
+def fake_entity_client() -> _FakeEntityClient:
+    return _FakeEntityClient()
+
+
+@pytest.fixture
+def service(fake_files: _FakeAsyncFilesClient, fake_entity_client: _FakeEntityClient) -> Iterator[MetricService]:
+    svc = MetricService(fake_entity_client, _fake_platform())
     with patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_files):
         yield svc
 
@@ -157,13 +197,12 @@ async def test_delete_returns_false_when_missing(service: MetricService) -> None
     assert await service.delete_metric("default", "nope") is False
 
 
-async def test_delete_handles_concurrent_delete_race(service: MetricService) -> None:
+async def test_delete_handles_concurrent_delete_race(
+    service: MetricService, fake_entity_client: _FakeEntityClient
+) -> None:
     await service.create_metric("m", _bundle(), workspace="default")
 
-    async def _already_deleted(*_args, **_kwargs):
-        raise EntityNotFoundError("deleted concurrently")
-
-    service.entity_client.delete = _already_deleted
+    fake_entity_client.delete_error = NemoEntityNotFoundError("deleted concurrently")
     assert await service.delete_metric("default", "m") is False
 
 
@@ -181,7 +220,9 @@ async def test_list_returns_workspace_metrics(service: MetricService) -> None:
 # ---- derived metrics -------------------------------------------------------
 
 
-async def test_store_derived_metric_names_by_digest_and_marks_derived(service: MetricService, fake_files) -> None:
+async def test_store_derived_metric_names_by_digest_and_marks_derived(
+    service: MetricService, fake_files: _FakeAsyncFilesClient, fake_entity_client: _FakeEntityClient
+) -> None:
     from nemo_evaluator.api.service.metric_service import _MAX_ENTITY_NAME_LENGTH
 
     ref = await service.store_derived_metric(_bundle(), workspace="default")
@@ -190,12 +231,14 @@ async def test_store_derived_metric_names_by_digest_and_marks_derived(service: M
     assert workspace == "default"
     assert name.startswith("derived.")
     assert len(name) <= _MAX_ENTITY_NAME_LENGTH
-    entity = service.entity_client.entities[("default", name)]
+    entity = fake_entity_client.entities[("default", name)]
     assert entity.derived is True
     assert _fileset_of(service, entity.bundle_ref) in fake_files._store
 
 
-async def test_store_derived_metric_distinguishes_full_contract(service: MetricService) -> None:
+async def test_store_derived_metric_distinguishes_full_contract(
+    service: MetricService, fake_entity_client: _FakeEntityClient
+) -> None:
     bundle = _bundle()
     variant = bundle.model_copy(update={"metadata": bundle.metadata.model_copy(update={"description": "different"})})
     assert bundle.payload.digest == variant.payload.digest
@@ -204,32 +247,25 @@ async def test_store_derived_metric_distinguishes_full_contract(service: MetricS
     second = await service.store_derived_metric(variant, workspace="default")
 
     assert first.root != second.root
-    assert len(service.entity_client.entities) == 2
+    assert len(fake_entity_client.entities) == 2
 
 
-async def test_store_derived_metric_is_content_addressed_dedup(service: MetricService, fake_files) -> None:
+async def test_store_derived_metric_is_content_addressed_dedup(
+    service: MetricService, fake_files: _FakeAsyncFilesClient, fake_entity_client: _FakeEntityClient
+) -> None:
     bundle = _bundle()
 
     first = await service.store_derived_metric(bundle, workspace="default")
     second = await service.store_derived_metric(bundle, workspace="default")
 
     assert first.root == second.root
-    assert len(service.entity_client.entities) == 1
+    assert len(fake_entity_client.entities) == 1
     assert len(fake_files._store) == 1
 
 
-async def test_list_excludes_derived_by_default(service: MetricService) -> None:
-    captured: list[object] = []
-    original_list = service.entity_client.list
-
-    async def _spy(entity_cls, *, filter_operation=None, **kwargs):
-        captured.append(filter_operation)
-        return await original_list(entity_cls, filter_operation=filter_operation, **kwargs)
-
-    service.entity_client.list = _spy
-
+async def test_list_excludes_derived_by_default(service: MetricService, fake_entity_client: _FakeEntityClient) -> None:
     await service.list_metrics("default")
     await service.list_metrics("default", include_derived=True)
 
-    assert captured[0] is not None
-    assert captured[1] is None
+    assert fake_entity_client.list_filter_operations[0] is not None
+    assert fake_entity_client.list_filter_operations[1] is None

@@ -189,6 +189,7 @@ class TestEntities:
             name="name",
             workspace="workspace",
             entity_type="entity_type",
+            expected_db_version=0,
             parent="parent",
         )
         assert_matches_type(DeleteResponse, entity, path=["response"])
@@ -608,6 +609,7 @@ class TestAsyncEntities:
             name="name",
             workspace="workspace",
             entity_type="entity_type",
+            expected_db_version=0,
             parent="parent",
         )
         assert_matches_type(DeleteResponse, entity, path=["response"])

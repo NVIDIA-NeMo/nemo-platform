@@ -591,6 +591,10 @@ async def delete_entity_by_name(
     workspace_repository: WorkspaceRepository,
     auth_client: AuthClientDep,
     parent: str | None = Query(default=None, description="Parent entity ID for nested entities"),
+    expected_db_version: int | None = Query(
+        default=None,
+        description="Optional database version for optimistic locking. Delete only succeeds if the entity still has this version.",
+    ),
 ) -> DeleteResponse:
     """Delete entity by name."""
     # Check if workspace is being deleted (404 for user requests)
@@ -603,12 +607,19 @@ async def delete_entity_by_name(
 
     await _invalidate_role_binding_cache_if_present(repository, workspace, entity_type, name, parent)
 
-    deleted_count = await repository.delete_entity_by_name(
-        workspace=workspace,
-        entity_type=entity_type,
-        name=name,
-        parent=parent,
-    )
+    try:
+        deleted_count = await repository.delete_entity_by_name(
+            workspace=workspace,
+            entity_type=entity_type,
+            name=name,
+            parent=parent,
+            expected_db_version=expected_db_version,
+        )
+    except EntityVersionConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from e
     if deleted_count == 0:
         raise HTTPException(status_code=404, detail="Entity not found")
     return DeleteResponse(id=f"{workspace}/{entity_type}/{name}")

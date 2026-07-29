@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -41,6 +42,12 @@ def _list_response(items):
         page=1, page_size=20, current_page_size=len(items), total_pages=1, total_results=len(items)
     )
     return resp
+
+
+def _await_args(mock: AsyncMock) -> Any:
+    args = mock.await_args
+    assert args is not None
+    return args
 
 
 @pytest.fixture
@@ -183,14 +190,25 @@ class TestUpdateTarget:
 
 class TestDeleteTarget:
     def test_returns_204(self, client, mock_entity_client) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_target("tgt-1"))
         mock_entity_client.delete = AsyncMock(return_value=None)
         resp = client.delete("/apis/auditor/v2/workspaces/default/targets/tgt-1")
         assert resp.status_code == 204
+        mock_entity_client.delete.assert_awaited_once_with(
+            AuditTarget,
+            name="tgt-1",
+            workspace="default",
+        )
 
     def test_404_when_missing(self, client, mock_entity_client) -> None:
         mock_entity_client.delete = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
         resp = client.delete("/apis/auditor/v2/workspaces/default/targets/missing")
         assert resp.status_code == 404
+
+    def test_409_when_changed(self, client, mock_entity_client) -> None:
+        mock_entity_client.delete = AsyncMock(side_effect=NemoEntityConflictError("changed"))
+        resp = client.delete("/apis/auditor/v2/workspaces/default/targets/tgt-1")
+        assert resp.status_code == 409
 
 
 class TestListTargetsFiltering:
@@ -198,7 +216,7 @@ class TestListTargetsFiltering:
         mock_entity_client.list = AsyncMock(return_value=_list_response([_make_target("a", type="nim")]))
         resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[type]=nim")
         assert resp.status_code == 200, resp.text
-        kwargs = mock_entity_client.list.await_args.kwargs
+        kwargs = _await_args(mock_entity_client.list).kwargs
         assert kwargs["filter_obj"] == {"type": "nim"}
         body = resp.json()
         assert body["filter"] == {"type": "nim"}
@@ -208,20 +226,20 @@ class TestListTargetsFiltering:
         mock_entity_client.list = AsyncMock(return_value=_list_response([_make_target("a")]))
         resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[model]=meta/llama-3.1-8b-instruct")
         assert resp.status_code == 200, resp.text
-        kwargs = mock_entity_client.list.await_args.kwargs
+        kwargs = _await_args(mock_entity_client.list).kwargs
         assert kwargs["filter_obj"] == {"model": "meta/llama-3.1-8b-instruct"}
 
     def test_filter_by_description_forwards_filter_obj(self, client, mock_entity_client) -> None:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
         resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[description]=prod")
         assert resp.status_code == 200, resp.text
-        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"description": "prod"}
+        assert _await_args(mock_entity_client.list).kwargs["filter_obj"] == {"description": "prod"}
 
     def test_filter_by_project_narrows(self, client, mock_entity_client) -> None:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
         resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[project]=team-a")
         assert resp.status_code == 200, resp.text
-        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"project": "team-a"}
+        assert _await_args(mock_entity_client.list).kwargs["filter_obj"] == {"project": "team-a"}
 
     def test_filter_created_at_range_parses_gte_lte(self, client, mock_entity_client) -> None:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
@@ -231,7 +249,7 @@ class TestListTargetsFiltering:
             "&filter[created_at][$lte]=2024-12-31T00:00:00Z"
         )
         assert resp.status_code == 200, resp.text
-        filter_obj = mock_entity_client.list.await_args.kwargs["filter_obj"]
+        filter_obj = _await_args(mock_entity_client.list).kwargs["filter_obj"]
         assert set(filter_obj["created_at"].keys()) == {"$gte", "$lte"}
         assert filter_obj["created_at"]["$gte"].startswith("2024-01-01")
         assert filter_obj["created_at"]["$lte"].startswith("2024-12-31")
@@ -245,7 +263,7 @@ class TestListTargetsFiltering:
         mock_entity_client.list = AsyncMock(return_value=_list_response([_make_target("a"), _make_target("b")]))
         resp = client.get("/apis/auditor/v2/workspaces/default/targets")
         assert resp.status_code == 200, resp.text
-        kwargs = mock_entity_client.list.await_args.kwargs
+        kwargs = _await_args(mock_entity_client.list).kwargs
         assert kwargs["filter_obj"] is None
         body = resp.json()
         assert [t["name"] for t in body["data"]] == ["a", "b"]
