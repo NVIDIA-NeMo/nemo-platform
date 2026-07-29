@@ -79,9 +79,7 @@ export const createClaudeCodeSession = async (): Promise<string> => {
   });
 
   if (!response.ok) {
-    throw new Error(
-      await getResponseErrorMessage(response, 'Failed to create NeMo Agent session')
-    );
+    throw new Error(await getResponseErrorMessage(response, 'Failed to create NeMo Agent session'));
   }
 
   const body = (await response.json()) as unknown;
