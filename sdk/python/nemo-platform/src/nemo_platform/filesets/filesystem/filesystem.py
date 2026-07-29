@@ -358,16 +358,27 @@ class FilesetFileSystem(AsyncFileSystem):
 
         import httpx
 
+        asgi_app = getattr(client._http, "asgi_app", None)
+        http_client = (
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=asgi_app),
+                base_url=client.base_url,
+                headers=dict(client._default_headers) if client._default_headers else None,
+            )
+            if asgi_app is not None
+            else httpx.AsyncClient(
+                base_url=client.base_url,
+                headers=dict(client._default_headers) if client._default_headers else None,
+            )
+        )
         return AsyncFilesClient(
             base_url=client.base_url,
             workspace=client.workspace,
             auth=client._auth,
             default_headers=client._default_headers or None,
             retry=client._retry,
-            http_client=httpx.AsyncClient(
-                base_url=client.base_url,
-                headers=dict(client._default_headers) if client._default_headers else None,
-            ),
+            http_client=http_client,
+            url_resolver=client._url_resolver,
         )
 
     @property
