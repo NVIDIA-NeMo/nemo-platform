@@ -25,6 +25,7 @@ _TOPOLOGY = ComposeServiceTopology(
 )
 
 _FILE_TARGET_OPERATION = "nemo-compose-file-target"
+_FILE_REPAIR_OPERATION = "nemo-compose-file-repair"
 
 
 class _Runner:
@@ -50,7 +51,11 @@ class _Runner:
         self.directories: set[str] = set()
         self.file_prepare_result: tuple[int, str, str, bool] | None = None
         self.file_target_kinds: dict[str, str] = {}
+        self.file_target_kinds_after_copy: dict[str, str] = {}
+        self.file_repairs: list[tuple[str, str]] = []
+        self.retained_file_targets: set[str] = set()
         self.prepared_file_targets: list[tuple[str, str]] = []
+        self.repair_failures_remaining = 0
         self._down_attempts = 0
 
     async def __call__(
@@ -111,7 +116,32 @@ class _Runner:
         if args[:1] == ("cp",) and "copy" in self.failures:
             return ComposeCommandResult(argv, 1, "", f"token={environment.get('TEST_TOKEN', 'copy failed')}")
         if args[:1] == ("cp",) and ":" in args[-1]:
-            self.file_target_kinds[args[-1].split(":", 1)[1]] = "regular"
+            target = args[-1].split(":", 1)[1]
+            self.retained_file_targets.add(target)
+            self.file_target_kinds[target] = self.file_target_kinds_after_copy.get(target, "regular")
+        if args[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c") and args[-3] == _FILE_REPAIR_OPERATION:
+            target, identity = args[-2:]
+            if self.file_target_kinds.get(target) != "regular":
+                return ComposeCommandResult(argv, 1, "", "unsafe post-copy file target")
+            if self.repair_failures_remaining:
+                self.repair_failures_remaining -= 1
+                return ComposeCommandResult(argv, 1, "", "temporary file repair failure")
+            if "chown" in self.failures:
+                return ComposeCommandResult(
+                    argv,
+                    1,
+                    "",
+                    f"token={environment.get('TEST_TOKEN', 'chown failed')}",
+                )
+            if "chmod" in self.failures:
+                return ComposeCommandResult(
+                    argv,
+                    1,
+                    "",
+                    f"token={environment.get('TEST_TOKEN', 'chmod failed')}",
+                )
+            self.file_repairs.append((target, identity))
+            return ComposeCommandResult(argv, 0, "", "")
         if args[:1] == ("exec",) and "printf" in args[-1]:
             if "identity" in self.failures:
                 return ComposeCommandResult(argv, 1, "", f"token={environment.get('TEST_TOKEN', 'identity failed')}")

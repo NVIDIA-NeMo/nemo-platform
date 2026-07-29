@@ -91,29 +91,41 @@ async def test_no_build_runs_prebuilt_image_without_source_context(tmp_path: Pat
         assert result.stdout.strip() == "prebuilt"
         seed = tmp_path / "seed.txt"
         seed.write_text("seed", encoding="utf-8")
-        await provider.upload_file(handle, seed, "/home/app/missing/parent/seed.txt")
+        readonly = tmp_path / "readonly.txt"
+        readonly.write_text("readonly", encoding="utf-8")
+        readonly.chmod(0o444)
+        await provider.upload_file(handle, readonly, "/home/app/missing/parent/readonly.txt")
         modified = await provider.exec(
             handle,
-            "echo -n '-modified' >> /home/app/missing/parent/seed.txt && cat /home/app/missing/parent/seed.txt",
+            "echo -n '-modified' >> /home/app/missing/parent/readonly.txt && cat /home/app/missing/parent/readonly.txt",
         )
-        assert modified.ok and modified.stdout == "seed-modified"
+        assert modified.ok and modified.stdout == "readonly-modified"
         sibling = await provider.exec(
             handle,
             "echo -n sibling > /home/app/missing/parent/sibling.txt && cat /home/app/missing/parent/sibling.txt",
         )
         assert sibling.ok and sibling.stdout == "sibling"
 
-        assert (await provider.exec(handle, "ln -s /tmp /home/app/replaced-parent")).ok
-        with pytest.raises(RuntimeError, match="Compose upload target preparation failed"):
-            await provider.upload_file(handle, seed, "/home/app/replaced-parent/blocked.txt")
-        assert (await provider.exec(handle, "test ! -e /tmp/blocked.txt")).ok
+        assert (await provider.exec(handle, "mkdir -p /home/app/preexisting-parent")).ok
+        parent_before = await provider.exec(handle, "stat -c '%u:%g:%a' /home/app/preexisting-parent")
+        assert parent_before.ok
+        await provider.upload_file(handle, seed, "/home/app/preexisting-parent/seed.txt")
+        parent_after = await provider.exec(handle, "stat -c '%u:%g:%a' /home/app/preexisting-parent")
+        assert parent_after.ok
+        assert parent_after.stdout == parent_before.stdout
 
-        await provider.upload_file(handle, seed, "relative/missing/seed.txt")
-        relative_modified = await provider.exec(
-            handle,
-            "echo -n '-relative' >> /relative/missing/seed.txt && cat /relative/missing/seed.txt",
-        )
-        assert relative_modified.ok and relative_modified.stdout == "seed-relative"
+        assert (await provider.exec(handle, "ln -s /tmp /home/app/stable-parent")).ok
+        await provider.upload_file(handle, seed, "/home/app/stable-parent/seed.txt")
+        stable_symlink_upload = await provider.exec(handle, "cat /tmp/seed.txt")
+        assert stable_symlink_upload.ok and stable_symlink_upload.stdout == "seed"
+
+        with pytest.raises(RuntimeError, match="Compose upload target preparation failed"):
+            await provider.upload_file(handle, seed, "/nemo-unwritable/missing/file.txt")
+        assert (await provider.exec(handle, "test ! -e /nemo-unwritable")).ok
+
+        with pytest.raises(RuntimeError, match="Compose upload target preparation failed"):
+            await provider.upload_file(handle, seed, "relative/missing/seed.txt")
+        assert (await provider.exec(handle, "test ! -e /relative")).ok
 
         source_dir = tmp_path / "source-dir"
         source_dir.mkdir()

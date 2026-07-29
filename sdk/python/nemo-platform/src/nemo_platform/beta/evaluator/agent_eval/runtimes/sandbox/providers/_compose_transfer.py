@@ -18,6 +18,7 @@ from ._compose_contracts import ComposeCommandResult
 from ._compose_state import _ComposeSession
 
 _FILE_TARGET_OPERATION = "nemo-compose-file-target"
+_REPAIR_FILE_OPERATION = "nemo-compose-file-repair"
 _PREPARE_FILE_TARGET_SCRIPT = """\
 parent=$1
 target=$2
@@ -28,6 +29,14 @@ fi
 if [ -e "$target" ] && [ ! -f "$target" ]; then
     exit 1
 fi
+"""
+_REPAIR_FILE_SCRIPT = """\
+target=$1
+identity=$2
+[ -f "$target" ] && [ ! -L "$target" ] || exit 1
+chown -h "$identity" "$target" || exit 1
+chmod u+w "$target" || exit 1
+[ -f "$target" ] && [ ! -L "$target" ] || exit 1
 """
 
 
@@ -101,6 +110,38 @@ async def _prepare_file_target(
         )
 
 
+async def _repair_uploaded_file(
+    cli: _ComposeCli,
+    session: _ComposeSession,
+    target: str,
+    identity: str,
+    *,
+    command_timeout_seconds: float,
+) -> None:
+    """Validate and repair only the exact uploaded regular-file leaf."""
+    ownership = await _run_target_root(
+        cli,
+        session,
+        [
+            "sh",
+            "-c",
+            _REPAIR_FILE_SCRIPT,
+            _REPAIR_FILE_OPERATION,
+            target,
+            identity,
+        ],
+        command_timeout_seconds=command_timeout_seconds,
+    )
+    if not ownership.ok:
+        raise RuntimeError(
+            cli.failure_message(
+                "Compose upload ownership repair failed",
+                ownership,
+                session.environment,
+            )
+        )
+
+
 async def _copy_to_service(
     cli: _ComposeCli,
     session: _ComposeSession,
@@ -168,18 +209,28 @@ async def _copy_to_service(
             session,
             command_timeout_seconds=command_timeout_seconds,
         )
-    ownership_command = ["chown", "-R", session.target_identity, "--", container_target]
-    if not directory:
-        ownership_command = ["chown", session.target_identity, "--", container_target]
-    ownership = await _run_target_root(
-        cli,
-        session,
-        ownership_command,
-        command_timeout_seconds=command_timeout_seconds,
-    )
-    if not ownership.ok:
-        raise RuntimeError(
-            cli.failure_message("Compose upload ownership repair failed", ownership, session.environment)
+    if directory:
+        ownership = await _run_target_root(
+            cli,
+            session,
+            ["chown", "-R", session.target_identity, "--", container_target],
+            command_timeout_seconds=command_timeout_seconds,
+        )
+        if not ownership.ok:
+            raise RuntimeError(
+                cli.failure_message(
+                    "Compose upload ownership repair failed",
+                    ownership,
+                    session.environment,
+                )
+            )
+    else:
+        await _repair_uploaded_file(
+            cli,
+            session,
+            container_target,
+            session.target_identity,
+            command_timeout_seconds=command_timeout_seconds,
         )
 
 

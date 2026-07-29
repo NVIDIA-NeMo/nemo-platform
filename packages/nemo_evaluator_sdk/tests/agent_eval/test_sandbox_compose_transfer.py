@@ -15,6 +15,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers import _compose_tr
 from packages.nemo_evaluator_sdk.tests.agent_eval._compose_testkit import _compose_suffix, _create, _provider, _Runner
 
 _FILE_TARGET_OPERATION = "nemo-compose-file-target"
+_FILE_REPAIR_OPERATION = "nemo-compose-file-repair"
 
 
 def _assert_file_target_operation(command: tuple[str, ...], parent: str, target: str) -> None:
@@ -27,6 +28,19 @@ def _assert_file_target_operation(command: tuple[str, ...], parent: str, target:
     assert target not in script
     assert 'mkdir -p "$parent"' in script
     assert '[ -L "$target" ]' in script
+
+
+def _assert_file_repair_operation(command: tuple[str, ...], target: str) -> None:
+    assert command[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c")
+    script, operation, target_arg, identity = command[7:]
+    assert operation == _FILE_REPAIR_OPERATION
+    assert target_arg == target
+    assert identity == "1001:1002"
+    assert target not in script
+    assert identity not in script
+    assert '[ -f "$target" ] && [ ! -L "$target" ]' in script
+    assert 'chown -h "$identity" "$target"' in script
+    assert 'chmod u+w "$target"' in script
 
 
 @pytest.mark.parametrize(
@@ -81,7 +95,7 @@ async def test_upload_file_prepares_parent_as_runtime_user(
         "/missing/parent",
         "/missing/parent/seed.txt",
     )
-    assert transfer_suffixes[1:] == [
+    assert transfer_suffixes[1:3] == [
         ("cp", str(source), "agent:/missing/parent/seed.txt"),
         (
             "exec",
@@ -91,21 +105,10 @@ async def test_upload_file_prepares_parent_as_runtime_user(
             "-c",
             'printf "%s:%s" "$(id -u)" "$(id -g)"',
         ),
-        (
-            "exec",
-            "--no-TTY",
-            "--user",
-            "0",
-            "agent",
-            "chown",
-            "1001:1002",
-            "--",
-            "/missing/parent/seed.txt",
-        ),
     ]
+    _assert_file_repair_operation(transfer_suffixes[3], "/missing/parent/seed.txt")
     assert not any(
-        args[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c")
-        and ("mkdir" in args[7] or "chown" in args[7] or "chmod" in args[7])
+        args[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c") and "mkdir" in args[7]
         for args in transfer_suffixes
     )
     await provider.close(handle)
@@ -191,7 +194,7 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
         "/missing/parent",
         "/missing/parent/seed.txt",
     )
-    assert suffixes[1:4] == [
+    assert suffixes[1:3] == [
         ("cp", str(source_file), "agent:/missing/parent/seed.txt"),
         (
             "exec",
@@ -201,31 +204,11 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
             "-c",
             'printf "%s:%s" "$(id -u)" "$(id -g)"',
         ),
-        (
-            "exec",
-            "--no-TTY",
-            "--user",
-            "0",
-            "agent",
-            "chown",
-            "1001:1002",
-            "--",
-            "/missing/parent/seed.txt",
-        ),
     ]
+    _assert_file_repair_operation(suffixes[3], "/missing/parent/seed.txt")
     _assert_file_target_operation(suffixes[4], "/", "/root-seed.txt")
     assert ("cp", str(source_file), "agent:/root-seed.txt") in suffixes
-    assert (
-        "exec",
-        "--no-TTY",
-        "--user",
-        "0",
-        "agent",
-        "chown",
-        "1001:1002",
-        "--",
-        "/root-seed.txt",
-    ) in suffixes
+    _assert_file_repair_operation(suffixes[6], "/root-seed.txt")
     assert ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/workspace") in suffixes
     assert ("cp", f"{source_dir}{os.sep}.", "agent:/workspace") in suffixes
     await provider.close(handle)
@@ -249,17 +232,7 @@ async def test_upload_file_derives_parent_from_normalized_target(
     ]
     _assert_file_target_operation(suffixes[0], "/", "/root-seed.txt")
     assert ("cp", str(source), "agent:/root-seed.txt") in suffixes
-    assert (
-        "exec",
-        "--no-TTY",
-        "--user",
-        "0",
-        "agent",
-        "chown",
-        "1001:1002",
-        "--",
-        "/root-seed.txt",
-    ) in suffixes
+    _assert_file_repair_operation(suffixes[-1], "/root-seed.txt")
     await provider.close(handle)
 
 
@@ -285,7 +258,7 @@ async def test_upload_file_does_not_repair_a_preexisting_parent(
         "/existing/parent",
         "/existing/parent/seed.txt",
     )
-    assert suffixes[1:] == [
+    assert suffixes[1:3] == [
         ("cp", str(source), "agent:/existing/parent/seed.txt"),
         (
             "exec",
@@ -295,18 +268,8 @@ async def test_upload_file_does_not_repair_a_preexisting_parent(
             "-c",
             'printf "%s:%s" "$(id -u)" "$(id -g)"',
         ),
-        (
-            "exec",
-            "--no-TTY",
-            "--user",
-            "0",
-            "agent",
-            "chown",
-            "1001:1002",
-            "--",
-            "/existing/parent/seed.txt",
-        ),
     ]
+    _assert_file_repair_operation(suffixes[3], "/existing/parent/seed.txt")
     await provider.close(handle)
 
 
@@ -414,30 +377,96 @@ async def test_repeated_file_upload_never_repairs_the_parent_as_root(
         and any("chown" in arg or "chmod" in arg for arg in args[5:])
         for args in suffixes
     )
-    assert [args for args in suffixes if args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "chown")] == [
-        (
-            "exec",
-            "--no-TTY",
-            "--user",
-            "0",
-            "agent",
-            "chown",
-            "1001:1002",
-            "--",
-            "/shared/parent/first.txt",
-        ),
-        (
-            "exec",
-            "--no-TTY",
-            "--user",
-            "0",
-            "agent",
-            "chown",
-            "1001:1002",
-            "--",
-            "/shared/parent/second.txt",
-        ),
+    repair_operations = [
+        args
+        for args in suffixes
+        if args[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c") and args[-3] == _FILE_REPAIR_OPERATION
     ]
+    assert len(repair_operations) == 2
+    _assert_file_repair_operation(repair_operations[0], "/shared/parent/first.txt")
+    _assert_file_repair_operation(repair_operations[1], "/shared/parent/second.txt")
+    await provider.close(handle)
+
+
+async def test_upload_file_repairs_only_a_writable_regular_leaf(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+    source = tmp_path / "readonly.txt"
+    source.write_text("seed", encoding="utf-8")
+    source.chmod(0o444)
+    transfer_start = len(runner.calls)
+
+    await provider.upload_file(handle, source, "/work/readonly.txt")
+
+    suffixes = [
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
+    ]
+    assert source.stat().st_mode & 0o777 == 0o444
+    _assert_file_repair_operation(suffixes[-1], "/work/readonly.txt")
+    assert runner.file_repairs == [("/work/readonly.txt", "1001:1002")]
+    assert runner.directories == {"/work"}
+    await provider.close(handle)
+
+
+@pytest.mark.parametrize("target_kind", ["directory", "symlink", "other"])
+async def test_upload_file_repair_rejects_unsafe_post_copy_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    target_kind: str,
+) -> None:
+    runner = _Runner()
+    target = "/work/seed.txt"
+    runner.file_target_kinds_after_copy[target] = target_kind
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+    source = tmp_path / "seed.txt"
+    source.write_text("seed", encoding="utf-8")
+    transfer_start = len(runner.calls)
+
+    with pytest.raises(RuntimeError, match="Compose upload ownership repair failed"):
+        await provider.upload_file(handle, source, target)
+
+    suffixes = [
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
+    ]
+    assert any(args[:1] == ("cp",) for args in suffixes)
+    assert target in runner.retained_file_targets
+    _assert_file_repair_operation(suffixes[-1], target)
+    assert runner.file_repairs == []
+    await provider.close(handle)
+
+
+@pytest.mark.parametrize("failure", ["chown", "chmod"])
+async def test_upload_file_repair_failure_is_non_atomic_and_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    runner = _Runner()
+    runner.failures.add(failure)
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+    source = tmp_path / "seed.txt"
+    source.write_text("seed", encoding="utf-8")
+    target = "/work/seed.txt"
+    transfer_start = len(runner.calls)
+
+    with pytest.raises(RuntimeError, match="Compose upload ownership repair failed"):
+        await provider.upload_file(handle, source, target)
+
+    assert target in runner.retained_file_targets
+    runner.failures.remove(failure)
+    await provider.upload_file(handle, source, target)
+
+    suffixes = [
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
+    ]
+    assert sum(args[:1] == ("cp",) for args in suffixes) == 2
+    assert runner.file_repairs == [(target, "1001:1002")]
     await provider.close(handle)
 
 
