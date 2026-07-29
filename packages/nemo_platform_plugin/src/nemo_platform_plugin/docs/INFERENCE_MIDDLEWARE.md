@@ -150,15 +150,20 @@ from nemo_platform_plugin.entity_client import NemoEntitiesClient, EntityNotFoun
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.inference_middleware import MiddlewareConfigNotFoundError
+from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
+
+def setup(self):
+    # Build the entity client once during setup and reuse it per request.
+    sdk = get_async_platform_sdk(as_service="my-plugin", internal=True)
+    self._entity_client = NemoEntitiesClient(client_from_platform(sdk, AsyncEntitiesClient))
 
 async def get_middleware_config(self, config_type: str, config_id: str):
     if config_type != MyPluginConfig.__entity_type__:
         raise ValueError(f"Unknown config_type={config_type!r}")
 
     ws, name = config_id.split("/", 1)
-    client = NemoEntitiesClient(client_from_platform(sdk, AsyncEntitiesClient))
     try:
-        return await client.get(MyPluginConfig, name=name, workspace=ws)
+        return await self._entity_client.get(MyPluginConfig, name=name, workspace=ws)
     except EntityNotFoundError as exc:
         raise MiddlewareConfigNotFoundError(config_id) from exc
 ```
