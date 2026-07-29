@@ -28,11 +28,11 @@ def is_port_free(port: int) -> bool:
     if is_remote_docker_host():
         return True
     try:
-        # Bind the wildcard address Docker publishes on, without SO_REUSEADDR:
-        # probing 127.0.0.1 misses 0.0.0.0 publishers, and SO_REUSEADDR lets the
-        # bind succeed against an already-bound wildcard socket.
+        # Do not set SO_REUSEADDR: it can make this bind succeed while a Docker
+        # wildcard publisher already holds the port. Binding loopback is enough
+        # to detect that conflict without exposing a socket on external interfaces.
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind(("0.0.0.0", port))
+            sock.bind(("127.0.0.1", port))
             return True
     except OSError:
         return False

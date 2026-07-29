@@ -59,14 +59,14 @@ def test_is_port_free_returns_false_when_bind_fails(monkeypatch: pytest.MonkeyPa
     assert is_port_free(9000) is False
 
 
-def test_is_port_free_probes_wildcard_address_without_reuseaddr(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Docker publishes on 0.0.0.0, and SO_REUSEADDR would let the probe bind a port
-    # a wildcard publisher already holds, reporting it free.
+def test_is_port_free_probes_loopback_without_reuseaddr(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A Docker wildcard publisher blocks this loopback bind. Avoiding SO_REUSEADDR
+    # is what prevents the probe from incorrectly reporting the port free.
     sock = FakeSock()
     _patch_local_probe(monkeypatch, sock)
 
     assert is_port_free(9000) is True
-    assert sock.bound == [("0.0.0.0", 9000)]
+    assert sock.bound == [("127.0.0.1", 9000)]
     assert sock.sockopts == []
 
 
