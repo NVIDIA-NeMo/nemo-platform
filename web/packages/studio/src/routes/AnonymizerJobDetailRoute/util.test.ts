@@ -5,9 +5,9 @@ import type { RunJob } from '@nemo/sdk/generated/anonymizer/schema';
 import {
   jobSource,
   jobStrategy,
+  metadataTextColumn,
   orderResultColumns,
   parseArtifactUrl,
-  parseJsonLines,
 } from '@studio/routes/AnonymizerJobDetailRoute/util';
 
 const job = (config: unknown, source?: string): RunJob =>
@@ -50,11 +50,12 @@ describe('parseArtifactUrl', () => {
   });
 });
 
-describe('parseJsonLines', () => {
-  it('reads one object per line and skips unparseable ones', () => {
-    expect(parseJsonLines<{ a: number }>('{"a":1}\n{"a":2}\n')).toEqual([{ a: 1 }, { a: 2 }]);
-    expect(parseJsonLines('{"a":1}\nnot json\n')).toEqual([{ a: 1 }]);
-    expect(parseJsonLines(undefined)).toEqual([]);
+describe('metadataTextColumn', () => {
+  it('reads the source column and tolerates missing or malformed metadata', () => {
+    expect(metadataTextColumn('{"original_text_column":"biography"}')).toBe('biography');
+    expect(metadataTextColumn('{}')).toBeUndefined();
+    expect(metadataTextColumn(undefined)).toBeUndefined();
+    expect(metadataTextColumn('not json')).toBeUndefined();
   });
 });
 

@@ -34,6 +34,9 @@ export const FailedRecordsPanel: FC<FailedRecordsPanelProps> = ({ workspace, art
     workspace,
     name: location?.fileset ?? '',
     path: `${location?.basePath}/failed_records.json`,
+    // Pretty-printed JSON array: the size-capped preview truncates mid-array and the parse
+    // below then silently yields zero records, hiding every failure.
+    fullContent: true,
     enabled: !!location,
   });
 
@@ -62,8 +65,8 @@ export const FailedRecordsPanel: FC<FailedRecordsPanelProps> = ({ workspace, art
           </TableRow>
         </TableHead>
         <TableBody>
-          {records.map((record) => (
-            <TableRow key={record.record_id}>
+          {records.map((record, index) => (
+            <TableRow key={record.record_id ?? index}>
               <TableDataCell>
                 <Text kind="body/regular/sm">{record.record_id ?? '—'}</Text>
               </TableDataCell>

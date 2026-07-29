@@ -29,17 +29,14 @@ export const parseArtifactUrl = (artifactUrl: string | undefined): ArtifactLocat
   return fileset ? { fileset, basePath } : undefined;
 };
 
-export const parseJsonLines = <T>(content: string | undefined): T[] =>
-  (content ?? '')
-    .split('\n')
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        return [JSON.parse(line) as T];
-      } catch {
-        return [];
-      }
-    });
+/** `metadata.json` records the source column the run anonymized. */
+export const metadataTextColumn = (metadata: string | undefined): string | undefined => {
+  try {
+    return (JSON.parse(metadata ?? '{}') as { original_text_column?: string }).original_text_column;
+  } catch {
+    return undefined;
+  }
+};
 
 /** Rewrite writes `<column>_rewritten`; the replace strategies write `<column>_replaced`. */
 const OUTPUT_SUFFIXES = ['_rewritten', '_replaced'];
