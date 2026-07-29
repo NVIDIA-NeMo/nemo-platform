@@ -20,6 +20,16 @@ from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityCon
 
 logger = logging.getLogger(__name__)
 
+_DELETE_COMPLETE_STATUSES = frozenset({"SUCCEEDED", "DELETED"})
+
+
+def _is_terminal_deleting_timeout_failure(deployment: Deployment) -> bool:
+    """Return True when delete reconciliation already recorded a deleting timeout."""
+    if deployment.status != "FAILED":
+        return False
+    details = deployment.error_details
+    return isinstance(details, dict) and details.get("reason") == "deleting_timeout"
+
 
 def deployment_id(deployment: Deployment) -> str:
     return f"{deployment.workspace}/{deployment.name}"
@@ -79,6 +89,22 @@ class DeploymentReconciler:
             return None
 
     async def reconcile_one(
+        self,
+        deployment: Deployment,
+        *,
+        deployments_by_name: dict[tuple[str, str], Deployment],
+        volumes_by_name: dict[tuple[str, str], Volume],
+    ) -> None:
+        try:
+            await self._reconcile_one(
+                deployment,
+                deployments_by_name=deployments_by_name,
+                volumes_by_name=volumes_by_name,
+            )
+        except NemoEntityConflictError:
+            logger.debug("Optimistic lock conflict on deployment %s - retry next cycle.", deployment_id(deployment))
+
+    async def _reconcile_one(
         self,
         deployment: Deployment,
         *,
@@ -169,17 +195,23 @@ class DeploymentReconciler:
                 labels=labels,
                 backend_config=config.backend_config.model_dump(by_alias=True, exclude_none=True),
             )
-            logger.info("Created deployment %s: %s", dep_id, status_update.status)
-            await self._update_deployment_status(deployment, status_update)
-        except NemoEntityConflictError:
-            raise
         except Exception as exc:
             logger.exception("Failed to create deployment %s", dep_id)
             await self._update_deployment_status_failure(deployment, f"Failed to create deployment: {exc}")
+            return
+        logger.info("Created deployment %s: %s", dep_id, status_update.status)
+        await self._update_deployment_status(deployment, status_update)
 
     async def _reconcile_delete(self, deployment: Deployment) -> None:
         dep_id = deployment_id(deployment)
         self._drift_cache.remove(dep_id)
+        if _is_terminal_deleting_timeout_failure(deployment):
+            return
+        timeout_update = self._check_deleting_timeout(deployment)
+        if timeout_update is not None:
+            await self._update_deployment_status(deployment, timeout_update)
+            return
+
         backend = self._try_resolve_backend(deployment)
         if deployment.status != "DELETING":
             await self._update_deployment_status(
@@ -189,20 +221,33 @@ class DeploymentReconciler:
 
         if backend is not None:
             try:
-                await backend.delete_deployment(deployment.workspace, deployment.name)
+                status_update = await backend.delete_deployment(deployment.workspace, deployment.name)
             except Exception:
                 logger.warning("Backend delete failed for %s — will retry", dep_id, exc_info=True)
+                return
+            if status_update.status not in _DELETE_COMPLETE_STATUSES:
+                logger.debug(
+                    "Backend delete not complete for %s: %s — %s",
+                    dep_id,
+                    status_update.status,
+                    status_update.status_message,
+                )
                 return
         else:
             logger.warning("No executor for delete of %s — removing entity only", dep_id)
 
         try:
-            await self._entities.delete(Deployment, name=deployment.name, workspace=deployment.workspace)
+            await self._entities.delete(
+                Deployment,
+                name=deployment.name,
+                workspace=deployment.workspace,
+                expected_db_version=deployment.db_version,
+            )
             logger.info("Deleted deployment entity %s", dep_id)
         except NemoEntityNotFoundError:
             logger.debug("Deployment entity %s already deleted", dep_id)
         except NemoEntityConflictError:
-            raise
+            logger.debug("Optimistic lock conflict deleting deployment %s - retry next cycle.", dep_id)
         except Exception:
             logger.exception("Failed to delete deployment entity %s", dep_id)
 
@@ -257,14 +302,6 @@ class DeploymentReconciler:
                 labels=labels,
                 backend_config=config.backend_config.model_dump(by_alias=True, exclude_none=True),
             )
-            message = (
-                f"Recovering deployment — backend resources recreated "
-                f"(attempt {attempt}/{limits.max_attempts}). {status_update.status_message}"
-            )
-            status_update = status_update.model_copy(update={"status_message": message})
-            await self._update_deployment_status(deployment, status_update)
-        except NemoEntityConflictError:
-            raise
         except Exception as exc:
             logger.exception("Drift recovery failed for %s", dep_id)
             await self._update_deployment_status(
@@ -274,6 +311,13 @@ class DeploymentReconciler:
                     status_message=(f"Recovery attempt {attempt}/{limits.max_attempts} failed: {exc}. Will retry."),
                 ),
             )
+            return
+        message = (
+            f"Recovering deployment — backend resources recreated "
+            f"(attempt {attempt}/{limits.max_attempts}). {status_update.status_message}"
+        )
+        status_update = status_update.model_copy(update={"status_message": message})
+        await self._update_deployment_status(deployment, status_update)
 
     def _controller_recovery_limits(self) -> DriftRecoveryLimits:
         ctrl = self._controller_config
@@ -351,6 +395,30 @@ class DeploymentReconciler:
             },
         )
 
+    def _check_deleting_timeout(self, deployment: Deployment) -> BackendStatusUpdate | None:
+        timeout = self._controller_config.deleting_timeout_seconds
+        if timeout <= 0:
+            return None
+        deleting_at = _deleting_timestamp(deployment)
+        if deleting_at is None:
+            return None
+        elapsed = (datetime.now(timezone.utc) - deleting_at).total_seconds()
+        if elapsed < timeout:
+            return None
+        elapsed_int = int(elapsed)
+        return BackendStatusUpdate(
+            status="FAILED",
+            status_message=(
+                f"Deployment stuck in DELETING for {elapsed_int}s (timeout: {timeout}s). "
+                "Backend resources were not removed."
+            ),
+            error_details={
+                "reason": "deleting_timeout",
+                "elapsed_seconds": elapsed_int,
+                "timeout_seconds": timeout,
+            },
+        )
+
     async def _update_deployment_status_pending(self, deployment: Deployment, message: str) -> None:
         if deployment.status == "PENDING" and deployment.status_message == message:
             return
@@ -390,10 +458,7 @@ class DeploymentReconciler:
         await self._save(deployment)
 
     async def _save(self, deployment: Deployment) -> None:
-        try:
-            await self._entities.update(deployment)
-        except NemoEntityConflictError:
-            raise
+        await self._entities.update(deployment)
 
 
 def _starting_timestamp(deployment: Deployment) -> datetime | None:
@@ -402,6 +467,13 @@ def _starting_timestamp(deployment: Deployment) -> datetime | None:
             return datetime.fromisoformat(event.timestamp)
     if deployment.status_history and deployment.status_history[0].timestamp:
         return datetime.fromisoformat(deployment.status_history[0].timestamp)
+    return None
+
+
+def _deleting_timestamp(deployment: Deployment) -> datetime | None:
+    for event in reversed(deployment.status_history):
+        if event.status == "DELETING" and event.timestamp:
+            return datetime.fromisoformat(event.timestamp)
     return None
 
 

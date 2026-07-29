@@ -15,14 +15,14 @@ import { LINK_DOCS_EXPERIMENTS_CLI } from '@studio/constants/links';
 import { Bot, ChevronRight, File, FlaskConical, Terminal } from 'lucide-react';
 
 interface EmptyProps {
-  experimentGroupName: string;
+  experimentName: string;
   datasetName: string;
 }
 
-export const Empty = ({ experimentGroupName, datasetName }: EmptyProps) => {
+export const Empty = ({ experimentName, datasetName }: EmptyProps) => {
   const cliCommand =
     `nemo exp run \\\n` +
-    `  --group "${experimentGroupName}" \\\n` +
+    `  --group "${experimentName}" \\\n` +
     `  --dataset "${datasetName}" \\\n` +
     `  --evaluators correctness,helpfulness,groundedness,tool-error`;
 

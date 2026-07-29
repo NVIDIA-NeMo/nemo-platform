@@ -13,6 +13,8 @@ The quickest way to connect to an existing deployment is:
 nemo auth login --base-url https://nmp.example.com
 ```
 
+During interactive onboarding, `nemo setup` also offers to connect to a remote deployment when the currently configured platform is unreachable. It verifies and saves the new URL in the active context, then runs the same authentication flow.
+
 To configure a named context:
 
 ```bash
@@ -91,6 +93,7 @@ Environment variables override configuration file settings. This is useful for C
 | `NMP_OUTPUT_FORMAT` | Output format (table, json, yaml, csv, markdown) |
 | `NMP_TIMESTAMP_FORMAT` | Timestamp format (relative, iso8601) |
 | `NMP_COLOR_OUTPUT` | Enable/disable colored output (true/false) |
+| `NEMO_TELEMETRY_ENABLED` | Enable CLI telemetry only when set to `true`; any other explicit value disables it |
 
 Example:
 
@@ -112,6 +115,27 @@ Settings are resolved in this order (highest priority first):
 4. **Defaults** - Built-in default values
 
 This means you can set defaults in your config file and override them as needed with environment variables or flags.
+
+## CLI Telemetry
+
+The NeMo CLI sends anonymous usage telemetry by default to help improve setup, command reliability, and product workflows. The first CLI invocation with telemetry enabled prints a notice to stderr and creates a `telemetry-notice-shown` marker next to the CLI config file. Stdout is not changed, so scripts that parse command output remain stable.
+
+Telemetry events include the command or workflow category, task status, duration, client version, a random session ID that rotates every 30 days, deployment type, and whether the command appears to be running in CI. Telemetry does not include prompts, model inputs or outputs, datasets, secrets, access tokens, configuration file contents, file contents, local paths, usernames, email addresses, or hostnames.
+
+To disable telemetry for a single command or shell session:
+
+```bash
+NEMO_TELEMETRY_ENABLED=false nemo models list
+export NEMO_TELEMETRY_ENABLED=false
+```
+
+To disable telemetry persistently, add this top-level field to your CLI config file:
+
+```yaml
+telemetry_enabled: false
+```
+
+If `NEMO_TELEMETRY_ENABLED` is set, only `true` keeps the environment layer enabled. Any other explicit value disables telemetry for that process. A persisted `telemetry_enabled: false` value disables telemetry even when the environment variable is set to `true`.
 
 ## Shell Completion
 

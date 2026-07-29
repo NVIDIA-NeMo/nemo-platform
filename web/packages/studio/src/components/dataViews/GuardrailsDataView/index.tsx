@@ -49,6 +49,9 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
       page: dataViewState.pagination.state.pageIndex + 1,
       page_size: dataViewState.pagination.state.pageSize,
       sort: sortParam,
+      ...(dataViewState.debouncedSearchBar
+        ? { filter: { name: { $like: dataViewState.debouncedSearchBar } } }
+        : {}),
     },
     {
       query: { placeholderData: keepPreviousData },
@@ -63,7 +66,7 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
       ({ accessor }, { rowActionsColumn }) => [
         accessor('name', {
           header: 'Name',
-          enableSorting: true,
+          enableSorting: false,
           size: 180,
           cell({ row }) {
             return <Text className="font-bold">{row.original.name}</Text>;

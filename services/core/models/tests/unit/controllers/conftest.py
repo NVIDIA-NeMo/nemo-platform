@@ -3,10 +3,14 @@
 
 """Test fixtures for Models Controller tests."""
 
+from typing import Generic, TypeVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nemo_platform_plugin.models.client import AsyncModelsClient
 from nmp.common.config import PlatformConfig
+
+T = TypeVar("T")
 
 
 def platform_config(
@@ -83,16 +87,13 @@ def mock_asyncio_run_patch():
 
 @pytest.fixture
 def mock_models_sdk():
-    """Create a mock AsyncNeMoPlatform SDK for testing."""
-    mock_sdk = MagicMock()
+    """Mock platform SDK for controller tests.
 
-    # Set up the nested structure for v2.inference.deployments
-    mock_sdk.v2 = MagicMock()
-    mock_sdk.v2.inference = MagicMock()
-    mock_sdk.v2.inference.deployments = MagicMock()
-    mock_sdk.v2.inference.deployments.list = MagicMock()
-
-    return mock_sdk
+    The autouse ``mock_models_client_bridge`` makes ``client_from_platform`` the
+    identity, so this one mock stands in for both the umbrella SDK and the typed
+    Models client the controller builds from it.
+    """
+    return make_models_client(strict=False)
 
 
 @pytest.fixture
@@ -179,8 +180,8 @@ def _assert_asyncio_run_called_once(mock_asyncio_run_patch):
 
 
 def _assert_sdk_list_called_for_all_statuses(mock_models_sdk, non_terminal_states_count):
-    """Assert that SDK list method was called for each non-terminal status."""
-    assert mock_models_sdk.inference.deployments.list.call_count == non_terminal_states_count
+    """Assert that the typed client's deployment list was called for each non-terminal status."""
+    assert mock_models_sdk.list_deployments.call_count == non_terminal_states_count
 
 
 def _assert_deployments_count(deployments, expected_count):
@@ -209,3 +210,102 @@ def assert_helpers():
             assert_helpers.assert_controller_healthy(controller)
     """
     return AssertHelpers
+
+
+class AsyncPaginator:
+    """Async iterator standing in for the SDK's paginated list() responses."""
+
+    def __init__(self, items):
+        self._items = list(items)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._items:
+            raise StopAsyncIteration
+        return self._items.pop(0)
+
+
+class PaginatedResponse:
+    """Stand-in for AsyncNemoPaginatedResponse: ``items()`` yields across pages."""
+
+    def __init__(self, items):
+        self._items = list(items)
+
+    def items(self):
+        return AsyncPaginator(self._items)
+
+
+def paginated(items=()):
+    """An AsyncMock return value for a typed-client ``list_*`` call."""
+    return PaginatedResponse(items)
+
+
+class Response(Generic[T]):
+    """Stand-in for NemoResponse: the payload is behind ``data()``."""
+
+    def __init__(self, data: T) -> None:
+        self._data = data
+
+    def data(self) -> T:
+        return self._data
+
+
+def response(data: T) -> Response[T]:
+    return Response(data)
+
+
+# Derived from the real client so a method that does not exist on AsyncModelsClient
+# is not silently mockable, and so new endpoints are picked up without edits here.
+_MODELS_CLIENT_METHODS = tuple(
+    name for name in vars(AsyncModelsClient).keys() | set(dir(AsyncModelsClient)) if not name.startswith("_")
+)
+
+
+def make_models_client(*, strict: bool = True) -> MagicMock:
+    """A mock AsyncModelsClient whose calls are awaitable and return typed-shaped results.
+
+    ``list_*`` calls yield an empty page; everything else resolves to a ``Response``
+    wrapping a MagicMock. Tests override the specific calls they care about.
+
+    ``strict=False`` drops the spec so the same mock can also stand in for the
+    umbrella platform SDK, which the models controller passes to the provider
+    reconciler for IGW and VirtualModel work.
+    """
+    client = MagicMock(spec=AsyncModelsClient) if strict else MagicMock()
+    for name in _MODELS_CLIENT_METHODS:
+        if name.startswith("list_"):
+            setattr(client, name, AsyncMock(return_value=PaginatedResponse([])))
+        elif name.startswith(("get_", "create_", "update_", "delete_", "upsert_", "wait_for_")):
+            setattr(client, name, AsyncMock(return_value=Response(MagicMock())))
+    return client
+
+
+_ENTITY_FIELDS = ("model_providers", "fileset", "api_endpoint", "backend_format")
+
+
+def make_entity(workspace: str, name: str, **attrs):
+    """Model Entity stand-in addressable by ModelEntityCache.
+
+    ``model_copy`` mirrors the real model in carrying every field across, which the
+    cache relies on when overlaying staged changes onto a snapshot.
+    """
+    fields = {field: attrs.get(field) for field in _ENTITY_FIELDS}
+    entity = MagicMock()
+    entity.workspace = workspace
+    entity.name = name
+    for field, value in fields.items():
+        setattr(entity, field, value)
+
+    def _copy(update):
+        return make_entity(workspace, name, **{**fields, **update})
+
+    entity.model_copy = MagicMock(side_effect=_copy)
+    return entity
+
+
+async def seed_entity_cache(mock_models_client, entity_cache, entities=()):
+    """Load the cache from the mock Models client so lookups resolve to ``entities``."""
+    mock_models_client.list_models = AsyncMock(return_value=PaginatedResponse(list(entities)))
+    await entity_cache.refresh()

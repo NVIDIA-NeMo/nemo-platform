@@ -37,6 +37,11 @@ pull_image_on_node() {
             return 1
         fi
         auth_args=(--user "\$oauthtoken:${NGC_API_KEY}")
+    elif [[ "${image}" == docker.io/* || "${image}" == registry-1.docker.io/* ]]; then
+        # Public Docker Hub images are pulled anonymously. Passing the GHCR
+        # KIND_IMAGE_PULL_* credentials here makes auth.docker.io reject the
+        # request with a 401, so leave auth_args empty.
+        auth_args=()
     elif [ -n "${KIND_IMAGE_PULL_USER:-}" ] && [ -n "${KIND_IMAGE_PULL_TOKEN:-}" ]; then
         auth_args=(--user "${KIND_IMAGE_PULL_USER}:${KIND_IMAGE_PULL_TOKEN}")
     fi

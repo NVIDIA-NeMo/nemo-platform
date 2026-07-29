@@ -84,17 +84,16 @@ export const RadioCard: FC<RadioCardProps> = ({
   return (
     <RadioGroupItem
       aria-labelledby={id}
-      className="w-full items-start"
-      asChild
       {...attributes?.RadioGroupItem}
+      className={cn('group block w-full items-start', attributes?.RadioGroupItem?.className)}
     >
       <Card
         className={cn(
           'cursor-pointer [&_*]:cursor-pointer',
           'hover:bg-interaction-hover',
-          'data-[state=checked]:border-interaction-selected',
+          'group-data-[state=checked]:border-interaction-selected',
           checked === true && 'border-interaction-selected',
-          'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+          'group-data-[disabled]:pointer-events-none group-data-[disabled]:opacity-50',
           nvPanelContentClass,
           className
         )}

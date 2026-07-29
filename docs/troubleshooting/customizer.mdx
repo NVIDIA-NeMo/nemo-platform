@@ -2,34 +2,48 @@
 title: "Troubleshooting NeMo Customizer"
 description: ""
 ---
+
 **Job fails during model download:**
-- Verify the HuggingFace token secret is configured correctly
-- Accept the model's license on the [HuggingFace model page](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct)
+
+- Verify the Hugging Face token secret is configured correctly
+- Accept the model's license on the [Hugging Face model page](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct)
 - Check job status: `client.jobs.get_status(name=job.name, workspace="default")`
 
 **Job fails with disk full or 500 error when retrieving logs:**
-- The platform's shared persistent volume is likely full. Customization jobs require significant disk space: ~3× model size for full SFT, ~1.5× for LoRA. If you are also deploying the model from a base checkpoint fileset, plan for ~2.5× model size overall.
+
+- The platform's shared persistent volume is likely full. Budget against the downloaded base checkpoint size: approximately 3× for Full SFT and 1.5× for LoRA. For example, a 70B BF16 checkpoint is approximately 140 GB, so a Full SFT job can require approximately 420 GB of free disk at peak.
+- These peak estimates include the base checkpoint and job artifacts; the final Full SFT output itself is one full checkpoint. If you also retain a deployment copy, include it separately in capacity planning.
 - Clean up completed job artifacts or increase the PVC size (default: 200Gi at `/var/run/scratch/job`).
-- DPO/GRPO jobs also consume ephemeral node storage under `/tmp` via Ray workers — check node disk in addition to the PVC.
 - See [ft-tut-understand-models](/documentation/customizer-reference/tutorials/understanding-models-and-training) for full storage requirement details.
 
 **Job fails with OOM (Out of Memory):**
-1. Reduce `micro_batch_size` to 1
-2. Reduce `batch_size`
-3. Reduce `max_seq_length` from 2048 to 1024 or 512
+
+Batch and sequence-length fields differ by backend. Use the fully qualified paths for your backend:
+
+- **Automodel** (`AutomodelJobInput`):
+  1. Reduce `batch.micro_batch_size` to 1
+  2. Reduce `batch.global_batch_size`
+  3. Reduce `training.max_seq_length` from 2048 to 1024 or 512
+- **Unsloth** (`UnslothJobInput`):
+  1. Reduce `batch.per_device_train_batch_size` to 1
+  2. Reduce `batch.gradient_accumulation_steps` (or lower `training.lora.rank`)
+  3. Reduce `model.max_seq_length` from 2048 to 1024 or 512
 
 **Training loss not decreasing:**
-- Increase `learning_rate` (try 2e-4 or 5e-4)
-- Increase `epochs`
+
+- Increase `optimizer.learning_rate` (try 2e-4 or 5e-4), same path for Automodel and Unsloth
+- Increase `schedule.epochs`, same path for Automodel and Unsloth
 - Verify data quality -- inspect a few training examples manually
 
 **Tool calling accuracy is low after fine-tuning:**
+
 - Increase training data size (sample more from the filtered dataset)
-- Increase `epochs` from 2 to 3-4
+- Increase `schedule.epochs` to a higher value. If you are running for 1-2 epochs, increase it to 3-4.
 - Check that the evaluation dataset format matches what the model expects
 - Verify the base model supports tool calling (Llama 3.2 Instruct does)
 
 **Deployment fails:**
+
 - Verify the base model and adapter exist: `client.models.retrieve(name=MODEL_NAME, workspace="default")` -- the LoRA adapter appears in the base model's `adapters` list, not as a separate model entity
 - Check deployment logs: `client.inference.deployments.get_logs(name=deployment.name, workspace="default")`
 - Ensure sufficient GPU resources for the model size

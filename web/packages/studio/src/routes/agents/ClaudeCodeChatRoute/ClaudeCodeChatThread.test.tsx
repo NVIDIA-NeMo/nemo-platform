@@ -23,14 +23,17 @@ vi.mock('@assistant-ui/react', () => ({
 
 vi.mock('@nemo/common/src/components/AssistantChat/AssistantChatThread', () => ({
   AssistantChatThread: ({
+    animateAssistantMessageCompletion,
     composerOverride,
     showRunningIndicator,
   }: {
+    animateAssistantMessageCompletion?: boolean;
     composerOverride?: ReactNode;
     showRunningIndicator?: boolean;
   }) => (
     <div
       data-testid="assistant-chat-thread"
+      data-animate-message-completion={String(animateAssistantMessageCompletion)}
       data-show-running-indicator={String(showRunningIndicator)}
     >
       {composerOverride}
@@ -111,6 +114,10 @@ describe('ClaudeCodeChatThread Studio UI navigation', () => {
     expect(screen.getByTestId('assistant-chat-thread')).toHaveAttribute(
       'data-show-running-indicator',
       'false'
+    );
+    expect(screen.getByTestId('assistant-chat-thread')).toHaveAttribute(
+      'data-animate-message-completion',
+      'true'
     );
   });
 

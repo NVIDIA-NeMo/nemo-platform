@@ -37,7 +37,6 @@ from .trace_sort_field import TraceSortField as TraceSortField
 from .span_filter_param import SpanFilterParam as SpanFilterParam
 from .trace_list_params import TraceListParams as TraceListParams
 from .evaluation_context import EvaluationContext as EvaluationContext
-from .experiment_context import ExperimentContext as ExperimentContext
 from .float_filter_param import FloatFilterParam as FloatFilterParam
 from .trace_filter_param import TraceFilterParam as TraceFilterParam
 from .feedback_annotation import FeedbackAnnotation as FeedbackAnnotation
@@ -53,7 +52,6 @@ from .annotation_filter_param import AnnotationFilterParam as AnnotationFilterPa
 from .span_evaluation_context import SpanEvaluationContext as SpanEvaluationContext
 from .annotation_create_params import AnnotationCreateParams as AnnotationCreateParams
 from .evaluation_context_param import EvaluationContextParam as EvaluationContextParam
-from .experiment_context_param import ExperimentContextParam as ExperimentContextParam
 from .feedback_annotation_param import FeedbackAnnotationParam as FeedbackAnnotationParam
 from .metadata_annotation_param import MetadataAnnotationParam as MetadataAnnotationParam
 from .evaluator_result_data_type import EvaluatorResultDataType as EvaluatorResultDataType

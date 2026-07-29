@@ -40,7 +40,13 @@ from nemo_platform.beta.evaluator.inference import get_logger, requests_log_var
 from nemo_platform.beta.evaluator.resilience.api import run_with_resilience
 from nemo_platform.beta.evaluator.resilience.classifier import endpoint_identity
 from nemo_platform.beta.evaluator.templates import render_template
-from nemo_platform.beta.evaluator.values.agents import Agent, GenericAgent, NatAgentConfig, NemoAgentToolkitAgent
+from nemo_platform.beta.evaluator.values.agents import (
+    Agent,
+    GenericAgent,
+    NatAgentConfig,
+    NemoAgentToolkitAgent,
+    StreamAggregation,
+)
 from nemo_platform.beta.evaluator.values.evidence import (
     EVIDENCE_FORMAT_ATIF,
     EVIDENCE_FORMAT_JSON,
@@ -101,6 +107,7 @@ class _HttpAgentInvocation(BaseModel):
     trajectory_path: str | None = None
     stream: bool = False
     response_path_field: str = "response_path"
+    response_aggregation: StreamAggregation = "last"
 
 
 # SSE field names look like ``data``, ``intermediate_data``, ``observability_trace``;
@@ -290,6 +297,7 @@ def _resolve_http_agent_invocation(agent: Agent, request: dict[str, Any]) -> _Ht
             response_path=agent.response_path,
             trajectory_path=agent.trajectory_path,
             stream=agent.stream,
+            response_aggregation=agent.response_aggregation,
         )
 
     config = agent.nat or NatAgentConfig()
@@ -302,6 +310,7 @@ def _resolve_http_agent_invocation(agent: Agent, request: dict[str, Any]) -> _Ht
         response_path=config.response_path,
         stream=True,
         response_path_field="nat.response_path",
+        response_aggregation=config.response_aggregation,
     )
 
 
@@ -380,6 +389,11 @@ async def _invoke_http_agent(
 
     async def _invoke_stream() -> _StreamCapture:
         capture = _StreamCapture()
+        # In "concat" mode each data frame carries a token-level delta, so the
+        # final output is the ordered join of every matched value rather than
+        # the last one. Accumulate parts here and materialize after the stream.
+        aggregate = invocation.response_aggregation == "concat"
+        value_parts: list[str] = []
         try:
             async with inference_client.stream(
                 "POST",
@@ -411,10 +425,13 @@ async def _invoke_http_agent(
                         required=False,
                     )
                     if value is not None:
-                        capture.final_value = value
-                        # Preserve the original type in the response; expose
-                        # ``output_text`` only when the value is already textual.
-                        capture.output_text = value if isinstance(value, str) else None
+                        if aggregate:
+                            value_parts.append(value if isinstance(value, str) else str(value))
+                        else:
+                            capture.final_value = value
+                            # Preserve the original type in the response; expose
+                            # ``output_text`` only when the value is already textual.
+                            capture.output_text = value if isinstance(value, str) else None
                     if invocation.trajectory_path:
                         trajectory = _extract_jsonpath(
                             frame.payload,
@@ -429,6 +446,9 @@ async def _invoke_http_agent(
             if capture.event_count == 0:
                 raise
             capture.error = f"{type(exc).__name__}: {exc}"
+        if aggregate and value_parts:
+            capture.final_value = "".join(value_parts)
+            capture.output_text = capture.final_value
         return capture
 
     log.info("Making streaming agent request to %s", invocation.endpoint)

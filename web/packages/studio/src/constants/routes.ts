@@ -26,7 +26,8 @@ export const ROUTE_PARAMS = {
   evalConfigName: 'configName',
   safeSynthesizerJobName: 'safeSynthesizerJobName',
   dataDesignerJobName: 'dataDesignerJobName',
-  traceId: 'traceId',
+  sessionId: 'sessionId',
+  anonymizerJobName: 'anonymizerJobName',
   deploymentConfigName: 'deploymentConfigName',
   deploymentName: 'deploymentName',
   /** Side panel mode under deployments (e.g. `details`). */
@@ -37,7 +38,8 @@ export const ROUTE_PARAMS = {
   jobName: 'jobName',
   /** Benchmark entity name segment under evaluation/benchmarks/:name */
   benchmarkName: 'benchmarkName',
-  experimentGroupName: 'experimentGroupName',
+  experimentName: 'experimentName',
+  insightId: 'insightId',
   evaluationName: 'evaluationName',
   guardrailConfigName: 'guardrailConfigName',
 } as const;
@@ -73,9 +75,9 @@ export const ROUTES = {
     evaluationResultDetails: `/workspaces/:${P.workspace}/evaluation/results/:${P.evaluationJobId}`,
     /** Empty landing page for the EXPERIMENT feature (gated by VITE_FF_EXPERIMENT). */
     experiment: `/workspaces/:${P.workspace}/experiment`,
-    experimentGroupDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}`,
-    evaluationDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.evaluationName}`,
-    evaluationTraceDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.evaluationName}/traces/:${P.traceId}`,
+    experimentDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentName}`,
+    evaluationDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentName}/:${P.evaluationName}`,
+    evaluationSessionDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentName}/:${P.evaluationName}/sessions/:${P.sessionId}`,
     customizationJobList: `/workspaces/:${P.workspace}/customizations`,
     customizationJobDetails: `/workspaces/:${P.workspace}/customizations/:${P.customizationJobName}`,
     filesets: `/workspaces/:${P.workspace}/filesets`,
@@ -97,7 +99,7 @@ export const ROUTES = {
     intake: `/workspaces/:${P.workspace}/intake`,
     intakeTraces: `/workspaces/:${P.workspace}/intake/traces`,
     intakeSpans: `/workspaces/:${P.workspace}/intake/spans`,
-    intakeTrace: `/workspaces/:${P.workspace}/intake/traces/:${P.traceId}`,
+    intakeSession: `/workspaces/:${P.workspace}/intake/sessions/:${P.sessionId}`,
     safeSynthesizer: `/workspaces/:${P.workspace}/safe-synthesizer`,
     safeSynthesizerNew: `/workspaces/:${P.workspace}/safe-synthesizer/new`,
     safeSynthesizerJob: `/workspaces/:${P.workspace}/safe-synthesizer/job/:${P.safeSynthesizerJobName}`,
@@ -108,9 +110,15 @@ export const ROUTES = {
     dataDesignerJobBuild: `/workspaces/:${P.workspace}/data-designer/new/build`,
     /** Legacy job-creation form, not linked from any UI — reachable only by typing the URL. */
     dataDesignerJobNewLegacy: `/workspaces/:${P.workspace}/data-designer/new/legacy`,
+    anonymizer: `/workspaces/:${P.workspace}/anonymizer`,
+    anonymizerNew: `/workspaces/:${P.workspace}/anonymizer/new`,
+    anonymizerJob: `/workspaces/:${P.workspace}/anonymizer/:${P.anonymizerJobName}`,
     secrets: `/workspaces/:${P.workspace}/secrets`,
     guardrails: `/workspaces/:${P.workspace}/guardrails`,
+    optimizer: `/workspaces/:${P.workspace}/optimizer`,
+    optimizerInsight: `/workspaces/:${P.workspace}/optimizer/:${P.insightId}`,
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,
+    guardrailConfig: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/config`,
     settings: `/workspaces/:${P.workspace}/settings`,
     /** Workspace members and role-based access (Entities role bindings) */
     members: `/workspaces/:${P.workspace}/members`,
@@ -124,7 +132,6 @@ export const ROUTES = {
     /** Detail view for a single agent-evaluation job. */
     agentEvaluationDetail: `/workspaces/:${P.workspace}/agents/evaluations/:${P.agentEvalJobName}`,
     modelCompare: `/workspaces/:${P.workspace}/playground`,
-    agentOptimizations: `/workspaces/:${P.workspace}/agents/suggestions`,
     agentMonitor: `/workspaces/:${P.workspace}/agents/monitor`,
   },
   models: {

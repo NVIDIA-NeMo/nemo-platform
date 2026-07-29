@@ -23,9 +23,14 @@ from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.deployment_reconciler import ModelDeploymentReconciler
+from nmp.core.models.controllers.entity_cache import ModelEntityCache
 from nmp.core.models.schemas import ModelDeployment
 
+from .conftest import AsyncPaginator, make_entity, make_models_client, seed_entity_cache
+
 T = TypeVar("T")
+
+_AsyncPaginator = AsyncPaginator
 
 
 class _Response(Generic[T]):
@@ -44,10 +49,15 @@ def _client_error(error_type: type[NemoHTTPError], status_code: int) -> NemoHTTP
     return error_type(httpx.Response(status_code, request=httpx.Request("GET", "http://test")))
 
 
+def _entity(workspace, name, model_providers):
+    """Model Entity stand-in addressable by the cache."""
+    return make_entity(workspace, name, model_providers=model_providers)
+
+
 @pytest.fixture
 def mock_models_sdk():
-    """Create a mock AsyncNeMoPlatform SDK."""
-    return MagicMock()
+    """Create a mock typed Models client."""
+    return make_models_client()
 
 
 @pytest.fixture
@@ -63,12 +73,26 @@ def controller_config():
 
 
 @pytest.fixture
-def reconciler(mock_models_sdk, mock_backend_registry, controller_config):
+def entity_cache(mock_models_sdk):
+    """Model Entity cache backed by the mock Models client."""
+    return ModelEntityCache(models_client=mock_models_sdk, emit_heartbeat=lambda: None)
+
+
+@pytest.fixture
+def heartbeat_calls():
+    """Collects heartbeat emissions so tests can assert progress was reported."""
+    return []
+
+
+@pytest.fixture
+def reconciler(mock_models_sdk, mock_backend_registry, controller_config, entity_cache, heartbeat_calls):
     """Create a ModelDeploymentReconciler instance."""
     return ModelDeploymentReconciler(
         models_client=mock_models_sdk,
         backend_registry=mock_backend_registry,
         controller_config=controller_config,
+        entity_cache=entity_cache,
+        emit_heartbeat=lambda: heartbeat_calls.append(1),
     )
 
 
@@ -253,6 +277,27 @@ async def test_reconcile_individual_deployment_error_fallback_conflict_is_noop(
     reconciler._models_client.update_deployment_status.assert_called_once()
     call_kwargs = reconciler._models_client.update_deployment_status.call_args.kwargs
     assert call_kwargs["body"].status.value == "ERROR"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_created_backend_error_persisted(reconciler, mock_backend_registry, make_deployment):
+    """CREATED + backend ERROR is persisted verbatim to the deployment status."""
+    deployment = make_deployment(status="CREATED")
+    mock_backend = MagicMock()
+    mock_backend.create_model_deployment = AsyncMock(
+        return_value=DeploymentStatusUpdate(
+            status="ERROR",
+            status_message="Backend create failed for some reason",
+        )
+    )
+    mock_backend_registry.get_backend.return_value = mock_backend
+    reconciler._models_client.update_deployment_status = AsyncMock(return_value=_response(MagicMock()))
+
+    await reconciler._reconcile_individual_deployment(deployment, mock_backend.create_model_deployment, "create")
+
+    call_kwargs = reconciler._models_client.update_deployment_status.call_args.kwargs
+    assert call_kwargs["body"].status == "ERROR"
+    assert call_kwargs["body"].status_message == "Backend create failed for some reason"
 
 
 @pytest.mark.asyncio
@@ -932,19 +977,20 @@ async def test_cleanup_model_entities_removes_provider_from_entities(reconciler)
         MagicMock(model_entity_id="test-ns/model-2"),
     ]
 
-    # Mock model entities
-    mock_model_1 = MagicMock()
-    mock_model_1.model_providers = ["test-ns/provider-1", "other-ns/other-provider"]
-
-    mock_model_2 = MagicMock()
-    mock_model_2.model_providers = ["test-ns/provider-1"]
-
     reconciler._models_client.get_provider = AsyncMock(return_value=_response(mock_provider))
-    reconciler._models_client.get_model = AsyncMock(side_effect=[_response(mock_model_1), _response(mock_model_2)])
-    reconciler._models_client.update_model = AsyncMock()
+    await seed_entity_cache(
+        reconciler._models_client,
+        reconciler._entity_cache,
+        [
+            _entity("test-ns", "model-1", ["test-ns/provider-1", "other-ns/other-provider"]),
+            _entity("test-ns", "model-2", ["test-ns/provider-1"]),
+        ],
+    )
+    reconciler._models_client.update_model = AsyncMock(return_value=_response(MagicMock()))
 
     # Call cleanup
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
+    await reconciler._entity_cache.flush()
 
     # Verify provider was retrieved
     reconciler._models_client.get_provider.assert_called_once_with(
@@ -952,26 +998,13 @@ async def test_cleanup_model_entities_removes_provider_from_entities(reconciler)
         workspace="test-ns",
     )
 
-    # Verify model entities were retrieved
-    assert reconciler._models_client.get_model.call_count == 2
-    reconciler._models_client.get_model.assert_any_call(
-        name="model-1",
-        workspace="test-ns",
-    )
-    reconciler._models_client.get_model.assert_any_call(
-        name="model-2",
-        workspace="test-ns",
-    )
-
     # Verify typed model update requests removed the provider.
     assert reconciler._models_client.update_model.call_count == 2
-    calls = reconciler._models_client.update_model.call_args_list
-    assert calls[0].kwargs["name"] == "model-1"
-    assert calls[0].kwargs["workspace"] == "test-ns"
-    assert calls[0].kwargs["body"].model_providers == ["other-ns/other-provider"]
-    assert calls[1].kwargs["name"] == "model-2"
-    assert calls[1].kwargs["workspace"] == "test-ns"
-    assert calls[1].kwargs["body"].model_providers == []
+    by_name = {c.kwargs["name"]: c for c in reconciler._models_client.update_model.call_args_list}
+    assert by_name["model-1"].kwargs["workspace"] == "test-ns"
+    assert by_name["model-1"].kwargs["body"].model_providers == ["other-ns/other-provider"]
+    assert by_name["model-2"].kwargs["workspace"] == "test-ns"
+    assert by_name["model-2"].kwargs["body"].model_providers == []
 
 
 @pytest.mark.asyncio
@@ -982,17 +1015,16 @@ async def test_cleanup_model_entities_no_served_models(reconciler):
     mock_provider.served_models = []
 
     reconciler._models_client.get_provider = AsyncMock(return_value=_response(mock_provider))
-    reconciler._models_client.get_model = AsyncMock()
     reconciler._models_client.update_model = AsyncMock()
 
     # Call cleanup
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
+    await reconciler._entity_cache.flush()
 
     # Verify provider was retrieved
     reconciler._models_client.get_provider.assert_called_once()
 
     # Verify no model entity operations were performed
-    reconciler._models_client.get_model.assert_not_called()
     reconciler._models_client.update_model.assert_not_called()
 
 
@@ -1000,14 +1032,13 @@ async def test_cleanup_model_entities_no_served_models(reconciler):
 async def test_cleanup_model_entities_provider_not_found(reconciler):
     """Test that cleanup handles NotFoundError gracefully when provider doesn't exist."""
     reconciler._models_client.get_provider = AsyncMock(side_effect=_client_error(NotFoundError, 404))
-    reconciler._models_client.get_model = AsyncMock()
     reconciler._models_client.update_model = AsyncMock()
 
     # Call cleanup - should not raise
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
+    await reconciler._entity_cache.flush()
 
     # Verify no model entity operations were performed
-    reconciler._models_client.get_model.assert_not_called()
     reconciler._models_client.update_model.assert_not_called()
 
 
@@ -1020,27 +1051,25 @@ async def test_cleanup_model_entities_provider_not_in_list(reconciler):
         MagicMock(model_entity_id="test-ns/model-1"),
     ]
 
-    # Mock model entity without this provider in its list
-    mock_model = MagicMock()
-    mock_model.model_providers = ["other-ns/other-provider"]
-
     reconciler._models_client.get_provider = AsyncMock(return_value=_response(mock_provider))
-    reconciler._models_client.get_model = AsyncMock(return_value=_response(mock_model))
-    reconciler._models_client.update_model = AsyncMock()
+    await seed_entity_cache(
+        reconciler._models_client,
+        reconciler._entity_cache,
+        [_entity("test-ns", "model-1", ["other-ns/other-provider"])],
+    )
+    reconciler._models_client.update_model = AsyncMock(return_value=_response(MagicMock()))
 
     # Call cleanup
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
-
-    # Verify model entity was retrieved
-    reconciler._models_client.get_model.assert_called_once()
+    await reconciler._entity_cache.flush()
 
     # Verify model entity was NOT updated (provider wasn't in the list)
     reconciler._models_client.update_model.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_cleanup_model_entities_handles_model_retrieval_failure(reconciler):
-    """Test that cleanup continues processing other models when one retrieval fails."""
+async def test_cleanup_model_entities_skips_missing_entity_and_continues(reconciler):
+    """A served model with no Model Entity is skipped without affecting the others."""
     # Mock provider with multiple served_models
     mock_provider = MagicMock()
     mock_provider.served_models = [
@@ -1048,23 +1077,20 @@ async def test_cleanup_model_entities_handles_model_retrieval_failure(reconciler
         MagicMock(model_entity_id="test-ns/model-2"),
     ]
 
-    # First retrieval fails, second succeeds
-    mock_model_2 = MagicMock()
-    mock_model_2.model_providers = ["test-ns/provider-1"]
-
     reconciler._models_client.get_provider = AsyncMock(return_value=_response(mock_provider))
-    reconciler._models_client.get_model = AsyncMock(
-        side_effect=[_client_error(NotFoundError, 404), _response(mock_model_2)]
+    # Only model-2 exists.
+    await seed_entity_cache(
+        reconciler._models_client,
+        reconciler._entity_cache,
+        [_entity("test-ns", "model-2", ["test-ns/provider-1"])],
     )
     reconciler._models_client.update_model = AsyncMock()
 
     # Call cleanup - should not raise
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
+    await reconciler._entity_cache.flush()
 
-    # Verify both models were attempted to be retrieved
-    assert reconciler._models_client.get_model.call_count == 2
-
-    # Verify only the second model was updated with a typed request.
+    # Verify only the existing model was updated, with a typed request.
     reconciler._models_client.update_model.assert_called_once()
     call = reconciler._models_client.update_model.call_args
     assert call.kwargs["name"] == "model-2"
@@ -1082,20 +1108,21 @@ async def test_cleanup_model_entities_handles_model_update_failure(reconciler):
         MagicMock(model_entity_id="test-ns/model-2"),
     ]
 
-    # Mock model entities
-    mock_model_1 = MagicMock()
-    mock_model_1.model_providers = ["test-ns/provider-1"]
-
-    mock_model_2 = MagicMock()
-    mock_model_2.model_providers = ["test-ns/provider-1"]
-
     reconciler._models_client.get_provider = AsyncMock(return_value=_response(mock_provider))
-    reconciler._models_client.get_model = AsyncMock(side_effect=[_response(mock_model_1), _response(mock_model_2)])
+    await seed_entity_cache(
+        reconciler._models_client,
+        reconciler._entity_cache,
+        [
+            _entity("test-ns", "model-1", ["test-ns/provider-1"]),
+            _entity("test-ns", "model-2", ["test-ns/provider-1"]),
+        ],
+    )
     # First update fails, second succeeds
     reconciler._models_client.update_model = AsyncMock(side_effect=[Exception("Update failed"), None])
 
     # Call cleanup - should not raise
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
+    await reconciler._entity_cache.flush()
 
     # Verify both models were attempted to be updated
     assert reconciler._models_client.update_model.call_count == 2
@@ -1110,19 +1137,17 @@ async def test_cleanup_model_entities_with_null_model_providers(reconciler):
         MagicMock(model_entity_id="test-ns/model-1"),
     ]
 
-    # Mock model entity with None model_providers
-    mock_model = MagicMock()
-    mock_model.model_providers = None
-
     reconciler._models_client.get_provider = AsyncMock(return_value=_response(mock_provider))
-    reconciler._models_client.get_model = AsyncMock(return_value=_response(mock_model))
-    reconciler._models_client.update_model = AsyncMock()
+    await seed_entity_cache(
+        reconciler._models_client,
+        reconciler._entity_cache,
+        [_entity("test-ns", "model-1", None)],
+    )
+    reconciler._models_client.update_model = AsyncMock(return_value=_response(MagicMock()))
 
     # Call cleanup - should not raise
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
-
-    # Verify model entity was retrieved
-    reconciler._models_client.get_model.assert_called_once()
+    await reconciler._entity_cache.flush()
 
     # Verify model entity was NOT updated (provider wasn't in the empty/null list)
     reconciler._models_client.update_model.assert_not_called()
@@ -1729,6 +1754,8 @@ def gc_reconciler(mock_models_sdk, mock_backend_registry):
         models_client=mock_models_sdk,
         backend_registry=mock_backend_registry,
         controller_config=config,
+        entity_cache=ModelEntityCache(models_client=mock_models_sdk, emit_heartbeat=lambda: None),
+        emit_heartbeat=lambda: None,
     )
     mock_backend = MagicMock()
     mock_backend.delete_model_deployment = AsyncMock(
@@ -1904,6 +1931,8 @@ async def test_gc_custom_ttl_respected(mock_models_sdk, mock_backend_registry):
         models_client=mock_models_sdk,
         backend_registry=mock_backend_registry,
         controller_config=config,
+        entity_cache=ModelEntityCache(models_client=mock_models_sdk, emit_heartbeat=lambda: None),
+        emit_heartbeat=lambda: None,
     )
 
     mock_backend = MagicMock()
@@ -1989,6 +2018,8 @@ async def test_gc_ttl_boundary_parametrized(mock_models_sdk, mock_backend_regist
         models_client=mock_models_sdk,
         backend_registry=mock_backend_registry,
         controller_config=config,
+        entity_cache=ModelEntityCache(models_client=mock_models_sdk, emit_heartbeat=lambda: None),
+        emit_heartbeat=lambda: None,
     )
 
     mock_backend = MagicMock()

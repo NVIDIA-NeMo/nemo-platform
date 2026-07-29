@@ -6,6 +6,7 @@ import type { ModelProvider } from '@nemo/sdk/generated/platform/schema';
 import {
   type BuilderModel,
   buildModelConfigs,
+  buildModelsFromConfig,
   buildModelsFromTemplate,
   buildServedModelNames,
   builderModelFromSelection,
@@ -209,6 +210,52 @@ describe('validateModels', () => {
       model({ id: 'model-1', alias: 'dupe' }),
     ]);
     expect(errors.filter((e) => e.includes('already exists'))).toHaveLength(2);
+  });
+});
+
+describe('buildModelsFromConfig', () => {
+  it('reverses chat-completion model configs, numbering ids from startId', () => {
+    const configs = buildModelConfigs([
+      model({ alias: 'gen', inferenceParams: { temperature: 0.7, top_p: 0.9, max_tokens: 512 } }),
+    ]);
+
+    expect(buildModelsFromConfig(configs, 2)).toEqual([
+      {
+        id: 'model-2',
+        alias: 'gen',
+        model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+        provider: 'nvidia',
+        inferenceParams: {
+          generation_type: 'chat-completion',
+          temperature: 0.7,
+          top_p: 0.9,
+          max_tokens: 512,
+        },
+      },
+    ]);
+  });
+
+  it('preserves embedding params so a config round-trips unchanged', () => {
+    const models = [
+      model({
+        id: 'model-0',
+        alias: 'embedder',
+        model: 'nvidia/nv-embedqa-e5-v5',
+        provider: 'steramae/build',
+        inferenceParams: {
+          generation_type: 'embedding',
+          encoding_format: 'float',
+          extra_body: { input_type: 'query' },
+        },
+      }),
+    ];
+    const configs = buildModelConfigs(models);
+
+    expect(buildModelConfigs(buildModelsFromConfig(configs))).toEqual(configs);
+  });
+
+  it('returns an empty array for an absent model_configs list', () => {
+    expect(buildModelsFromConfig()).toEqual([]);
   });
 });
 

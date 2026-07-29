@@ -145,6 +145,7 @@ class EntitiesResource(SyncAPIResource):
         entity_type: str,
         *,
         workspace: str | None = None,
+        count_by: str | Omit = omit,
         filter: str | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
@@ -176,6 +177,8 @@ class EntitiesResource(SyncAPIResource):
         ```
 
         Args:
+          count_by: Optional direct string data field whose matching values should be counted.
+
           filter:
               Query filter expression. Supports text and JSON syntaxes:
 
@@ -221,6 +224,7 @@ class EntitiesResource(SyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "count_by": count_by,
                         "filter": filter,
                         "page": page,
                         "page_size": page_size,
@@ -238,6 +242,7 @@ class EntitiesResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         entity_type: str,
+        expected_db_version: int | Omit = omit,
         parent: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -256,6 +261,9 @@ class EntitiesResource(SyncAPIResource):
         ```
 
         Args:
+          expected_db_version: Optional database version for optimistic locking. Delete only succeeds if the
+              entity still has this version.
+
           parent: Parent entity ID for nested entities
 
           extra_headers: Send extra headers
@@ -287,7 +295,11 @@ class EntitiesResource(SyncAPIResource):
                 extra_body=extra_body,
                 timeout=timeout,
                 query=maybe_transform(
-                    {"parent": parent}, entity_delete_entity_by_name_params.EntityDeleteEntityByNameParams
+                    {
+                        "expected_db_version": expected_db_version,
+                        "parent": parent,
+                    },
+                    entity_delete_entity_by_name_params.EntityDeleteEntityByNameParams,
                 ),
             ),
             cast_to=DeleteResponse,
@@ -580,6 +592,7 @@ class AsyncEntitiesResource(AsyncAPIResource):
         entity_type: str,
         *,
         workspace: str | None = None,
+        count_by: str | Omit = omit,
         filter: str | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
@@ -611,6 +624,8 @@ class AsyncEntitiesResource(AsyncAPIResource):
         ```
 
         Args:
+          count_by: Optional direct string data field whose matching values should be counted.
+
           filter:
               Query filter expression. Supports text and JSON syntaxes:
 
@@ -656,6 +671,7 @@ class AsyncEntitiesResource(AsyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "count_by": count_by,
                         "filter": filter,
                         "page": page,
                         "page_size": page_size,
@@ -673,6 +689,7 @@ class AsyncEntitiesResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         entity_type: str,
+        expected_db_version: int | Omit = omit,
         parent: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -691,6 +708,9 @@ class AsyncEntitiesResource(AsyncAPIResource):
         ```
 
         Args:
+          expected_db_version: Optional database version for optimistic locking. Delete only succeeds if the
+              entity still has this version.
+
           parent: Parent entity ID for nested entities
 
           extra_headers: Send extra headers
@@ -722,7 +742,11 @@ class AsyncEntitiesResource(AsyncAPIResource):
                 extra_body=extra_body,
                 timeout=timeout,
                 query=await async_maybe_transform(
-                    {"parent": parent}, entity_delete_entity_by_name_params.EntityDeleteEntityByNameParams
+                    {
+                        "expected_db_version": expected_db_version,
+                        "parent": parent,
+                    },
+                    entity_delete_entity_by_name_params.EntityDeleteEntityByNameParams,
                 ),
             ),
             cast_to=DeleteResponse,

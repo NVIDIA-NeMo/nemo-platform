@@ -516,7 +516,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     llm_step, final_agent_step = agent_steps
     assert trajectory["kind"] == "AGENT"
     assert trajectory["source"] == "atif"
-    assert trajectory["status"] == "error"
+    assert trajectory["status"] == "success"
     assert trajectory["input"] == body["steps"][0]["message"]
     assert trajectory["output"] == body["steps"][2]["message"]
     assert trajectory["model"] == "provider/sample-model"
@@ -629,6 +629,13 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     tool_input = json.loads(tool_step["input"])
     assert tool_input == tool_call
     assert json.loads(tool_step["output"]) == tool_observation
+
+    trace_response = client.get(f"/apis/intake/v2/workspaces/default/traces/{body['session_id']}")
+    assert trace_response.status_code == 200, trace_response.text
+    trace = trace_response.json()
+    assert trace["root_span_id"] == trajectory["span_id"]
+    assert trace["status"] == "success"
+    assert trace["error_count"] == 1
 
     subagent_step = spans_by_name["subagent-subagents/subagent-session-1.json"]
     assert subagent_step["kind"] == "AGENT"
@@ -866,10 +873,10 @@ def _create_experiment(client: TestClient, name: str) -> str:
 
 def _ensure_group(client: TestClient, name: str = "atif-test-group") -> str:
     response = client.post(
-        "/apis/intake/v2/workspaces/default/experiment-groups",
+        "/apis/intake/v2/workspaces/default/experiments",
         json={"name": name},
     )
     if response.status_code == 409:
-        response = client.get(f"/apis/intake/v2/workspaces/default/experiment-groups/{name}")
+        response = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
     response.raise_for_status()
     return response.json()["id"]

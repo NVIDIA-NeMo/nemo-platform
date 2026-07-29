@@ -3,15 +3,13 @@
 
 """Models ServiceBackend backed by nemo-deployments plugin entities."""
 
-import asyncio
 import logging
-import time
 from typing import Any
 
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Prerequisite, Volume
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.resources.entities import AsyncEntitiesResource
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
+from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nmp.common.config import Runtime
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
@@ -22,8 +20,11 @@ from nmp.core.models.controllers.backends.deployments_plugin.config import Deplo
 from nmp.core.models.controllers.backends.deployments_plugin.executor import executor_for_runtime
 from nmp.core.models.controllers.backends.deployments_plugin.naming import entity_names
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import resolve_plugin_deployment
-from nmp.core.models.controllers.backends.deployments_plugin.status import aggregate_status, apply_pending_timeout
-from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, config_engine
+from nmp.core.models.controllers.backends.deployments_plugin.status import (
+    aggregate_status,
+    apply_deleting_timeout,
+    apply_pending_timeout,
+)
 from nmp.core.models.controllers.context import ModelContext
 
 logger = logging.getLogger(__name__)
@@ -69,18 +70,6 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         if resolved.runtime == Runtime.NONE:
             return DeploymentStatusUpdate(
                 status="UNKNOWN", status_message="Deployments plugin is unavailable for runtime none."
-            )
-        lora_enabled = resolved.view.lora_enabled and config_engine(resolved.config) != ENGINE_GENERIC
-        if resolved.runtime == Runtime.DOCKER and lora_enabled:
-            # Fail fast: the plugin docker runtime is single-container today, so a
-            # LoRA deployment (server + adapters sidecar) cannot run there yet.
-            return DeploymentStatusUpdate(
-                status="ERROR",
-                status_message=(
-                    "LoRA serving is not supported on the docker runtime yet "
-                    "(deployments-plugin docker is single-container). Deploy LoRA "
-                    "models on the kubernetes runtime instead."
-                ),
             )
         teardown = await self.delete_model_deployment(resolved.deployment.workspace, resolved.deployment.name)
         if teardown.status == "DELETING":
@@ -163,6 +152,11 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
             )
 
     async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
+        """Project plugin entity health into models deployment status.
+
+        Aggregates Volume, puller, and server Deployment entities, then applies
+        ``pending_timeout_seconds`` when the deployment remains PENDING too long.
+        """
         if ctx.model_deployment is None:
             return DeploymentStatusUpdate(status="UNKNOWN", status_message="Model deployment unavailable.")
         names = entity_names(ctx.model_deployment.name)
@@ -182,13 +176,25 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         del ctx
         return DeploymentStatusUpdate(status="ERROR", status_message="Update via recreate not yet supported.")
 
-    async def delete_model_deployment(self, workspace: str, name: str) -> DeploymentStatusUpdate:
-        """Stop deployments, wait for each to disappear, then remove their configs."""
+    async def delete_model_deployment(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        deleting_elapsed_seconds: float | None = None,
+    ) -> DeploymentStatusUpdate:
+        """Stop deployments, then remove configs and volumes once substrate is gone."""
         names = entity_names(name)
         for deployment_name, config_name in ((names.server, names.server), (names.puller, names.puller)):
-            if not await self._delete_deployment_and_config(workspace, deployment_name, config_name):
-                return DeploymentStatusUpdate(
+            if not await self._complete_deployment_delete(workspace, deployment_name, config_name):
+                result = DeploymentStatusUpdate(
                     status="DELETING", status_message="Waiting for plugin deployment teardown."
+                )
+                return apply_deleting_timeout(
+                    result,
+                    elapsed_seconds=deleting_elapsed_seconds or 0.0,
+                    timeout_seconds=self._cfg.deleting_timeout_seconds,
+                    deployment_name=name,
                 )
         for volume_name in (names.scratch, names.volume):
             try:
@@ -197,28 +203,36 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
                 pass
         return DeploymentStatusUpdate(status="DELETED", status_message="Deleted deployments-plugin entities.")
 
-    async def _delete_deployment_and_config(self, workspace: str, deployment_name: str, config_name: str) -> bool:
+    async def _complete_deployment_delete(self, workspace: str, deployment_name: str, config_name: str) -> bool:
+        """Initiate plugin deployment stop and return True once config can be removed."""
         deployment = await self._get_optional(Deployment, workspace, deployment_name)
         if deployment is not None:
-            if deployment.status != "DELETING":
+            if deployment.status == "FAILED":
+                # Plugin reconciler gave up on substrate teardown; remove the stale
+                # entity so models delete can finish config/volume cleanup.
+                try:
+                    await self._entity_client().delete(
+                        Deployment,
+                        name=deployment.name,
+                        workspace=workspace,
+                        expected_db_version=deployment.db_version,
+                    )
+                except NemoEntityNotFoundError:
+                    pass
+                except NemoEntityConflictError:
+                    return False
+            elif deployment.status != "DELETING" or deployment.desired_state != "STOPPED":
                 deployment.status = "DELETING"
                 deployment.desired_state = "STOPPED"
                 await self._entity_client().update(deployment)
-            if not await self._wait_for_deployment_gone(workspace, deployment_name):
+                return False
+            else:
                 return False
         try:
             await self._entity_client().delete(DeploymentConfig, name=config_name, workspace=workspace)
         except NemoEntityNotFoundError:
             pass
         return True
-
-    async def _wait_for_deployment_gone(self, workspace: str, name: str) -> bool:
-        deadline = time.monotonic() + self._cfg.delete_wait_seconds
-        while time.monotonic() < deadline:
-            if await self._get_optional(Deployment, workspace, name) is None:
-                return True
-            await asyncio.sleep(self._cfg.delete_poll_seconds)
-        return False
 
     async def _get_optional(self, entity_type: type[Any], workspace: str, name: str) -> Any | None:
         try:
@@ -227,8 +241,11 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
             return None
 
     async def list_managed_deployment_names(self) -> list[str]:
-        # Labels live on immutable DeploymentConfig entities; deployments-plugin
-        # does not currently mirror them onto Deployment.
+        """List workspace/name IDs for model deployments managed by this backend.
+
+        Discovers server-role DeploymentConfig entities stamped with models-controller
+        ownership labels (deployments-plugin does not mirror labels onto Deployment).
+        """
         result = await self._entity_client().list(DeploymentConfig, workspace="-")
         names = {
             f"{config.labels[_DEPLOYMENT_WORKSPACE_LABEL]}/{config.labels[_DEPLOYMENT_NAME_LABEL]}"

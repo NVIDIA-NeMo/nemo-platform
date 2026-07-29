@@ -10,11 +10,8 @@ import * as DataView from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { DEFAULT_PAGE_SIZE_OPTIONS } from '@nemo/common/src/constants/pagination';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { useListExperimentGroups } from '@nemo/sdk/generated/platform/api';
-import type {
-  ExperimentGroupFilter,
-  ExperimentGroupResponse,
-} from '@nemo/sdk/generated/platform/schema';
+import { useListExperiments } from '@nemo/sdk/generated/platform/api';
+import type { ExperimentFilter, ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,
   Button,
@@ -33,11 +30,12 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { ExperimentGroupCreateModal } from '@studio/components/ExperimentGroupCreateModal';
+import { ExperimentCreateModal } from '@studio/components/ExperimentCreateModal';
+import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { ExperimentGroupCard } from '@studio/routes/ExperimentRoute/ExperimentGroupCard';
+import { ExperimentCard } from '@studio/routes/ExperimentRoute/ExperimentCard';
 import { keepPreviousData } from '@tanstack/react-query';
 import { CircleAlert } from 'lucide-react';
 import { type ComponentProps, type FC, useMemo, useState } from 'react';
@@ -45,25 +43,24 @@ import { type ComponentProps, type FC, useMemo, useState } from 'react';
 const DEFAULT_PAGE_SIZE = 10;
 
 /**
- * Column filters available for experiment groups. `created_at` / `updated_at` are base entity
+ * Column filters available for experiments. `created_at` / `updated_at` are base entity
  * fields the list endpoint filters via `$gte` / `$lte` ranges. They are not declared on the
- * generated `ExperimentGroupFilter` type, so the API filter is widened here and coerced back at
+ * generated `ExperimentFilter` type, so the API filter is widened here and coerced back at
  * the SDK boundary (see `filter` below).
  */
-interface ExperimentGroupColumnFilters {
+interface ExperimentColumnFilters {
   created_at?: DatetimeFilterValue;
   updated_at?: DatetimeFilterValue;
 }
 
-type ExperimentGroupFilterInput = WithFilterOperators<ExperimentGroupFilter> &
-  ExperimentGroupColumnFilters;
+type ExperimentFilterInput = WithFilterOperators<ExperimentFilter> & ExperimentColumnFilters;
 
 /**
  * Filter-only columns. They are never rendered as a table (the cards come from CustomContent);
  * they exist solely to feed `meta.filter` into the DataView filter panel and applied-filter tags.
  */
 const makeFilterColumns: ComponentProps<
-  typeof DataView.Root<ExperimentGroupResponse>
+  typeof DataView.Root<ExperimentResponse>
 >['makeColumns'] = ({ accessor }) => [
   accessor('created_at', {
     id: 'created_at',
@@ -80,12 +77,12 @@ const makeFilterColumns: ComponentProps<
 ];
 
 export const ExperimentRoute: FC = () => {
-  useBreadcrumbs({ items: [{ slotLabel: 'Experiment Groups' }] });
+  useBreadcrumbs({ items: [{ slotLabel: 'Experiments' }] });
 
   const workspace = useWorkspaceFromPath();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const dataViewState = useStudioDataViewState<ExperimentGroupColumnFilters>({
+  const dataViewState = useStudioDataViewState<ExperimentColumnFilters>({
     defaultPageSize: DEFAULT_PAGE_SIZE,
   });
   const page = dataViewState.pagination.state.pageIndex + 1;
@@ -93,65 +90,70 @@ export const ExperimentRoute: FC = () => {
   const searchText = dataViewState.apiFilter.searchText;
   const columnFilters = dataViewState.apiFilter.filter;
 
-  const filter = useMemo<ExperimentGroupFilter | undefined>(() => {
+  const filter = useMemo<ExperimentFilter | undefined>(() => {
     if (!searchText && !columnFilters) return undefined;
-    const input: ExperimentGroupFilterInput = {
+    const input: ExperimentFilterInput = {
       ...columnFilters,
       ...(searchText ? { name: { $like: searchText } } : {}),
     };
-    return input as ExperimentGroupFilter;
+    return input as ExperimentFilter;
   }, [columnFilters, searchText]);
 
-  const { data, isLoading, error } = useListExperimentGroups(
+  const { data, isLoading, error } = useListExperiments(
     workspace,
     { page, page_size: pageSize, filter },
     { query: { placeholderData: keepPreviousData } }
   );
 
-  const groups = data?.data ?? [];
+  const experiments = data?.data ?? [];
   const totalResults = data?.pagination?.total_results ?? 0;
 
   return (
-    <AccessibleTitle title="Experiment groups">
+    <AccessibleTitle title="Experiments">
       <Stack className="h-full min-h-0" gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="p-0 shrink-0"
-          slotHeading="Experiment groups"
-          slotDescription="Manage groups for online optimization. Review reports down to the frame level."
+          slotHeading={
+            <>
+              Experiments
+              <FeatureFlagBadge flag="experiment" />
+            </>
+          }
+          slotDescription="Manage experiments for online optimization. Review runs down to the frame level."
           slotActions={
             <Button color="brand" onClick={() => setIsCreateModalOpen(true)}>
-              New experiment group
+              New experiment
             </Button>
           }
         />
-        <ExperimentGroupCreateModal
+        <ExperimentCreateModal
           open={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
           workspace={workspace}
         />
-        <StudioDataView<ExperimentGroupResponse>
+        <StudioDataView<ExperimentResponse>
           dataViewState={dataViewState}
           makeColumns={makeFilterColumns}
           searchField="name"
           attributes={{
             DataViewRoot: {
-              data: groups,
+              data: experiments,
               totalCount: totalResults,
               requestStatus: error ? 'error' : isLoading ? 'loading' : undefined,
             },
-            DataViewSearchBar: { placeholder: 'Search experiment groups...' },
+            DataViewSearchBar: { placeholder: 'Search experiments...' },
           }}
         >
           <Stack className="h-full min-h-0" gap="density-md">
             <Block className="flex-1 min-h-0 overflow-auto">
-              <DataView.CustomContent<ExperimentGroupResponse>
+              <DataView.CustomContent<ExperimentResponse>
                 renderLoadingState={() => <Loading description="Loading experiments..." />}
                 renderEmptyState={({ hasSearchApplied, hasFiltersApplied }) => (
                   <Flex justify="center" className="p-density-2xl">
                     <Text kind="body/regular/md" className="text-secondary">
                       {hasSearchApplied || hasFiltersApplied
-                        ? 'No experiment groups match your search or filters.'
-                        : 'No experiment groups yet.'}
+                        ? 'No experiments match your search or filters.'
+                        : 'No experiments yet.'}
                     </Text>
                   </Flex>
                 )}
@@ -169,7 +171,7 @@ export const ExperimentRoute: FC = () => {
                 {({ rows }) => (
                   <Stack gap="density-md">
                     {rows.map((row) => (
-                      <ExperimentGroupCard
+                      <ExperimentCard
                         key={row.original.id}
                         group={row.original}
                         workspace={workspace}

@@ -121,6 +121,7 @@ class TestEntities:
         entity = client.entities.list(
             entity_type="entity_type",
             workspace="workspace",
+            count_by="count_by",
             filter="filter",
             page=1,
             page_size=1,
@@ -188,6 +189,7 @@ class TestEntities:
             name="name",
             workspace="workspace",
             entity_type="entity_type",
+            expected_db_version=0,
             parent="parent",
         )
         assert_matches_type(DeleteResponse, entity, path=["response"])
@@ -539,6 +541,7 @@ class TestAsyncEntities:
         entity = await async_client.entities.list(
             entity_type="entity_type",
             workspace="workspace",
+            count_by="count_by",
             filter="filter",
             page=1,
             page_size=1,
@@ -606,6 +609,7 @@ class TestAsyncEntities:
             name="name",
             workspace="workspace",
             entity_type="entity_type",
+            expected_db_version=0,
             parent="parent",
         )
         assert_matches_type(DeleteResponse, entity, path=["response"])

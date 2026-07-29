@@ -3,6 +3,8 @@
 
 """Tests for Models service configuration."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from nmp.common.config import Runtime
 from nmp.core.models.config import (
@@ -12,11 +14,7 @@ from nmp.core.models.config import (
     get_default_backends_for_runtime,
     merge_backends,
 )
-from nmp.core.models.controllers.backends.registry import (
-    DockerBackendConfigModel,
-    K8sNimOperatorBackendConfigModel,
-    NoneBackendConfigModel,
-)
+from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginBackendConfigModel
 from pydantic import ValidationError
 
 
@@ -54,137 +52,136 @@ def test_config_structure():
 
 
 def test_get_default_backends_for_docker_runtime():
-    """Test that docker backend is selected and enabled for DOCKER runtime."""
+    """Test that deployments_plugin backend is selected and enabled for DOCKER runtime."""
     backends = get_default_backends_for_runtime(Runtime.DOCKER)
-    assert "docker" in backends
-    assert isinstance(backends["docker"], DockerBackendConfigModel)
-    assert backends["docker"].enabled is True
+    assert "deployments_plugin" in backends
+    assert isinstance(backends["deployments_plugin"], DeploymentsPluginBackendConfigModel)
+    assert backends["deployments_plugin"].enabled is True
+    assert backends["deployments_plugin"].docker_executor == "local-docker"
+    assert backends["deployments_plugin"].default_executor == "local-docker"
+    assert "docker" not in backends
     assert "nim_operator" not in backends
 
 
 def test_get_default_backends_for_kubernetes_runtime():
-    """Test that nim_operator backend is selected and enabled for KUBERNETES runtime."""
+    """Test that deployments_plugin backend is selected and enabled for KUBERNETES runtime."""
     backends = get_default_backends_for_runtime(Runtime.KUBERNETES)
-    assert "nim_operator" in backends
-    assert isinstance(backends["nim_operator"], K8sNimOperatorBackendConfigModel)
-    assert backends["nim_operator"].enabled is True
+    assert "deployments_plugin" in backends
+    assert isinstance(backends["deployments_plugin"], DeploymentsPluginBackendConfigModel)
+    assert backends["deployments_plugin"].enabled is True
+    assert backends["deployments_plugin"].k8s_executor == "local-k8s"
+    assert backends["deployments_plugin"].default_executor == "local-k8s"
+    assert "nim_operator" not in backends
     assert "docker" not in backends
+
+
+def test_get_default_backends_for_none_runtime():
+    """Test that deployments_plugin backend is selected for NONE runtime."""
+    backends = get_default_backends_for_runtime(Runtime.NONE)
+    assert "deployments_plugin" in backends
+    assert isinstance(backends["deployments_plugin"], DeploymentsPluginBackendConfigModel)
+    assert backends["deployments_plugin"].enabled is True
+    assert backends["deployments_plugin"].default_executor is None
 
 
 def test_merge_backends_with_no_custom_backends():
     """Test that merge returns only default backends when no custom backends provided."""
-    default_backends = {"docker": DockerBackendConfigModel()}
+    default_backends = {"deployments_plugin": DeploymentsPluginBackendConfigModel()}
     custom_backends = {}
 
     merged = merge_backends(custom_backends, default_backends)
 
-    assert "docker" in merged
+    assert "deployments_plugin" in merged
     assert len(merged) == 1
 
 
 def test_merge_backends_with_no_default_backends():
     """Test that merge returns only custom backends when no defaults provided."""
     default_backends = {}
-    custom_backends = {"docker": DockerBackendConfigModel()}
+    custom_backends = {"deployments_plugin": DeploymentsPluginBackendConfigModel()}
 
     merged = merge_backends(custom_backends, default_backends)
 
-    assert "docker" in merged
+    assert "deployments_plugin" in merged
     assert len(merged) == 1
 
 
 def test_merge_backends_custom_overrides_default():
     """Test that custom backend config overrides default backend config."""
     default_backends = {
-        "docker": DockerBackendConfigModel(enabled=False),
+        "deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=False),
     }
     custom_backends = {
-        "docker": DockerBackendConfigModel(enabled=True),
+        "deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=True),
     }
 
     merged = merge_backends(custom_backends, default_backends)
 
-    assert "docker" in merged
-    assert merged["docker"].enabled is True
-
-
-def test_merge_backends_combines_different_backends():
-    """Test that merge combines different backend types."""
-    default_backends = {"docker": DockerBackendConfigModel()}
-    custom_backends = {"nim_operator": K8sNimOperatorBackendConfigModel()}
-
-    merged = merge_backends(custom_backends, default_backends)
-
-    assert "docker" in merged
-    assert "nim_operator" in merged
-    assert len(merged) == 2
+    assert merged["deployments_plugin"].enabled is True
 
 
 def test_merge_backends_preserves_enabled_flag():
     """Test that merge correctly handles enabled flag overrides."""
     default_backends = {
-        "docker": DockerBackendConfigModel(enabled=False),
+        "deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=False),
     }
     custom_backends = {
-        "docker": DockerBackendConfigModel(enabled=True),
+        "deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=True),
     }
 
     merged = merge_backends(custom_backends, default_backends)
 
-    assert merged["docker"].enabled is True
+    assert merged["deployments_plugin"].enabled is True
 
 
-def test_merge_backends_disables_conflicting_when_runtime_demoted_to_none():
-    """When the runtime auto-demotes to NONE (docker unavailable), any
-    user-enabled non-`none` backend must be disabled so the registry can
-    pick the `none` fallback cleanly instead of crashing with
-    'Multiple backends are enabled'."""
-    # Default reflects post-demotion state: NemoPlatformConfig.validate_runtime
-    # flipped DOCKER → NONE because the docker socket wasn't reachable.
-    default_backends = {"none": NoneBackendConfigModel(enabled=True)}
-    # User config (e.g. local.yaml or a downstream override) still asks for docker.
-    custom_backends = {"docker": DockerBackendConfigModel(enabled=True)}
-
-    merged = merge_backends(custom_backends, default_backends)
-
-    # `none` survives as the runtime fallback; the conflicting docker entry
-    # gets force-disabled.
-    assert merged["none"].enabled is True
-    assert merged["docker"].enabled is False
-
-
-def test_merge_backends_leaves_docker_enabled_when_runtime_is_docker():
-    """Sanity-check that the demotion-handling logic doesn't disable a
-    legitimately-enabled custom backend when the runtime is still DOCKER."""
-    default_backends = {"docker": DockerBackendConfigModel(enabled=True)}
-    custom_backends = {"docker": DockerBackendConfigModel(enabled=True)}
-
-    merged = merge_backends(custom_backends, default_backends)
-
-    assert merged["docker"].enabled is True
-    assert "none" not in merged
-
-
-def test_merge_backends_force_enables_none_when_user_disabled_it_during_demotion():
-    """If the user explicitly disabled `none` AND another backend is enabled,
-    runtime demotion to NONE must still leave exactly one enabled backend.
-
-    Without the force-enable, the user's `none: enabled=False` would win on
-    merge, my non-`none` disable loop would drop docker, and the registry
-    would crash with "No backends are enabled" (the zero-enabled case).
-    """
-    default_backends = {"none": NoneBackendConfigModel(enabled=True)}
+@patch("nmp.core.models.config.get_platform_config")
+def test_merge_backends_disables_conflicting_when_runtime_demoted_to_none(mock_platform_config):
+    """When runtime is NONE, force-enable deployments_plugin and disable other enabled backends."""
+    mock_platform_config.return_value = MagicMock(runtime=Runtime.NONE)
+    default_backends = {"deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=True)}
     custom_backends = {
-        "none": NoneBackendConfigModel(enabled=False),
-        "docker": DockerBackendConfigModel(enabled=True),
+        "deployments_plugin": DeploymentsPluginBackendConfigModel(
+            enabled=True,
+            docker_executor="local-docker",
+        ),
     }
 
     merged = merge_backends(custom_backends, default_backends)
 
-    # `none` is force-enabled (overrides user's explicit disable) so the
-    # registry has exactly one enabled backend in the demotion path.
-    assert merged["none"].enabled is True
-    assert merged["docker"].enabled is False
+    assert merged["deployments_plugin"].enabled is True
+
+
+@patch("nmp.core.models.config.get_platform_config")
+def test_merge_backends_leaves_deployments_plugin_enabled_when_runtime_is_docker(mock_platform_config):
+    """Sanity-check demotion logic does not disable a valid docker-runtime backend."""
+    mock_platform_config.return_value = MagicMock(runtime=Runtime.DOCKER)
+    default_backends = {"deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=True)}
+    custom_backends = {
+        "deployments_plugin": DeploymentsPluginBackendConfigModel(
+            enabled=True,
+            docker_executor="local-docker",
+        ),
+    }
+
+    merged = merge_backends(custom_backends, default_backends)
+
+    assert merged["deployments_plugin"].enabled is True
+
+
+@patch("nmp.core.models.config.get_platform_config")
+def test_merge_backends_force_enables_deployments_plugin_when_user_disabled_it_during_demotion(
+    mock_platform_config,
+):
+    """Runtime NONE must still leave exactly one enabled backend."""
+    mock_platform_config.return_value = MagicMock(runtime=Runtime.NONE)
+    default_backends = {"deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=True)}
+    custom_backends = {
+        "deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=False),
+    }
+
+    merged = merge_backends(custom_backends, default_backends)
+
+    assert merged["deployments_plugin"].enabled is True
 
 
 def test_module_level_backends_variable_exists():
@@ -201,26 +198,23 @@ def test_merge_backends_with_flat_config_partial_override():
     """
     # Default backend with flat config
     default_backends = {
-        "nim_operator": K8sNimOperatorBackendConfigModel(
+        "deployments_plugin": DeploymentsPluginBackendConfigModel(
             enabled=True,
             default_storage_class="standard",
             default_pvc_size="100Gi",
         ),
     }
 
-    # Custom backend that only overrides one field
     custom_backends = {
-        "nim_operator": K8sNimOperatorBackendConfigModel(
+        "deployments_plugin": DeploymentsPluginBackendConfigModel(
             default_storage_class="fast-ssd",
         ),
     }
 
     merged = merge_backends(custom_backends, default_backends)
 
-    # The custom storage class should override
-    assert merged["nim_operator"].default_storage_class == "fast-ssd"
-    # But the PVC size should be preserved from default
-    assert merged["nim_operator"].default_pvc_size == "100Gi"
+    assert merged["deployments_plugin"].default_storage_class == "fast-ssd"
+    assert merged["deployments_plugin"].default_pvc_size == "100Gi"
 
 
 # ============================================================================

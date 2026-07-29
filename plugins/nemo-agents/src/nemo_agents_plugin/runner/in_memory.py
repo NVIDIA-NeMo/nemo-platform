@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""InMemoryRunnerBackend — spawns ``nat serve`` subprocesses for agent deployments.
+"""InMemoryRunnerBackend — spawns local agent-server subprocesses.
 
 Agent processes run as local subprocesses on the same machine as the platform
 server (``deployment_mode=subprocess``).  Process state is tracked in memory;
@@ -12,7 +12,7 @@ Container modes (docker/k8s) use
 :class:`~nemo_agents_plugin.runner.deployments_backend.DeploymentsRunnerBackend`
 instead.
 
-Module-level helpers ``system_dir_for_workspace`` and ``log_path_for_deployment``
+Module-level helpers ``system_dir`` and ``log_path_for_deployment``
 encode the on-disk layout convention so out-of-process callers (e.g. the
 ``nemo agents logs`` CLI) can locate a deployment's log file without
 instantiating the backend.  The convention is intentionally narrow: it is
@@ -36,7 +36,7 @@ from typing import Any
 import httpx
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
-from nemo_agents_plugin.entities import DeploymentMode
+from nemo_agents_plugin.entities import AGENT_CONFIG_FILENAME, NEMO_AGENTS_SPEC_CONFIG_FORMAT, DeploymentMode
 from nemo_agents_plugin.runner.backend import DeploymentInfo, LocalLog, LogLocation, NotYetAvailable, RunnerBackend
 
 # Match characters not safe for filesystem paths.  Deployment names are
@@ -84,6 +84,14 @@ def _resolve_nat_bin() -> str:
     return "/app/.venv/bin/nat"
 
 
+async def validate_platform_agent_config(config: dict[str, Any], *, base_dir: Path) -> Any:
+    """Validate Fabric configs lazily so NAT/container deployments do not import Fabric."""
+    # TODO(AIRCORE-902): Hoist once Fabric runtime is installed in the default Platform image.
+    from nemo_agents_plugin.fabric.validation import validate_platform_agent_config as _validate_platform_agent_config
+
+    return await _validate_platform_agent_config(config, base_dir=base_dir)
+
+
 def system_dir(workspace_dir: Path | None = None) -> Path:
     """Return the directory holding rendered configs and per-deployment logs.
 
@@ -106,6 +114,16 @@ def config_path_for_deployment(workspace: str, name: str, workspace_dir: Path | 
     """Return the absolute rendered-config path for a deployment named *name*."""
     base = system_dir(workspace_dir) / _sanitize_filename(workspace)
     return base / f"{_sanitize_filename(name)}.yaml"
+
+
+def _write_yaml_config(path: Path, config: dict[str, Any]) -> Path:
+    """Atomically write a YAML config to an absolute path."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(config, fh)
+    tmp_path.replace(path)
+    return path
 
 
 logger = logging.getLogger(__name__)
@@ -202,8 +220,11 @@ class InMemoryRunnerBackend(RunnerBackend):
         image: str | None = None,
         deployment_mode: DeploymentMode = "subprocess",
     ) -> DeploymentInfo:
-        """Write config to a deterministic file and spawn ``nat serve``."""
+        """Start a local deployment for NAT workflows or Platform-owned agent specs."""
         del image, deployment_mode
+        if config.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            return await self._create_fabric_deployment(workspace, name, config, port)
+
         key = (workspace, name)
         config_path = await asyncio.to_thread(self._write_config, workspace, name, config)
         log_path = self.log_path_for(workspace, name)
@@ -234,11 +255,54 @@ class InMemoryRunnerBackend(RunnerBackend):
         )
         return info
 
+    async def _create_fabric_deployment(
+        self,
+        workspace: str,
+        name: str,
+        config: dict[str, Any],
+        port: int,
+    ) -> DeploymentInfo:
+        """Validate and start a Platform-owned Fabric-backed agent server."""
+        key = (workspace, name)
+        base_dir = self._fabric_base_dir_for(workspace, name)
+        await asyncio.to_thread(base_dir.mkdir, parents=True, exist_ok=True)
+        try:
+            config_path = await asyncio.to_thread(self._write_fabric_config, base_dir, config)
+            await validate_platform_agent_config(config, base_dir=base_dir)
+            log_path = self.log_path_for(workspace, name)
+            proc = await asyncio.to_thread(self._spawn_fabric, name, config_path, log_path, port)
+        except Exception:
+            await asyncio.to_thread(shutil.rmtree, base_dir, ignore_errors=True)
+            raise
+
+        info = DeploymentInfo(
+            name=name,
+            status="starting",
+            port=port,
+            pid=proc.pid,
+            endpoint=f"http://127.0.0.1:{port}",
+            log_path=str(log_path),
+            extra={"base_dir": str(base_dir)},
+        )
+        self._processes[key] = proc
+        self._deployments[key] = info
+        logger.info(
+            "Spawned Fabric-backed deployment for '%s/%s' (pid=%d, port=%d, base_dir=%s, log=%s)",
+            workspace,
+            name,
+            proc.pid,
+            port,
+            base_dir,
+            log_path,
+        )
+        return info
+
     async def get_deployment_status(self, workspace: str, name: str) -> DeploymentInfo | None:
         key = (workspace, name)
         info = self._deployments.get(key)
         if info is None:
             return None
+
         proc = self._processes.get(key)
         if proc is not None and proc.poll() is not None:
             info.status = "failed"
@@ -260,6 +324,9 @@ class InMemoryRunnerBackend(RunnerBackend):
 
         if config_path is not None:
             config_path.unlink(missing_ok=True)
+
+        if info is not None and (base_dir := info.extra.get("base_dir")):
+            await asyncio.to_thread(shutil.rmtree, base_dir, ignore_errors=True)
 
         logger.info("Deleted agent deployment '%s/%s'", workspace, name)
         return True
@@ -286,19 +353,25 @@ class InMemoryRunnerBackend(RunnerBackend):
     async def shutdown(self) -> None:
         """Terminate all managed processes (best-effort)."""
         items = list(self._processes.items())
+        fabric_base_dirs: list[Path] = []
+        for info in self._deployments.values():
+            base_dir = info.extra.get("base_dir")
+            if base_dir is not None:
+                fabric_base_dirs.append(Path(base_dir))
         labels = [f"{ws}/{nm}" for (ws, nm), _ in items]
         results = await asyncio.gather(
             *(asyncio.to_thread(self._terminate, f"{ws}/{nm}", proc) for (ws, nm), proc in items),
             return_exceptions=True,
         )
+        self._processes.clear()
         for label, result in zip(labels, results, strict=False):
             if isinstance(result, Exception):
                 logger.warning("Error terminating '%s' during shutdown", label, exc_info=result)
-        self._processes.clear()
         self._deployments.clear()
         for path in self._temp_files.values():
             path.unlink(missing_ok=True)
         self._temp_files.clear()
+        await asyncio.gather(*(asyncio.to_thread(shutil.rmtree, path, ignore_errors=True) for path in fabric_base_dirs))
         if self._http_client is not None and not self._http_client.is_closed:
             try:
                 await self._http_client.aclose()
@@ -308,13 +381,15 @@ class InMemoryRunnerBackend(RunnerBackend):
         logger.info("InMemoryRunnerBackend shut down — all processes terminated.")
 
     def _write_config(self, workspace: str, name: str, config: dict[str, Any]) -> Path:
-        config_path = self.config_path_for(workspace, name)
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = config_path.with_suffix(config_path.suffix + ".tmp")
-        with tmp_path.open("w", encoding="utf-8") as fh:
-            yaml.safe_dump(config, fh)
-        tmp_path.replace(config_path)
-        return config_path
+        return _write_yaml_config(self.config_path_for(workspace, name), config)
+
+    def _fabric_base_dir_for(self, workspace: str, name: str) -> Path:
+        """Return the local base directory used by a Fabric-backed deployment."""
+        return self.system_dir / _sanitize_filename(workspace) / f"{_sanitize_filename(name)}-fabric"
+
+    def _write_fabric_config(self, base_dir: Path, config: dict[str, Any]) -> Path:
+        """Write a Platform-owned agent config into its deployment directory."""
+        return _write_yaml_config(base_dir / AGENT_CONFIG_FILENAME, config)
 
     def _spawn(
         self,
@@ -351,6 +426,33 @@ class InMemoryRunnerBackend(RunnerBackend):
         finally:
             # Parent closes its copy of the fd; the child retains its inherited
             # copy for the lifetime of the subprocess.
+            log_file.close()
+
+    def _spawn_fabric(
+        self,
+        name: str,
+        config_path: Path,
+        log_path: Path,
+        port: int,
+    ) -> subprocess.Popen[bytes]:
+        """Spawn the Platform-owned Fabric server on a loopback port."""
+        cmd = [
+            sys.executable,
+            "-m",
+            "nemo_agents_plugin.fabric.server",
+            "--agent-config",
+            str(config_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ]
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("Spawning: %s  (log: %s)", " ".join(cmd), log_path)
+        log_file = log_path.open("w")
+        try:
+            return subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+        finally:
             log_file.close()
 
     def _terminate(self, name: str, proc: subprocess.Popen[bytes]) -> None:

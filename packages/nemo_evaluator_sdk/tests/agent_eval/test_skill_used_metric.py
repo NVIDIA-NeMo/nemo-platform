@@ -21,6 +21,15 @@ _PROV = {
     "location": _LOCATION,
 }
 
+_LOCATION_B = ".agents/skills/summarize"
+_PROV_B = {
+    "name": "summarize",
+    "hash": "cafebabe",
+    "mode": "codex_skills_dir",
+    "adapter_id": "nvidia.fabric.codex.cli",
+    "location": _LOCATION_B,
+}
+
 
 def _atif(*, tool_path: str | None = None, message: str = "working") -> dict[str, Any]:
     step: dict[str, Any] = {"source": "agent", "message": message}
@@ -50,23 +59,61 @@ async def test_no_skill_present_both_false() -> None:
 
 @pytest.mark.asyncio
 async def test_present_and_used_when_trajectory_reads_the_skill() -> None:
-    sample = {"skill": _PROV, "evidence": _evidence(_atif(tool_path=f"{_LOCATION}/SKILL.md"))}
+    sample = {"skills": [_PROV], "evidence": _evidence(_atif(tool_path=f"{_LOCATION}/SKILL.md"))}
     assert await _score(sample) == {"skill_present": True, "skill_used": True}
 
 
 @pytest.mark.asyncio
 async def test_present_not_used_when_trajectory_ignores_the_skill() -> None:
-    sample = {"skill": _PROV, "evidence": _evidence(_atif(tool_path="README.md"))}
+    sample = {"skills": [_PROV], "evidence": _evidence(_atif(tool_path="README.md"))}
     assert await _score(sample) == {"skill_present": True, "skill_used": False}
 
 
 @pytest.mark.asyncio
 async def test_present_not_used_without_a_trace() -> None:
-    assert await _score({"skill": _PROV}) == {"skill_present": True, "skill_used": False}
+    assert await _score({"skills": [_PROV]}) == {"skill_present": True, "skill_used": False}
 
 
 @pytest.mark.asyncio
 async def test_bare_name_mention_is_not_counted_as_used() -> None:
     # The skill *name* appears in a message, but not its staged location — not counted as used.
-    sample = {"skill": _PROV, "evidence": _evidence(_atif(message="starting the code-review task"))}
+    sample = {"skills": [_PROV], "evidence": _evidence(_atif(message="starting the code-review task"))}
     assert (await _score(sample))["skill_used"] is False
+
+
+# --- multi-skill ("skills" list) ---
+
+
+@pytest.mark.asyncio
+async def test_multi_skill_present_and_first_used() -> None:
+    # "skill" is absent (multi-skill run); trajectory reads the first skill's location.
+    sample = {
+        "skills": [_PROV, _PROV_B],
+        "evidence": _evidence(_atif(tool_path=f"{_LOCATION}/SKILL.md")),
+    }
+    assert await _score(sample) == {"skill_present": True, "skill_used": True}
+
+
+@pytest.mark.asyncio
+async def test_multi_skill_present_and_second_used() -> None:
+    # Trajectory reads the second skill's location — any-skill-used wins.
+    sample = {
+        "skills": [_PROV, _PROV_B],
+        "evidence": _evidence(_atif(tool_path=f"{_LOCATION_B}/SKILL.md")),
+    }
+    assert await _score(sample) == {"skill_present": True, "skill_used": True}
+
+
+@pytest.mark.asyncio
+async def test_multi_skill_present_none_used() -> None:
+    # Trajectory references neither skill's location.
+    sample = {
+        "skills": [_PROV, _PROV_B],
+        "evidence": _evidence(_atif(tool_path="README.md")),
+    }
+    assert await _score(sample) == {"skill_present": True, "skill_used": False}
+
+
+@pytest.mark.asyncio
+async def test_empty_skills_list_scores_not_present() -> None:
+    assert await _score({"skills": []}) == {"skill_present": False, "skill_used": False}

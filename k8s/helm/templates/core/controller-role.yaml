@@ -43,15 +43,6 @@ rules:
   resources: ["queues", "queues/status", "podgroups"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "bind", "updateStatus", "delete"]
 {{- end }}
-{{- if .Values.rbac.k8sNimOperatorEnabled }}
-# NIM Operator
-- apiGroups: ["apps.nvidia.com"]
-  resources: ["nimservices", "nimservices/status"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["apps.nvidia.com"]
-  resources: ["nimcaches", "nimcaches/status"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

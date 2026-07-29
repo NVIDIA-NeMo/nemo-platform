@@ -9,6 +9,7 @@ import {
   type Annotation,
   type AnnotationInput,
   type AnnotationsPage,
+  type Session,
   type Span,
   type SpansPage,
   type Trace,
@@ -38,10 +39,6 @@ const trace1: Trace = {
     evaluation_id: 'support-policy-smoke',
     test_case_id: 'case-0042',
   },
-  experiment_context: {
-    experiment_id: 'support-policy-smoke',
-    test_case_id: 'case-0042',
-  },
 };
 
 const trace2: Trace = {
@@ -62,6 +59,27 @@ const trace2: Trace = {
   cost_usd: 0.0011,
   span_count: 3,
   error_count: 1,
+};
+
+const trace3: Trace = {
+  id: 'trace-agent-run-003',
+  root_span_id: 'span-root-003',
+  session_id: 'session-agent-run-001',
+  workspace: 'default',
+  name: 'Explain private workspace access controls',
+  input: 'How do I restrict access to that private workspace?',
+  output:
+    'Add only the required users or groups as workspace members and assign least-privilege roles.',
+  started_at: '2026-05-20T16:43:00Z',
+  ended_at: '2026-05-20T16:43:09Z',
+  duration_ms: 9130,
+  status: 'success',
+  input_tokens: 980,
+  output_tokens: 214,
+  total_tokens: 1194,
+  cost_usd: 0.0021,
+  span_count: 2,
+  error_count: 0,
 };
 
 const span1: Span = {
@@ -126,20 +144,52 @@ const span3: Span = {
   ingested_at: '2026-05-20T15:11:09Z',
 };
 
-export const mockTracesPage: TracesPage = {
-  data: [trace1, trace2],
-  pagination: {
-    page: 1,
-    page_size: 50,
-    current_page_size: 2,
-    total_pages: 1,
-    total_results: 2,
-  },
-  sort: '-started_at',
+const span4: Span = {
+  span_id: 'span-root-003',
+  session_id: 'session-agent-run-001',
+  workspace: 'default',
+  kind: 'AGENT',
+  name: 'Explain private workspace access controls',
+  source: 'otel',
+  trace_id: 'trace-agent-run-003',
+  started_at: '2026-05-20T16:43:00Z',
+  ended_at: '2026-05-20T16:43:09Z',
+  status: 'success',
+  agent_name: 'support-agent',
+  total_tokens: 1194,
+  cost_total_usd: 0.0021,
+  input: 'How do I restrict access to that private workspace?',
+  output:
+    'Add only the required users or groups as workspace members and assign least-privilege roles.',
+  ingested_at: '2026-05-20T16:43:12Z',
 };
 
-export const mockSpansPage: SpansPage = {
-  data: [span1, span2, span3],
+const span5: Span = {
+  span_id: 'span-llm-003',
+  session_id: 'session-agent-run-001',
+  workspace: 'default',
+  parent_span_id: 'span-root-003',
+  kind: 'LLM',
+  name: 'Generate access-control guidance',
+  source: 'otel',
+  trace_id: 'trace-agent-run-003',
+  started_at: '2026-05-20T16:43:04Z',
+  ended_at: '2026-05-20T16:43:09Z',
+  status: 'success',
+  provider: 'nim',
+  model: 'meta/llama-3.1-70b-instruct',
+  input_tokens: 980,
+  output_tokens: 214,
+  total_tokens: 1194,
+  cost_total_usd: 0.0021,
+  input: 'Conversation history, workspace policy, and the follow-up question',
+  output:
+    'Add only the required users or groups as workspace members and assign least-privilege roles.',
+  ingested_at: '2026-05-20T16:43:12Z',
+};
+
+export const mockTracesPage: TracesPage = {
+  data: [trace3, trace1, trace2],
   pagination: {
     page: 1,
     page_size: 50,
@@ -150,8 +200,54 @@ export const mockSpansPage: SpansPage = {
   sort: '-started_at',
 };
 
+const session1: Session = {
+  id: 'session-agent-run-001',
+  workspace: 'default',
+  started_at: '2026-05-20T16:42:00Z',
+  ended_at: '2026-05-20T16:43:09Z',
+  duration_ms: 69_000,
+  status: 'success',
+  input_tokens: 2220,
+  output_tokens: 600,
+  cached_tokens: 128,
+  total_tokens: 2948,
+  cost_usd: 0.0053,
+  trace_count: 2,
+  span_count: 6,
+};
+
+const session2: Session = {
+  id: 'session-agent-run-002',
+  workspace: 'default',
+  started_at: '2026-05-20T15:11:00Z',
+  ended_at: '2026-05-20T15:11:07Z',
+  duration_ms: 7240,
+  status: 'error',
+  input_tokens: 780,
+  output_tokens: 96,
+  total_tokens: 876,
+  cost_usd: 0.0011,
+  trace_count: 1,
+  span_count: 3,
+};
+
+export const mockSpansPage: SpansPage = {
+  data: [span1, span2, span3, span4, span5],
+  pagination: {
+    page: 1,
+    page_size: 50,
+    current_page_size: 5,
+    total_pages: 1,
+    total_results: 5,
+  },
+  sort: '-started_at',
+};
+
 export const mockTraceById = (id: string): Trace | undefined =>
   mockTracesPage.data.find((trace) => trace.id === id);
+
+export const mockSessionById = (id: string): Session | undefined =>
+  [session1, session2].find((session) => session.id === id);
 
 export const mockSpanById = (id: string): Span | undefined =>
   mockSpansPage.data.find((span) => span.span_id === id);
@@ -210,16 +306,20 @@ const nextAnnotationId = (): string => `annotation-${nextAnnotationSequence++}`;
 
 export const mockAnnotationsPage = ({
   spanId,
+  sessionId,
   page = 1,
   pageSize = 100,
 }: {
   spanId?: string;
+  sessionId?: string;
   page?: number;
   pageSize?: number;
 }): AnnotationsPage => {
-  const filtered = spanId
-    ? mockAnnotations.filter((annotation) => annotation.span_id === spanId)
-    : mockAnnotations;
+  const filtered = mockAnnotations.filter(
+    (annotation) =>
+      (!spanId || annotation.span_id === spanId) &&
+      (!sessionId || annotation.session_id === sessionId)
+  );
   const sorted = [...filtered].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   const data = pageAnnotations(sorted, page, pageSize);
 
@@ -233,7 +333,7 @@ export const mockAnnotationsPage = ({
       total_results: sorted.length,
     },
     sort: '-created_at',
-    filter: spanId ? { span_id: spanId } : undefined,
+    filter: spanId || sessionId ? { span_id: spanId, session_id: sessionId } : undefined,
   };
 };
 

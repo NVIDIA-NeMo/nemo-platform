@@ -24,6 +24,7 @@ from nemo_insights_plugin.schema import (
     AnalysisConfigPage,
     AnalysisRunStatusPage,
     CreateInsightRequest,
+    InsightListItem,
     InsightPage,
     UpdateAnalysisConfigRequest,
     UpdateAnalysisRunStatusRequest,
@@ -42,8 +43,17 @@ from nemo_platform_plugin.entity_client import (
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.schema import PaginationData
 from nemo_platform_plugin.service import NemoService, RouterSpec
+from nmp.intake.entities.experiments import ExperimentGroup
+from nmp.intake.spans.api.dependencies import SpansServiceDep
 
 logger = logging.getLogger(__name__)
+
+
+def _to_list_item(insight: Insight) -> InsightListItem:
+    item = InsightListItem.model_validate(insight.model_dump(exclude_computed_fields=True))
+    if insight.__pydantic_private__ is not None:
+        item.__pydantic_private__ = insight.__pydantic_private__.copy()
+    return item
 
 
 class InsightsService(NemoService):
@@ -55,7 +65,7 @@ class InsightsService(NemoService):
     """
 
     name: ClassVar[str] = "insights"
-    dependencies: ClassVar[list[str]] = ["entities", "jobs"]
+    dependencies: ClassVar[list[str]] = ["entities", "jobs", "intake"]
 
     def get_routers(self) -> list[RouterSpec]:
         return [
@@ -129,6 +139,7 @@ def _build_insights_router() -> APIRouter:
     @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[InsightPerms.LIST])
     async def list_insights(
         workspace: str,
+        spans_service: SpansServiceDep,
         page: int = Query(default=1, ge=1, description="Page number (1-indexed)."),
         page_size: int = Query(default=20, ge=1, le=100, description="Items per page."),
         sort: str = Query(
@@ -159,9 +170,39 @@ def _build_insights_router() -> APIRouter:
             logger.exception("Failed to list insights")
             raise HTTPException(status_code=500, detail="Failed to list insights.") from exc
 
+        items = [_to_list_item(insight) for insight in result.data]
+        if items:
+            insight_ids = [item.id for item in items]
+            try:
+                counts = await entity_client.count_by(
+                    ExperimentGroup,
+                    "insight_id",
+                    workspace=workspace,
+                    filter_obj={
+                        "insight_id": {"$in": insight_ids},
+                        "is_deleted": False,
+                    },
+                )
+            except Exception:
+                logger.exception("Failed to count experiment groups for insights")
+            else:
+                for item in items:
+                    item.experiment_group_count = counts.get(item.id, 0)
+
+            try:
+                last_seen_at = await spans_service.latest_trace_started_at_by_group(
+                    workspace=workspace,
+                    trace_refs_by_group={item.id: item.trace_refs for item in items},
+                )
+            except Exception:
+                logger.exception("Failed to find latest traces for insights")
+            else:
+                for item in items:
+                    item.last_seen_at = last_seen_at.get(item.id)
+
         pagination = PaginationData.model_validate(result.pagination.model_dump()) if result.pagination else None
         return InsightPage(
-            data=result.data,
+            data=items,
             pagination=pagination,
             sort=sort,
             filter=filter_obj or None,
@@ -262,6 +303,8 @@ def _build_insights_router() -> APIRouter:
                 status_code=404,
                 detail=f"Insight '{insight_id}' not found in workspace '{workspace}'.",
             ) from exc
+        except NemoEntityConflictError as exc:
+            raise HTTPException(status_code=409, detail="Concurrent modification - please retry.") from exc
         except Exception as exc:
             logger.exception("Failed to delete insight")
             raise HTTPException(status_code=500, detail="Failed to delete insight.") from exc

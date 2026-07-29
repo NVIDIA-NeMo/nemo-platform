@@ -7,6 +7,7 @@ import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTES } from '@studio/constants/routes';
 import {
   agentRoutes,
+  anonymizerRoutes,
   baseModelsRoutes,
   customizationRoutes,
   dashboardRoutes,
@@ -22,6 +23,7 @@ import {
   jobRoutes,
   memberRoutes,
   modelCompareRoutes,
+  optimizerRoutes,
   safeSynthesizerRoutes,
   secretsRoutes,
   settingsRoutes,
@@ -112,8 +114,10 @@ export const routes: RouteObject[] = [
               ...customizationRoutes,
               ...jobRoutes,
               ...intakeRoutes,
+              ...optimizerRoutes,
               ...safeSynthesizerRoutes,
               ...dataDesignerRoutes,
+              ...anonymizerRoutes,
               ...agentRoutes,
               ...settingsRoutes,
               ...modelCompareRoutes,

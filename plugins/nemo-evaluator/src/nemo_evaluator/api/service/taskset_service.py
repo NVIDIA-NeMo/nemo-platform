@@ -16,16 +16,25 @@ validated to exist at create time (a taskset that points at missing tasks is rej
 from __future__ import annotations
 
 import logging
+from typing import Protocol
 
 from nemo_evaluator.api.schemas import TaskRef, Taskset, TasksetInput, parse_entity_ref
-from nemo_evaluator.api.service.task_service import TaskService
 from nemo_evaluator.entities import TasksetEntity
-from nemo_platform_plugin.entities import EntityClient, EntityConflictError, EntityNotFoundError, PaginationInfo
+from nemo_platform_plugin.entities import PaginationInfo
+from nemo_platform_plugin.entity_client import (
+    NemoEntitiesClientProtocol,
+    NemoEntityConflictError,
+    NemoEntityNotFoundError,
+)
 from nemo_platform_plugin.filter_ops import FilterOperation
 from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.schema import Page, PaginationData
 
 logger = logging.getLogger(__name__)
+
+
+class _TaskService(Protocol):
+    async def get_task(self, workspace: str, name: str) -> object | None: ...
 
 
 class TaskRefNotFoundError(ValueError):
@@ -86,7 +95,7 @@ def _pagination(src: PaginationInfo, current_page_size: int) -> PaginationData:
 class TasksetService:
     """Create/get/list/delete for persisted taskset entities, exposed as the ``Taskset`` DTO."""
 
-    def __init__(self, entity_client: EntityClient, task_service: TaskService):
+    def __init__(self, entity_client: NemoEntitiesClientProtocol[TasksetEntity], task_service: _TaskService):
         self.entity_client = entity_client
         self.task_service = task_service
 
@@ -128,7 +137,7 @@ class TasksetService:
         )
         try:
             created = await self.entity_client.create(entity)
-        except EntityConflictError as exc:
+        except NemoEntityConflictError as exc:
             raise TasksetExistsError(f"Taskset '{workspace}/{name}' already exists") from exc
         logger.info(
             "Taskset created",
@@ -139,7 +148,7 @@ class TasksetService:
     async def get_taskset(self, workspace: str, name: str) -> Taskset | None:
         try:
             entity = await self.entity_client.get(TasksetEntity, workspace=workspace, name=name)
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             return None
         return _entity_to_taskset(entity)
 
@@ -167,7 +176,7 @@ class TasksetService:
         """Delete a stored taskset; ``False`` if absent."""
         try:
             await self.entity_client.delete(TasksetEntity, name, workspace=workspace)
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             return False
         logger.info(
             "Taskset deleted",

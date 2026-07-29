@@ -10,22 +10,26 @@ collections (agent-eval vs row-eval) are proven not to collide.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TypeVar
 
 import pytest
 from nemo_evaluator.api.schemas import AgentEvalResult, EvaluateResult
 from nemo_evaluator.api.service.result_service import ResultService
 from nemo_evaluator.entities import AgentEvalResultEntity, EvaluateResultEntity
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult
-from nemo_platform_plugin.entities import EntityBase, EntityNotFoundError, ListResponse, PaginationInfo
+from nemo_platform_plugin.entities import ListResponse, PaginationInfo
+from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+
+_ResultEntityT = TypeVar("_ResultEntityT", AgentEvalResultEntity, EvaluateResultEntity)
 
 
 class _FakeEntityClient:
     """In-memory store keyed by (entity_type, workspace, name)."""
 
     def __init__(self) -> None:
-        self.entities: dict[tuple[str, str, str], EntityBase] = {}
+        self.entities: dict[tuple[str, str, str], AgentEvalResultEntity | EvaluateResultEntity] = {}
 
-    def seed(self, entity: EntityBase) -> EntityBase:
+    def seed(self, entity: _ResultEntityT) -> _ResultEntityT:
         now = datetime.now(timezone.utc)
         entity._id = f"{entity.__entity_type__}-{entity.name}"
         entity._created_at = now
@@ -33,23 +37,43 @@ class _FakeEntityClient:
         self.entities[(entity.__entity_type__, entity.workspace, entity.name)] = entity
         return entity
 
-    async def get(self, entity_cls, *, workspace, name):
-        key = (entity_cls.__entity_type__, workspace, name)
+    async def get(self, entity_type: type[_ResultEntityT], *, workspace: str, name: str) -> _ResultEntityT:
+        key = (entity_type.__entity_type__, workspace, name)
         if key not in self.entities:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
-        return self.entities[key]
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
+        entity = self.entities[key]
+        assert isinstance(entity, entity_type)
+        return entity
 
-    async def delete(self, entity_cls, name, *, workspace):
-        # Mirror the real EntityClient: raise EntityNotFoundError when absent.
-        key = (entity_cls.__entity_type__, workspace, name)
+    async def delete(
+        self,
+        entity_type: type[_ResultEntityT],
+        name: str,
+        *,
+        workspace: str,
+        expected_db_version: int | None = None,
+    ) -> None:
+        # Mirror the real EntityClient: raise NemoEntityNotFoundError when absent.
+        key = (entity_type.__entity_type__, workspace, name)
         if key not in self.entities:
-            raise EntityNotFoundError(f"{workspace}/{name} not found")
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
         del self.entities[key]
 
-    async def list(self, entity_cls, *, workspace, filter_operation=None, sort=None, page=1, page_size=100):
-        items = [
-            e for (etype, ws, _), e in self.entities.items() if etype == entity_cls.__entity_type__ and ws == workspace
-        ]
+    async def list(
+        self,
+        entity_type: type[_ResultEntityT],
+        *,
+        workspace: str,
+        filter_operation: object | None = None,
+        sort: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> ListResponse[_ResultEntityT]:
+        items: list[_ResultEntityT] = []
+        for (etype, ws, _), entity in self.entities.items():
+            if etype == entity_type.__entity_type__ and ws == workspace:
+                assert isinstance(entity, entity_type)
+                items.append(entity)
         return ListResponse(
             data=items,
             pagination=PaginationInfo(

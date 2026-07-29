@@ -11,7 +11,7 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
-import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
+import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import {
   listEvaluationSessions,
   useGetEvaluation,
@@ -27,7 +27,7 @@ import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/EvaluationSessionsDataView/Empty';
 import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getEvaluationTraceDetailRoute } from '@studio/routes/utils';
+import { getEvaluationSessionTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -39,13 +39,11 @@ type SessionRow = EvaluationSessionResponse & { _rowId: string };
 
 interface EvaluationSessionsDataViewProps {
   evaluationName: string;
-  experimentGroupName: string;
+  experimentName: string;
 }
 
 const mapStatusForBadge = (status: EvaluationSessionResponse['status']) =>
   status === 'success' ? 'completed' : status;
-
-const formatScore = (value: number): string => `${(value * 100).toFixed(1)}%`;
 
 const isUnsupportedModeError = (error: unknown): boolean => {
   if (!isAxiosError(error)) return false;
@@ -99,7 +97,7 @@ const getSessionSortParam = (sortingState: { id: string; desc: boolean }[]): str
 
 export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = ({
   evaluationName,
-  experimentGroupName,
+  experimentName,
 }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
@@ -289,7 +287,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
         meta: { alignment: 'right' },
         cell: ({ row }) => {
           const value = row.original.evaluator_scores?.[name];
-          return <Text>{value != null ? formatScore(value) : '-'}</Text>;
+          return <Text>{formatEvaluatorScore(value)}</Text>;
         },
       })
     ),
@@ -303,10 +301,11 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
       onRowClick={(row) => {
         if (row.trace_id) {
           navigate(
-            getEvaluationTraceDetailRoute(
+            getEvaluationSessionTraceDetailRoute(
               workspace,
-              experimentGroupName,
+              experimentName,
               evaluationName,
+              row.session_id,
               row.trace_id
             )
           );
@@ -356,7 +355,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
             }
             return (
               <Empty
-                experimentGroupName={experimentGroupName}
+                experimentName={experimentName}
                 datasetName={experiment?.dataset_name ?? '<dataset>'}
               />
             );

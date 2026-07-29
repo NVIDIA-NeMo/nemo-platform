@@ -31,6 +31,9 @@ import uuid
 from typing import Any
 
 import pytest
+from nemo_deployments_plugin.backends.labels import container_name as plugin_container_name
+from nemo_deployments_plugin.backends.labels import docker_volume_name
+from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
@@ -49,10 +52,43 @@ from nmp.core.inference_gateway.api.middleware_registry import (
 )
 from nmp.core.inference_gateway.api.model_cache import ModelProviderInfo
 from nmp.core.inference_gateway.api.virtual_model_cache import VirtualModelCache
-from nmp.core.models.app.utils import get_docker_container_name, get_docker_volume_name
+from nmp.core.models.controllers.backends.deployments_plugin.naming import entity_names
+from nmp.core.models.controllers.models_controller import ModelsController
 from tenacity import retry, stop_after_delay, wait_fixed
 
 DEFAULT_WORKSPACE = "default"
+
+
+def _wait_for_deployment_deleted(
+    controller: ModelsController,
+    sdk: NeMoPlatform,
+    deployment_name: str,
+    max_wait: float = 30,
+    poll_interval: float = 0.1,
+) -> None:
+    """Step the controller until a deployment reaches DELETED (or is gone).
+
+    The deployments_plugin delete path is non-blocking, so a single
+    ``controller.step()`` is not enough to drive a deployment to DELETED: the
+    reconciler must run several times (DELETING -> backend teardown -> DELETED).
+    Deleting the ModelDeploymentConfig before its deployment is DELETED fails
+    with a 409 Conflict.
+    """
+
+    @retry(stop=stop_after_delay(max_wait), wait=wait_fixed(poll_interval), reraise=True)
+    def _poll() -> None:
+        controller.step()
+        try:
+            deployment = sdk.inference.deployments.retrieve(
+                deployment_name,
+                workspace=DEFAULT_WORKSPACE,
+            )
+        except NotFoundError:
+            return
+        assert deployment.status == "DELETED", f"Deployment not DELETED: {deployment.status}"
+
+    _poll()
+
 
 # Sentinel stamped on the response by response middleware so tests can assert
 # the pipeline ran end-to-end.
@@ -280,6 +316,7 @@ def _inject_vm_and_plugins(
         name=vm_name,
         workspace=workspace,
         parent=workspace,
+        db_version=1,
         created_at="2026-01-01T00:00:00Z",
         updated_at="2026-01-01T00:00:00Z",
         default_model_entity=default_model_entity,
@@ -394,10 +431,12 @@ def test_middleware_request_and_response_mutation_through_backend(
     vm_name = f"test-mw-alias-{test_uuid}"
     router_key = f"test-router-{test_uuid}"
     marker_key = f"test-marker-{test_uuid}"
-    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
+    names = entity_names(deployment_name)
+    container_name = plugin_container_name(DEFAULT_WORKSPACE, names.server)
 
     ctx.register_container(container_name)
-    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.volume))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.scratch))
 
     # ---- Phase 1: Deploy mock NIM ----------------------------------------
     image_name, image_tag = mock_nim_image.rsplit(":", 1)
@@ -486,7 +525,7 @@ def test_middleware_request_and_response_mutation_through_backend(
 
         # ---- Phase 5: Cleanup --------------------------------------------
         sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
-        controller.step()
+        _wait_for_deployment_deleted(controller, sdk, deployment_name)
         sdk.inference.deployment_configs.delete(config_name, workspace=DEFAULT_WORKSPACE)
 
 
@@ -516,10 +555,12 @@ def test_model_endpoint_request_and_response_mutation_through_backend(
     vm_name = f"test-mep-alias-{test_uuid}"
     router_key = f"test-mep-router-{test_uuid}"
     marker_key = f"test-mep-marker-{test_uuid}"
-    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
+    names = entity_names(deployment_name)
+    container_name = plugin_container_name(DEFAULT_WORKSPACE, names.server)
 
     ctx.register_container(container_name)
-    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.volume))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.scratch))
 
     # ---- Phase 1: Deploy mock NIM ----------------------------------------
     image_name, image_tag = mock_nim_image.rsplit(":", 1)
@@ -595,7 +636,7 @@ def test_model_endpoint_request_and_response_mutation_through_backend(
     finally:
         _cleanup(registry, vm_cache, DEFAULT_WORKSPACE, vm_name, [router_key, marker_key])
         sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
-        controller.step()
+        _wait_for_deployment_deleted(controller, sdk, deployment_name)
         sdk.inference.deployment_configs.delete(config_name, workspace=DEFAULT_WORKSPACE)
 
 
@@ -635,10 +676,12 @@ def test_model_endpoint_non_model_body_mutation_regression(
     vm_name = f"test-mep-reg-alias-{test_uuid}"
     router_key = f"test-mep-reg-router-{test_uuid}"
     echo_key = f"test-mep-reg-echo-{test_uuid}"
-    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
+    names = entity_names(deployment_name)
+    container_name = plugin_container_name(DEFAULT_WORKSPACE, names.server)
 
     ctx.register_container(container_name)
-    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.volume))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.scratch))
 
     # ---- Phase 1: Deploy mock NIM ----------------------------------------
     image_name, image_tag = mock_nim_image.rsplit(":", 1)
@@ -736,5 +779,5 @@ def test_model_endpoint_non_model_body_mutation_regression(
     finally:
         _cleanup(registry, vm_cache, DEFAULT_WORKSPACE, vm_name, [router_key, echo_key])
         sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
-        controller.step()
+        _wait_for_deployment_deleted(controller, sdk, deployment_name)
         sdk.inference.deployment_configs.delete(config_name, workspace=DEFAULT_WORKSPACE)

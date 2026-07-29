@@ -71,6 +71,7 @@ interface PermissionRequestTestHandlers {
 }
 
 interface InputRequestTestHandlers {
+  onInputExpired: (requestId: string) => void;
   onInputRequest: (request: unknown) => void;
   onDone: () => void;
 }
@@ -459,6 +460,8 @@ describe('useClaudeCodeChatRuntime', () => {
       decision: { value: { agent: 'react-agent' } },
     });
     expect(mocks.appendUserMessage).toHaveBeenCalledWith('Selected agent: react-agent');
+    expect(result.current.artifacts.selections).toEqual([{ label: 'Agent', value: 'react-agent' }]);
+    expect(result.current.artifacts.agent).toBe('react-agent');
     expect(result.current.inputRequest).toBeNull();
 
     await act(async () => {
@@ -535,6 +538,100 @@ describe('useClaudeCodeChatRuntime', () => {
     expect(result.current.inputRequest).toEqual(
       expect.objectContaining({ requestId: 'request-2' })
     );
+
+    await act(async () => {
+      finishStream();
+      await submitPromise;
+    });
+  });
+
+  it('discards input resolutions after the request or session becomes stale', async () => {
+    let finishStream!: () => void;
+    let inputHandlers!: InputRequestTestHandlers;
+    let submitPromise!: Promise<void>;
+    const resolveInputs: Array<() => void> = [];
+    mocks.createClaudeCodeSession.mockResolvedValue('session-1');
+    mocks.streamClaudeCodeMessage.mockImplementation(
+      async ({ handlers }: { handlers: InputRequestTestHandlers }) => {
+        inputHandlers = handlers;
+        handlers.onInputRequest({ requestId: 'request-1', kind: 'agent', input: {} });
+        await new Promise<void>((resolve) => {
+          finishStream = resolve;
+        });
+        handlers.onDone();
+      }
+    );
+    mocks.resolveClaudeCodeInput.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInputs.push(resolve);
+        })
+    );
+
+    const { result } = renderUseClaudeCodeChatRuntime();
+
+    act(() => {
+      submitPromise = result.current.submitPrompt('Pick inputs for this workflow');
+    });
+    await waitFor(() => expect(result.current.inputRequest?.requestId).toBe('request-1'));
+
+    let firstResolution!: Promise<void>;
+    act(() => {
+      firstResolution = result.current.resolveInputRequest({
+        decision: { value: { agent: 'stale-agent' } },
+        displayText: 'Selected agent: stale-agent',
+      });
+    });
+    await waitFor(() => expect(result.current.inputStatus).toBe('submitting'));
+
+    act(() => {
+      inputHandlers.onInputRequest({ requestId: 'request-2', kind: 'model', input: {} });
+      inputHandlers.onInputExpired('request-1');
+    });
+    expect(result.current.inputRequest?.requestId).toBe('request-2');
+
+    await act(async () => {
+      resolveInputs[0]?.();
+      await firstResolution;
+    });
+
+    expect(result.current.artifacts.selections).toEqual([]);
+    expect(mocks.appendUserMessage).not.toHaveBeenCalled();
+    expect(result.current.inputRequest?.requestId).toBe('request-2');
+
+    let secondResolution!: Promise<void>;
+    act(() => {
+      secondResolution = result.current.resolveInputRequest({
+        decision: { value: { model: 'stale-model' } },
+        displayText: 'Selected model: stale-model',
+      });
+    });
+    await waitFor(() => expect(result.current.inputStatus).toBe('submitting'));
+
+    act(() => {
+      result.current.loadSession({
+        artifacts: {
+          selections: [{ label: 'Environment', value: 'production' }],
+          files: [],
+          links: [],
+          jobs: [],
+          tools: [],
+        },
+        messages: [],
+        sessionId: 'session-2',
+      });
+    });
+
+    await act(async () => {
+      resolveInputs[1]?.();
+      await secondResolution;
+    });
+
+    expect(result.current.artifacts.selections).toEqual([
+      { label: 'Environment', value: 'production' },
+    ]);
+    expect(mocks.appendUserMessage).not.toHaveBeenCalled();
+    expect(result.current.inputRequest).toBeNull();
 
     await act(async () => {
       finishStream();

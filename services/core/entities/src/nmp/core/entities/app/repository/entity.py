@@ -112,6 +112,20 @@ class EntityRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    async def count_entities_by(
+        self,
+        *,
+        workspace: str,
+        entity_type: str,
+        group_by: str,
+        filter_op: FilterOperation | None = None,
+        relationship_child_workspaces: set[str] | None = None,
+        session: AsyncSession | None = None,
+    ) -> dict[str, int]:
+        """Count filtered entities grouped by a direct string data field."""
+        pass
+
+    @abstractmethod
     async def update_entity(
         self,
         *,
@@ -180,6 +194,7 @@ class EntityRepositoryInterface(ABC):
         entity_type: str,
         name: str,
         parent: Optional[str] = None,
+        expected_db_version: Optional[int] = None,
         session: AsyncSession | None = None,
     ) -> int:
         """Delete an entity by name.
@@ -189,6 +204,8 @@ class EntityRepositoryInterface(ABC):
             entity_type: Entity type
             name: Entity name
             parent: Optional parent entity ID (None for root entities)
+            expected_db_version: Optional expected database version for optimistic locking. If provided,
+                delete only succeeds when the stored entity still has this version.
 
         Returns:
             Number of deleted entities (0 or 1)

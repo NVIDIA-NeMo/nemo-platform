@@ -538,3 +538,20 @@ class TestDeleteVirtualModel:
         """DELETE for a non-existent name → 404."""
         resp = client.delete(f"{BASE}/no-such-vm")
         assert resp.status_code == 404
+
+    def test_delete_with_stale_expected_db_version_returns_409(self, client: TestClient):
+        """DELETE with a stale entity version is rejected and leaves the VM intact."""
+        created = _create(client, "vm-stale-delete")
+        patch_resp = client.patch(f"{BASE}/vm-stale-delete", json={"autoprovisioned": True})
+        assert patch_resp.status_code == 200
+        assert patch_resp.json()["db_version"] != created["db_version"]
+
+        resp = client.delete(
+            f"{BASE}/vm-stale-delete",
+            params={"expected_db_version": created["db_version"]},
+        )
+
+        assert resp.status_code == 409
+
+        get_resp = client.get(f"{BASE}/vm-stale-delete")
+        assert get_resp.status_code == 200

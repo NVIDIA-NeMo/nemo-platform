@@ -34,6 +34,7 @@ durable container through the deployments plugin.
 In every mode the agent is reached the same way — through the Agents gateway,
 which resolves the agent's active deployment and proxies the request, so
 clients do not need to know which mode the agent runs in.
+
 ---
 
 ## Subprocess Mode (Default)
@@ -334,28 +335,22 @@ for NVIDIA Build, OpenAI, and Anthropic examples.
 
 <Note>
 
-For container modes, the gateway URL injected into the agent must be reachable
-**from inside the container**, not just from the platform host. A loopback
-default like `http://localhost:8080` resolves to the container itself and the
-agent's model calls will fail. Set the platform's base URL to a
-container-reachable address — for example the Docker bridge address
-(`http://172.17.0.1:8080`) under Docker, or the in-cluster gateway address under
-Kubernetes.
+A deployed agent needs to reach the platform from **inside its container**. The
+deployment handles this automatically for both Docker and Kubernetes, so you
+normally don't need to configure anything. If an agent can't reach the platform,
+set `agents.deployments.gateway_url_override` to a URL that is reachable from
+inside the container.
 
 </Note>
 
 #### Docker mode on Linux
 
-Docker Desktop (macOS/Windows) handles this automatically. On **Linux**, where
-`host.docker.internal` does not resolve inside containers, point the platform at
-the Docker bridge address (`172.17.0.1` by default) instead, or `nemo agents
-invoke` fails with `openai.APIConnectionError`.
-
-Set both in `config.yaml`, then start the platform bound to all interfaces:
+On **Linux**, `host.docker.internal` doesn't resolve inside containers, so agent
+invokes can fail with `openai.APIConnectionError`. Point the deployment at the
+Docker bridge address (`172.17.0.1` by default) in `config.yaml`, then start the
+platform bound to all interfaces:
 
 ```yaml
-platform:
-  base_url: http://172.17.0.1:8080
 agents:
   deployments:
     gateway_url_override: http://172.17.0.1:8080

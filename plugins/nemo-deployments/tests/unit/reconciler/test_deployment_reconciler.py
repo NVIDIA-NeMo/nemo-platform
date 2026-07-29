@@ -19,6 +19,7 @@ NO_VOLUMES: dict[tuple[str, str], Volume] = {}
 
 NOW = datetime(2026, 6, 30, 12, 0, 0, tzinfo=timezone.utc)
 STARTING_TIMEOUT_SECONDS = 60
+DELETING_TIMEOUT_SECONDS = 60
 
 
 @pytest.fixture
@@ -36,6 +37,7 @@ def _starting_timeout_reconciler(
     mock_backend: MockDeploymentBackend,
     *,
     starting_timeout_seconds: int = STARTING_TIMEOUT_SECONDS,
+    deleting_timeout_seconds: int = DELETING_TIMEOUT_SECONDS,
 ) -> DeploymentReconciler:
     return DeploymentReconciler(
         mock_entities,
@@ -45,6 +47,7 @@ def _starting_timeout_reconciler(
             drift_recovery_initial_delay_seconds=1,
             drift_recovery_max_delay_seconds=10,
             starting_timeout_seconds=starting_timeout_seconds,
+            deleting_timeout_seconds=deleting_timeout_seconds,
         ),
     )
 
@@ -331,6 +334,29 @@ async def test_desired_stopped_deletes(
 
 
 @pytest.mark.asyncio
+async def test_desired_stopped_delete_conflict_is_handled_for_retry(
+    deployment_reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    dep = make_deployment()
+    dep.desired_state = "STOPPED"
+    cfg = make_deployment_config()
+    deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
+    mock_entities.delete.side_effect = NemoEntityConflictError("conflict")
+
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
+
+    assert mock_backend.deployment_delete_calls == [("default", "dep1")]
+    mock_entities.delete.assert_awaited_once_with(
+        Deployment,
+        name="dep1",
+        workspace="default",
+        expected_db_version=dep.db_version,
+    )
+
+
+@pytest.mark.asyncio
 async def test_delete_proceeds_when_config_missing(
     deployment_reconciler: DeploymentReconciler,
     mock_backend: MockDeploymentBackend,
@@ -346,6 +372,117 @@ async def test_delete_proceeds_when_config_missing(
     mock_entities.delete.assert_awaited_once()
 
 
+def _deployment_stuck_deleting(*, elapsed_seconds: int) -> Deployment:
+    deleting_at = NOW - timedelta(seconds=elapsed_seconds)
+    dep = make_deployment()
+    dep.desired_state = "STOPPED"
+    dep.status = "DELETING"
+    dep.status_history = [
+        StatusEvent(status="DELETING", message="Stopping deployment", timestamp=deleting_at.isoformat()),
+    ]
+    return dep
+
+
+async def _reconcile_stuck_deleting(
+    reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+    dep: Deployment,
+) -> None:
+    cfg = make_deployment_config()
+    reconciler.set_config_cache({("default", "cfg1"): cfg})
+    await reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
+
+
+@pytest.mark.asyncio
+async def test_delete_retains_deleting_when_backend_returns_failed(
+    deployment_reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    dep = make_deployment()
+    dep.desired_state = "STOPPED"
+    mock_backend.delete_status = BackendStatusUpdate(status="FAILED", status_message="delete failed")
+
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
+
+    assert dep.status == "DELETING"
+    mock_entities.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_timeout_fails_at_boundary(
+    patch_reconciler_now,
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+) -> None:
+    reconciler = _starting_timeout_reconciler(mock_entities, mock_backend)
+    dep = _deployment_stuck_deleting(elapsed_seconds=DELETING_TIMEOUT_SECONDS)
+
+    await _reconcile_stuck_deleting(reconciler, mock_backend, dep)
+
+    assert dep.status == "FAILED"
+    assert dep.error_details is not None
+    assert dep.error_details["reason"] == "deleting_timeout"
+    mock_entities.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_timeout_failure_is_not_re_evaluated(
+    patch_reconciler_now,
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+) -> None:
+    reconciler = _starting_timeout_reconciler(mock_entities, mock_backend)
+    dep = _deployment_stuck_deleting(elapsed_seconds=DELETING_TIMEOUT_SECONDS + 120)
+    dep.status = "FAILED"
+    dep.error_details = {
+        "reason": "deleting_timeout",
+        "elapsed_seconds": DELETING_TIMEOUT_SECONDS + 120,
+        "timeout_seconds": DELETING_TIMEOUT_SECONDS,
+    }
+
+    await _reconcile_stuck_deleting(reconciler, mock_backend, dep)
+    await _reconcile_stuck_deleting(reconciler, mock_backend, dep)
+
+    mock_entities.update.assert_not_awaited()
+    mock_entities.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_timeout_before_boundary_stays_deleting(
+    patch_reconciler_now,
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+) -> None:
+    reconciler = _starting_timeout_reconciler(mock_entities, mock_backend)
+    dep = _deployment_stuck_deleting(elapsed_seconds=DELETING_TIMEOUT_SECONDS - 1)
+    mock_backend.delete_status = BackendStatusUpdate(status="DELETING", status_message="still terminating")
+
+    await _reconcile_stuck_deleting(reconciler, mock_backend, dep)
+
+    assert dep.status == "DELETING"
+    mock_entities.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_timeout_disabled_when_zero(
+    patch_reconciler_now,
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+) -> None:
+    reconciler = _starting_timeout_reconciler(
+        mock_entities,
+        mock_backend,
+        deleting_timeout_seconds=0,
+    )
+    dep = _deployment_stuck_deleting(elapsed_seconds=DELETING_TIMEOUT_SECONDS + 60)
+
+    await _reconcile_stuck_deleting(reconciler, mock_backend, dep)
+
+    assert dep.status == "DELETING"
+    mock_entities.delete.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 async def test_delete_retains_deleting_when_backend_delete_fails(
     deployment_reconciler: DeploymentReconciler,
@@ -354,11 +491,7 @@ async def test_delete_retains_deleting_when_backend_delete_fails(
 ) -> None:
     dep = make_deployment()
     dep.desired_state = "STOPPED"
-
-    async def failing_delete(workspace: str, name: str) -> BackendStatusUpdate:
-        raise RuntimeError("delete failed")
-
-    mock_backend.delete_deployment = failing_delete  # type: ignore[method-assign]
+    mock_backend.delete_deployment = AsyncMock(side_effect=RuntimeError("delete failed"))
 
     await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
@@ -425,7 +558,7 @@ async def test_drift_recovery_exhausted(
 
 
 @pytest.mark.asyncio
-async def test_conflict_propagates_from_save(
+async def test_conflict_from_save_is_handled_for_retry(
     deployment_reconciler: DeploymentReconciler,
     mock_entities: AsyncMock,
 ) -> None:
@@ -434,12 +567,13 @@ async def test_conflict_propagates_from_save(
     deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
     mock_entities.update.side_effect = NemoEntityConflictError("conflict")
 
-    with pytest.raises(NemoEntityConflictError):
-        await deployment_reconciler.reconcile_one(
-            dep,
-            deployments_by_name={},
-            volumes_by_name=NO_VOLUMES,
-        )
+    await deployment_reconciler.reconcile_one(
+        dep,
+        deployments_by_name={},
+        volumes_by_name=NO_VOLUMES,
+    )
+
+    mock_entities.update.assert_awaited()
 
 
 @pytest.mark.asyncio
@@ -591,6 +725,28 @@ async def test_volume_mount_gating(
         volumes_by_name={("default", "data"): vol},
     )
 
+    assert dep.status == "STARTING"
+    assert len(mock_backend.create_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_volume_mount_gating_waits_for_missing_volume(
+    deployment_reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+) -> None:
+    from nemo_deployments_plugin.entities import VolumeMount
+
+    dep = make_deployment()
+    cfg = make_deployment_config()
+    cfg.volume_mounts = [VolumeMount(name="data", mountPath="/data")]
+    deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
+
+    await deployment_reconciler.reconcile_one(
+        dep,
+        deployments_by_name={},
+        volumes_by_name={},
+    )
+
     assert dep.status == "PENDING"
     assert "volume" in dep.status_message.lower()
     assert mock_backend.create_calls == []
@@ -633,11 +789,11 @@ async def test_drift_recovery_create_failure_stays_lost_and_backoffs(
     deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
     mock_backend.read_status_result = BackendStatusUpdate(status="LOST", status_message="missing")
 
-    async def failing_create(**kwargs: object) -> BackendStatusUpdate:
+    async def _failing_create(**kwargs: object) -> BackendStatusUpdate:
         mock_backend.create_calls.append(kwargs)
         raise RuntimeError("create failed")
 
-    mock_backend.create_deployment = failing_create  # type: ignore[method-assign]
+    mock_backend.create_deployment = AsyncMock(side_effect=_failing_create)
 
     await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
     assert dep.status == "LOST"

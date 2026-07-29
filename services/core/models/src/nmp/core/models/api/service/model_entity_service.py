@@ -541,8 +541,7 @@ class ModelEntityService:
         logger.debug(f"Deleting model entity: {workspace}/{name}")
 
         try:
-            model: Model = await self.entity_client.get(Model, workspace=workspace, name=name)
-            await self.entity_client.delete(Model, model.name, workspace=workspace)
+            await self.entity_client.delete(Model, name, workspace=workspace)
             logger.info(f"Successfully deleted model entity: {workspace}/{name}")
             return True
         except EntityNotFoundError:

@@ -42,7 +42,6 @@ class TestEvaluations:
         evaluation = client.evaluations.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(EvaluationResponse, evaluation, path=["response"])
@@ -53,13 +52,13 @@ class TestEvaluations:
         evaluation = client.evaluations.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
+            experiment_group_id="experiment_group_id",
+            experiment_ids=["string"],
             metadata={"foo": "string"},
             parent_evaluation_id="parent_evaluation_id",
-            parent_experiment_id="parent_experiment_id",
             root_cause="root_cause",
             source_link="https://example.com",
             status="status",
@@ -72,7 +71,6 @@ class TestEvaluations:
         response = client.evaluations.with_raw_response.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -87,7 +85,6 @@ class TestEvaluations:
         with client.evaluations.with_streaming_response.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -105,7 +102,6 @@ class TestEvaluations:
             client.evaluations.with_raw_response.create(
                 workspace="",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -168,7 +164,6 @@ class TestEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(EvaluationResponse, evaluation, path=["response"])
@@ -180,13 +175,13 @@ class TestEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
+            experiment_group_id="experiment_group_id",
+            experiment_ids=["string"],
             metadata={"foo": "string"},
             parent_evaluation_id="parent_evaluation_id",
-            parent_experiment_id="parent_experiment_id",
             root_cause="root_cause",
             source_link="https://example.com",
             status="status",
@@ -200,7 +195,6 @@ class TestEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -216,7 +210,6 @@ class TestEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -235,7 +228,6 @@ class TestEvaluations:
                 path_name="name",
                 workspace="",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -244,7 +236,6 @@ class TestEvaluations:
                 path_name="",
                 workspace="workspace",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -374,6 +365,7 @@ class TestEvaluations:
                     }
                 },
                 "experiment_group_id": "experiment_group_id",
+                "experiment_id": "experiment_id",
                 "is_deleted": True,
                 "is_pinned": True,
                 "latency_ms": {
@@ -435,6 +427,57 @@ class TestEvaluations:
                     "gte": 0,
                     "lt": 0,
                     "lte": 0,
+                },
+                "tokens": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
                 },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -529,6 +572,74 @@ class TestEvaluations:
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluations.with_raw_response.delete(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_patch(self, client: NeMoPlatform) -> None:
+        evaluation = client.evaluations.patch(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_patch_with_all_params(self, client: NeMoPlatform) -> None:
+        evaluation = client.evaluations.patch(
+            name="name",
+            workspace="workspace",
+            description="description",
+            experiment_ids=["string"],
+            metadata={"foo": "string"},
+            parent_evaluation_id="parent_evaluation_id",
+            root_cause="root_cause",
+            source_link="https://example.com",
+            status="status",
+        )
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_patch(self, client: NeMoPlatform) -> None:
+        response = client.evaluations.with_raw_response.patch(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        evaluation = response.parse()
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_patch(self, client: NeMoPlatform) -> None:
+        with client.evaluations.with_streaming_response.patch(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            evaluation = response.parse()
+            assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_patch(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.evaluations.with_raw_response.patch(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            client.evaluations.with_raw_response.patch(
                 name="",
                 workspace="workspace",
             )
@@ -649,7 +760,6 @@ class TestAsyncEvaluations:
         evaluation = await async_client.evaluations.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(EvaluationResponse, evaluation, path=["response"])
@@ -660,13 +770,13 @@ class TestAsyncEvaluations:
         evaluation = await async_client.evaluations.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
+            experiment_group_id="experiment_group_id",
+            experiment_ids=["string"],
             metadata={"foo": "string"},
             parent_evaluation_id="parent_evaluation_id",
-            parent_experiment_id="parent_experiment_id",
             root_cause="root_cause",
             source_link="https://example.com",
             status="status",
@@ -679,7 +789,6 @@ class TestAsyncEvaluations:
         response = await async_client.evaluations.with_raw_response.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -694,7 +803,6 @@ class TestAsyncEvaluations:
         async with async_client.evaluations.with_streaming_response.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -712,7 +820,6 @@ class TestAsyncEvaluations:
             await async_client.evaluations.with_raw_response.create(
                 workspace="",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -775,7 +882,6 @@ class TestAsyncEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(EvaluationResponse, evaluation, path=["response"])
@@ -787,13 +893,13 @@ class TestAsyncEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
+            experiment_group_id="experiment_group_id",
+            experiment_ids=["string"],
             metadata={"foo": "string"},
             parent_evaluation_id="parent_evaluation_id",
-            parent_experiment_id="parent_experiment_id",
             root_cause="root_cause",
             source_link="https://example.com",
             status="status",
@@ -807,7 +913,6 @@ class TestAsyncEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -823,7 +928,6 @@ class TestAsyncEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -842,7 +946,6 @@ class TestAsyncEvaluations:
                 path_name="name",
                 workspace="",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -851,7 +954,6 @@ class TestAsyncEvaluations:
                 path_name="",
                 workspace="workspace",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -981,6 +1083,7 @@ class TestAsyncEvaluations:
                     }
                 },
                 "experiment_group_id": "experiment_group_id",
+                "experiment_id": "experiment_id",
                 "is_deleted": True,
                 "is_pinned": True,
                 "latency_ms": {
@@ -1042,6 +1145,57 @@ class TestAsyncEvaluations:
                     "gte": 0,
                     "lt": 0,
                     "lte": 0,
+                },
+                "tokens": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
                 },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -1136,6 +1290,74 @@ class TestAsyncEvaluations:
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluations.with_raw_response.delete(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_patch(self, async_client: AsyncNeMoPlatform) -> None:
+        evaluation = await async_client.evaluations.patch(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_patch_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
+        evaluation = await async_client.evaluations.patch(
+            name="name",
+            workspace="workspace",
+            description="description",
+            experiment_ids=["string"],
+            metadata={"foo": "string"},
+            parent_evaluation_id="parent_evaluation_id",
+            root_cause="root_cause",
+            source_link="https://example.com",
+            status="status",
+        )
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_patch(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.evaluations.with_raw_response.patch(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        evaluation = await response.parse()
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_patch(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.evaluations.with_streaming_response.patch(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            evaluation = await response.parse()
+            assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_patch(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.evaluations.with_raw_response.patch(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            await async_client.evaluations.with_raw_response.patch(
                 name="",
                 workspace="workspace",
             )

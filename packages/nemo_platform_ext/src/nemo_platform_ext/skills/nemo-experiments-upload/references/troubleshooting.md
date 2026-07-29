@@ -3,14 +3,14 @@
 Common failures across the create + ingest endpoints, and the fix. Most 4xx bodies include a `detail`
 string — read it first.
 
-## Create Experiment Group / Evaluation
+## Create Experiment / Evaluation
 
 | Status | Meaning | Fix |
 |---|---|---|
-| `409` on create group/evaluation | Name already exists in this workspace | Reuse it — `GET .../experiment-groups/{name}` or `.../evaluations/{name}` |
-| `400 "…group … does not exist"` on create evaluation | `experiment_group_id` is wrong or the group was deleted | Use the group's **`id`** from the create-group response (not its name) |
+| `409` on create experiment/evaluation | Name already exists in this workspace | Reuse it — `GET .../experiments/{name}` or `.../evaluations/{name}` |
+| `400 "…experiment … does not exist"` on create evaluation | `experiment_ids` is wrong or the experiment was deleted | Use the Experiment's **`id`** from the create-experiment response (not its name) |
 | `400 "…parent … does not exist"` | `parent_evaluation_id` doesn't resolve | Omit it, or pass the parent Evaluation's entity **`id`** |
-| `422` on create evaluation | Missing required field or non-string metadata value | Required: `name`, `experiment_group_id`, `dataset_name`. `metadata` must be `dict[str, str]` |
+| `422` on create evaluation | Missing required field or non-string metadata value | Required: `name`, `experiment_ids`, `dataset_name`. `metadata` must be `dict[str, str]` |
 
 ## Ingest (all endpoints)
 
@@ -38,6 +38,6 @@ string — read it first.
 ## Identifier cheat-sheet (the #1 source of bugs)
 
 - `evaluation_context.evaluation_id` → the Evaluation's **`name`**.
-- `experiment_group_id` (on create evaluation) → the group's **`id`**.
+- `experiment_ids` (on create evaluation) → a list with the Experiment's **`id`**.
 - OTLP evaluation attribute key → **`nemo.experiment.id`** (test case → `nemo.test_case.id`).
-- Log to **`/evaluations`** (the `/experiments` path is a deprecated hidden alias).
+- Parent → **`/experiments`** (`/experiment-groups` is a deprecated hidden alias); evaluations → **`/evaluations`**.

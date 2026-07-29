@@ -49,6 +49,8 @@ jobs:
       auth-idp: ${{ steps.changes.outputs.auth-idp }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/changes
         id: changes
 
@@ -58,6 +60,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Install actionlint
         shell: bash
         run: |
@@ -108,6 +112,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Print bake groups
         shell: bash
         run: |
@@ -447,48 +453,20 @@ jobs:
           export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
           uv run --frozen pytest \
             e2e/test_jobs.py::test_job_using_secret_environment_variable \
+            e2e/test_models_deployments_plugin.py::test_generic_model_deployment_lifecycle \
             -v \
             --run-e2e \
             --no-cov \
             --junitxml=report-kubernetes-smoke.xml
 
-      - name: Collect Kubernetes logs
+      - name: Finalize Kind e2e
         if: always()
-        shell: bash
-        run: e2e/k8s/scripts/collect_k8s_logs.sh
-
-      - name: Disk usage summary
-        if: always()
-        shell: bash
-        run: |
-          echo "=== Host disk ==="
-          df -h /
-          echo "=== Docker system ==="
-          docker system df
-          echo "=== kind node storage ==="
-          for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
-            echo "--- ${node} ---"
-            docker exec "${node}" sh -c "du -sh /var/lib/containerd /var/lib/kubelet /var/log 2>/dev/null | sort -h" || true
-          done
-
-      - name: Upload Kubernetes artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/finalize-kind-e2e
         with:
-          name: kind-smoke-kubernetes-artifacts
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            k8s-logs/
-            report-kubernetes-smoke.xml
-            ${{ runner.temp }}/e2e-services-logs/
-
-      - name: Delete kind cluster
-        if: always()
-        shell: bash
-        run: |
-          docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
-          kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
+          kind-cluster-name: ${{ env.KIND_CLUSTER_NAME }}
+          artifact-name: kind-smoke-kubernetes-artifacts
+          junit-report: report-kubernetes-smoke.xml
+          services-log-dir: ${{ runner.temp }}/e2e-services-logs
 
   kind-cpu-e2e:
     name: Kind CPU e2e
@@ -542,43 +520,14 @@ jobs:
             --no-cov \
             --junitxml=report-kubernetes-e2e.xml
 
-      - name: Collect Kubernetes logs
+      - name: Finalize Kind e2e
         if: always()
-        shell: bash
-        run: e2e/k8s/scripts/collect_k8s_logs.sh
-
-      - name: Disk usage summary
-        if: always()
-        shell: bash
-        run: |
-          echo "=== Host disk ==="
-          df -h /
-          echo "=== Docker system ==="
-          docker system df
-          echo "=== kind node storage ==="
-          for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
-            echo "--- ${node} ---"
-            docker exec "${node}" sh -c "du -sh /var/lib/containerd /var/lib/kubelet /var/log 2>/dev/null | sort -h" || true
-          done
-
-      - name: Upload Kubernetes artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/finalize-kind-e2e
         with:
-          name: kind-e2e-kubernetes-artifacts
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            k8s-logs/
-            report-kubernetes-e2e.xml
-            ${{ runner.temp }}/e2e-services-logs/
-
-      - name: Delete kind cluster
-        if: always()
-        shell: bash
-        run: |
-          docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
-          kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
+          kind-cluster-name: ${{ env.KIND_CLUSTER_NAME }}
+          artifact-name: kind-e2e-kubernetes-artifacts
+          junit-report: report-kubernetes-e2e.xml
+          services-log-dir: ${{ runner.temp }}/e2e-services-logs
 
   helm-lint:
     name: Helm lint
@@ -598,6 +547,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Install Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
       - name: Install kubeconform
@@ -655,6 +606,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Install Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
       - name: Install chart-verifier
@@ -775,11 +728,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
-          python-version: "3.11"
+          python-version: "3.12"
           cache-dependency-glob: uv.lock
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -819,6 +774,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/build-policy-wasm
       - name: Upload policy WASM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -841,10 +798,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Run tools unit tests
@@ -866,6 +825,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Download policy WASM
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -874,7 +835,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Run unit tests
@@ -915,7 +876,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Log in to Docker Hub
@@ -969,7 +930,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Run auth-idp static tests
@@ -1038,7 +999,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Setup Kind cluster
@@ -1130,9 +1091,14 @@ jobs:
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
+        exclude:
+          - package: nemo-platform
+            python-version: "3.11"
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Download policy WASM
         if: matrix.package == 'nemo-platform'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1172,9 +1138,14 @@ jobs:
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
+        exclude:
+          - package: nemo-platform
+            python-version: "3.11"
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
@@ -1267,6 +1238,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Download policy WASM
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1329,6 +1302,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Download policy WASM
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1392,6 +1367,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22"
@@ -1423,6 +1400,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22"
@@ -1454,6 +1433,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22"
@@ -1479,6 +1460,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22"
@@ -1505,6 +1488,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22"
@@ -1532,6 +1517,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22"
@@ -1552,6 +1539,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22"
@@ -1608,7 +1597,7 @@ jobs:
           # repo's `required-version` constraint from pyproject.toml. Other
           # jobs check out into the workspace root and get this implicitly.
           working-directory: nemo-platform
-          python-version: "3.11"
+          python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Bootstrap Python environment
@@ -1753,6 +1742,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Install OPA 1.8.0
         run: |
           curl -L -o opa https://github.com/open-policy-agent/opa/releases/download/v1.8.0/opa_linux_amd64_static

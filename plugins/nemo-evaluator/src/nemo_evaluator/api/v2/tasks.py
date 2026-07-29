@@ -17,6 +17,7 @@ from nemo_evaluator.entities import MAX_NAME_LENGTH, NAME_PATTERN
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
 from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, perm
 from nemo_platform_plugin.entities import EntityValidationError
+from nemo_platform_plugin.entity_client import NemoEntityConflictError
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
 from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.schema import Page
@@ -178,6 +179,11 @@ async def delete_task(
         return None
     except HTTPException:
         raise
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Task was modified by another request: {workspace}/{name}. Refresh and try again.",
+        ) from exc
     except Exception:
         logger.exception(f"Failed to delete task {sanitize_for_log(workspace)}/{sanitize_for_log(name)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")

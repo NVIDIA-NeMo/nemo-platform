@@ -11,12 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_deployments_plugin.api.v2._perms import DeploymentConfigPerms
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
 from nemo_deployments_plugin.authz import scope
-from nemo_deployments_plugin.entities import DeploymentConfig
+from nemo_deployments_plugin.entities import Container, DeploymentConfig
 from nemo_deployments_plugin.references import deployment_names_using_config
 from nemo_deployments_plugin.schema import (
     CreateDeploymentConfigRequest,
     DeploymentConfigFilter,
     DeploymentConfigPage,
+    RequestContainer,
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.authz import CallerKind, path_rule
@@ -30,6 +31,12 @@ router = APIRouter()
 _config_filter_dep = make_filter_obj_dep(DeploymentConfigFilter)
 
 
+def _container_from_request(container: RequestContainer) -> Container:
+    """Convert a public request container into the persisted entity shape."""
+    data = container.model_dump(by_alias=True, exclude={"env"}, exclude_none=True)
+    return Container(**data, env=[item.to_entity() for item in container.env])
+
+
 @router.post("/deployment-configs", response_model=DeploymentConfig, status_code=201, tags=["Deployment Configs"])
 @scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.CREATE])
@@ -38,10 +45,13 @@ async def create_deployment_config(
     body: CreateDeploymentConfigRequest,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> DeploymentConfig:
+    payload = body.model_dump(exclude={"name", "containers", "init_containers"}, exclude_none=True)
     config = DeploymentConfig(
         name=body.name,
         workspace=workspace,
-        **body.model_dump(exclude={"name"}, exclude_none=True),
+        containers=[_container_from_request(item) for item in body.containers],
+        initContainers=[_container_from_request(item) for item in body.init_containers],
+        **payload,
     )
     try:
         return await entity_client.create(config)
@@ -101,8 +111,9 @@ async def delete_deployment_config(
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> None:
-    # Best-effort referential check before delete. Entity store has no conditional
-    # delete API today, so this cannot be fully atomic against concurrent creates.
+    # Best-effort referential check before delete. The version check below protects the
+    # config row itself, but cannot make this relationship check atomic against a
+    # concurrent deployment create.
     referencing = await deployment_names_using_config(
         entity_client,
         workspace=workspace,
@@ -123,4 +134,12 @@ async def delete_deployment_config(
         raise HTTPException(
             status_code=404,
             detail=f"DeploymentConfig '{name}' not found in workspace '{workspace}'.",
+        ) from exc
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"DeploymentConfig '{name}' was modified by another request in workspace '{workspace}'. "
+                "Refresh the config and try again."
+            ),
         ) from exc

@@ -2,7 +2,7 @@
 name = "nemoplatform"
 description = "NeMo Platform"
 readme = "README.md"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.15"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 
@@ -17,7 +17,6 @@ classifiers = [
 
   "License :: OSI Approved :: Apache Software License",
 
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -69,6 +68,8 @@ version = "0.0.0"
 [dependency-groups]
 # Optional Insights analyst plugin.
 insights = ["nemo-insights-plugin"]
+# Optional Experimentalist agent-optimization plugin.
+experimentalist = ["nemo-experimentalist-plugin"]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -178,7 +179,6 @@ enabled-plugins = [
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
   "nemo-unsloth-plugin",
-  "nemo-rl-plugin",
 ]
 
 # Legacy runtime needed specifically for task images that still invoke
@@ -280,6 +280,7 @@ constraint-dependencies = [
   "litellm>=1.83.10",
   "lxml>=6.1.0",
   "mistune>=3.3.2",
+  "mcp>=1.28.1",
   "msgpack>=1.2.1",
   "nbconvert>=7.17.1",
   "nltk>=3.10.0",
@@ -322,7 +323,7 @@ override-dependencies = [
   "ujson>=5.12.0",           # High – nmp-api/cpu-tasks/gpu-tasks
   "xgrammar>=0.1.32",        # High – customizer + nmp-gpu-tasks
   "fastmcp>=3.2.0",          # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
-  "wandb>=0.28.0",           # wandb-core Go CVEs (nspect); unsloth + training images
+  "wandb>=0.28.1",           # wandb-core Go CVEs (nspect); unsloth + training images
   "cryptography>=48.0.1,<49", # Pulse Critical; overrides data-designer-engine 0.7.0's <47 cap after changelog review
   "click>=8.2.0",            # Below CVEs are based on constraints that garak has
   "litellm>=1.83.10",        # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
@@ -364,6 +365,9 @@ nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
+nemo-experimentalist-plugin = { workspace = true }
+# Not published to PyPI yet; pinned to an immutable public tag.
+nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", tag = "v0.0.6" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
@@ -430,6 +434,7 @@ members = [
   "plugins/nemo-agents",
   "plugins/nemo-deployments",
   "plugins/nemo-insights",
+  "plugins/nemo-experimentalist",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-customizer",
@@ -528,7 +533,7 @@ executionEnvironments = [
 ]
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.12"
 extra-paths = [
   # nemo-data-designer plugin is a workspace member; add its src so ty can
   # resolve nemo_data_designer_plugin imports from plugin test files.
@@ -552,10 +557,18 @@ extra-paths = [
   "plugins/nemo-evaluator/src",
   # The optional Insights analyst is not part of the default environment.
   "plugins/nemo-insights/src",
+  # Same for the optional Experimentalist; its tests also import the benchmark runner.
+  "plugins/nemo-experimentalist/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
   # on sys.path in tests/conftest.py.
   "tests/agentic-use",
   "tests/agentic-use/shared",
+  # nemo-rl is a workspace member but is temporarily excluded from enabled-plugins
+  # (RL/DPO backend disabled pending nmp-rl-training CVE remediation), so it is not
+  # installed in the default env. Add its src + the services/rl src so ty can still
+  # resolve nemo_rl_plugin / nmp.rl imports when checking the RL source and tests.
+  "plugins/nemo-rl/src",
+  "services/rl/src",
 ]
 
 [tool.ty.src]
@@ -605,6 +618,10 @@ exclude = [
   # root `ty` until that cleanup lands in a focused follow-up.
   "plugins/nemo-switchyard/",
 
+  # Standalone Terminal-Bench agent-under-test: resolved from its own lockfile inside
+  # the benchmark's task containers, so its imports are absent from the workspace env.
+  "plugins/nemo-experimentalist/examples/",
+
   "docs/",
 
   "./sdk/",
@@ -612,3 +629,12 @@ exclude = [
   "tools/nemo-platform-sdk-tools/src/nemo_platform_sdk_tools/sdk",
   "tools/nemo-platform-sdk-tools/tests/sdk",
 ]
+
+# nooa agents declare their LLM-generated methods as annotated signatures with an
+# ellipsis body; the framework fills them in at runtime. ty reads that as a missing
+# return, so the rule is off for the Experimentalist's agent classes only.
+[[tool.ty.overrides]]
+include = ["plugins/nemo-experimentalist/src/**"]
+
+[tool.ty.overrides.rules]
+empty-body = "ignore"

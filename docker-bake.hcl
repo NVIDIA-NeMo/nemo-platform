@@ -28,12 +28,8 @@ variable "USE_PREBUILT_BASES" {
   default = ""
 }
 
-variable "PYTHON_BASE_TARGET" {
-  default = ""
-}
-
-variable "PYTHON_DEV_BASE_TARGET" {
-  default = ""
+variable "NMP_PYTHON_IMAGE" {
+  default = "python:3.13.14-slim-trixie"
 }
 
 variable "AUTOMODEL_BASE_CONTEXT" {
@@ -79,12 +75,12 @@ variable "BASE_TAG_PYTHON" {
 
 # Pin for nmp-automodel-base.
 variable "BASE_TAG_AUTOMODEL" {
-  default = "f0756dd64eaf2ddb9c5c962e18216b2e70ba4b64"
+  default = "2c1a9ef2535a6648a272d9b74dae97fb672b8234"
 }
 
 # The tag for base images if needed
 variable "WHEELS_TAG" {
-  default = "f0756dd64eaf2ddb9c5c962e18216b2e70ba4b64"
+  default = "2c1a9ef2535a6648a272d9b74dae97fb672b8234"
 }
 
 variable "BAKE_CACHE_SOURCE_BRANCH" {
@@ -157,16 +153,6 @@ function "base_tags" {
   result = [
     notequal(BAKE_TAG, "") ? "${BASE_REGISTRY}/${name}:${BAKE_TAG}" : "",
   ]
-}
-
-function "python_base_target" {
-  params = []
-  result = notequal(PYTHON_BASE_TARGET, "") ? PYTHON_BASE_TARGET : notequal(USE_PREBUILT_BASES, "") ? "nmp-python-base" : "nmp-python-base-builder"
-}
-
-function "python_dev_base_target" {
-  params = []
-  result = notequal(PYTHON_DEV_BASE_TARGET, "") ? PYTHON_DEV_BASE_TARGET : notequal(USE_PREBUILT_BASES, "") ? "nmp-python-dev-base" : "nmp-python-dev-base-builder"
 }
 
 function "automodel_base_context" {
@@ -412,8 +398,9 @@ target "nmp-rl-training" {
   context    = "."
   dockerfile = "docker/Dockerfile.nmp-rl-training"
   contexts = {
-    platform-workspace = "target:rl-platform-workspace"
-    nmp-rl-base        = "target:nmp-rl-base-builder"
+    platform-workspace     = "target:rl-platform-workspace"
+    nmp-rl-base            = "target:nmp-rl-base-builder"
+    ffmpeg-vlm-wheel-image = ffmpeg_vlm_wheel_context()
   }
   cache-to   = maybe_registry_cache_to("nmp-rl-training")
   cache-from = maybe_registry_cache_from("nmp-rl-training")
@@ -424,12 +411,11 @@ target "nmp-rl-training" {
 
 # Base images for consolidated containers
 target "nmp-python-base" {
-  target     = python_base_target()
+  target     = "nmp-python-base-builder"
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY   = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON = "${BASE_TAG_PYTHON}"
+    NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-from = maybe_registry_cache_from("nmp-python-base")
   platforms  = get_platforms()
@@ -440,8 +426,7 @@ target "nmp-python-base-builder" {
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY   = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON = "${BASE_TAG_PYTHON}"
+    NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-to   = maybe_registry_cache_to("nmp-python-base")
   cache-from = maybe_registry_cache_from("nmp-python-base")
@@ -451,12 +436,11 @@ target "nmp-python-base-builder" {
 }
 
 target "nmp-python-dev-base" {
-  target     = python_dev_base_target()
+  target     = "nmp-python-dev-base-builder"
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY   = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON = "${BASE_TAG_PYTHON}"
+    NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-from = maybe_registry_cache_from("nmp-python-dev-base")
   platforms  = get_platforms()
@@ -467,8 +451,7 @@ target "nmp-python-dev-base-builder" {
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY   = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON = "${BASE_TAG_PYTHON}"
+    NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-to   = maybe_registry_cache_to("nmp-python-dev-base")
   cache-from = maybe_registry_cache_from("nmp-python-dev-base")

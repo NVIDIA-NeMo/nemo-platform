@@ -7,10 +7,14 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from nemo_platform.auth.helpers import NMPOIDCConfig
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nmp.common.config import Configuration, PlatformConfig
+from nmp.common.http_clients import shared_async_http_client, shared_sync_http_client
 from nmp.common.sdk_factory import (
     PlatformRequestRouter,
     get_async_platform_sdk,
+    get_async_task_sdk,
     get_entity_parts,
     get_platform_sdk,
     get_request_scoped_sdk,
@@ -18,6 +22,17 @@ from nmp.common.sdk_factory import (
     get_task_sdk,
     resolve_platform_request_url,
 )
+
+
+def _workload_oidc_config() -> NMPOIDCConfig:
+    return NMPOIDCConfig(
+        auth_enabled=True,
+        workload_token_exchange_enabled=True,
+        workload_client_id="workload-client",
+        workload_token_endpoint="https://idp.example.test/oauth2/token",
+        workload_audience="nemo-platform",
+        workload_scope="openid email groups",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -119,6 +134,15 @@ def test_get_platform_sdk_routes_local_service_path_to_process_listener(monkeypa
     assert prepared.path == "/apis/auth/v2/authz/allow"
 
 
+def test_get_platform_sdk_uses_uds_endpoint_from_base_url():
+    config = PlatformConfig(base_url="unix:///tmp/nemo-platform.sock")  # type: ignore[abstract]
+
+    with patch("nmp.common.sdk_factory.Configuration.get_platform_config", return_value=config):
+        sdk = get_platform_sdk()
+
+    assert sdk.base_url == "http://nemo-platform.local"
+
+
 def test_get_platform_sdk_with_service_principal():
     """Test get_platform_sdk with as_service parameter."""
     sdk = get_platform_sdk(as_service="my-service")
@@ -148,6 +172,38 @@ def test_get_platform_sdk_internal_flag():
     assert sdk.default_headers["X-NMP-Internal"] == "true"
 
 
+def test_get_platform_sdk_uses_workload_identity_when_token_file_configured(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    """Workload-token task environments should let the generated SDK inject Bearer auth."""
+    subject_token_file = tmp_path / "workload-token"
+    subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("{}\n", encoding="utf-8")
+    exchange_requests: list[dict] = []
+
+    def token_exchange_grant(**kwargs):
+        exchange_requests.append(kwargs)
+        return {"access_token": "exchanged-access-token", "expires_in": 300}
+
+    monkeypatch.setenv("NMP_CONFIG_FILE", str(config_file))
+    monkeypatch.setenv("NMP_BASE_URL", "http://nmp.example.test")
+    monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+    monkeypatch.setenv("NMP_PRINCIPAL", json.dumps({"id": "creator@example.com", "email": "creator@example.com"}))
+    monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr("nemo_platform.client.factory.discover_nmp_config", lambda _base_url: _workload_oidc_config())
+    monkeypatch.setattr("nemo_platform.auth.workload_exchange.token_exchange_grant", token_exchange_grant)
+
+    sdk = get_platform_sdk()
+    try:
+        request = sdk._client.build_request("GET", "http://nmp.example.test/apis/entities/v2/workspaces/default")
+        sdk._client._event_hooks["request"][0](request)
+    finally:
+        sdk.close()
+
+    assert request.headers["Authorization"] == "Bearer exchanged-access-token"
+    assert "X-NMP-Principal-Id" not in request.headers
+    assert exchange_requests[0]["subject_token"] == "subject-token-from-file"
+
+
 def test_get_async_platform_sdk():
     """Test get_async_platform_sdk basic functionality (config path: SDK base_url matches platform config)."""
     sdk = get_async_platform_sdk()
@@ -157,6 +213,38 @@ def test_get_async_platform_sdk():
     # Normalize to str: SDK may expose URL object, config may be str; both environments
     expected = Configuration.get_platform_config().base_url
     assert str(sdk.base_url).rstrip("/") == str(expected).rstrip("/")
+
+
+def test_get_async_platform_sdk_uses_uds_endpoint_from_base_url():
+    config = PlatformConfig(base_url="unix:///tmp/nemo-platform.sock")  # type: ignore[abstract]
+
+    with patch("nmp.common.sdk_factory.Configuration.get_platform_config", return_value=config):
+        sdk = get_async_platform_sdk()
+
+    assert str(sdk.base_url).rstrip("/") == "http://nemo-platform.local"
+
+
+@pytest.mark.asyncio
+async def test_get_async_platform_sdk_workload_identity_reuses_test_http_client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    import nmp.common.sdk_factory as sdk_factory_module
+
+    subject_token_file = tmp_path / "workload-token"
+    subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
+    monkeypatch.setenv("NMP_BASE_URL", "http://nmp.example.test")
+    monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json={}))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http_client:
+        sdk_factory_module._test_http_client = http_client
+        try:
+            sdk = get_async_platform_sdk()
+
+            assert sdk._client is http_client
+            assert str(sdk.base_url).rstrip("/") == "http://nmp.example.test"
+        finally:
+            sdk_factory_module._test_http_client = None
 
 
 def test_get_async_platform_sdk_with_service_principal():
@@ -228,6 +316,93 @@ def test_get_task_sdk_without_principal(monkeypatch: pytest.MonkeyPatch):
     assert sdk.default_headers["X-NMP-Principal-Id"] == "service:customizer"
     assert sdk.default_headers["X-NMP-Internal"] == "true"
     assert "X-NMP-Principal-On-Behalf-Of" not in sdk.default_headers
+
+
+def test_get_task_sdk_does_not_inherit_shared_client_authorization(monkeypatch: pytest.MonkeyPatch):
+    """Service-principal task SDK auth must come from SDK headers, not stale shared-client auth."""
+    monkeypatch.setenv(
+        "NMP_PRINCIPAL",
+        json.dumps({"id": "creator@example.com", "email": "creator@example.com"}),
+    )
+    client = shared_sync_http_client()
+    old_headers = dict(client.headers)
+    client.headers["Authorization"] = "Bearer service:jobs"
+    sdk = None
+
+    try:
+        sdk = get_task_sdk(as_service="jobs")
+        assert sdk._client is not client
+        assert sdk.default_headers["X-NMP-Principal-Id"] == "service:jobs"
+        assert sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "creator@example.com"
+        assert "Authorization" not in sdk.default_headers
+        assert "Authorization" not in sdk._client.headers
+    finally:
+        if sdk is not None:
+            sdk.close()
+        client.headers.clear()
+        client.headers.update(old_headers)
+        client.headers.pop("Authorization", None)
+
+
+@pytest.mark.asyncio
+async def test_get_async_task_sdk_does_not_inherit_shared_client_authorization(monkeypatch: pytest.MonkeyPatch):
+    """Async task SDK auth must also avoid stale shared-client auth."""
+    monkeypatch.setenv(
+        "NMP_PRINCIPAL",
+        json.dumps({"id": "creator@example.com", "email": "creator@example.com"}),
+    )
+    client = shared_async_http_client()
+    old_headers = dict(client.headers)
+    client.headers["Authorization"] = "Bearer service:jobs"
+    sdk = None
+
+    try:
+        sdk = get_async_task_sdk(as_service="jobs")
+        assert sdk._client is not client
+        assert sdk.default_headers["X-NMP-Principal-Id"] == "service:jobs"
+        assert sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "creator@example.com"
+        assert "Authorization" not in sdk.default_headers
+        assert "Authorization" not in sdk._client.headers
+    finally:
+        if sdk is not None:
+            await sdk.close()
+        client.headers.clear()
+        client.headers.update(old_headers)
+        client.headers.pop("Authorization", None)
+
+
+def test_get_task_sdk_uses_workload_identity_when_token_file_configured(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    """Task SDKs should centralize the workload-token-vs-service-header choice."""
+    subject_token_file = tmp_path / "workload-token"
+    subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("{}\n", encoding="utf-8")
+    exchange_requests: list[dict] = []
+
+    def token_exchange_grant(**kwargs):
+        exchange_requests.append(kwargs)
+        return {"access_token": "task-access-token", "expires_in": 300}
+
+    monkeypatch.setenv("NMP_CONFIG_FILE", str(config_file))
+    monkeypatch.setenv("NMP_BASE_URL", "http://nmp.example.test")
+    monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+    monkeypatch.setenv("NMP_PRINCIPAL", json.dumps({"id": "creator@example.com", "email": "creator@example.com"}))
+    monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr("nemo_platform.client.factory.discover_nmp_config", lambda _base_url: _workload_oidc_config())
+    monkeypatch.setattr("nemo_platform.auth.workload_exchange.token_exchange_grant", token_exchange_grant)
+
+    sdk = get_task_sdk(as_service="customizer")
+    try:
+        request = sdk._client.build_request("GET", "http://nmp.example.test/apis/entities/v2/workspaces/default")
+        sdk._client._event_hooks["request"][0](request)
+    finally:
+        sdk.close()
+
+    assert sdk.default_headers["X-NMP-Internal"] == "true"
+    assert request.headers["Authorization"] == "Bearer task-access-token"
+    assert "X-NMP-Principal-Id" not in request.headers
+    assert "X-NMP-Principal-On-Behalf-Of" not in request.headers
+    assert exchange_requests[0]["subject_token"] == "subject-token-from-file"
 
 
 def test_get_task_sdk_uses_explicit_sync_http_client(monkeypatch: pytest.MonkeyPatch):
@@ -588,6 +763,24 @@ def test_get_platform_sdk_routes_entities_path_to_entities_service(
     assert prepared.port == 8080
     assert prepared.scheme == "http"
     assert "/apis/entities/v2/workspaces" in str(prepared.path)
+
+
+def test_get_platform_sdk_routes_service_path_to_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+    platform_config_with_service_discovery,
+):
+    monkeypatch.setenv("NMP_ENTITIES_URL", "http://entities-env:9090")
+    with patch(
+        "nmp.common.sdk_factory.Configuration.get_platform_config",
+        return_value=platform_config_with_service_discovery,
+    ):
+        sdk = get_platform_sdk()
+        request_url = "http://platform:8080/apis/entities/v2/workspaces"
+        prepared = sdk._prepare_url(request_url)
+
+    assert prepared.host == "entities-env"
+    assert prepared.port == 9090
+    assert prepared.scheme == "http"
 
 
 def test_get_platform_sdk_routes_jobs_path_to_jobs_service(

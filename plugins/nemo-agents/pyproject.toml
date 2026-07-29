@@ -16,9 +16,6 @@ dependencies = [
     "boto3>=1.40.46,<1.40.62",
     "botocore>=1.40.46,<1.40.62",
     "httpx>=0.27",
-    # TODO(AIRCORE-897): Move this to a stable Fabric version before release once available.
-    # TODO(AIRCORE-897): Add the `relay` extra once nemo-evaluator-sdk's nemo-relay pin allows >=0.5.
-    "nemo-fabric>=0.1.0a20260717,<0.2.0",
     "pyyaml>=6.0",
     # improvement/ subpackage — agent-improvement workflow (POC).
     "anthropic>=0.88.0",
@@ -62,6 +59,14 @@ nat_hermes_agent_adapter = "nat_hermes_agent_adapter.register"
 nat_openclaw_agent_adapter = "nat_openclaw_agent_adapter.register"
 
 [project.optional-dependencies]
+fabric = [
+    # TODO(AIRCORE-932): Move Fabric into the default plugin dependencies once evaluator has migrated
+    # to the 0.1.0a20260724+ config-first SDK API and Fabric packaging is stable across Platform environments.
+    # TODO(AIRCORE-897): Move this to a stable Fabric version before release once available.
+    "nemo-fabric[runtime]>=0.1.0rc2,<0.2.0",
+    "nemo-fabric-adapters-codex>=0.1.0rc2,<0.2.0",
+    "nemo-fabric-adapters-hermes>=0.1.0rc2,<0.2.0; python_version < '3.14'",
+]
 container = [
     "jinja2>=3.1",
     "python-on-whales>=0.60",

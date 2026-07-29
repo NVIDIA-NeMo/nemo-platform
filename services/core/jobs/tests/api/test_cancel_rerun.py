@@ -248,7 +248,7 @@ async def test_job_cancel_nonexistent_job(test_client: AsyncClient):
     response = await test_client.post("/apis/jobs/v2/workspaces/default/jobs/nonexistent-job-id/cancel")
     assert response.status_code == 404
     error_data = response.json()
-    assert error_data["detail"] == "Job not found"
+    assert error_data["detail"] == "Job 'nonexistent-job-id' not found in workspace 'default'."
 
 
 @pytest.mark.asyncio

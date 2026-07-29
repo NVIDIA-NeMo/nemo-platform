@@ -14,6 +14,8 @@ Deployment and volume resources use separate workspace label keys
 resource kind without ambiguous selectors, even though the workspace value is the same string.
 """
 
+from typing import Any
+
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_platform_plugin.k8s_naming import k8s_safe_name, workspace_name_identity
 
@@ -25,6 +27,16 @@ CONFIG_NAME_LABEL = "nemo.nvidia.com/deployment-config"
 VOLUME_WORKSPACE_LABEL = "nemo.nvidia.com/volume-workspace"
 VOLUME_NAME_LABEL = "nemo.nvidia.com/volume-name"
 BACKOFF_LIMIT_LABEL = "nemo.nvidia.com/backoff-limit"
+RESOURCE_SCOPE_LABEL = "nemo.nvidia.com/resource-scope"
+DEFAULT_RESOURCE_SCOPE = "default"
+# Role of a docker container within a multi-container deployment group
+# (e.g. "server" or a sidecar container name). Used to discover companion
+# containers (LoRA adapters sidecar) that share the primary server container.
+CONTAINER_ROLE_LABEL = "nemo.nvidia.com/container-role"
+
+# The primary container in a deployment group keeps the canonical deployment
+# name (``container_name``); companions derive their names from it plus role.
+CONTAINER_ROLE_SERVER = "server"
 
 
 def deployment_key(workspace: str, name: str) -> str:
@@ -33,8 +45,22 @@ def deployment_key(workspace: str, name: str) -> str:
 
 
 def container_name(workspace: str, deployment_name: str) -> str:
-    """Docker container name for a deployment (``dep-`` prefix, hashed identity)."""
+    """Docker container name for a deployment (``dep-`` prefix, hashed identity).
+
+    This is the *primary* (server) container of a deployment group. Companion
+    containers (init/sidecar) derive their names from it via
+    :func:`companion_container_name`.
+    """
     return k8s_deployment_resource_name(workspace, deployment_name)
+
+
+def companion_container_name(workspace: str, deployment_name: str, role: str) -> str:
+    """Docker container name for a companion (sidecar/init) container in a group.
+
+    Derived from the primary container name so the whole group shares the
+    ``dep-<hash>`` stem and is easy to discover/tear down together.
+    """
+    return f"{container_name(workspace, deployment_name)}-{role}"
 
 
 def docker_volume_name(workspace: str, volume_name: str) -> str:
@@ -73,6 +99,7 @@ def deployment_identity_labels(
     *,
     config_name: str,
     backoff_limit: int = 6,
+    resource_scope: str = DEFAULT_RESOURCE_SCOPE,
 ) -> dict[str, str]:
     """Return identity labels attached to deployment backend resources."""
     return {
@@ -82,23 +109,33 @@ def deployment_identity_labels(
         RESTART_POLICY_LABEL: restart_policy,
         CONFIG_NAME_LABEL: config_name,
         BACKOFF_LIMIT_LABEL: str(backoff_limit),
+        RESOURCE_SCOPE_LABEL: resource_scope,
     }
 
 
-def volume_identity_labels(workspace: str, name: str) -> dict[str, str]:
+def volume_identity_labels(
+    workspace: str, name: str, *, resource_scope: str = DEFAULT_RESOURCE_SCOPE
+) -> dict[str, str]:
     """Return identity labels attached to volume backend resources."""
     return {
         MANAGED_BY_KEY: MANAGED_BY_LABEL,
         VOLUME_WORKSPACE_LABEL: workspace,
         VOLUME_NAME_LABEL: name,
+        RESOURCE_SCOPE_LABEL: resource_scope,
     }
 
 
-def managed_by_filter() -> dict[str, str]:
+def managed_by_filter(*, resource_scope: str | None = None) -> dict[str, Any]:
     """Return a Docker SDK filter dict for plugin-managed resources."""
-    return {"label": f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}"}
+    labels = [f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}"]
+    if resource_scope is not None:
+        labels.append(f"{RESOURCE_SCOPE_LABEL}={resource_scope}")
+    return {"label": labels if len(labels) > 1 else labels[0]}
 
 
-def managed_by_label_selector() -> str:
+def managed_by_label_selector(*, resource_scope: str | None = None) -> str:
     """Kubernetes label selector for plugin-managed resources."""
-    return f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}"
+    selector = f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}"
+    if resource_scope is not None:
+        selector = f"{selector},{RESOURCE_SCOPE_LABEL}={resource_scope}"
+    return selector

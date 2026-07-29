@@ -73,14 +73,36 @@ class EndpointMethod(Generic[P, SyncReturnT, AsyncReturnT]):
 
     def __init__(self, endpoint_fn: Callable[P, PreparedRequest]) -> None:
         self._endpoint_fn = endpoint_fn
+        # Carry the endpoint's identity onto the descriptor so class-level
+        # introspection (inspect.signature, help(), autodoc) resolves through
+        # __wrapped__ to the real parameter list instead of stopping here.
+        # Set directly rather than via functools.update_wrapper, which expects a
+        # callable wrapper; a descriptor is not one.
+        self.__wrapped__ = endpoint_fn
+        for attr in functools.WRAPPER_ASSIGNMENTS:
+            try:
+                setattr(self, attr, getattr(endpoint_fn, attr))
+            except AttributeError:
+                pass
 
+    @property
+    def endpoint(self) -> Callable[P, PreparedRequest]:
+        """The endpoint function this descriptor binds."""
+        return self._endpoint_fn
+
+    @overload
+    def __get__(self, obj: None, objtype: type | None = None) -> EndpointMethod[P, SyncReturnT, AsyncReturnT]: ...
     @overload
     def __get__(self, obj: NemoClient, objtype: type | None = None) -> Callable[P, SyncReturnT]: ...
     @overload
     def __get__(self, obj: AsyncNemoClient, objtype: type | None = None) -> Callable[P, Awaitable[AsyncReturnT]]: ...
 
     def __get__(self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None) -> object:
-        assert obj is not None
+        if obj is None:
+            # Class-level access. Anything that inspects a client class rather than
+            # an instance -- Mock(spec=...), inspect, help(), autodoc -- lands here,
+            # and the descriptor protocol says to hand back the descriptor itself.
+            return self
         if isinstance(obj, AsyncNemoClient):
 
             @functools.wraps(self._endpoint_fn)

@@ -1,0 +1,204 @@
+---
+title: "Data Designer in NeMo Studio"
+description: "Build, preview, and edit synthetic-data jobs visually with the Data Designer DAG builder."
+---
+
+Data Designer lets you generate and transform datasets visually — no JSON to write. You lay out columns on a canvas, wire them together by referencing one another, preview a handful of rows, then run the full job and inspect, profile, and edit the result.
+
+<Note>
+
+Studio is still in early development. Many features are missing or should be expected to change.
+
+</Note>
+
+This page walks through the full workflow:
+
+1. [View existing jobs](#view-jobs)
+2. [Create a new job](#create-a-new-job)
+3. [Build a recipe with the DAG builder](#the-dag-builder)
+4. [Add columns](#add-columns)
+5. [Configure column properties](#configure-column-properties)
+6. [Add and configure models](#add-and-configure-models)
+7. [Preview a job](#preview-a-job)
+8. [Create the job](#create-the-job)
+9. [View job details after completion](#view-job-details)
+10. [Edit rows after completion](#edit-rows-after-completion)
+
+---
+
+<a id="view-jobs"></a>
+
+## View jobs
+
+Navigate to **Data Designer** in the workspace sidebar to open the jobs list. The list shows every Data Designer job in the current workspace with its status, and supports searching by name, filtering by status, and narrowing by creation or update date range.
+
+Selecting a job opens its [details page](#view-job-details). Each row also has a quick-actions menu with **Cancel** (when the job is still cancellable) and **Delete**.
+
+Job status values match the platform-wide [Jobs](/documentation/studio#jobs) statuses (Created, Pending, Active, Completed, Error, Cancelled, and so on).
+
+---
+
+## Create a new job
+
+Click **New Job** on the jobs list to open the **Create a fileset** start screen. Choose how you want to start:
+
+| Start option              | What it does                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Build from scratch**    | Opens the builder with an empty canvas.                                                            |
+| **Start from a template** | Pick a prebuilt recipe card; the builder opens pre-seeded with that template's columns and models. |
+
+Selecting a template pre-fills the canvas with its columns and models, so you can adjust an existing recipe rather than start blank. Building from scratch opens an empty canvas.
+
+Either choice lands you in the **DAG builder**.
+
+---
+
+<a id="the-dag-builder"></a>
+
+## The DAG builder
+
+The builder is a three-pane layout with a toolbar across the top:
+
+- **Toolbar** (top) — fileset name, column count, template badge, row count, and the **Preview** and **Create fileset** actions.
+- **Left palette** — a segmented **Columns** / **Models** switch for adding columns or models to the recipe.
+- **Center canvas** — the directed acyclic graph (DAG) of your columns.
+- **Right config pane** — properties for whichever column or model is currently selected.
+
+### The toolbar
+
+- **Name** — the fileset name. Click the pencil icon to rename it (defaults to `untitled-dataset`, or the template id when starting from a template). A name is required to create the job.
+- **Column count** — a live count of columns on the canvas.
+- **Rows** — the number of records the full run generates. Must be a whole number of at least 1.
+- **Preview** — runs a small sample (up to 10 rows). See [Preview a job](#preview-a-job).
+- **Create fileset** — validates the recipe and submits the job. See [Create the job](#create-the-job).
+
+### How columns connect
+
+Connections between columns are drawn for you automatically. Whenever one column refers to another — for example, a prompt that mentions `{{ other_column }}` — the builder adds an arrow from the referenced column to the one that uses it. The layout always reflects how your columns depend on each other, no matter what order you added them in.
+
+---
+
+## Add columns
+
+Open the **Columns** tab in the left palette and pick a column type. The catalog is grouped to mirror the [Data Designer column concepts](https://docs.nvidia.com/nemo/datadesigner/concepts/columns):
+
+| Group             | Column types                                                                                                                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sampler**       | UUID, Category, Subcategory, Uniform, Gaussian, Bernoulli, Bernoulli Mixture, Binomial, Poisson, Scipy, Person, Datetime, Timedelta — generate values from statistical distributions or built-in generators, no LLM required. |
+| **Generate**      | LLM-Text, LLM-Code, LLM-Structured (JSON to a schema), LLM-Judge (score content), Image, Embedding — produced by a model.                                                                                                     |
+| **Transform**     | Expression — a Jinja2 transform evaluated per row, no LLM.                                                                                                                                                                    |
+| **Validate**      | Validation — check target columns against rules (code, local callable, or remote validator).                                                                                                                                  |
+| **Data & custom** | Seed Dataset (bootstrap rows from a file), Custom (Python function logic).                                                                                                                                                    |
+
+Adding a column drops a node on the canvas, selects it, and centers the view on it so you can configure it immediately. A default, unique column name (for example `category_1`) is assigned; you can rename it in the config pane.
+
+<Note>
+
+Only **one Seed Dataset** column is supported per recipe. After you add one, the Seed Dataset option is disabled in the palette.
+
+</Note>
+
+To remove a column, select its node and use **Remove** in the config pane, or delete the node directly on the canvas.
+
+---
+
+<a id="configure-column-properties"></a>
+
+## Configure column properties
+
+Select any column node to open its properties in the right config pane. Every column type has its own set of fields; the builder only shows the fields relevant to the selected type.
+
+Common patterns:
+
+- **Name** — must be unique and use letters, numbers, and underscores, and must not start with a number.
+- **Prompt** (Generate columns) — a Jinja2 template. Reference other columns with `{{ column_name }}`; those references create the DAG edges.
+- **Model alias** (Generate columns) — the alias of a [configured model](#add-and-configure-models) to generate with.
+- **Sampler params** — each sampler sub-type exposes its own parameters (for example Category takes comma-separated values and optional weights; Gaussian takes mean and standard deviation; Datetime takes a start/end range).
+- **Field checks** — the builder validates your entries as you go and flags anything that isn't valid, such as a number field left with text or a malformed entry.
+
+Empty required fields, invalid values, and duplicate or invalid names are all called out when you preview or create the job.
+
+---
+
+<a id="add-and-configure-models"></a>
+
+## Add and configure models
+
+Generate columns (LLM-Text, LLM-Code, LLM-Structured, LLM-Judge, Image, Embedding) reference a model by **alias**. Switch the left palette to the **Models** tab to add and manage the models your recipe uses.
+
+- **Add a model** — pick a model from the workspace model groups and a provider; it's added with an editable alias.
+- **Configure a model** — select it to edit its alias (which must be unique) and provider/model settings in the config pane.
+- **Wire it up** — set a Generate column's **Model alias** field to the model's alias.
+
+When you open a template, its seeded models are auto-filled from the workspace model list once that list finishes loading, so you usually don't need to reselect them.
+
+---
+
+## Preview a job
+
+Click **Preview 10 rows** in the toolbar to generate a small sample with the current recipe. This is a fast way to sanity-check prompts, sampler settings, and dependencies before committing to a full run.
+
+The details panel below the toolbar opens automatically and shows:
+
+- **Validation issues** — anything blocking the run (missing required fields, malformed JSON/numbers, duplicate or invalid names, empty canvas, invalid row count). Preview and Create are both blocked until these are resolved.
+- **Preview logs** — the sampled output, streamed as the preview runs.
+
+You can collapse the panel to focus on the canvas; runs that produce output re-open it.
+
+---
+
+## Create the job
+
+Click **Create fileset** in the toolbar. The builder validates the whole recipe first (columns, models, name, and row count). If anything fails, the errors appear in the details panel and the job is not submitted.
+
+On success, the job is created with your configured name, row count, and generated Data Designer config, and Studio navigates to the new job's [details page](#view-job-details). If job creation returns an error, it's shown in the details panel.
+
+---
+
+<a id="view-job-details"></a>
+
+## View job details after completion
+
+The job details page shows the job name, status badge, description, and created/updated timestamps, plus a **View config** button (opens the generated Data Designer config) and a job actions menu (**Cancel**, **Delete**).
+
+Details are organized into three tabs:
+
+| Tab              | What it shows                                                                                                                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Profile**      | A dataset profile once the job reaches a terminal state — completeness (rows generated vs. target) and per-column statistics cards. While the job is still running, or if no profile was generated, live job logs are streamed here instead. |
+| **Data**         | The generated data files, rendered as editable rows. See [Edit rows after completion](#edit-rows-after-completion).                                                                                                                          |
+| **Output files** | The raw files in the job's output fileset, with preview and download.                                                                                                                                                                        |
+
+---
+
+## Edit rows after completion
+
+The **Data** tab shows the job's generated data in an in-browser row editor. It lists the output data files (`.parquet`, `.jsonl`, `.json`, `.csv`); when there's more than one, a file selector lets you switch between them.
+
+In the editor you can:
+
+- **Edit a cell or row** — open a row to edit its fields; changes are applied to the in-memory table.
+- **Add Row** — append a new empty row.
+- **Duplicate** or **Delete** a row.
+- **Search / filter** rows.
+- **Download** the current rows.
+- **Save File** — persist your edits back to the fileset. The action is enabled only when there are unsaved changes.
+
+How your edits are saved depends on the file format:
+
+- **Text formats** (`.json`, `.jsonl`, `.csv`) are updated in place.
+- **Parquet** files can't be rewritten in the browser, so your edits are saved to a new `.edited.jsonl` file alongside the original, leaving the source `.parquet` untouched.
+
+<Note>
+
+Files larger than 8 MB (non-Parquet) can't be edited in the browser. Download them to edit locally.
+
+</Note>
+
+---
+
+## Related topics
+
+- [About NeMo Studio](/documentation/studio)
+- [Design synthetic data](/documentation/design-synthetic-data)
+- [Data Designer column concepts](https://docs.nvidia.com/nemo/datadesigner/concepts/columns)

@@ -144,3 +144,43 @@ def apply_pending_timeout(
         timeout_seconds=timeout_seconds,
         substrate=substrate,
     )
+
+
+def build_deleting_timeout_error(
+    *,
+    deployment_name: str,
+    elapsed_seconds: float,
+    timeout_seconds: int,
+) -> DeploymentStatusUpdate:
+    """Build ERROR status when delete exceeds ``deleting_timeout_seconds``."""
+    status_msg = (
+        f"Deployment '{deployment_name}' timed out after {format_duration(elapsed_seconds)} waiting for "
+        f"deployments-plugin substrate teardown (timeout: {format_duration(timeout_seconds)})."
+    )
+    return DeploymentStatusUpdate(
+        status="ERROR",
+        status_message=status_msg,
+        error_details={
+            "reason": "deleting_timeout",
+            "elapsed_seconds": int(elapsed_seconds),
+            "timeout_seconds": timeout_seconds,
+            "deployment_name": deployment_name,
+        },
+    )
+
+
+def apply_deleting_timeout(
+    result: DeploymentStatusUpdate,
+    *,
+    elapsed_seconds: float,
+    timeout_seconds: int,
+    deployment_name: str,
+) -> DeploymentStatusUpdate:
+    """Escalate a DELETING delete result to ERROR once teardown ages out."""
+    if result.status != "DELETING" or timeout_seconds <= 0 or elapsed_seconds < timeout_seconds:
+        return result
+    return build_deleting_timeout_error(
+        deployment_name=deployment_name,
+        elapsed_seconds=elapsed_seconds,
+        timeout_seconds=timeout_seconds,
+    )

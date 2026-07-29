@@ -15,6 +15,7 @@ deep-object dict.
 
 from __future__ import annotations
 
+import base64
 import json
 from datetime import datetime
 from types import SimpleNamespace
@@ -25,7 +26,7 @@ import pytest
 from fastapi import FastAPI
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.jobs.api_factory import job_route_factory
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from starlette.testclient import TestClient
 
 
@@ -400,3 +401,100 @@ class TestForwardedFilterSurvivesSdkSerialization:
         resp = client.get("/apis/widgets/v2/workspaces/default/jobs")
         assert resp.status_code == 200, resp.text
         assert self._round_trip(sdk) == {"source": {"$eq": "widgets"}}
+
+
+# ---------------------------------------------------------------------------
+# Create-path spec serialization
+# ---------------------------------------------------------------------------
+
+
+class _BlobPayload(BaseModel):
+    """Mirrors ``MetricCloudpicklePayload``: a bytes field whose model owns the base64 JSON contract."""
+
+    model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
+
+    blob: bytes
+
+
+class _BlobSpec(BaseModel):
+    """A job spec that carries raw bytes (e.g. a cloudpickle metric bundle)."""
+
+    blob_payload: _BlobPayload
+
+
+def _blob_compiler(workspace, original_spec, transformed_spec, entity_client, job_name, sdk):
+    # A minimal-but-valid PlatformJobSpec (one step is required).
+    return {"steps": [{"name": "s1", "executor": {"provider": "cpu", "container": {"image": "img"}}}]}
+
+
+class _CreateCapturingSdk:
+    """Fake jobs client whose ``create_job`` mirrors the real typed client's transport.
+
+    The typed client serializes the request body with ``body.model_dump_json(exclude_unset=True)``
+    (see ``client/endpoint.py``). A spec dumped python-mode leaves raw bytes in the opaque ``spec``
+    dict, so that serialization raises ``PydanticSerializationError`` on the non-utf8 pickle marker —
+    exactly the create-path bug. Captures the serialized body for assertion.
+    """
+
+    def __init__(self) -> None:
+        self.body_json: str | None = None
+
+        async def _create_job(*, workspace: str, body: Any) -> Any:
+            self.body_json = body.model_dump_json(exclude_unset=True)
+            stored = json.loads(self.body_json)
+            job_resp = SimpleNamespace(
+                id="job-1",
+                name=body.name or "job-1",
+                description=None,
+                workspace=workspace,
+                created_at=None,
+                updated_at=None,
+                spec=stored["spec"],
+                status=None,
+                status_details=None,
+                error_details=None,
+                ownership=None,
+                custom_fields=None,
+            )
+            return SimpleNamespace(data=lambda: job_resp)
+
+        self.jobs_client = SimpleNamespace(create_job=_create_job)
+
+
+def _build_create_app() -> tuple[FastAPI, _CreateCapturingSdk]:
+    app = FastAPI()
+    router = job_route_factory(
+        service_name="widgets",
+        job_type="Widget",
+        job_input=_BlobSpec,
+        platform_job_config_compiler=_blob_compiler,
+    )
+    app.include_router(router, prefix="/apis/widgets/v2/workspaces/{workspace}")
+
+    sdk = _CreateCapturingSdk()
+    app.dependency_overrides[get_sdk_client] = lambda: sdk
+    app.dependency_overrides[get_entity_client] = lambda: SimpleNamespace()
+    return app, sdk
+
+
+class TestPluginJobsCreateSerialization:
+    """A created job spec carrying raw bytes (cloudpickle metric bundle) must serialize for transport."""
+
+    def test_create_serializes_spec_with_bytes_payload(self):
+        # Regression: the factory coerces the transformed spec to a dict for the request body. A
+        # python-mode dump leaves raw bytes that the typed client can't JSON-encode (invalid utf-8 on
+        # the pickle marker \x80). The spec is bound for JSON transport + storage, so it must be dumped
+        # json-safe — the payload model's ser_json_bytes="base64" then base64-encodes the blob.
+        app, sdk = _build_create_app()
+        client = TestClient(app)
+        raw = b"\x80\x04not-utf8\xff"
+        resp = client.post(
+            "/apis/widgets/v2/workspaces/default/jobs",
+            json={"spec": {"blob_payload": {"blob": base64.b64encode(raw).decode()}}},
+        )
+        assert resp.status_code == 201, resp.text
+        # The body handed to the jobs client serialized cleanly, with the blob base64-encoded (not raw
+        # bytes) inside the opaque ``spec`` dict.
+        assert sdk.body_json is not None
+        stored_blob = json.loads(sdk.body_json)["spec"]["blob_payload"]["blob"]
+        assert stored_blob == base64.b64encode(raw).decode()

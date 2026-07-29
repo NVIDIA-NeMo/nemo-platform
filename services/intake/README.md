@@ -54,6 +54,9 @@ environment instead of package-scoped `uv run --package ...` commands.
 
 Prerequisite: Docker must be installed and running locally.
 
+Intake is tested and profiled on ClickHouse 26.3 LTS. Other ClickHouse versions
+may not be supported.
+
 Start a local ClickHouse container for span and trace storage:
 
 ```bash
@@ -104,7 +107,7 @@ Seed an Experiment rollup and read it back:
 
 ```bash
 uv run services/intake/scripts/spans/seed_experiment_rollup_data.py
-curl -s "http://127.0.0.1:8000/apis/intake/v2/workspaces/default/experiments/rollup-smoke-exp" | jq
+curl -s "http://127.0.0.1:8000/apis/intake/v2/workspaces/default/evaluations/rollup-smoke-exp" | jq
 
 # Optional larger local workload.
 uv run services/intake/scripts/spans/seed_experiment_rollup_data.py \

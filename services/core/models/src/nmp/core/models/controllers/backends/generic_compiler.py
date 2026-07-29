@@ -45,9 +45,12 @@ def compile_generic_args(view: DeploymentConfigView) -> list[str]:
     """Return the container arg vector for a generic container.
 
     The platform synthesizes nothing for the generic engine: the user's
-    ``additional_args`` are the entire arg vector (appended to the image's own
-    entrypoint). Returns an empty list when none are supplied, in which case the
-    image's default command/args are used unchanged.
+    ``additional_args`` become the container arg vector. On Kubernetes this
+    replaces the image CMD (ENTRYPOINT is unchanged); on Docker it replaces the
+    run command. When the image has no ENTRYPOINT, include the executable as
+    argv[0] (e.g. ``["python3", "-m", "http.server", "8000"]`` for
+    ``python:alpine``). Returns an empty list when none are supplied, in which
+    case the image's default command/args are used unchanged.
     """
     return list(view.additional_args or [])
 

@@ -20,7 +20,6 @@
 {"name": "asyncpg", "license": "APACHE-2.0", "compatible": true}
 {"name": "attrs", "license": "MIT", "compatible": true}
 {"name": "authlib", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "backports-tarfile", "license": "MIT", "compatible": true}
 {"name": "base58", "license": "MIT", "compatible": true}
 {"name": "beartype", "license": "MIT", "compatible": true}
 {"name": "beautifulsoup4", "license": "MIT", "compatible": true}
@@ -152,7 +151,6 @@
 {"name": "multiprocess", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "mypy-extensions", "license": "MIT", "compatible": true}
 {"name": "nemo-anonymizer", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-relay", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-safe-synthesizer", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemoguardrails", "license": "APACHE-2.0", "compatible": true}

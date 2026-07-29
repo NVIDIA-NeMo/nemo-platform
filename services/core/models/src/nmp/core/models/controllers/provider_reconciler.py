@@ -7,22 +7,24 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from logging import getLogger
-from typing import TypedDict
+from typing import Callable, TypedDict
 
 from nemo_platform import AsyncNeMoPlatform
+
+# IGW discovery and VirtualModel operations still go through the umbrella SDK, so
+# their exception types are the Stainless ones and are named to say so.
 from nemo_platform._exceptions import APIStatusError
 from nemo_platform._exceptions import ConflictError as StainlessConflictError
-from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform._exceptions import NotFoundError as StainlessNotFoundError
+from nemo_platform.types.inference.virtual_model import VirtualModel
 from nemo_platform_plugin.models.client import AsyncModelsClient
 from nemo_platform_plugin.models.types import (
     APIEndpointData,
-    CreateModelEntityRequest,
     ModelDeployment,
     ModelDeploymentConfig,
     ModelEntity,
     ModelProvider,
     ServedModelMapping,
-    UpdateModelEntityRequest,
     UpdateModelProviderStatusRequest,
 )
 from nemo_platform_plugin.models.types import (
@@ -39,10 +41,14 @@ from nmp.core.models.app import (
 )
 from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.context import ModelContext
+from nmp.core.models.controllers.entity_cache import ModelEntityCache
 from nmp.core.models.schemas import BackendFormat, ModelProviderStatus
 from pydantic import AnyUrl
 
 logger = getLogger(__name__)
+
+# The VirtualModel list endpoint caps page_size at 200.
+_VIRTUAL_MODEL_PAGE_SIZE = 200
 
 # Use entity store's NAME_PATTERN so we only create/link names the entity store accepts
 _VALID_MODEL_ENTITY_NAME_PATTERN = re.compile(NAME_PATTERN)
@@ -69,6 +75,15 @@ def _infer_backend_format(model_name: str) -> str:
 def _has_backend_format(model_entity: ModelEntity) -> bool:
     value = getattr(model_entity, "backend_format", None)
     return isinstance(value, str) and bool(value)
+
+
+def _get_virtual_model_db_version(virtual_model: object) -> int | None:
+    db_version = getattr(virtual_model, "db_version", None)
+    if isinstance(db_version, bool):
+        return None
+    if isinstance(db_version, int):
+        return db_version
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +303,8 @@ class ModelProviderReconciler:
         models_client: AsyncModelsClient,
         platform_sdk: AsyncNeMoPlatform,
         controller_config: ControllerConfig,
+        entity_cache: ModelEntityCache,
+        emit_heartbeat: Callable[[], None],
     ) -> None:
         """Initialize the provider reconciler.
 
@@ -295,10 +312,15 @@ class ModelProviderReconciler:
             models_client: Typed client for Models API interactions
             platform_sdk: Umbrella SDK retained for IGW discovery and VirtualModel operations
             controller_config: Models controller configuration (discovery timeout/retry policy)
+            entity_cache: Model Entity reads and staged writes for the current phase
+            emit_heartbeat: Called as each unit of work finishes so a long pass is
+                distinguishable from a stalled one
         """
         self._models_client = models_client
         self._platform_sdk = platform_sdk
         self._controller_config = controller_config
+        self._entity_cache = entity_cache
+        self._emit_heartbeat = emit_heartbeat
         self._discovery_sdk = platform_sdk.with_options(
             max_retries=controller_config.provider_discovery_max_retries,
         )
@@ -348,6 +370,18 @@ class ModelProviderReconciler:
         """
         now = datetime.now(timezone.utc)
 
+        # Read the VirtualModels once for the whole pass. ``existing_vm_names``
+        # answers "does this one already exist" without a create-and-catch-conflict
+        # per served model, and grows as VirtualModels are created so providers
+        # sharing a workspace do not each try the same name. ``vm_snapshot`` stays
+        # as read: orphan cleanup only ever considers VirtualModels that predate
+        # the pass, and keeping it separate means a VirtualModel created here can
+        # never be mistaken for a deletion candidate.
+        # A listing failure must not cost us discovery, provider status, or entity
+        # linking; only the VirtualModel work depends on it.
+        virtual_models = await self._load_virtual_models()
+        existing_vm_names = virtual_models[1] if virtual_models is not None else None
+
         for ctx in provider_contexts:
             provider = ctx.model_provider
             if provider is None:
@@ -355,17 +389,48 @@ class ModelProviderReconciler:
                 continue
             provider_id = f"{provider.workspace}/{provider.name}"
             try:
-                await self._reconcile_single_provider(ctx, provider, provider_id, now)
+                await self._reconcile_single_provider(ctx, provider, provider_id, now, existing_vm_names)
             except Exception:
                 logger.exception(
                     "Unexpected error reconciling provider",
                     extra={"provider": provider_id},
                 )
+            finally:
+                self._emit_heartbeat()
 
+        # Runs after every provider so the active set reflects the served_models
+        # resolved during this pass rather than the previously persisted values.
+        if virtual_models is None:
+            logger.warning("Skipping orphaned VirtualModel cleanup because the VirtualModel listing failed")
+            return
         try:
-            await self._cleanup_orphaned_virtual_models(provider_contexts)
+            await self._cleanup_orphaned_virtual_models(provider_contexts, virtual_models[0])
         except Exception:
             logger.exception("Unexpected error cleaning up orphaned autoprovisioned VirtualModels")
+
+    async def _load_virtual_models(self) -> tuple[list[VirtualModel], set[tuple[str, str]]] | None:
+        """Read every VirtualModel once, returning the list and an existence set.
+
+        The existence set covers all VirtualModels, not just autoprovisioned ones,
+        so a name already taken by a user-managed VirtualModel is left untouched.
+
+        Returns ``None`` if the listing failed, which callers read as "the
+        VirtualModel state is unknown this pass" and skip VirtualModel work rather
+        than acting on a partial view.
+        """
+        vm_snapshot: list[VirtualModel] = []
+        try:
+            async for virtual_model in self._platform_sdk.inference.virtual_models.list(
+                workspace="-", page_size=_VIRTUAL_MODEL_PAGE_SIZE
+            ):
+                vm_snapshot.append(virtual_model)
+                self._emit_heartbeat()
+        except Exception:
+            logger.warning("Failed to list VirtualModels for provider reconciliation", exc_info=True)
+            return None
+        existing_vm_names = {(vm.workspace, vm.name) for vm in vm_snapshot}
+        logger.debug("Loaded %d VirtualModel(s) for provider reconciliation", len(vm_snapshot))
+        return vm_snapshot, existing_vm_names
 
     async def _reconcile_single_provider(
         self,
@@ -373,8 +438,15 @@ class ModelProviderReconciler:
         provider: ModelProvider,
         provider_id: str,
         now: datetime,
+        existing_vm_names: set[tuple[str, str]] | None,
     ) -> None:
-        """Reconcile a single provider. Extracted for per-provider exception isolation."""
+        """Reconcile a single provider. Extracted for per-provider exception isolation.
+
+        Leaving ``ctx.served_models`` as ``None`` on any early return is deliberate:
+        orphan cleanup reads it as "this provider was not resolved this pass" and
+        falls back to the persisted served_models. Setting it to an empty list
+        instead would present every one of the provider's models as inactive.
+        """
         ctx.served_models = None
 
         # LOST providers are permanently failed; skip until user deletes and recreates.
@@ -479,7 +551,8 @@ class ModelProviderReconciler:
             if "&adapters/" in served_model.model_entity_id:
                 continue
             ref = parse_entity_ref(served_model.model_entity_id)
-            await self._ensure_passthrough_virtual_model(ref.workspace, ref.name)
+            await self._ensure_passthrough_virtual_model(ref.workspace, ref.name, existing_vm_names)
+            self._emit_heartbeat()
 
     # -------------------------------------------------------------------------
     # Status machine
@@ -737,6 +810,7 @@ class ModelProviderReconciler:
                 provider_id=provider_id,
                 ctx=ctx,
             )
+            self._emit_heartbeat()
 
     def _generate_external_served_model_mappings(
         self,
@@ -923,29 +997,10 @@ class ModelProviderReconciler:
                 the entity for this specific model_name (since we may be creating entities for
                 multiple discovered models like LoRAs)
         """
-        # Try to get the model entity for this specific model_name (may not exist yet).
-        # This is per-discovered-model, so we can't use the one from context.
-        existing_model_entity = None
-        try:
-            existing_model_entity = (
-                await self._models_client.get_model(
-                    workspace=model_workspace,
-                    name=model_name,
-                )
-            ).data()
-        except NotFoundError:
-            pass
-        except Exception as e:
-            # Transient API/network errors must not fail the whole controller step (health).
-            # Without a successful retrieve we cannot safely update or create; retry next loop.
-            logger.warning(
-                "Failed to retrieve Model Entity %s/%s during provider reconciliation: %s",
-                model_workspace,
-                model_name,
-                e,
-                exc_info=True,
-            )
-            return
+        # Read through the cache so the entity behind every served model does not
+        # cost a round trip, and so several providers contributing to the same
+        # entity are merged into a single write.
+        existing_model_entity = self._entity_cache.get(model_workspace, model_name)
 
         provider = ctx.model_provider
         if provider is None:
@@ -961,74 +1016,55 @@ class ModelProviderReconciler:
             ctx.model_deployment_config,
         )
 
-        try:
-            if existing_model_entity:
-                current_providers = existing_model_entity.model_providers or []
-                model_providers = current_providers + [provider_id] if provider_id not in current_providers else None
-                fileset = None
-                if details.fileset_url and not existing_model_entity.fileset:
-                    fileset = details.fileset_url.removeprefix("hf://").removeprefix("fileset://")
-                api_endpoint = (
-                    details.api_endpoint if details.api_endpoint and not existing_model_entity.api_endpoint else None
-                )
-                # Treat None as missing here so legacy autodiscovered entities get
-                # backfilled. User corrections should set a concrete enum value.
-                backend_format = (
-                    BackendFormat(_infer_backend_format(model_name))
-                    if not _has_backend_format(existing_model_entity)
-                    else None
-                )
+        fileset = None
+        if details.fileset_url:
+            fileset = details.fileset_url.removeprefix("hf://").removeprefix("fileset://")
 
-                if model_providers is None and fileset is None and api_endpoint is None and backend_format is None:
-                    logger.debug(
-                        f"Provider {provider_id} already linked to Model Entity {model_workspace}/{model_name}"
-                    )
-                    return
-
-                update_fields: dict[str, object] = {}
-                if model_providers is not None:
-                    update_fields["model_providers"] = model_providers
-                if fileset is not None:
-                    update_fields["fileset"] = fileset
-                if api_endpoint is not None:
-                    update_fields["api_endpoint"] = api_endpoint
-                if backend_format is not None:
-                    update_fields["backend_format"] = backend_format
-
-                await self._models_client.update_model(
-                    name=model_name,
-                    workspace=model_workspace,
-                    body=UpdateModelEntityRequest.model_validate(update_fields),
-                )
-                logger.debug(f"Added provider {provider_id} to existing Model Entity {model_workspace}/{model_name}")
-                return
-
+        if existing_model_entity is None:
             logger.debug(f"Creating Model Entity {model_workspace}/{model_name} for provider {provider_id}")
-            fileset = (
-                details.fileset_url.removeprefix("hf://").removeprefix("fileset://") if details.fileset_url else None
+            self._entity_cache.stage_create(
+                model_workspace,
+                model_name,
+                description=f"Auto-discovered model from provider {provider_id}",
+                backend_format=_infer_backend_format(model_name),
             )
-            await self._models_client.create_model(
-                workspace=model_workspace,
-                body=CreateModelEntityRequest(
-                    name=model_name,
-                    description=f"Auto-discovered model from provider {provider_id}",
-                    model_providers=[provider_id],
-                    backend_format=BackendFormat(_infer_backend_format(model_name)),
-                    fileset=fileset,
-                    api_endpoint=details.api_endpoint,
-                ),
+            self._entity_cache.stage_provider_link(model_workspace, model_name, provider_id)
+            self._entity_cache.stage_field_updates(
+                model_workspace,
+                model_name,
+                fileset=fileset,
+                api_endpoint=details.api_endpoint,
             )
-            logger.debug(f"Created Model Entity {model_workspace}/{model_name} linked to provider {provider_id}")
-        except Exception as e:
-            logger.error(f"Failed to ensure Model Entity {model_workspace}/{model_name}: {e}")
+            return
 
-    async def _ensure_passthrough_virtual_model(self, workspace: str, model_name: str) -> None:
+        self._entity_cache.stage_provider_link(model_workspace, model_name, provider_id)
+
+        # Only fill in what the entity is missing, so a value a user corrected is
+        # never overwritten. ``backend_format`` treats None as missing so entities
+        # registered before it existed get backfilled.
+        updates: dict = {}
+        if fileset and not existing_model_entity.fileset:
+            updates["fileset"] = fileset
+        if details.api_endpoint and not existing_model_entity.api_endpoint:
+            updates["api_endpoint"] = details.api_endpoint
+        if not _has_backend_format(existing_model_entity):
+            updates["backend_format"] = _infer_backend_format(model_name)
+        if updates:
+            self._entity_cache.stage_field_updates(model_workspace, model_name, **updates)
+
+    async def _ensure_passthrough_virtual_model(
+        self, workspace: str, model_name: str, existing_vm_names: set[tuple[str, str]] | None
+    ) -> None:
         """Auto-create a passthrough VirtualModel for a model entity if one does not exist.
 
         A passthrough VirtualModel has an empty middleware pipeline and sets
         ``default_model_entity`` to ``"{workspace}/{model_name}"``, so inference
         requests addressed to ``"workspace/model_name"`` resolve directly to
         the underlying model entity without any plugin intervention.
+
+        ``existing_vm_names`` short-circuits names that are already taken, and is
+        updated on creation so the same name is not attempted twice in one pass.
+        A name held by a user-managed VirtualModel is left as it is.
 
         This is idempotent: a :class:`~nemo_platform.ConflictError` (409) means
         the VirtualModel already exists and is silently ignored.  Any other
@@ -1038,7 +1074,22 @@ class ModelProviderReconciler:
         Args:
             workspace: Workspace of the model entity.
             model_name: Name of the model entity (also used as the VirtualModel name).
+            existing_vm_names: ``(workspace, name)`` of every known VirtualModel, or
+                ``None`` when the VirtualModel state could not be read this pass.
         """
+        if existing_vm_names is None:
+            return
+
+        if (workspace, model_name) in existing_vm_names:
+            # The name may belong to a user-managed VirtualModel pointing somewhere
+            # else, so do not claim the passthrough itself exists.
+            logger.debug(
+                "Skipping passthrough VirtualModel for %s/%s: the name is already in use",
+                workspace,
+                model_name,
+            )
+            return
+
         try:
             await self._platform_sdk.inference.virtual_models.create(
                 workspace=workspace,
@@ -1060,9 +1111,20 @@ class ModelProviderReconciler:
                 model_name,
                 exc_info=True,
             )
+        finally:
+            # Record the name either way: on success it now exists, and on failure
+            # retrying it within the same pass would fail the same way.
+            existing_vm_names.add((workspace, model_name))
 
-    async def _cleanup_orphaned_virtual_models(self, provider_contexts: list[ModelContext]) -> None:
-        """Delete autoprovisioned VirtualModels whose backing entities are no longer served."""
+    async def _cleanup_orphaned_virtual_models(
+        self, provider_contexts: list[ModelContext], vm_snapshot: list[VirtualModel]
+    ) -> None:
+        """Delete autoprovisioned VirtualModels whose backing entities are no longer served.
+
+        Only VirtualModels present when the pass began are considered, so anything
+        created during the pass -- by this reconciler or anyone else -- is evaluated
+        on a later pass rather than raced against.
+        """
         active_model_entity_ids: set[str] = set()
         for ctx in provider_contexts:
             provider = ctx.model_provider
@@ -1076,8 +1138,8 @@ class ModelProviderReconciler:
                 if model_entity_id:
                     active_model_entity_ids.add(model_entity_id)
 
-        virtual_models = self._platform_sdk.inference.virtual_models.list(workspace="-", page_size=200)
-        async for virtual_model in virtual_models:
+        for virtual_model in vm_snapshot:
+            self._emit_heartbeat()
             if not virtual_model.autoprovisioned:
                 continue
 
@@ -1091,13 +1153,30 @@ class ModelProviderReconciler:
                 logger.warning("Skipping autoprovisioned VirtualModel with no name")
                 continue
 
+            expected_db_version = _get_virtual_model_db_version(virtual_model)
+            if expected_db_version is None:
+                logger.warning(
+                    "Skipping orphaned autoprovisioned VirtualModel %s/%s because it has no database version for conditional deletion",
+                    virtual_model.workspace,
+                    virtual_model.name,
+                )
+                continue
+
             try:
                 await self._platform_sdk.inference.virtual_models.delete(
                     name=virtual_model.name,
                     workspace=virtual_model.workspace,
+                    expected_db_version=expected_db_version,
                 )
                 logger.info(
                     "Deleted orphaned autoprovisioned VirtualModel %s/%s",
+                    virtual_model.workspace,
+                    virtual_model.name,
+                )
+            except StainlessNotFoundError:
+                # Already gone; the snapshot predates the deletion.
+                logger.debug(
+                    "Orphaned autoprovisioned VirtualModel %s/%s no longer exists",
                     virtual_model.workspace,
                     virtual_model.name,
                 )

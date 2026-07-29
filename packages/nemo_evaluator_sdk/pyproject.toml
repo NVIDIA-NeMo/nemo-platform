@@ -42,11 +42,15 @@ agent-runtimes = [
   "openai-agents[docker]>=0.17.3,<0.18",
 ]
 engine = []
-# NOTE: The native Harbor runtime (HarborAgentTaskRunner / run_harbor_eval) needs
-# `harbor`, which is intentionally NOT declared here. Harbor requires Python
-# >=3.12 while this workspace supports >=3.11, so pinning it would make the lock
-# unsatisfiable. It is imported lazily (like nemo_fabric) and installed
-# separately: `uv pip install "harbor>=0.16.1"`.
+# The native Harbor runtime (HarborAgentTaskRunner / run_harbor_eval) needs `harbor`, which requires
+# Python >=3.12 while this workspace floor is >=3.11. The `python_version >= '3.12'` marker (matching
+# harbor's own requires-python) scopes the dependency to the 3.12+ fork of the universal lock, so it
+# installs on 3.12+ and is simply omitted on 3.11 — no floor bump for the rest of the workspace.
+# `harbor` is imported lazily (only inside HarborAgentTaskRunner.run_tasks), so importing the SDK and
+# resolving a HarborRunnerTarget stay valid on 3.11; only *executing* a Harbor job needs this extra.
+harbor = [
+  "harbor>=0.16.1; python_version >= '3.12'",
+]
 nemo-platform = [
   "nemo-platform-sdk",
 ]

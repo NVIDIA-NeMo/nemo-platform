@@ -7,6 +7,7 @@ import type {
   ClaudeCodeChatJobArtifact,
   ClaudeCodeChatLinkArtifact,
   ClaudeCodeChatSelectionArtifact,
+  ClaudeCodeInputRequest,
   ClaudeCodeSessionHistoryItem,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { getJobProgressDetailRoute } from '@studio/routes/agents/ClaudeCodeChatRoute/utils/jobProgress';
@@ -85,8 +86,10 @@ const STUDIO_LINK_PATH_TEMPLATES: Record<string, string> = {
   intake: '/workspaces/{workspace}/intake',
   intake_traces: '/workspaces/{workspace}/intake/traces',
   intake_spans: '/workspaces/{workspace}/intake/spans',
-  intake_trace: '/workspaces/{workspace}/intake/traces/{name}',
-  intake_span: '/workspaces/{workspace}/intake/traces/{trace_id}?spanId={span_id}',
+  intake_session: '/workspaces/{workspace}/intake/sessions/{session_id}',
+  intake_trace: '/workspaces/{workspace}/intake/sessions/{session_id}?traceId={trace_id}',
+  intake_span:
+    '/workspaces/{workspace}/intake/sessions/{session_id}?traceId={trace_id}&spanId={span_id}',
   data_designer: '/workspaces/{workspace}/data-designer',
   data_designer_new: '/workspaces/{workspace}/data-designer/new',
   data_designer_job: '/workspaces/{workspace}/data-designer/{name}',
@@ -122,14 +125,15 @@ const STUDIO_LINK_ARGUMENT_ALIASES = {
     'span_id',
     'spanId',
     'experiment_group_id',
-    'experimentGroupId',
+    'experimentId',
   ],
   experiment_name: ['experimentName', 'experiment_id', 'experimentId'],
   file_path: ['file', 'filePath', 'file_path_encoded', 'filePathEncoded', 'path'],
+  session_id: ['sessionId'],
   trace_id: ['traceId'],
   span_id: ['spanId', 'name'],
 } satisfies Record<
-  'name' | 'experiment_name' | 'file_path' | 'trace_id' | 'span_id',
+  'name' | 'experiment_name' | 'file_path' | 'session_id' | 'trace_id' | 'span_id',
   readonly string[]
 >;
 
@@ -216,6 +220,7 @@ const buildStudioLinkHrefFromInput = (
     'name',
     'experiment_name',
     'file_path',
+    'session_id',
     'trace_id',
     'span_id',
   ] as const) {
@@ -228,7 +233,7 @@ const buildStudioLinkHrefFromInput = (
   }
 
   return template.replace(
-    /\{(workspace|name|experiment_name|file_path|trace_id|span_id)\}/g,
+    /\{(workspace|name|experiment_name|file_path|session_id|trace_id|span_id)\}/g,
     (_match, key: string) => values[key] ?? ''
   );
 };
@@ -510,6 +515,35 @@ export const updateClaudeCodeChatArtifactsFromSelections = (
     });
   }
 
+  return next;
+};
+
+export const updateClaudeCodeChatArtifactsFromInputSelection = (
+  current: ClaudeCodeChatArtifacts,
+  request: ClaudeCodeInputRequest,
+  value: Record<string, unknown>
+): ClaudeCodeChatArtifacts => {
+  const next = cloneArtifacts(current);
+  let selection: ClaudeCodeChatSelectionArtifact | undefined;
+
+  if (request.kind === 'agent') {
+    const agent = getString(value.agent);
+    if (agent) selection = { label: 'Agent', value: agent };
+  } else if (request.kind === 'model') {
+    const outputKey = getString(request.input.output_key) ?? 'model';
+    const model = getString(value[outputKey]);
+    if (model) selection = { label: 'Model', value: model };
+  } else if (request.kind === 'dataset_file') {
+    const fileset = getString(value.dataset_fileset);
+    const path = getString(value.dataset_path);
+    if (fileset && path) selection = { label: 'Dataset', value: `${fileset}/${path}` };
+  } else if (request.kind === 'eval_config') {
+    const fileset = getString(value.eval_config_fileset);
+    const path = getString(value.eval_config);
+    if (fileset && path) selection = { label: 'Eval config', value: `${fileset}/${path}` };
+  }
+
+  if (selection) setSelection(next, selection);
   return next;
 };
 

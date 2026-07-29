@@ -10,11 +10,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"sync/atomic"
+	"strings"
 	"time"
 
+	"github.com/NVIDIA-NeMo/nemo-platform/services/core/jobs/jobs-launcher/nmpclient"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
-	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
@@ -24,14 +24,16 @@ import (
 )
 
 const (
-	name                     = "nmp.nvidia.com/nemo-platform/jobs-launcher"
-	NEMO_JOB_WORKSPACE       = "NEMO_JOB_WORKSPACE"
-	NEMO_JOB_ID_ENV          = "NEMO_JOB_ID"
-	NEMO_JOB_ATTEMPT_ID_ENV  = "NEMO_JOB_ATTEMPT_ID"
-	NEMO_JOB_STEP_NAME_ENV   = "NEMO_JOB_STEP"
-	NEMO_JOB_TASK_ID_ENV     = "NEMO_JOB_TASK"
-	nmpJobLogsEndpointEnv    = "NMP_JOB_LOGS_ENDPOINT"
-	otlpHTTPLogExportTimeout = 10 * time.Second
+	name                    = "nmp.nvidia.com/nemo-platform/jobs-launcher"
+	NEMO_JOB_WORKSPACE      = "NEMO_JOB_WORKSPACE"
+	NEMO_JOB_ID_ENV         = "NEMO_JOB_ID"
+	NEMO_JOB_ATTEMPT_ID_ENV = "NEMO_JOB_ATTEMPT_ID"
+	NEMO_JOB_STEP_NAME_ENV  = "NEMO_JOB_STEP"
+	NEMO_JOB_TASK_ID_ENV    = "NEMO_JOB_TASK"
+	serviceJobsPrincipal    = "service:jobs"
+
+	launcherOTLPLogsEndpointEnv = "NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT"
+	otlpHTTPLogExportTimeout    = 10 * time.Second
 )
 
 var (
@@ -111,106 +113,132 @@ func newLoggerProvider(ctx context.Context, res *resource.Resource) (*log.Logger
 }
 
 func newLogExporter(ctx context.Context) (log.Exporter, error) {
-	if endpoint := os.Getenv(nmpJobLogsEndpointEnv); endpoint != "" {
-		if os.Getenv(workloadIdentityTokenFileEnv) != "" {
-			tokenSource, err := newOTLPLogWorkloadAuthTokenSource(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("configure workload identity auth for OTLP logs: %w", err)
-			}
-			return newRefreshableAuthLogExporter(ctx, endpoint, tokenSource, otlpHTTPLogExporter)
-		}
-		return otlploghttp.New(ctx, otlploghttp.WithEndpointURL(endpoint))
+	endpointURL := strings.TrimSpace(os.Getenv(launcherOTLPLogsEndpointEnv))
+	if endpointURL == "" {
+		return stdoutlog.New()
 	}
-
-	return autoexport.NewLogExporter(
-		ctx,
-		// Default to a stdout log exporter if autoexport fails to configure one.
-		autoexport.WithFallbackLogExporter(
-			func(ctx context.Context) (log.Exporter, error) {
-				return stdoutlog.New()
-			},
-		),
-	)
+	return newLauncherOTLPLogExporter(ctx, endpointURL)
 }
 
-type authHeaderSource interface {
-	AuthorizationHeader(context.Context) (string, error)
-}
-
-type logExporterFactory func(context.Context, ...otlploghttp.Option) (log.Exporter, error)
-
-type refreshableAuthLogExporter struct {
-	exporter log.Exporter
-	stopped  atomic.Bool
-}
-
-func newRefreshableAuthLogExporter(
-	ctx context.Context,
-	endpoint string,
-	authSource authHeaderSource,
-	newExporter logExporterFactory,
-) (log.Exporter, error) {
-	if _, err := authSource.AuthorizationHeader(ctx); err != nil {
-		return nil, fmt.Errorf("configure workload identity auth for OTLP logs: %w", err)
-	}
-
-	exporter, err := newExporter(
-		ctx,
-		otlploghttp.WithEndpointURL(endpoint),
-		otlploghttp.WithHTTPClient(&http.Client{
-			Transport: &authHeaderTransport{source: authSource},
-			Timeout:   otlpHTTPLogExportTimeout,
-		}),
-	)
+func newLauncherOTLPLogExporter(ctx context.Context, endpointURL string) (log.Exporter, error) {
+	authConfig, err := newLauncherOTLPLogAuthConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &refreshableAuthLogExporter{exporter: exporter}, nil
-}
+	if _, err := authConfig.source.Headers(ctx); err != nil {
+		return nil, fmt.Errorf("configure %s for OTLP logs: %w", authConfig.description, err)
+	}
+	logOTLPLogAuthMechanism(authConfig.mechanism, authConfig.reason)
 
-func (e *refreshableAuthLogExporter) Export(ctx context.Context, records []log.Record) error {
-	if e.stopped.Load() {
-		return nil
+	httpClient := launcherOTLPHTTPClient()
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: otlpHTTPLogExportTimeout}
+	}
+	httpClient.Transport = &authHeadersTransport{
+		source:          authConfig.source,
+		authDescription: authConfig.description,
+		base:            httpClient.Transport,
 	}
 
-	return e.exporter.Export(ctx, records)
-}
-
-func (e *refreshableAuthLogExporter) Shutdown(ctx context.Context) error {
-	if e.stopped.Swap(true) {
-		return nil
+	options := []otlploghttp.Option{
+		otlploghttp.WithEndpointURL(endpointURL),
+		// Platform job log upload is intentionally independent from OTEL_* header
+		// env vars. User workloads may use OTEL_EXPORTER_OTLP_LOGS_HEADERS for
+		// third-party telemetry; application logs construct platform auth headers in Go.
+		// Passing explicit empty headers prevents the upstream exporter from
+		// applying OTEL_EXPORTER_OTLP_LOGS_HEADERS here.
+		otlploghttp.WithHeaders(map[string]string{}),
+		otlploghttp.WithHTTPClient(httpClient),
 	}
-	return e.exporter.Shutdown(ctx)
+
+	return otlpHTTPLogExporter(ctx, options...)
 }
 
-func (e *refreshableAuthLogExporter) ForceFlush(ctx context.Context) error {
-	return e.exporter.ForceFlush(ctx)
+type launcherOTLPLogAuthConfig struct {
+	source      requestHeaderSource
+	description string
+	mechanism   string
+	reason      string
 }
 
-type authHeaderTransport struct {
-	source authHeaderSource
-	base   http.RoundTripper
+func newLauncherOTLPLogAuthConfig(ctx context.Context) (launcherOTLPLogAuthConfig, error) {
+	if os.Getenv(workloadIdentityTokenFileEnv) != "" {
+		// True auth: exchange the workload subject token and send the resulting bearer token.
+		tokenSource, err := newOTLPLogWorkloadAuthTokenSource(ctx)
+		if err != nil {
+			return launcherOTLPLogAuthConfig{}, fmt.Errorf("configure workload identity auth for OTLP logs: %w", err)
+		}
+		return launcherOTLPLogAuthConfig{
+			source:      tokenSource,
+			description: "workload identity auth",
+			mechanism:   "workload_identity_token_exchange",
+			reason:      "workload_token_file_configured",
+		}, nil
+	}
+
+	// Service identity default: when workload identity is not enabled, identify the
+	// launcher as service:jobs without touching user OTEL_* headers.
+	return launcherOTLPLogAuthConfig{
+		source:      serviceIdentityPrincipalHeaderSource{},
+		description: "service identity principal headers",
+		mechanism:   "service_identity_principal_headers",
+		reason:      "workload_token_file_not_configured",
+	}, nil
 }
 
-func (t *authHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	authHeader, err := t.source.AuthorizationHeader(req.Context())
+type requestHeaderSource interface {
+	Headers(context.Context) (map[string]string, error)
+}
+
+type authHeadersTransport struct {
+	source          requestHeaderSource
+	authDescription string
+	base            http.RoundTripper
+}
+
+func (t *authHeadersTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	headers, err := t.source.Headers(req.Context())
 	if err != nil {
-		return nil, fmt.Errorf("refresh workload identity auth for OTLP logs: %w", err)
+		return nil, fmt.Errorf("refresh %s for OTLP logs: %w", t.authDescription, err)
 	}
 
 	clonedReq := req.Clone(req.Context())
 	clonedReq.Header = req.Header.Clone()
-	clonedReq.Header.Set("Authorization", authHeader)
+	for key, value := range headers {
+		clonedReq.Header.Set(key, value)
+	}
 	return t.baseTransport().RoundTrip(clonedReq)
 }
 
-func (t *authHeaderTransport) baseTransport() http.RoundTripper {
+func (t *authHeadersTransport) baseTransport() http.RoundTripper {
 	if t.base != nil {
 		return t.base
 	}
 	return http.DefaultTransport
 }
 
+func logOTLPLogAuthMechanism(mechanism string, reason string) {
+	slog.Info(
+		"using OTLP log authentication",
+		"auth_mechanism", mechanism,
+		"reason", reason,
+	)
+}
+
+type serviceIdentityPrincipalHeaderSource struct{}
+
+func (serviceIdentityPrincipalHeaderSource) Headers(context.Context) (map[string]string, error) {
+	return map[string]string{"X-NMP-Principal-Id": serviceJobsPrincipal}, nil
+}
+
 func otlpHTTPLogExporter(ctx context.Context, opts ...otlploghttp.Option) (log.Exporter, error) {
 	return otlploghttp.New(ctx, opts...)
+}
+
+func launcherOTLPHTTPClient() *http.Client {
+	endpoint, err := nmpclient.ResolvePlatformEndpointFromEnv()
+	if err != nil || endpoint.Transport != nmpclient.TransportUDS {
+		return nil
+	}
+	return endpoint.HTTPClient()
 }

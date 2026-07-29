@@ -11,7 +11,9 @@ match what the CLI actually hits.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -49,6 +51,12 @@ def _list_response(items):
         total_results=len(items),
     )
     return resp
+
+
+def _await_args(mock: AsyncMock) -> Any:
+    args = mock.await_args
+    assert args is not None
+    return args
 
 
 @pytest.fixture
@@ -96,7 +104,7 @@ class TestCreateConfig:
             json={"name": "cfg-1"},
         )
         assert resp.status_code == 201, resp.text
-        sent = mock_entity_client.create.await_args.args[0]
+        sent = _await_args(mock_entity_client.create).args[0]
         assert isinstance(sent, AuditConfig)
         assert sent.name == "cfg-1"
         assert sent.workspace == "prod"
@@ -161,7 +169,7 @@ class TestListConfigs:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
         resp = client.get("/apis/auditor/v2/workspaces/default/configs?page=3&page_size=5&sort=name")
         assert resp.status_code == 200
-        kwargs = mock_entity_client.list.await_args.kwargs
+        kwargs = _await_args(mock_entity_client.list).kwargs
         assert kwargs["page"] == 3
         assert kwargs["page_size"] == 5
         assert kwargs["sort"] == "name"
@@ -179,7 +187,7 @@ class TestUpdateConfig:
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["description"] == "new"
-        sent = mock_entity_client.update.await_args.args[0]
+        sent = _await_args(mock_entity_client.update).args[0]
         assert sent.description == "new"
         assert sent.name == "cfg-1"
 
@@ -199,18 +207,64 @@ class TestUpdateConfig:
         )
         assert resp.status_code == 422
 
+    def test_conflict_hides_raw_exception_details(self, client, mock_entity_client) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_config("cfg-1"))
+        mock_entity_client.update = AsyncMock(
+            side_effect=NemoEntityConflictError("Error code: 409 - {'detail': 'db_version mismatch'}")
+        )
+
+        resp = client.put(
+            "/apis/auditor/v2/workspaces/default/configs/cfg-1",
+            json={"description": "new"},
+        )
+
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert "AuditConfig 'cfg-1'" in detail
+        assert "Refresh the config" in detail
+        assert "Error code" not in detail
+        assert "db_version" not in detail
+
+    def test_conflict_sanitizes_log_fields(self, client, mock_entity_client, caplog) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_config("cfg-1"))
+        mock_entity_client.update = AsyncMock(side_effect=NemoEntityConflictError("conflict"))
+
+        with caplog.at_level(logging.INFO, logger=configs_router_module.__name__):
+            resp = client.put(
+                "/apis/auditor/v2/workspaces/default%0Aforged/configs/cfg-1%0D%0Aforged",
+                json={"description": "new"},
+            )
+
+        assert resp.status_code == 409
+        message = next(
+            record.getMessage() for record in caplog.records if "Conflict updating audit config" in record.msg
+        )
+        assert "\r" not in message
+        assert "\n" not in message
+
 
 class TestDeleteConfig:
     def test_returns_204(self, client, mock_entity_client) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_config("cfg-1"))
         mock_entity_client.delete = AsyncMock(return_value=None)
         resp = client.delete("/apis/auditor/v2/workspaces/default/configs/cfg-1")
         assert resp.status_code == 204
         assert resp.content == b""
+        mock_entity_client.delete.assert_awaited_once_with(
+            AuditConfig,
+            name="cfg-1",
+            workspace="default",
+        )
 
     def test_404_when_missing(self, client, mock_entity_client) -> None:
         mock_entity_client.delete = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
         resp = client.delete("/apis/auditor/v2/workspaces/default/configs/missing")
         assert resp.status_code == 404
+
+    def test_409_when_changed(self, client, mock_entity_client) -> None:
+        mock_entity_client.delete = AsyncMock(side_effect=NemoEntityConflictError("changed"))
+        resp = client.delete("/apis/auditor/v2/workspaces/default/configs/cfg-1")
+        assert resp.status_code == 409
 
 
 class TestListConfigsFiltering:
@@ -218,7 +272,7 @@ class TestListConfigsFiltering:
         mock_entity_client.list = AsyncMock(return_value=_list_response([_make_config("a", description="prod")]))
         resp = client.get("/apis/auditor/v2/workspaces/default/configs?filter[description]=prod")
         assert resp.status_code == 200, resp.text
-        kwargs = mock_entity_client.list.await_args.kwargs
+        kwargs = _await_args(mock_entity_client.list).kwargs
         assert kwargs["filter_obj"] == {"description": "prod"}
         body = resp.json()
         assert body["filter"] == {"description": "prod"}
@@ -228,7 +282,7 @@ class TestListConfigsFiltering:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
         resp = client.get("/apis/auditor/v2/workspaces/default/configs?filter[project]=team-a")
         assert resp.status_code == 200, resp.text
-        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"project": "team-a"}
+        assert _await_args(mock_entity_client.list).kwargs["filter_obj"] == {"project": "team-a"}
 
     def test_filter_created_at_range_parses_gte_lte(self, client, mock_entity_client) -> None:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))
@@ -238,7 +292,7 @@ class TestListConfigsFiltering:
             "&filter[created_at][$lte]=2024-12-31T00:00:00Z"
         )
         assert resp.status_code == 200, resp.text
-        filter_obj = mock_entity_client.list.await_args.kwargs["filter_obj"]
+        filter_obj = _await_args(mock_entity_client.list).kwargs["filter_obj"]
         assert set(filter_obj["created_at"].keys()) == {"$gte", "$lte"}
         assert filter_obj["created_at"]["$gte"].startswith("2024-01-01")
         assert filter_obj["created_at"]["$lte"].startswith("2024-12-31")
@@ -252,7 +306,7 @@ class TestListConfigsFiltering:
         mock_entity_client.list = AsyncMock(return_value=_list_response([_make_config("a"), _make_config("b")]))
         resp = client.get("/apis/auditor/v2/workspaces/default/configs")
         assert resp.status_code == 200, resp.text
-        kwargs = mock_entity_client.list.await_args.kwargs
+        kwargs = _await_args(mock_entity_client.list).kwargs
         assert kwargs["filter_obj"] is None
         body = resp.json()
         assert [c["name"] for c in body["data"]] == ["a", "b"]

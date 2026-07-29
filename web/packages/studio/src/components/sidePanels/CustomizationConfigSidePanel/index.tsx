@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
-import {
-  isAutomodelJob,
-  isUnslothJob,
-  type CustomizationJob,
-} from '@nemo/sdk/vendored/customizer/schema';
 import { Divider, Flex, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
 import { ErrorMessageWithRetry } from '@studio/components/ErrorMessageWithRetry';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
+import {
+  isAutomodelJob,
+  isUnslothJob,
+  type CustomizationJob,
+} from '@studio/util/customizationBackend';
 import {
   getBaseModel,
   getFormattedTrainingType,
@@ -23,11 +23,11 @@ const HyperparameterRows: FC<{ job: CustomizationJob }> = ({ job }) => {
   const rows: ReactNode[] = [];
   const { schedule, optimizer, training } = job.spec;
 
-  rows.push(<KVPair key="epochs" label="Epochs" value={schedule.epochs} />);
-  rows.push(<KVPair key="max-steps" label="Max Steps" value={schedule.max_steps} />);
-  rows.push(<KVPair key="seed" label="Seed" value={schedule.seed} />);
-  rows.push(<KVPair key="lr" label="Learning Rate" value={optimizer.learning_rate} />);
-  rows.push(<KVPair key="wd" label="Weight Decay" value={optimizer.weight_decay} />);
+  rows.push(<KVPair key="epochs" label="Epochs" value={schedule?.epochs} />);
+  rows.push(<KVPair key="max-steps" label="Max Steps" value={schedule?.max_steps} />);
+  rows.push(<KVPair key="seed" label="Seed" value={schedule?.seed} />);
+  rows.push(<KVPair key="lr" label="Learning Rate" value={optimizer?.learning_rate} />);
+  rows.push(<KVPair key="wd" label="Weight Decay" value={optimizer?.weight_decay} />);
 
   if (isAutomodelJob(job)) {
     const { batch } = job.spec;
@@ -42,20 +42,20 @@ const HyperparameterRows: FC<{ job: CustomizationJob }> = ({ job }) => {
   if (isUnslothJob(job)) {
     const { batch } = job.spec;
     rows.push(
-      <KVPair key="pdbs" label="Per-device Batch Size" value={batch.per_device_train_batch_size} />
+      <KVPair key="pdbs" label="Per-device Batch Size" value={batch?.per_device_train_batch_size} />
     );
     rows.push(
-      <KVPair key="gas" label="Gradient Accumulation" value={batch.gradient_accumulation_steps} />
+      <KVPair key="gas" label="Gradient Accumulation" value={batch?.gradient_accumulation_steps} />
     );
-    rows.push(<KVPair key="warmup" label="Warmup Steps" value={job.spec.schedule.warmup_steps} />);
+    rows.push(<KVPair key="warmup" label="Warmup Steps" value={job.spec.schedule?.warmup_steps} />);
     rows.push(
-      <KVPair key="scheduler" label="LR Scheduler" value={job.spec.schedule.lr_scheduler_type} />
+      <KVPair key="scheduler" label="LR Scheduler" value={job.spec.schedule?.lr_scheduler_type} />
     );
-    rows.push(<KVPair key="optim" label="Optimizer" value={job.spec.optimizer.optim} />);
-    rows.push(<KVPair key="precision" label="Precision" value={job.spec.hardware.precision} />);
+    rows.push(<KVPair key="optim" label="Optimizer" value={job.spec.optimizer?.optim} />);
+    rows.push(<KVPair key="precision" label="Precision" value={job.spec.hardware?.precision} />);
   }
 
-  const lora = training.lora;
+  const lora = training?.lora;
   if (lora) {
     rows.push(<KVPair key="lora-rank" label="LoRA / Rank" value={lora.rank} />);
     rows.push(<KVPair key="lora-alpha" label="LoRA / Alpha" value={lora.alpha} />);
@@ -97,10 +97,10 @@ export const CustomizationConfigSidePanel: FC<Props> = ({
         <Stack gap="density-sm">
           <Text kind="body/semibold/md">Configuration Snapshot</Text>
           <KVPair label="Base Model" value={getBaseModel(job)} />
-          <KVPair label="Training Type" value={getFormattedTrainingType(training.training_type)} />
+          <KVPair label="Training Type" value={getFormattedTrainingType(training?.training_type)} />
           <KVPair
             label="Finetuning Type"
-            value={getFormattedTrainingType(training.finetuning_type)}
+            value={getFormattedTrainingType(training?.finetuning_type)}
           />
           <KVPair
             label="Training Options"

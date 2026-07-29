@@ -9,7 +9,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, Self, TypeAlias
+from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
 
 # Imported for their registration side effects: each module registers its
 # payload kind in the bundle registry so MetricBundle payloads validate.
@@ -40,6 +40,7 @@ from nemo_evaluator_sdk.values import (
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
@@ -229,6 +230,7 @@ class EvaluateJob(NemoJob):
             if isinstance(input_spec, EvaluateInputSpec)
             else EvaluateInputSpec.model_validate_json(input_spec.model_dump_json())
         )
+        entity_client = cast(EntityClient | None, entity_client)
         metrics = await resolve_metrics_to_inline(
             submit_spec.metrics,
             workspace=workspace,

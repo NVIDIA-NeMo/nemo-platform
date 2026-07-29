@@ -53,7 +53,7 @@ def parse_qualified_name(name: str, default_workspace: str | None = None) -> tup
     return default_workspace or DEFAULT_WORKSPACE, name
 
 
-class EntityTypeDefault:
+class EntityTypeDefault(str):
     """Descriptor returning snake_case class name as default for __entity_type__."""
 
     def __get__(self, obj: object | None, objtype: type | None = None) -> str:
@@ -105,7 +105,7 @@ class EntityBase(BaseModel):
         "_db_version",
     }
 
-    __entity_type__: ClassVar[str] = EntityTypeDefault()  # type: ignore[assignment]
+    __entity_type__: ClassVar[str] = EntityTypeDefault()
 
     model_config = {"populate_by_name": True}
 
@@ -167,6 +167,7 @@ class EntityBase(BaseModel):
         """Parent entity ID for nested entities."""
         return self._parent
 
+    @computed_field
     @property
     def db_version(self) -> int:
         """Database version of the entity for optimistic locking."""
@@ -217,34 +218,70 @@ class EntityToken(Protocol):
 EntityTypeLike = Type[EntityT] | EntityToken
 
 
-class EntityClientProtocol(Protocol[EntityT]):
-    """Protocol defining the interface for entity clients."""
+class EntityGetterProtocol(Protocol[EntityT]):
+    """Protocol for entity clients that can fetch entities by workspace/name."""
 
-    async def create(self, entity: EntityT) -> EntityT: ...
+    async def get(self, entity_type: Type[EntityT], *, name: str, workspace: str) -> EntityT: ...
+
+
+class EntityDeleteClientProtocol(EntityGetterProtocol[EntityT], Protocol[EntityT]):
+    """Protocol for entity clients that can list and delete entities."""
+
     async def list(
         self,
-        entity_type: EntityTypeLike,
+        entity_type: Type[EntityT],
         *,
-        workspace: Optional[str] = None,
+        workspace: str,
         filter_operation: Optional[FilterOperation] = None,
-        filter_str: Optional[str] = None,
         sort: Optional[str] = None,
-        filter_obj: Optional[Dict[str, Any]] = None,
         page: int = 1,
         page_size: int = 100,
     ) -> ListResponse[EntityT]: ...
-    async def get(self, entity_type: EntityTypeLike, name: str, *, workspace: Optional[str] = None) -> EntityT: ...
-    async def get_by_id(self, entity_type: EntityTypeLike, entity_id: str) -> EntityT: ...
-    async def update(self, entity: EntityT, *, original_name: str | None = None) -> EntityT: ...
+
     async def delete(
-        self, entity_type: EntityTypeLike, name: str, *, workspace: Optional[str] = None
-    ) -> DeleteResponse: ...
-    async def delete_by_id(self, entity_type: EntityTypeLike, entity_id: str) -> DeleteResponse: ...
-    async def save(self, entity: EntityT) -> EntityT: ...
-    async def add(self, entity: EntityT) -> EntityT: ...
-    async def get_by_field(
-        self, entity_type: EntityTypeLike, *, workspace: Optional[str] = None, **field_filters: Any
-    ) -> EntityT: ...
+        self,
+        entity_type: Type[EntityT],
+        name: str,
+        *,
+        workspace: str,
+        expected_db_version: Optional[int] = None,
+    ) -> object: ...
+
+
+class EntityClientProtocol(EntityDeleteClientProtocol[EntityT], Protocol[EntityT]):
+    """Protocol for the common entity CRUD operations used by plugins."""
+
+    async def create(self, entity: EntityT) -> EntityT: ...
+
+
+class AnyEntityGetterProtocol(Protocol):
+    """Protocol for clients that can fetch any entity model type."""
+
+    async def get(self, entity_type: Type[EntityT], *, name: str, workspace: str) -> EntityT: ...
+
+
+class AnyEntityDeleteClientProtocol(AnyEntityGetterProtocol, Protocol):
+    """Protocol for clients that can list and delete any entity model type."""
+
+    async def list(
+        self,
+        entity_type: Type[EntityT],
+        *,
+        workspace: str,
+        filter_operation: Optional[FilterOperation] = None,
+        sort: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> ListResponse[EntityT]: ...
+
+    async def delete(
+        self,
+        entity_type: Type[EntityT],
+        name: str,
+        *,
+        workspace: str,
+        expected_db_version: Optional[int] = None,
+    ) -> object: ...
 
 
 # Error types
@@ -407,7 +444,8 @@ class EntityClient:
         # the real caller is in X-NMP-Principal-On-Behalf-Of.
         if hasattr(result, "_auth_context"):
             sdk_headers = self.entities_api._client.default_headers
-            effective = sdk_headers.get("X-NMP-Principal-On-Behalf-Of") or sdk_headers.get("X-NMP-Principal-Id", "")
+            raw_effective = sdk_headers.get("X-NMP-Principal-On-Behalf-Of") or sdk_headers.get("X-NMP-Principal-Id", "")
+            effective = raw_effective if isinstance(raw_effective, str) else ""
             if not effective.startswith("service:"):
                 setattr(result, "_auth_context", None)
 
@@ -493,6 +531,34 @@ class EntityClient:
 
         return ListResponse(data=entities, pagination=pagination)
 
+    async def count_by(
+        self,
+        entity_type: EntityTypeLike,
+        field: str,
+        *,
+        workspace: str = DEFAULT_WORKSPACE,
+        filter_obj: dict[str, Any] | None = None,
+    ) -> dict[str, int]:
+        """Return the number of matching entities grouped by ``field``."""
+        if not field.isidentifier():
+            raise ValueError(f"Field '{field}' is not a direct entity data field")
+
+        filter_dict = _convert_filter_obj_to_filter_str(filter_obj) if filter_obj else {}
+        effective_filter = json.dumps(filter_dict) if filter_dict else omit
+
+        response = await self.entities_api.list(
+            _get_entity_type(entity_type),
+            workspace=workspace,
+            filter=effective_filter,
+            page=1,
+            page_size=1,
+            extra_query={"count_by": f"data.{field}"},
+        )
+        group_counts = getattr(response, "group_counts", None)
+        if group_counts is None:
+            raise EntityStoreError("Grouped counts not found in response")
+        return TypeAdapter(dict[str, int]).validate_python(group_counts)
+
     async def create(self, entity: EntityT) -> EntityT:
         """Create a new entity.
 
@@ -554,7 +620,7 @@ class EntityClient:
                 entity_name,
                 workspace=ws,
                 entity_type=_get_entity_type(entity_type),
-                parent=parent,
+                parent=parent if parent is not None else omit,
             )
             return self._convert_api_entity_to_model(response, entity_type)
         except NotFoundError as e:
@@ -613,7 +679,7 @@ class EntityClient:
                 entity_type=_get_entity_type(entity_type),
                 data=entity._get_data_fields(),
                 new_name=entity.name if original_name else omit,
-                parent=entity._parent,
+                parent=entity._parent if entity._parent is not None else omit,
                 project=entity.project or omit,
                 expected_db_version=entity.db_version,
             )
@@ -633,6 +699,7 @@ class EntityClient:
         *,
         workspace: Optional[str] = None,
         parent: Optional[str] = None,
+        expected_db_version: Optional[int] = None,
     ) -> DeleteResponse:
         """Delete an entity by name.
 
@@ -643,12 +710,14 @@ class EntityClient:
             name: Entity name (can be workspace-qualified)
             workspace: Optional workspace override
             parent: Optional parent entity ID for nested entities
+            expected_db_version: Optional expected database version for optimistic locking
 
         Returns:
             Deleted entity response
 
         Raises:
             EntityNotFoundError: Entity not found
+            EntityConflictError: Version mismatch (entity was modified by another request)
         """
         ws, entity_name = parse_qualified_name(name, default_workspace=workspace)
         try:
@@ -656,10 +725,13 @@ class EntityClient:
                 entity_name,
                 workspace=ws,
                 entity_type=_get_entity_type(entity_type),
-                parent=parent,
+                parent=parent if parent is not None else omit,
+                expected_db_version=expected_db_version if expected_db_version is not None else omit,
             )
         except NotFoundError as e:
             raise EntityNotFoundError(f"Entity '{entity_name}' not found in workspace '{ws}'") from e
+        except ConflictError as e:
+            raise EntityConflictError(str(e)) from e
 
     async def delete_by_id(
         self,
@@ -679,6 +751,7 @@ class EntityClient:
 
         Raises:
             EntityNotFoundError: Entity not found
+            EntityConflictError: Version mismatch (entity was modified by another request)
         """
         try:
             entity = await self.entities_api.get_entity_by_id(entity_id)
@@ -686,10 +759,13 @@ class EntityClient:
                 entity.name,
                 workspace=entity.workspace,
                 entity_type=entity.entity_type,
-                parent=entity.parent,
+                parent=entity.parent if entity.parent is not None else omit,
+                expected_db_version=entity.db_version,
             )
         except NotFoundError as e:
             raise EntityNotFoundError(f"Entity with id '{entity_id}' not found") from e
+        except ConflictError as e:
+            raise EntityConflictError(str(e)) from e
 
     async def save(self, entity: EntityT) -> EntityT:
         """

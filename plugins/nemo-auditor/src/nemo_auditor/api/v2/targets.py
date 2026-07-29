@@ -24,6 +24,7 @@ from nemo_platform_plugin.entity_client import (
     get_entity_client,
 )
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.log_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,19 @@ async def update_target(
             detail=f"AuditTarget '{name}' not found in workspace '{workspace}'.",
         ) from exc
     except NemoEntityConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        logger.info(
+            "Conflict updating audit target '%s' in workspace '%s'",
+            sanitize_for_log(name),
+            sanitize_for_log(workspace),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"AuditTarget '{name}' was modified by another request in workspace '{workspace}'. "
+                "Refresh the target and try again."
+            ),
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to update audit target '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to update audit target.") from exc
@@ -186,6 +199,14 @@ async def delete_target(
         raise HTTPException(
             status_code=404,
             detail=f"AuditTarget '{name}' not found in workspace '{workspace}'.",
+        ) from exc
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"AuditTarget '{name}' was modified by another request in workspace '{workspace}'. "
+                "Refresh the target and try again."
+            ),
         ) from exc
     except Exception as exc:
         logger.exception("Failed to delete audit target '%s'", name)

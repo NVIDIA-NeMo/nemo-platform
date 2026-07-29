@@ -89,18 +89,26 @@ def deployment_config_view(config: Optional[_DeploymentConfigLike]) -> Deploymen
     )
 
 
+def _elapsed_seconds_since(timestamp: datetime | None) -> float:
+    if timestamp is None:
+        return 0.0
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - timestamp).total_seconds()
+
+
 def deployment_elapsed_seconds(deployment: ModelDeployment) -> float:
     """Seconds since the deployment entity was created.
 
     Uses the entity-store ``created_at`` timestamp so the value survives
     controller restarts.
     """
-    created_at = deployment.created_at
-    if created_at is None:
-        return 0.0
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=timezone.utc)
-    return (datetime.now(timezone.utc) - created_at).total_seconds()
+    return _elapsed_seconds_since(deployment.created_at)
+
+
+def deleting_elapsed_seconds(deployment: ModelDeployment) -> float:
+    """Seconds since the deployment last changed state (for DELETING timeout)."""
+    return _elapsed_seconds_since(deployment.updated_at or deployment.created_at)
 
 
 def format_duration(seconds: float) -> str:

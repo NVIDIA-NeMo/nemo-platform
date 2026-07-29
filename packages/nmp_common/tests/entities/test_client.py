@@ -7,6 +7,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from nemo_platform import omit
 from nemo_platform.types.entities import EntitiesPage, Entity
 from nemo_platform.types.shared.pagination_data import PaginationData
 from nemo_platform_plugin.entities import _convert_filter_obj_to_filter_str
@@ -960,6 +961,98 @@ def test_entity_base_db_version_defaults_to_one_for_new_entity():
     assert entity._db_version == 1
     # db_version property should return 1
     assert entity.db_version == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_passes_expected_db_version():
+    """Test delete includes db_version for optimistic locking when supplied."""
+
+    class TestEntity(EntityBase):
+        field_1: str
+
+    mock_api = Mock()
+    mock_api.delete_entity_by_name = AsyncMock()
+    client = EntityClient(mock_api)
+
+    await client.delete(TestEntity, "test-entity", workspace="test-workspace", expected_db_version=5)
+
+    mock_api.delete_entity_by_name.assert_awaited_once()
+    call_kwargs = mock_api.delete_entity_by_name.call_args.kwargs
+    assert call_kwargs["expected_db_version"] == 5
+
+
+@pytest.mark.asyncio
+async def test_delete_omits_expected_db_version_by_default():
+    """Test delete remains unconditional unless a version guard is supplied."""
+
+    class TestEntity(EntityBase):
+        field_1: str
+
+    mock_api = Mock()
+    mock_api.delete_entity_by_name = AsyncMock()
+    client = EntityClient(mock_api)
+
+    await client.delete(TestEntity, "test-entity", workspace="test-workspace")
+
+    mock_api.delete_entity_by_name.assert_awaited_once()
+    call_kwargs = mock_api.delete_entity_by_name.call_args.kwargs
+    assert call_kwargs["expected_db_version"] is omit
+
+
+@pytest.mark.asyncio
+async def test_delete_by_id_passes_fetched_db_version():
+    """Test delete_by_id deletes the version of the entity it resolved by ID."""
+
+    class TestEntity(EntityBase):
+        field_1: str
+
+    now = datetime.now()
+    mock_api = Mock()
+    mock_api.get_entity_by_id = AsyncMock(
+        return_value=Entity(
+            entity_type="test_entity",
+            name="test-entity",
+            workspace="test-workspace",
+            id="123",
+            created_at=now,
+            updated_at=now,
+            db_version=7,
+            data={"field_1": "value"},
+        )
+    )
+    mock_api.delete_entity_by_name = AsyncMock()
+    client = EntityClient(mock_api)
+
+    await client.delete_by_id(TestEntity, "123")
+
+    mock_api.delete_entity_by_name.assert_awaited_once()
+    call_kwargs = mock_api.delete_entity_by_name.call_args.kwargs
+    assert call_kwargs["expected_db_version"] == 7
+
+
+@pytest.mark.asyncio
+async def test_delete_version_mismatch_raises_conflict():
+    """Test delete maps API conflicts to EntityConflictError."""
+
+    class TestEntity(EntityBase):
+        field_1: str
+
+    from nemo_platform import ConflictError
+
+    mock_response = Mock()
+    mock_response.status_code = 409
+    mock_api = Mock()
+    mock_api.delete_entity_by_name = AsyncMock(
+        side_effect=ConflictError(
+            message="Entity was modified by another request.",
+            response=mock_response,
+            body=None,
+        )
+    )
+    client = EntityClient(mock_api)
+
+    with pytest.raises(EntityConflictError):
+        await client.delete(TestEntity, "test-entity", workspace="test-workspace", expected_db_version=5)
 
 
 @pytest.mark.asyncio

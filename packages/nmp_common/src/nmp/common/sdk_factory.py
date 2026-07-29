@@ -9,11 +9,13 @@ from typing import Any, Callable, Optional, TypeVar, cast
 
 import httpx
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.constants import is_workload_identity_token_file_set
 from nmp.common.auth import Principal, get_principal_auth_headers, principal_from_env
 from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.http_clients import shared_async_http_client, shared_sync_http_client
 from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
 from nmp.common.observability.otel import get_otel_headers
+from nmp.common.platform_endpoint import PlatformEndpoint, resolve_platform_endpoint, resolve_service_endpoint
 
 logger = logging.getLogger(__name__)
 PlatformSDKT = TypeVar("PlatformSDKT", NeMoPlatform, AsyncNeMoPlatform)
@@ -61,7 +63,18 @@ def resolve_platform_request_url(
         return request_url
 
     api_name = match.group(1)
-    service_url = httpx.URL(platform_config.get_service_url(api_name))
+    svc_endpoint = resolve_service_endpoint(api_name, platform_config)
+    if svc_endpoint.transport == "uds":
+        logger.debug(
+            "Routing URL to UDS service",
+            extra={
+                "service": api_name,
+                "path": request_url.path,
+                "transport": svc_endpoint.transport,
+            },
+        )
+        return request_url.copy_with(scheme="http", host="nemo-platform.local", port=None)
+    service_url = httpx.URL(svc_endpoint.connect_base_url)
     routed_url = request_url.copy_with(
         scheme=service_url.scheme,
         host=service_url.host,
@@ -118,6 +131,50 @@ def with_options_preserving_request_router(base_sdk: PlatformSDKT, **kwargs: Any
         setattr(scoped_sdk, "_nmp_request_router", router)
         scoped_sdk._prepare_url = router.resolve
     return scoped_sdk
+
+
+def _sync_http_client_for_endpoint(
+    endpoint: PlatformEndpoint,
+    http_client: httpx.Client | None,
+) -> httpx.Client:
+    if http_client is not None:
+        return http_client
+    if endpoint.transport == "uds":
+        return endpoint.sync_http_client()
+    return shared_sync_http_client()
+
+
+def _async_http_client_for_endpoint(
+    endpoint: PlatformEndpoint,
+    http_client: httpx.AsyncClient | None,
+) -> httpx.AsyncClient:
+    if http_client is not None:
+        return http_client
+    if _test_http_client is not None:
+        return _test_http_client
+    if endpoint.transport == "uds":
+        return endpoint.async_http_client()
+    return shared_async_http_client()
+
+
+def _should_bootstrap_workload_identity(
+    *,
+    as_service: str | None,
+    on_behalf_of: str | Principal | None,
+    http_client: httpx.Client | httpx.AsyncClient | None,
+    endpoint: PlatformEndpoint,
+) -> bool:
+    return (
+        as_service is None
+        and on_behalf_of is None
+        and http_client is None
+        and endpoint.transport != "uds"
+        and is_workload_identity_token_file_set()
+    )
+
+
+def _workload_identity_extra_headers(*, internal: bool) -> dict[str, str]:
+    return MARK_INTERNAL_REQUEST_HEADERS.copy() if internal else {}
 
 
 def _get_default_headers(
@@ -186,6 +243,7 @@ def get_platform_sdk(
     internal: bool = False,
     http_client: httpx.Client | None = None,
     on_behalf_of: str | Principal | None = None,
+    base_url: str | None = None,
 ) -> NeMoPlatform:
     """
     Returns an instance of the NeMoPlatform SDK configured with the platform's base URL.
@@ -199,14 +257,29 @@ def get_platform_sdk(
                  Use this for controllers and background tasks that make internal API calls.
         http_client: Optional sync HTTP client to use for requests.
         on_behalf_of: Optional principal ID to use for on-behalf-of authorization.
+        base_url: Optional platform base URL. Defaults to configured platform base URL.
 
     Returns:
         Configured NeMoPlatform SDK instance.
     """
+    endpoint = resolve_platform_endpoint()
+    if _should_bootstrap_workload_identity(
+        as_service=as_service,
+        on_behalf_of=on_behalf_of,
+        http_client=http_client,
+        endpoint=endpoint,
+    ):
+        headers = _workload_identity_extra_headers(internal=internal)
+        sdk = NeMoPlatform(
+            base_url=base_url or endpoint.connect_base_url,
+            default_headers=headers if headers else None,
+        )
+        return attach_platform_request_router(sdk)
+
     headers = _get_default_headers(as_service, internal, on_behalf_of)
     sdk = NeMoPlatform(
-        base_url=_base_url_from_config(),
-        http_client=http_client or shared_sync_http_client(),
+        base_url=base_url or endpoint.connect_base_url,
+        http_client=_sync_http_client_for_endpoint(endpoint, http_client),
         default_headers=headers if headers else None,
     )
     return attach_platform_request_router(sdk)
@@ -226,6 +299,12 @@ def get_task_sdk(as_service: str, http_client: httpx.Client | None = None) -> Ne
     Returns:
         Configured NeMoPlatform SDK with internal + on-behalf-of headers.
     """
+    if http_client is None and is_workload_identity_token_file_set():
+        return get_platform_sdk(internal=True)
+
+    if http_client is None:
+        http_client = resolve_platform_endpoint().sync_sdk_http_client()
+
     principal = principal_from_env()
     if principal is None:
         logger.warning(
@@ -254,6 +333,12 @@ def get_async_task_sdk(as_service: str, http_client: Optional[httpx.AsyncClient]
     Returns:
         Configured AsyncNeMoPlatform SDK with internal + on-behalf-of headers.
     """
+    if http_client is None and is_workload_identity_token_file_set():
+        return get_async_platform_sdk(internal=True)
+
+    if http_client is None:
+        http_client = resolve_platform_endpoint().async_sdk_http_client()
+
     principal = principal_from_env()
     if principal is None:
         logger.warning(
@@ -273,6 +358,7 @@ def get_async_platform_sdk(
     internal: bool = False,
     http_client: Optional[httpx.AsyncClient] = None,
     on_behalf_of: Optional[str | Principal] = None,
+    base_url: str | None = None,
 ) -> AsyncNeMoPlatform:
     """
     Returns an instance of the AsyncNeMoPlatform SDK configured with the platform's base URL.
@@ -287,17 +373,39 @@ def get_async_platform_sdk(
         http_client: Optional HTTP client to use for requests. Used for test injection
                     via DependencyProvider. See architecture/docs/http-client-injection.md.
         on_behalf_of: Optional principal ID to use for on-behalf-of authorization.
+        base_url: Optional platform base URL. Defaults to configured platform base URL.
     Returns:
         Configured AsyncNeMoPlatform SDK instance.
     """
+    endpoint = resolve_platform_endpoint()
+    if _should_bootstrap_workload_identity(
+        as_service=as_service,
+        on_behalf_of=on_behalf_of,
+        http_client=http_client,
+        endpoint=endpoint,
+    ):
+        headers = _workload_identity_extra_headers(internal=internal)
+        if _test_http_client is None:
+            sdk = AsyncNeMoPlatform(
+                base_url=base_url or endpoint.connect_base_url,
+                default_headers=headers if headers else None,
+            )
+        else:
+            sdk = AsyncNeMoPlatform(
+                base_url=base_url or endpoint.connect_base_url,
+                http_client=_async_http_client_for_endpoint(endpoint, http_client),
+                default_headers=headers if headers else None,
+            )
+        return attach_platform_request_router(sdk)
+
     headers = _get_default_headers(as_service, internal, on_behalf_of)
 
     # Use explicitly provided http_client (from DependencyProvider) or fall back to
     # module-level _test_http_client for backward compatibility with direct callers.
-    effective_client = http_client or _test_http_client or shared_async_http_client()
+    effective_client = _async_http_client_for_endpoint(endpoint, http_client)
 
     sdk = AsyncNeMoPlatform(
-        base_url=_base_url_from_config(),
+        base_url=base_url or endpoint.connect_base_url,
         http_client=effective_client,
         default_headers=headers if headers else None,
     )
@@ -430,12 +538,14 @@ class PlatformSDKProvider:
         internal: bool = False,
         http_client: httpx.Client | None = None,
         on_behalf_of: str | Principal | None = None,
+        base_url: str | None = None,
     ) -> NeMoPlatform:
         return get_platform_sdk(
             as_service=as_service,
             internal=internal,
             http_client=http_client,
             on_behalf_of=on_behalf_of,
+            base_url=base_url,
         )
 
     def get_async_platform_sdk(
@@ -444,5 +554,11 @@ class PlatformSDKProvider:
         as_service: str | None = None,
         internal: bool = False,
         on_behalf_of: str | Principal | None = None,
+        base_url: str | None = None,
     ) -> AsyncNeMoPlatform:
-        return get_async_platform_sdk(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+        return get_async_platform_sdk(
+            as_service=as_service,
+            internal=internal,
+            on_behalf_of=on_behalf_of,
+            base_url=base_url,
+        )

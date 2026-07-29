@@ -14,9 +14,11 @@ AgentRun (Razvan RFCs), not AgentDeployment.
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, DeploymentsRunnerConfig
@@ -27,7 +29,8 @@ from nemo_agents_plugin.entities import (
     Endpoint,
 )
 from nemo_agents_plugin.runner.backend import DeploymentInfo, ExternalLog, LogLocation, RunnerBackend
-from nemo_agents_plugin.utils import get_base_url
+from nemo_agents_plugin.utils import get_base_url, get_internal_base_url
+from nemo_deployments_plugin.auth_proxy import auth_proxy_port
 from nemo_deployments_plugin.entities import (
     ConfigFile,
     Container,
@@ -40,6 +43,7 @@ from nemo_deployments_plugin.entities import (
     VolumeMount,
 )
 from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.auth import platform_auth_enabled
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
@@ -51,6 +55,8 @@ _HTTP_PORT_NAME = "http"
 _PLUGIN_WHEELS_VOLUME = "plugin-wheels"
 _PLUGIN_WHEELS_MOUNT = "/opt/nemo/plugin-wheels"
 _NAT_CONFIG_ENV = "NAT_CONFIG_PATH"
+_AUTH_PROXY_IDENTITY = "agents"
+
 
 # On delete, wait up to this long for the deployments controller to tear down the
 # container and remove the Deployment entity before we drop the DeploymentConfig.
@@ -79,21 +85,77 @@ def map_status(backend_status: str) -> DeploymentStatus:
     return _STATUS_MAP.get(backend_status, "starting")
 
 
-def container_gateway_url(base_url: str, *, mode: DeploymentMode, override: str | None = None) -> str:
-    """Return a platform base URL reachable from inside the agent container.
+class UnreachableGatewayURLError(ValueError):
+    """Raised when no inference base URL reachable from an agent container can be resolved."""
 
-    Docker may rewrite loopback hosts to ``host.docker.internal``. K8s leaves the
-    URL as-is (in-cluster IGW Service DNS is AIRCORE-863). *override* wins verbatim.
+
+def resolve_agent_gateway_url(
+    base_url: str,
+    *,
+    mode: DeploymentMode,
+    override: str | None = None,
+    internal_base_url: str | None = None,
+) -> str:
+    """Return the platform base URL an agent should call, reachable from its container.
+
+    An explicit *override* wins for any mode. Otherwise ``k8s`` uses
+    *internal_base_url* (the in-cluster API Service DNS) and ``docker`` rewrites a
+    loopback *base_url* to ``host.docker.internal``, passing other hosts through.
+
+    Only ``docker`` and ``k8s`` are supported; ``subprocess`` deployments are
+    served by a different backend.
+
+    Raises:
+        UnreachableGatewayURLError: k8s mode with no *internal_base_url* or *override*.
+        ValueError: *mode* is not a container deployment mode.
     """
+    if mode not in CONTAINER_DEPLOYMENT_MODES:
+        raise ValueError(
+            f"resolve_agent_gateway_url only supports container deployment modes "
+            f"{sorted(CONTAINER_DEPLOYMENT_MODES)}, got {mode!r}."
+        )
+
     if override:
         return override.rstrip("/")
-    url = base_url.rstrip("/")
-    if mode == "docker":
-        for host in LOOPBACK_ADDRESSES:
-            marker = f"//{host}"
-            if marker in url:
-                return url.replace(marker, "//host.docker.internal", 1)
-    return url
+
+    if mode == "k8s":
+        if internal_base_url:
+            return internal_base_url.rstrip("/")
+        raise UnreachableGatewayURLError(
+            f"No container-reachable inference base URL for k8s deployment: platform base URL "
+            f"{base_url!r} is not usable from an agent pod and no internal API Service URL is set. "
+            "Set NEMO_INTERNAL_BASE_URL / NMP_INTERNAL_BASE_URL (or deployments.k8s_internal_base_url), "
+            "or deployments.gateway_url_override."
+        )
+
+    parts = urlsplit(base_url.rstrip("/"))
+    if (parts.hostname or "").lower() in LOOPBACK_ADDRESSES:
+        netloc = "host.docker.internal"
+        if parts.port is not None:
+            netloc = f"{netloc}:{parts.port}"
+        return parts._replace(netloc=netloc).geturl()
+    return parts.geturl()
+
+
+def rewrite_config_base_urls(nat_config: dict[str, Any], gateway_url: str) -> dict[str, Any]:
+    """Return a copy of *nat_config* with each Inference Gateway LLM base_url rebased onto *gateway_url*.
+
+    Rewrites the scheme, host, and port of ``base_url`` on every ``openai``/``nim``
+    LLM that points at the Inference Gateway, preserving the path. LLMs with an
+    explicit third-party ``base_url`` are left unchanged.
+    """
+    reachable = urlsplit(gateway_url.rstrip("/"))
+    reachable_origin = f"{reachable.scheme}://{reachable.netloc}"
+    config = copy.deepcopy(nat_config)
+    for llm_cfg in config.get("llms", {}).values():
+        if not isinstance(llm_cfg, dict) or llm_cfg.get("_type") not in ("openai", "nim"):
+            continue
+        current = llm_cfg.get("base_url")
+        if not isinstance(current, str) or "/apis/inference-gateway/" not in current:
+            continue
+        parts = urlsplit(current)
+        llm_cfg["base_url"] = f"{reachable_origin}{parts.path}"
+    return config
 
 
 def executor_for_mode(config: DeploymentsRunnerConfig, mode: DeploymentMode) -> str | None:
@@ -139,9 +201,9 @@ def build_deployment_config(
     nat_config: dict[str, Any],
     config_mount_path: str,
     mode: DeploymentMode,
-    gateway_base_url: str,
     plugin_wheels_init_image: str | None = None,
     labels: dict[str, str] | None = None,
+    auth_proxy_identity: str | None = None,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -150,10 +212,13 @@ def build_deployment_config(
     ``NAT_CONFIG_YAML`` and a shell preamble that writes the file before ``nat``
     starts. The main container binds ``0.0.0.0`` and exposes a readiness probe on
     ``/health``.
+
+    The inference base URL the agent calls is read from ``nat_config``'s
+    ``llms.*.base_url``; the caller is responsible for setting it to a
+    container-reachable value.
     """
     nat_yaml = yaml.safe_dump(nat_config, sort_keys=False)
     env = [
-        EnvVar(name="NMP_GATEWAY_BASE_URL", value=gateway_base_url),
         EnvVar(name="NMP_WORKSPACE", value=workspace),
         EnvVar(name="NMP_AGENT_NAME", value=name),
         EnvVar(name=_NAT_CONFIG_ENV, value=config_mount_path),
@@ -235,6 +300,8 @@ def build_deployment_config(
         }
     )
 
+    # Request the auth-proxy sidecar via the DeploymentConfig flags; the
+    # deployments plugin compiles and injects it (and no-ops when auth is off).
     return DeploymentConfig(
         name=name,
         workspace=workspace,
@@ -247,6 +314,8 @@ def build_deployment_config(
                 ConfigFile(path=config_mount_path, content=nat_yaml),
             ],
             "restart_policy": "Always",
+            "auth_proxy_sidecar": auth_proxy_identity is not None,
+            "auth_proxy_sidecar_identity": auth_proxy_identity,
         }
     )
 
@@ -292,11 +361,33 @@ class DeploymentsRunnerBackend(RunnerBackend):
             )
 
         entities = self._entity_client()
-        gateway = container_gateway_url(
-            get_base_url(),
-            mode=deployment_mode,
-            override=self._config.gateway_url_override,
-        )
+        # The base_url injected into the agent config at agent-create time is the
+        # platform's own base URL, which is not necessarily reachable from inside
+        # the agent container. Rebase it onto a container-reachable address.
+        try:
+            internal_base_url = self._config.k8s_internal_base_url or get_internal_base_url()
+            gateway = resolve_agent_gateway_url(
+                get_base_url(),
+                mode=deployment_mode,
+                override=self._config.gateway_url_override,
+                internal_base_url=internal_base_url,
+            )
+        except UnreachableGatewayURLError as exc:
+            logger.error("Refusing to deploy agent %r: %s", name, exc)
+            return DeploymentInfo(name=name, status="failed", error=str(exc))
+
+        # When platform auth is enabled, the agent carries no platform credential,
+        # so route its inference calls through a loopback auth-proxy sidecar (the
+        # deployments plugin compiles the sidecar from the auth_proxy flags). The
+        # agent targets the sidecar on localhost; the sidecar forwards to the
+        # platform with a service-principal identity header.
+        auth_proxy_identity: str | None = None
+        if platform_auth_enabled():
+            auth_proxy_identity = _AUTH_PROXY_IDENTITY
+            config = rewrite_config_base_urls(config, f"http://127.0.0.1:{auth_proxy_port()}")
+        else:
+            config = rewrite_config_base_urls(config, gateway)
+
         deployment_config = build_deployment_config(
             name=name,
             workspace=workspace,
@@ -305,12 +396,12 @@ class DeploymentsRunnerBackend(RunnerBackend):
             nat_config=config,
             config_mount_path=self._config.config_mount_path,
             mode=deployment_mode,
-            gateway_base_url=gateway,
             plugin_wheels_init_image=self._config.plugin_wheels_init_image,
             labels={
                 "nemo.agents/deployment": name,
                 "nemo.agents/mode": deployment_mode,
             },
+            auth_proxy_identity=auth_proxy_identity,
         )
         await entities.create(deployment_config)
         try:
@@ -326,7 +417,12 @@ class DeploymentsRunnerBackend(RunnerBackend):
         except Exception:
             # Avoid orphaning the config if Deployment create fails.
             try:
-                await entities.delete(DeploymentConfig, name=name, workspace=workspace)
+                await entities.delete(
+                    DeploymentConfig,
+                    name=name,
+                    workspace=workspace,
+                    expected_db_version=deployment_config.db_version,
+                )
             except Exception:
                 logger.exception(
                     "Failed to clean up DeploymentConfig '%s/%s' after Deployment create failure",
@@ -385,7 +481,13 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 return False
 
         try:
-            await entities.delete(DeploymentConfig, name=name, workspace=workspace)
+            deployment_config = await entities.get(DeploymentConfig, name=name, workspace=workspace)
+            await entities.delete(
+                DeploymentConfig,
+                name=name,
+                workspace=workspace,
+                expected_db_version=deployment_config.db_version,
+            )
         except NemoEntityNotFoundError:
             pass
         return True

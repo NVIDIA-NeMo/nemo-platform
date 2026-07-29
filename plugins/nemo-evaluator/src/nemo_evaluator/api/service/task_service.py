@@ -13,16 +13,27 @@ live in the entity record; there's no separate Files payload, unlike a metric bu
 from __future__ import annotations
 
 import logging
+from typing import Protocol
 
 from nemo_evaluator.api.schemas import MetricInline, MetricRef, Task, TaskInput, parse_entity_ref
-from nemo_evaluator.api.service.metric_service import MetricService
 from nemo_evaluator.entities import TaskEntity
-from nemo_platform_plugin.entities import EntityClient, EntityConflictError, EntityNotFoundError, PaginationInfo
+from nemo_platform_plugin.entities import PaginationInfo
+from nemo_platform_plugin.entity_client import (
+    NemoEntitiesClientProtocol,
+    NemoEntityConflictError,
+    NemoEntityNotFoundError,
+)
 from nemo_platform_plugin.filter_ops import FilterOperation
 from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.schema import Page, PaginationData
 
 logger = logging.getLogger(__name__)
+
+
+class _MetricService(Protocol):
+    async def store_derived_metric(self, metric: MetricInline, *, workspace: str) -> MetricRef: ...
+
+    async def get_metric(self, workspace: str, name: str) -> object | None: ...
 
 
 class MetricRefNotFoundError(ValueError):
@@ -64,7 +75,7 @@ def _pagination(src: PaginationInfo, current_page_size: int) -> PaginationData:
 class TaskService:
     """Create/get/list/delete for persisted agent-eval task entities, exposed as the ``Task`` DTO."""
 
-    def __init__(self, entity_client: EntityClient, metric_service: MetricService):
+    def __init__(self, entity_client: NemoEntitiesClientProtocol[TaskEntity], metric_service: _MetricService):
         self.entity_client = entity_client
         self.metric_service = metric_service
 
@@ -102,7 +113,7 @@ class TaskService:
         )
         try:
             created = await self.entity_client.create(entity)
-        except EntityConflictError as exc:
+        except NemoEntityConflictError as exc:
             raise ValueError(f"Task '{workspace}/{name}' already exists") from exc
         logger.info(
             "Task created", extra={"workspace": sanitize_for_log(workspace), "task_name": sanitize_for_log(name)}
@@ -112,7 +123,7 @@ class TaskService:
     async def get_task(self, workspace: str, name: str) -> Task | None:
         try:
             entity = await self.entity_client.get(TaskEntity, workspace=workspace, name=name)
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             return None
         return _entity_to_task(entity)
 
@@ -140,7 +151,7 @@ class TaskService:
         """Delete a stored task; ``False`` if absent."""
         try:
             await self.entity_client.delete(TaskEntity, name, workspace=workspace)
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             return False
         logger.info(
             "Task deleted", extra={"workspace": sanitize_for_log(workspace), "task_name": sanitize_for_log(name)}
