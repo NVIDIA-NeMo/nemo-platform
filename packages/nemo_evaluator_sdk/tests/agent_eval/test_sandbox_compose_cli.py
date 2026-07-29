@@ -217,7 +217,11 @@ async def test_streaming_cancellation_terminates_process(tmp_path: Path) -> None
             stream_output=progress,
         )
     )
-    await asyncio.sleep(0.1)
+    async with asyncio.timeout(5):
+        while progress.getvalue() != "started\n":
+            if task.done():
+                await task
+            await asyncio.sleep(0.01)
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
