@@ -9,6 +9,21 @@ vi.hoisted(() => {
 });
 
 describe('WorkspaceSideNav', () => {
+  it('labels the intake navigation link as Traces', () => {
+    renderRoute(<WorkspaceSideNav />, {
+      history: '/workspaces/test-workspace/intake/traces',
+      routes: [
+        {
+          path: '/workspaces/:workspace/*',
+          element: <WorkspaceSideNav />,
+        },
+      ],
+    });
+
+    expect(screen.getByRole('link', { name: 'Traces' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Annotation' })).not.toBeInTheDocument();
+  });
+
   it('omits Optimizer navigation when Optimizer is disabled', () => {
     renderRoute(<WorkspaceSideNav />, {
       history: '/workspaces/test-workspace/dashboard',
