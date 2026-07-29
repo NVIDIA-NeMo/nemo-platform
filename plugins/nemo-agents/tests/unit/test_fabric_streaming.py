@@ -125,6 +125,16 @@ def test_extract_assistant_text_delta_from_known_text_shapes(
         {"payload": "lifecycle label"},
         {"data": {"role": "user", "content": "hello"}},
         {"data": {"type": "toolCall", "text": "tool output"}},
+        {
+            "kind": "scope",
+            "scope_category": "end",
+            "name": "claude-code-turn",
+            "metadata": {"nemo_relay_scope_role": "turn"},
+            "data": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "turn summary"}],
+            },
+        },
     ],
 )
 def test_extract_assistant_text_delta_skips_non_assistant_records(record: dict[str, object]) -> None:
@@ -144,6 +154,37 @@ async def test_iter_fabric_assistant_text_deltas_preserves_extracted_text_order(
 
     assert [text async for text in iter_fabric_assistant_text_deltas(stream)] == ["hel", "lo"]
     assert stream.result_awaited is True
+
+
+@pytest.mark.asyncio
+async def test_iter_fabric_assistant_text_deltas_skips_duplicate_turn_summary() -> None:
+    stream = _FakeFabricRuntimeStream(
+        [
+            {
+                "kind": "scope",
+                "scope_category": "end",
+                "name": "anthropic.messages",
+                "category": "llm",
+                "data": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                },
+            },
+            {
+                "kind": "scope",
+                "scope_category": "end",
+                "name": "claude-code-turn",
+                "category": "custom",
+                "metadata": {"nemo_relay_scope_role": "turn"},
+                "data": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                },
+            },
+        ]
+    )
+
+    assert [text async for text in iter_fabric_assistant_text_deltas(stream)] == ["hello"]
 
 
 @pytest.mark.asyncio

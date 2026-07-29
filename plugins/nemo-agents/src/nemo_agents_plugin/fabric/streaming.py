@@ -146,6 +146,8 @@ def _extract_text_delta(value: Any) -> str | None:
     """Walk one ATOF value looking for assistant text in supported shapes."""
     if not isinstance(value, Mapping):
         return None
+    if _is_turn_summary_scope(value):
+        return None
 
     choice_text = _extract_openai_choice_delta(value)
     if choice_text is not None:
@@ -175,6 +177,14 @@ def _extract_text_delta(value: Any) -> str | None:
             return text
 
     return None
+
+
+def _is_turn_summary_scope(value: Mapping[str, Any]) -> bool:
+    """Return true for Relay turn-summary records that duplicate child LLM output."""
+    if value.get("kind") != "scope" or value.get("scope_category") != "end":
+        return False
+    metadata = value.get("metadata")
+    return isinstance(metadata, Mapping) and metadata.get("nemo_relay_scope_role") == "turn"
 
 
 def _extract_openai_choice_delta(value: Mapping[str, Any]) -> str | None:
