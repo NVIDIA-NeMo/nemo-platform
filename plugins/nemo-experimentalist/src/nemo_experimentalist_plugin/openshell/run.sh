@@ -124,6 +124,19 @@ done
 # work runs through `sandbox exec`.
 openshell "${create_args[@]}" -- /bin/true
 
+openshell sandbox exec --name "$sandbox_name" -- \
+  /bin/bash -c '
+    set -euo pipefail
+    if command -v docker >/dev/null 2>&1; then
+      echo "Experimentalist OpenShell image unexpectedly contains the Docker CLI" >&2
+      exit 1
+    fi
+    if [[ -e /var/run/docker.sock || -e /run/docker.sock ]]; then
+      echo "Experimentalist OpenShell sandbox unexpectedly exposes a Docker socket" >&2
+      exit 1
+    fi
+  '
+
 if [[ "$source_control" == gitlab-* ]]; then
   # glab's auth-status check requires a per-host config entry even when
   # GITLAB_TOKEN is set. Store only the OpenShell placeholder in the sandbox.

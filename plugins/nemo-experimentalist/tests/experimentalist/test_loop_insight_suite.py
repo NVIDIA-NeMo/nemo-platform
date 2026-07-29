@@ -173,7 +173,9 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
     monkeypatch.setattr(
         loop_module,
         "EvaluatorFactory",
-        lambda: SimpleNamespace(build_evaluator=lambda *args, **kwargs: object()),
+        lambda: SimpleNamespace(
+            build_evaluator=lambda *args, **kwargs: SimpleNamespace(prepare_dataset=lambda dataset: dataset)
+        ),
     )
     monkeypatch.setattr(loop_module, "EvalAuthor", ReturningEvalAuthor)
     monkeypatch.setattr(

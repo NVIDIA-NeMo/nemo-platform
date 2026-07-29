@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 from urllib.parse import unquote, urlparse
 
 from pydantic import BaseModel, Field, SerializeAsAny
@@ -84,6 +84,31 @@ class DependencyRuntime(BaseModel):
     def context(self) -> AbstractAsyncContextManager[DependencyRuntime | None]:
         """Return dependency context for this runtime."""
         return DependencyContext(self)
+
+
+class DependencyRuntimeError(RuntimeError):
+    """Task dependency setup or transport failed outside the analyzed agent."""
+
+
+class DependencyCommandResult(BaseModel):
+    """Result of running one command through a task dependency runtime."""
+
+    stdout: str = ""
+    stderr: str = ""
+    returncode: int
+
+
+@runtime_checkable
+class DependencyCommandExecutor(Protocol):
+    """Dependency runtime that can execute analyzer shell commands."""
+
+    async def execute(
+        self,
+        command: str,
+        *,
+        stdin: str | None = None,
+        timeout: float = 30.0,
+    ) -> DependencyCommandResult: ...
 
 
 async def run_dependency_command(spec: CommandSpec, phase: str) -> None:

@@ -336,17 +336,27 @@ class TraceAnalyzer(Agent, llm=get_smart_model()):
         rationale = rationale or Rationale(task_name=task.id, steps=[])
 
         async with task.start_deps() as runtime:
-            overview = await self.get_overview(trace, trial)
-            analysis = await self.analyze_trajectory(
-                trace=trace,
-                trial=trial,
-                task=task,
-                overview=overview,
-                rationale=rationale,
-                insight=insight,
-                agent_path=agent_path,
-                runtime=runtime,
-            )
-            diagnostic = await self.diagnose(trace, analysis, insight)
-            cache.store(self._experiment_dir, key, diagnostic)
+            had_dependencies = "dependencies" in self.context
+            previous_dependencies = self.context.get("dependencies")
+            self.context["dependencies"] = runtime
+            try:
+                with self.shell.use_dependency_runtime(runtime):
+                    overview = await self.get_overview(trace, trial)
+                    analysis = await self.analyze_trajectory(
+                        trace=trace,
+                        trial=trial,
+                        task=task,
+                        overview=overview,
+                        rationale=rationale,
+                        insight=insight,
+                        agent_path=agent_path,
+                        runtime=runtime,
+                    )
+                    diagnostic = await self.diagnose(trace, analysis, insight)
+                    cache.store(self._experiment_dir, key, diagnostic)
+            finally:
+                if had_dependencies:
+                    self.context["dependencies"] = previous_dependencies
+                else:
+                    self.context.pop("dependencies", None)
         return diagnostic

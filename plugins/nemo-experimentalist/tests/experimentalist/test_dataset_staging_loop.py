@@ -64,7 +64,9 @@ async def test_insight_run_stages_inputs_before_eval_author(
     monkeypatch.setattr(
         loop_module,
         "EvaluatorFactory",
-        lambda: SimpleNamespace(build_evaluator=lambda *args, **kwargs: object()),
+        lambda: SimpleNamespace(
+            build_evaluator=lambda *args, **kwargs: SimpleNamespace(prepare_dataset=lambda dataset: dataset)
+        ),
     )
     monkeypatch.setattr(loop_module, "DatasetFactory", RecordingDatasetFactory)
     monkeypatch.setattr(loop_module, "EvalAuthor", MutatingEvalAuthor)

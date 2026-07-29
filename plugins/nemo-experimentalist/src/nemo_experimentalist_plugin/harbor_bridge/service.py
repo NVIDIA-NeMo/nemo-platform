@@ -11,6 +11,7 @@ import logging
 import os
 import secrets
 import shutil
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Protocol
 from uuid import uuid4
@@ -24,7 +25,17 @@ from nemo_experimentalist_plugin.harbor_bridge.archives import (
     create_result_archive,
     extract_directory_archive,
 )
-from nemo_experimentalist_plugin.harbor_bridge.contracts import HarborBridgeRequest
+from nemo_experimentalist_plugin.harbor_bridge.contracts import (
+    HarborBridgeRequest,
+    HarborDependencyExecRequest,
+    HarborDependencyExecResponse,
+    HarborDependencyRequest,
+    HarborDependencySessionResponse,
+)
+from nemo_experimentalist_plugin.harbor_bridge.dependencies import (
+    HarborDependencyCapacityError,
+    HarborDependencySessionManager,
+)
 from nemo_experimentalist_plugin.harbor_bridge.runner import HarborBridgeRunner
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.background import BackgroundTask
@@ -45,6 +56,22 @@ class EvaluationRunner(Protocol):
     ) -> EvaluationResult: ...
 
 
+class DependencySessionRunner(Protocol):
+    """Trusted seam for bridge-owned task dependency environments."""
+
+    async def start(self, request: HarborDependencyRequest, *, task_dir: Path) -> str: ...
+
+    async def execute(
+        self,
+        session_id: str,
+        request: HarborDependencyExecRequest,
+    ) -> HarborDependencyExecResponse: ...
+
+    async def stop(self, session_id: str) -> None: ...
+
+    async def close(self) -> None: ...
+
+
 class HarborBridgeSettings(BaseModel):
     """Local service limits and storage configuration."""
 
@@ -54,6 +81,7 @@ class HarborBridgeSettings(BaseModel):
     token: str = Field(min_length=16)
     max_archive_bytes: int = Field(default=DEFAULT_MAX_ARCHIVE_BYTES, ge=1, le=2 * 1024 * 1024 * 1024)
     max_concurrent_requests: int = Field(default=1, ge=1, le=8)
+    max_concurrent_dependency_sessions: int = Field(default=8, ge=1, le=64)
 
 
 async def _save_upload(upload: UploadFile, destination: Path, *, max_bytes: int) -> None:
@@ -76,17 +104,36 @@ def create_app(
     *,
     settings: HarborBridgeSettings,
     runner: EvaluationRunner | None = None,
+    dependency_sessions: DependencySessionRunner | None = None,
 ) -> FastAPI:
     """Build the local-only bridge application."""
+    service_runner = runner or HarborBridgeRunner()
+    session_runner = dependency_sessions or HarborDependencySessionManager(
+        max_concurrent_sessions=settings.max_concurrent_dependency_sessions
+    )
+    dependency_work_dirs: dict[str, Path] = {}
+    storage_root = settings.storage_root.expanduser().resolve()
+    storage_root.mkdir(parents=True, exist_ok=True)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        try:
+            yield
+        finally:
+            try:
+                await session_runner.close()
+            finally:
+                for work_dir in dependency_work_dirs.values():
+                    shutil.rmtree(work_dir, ignore_errors=True)
+                dependency_work_dirs.clear()
+
     app = FastAPI(
         title="NeMo Experimentalist Harbor Bridge",
         description="Narrow research-preview boundary around trusted Harbor execution.",
         version="0.1.0",
+        lifespan=lifespan,
     )
-    service_runner = runner or HarborBridgeRunner()
     semaphore = asyncio.Semaphore(settings.max_concurrent_requests)
-    storage_root = settings.storage_root.expanduser().resolve()
-    storage_root.mkdir(parents=True, exist_ok=True)
 
     def authorize(authorization: Annotated[str | None, Header()] = None) -> None:
         expected = f"Bearer {settings.token}"
@@ -168,6 +215,91 @@ def create_app(
             logger.exception("Harbor bridge evaluation failed")
             raise HTTPException(status_code=500, detail="Harbor evaluation failed") from exc
 
+    @app.post(
+        "/v1/dependencies",
+        response_model=HarborDependencySessionResponse,
+        status_code=201,
+        dependencies=[Depends(authorize)],
+    )
+    async def start_dependency(
+        request: Annotated[str, Form()],
+        task: Annotated[UploadFile, File()],
+    ) -> HarborDependencySessionResponse:
+        try:
+            dependency_request = HarborDependencyRequest.model_validate_json(request)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors(include_url=False)) from exc
+
+        work_dir = storage_root / f"dependency-{dependency_request.request_id}-{uuid4().hex[:8]}"
+        work_dir.mkdir(parents=True, exist_ok=False)
+        task_archive = work_dir / "task.tar.gz"
+        task_dir = work_dir / "task" / dependency_request.task_id
+        try:
+            await _save_upload(task, task_archive, max_bytes=settings.max_archive_bytes)
+            extract_directory_archive(
+                task_archive,
+                task_dir,
+                max_bytes=settings.max_archive_bytes,
+            )
+            session_id = await session_runner.start(
+                dependency_request,
+                task_dir=task_dir,
+            )
+            dependency_work_dirs[session_id] = work_dir
+            return HarborDependencySessionResponse(session_id=session_id)
+        except HarborDependencyCapacityError as exc:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except HTTPException:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise
+        except asyncio.CancelledError:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise
+        except Exception as exc:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            logger.exception("Harbor dependency startup failed")
+            raise HTTPException(status_code=500, detail="Harbor dependency startup failed") from exc
+
+    @app.post(
+        "/v1/dependencies/{session_id}/exec",
+        response_model=HarborDependencyExecResponse,
+        dependencies=[Depends(authorize)],
+    )
+    async def execute_dependency(
+        session_id: str,
+        request: HarborDependencyExecRequest,
+    ) -> HarborDependencyExecResponse:
+        try:
+            return await session_runner.execute(session_id, request)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Harbor dependency session not found") from exc
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("Harbor dependency command failed")
+            raise HTTPException(status_code=500, detail="Harbor dependency command failed") from exc
+
+    @app.delete(
+        "/v1/dependencies/{session_id}",
+        status_code=204,
+        dependencies=[Depends(authorize)],
+    )
+    async def stop_dependency(session_id: str) -> None:
+        work_dir = dependency_work_dirs.pop(session_id, None)
+        try:
+            await session_runner.stop(session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Harbor dependency session not found") from exc
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("Harbor dependency shutdown failed")
+            raise HTTPException(status_code=500, detail="Harbor dependency shutdown failed") from exc
+        finally:
+            if work_dir is not None:
+                shutil.rmtree(work_dir, ignore_errors=True)
+
     return app
 
 
@@ -179,6 +311,7 @@ def main() -> None:
     parser.add_argument("--storage-root", type=Path, default=Path.cwd() / "tmp" / "experimentalist-harbor-bridge")
     parser.add_argument("--token-env", default="NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN")
     parser.add_argument("--max-archive-bytes", type=int, default=DEFAULT_MAX_ARCHIVE_BYTES)
+    parser.add_argument("--max-dependency-sessions", type=int, default=8)
     args = parser.parse_args()
 
     token = os.environ.get(args.token_env)
@@ -188,6 +321,7 @@ def main() -> None:
         storage_root=args.storage_root,
         token=token,
         max_archive_bytes=args.max_archive_bytes,
+        max_concurrent_dependency_sessions=args.max_dependency_sessions,
     )
     uvicorn.run(create_app(settings=settings), host=args.host, port=args.port)
 

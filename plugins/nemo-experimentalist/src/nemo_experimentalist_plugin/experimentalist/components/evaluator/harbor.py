@@ -24,7 +24,7 @@ from typing import Any, TypeAlias, TypedDict
 from uuid import uuid4
 
 from harbor.constants import MAIN_SERVICE_NAME
-from harbor.environments.base import BaseEnvironment
+from harbor.environments.base import BaseEnvironment, ExecResult
 from harbor.environments.factory import EnvironmentFactory
 from harbor.job import DatasetConfig, Job, JobConfig
 from harbor.models.environment_type import EnvironmentType
@@ -213,8 +213,9 @@ class HarborDependencyRuntime(DependencyRuntime):
 class HarborDependencyContext:
     """Async context manager that starts and stops Harbor task dependencies."""
 
-    def __init__(self, runtime: HarborDependencyRuntime) -> None:
+    def __init__(self, runtime: HarborDependencyRuntime, *, temp_root: Path | None = None) -> None:
         self._runtime = runtime
+        self._temp_root = temp_root
         self._environment: BaseEnvironment | None = None
         self._temp_dir: tempfile.TemporaryDirectory[str] | None = None
 
@@ -252,7 +253,9 @@ class HarborDependencyContext:
         harbor_task = HarborTaskModel(task_path)
         context_id = uuid4()
         session_id = f"{harbor_task.short_name}__{context_id.hex[:12]}__env"
-        temp_dir = tempfile.TemporaryDirectory(prefix="nemo-harbor-deps-")
+        if self._temp_root is not None:
+            self._temp_root.mkdir(parents=True, exist_ok=True)
+        temp_dir = tempfile.TemporaryDirectory(prefix="nemo-harbor-deps-", dir=self._temp_root)
         trial_paths = TrialPaths(Path(temp_dir.name))
         trial_paths.mkdir()
 
@@ -339,6 +342,22 @@ class HarborDependencyContext:
             self._temp_dir = None
         if stop_error is not None:
             raise stop_error
+
+    async def execute(
+        self,
+        command: str,
+        *,
+        cwd: str | None = None,
+        timeout_sec: int | None = None,
+    ) -> ExecResult:
+        """Execute a command inside the active Harbor task environment."""
+        if self._environment is None:
+            raise RuntimeError("Harbor dependency environment is not running")
+        return await self._environment.exec(
+            command,
+            cwd=cwd,
+            timeout_sec=timeout_sec,
+        )
 
 
 def _chmod_path_chain(path: Path, stop_at: Path) -> None:

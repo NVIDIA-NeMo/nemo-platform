@@ -14,8 +14,14 @@ import pytest
 from harbor.models.task.config import VerifierEnvironmentMode
 from harbor.models.task.task import Task as HarborTask
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import EvaluatorFactory
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
+    HarborDataset,
+    HarborDependencyRuntime,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+    CommandSpec,
+    DependencyRuntime,
+    DependencyRuntimeError,
     EvaluationResult,
     MetricResult,
     MetricSpec,
@@ -24,16 +30,24 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_harbor import (
+    RemoteHarborDependencyRuntime,
     RemoteHarborEvaluator,
     RemoteHarborEvaluatorConfig,
 )
+from nemo_experimentalist_plugin.harbor_bridge import dependencies as dependency_module
 from nemo_experimentalist_plugin.harbor_bridge.archives import (
     create_directory_archive,
     create_result_archive,
     extract_directory_archive,
     materialize_result_archive,
 )
-from nemo_experimentalist_plugin.harbor_bridge.contracts import HarborBridgeRequest
+from nemo_experimentalist_plugin.harbor_bridge.contracts import (
+    DEPENDENCY_OUTPUT_LIMIT_CHARS,
+    HarborBridgeRequest,
+    HarborDependencyExecRequest,
+    HarborDependencyExecResponse,
+    HarborDependencyRequest,
+)
 from nemo_experimentalist_plugin.harbor_bridge.runner import _harden_task
 from nemo_experimentalist_plugin.harbor_bridge.service import HarborBridgeSettings, create_app
 from nemo_experimentalist_plugin.harbor_bridge.trusted_agent import (
@@ -81,6 +95,17 @@ def test_bridge_contract_rejects_execution_authority() -> None:
                 "request_id": "request-1",
                 "task_ids": ["task-1"],
                 "import_path": "candidate:Agent",
+            }
+        )
+
+
+def test_dependency_contract_rejects_docker_authority() -> None:
+    with pytest.raises(ValidationError, match="environment_type"):
+        HarborDependencyRequest.model_validate(
+            {
+                "request_id": "dependency-task-1",
+                "task_id": "task-1",
+                "environment_type": "docker",
             }
         )
 
@@ -212,6 +237,228 @@ def test_factory_selects_remote_harbor_evaluator_from_environment(
 
     assert isinstance(evaluator, RemoteHarborEvaluator)
     assert evaluator.options == RemoteHarborEvaluatorConfig.model_validate({"bridge_url": "http://bridge.test:8765"})
+
+
+def test_remote_evaluator_replaces_local_harbor_dependency_runtime(tmp_path: Path) -> None:
+    task_dir = tmp_path / "task-1"
+    task_dir.mkdir()
+    dataset = HarborDataset(
+        id="dataset",
+        source=ResourceRef(uri=tmp_path.as_uri()),
+        tasks=[
+            Task(
+                id="task-1",
+                dependencies=HarborDependencyRuntime(
+                    task_path=ResourceRef(uri=task_dir.as_uri()),
+                    force_build=False,
+                    run_healthcheck=False,
+                    build_timeout_sec=120,
+                ),
+            )
+        ],
+    )
+    evaluator = RemoteHarborEvaluator(
+        RemoteHarborEvaluatorConfig(bridge_url="http://bridge.test:8765"),
+        experiment_dir=tmp_path,
+    )
+
+    assert evaluator.prepare_dataset(dataset) is dataset
+    runtime = dataset.tasks[0].dependencies
+    assert isinstance(runtime, RemoteHarborDependencyRuntime)
+    assert runtime.task_path.uri == task_dir.as_uri()
+    assert runtime.force_build is False
+    assert runtime.run_healthcheck is False
+    assert runtime.build_timeout_sec == 120
+    assert runtime.start is None
+    assert runtime.readiness is None
+    assert runtime.stop is None
+
+
+@pytest.mark.parametrize(
+    ("runtime_options", "match"),
+    [
+        ({"environment_type": "podman"}, "environment_type='docker'"),
+        ({"delete": False}, "delete=true"),
+        ({"start": CommandSpec(argv=["echo", "unsupported"])}, "custom lifecycle commands"),
+    ],
+)
+def test_remote_evaluator_rejects_unsupported_dependency_runtime_options(
+    tmp_path: Path,
+    runtime_options: dict[str, object],
+    match: str,
+) -> None:
+    task_dir = tmp_path / "task-1"
+    task_dir.mkdir()
+    dataset = HarborDataset(
+        id="dataset",
+        source=ResourceRef(uri=tmp_path.as_uri()),
+        tasks=[
+            Task(
+                id="task-1",
+                dependencies=HarborDependencyRuntime(
+                    task_path=ResourceRef(uri=task_dir.as_uri()),
+                    **runtime_options,
+                ),
+            )
+        ],
+    )
+    evaluator = RemoteHarborEvaluator(
+        RemoteHarborEvaluatorConfig(bridge_url="http://bridge.test:8765"),
+        experiment_dir=tmp_path,
+    )
+
+    with pytest.raises(DependencyRuntimeError, match=match):
+        evaluator.prepare_dataset(dataset)
+
+
+def test_remote_evaluator_rejects_non_harbor_dependency_runtime(tmp_path: Path) -> None:
+    dataset = HarborDataset(
+        id="dataset",
+        source=ResourceRef(uri=tmp_path.as_uri()),
+        tasks=[
+            Task(
+                id="task-1",
+                dependencies=DependencyRuntime(start=CommandSpec(argv=["docker", "run", "untrusted"])),
+            )
+        ],
+    )
+    evaluator = RemoteHarborEvaluator(
+        RemoteHarborEvaluatorConfig(bridge_url="http://bridge.test:8765"),
+        experiment_dir=tmp_path,
+    )
+
+    with pytest.raises(DependencyRuntimeError, match="will not run unsupported task dependencies locally"):
+        evaluator.prepare_dataset(dataset)
+
+
+@pytest.mark.asyncio
+async def test_remote_dependency_runtime_starts_executes_and_stops(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_dir = tmp_path / "task-1"
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text("", encoding="utf-8")
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = await request.aread()
+        requests.append((request.method, request.url.path))
+        assert request.headers["authorization"] == "Bearer dependency-token"
+        if request.url.path == "/v1/dependencies":
+            assert b'"task_id":"task-1"' in body
+            assert b"docker.sock" not in body
+            return httpx.Response(201, json={"session_id": "dependency-session-1"})
+        if request.url.path == "/v1/dependencies/dependency-session-1/exec":
+            assert b'"command":"pwd"' in body
+            return httpx.Response(
+                200,
+                json={"stdout": "/app\n", "stderr": "", "returncode": 0},
+            )
+        if request.url.path == "/v1/dependencies/dependency-session-1":
+            return httpx.Response(204)
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("BRIDGE_TOKEN", "dependency-token")
+    runtime = RemoteHarborDependencyRuntime(
+        task_id="task-1",
+        task_path=ResourceRef(uri=task_dir.as_uri()),
+        bridge_url="http://bridge.test:8765",
+        bridge_token_env="BRIDGE_TOKEN",
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        runtime._client = client
+        async with runtime.context() as entered:
+            assert isinstance(entered, RemoteHarborDependencyRuntime)
+            assert entered is not runtime
+            result = await entered.execute("pwd")
+
+    assert result.stdout == "/app\n"
+    assert result.returncode == 0
+    assert requests == [
+        ("POST", "/v1/dependencies"),
+        ("POST", "/v1/dependencies/dependency-session-1/exec"),
+        ("DELETE", "/v1/dependencies/dependency-session-1"),
+    ]
+    assert runtime._session_id is None
+    assert not list((tmp_path / "tmp" / "harbor-bridge").glob("*"))
+
+    first_context = runtime.context()
+    second_context = runtime.context()
+    assert first_context._runtime is not second_context._runtime
+
+
+@pytest.mark.asyncio
+async def test_dependency_session_manager_executes_inside_environment_and_tracks_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeExecResult:
+        stdout: str
+        stderr = None
+        return_code = 0
+
+        def __init__(self, stdout: str) -> None:
+            self.stdout = stdout
+
+    class FakeContext:
+        calls: list[tuple[str, str | None, int | None]] = []
+        stopped = False
+
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            self.stopped = True
+            return False
+
+        async def execute(self, command: str, *, cwd: str | None, timeout_sec: int | None):
+            self.calls.append((command, cwd, timeout_sec))
+            marker_prefix = "__NEMO_DEPENDENCY_CWD_"
+            marker_start = command.index(marker_prefix)
+            marker_end = command.index("__", marker_start + len(marker_prefix)) + 2
+            marker = command[marker_start:marker_end]
+            return FakeExecResult(f"command output\n\x1e{marker}/workspace\x1e")
+
+    context = FakeContext()
+    monkeypatch.setattr(dependency_module, "_harden_task", lambda task_dir: None)
+    monkeypatch.setattr(
+        dependency_module,
+        "HarborDependencyContext",
+        lambda runtime, temp_root: context,
+    )
+    task_dir = tmp_path / "task-a"
+    task_dir.mkdir()
+    manager = dependency_module.HarborDependencySessionManager(max_concurrent_sessions=1)
+    session_id = await manager.start(
+        HarborDependencyRequest(request_id="dependency-task-a", task_id="task-a"),
+        task_dir=task_dir,
+    )
+
+    first = await manager.execute(
+        session_id,
+        HarborDependencyExecRequest(command="cd /workspace", timeout_sec=12),
+    )
+    second = await manager.execute(
+        session_id,
+        HarborDependencyExecRequest(command="pwd"),
+    )
+    await manager.stop(session_id)
+
+    assert first.stdout == "command output\n"
+    assert second.stdout == "command output\n"
+    assert context.calls[0][1:] == ("/app", 12)
+    assert context.calls[1][1] == "/workspace"
+    assert context.stopped
+
+
+def test_dependency_output_is_bounded() -> None:
+    value = "x" * (DEPENDENCY_OUTPUT_LIMIT_CHARS + 1)
+    truncated = dependency_module._truncate_output(value, stream="output")
+
+    assert truncated.endswith("... (output truncated)")
+    assert len(truncated) <= DEPENDENCY_OUTPUT_LIMIT_CHARS + 64
 
 
 @pytest.mark.asyncio
@@ -407,4 +654,91 @@ async def test_bridge_service_authenticates_and_returns_materialized_result(tmp_
     trace = Path(result.trials[0].trace.uri.removeprefix("file://"))
     assert trace.read_text(encoding="utf-8") == '{"span":"service"}\n'
     assert runner.requests == [HarborBridgeRequest(request_id="request-1", task_ids=["task-a"])]
+    assert list(storage_root.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_bridge_service_owns_dependency_session_lifecycle(tmp_path: Path) -> None:
+    class RecordingDependencySessions:
+        starts: list[HarborDependencyRequest] = []
+        commands: list[tuple[str, HarborDependencyExecRequest]] = []
+        stops: list[str] = []
+
+        async def start(self, request: HarborDependencyRequest, *, task_dir: Path) -> str:
+            self.starts.append(request)
+            assert (task_dir / "task.toml").read_text(encoding="utf-8") == ""
+            return "dependency-session-1"
+
+        async def execute(
+            self,
+            session_id: str,
+            request: HarborDependencyExecRequest,
+        ) -> HarborDependencyExecResponse:
+            self.commands.append((session_id, request))
+            return HarborDependencyExecResponse(stdout="/app\n", returncode=0)
+
+        async def stop(self, session_id: str) -> None:
+            self.stops.append(session_id)
+
+        async def close(self) -> None:
+            return None
+
+    task = tmp_path / "task-a"
+    task.mkdir()
+    (task / "task.toml").write_text("", encoding="utf-8")
+    task_archive = tmp_path / "task.tar.gz"
+    create_directory_archive(task, task_archive)
+
+    sessions = RecordingDependencySessions()
+    storage_root = tmp_path / "bridge-work"
+    app = create_app(
+        settings=HarborBridgeSettings(
+            storage_root=storage_root,
+            token="test-token-is-long-enough",
+        ),
+        dependency_sessions=sessions,
+    )
+    transport = httpx.ASGITransport(app=app)
+    headers = {"authorization": "Bearer test-token-is-long-enough"}
+    async with httpx.AsyncClient(transport=transport, base_url="http://bridge.test") as client:
+        with task_archive.open("rb") as task_file:
+            started = await client.post(
+                "/v1/dependencies",
+                headers=headers,
+                data={
+                    "request": HarborDependencyRequest(
+                        request_id="dependency-task-a",
+                        task_id="task-a",
+                    ).model_dump_json()
+                },
+                files={"task": ("task.tar.gz", task_file, "application/gzip")},
+            )
+        executed = await client.post(
+            "/v1/dependencies/dependency-session-1/exec",
+            headers=headers,
+            json=HarborDependencyExecRequest(command="pwd").model_dump(),
+        )
+        stopped = await client.delete(
+            "/v1/dependencies/dependency-session-1",
+            headers=headers,
+        )
+
+    assert started.status_code == 201
+    assert started.json() == {"session_id": "dependency-session-1"}
+    assert executed.status_code == 200
+    assert executed.json() == {"stdout": "/app\n", "stderr": "", "returncode": 0}
+    assert stopped.status_code == 204
+    assert sessions.starts == [
+        HarborDependencyRequest(
+            request_id="dependency-task-a",
+            task_id="task-a",
+        )
+    ]
+    assert sessions.commands == [
+        (
+            "dependency-session-1",
+            HarborDependencyExecRequest(command="pwd"),
+        )
+    ]
+    assert sessions.stops == ["dependency-session-1"]
     assert list(storage_root.iterdir()) == []
