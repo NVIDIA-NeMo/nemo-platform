@@ -547,7 +547,7 @@ async def page_job_logs(
                 filters["job_step"] = step_id
             if task_id:
                 filters["job_task"] = task_id
-            log_subpath = name if getattr(job, "output_location", None) else None
+            log_subpath = name if job.output_location else None
             return await logs_client.query_logs(
                 job.fileset,
                 workspace=workspace,

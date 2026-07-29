@@ -68,6 +68,7 @@ from nemo_platform_plugin.jobs.types import (
     CreatePlatformJobRequest,
     JobLogsQueryParams,
     ListJobsQueryParams,
+    validate_output_location,
 )
 from nemo_platform_plugin.jobs.types import (
     PlatformJobResponse as PlatformJob,
@@ -130,19 +131,7 @@ class BaseJobRequest(BaseModel, Generic[JobConfigT]):
     custom_fields: dict | None = None
     output_location: str | None = None
 
-    @field_validator("output_location")
-    @classmethod
-    def _validate_output_location(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("output_location must not be empty")
-        if "#" in stripped:
-            raise ValueError("subpath in output_location is not yet supported")
-        if "/" in stripped:
-            raise ValueError("output_location must be a bare fileset name; the workspace is implied by the request")
-        return stripped
+    _validate_output_location = field_validator("output_location")(validate_output_location)
 
 
 class BaseJob(BaseModel, Generic[JobConfigT]):

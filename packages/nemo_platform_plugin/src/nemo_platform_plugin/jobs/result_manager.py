@@ -72,7 +72,7 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
         jobs = client_from_platform(self.jobs_sdk, JobsClient)
         job = jobs.get_job(name=self.job_name, workspace=self.workspace).data()
         attempt_id = self.attempt_id if self.attempt_id is not None else job.attempt_id
-        return attempt_id, job.fileset, getattr(job, "output_location", None)
+        return attempt_id, job.fileset, job.output_location
 
     def _create_file_manager(self, fileset_name: str) -> FilesetFileManager:
         """Create a file manager for the given fileset."""
@@ -137,7 +137,7 @@ class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncN
         jobs = client_from_platform(self.jobs_sdk, AsyncJobsClient)
         job = (await jobs.get_job(name=self.job_name, workspace=self.workspace)).data()
         attempt_id = self.attempt_id if self.attempt_id is not None else job.attempt_id
-        return attempt_id, job.fileset, getattr(job, "output_location", None)
+        return attempt_id, job.fileset, job.output_location
 
     def _create_file_manager(self, fileset_name: str) -> AsyncFilesetFileManager:
         """Create a file manager for the given fileset."""

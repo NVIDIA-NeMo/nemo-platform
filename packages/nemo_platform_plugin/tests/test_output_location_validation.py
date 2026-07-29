@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 from nemo_platform_plugin.jobs.api_factory import BaseJobRequest
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from pydantic import BaseModel, ValidationError
 
 
@@ -44,3 +45,17 @@ def test_subpath_is_rejected() -> None:
 def test_workspace_qualified_name_is_rejected() -> None:
     with pytest.raises(ValidationError, match="bare fileset name"):
         _request("default/my-fileset")
+
+
+@pytest.mark.parametrize("value", ["my fileset", "my:fileset", "my*fileset", "a" * 256])
+def test_invalid_fileset_name_is_rejected(value: str) -> None:
+    """Names a fileset could never have are rejected before any lookup."""
+    with pytest.raises(ValidationError):
+        _request(value)
+
+
+def test_create_request_applies_the_same_validation() -> None:
+    """The internal jobs-service create body validates identically to the plugin request."""
+    # Other fields are left out on purpose; only the output_location error matters here.
+    with pytest.raises(ValidationError, match="must not be empty"):
+        CreatePlatformJobRequest.model_validate({"output_location": "   "})
