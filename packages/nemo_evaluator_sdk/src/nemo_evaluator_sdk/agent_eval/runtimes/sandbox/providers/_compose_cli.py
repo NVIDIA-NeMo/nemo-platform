@@ -333,14 +333,17 @@ async def _drain_stream(
         return
 
     pending_line = bytearray()
+    scan_offset = 0
     while chunk := await stream.read(64 * 1024):
         chunks.append(chunk)
         pending_line.extend(chunk)
-        while (newline := pending_line.find(b"\n")) >= 0:
+        while (newline := pending_line.find(b"\n", scan_offset)) >= 0:
             line = bytes(pending_line[: newline + 1])
             del pending_line[: newline + 1]
+            scan_offset = 0
             output.write(redact(line.decode("utf-8", errors="replace")))
             output.flush()
+        scan_offset = len(pending_line)
     if pending_line:
         output.write(redact(pending_line.decode("utf-8", errors="replace")))
         output.flush()
