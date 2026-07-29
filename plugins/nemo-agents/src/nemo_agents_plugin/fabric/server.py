@@ -10,7 +10,7 @@ import asyncio
 import logging
 import sys
 import uuid
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -124,32 +124,82 @@ async def _validate_agent_config(config: AgentConfig, *, base_dir: Path) -> Any:
     return await validate_platform_agent_config(config, base_dir=base_dir)
 
 
-async def _iter_streaming_chat_completion(
+def _iter_streaming_chat_completion(
     stream_context: AbstractAsyncContextManager[FabricRuntimeStream],
     fabric_stream: FabricRuntimeStream,
     *,
     completion_id: str,
     model: str,
 ) -> AsyncIterator[str]:
-    completed = False
-    try:
-        text_deltas = iter_fabric_assistant_text_deltas(fabric_stream)
-        async for event in iter_openai_chat_completion_sse(
-            completion_id=completion_id,
-            content_chunks=text_deltas,
-            model=model,
-        ):
-            yield event
-        completed = True
-    except asyncio.CancelledError:
-        raise
-    except Exception as error:
-        logger.exception("Fabric streaming chat completion failed.")
-        yield openai_chat_completion_error_sse(error)
-    finally:
-        if not completed:
-            await _close_interrupted_stream(fabric_stream)
-        await stream_context.__aexit__(None, None, None)
+    return _StreamingChatCompletionIterator(
+        stream_context,
+        fabric_stream,
+        completion_id=completion_id,
+        model=model,
+    )
+
+
+class _StreamingChatCompletionIterator:
+    """Async iterator that owns cleanup even when response iteration never starts."""
+
+    def __init__(
+        self,
+        stream_context: AbstractAsyncContextManager[FabricRuntimeStream],
+        fabric_stream: FabricRuntimeStream,
+        *,
+        completion_id: str,
+        model: str,
+    ) -> None:
+        self._stream_context = stream_context
+        self._fabric_stream = fabric_stream
+        self._completion_id = completion_id
+        self._model = model
+        self._events: AsyncGenerator[str, None] | None = None
+        self._close_fabric_stream_on_exit = True
+        self._closed = False
+
+    def __aiter__(self) -> AsyncIterator[str]:
+        return self
+
+    async def __anext__(self) -> str:
+        if self._closed:
+            raise StopAsyncIteration
+        if self._events is None:
+            self._events = self._iter_events()
+        try:
+            return await self._events.__anext__()
+        except StopAsyncIteration:
+            await self.aclose()
+            raise
+        except BaseException:
+            await self.aclose()
+            raise
+
+    async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if self._events is not None:
+            await self._events.aclose()
+        if self._close_fabric_stream_on_exit:
+            await _close_interrupted_stream(self._fabric_stream)
+        await self._stream_context.__aexit__(None, None, None)
+
+    async def _iter_events(self) -> AsyncGenerator[str, None]:
+        try:
+            text_deltas = iter_fabric_assistant_text_deltas(self._fabric_stream)
+            async for event in iter_openai_chat_completion_sse(
+                completion_id=self._completion_id,
+                content_chunks=text_deltas,
+                model=self._model,
+            ):
+                yield event
+            self._close_fabric_stream_on_exit = False
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.exception("Fabric streaming chat completion failed.")
+            yield openai_chat_completion_error_sse(error)
 
 
 async def _close_interrupted_stream(fabric_stream: FabricRuntimeStream) -> None:

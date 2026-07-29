@@ -25,9 +25,11 @@ from nemo_agents_plugin.fabric.serving_models import (
 if TYPE_CHECKING:
     from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult, FabricRuntimeStream
 
-# Fabric streams raw ATOF records, so these are conservative markers for known
-# assistant-output shapes we can translate into OpenAI chat-completion chunks.
+# Fabric streams raw ATOF records. ATOF's envelope tells us which records
+# represent completed LLM work; the payload remains producer-defined, so the
+# text extraction below only handles known assistant-output shapes.
 _ASSISTANT_ROLES = frozenset({"assistant", "ai"})
+_ATOF_EVENT_KINDS = frozenset({"scope", "mark"})
 _TEXT_EVENT_TYPES = frozenset(
     {
         "agentMessage",
@@ -146,7 +148,18 @@ def _extract_text_delta(value: Any) -> str | None:
     """Walk one ATOF value looking for assistant text in supported shapes."""
     if not isinstance(value, Mapping):
         return None
-    if _is_turn_summary_scope(value):
+
+    if _is_atof_record(value):
+        if not _is_llm_output_scope(value):
+            return None
+        return _extract_payload_text_delta(value.get("data"))
+
+    return _extract_payload_text_delta(value)
+
+
+def _extract_payload_text_delta(value: Any) -> str | None:
+    """Walk producer payloads looking for known assistant text shapes."""
+    if not isinstance(value, Mapping):
         return None
 
     choice_text = _extract_openai_choice_delta(value)
@@ -158,7 +171,7 @@ def _extract_text_delta(value: Any) -> str | None:
         return _text_from_content(value.get("content"))
 
     event_type = value.get("type") or value.get("name") or value.get("event")
-    if event_type in _TEXT_EVENT_TYPES:
+    if event_type in _TEXT_EVENT_TYPES and _role_allows_assistant_text(value):
         for key in ("text", "content", "delta", "payload"):
             text = _text_from_content(value.get(key))
             if text is not None:
@@ -179,12 +192,16 @@ def _extract_text_delta(value: Any) -> str | None:
     return None
 
 
-def _is_turn_summary_scope(value: Mapping[str, Any]) -> bool:
-    """Return true for Relay turn-summary records that duplicate child LLM output."""
-    if value.get("kind") != "scope" or value.get("scope_category") != "end":
+def _is_atof_record(value: Mapping[str, Any]) -> bool:
+    """Return true when a dictionary has the ATOF event envelope shape."""
+    return value.get("kind") in _ATOF_EVENT_KINDS or "atof_version" in value
+
+
+def _is_llm_output_scope(value: Mapping[str, Any]) -> bool:
+    """Return true for completed LLM scopes that can carry assistant output."""
+    if value.get("kind") != "scope":
         return False
-    metadata = value.get("metadata")
-    return isinstance(metadata, Mapping) and metadata.get("nemo_relay_scope_role") == "turn"
+    return value.get("scope_category") == "end" and value.get("category") == "llm"
 
 
 def _extract_openai_choice_delta(value: Mapping[str, Any]) -> str | None:
@@ -196,7 +213,7 @@ def _extract_openai_choice_delta(value: Mapping[str, Any]) -> str | None:
         if not isinstance(choice, Mapping):
             continue
         delta = choice.get("delta")
-        if isinstance(delta, Mapping):
+        if isinstance(delta, Mapping) and _role_allows_assistant_text(delta):
             text = _text_from_content(delta.get("content"))
             if text is not None:
                 return text
@@ -206,6 +223,12 @@ def _extract_openai_choice_delta(value: Mapping[str, Any]) -> str | None:
             if text is not None:
                 return text
     return None
+
+
+def _role_allows_assistant_text(value: Mapping[str, Any]) -> bool:
+    """Return true when no role is declared or the role is assistant-like."""
+    role = value.get("role")
+    return role is None or role in _ASSISTANT_ROLES
 
 
 def _text_from_content(content: Any) -> str | None:

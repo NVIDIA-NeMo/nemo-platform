@@ -524,6 +524,23 @@ async def test_streaming_chat_completion_closes_stream_on_generator_close() -> N
     assert stream_context.exit_calls == 1
 
 
+@pytest.mark.asyncio
+async def test_streaming_chat_completion_closes_stream_before_first_event() -> None:
+    fabric_stream = _FakeFabricStream([{"data": {"choices": [{"delta": {"content": "partial"}}]}}])
+    stream_context = _FakeStreamContext(fabric_stream)
+    events = server._iter_streaming_chat_completion(
+        stream_context,
+        fabric_stream,
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+
+    await events.aclose()
+
+    assert fabric_stream.aclose_calls == 1
+    assert stream_context.exit_calls == 1
+
+
 def test_chat_completion_maps_failed_run_result(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],

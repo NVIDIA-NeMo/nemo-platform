@@ -93,6 +93,10 @@ async def test_iter_openai_chat_completion_sse_frames_content_chunks() -> None:
             "hel",
         ),
         (
+            {"data": {"choices": [{"delta": {"role": "assistant", "content": "assistant delta"}}]}},
+            "assistant delta",
+        ),
+        (
             {"data": {"type": "agentMessage", "phase": "final_answer", "text": "done"}},
             "done",
         ),
@@ -107,6 +111,16 @@ async def test_iter_openai_chat_completion_sse_frames_content_chunks() -> None:
         (
             {"data": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}},
             "hello",
+        ),
+        (
+            {
+                "kind": "scope",
+                "scope_category": "end",
+                "category": "llm",
+                "name": "anthropic.messages",
+                "data": {"role": "assistant", "content": [{"type": "text", "text": "llm text"}]},
+            },
+            "llm text",
         ),
     ],
 )
@@ -124,12 +138,28 @@ def test_extract_assistant_text_delta_from_known_text_shapes(
         {"kind": "mark", "uuid": "mark-1", "parent_uuid": "scope-1"},
         {"payload": "lifecycle label"},
         {"data": {"role": "user", "content": "hello"}},
+        {"data": {"type": "text_delta", "role": "user", "text": "user delta"}},
+        {"data": {"choices": [{"delta": {"role": "user", "content": "user choice"}}]}},
         {"data": {"type": "toolCall", "text": "tool output"}},
         {
             "kind": "scope",
             "scope_category": "end",
+            "category": "agent",
+            "name": "agent-turn",
+            "data": {"role": "assistant", "content": "agent summary"},
+        },
+        {
+            "kind": "scope",
+            "scope_category": "end",
+            "category": "tool",
+            "name": "tool-call",
+            "data": {"type": "agentMessage", "text": "tool output"},
+        },
+        {
+            "kind": "scope",
+            "scope_category": "end",
+            "category": "custom",
             "name": "claude-code-turn",
-            "metadata": {"nemo_relay_scope_role": "turn"},
             "data": {
                 "role": "assistant",
                 "content": [{"type": "text", "text": "turn summary"}],
