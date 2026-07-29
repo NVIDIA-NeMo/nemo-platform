@@ -1341,7 +1341,7 @@ nemo files otlp logs create [OPTIONS] NAME
 **Options:**
 
 * `--workspace`
-* `--base`: Per-job artifact subfolder to nest logs under
+* `--artifact-base-path`: Folder inside the fileset to nest logs under
 
 **Help:**
 
@@ -1376,10 +1376,10 @@ nemo files otlp logs query [OPTIONS] NAME
 **Options:**
 
 * `--workspace`
+* `--artifact-base-path`: Folder inside the fileset the logs were nested under (must match the value used on write)
 * `--filters`: Key-value filters to apply to the query
 * `--limit <INTEGER>`: Maximum number of results to return
 * `--page-cursor`: Cursor for pagination
-* `--subpath`: Per-job artifact subfolder the logs were nested under (must match the write side)
 
 **Help:**
 

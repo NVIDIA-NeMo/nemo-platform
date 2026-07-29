@@ -103,13 +103,13 @@ def test_result_remote_path_nests_under_base(mock_sdk, mock_nmp_sdk):
         jobs_sdk=mock_nmp_sdk,
     )
     assert mgr._result_remote_path("att-1", "summary") == "results/att-1/summary"
-    assert mgr._result_remote_path("att-1", "summary", base="my-job") == "my-job/results/att-1/summary"
+    assert mgr._result_remote_path("att-1", "summary", base="jobs/my-job") == "jobs/my-job/results/att-1/summary"
 
 
 def test_create_result_nests_under_job_when_output_location_set(
     tmp_path, mock_sdk, mock_nmp_sdk, mock_sync_file_manager
 ):
-    """When the job has an output_location, results nest under <job_name>/results/…; else flat."""
+    """When the job has an output_location, results nest under jobs/<job_name>/results/…; else flat."""
     test_file = tmp_path / "artifact.bin"
     test_file.write_bytes(b"x")
 
@@ -124,7 +124,10 @@ def test_create_result_nests_under_job_when_output_location_set(
         jobs_sdk=mock_nmp_sdk,
     )
 
-    for output_location, expected in [("shared-fs", "test-job/results/att-1/summary"), (None, "results/att-1/summary")]:
+    for output_location, expected in [
+        ("shared-fs", "jobs/test-job/results/att-1/summary"),
+        (None, "results/att-1/summary"),
+    ]:
         mock_jobs.get_job.return_value = _resp(
             MagicMock(attempt_id="att-1", fileset="shared-fs", output_location=output_location)
         )

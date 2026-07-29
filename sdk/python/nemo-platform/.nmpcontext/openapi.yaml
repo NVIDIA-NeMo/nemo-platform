@@ -1885,14 +1885,14 @@ paths:
         schema:
           type: string
           title: Name
-      - name: base
+      - name: artifact_base_path
         in: query
         required: false
         schema:
-          description: Per-job artifact subfolder to nest logs under
-          title: Base
+          description: Folder inside the fileset to nest logs under
+          title: Artifact Base Path
           type: string
-        description: Per-job artifact subfolder to nest logs under
+        description: Folder inside the fileset to nest logs under
       - name: content-type
         in: header
         required: false
@@ -13653,10 +13653,10 @@ components:
           title: Page Cursor
           description: Cursor for pagination
           type: string
-        subpath:
-          title: Subpath
-          description: Per-job artifact subfolder the logs were nested under (must
-            match the write side)
+        artifact_base_path:
+          title: Artifact Base Path
+          description: Folder inside the fileset the logs were nested under (must
+            match the value used on write)
           type: string
       type: object
       title: LogQueryRequest
@@ -16152,8 +16152,11 @@ components:
         fileset:
           type: string
           title: Fileset
-        log_subpath:
-          title: Log Subpath
+        artifact_base_path:
+          title: Artifact Base Path
+          description: Folder inside the fileset that this job's artifacts nest under;
+            None when the job owns the whole fileset and its artifacts sit at the
+            root
           type: string
         workspace:
           type: string

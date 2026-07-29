@@ -48,7 +48,7 @@ class TestLogs:
         log = client.files.otlp.logs.create(
             name="name",
             workspace="workspace",
-            base="base",
+            artifact_base_path="artifact_base_path",
         )
         assert_matches_type(OtelExportLogsServiceResponse, log, path=["response"])
 
@@ -110,10 +110,10 @@ class TestLogs:
         log = client.files.otlp.logs.query(
             name="name",
             workspace="workspace",
+            artifact_base_path="artifact_base_path",
             filters={"foo": "string"},
             limit=1,
             page_cursor="page_cursor",
-            subpath="subpath",
         )
         assert_matches_type(PlatformJobLogPage, log, path=["response"])
 
@@ -181,7 +181,7 @@ class TestAsyncLogs:
         log = await async_client.files.otlp.logs.create(
             name="name",
             workspace="workspace",
-            base="base",
+            artifact_base_path="artifact_base_path",
         )
         assert_matches_type(OtelExportLogsServiceResponse, log, path=["response"])
 
@@ -243,10 +243,10 @@ class TestAsyncLogs:
         log = await async_client.files.otlp.logs.query(
             name="name",
             workspace="workspace",
+            artifact_base_path="artifact_base_path",
             filters={"foo": "string"},
             limit=1,
             page_cursor="page_cursor",
-            subpath="subpath",
         )
         assert_matches_type(PlatformJobLogPage, log, path=["response"])
 

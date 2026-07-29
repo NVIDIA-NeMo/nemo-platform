@@ -567,7 +567,7 @@ def get_logs_endpoint_config_from_fileset(
     workspace: str,
     fileset_id: str,
     loopback_address: str | None = None,
-    subpath: str | None = None,
+    artifact_base_path: str | None = None,
 ) -> OtlpLogsEndpointConfig:
     """Get OTLP logs endpoint config, preserving transport metadata for local UDS runtimes.
 
@@ -592,8 +592,8 @@ def get_logs_endpoint_config_from_fileset(
     base_url = _replace_loopback_address(base_url, effective_override)
 
     endpoint = f"{base_url}/apis/files/v2/workspaces/{workspace}/filesets/{fileset_id}/otlp/v1/logs"
-    if subpath:
-        endpoint = f"{endpoint}?base={quote(subpath, safe='')}"
+    if artifact_base_path:
+        endpoint = f"{endpoint}?artifact_base_path={quote(artifact_base_path, safe='')}"
 
     return OtlpLogsEndpointConfig(
         endpoint=endpoint,

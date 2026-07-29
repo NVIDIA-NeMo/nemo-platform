@@ -22,6 +22,7 @@ from nemo_platform_plugin.jobs.file_manager import (
     TmpDirPath,
 )
 from nemo_platform_plugin.jobs.schemas import PlatformJobResultCreateRequest, PlatformJobResultResponse
+from nemo_platform_plugin.jobs.types import job_artifact_base_path
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,9 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
         file_manager = self._create_file_manager(fileset_name)
         file_manager.validate_storage()
         artifact_local_path = self._validate_local_path(artifact_local_path)
-        remote_path = self._result_remote_path(attempt_id, result_name, base=self.job_name if output_location else None)
+        remote_path = self._result_remote_path(
+            attempt_id, result_name, base=job_artifact_base_path(self.job_name, output_location)
+        )
         artifact_url = file_manager.upload(
             local_path=artifact_local_path, remote_path=remote_path, ignore_patterns=ignore_patterns
         )
@@ -157,7 +160,9 @@ class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncN
         file_manager = self._create_file_manager(fileset_name)
         await file_manager.validate_storage()
         artifact_local_path = self._validate_local_path(artifact_local_path)
-        remote_path = self._result_remote_path(attempt_id, result_name, base=self.job_name if output_location else None)
+        remote_path = self._result_remote_path(
+            attempt_id, result_name, base=job_artifact_base_path(self.job_name, output_location)
+        )
         artifact_url = await file_manager.upload(
             local_path=artifact_local_path, remote_path=remote_path, ignore_patterns=ignore_patterns
         )

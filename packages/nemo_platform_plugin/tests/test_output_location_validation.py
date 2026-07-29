@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 from nemo_platform_plugin.jobs.api_factory import BaseJobRequest
-from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest, job_artifact_base_path
 from pydantic import BaseModel, ValidationError
 
 
@@ -59,3 +59,11 @@ def test_create_request_applies_the_same_validation() -> None:
     # Other fields are left out on purpose; only the output_location error matters here.
     with pytest.raises(ValidationError, match="must not be empty"):
         CreatePlatformJobRequest.model_validate({"output_location": "   "})
+
+
+def test_artifact_base_path_nests_under_jobs_when_output_location_set() -> None:
+    assert job_artifact_base_path("my-job", "shared-fs") == "jobs/my-job"
+
+
+def test_artifact_base_path_is_none_when_job_owns_the_fileset() -> None:
+    assert job_artifact_base_path("my-job", None) is None

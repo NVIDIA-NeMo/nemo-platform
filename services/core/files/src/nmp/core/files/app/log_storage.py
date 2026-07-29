@@ -31,10 +31,29 @@ from nmp.common.jobs.schemas import (
     PlatformJobLogPage,
 )
 from nmp.core.files.app.backends.base import StorageImpl
-from nmp.core.files.exceptions import InvalidFilterError
+from nmp.core.files.exceptions import InvalidFilterError, InvalidPathError
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+_PATH_SEGMENT_RE = re.compile(r"^[\w\-.]+$")
+
+
+def logs_base_path(storage: StorageImpl, artifact_base_path: str | None = None) -> str:
+    """Hive root for job logs, optionally nested under a per-job ``artifact_base_path``.
+
+    ``artifact_base_path`` is caller-supplied, and ``get_duckdb_path`` is a plain join with no
+    traversal check of its own, so validate the segments here.
+    """
+    if not artifact_base_path:
+        return storage.get_duckdb_path("logs")
+    segments = artifact_base_path.split("/")
+    if any(segment in {".", ".."} or not _PATH_SEGMENT_RE.match(segment) for segment in segments):
+        raise InvalidPathError(
+            f"Artifact base path '{artifact_base_path}' is not a relative path within the fileset. "
+            "Ensure that paths such as ../.. are not used in the path."
+        )
+    return storage.get_duckdb_path(f"{artifact_base_path}/logs")
 
 
 class LogEntry(BaseModel):
@@ -137,13 +156,13 @@ class LogStorage:
         filters: dict[str, str] | None = None,
         page_size: int = 100,
         page_cursor: str | None = None,
-        subpath: str | None = None,
+        artifact_base_path: str | None = None,
     ) -> PlatformJobLogPage:
         """Query logs from parquet files using direct storage access.
 
         Runs DuckDB queries in a thread pool to avoid blocking the event loop.
-        When ``subpath`` is set, logs are read from ``<subpath>/logs`` (must match
-        the ``subpath`` used at insert time).
+        When ``artifact_base_path`` is set, logs are read from ``<artifact_base_path>/logs``
+        (must match the value used at insert time).
         """
         direction = PaginationDirection.FORWARD
         current_page = 1
@@ -155,7 +174,7 @@ class LogStorage:
             except ValueError:
                 raise InvalidPageCursorError("Invalid page cursor")
 
-        base_path = storage.get_duckdb_path(f"{subpath}/logs" if subpath else "logs")
+        base_path = logs_base_path(storage, artifact_base_path)
 
         return await to_thread.run_sync(
             self._query_logs_sync,
@@ -310,16 +329,18 @@ class LogStorage:
         finally:
             conn.close()
 
-    async def insert_logs(self, storage: StorageImpl, log_entries: list[LogEntry], subpath: str | None = None) -> int:
+    async def insert_logs(
+        self, storage: StorageImpl, log_entries: list[LogEntry], artifact_base_path: str | None = None
+    ) -> int:
         """Insert log entries into the Parquet storage.
 
         Uses DuckDB to write Hive-partitioned parquet files directly to the
-        storage path. When ``subpath`` is set, logs nest under ``<subpath>/logs``.
+        storage path. When ``artifact_base_path`` is set, logs nest under ``<artifact_base_path>/logs``.
         """
         if not log_entries:
             return 0
 
-        base_path = storage.get_duckdb_path(f"{subpath}/logs" if subpath else "logs")
+        base_path = logs_base_path(storage, artifact_base_path)
 
         return await to_thread.run_sync(
             self._insert_logs_sync,
@@ -339,7 +360,7 @@ class LogStorage:
             from nmp.core.files.app.backends.s3 import S3StorageImpl
 
             # DuckDB COPY creates the leaf + partition dirs but not intermediate parents, so a
-            # nested subpath base (e.g. <root>/<job>/logs) needs its parents created first.
+            # nested base path (e.g. <root>/jobs/<job>/logs) needs its parents created first.
             if isinstance(storage, LocalStorageImpl):
                 os.makedirs(base_path, exist_ok=True)
 

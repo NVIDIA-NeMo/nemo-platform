@@ -35,6 +35,7 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobStepWithContext,
     PlatformJobTaskUpdate,
     get_model_id,
+    job_artifact_base_path,
 )
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
@@ -723,7 +724,7 @@ class JobDispatcher:
                 attempt_id=step.attempt_id,
                 workspace=step.workspace,
                 fileset=job.fileset,
-                log_subpath=job.name if job.output_location else None,
+                artifact_base_path=job_artifact_base_path(job.name, job.output_location),
                 name=step.name,
                 step_spec=attempt.get_step_spec(step.name),
                 status=step.status,

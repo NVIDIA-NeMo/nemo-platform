@@ -25,5 +25,5 @@ __all__ = ["LogCreateParams"]
 class LogCreateParams(TypedDict, total=False):
     workspace: str
 
-    base: str
-    """Per-job artifact subfolder to nest logs under"""
+    artifact_base_path: str
+    """Folder inside the fileset to nest logs under"""

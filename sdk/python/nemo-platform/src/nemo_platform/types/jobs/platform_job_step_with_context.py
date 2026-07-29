@@ -41,6 +41,12 @@ class PlatformJobStepWithContext(BaseModel):
 
     workspace: str
 
+    artifact_base_path: Optional[str] = None
+    """
+    Folder inside the fileset that this job's artifacts nest under; None when the
+    job owns the whole fileset and its artifacts sit at the root
+    """
+
     auth_context: Optional[AuthContext] = None
     """Auth context captured at resource creation for delegated access.
 
@@ -51,8 +57,6 @@ class PlatformJobStepWithContext(BaseModel):
     created_at: Optional[datetime] = None
 
     error_details: Optional[Dict[str, object]] = None
-
-    log_subpath: Optional[str] = None
 
     status: Optional[PlatformJobStatus] = None
     """Enumeration of possible job statuses.
