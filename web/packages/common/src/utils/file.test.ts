@@ -78,6 +78,16 @@ describe('triggerDownload', () => {
       expect(Blob).toHaveBeenCalledWith([testData]);
     });
 
+    it('should pass a Blob through untouched so its type survives', () => {
+      vi.unstubAllGlobals();
+      const blob = new Blob(['tar bytes'], { type: 'application/x-tar' });
+
+      triggerDownload(blob, 'artifacts');
+
+      expect(mockCreateObjectURL).toHaveBeenCalledWith(blob);
+      expect((mockCreateObjectURL.mock.calls[0][0] as Blob).type).toBe('application/x-tar');
+    });
+
     it('should create an object URL from the Blob', () => {
       const testData = 'test file content';
       const filename = 'test.txt';

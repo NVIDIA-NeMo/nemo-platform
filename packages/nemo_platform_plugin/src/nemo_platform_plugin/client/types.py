@@ -325,6 +325,7 @@ class PreparedRequest(Generic[ResponseT]):
     query_params: dict[str, str | int | bool | None] | None = None
     extra_headers: dict[str, str] | None = None
     client_options: dict[str, object] | None = None
+    additional_success_status_codes: tuple[int, ...] = ()
     # Prebuilt GET to replay on a 409 when ``exist_ok`` is set. Produced by a
     # ``get_on_conflict`` resolver at request-build time (the resolver needs the
     # live ``body`` model, which is serialised away by the time this request is
