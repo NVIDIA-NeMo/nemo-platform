@@ -1,15 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import pytest
-from pydantic import ValidationError
-
 from nemo_platform.cli.telemetry.events import (
-    JobRunEvent,
-    TaskStatusEnum,
     CommandInvokedEvent,
+    JobRunEvent,
     OnboardingStepEvent,
+    TaskStatusEnum,
     is_ci_environment,
 )
+from pydantic import ValidationError
 
 
 class TestCommandInvokedEvent:

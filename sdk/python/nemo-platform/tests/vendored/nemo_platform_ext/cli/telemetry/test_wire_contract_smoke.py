@@ -19,10 +19,10 @@ import json
 from datetime import datetime, timezone
 
 from nemo_platform.cli.telemetry.events import (
-    JobRunEvent,
-    TaskStatusEnum,
     CommandInvokedEvent,
+    JobRunEvent,
     OnboardingStepEvent,
+    TaskStatusEnum,
 )
 from nemo_platform.cli.telemetry.handler import QueuedEvent, build_payload
 

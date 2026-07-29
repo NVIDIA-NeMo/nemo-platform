@@ -4,21 +4,20 @@
 import asyncio
 import importlib
 import threading
-from typing import ClassVar
 from datetime import datetime, timezone
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import Field
-
 from nemo_platform.cli.telemetry.events import DeploymentTypeEnum, PlatformTelemetryEvent, _deployment_type
 from nemo_platform.cli.telemetry.handler import (
     QueuedEvent,
     TelemetryHandler,
-    build_payload,
     _telemetry_enabled,
     _telemetry_endpoint,
+    build_payload,
 )
+from pydantic import Field
 
 telemetry_module = importlib.import_module("nemo_platform.cli.telemetry.handler")
 

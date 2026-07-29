@@ -13,17 +13,17 @@ Environment variables:
 
 from __future__ import annotations
 
-import os
 import asyncio
 import logging
+import os
 import platform
 import threading
-from typing import Any
-from datetime import datetime, timezone
-from dataclasses import dataclass
-from urllib.parse import urlsplit, urlunsplit
 from collections.abc import Coroutine
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 

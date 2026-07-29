@@ -12,7 +12,7 @@ import os
 from enum import Enum
 from typing import ClassVar
 
-from pydantic import Field, BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 _CI_ENV_VARS = (
     "CI",

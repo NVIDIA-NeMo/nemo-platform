@@ -2,15 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
 import uuid
-from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, patch
 from collections.abc import Iterator
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
-
-from nemo_platform.cli.telemetry import emit as emit_mod, session as session_mod
-from nemo_platform.cli.telemetry.events import TaskStatusEnum, CommandInvokedEvent
+from nemo_platform.cli.telemetry import emit as emit_mod
+from nemo_platform.cli.telemetry import session as session_mod
+from nemo_platform.cli.telemetry.events import CommandInvokedEvent, TaskStatusEnum
 
 
 @pytest.fixture(autouse=True)

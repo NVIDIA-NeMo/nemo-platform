@@ -4,8 +4,8 @@
 
 from __future__ import annotations
 
-import sys
 import logging
+import sys
 from pathlib import Path
 
 from nemo_platform.cli.telemetry.events import PlatformTelemetryEvent
