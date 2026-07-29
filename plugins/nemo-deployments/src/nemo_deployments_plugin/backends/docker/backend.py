@@ -75,6 +75,11 @@ logger = logging.getLogger(__name__)
 
 _ONE_SHOT_RESTART_POLICIES = frozenset({"Never", "OnFailure"})
 _EXITED_CONTAINER_STATES = frozenset({"exited", "dead"})
+# Docker rejects a publish with this message when its own allocator already holds
+# the port. Its reservations are invisible to a host-socket probe, so a container
+# created concurrently can claim a port between allocation and run.
+_PORT_CONFLICT_MARKER = "port is already allocated"
+_PORT_CONFLICT_ATTEMPTS = 3
 NGC_IMAGE_REGISTRY = os.getenv("NGC_IMAGE_REGISTRY", "nvcr.io")
 NGC_IMAGE_REGISTRY_USER_NAME = os.getenv("NGC_IMAGE_REGISTRY_USER_NAME", "$oauthtoken")
 
@@ -198,21 +203,11 @@ class DockerDeploymentBackend(DeploymentBackend):
             except GPUAllocationError as exc:
                 return BackendStatusUpdate(status="FAILED", status_message=str(exc))
 
-        host_ports: dict[int, int] = {}
-        for port_spec in container_spec.ports:
-            host_port = await find_available_port(
-                self._client,
-                self._executor_config.port_range_start,
-                self._executor_config.port_range_end,
-                exclude_ports=set(host_ports.values()),
-            )
-            if host_port is None:
-                if gpu_ids and gpu_pool is not None:
-                    gpu_pool.release_gpu(dep_key)
-                return BackendStatusUpdate(
-                    status="FAILED", status_message="No host ports available in configured range"
-                )
-            host_ports[port_spec.container_port] = host_port
+        host_ports = await self._allocate_host_ports(container_spec)
+        if host_ports is None:
+            if gpu_ids and gpu_pool is not None:
+                gpu_pool.release_gpu(dep_key)
+            return BackendStatusUpdate(status="FAILED", status_message="No host ports available in configured range")
 
         # Pull all images in the group (init + primary + sidecars) up front.
         if self._executor_config.pull_images:
@@ -265,23 +260,20 @@ class DockerDeploymentBackend(DeploymentBackend):
                 return init_status
 
         # 2) Primary (server) container: publishes ports, owns GPUs.
-        server_run_kwargs = self._build_run_kwargs(
+        server_container, host_ports, run_error = await self._run_server_container(
             workspace=workspace,
             config=config,
-            container=container_spec,
+            container_spec=container_spec,
             name=c_name,
             labels={**base_labels, CONTAINER_ROLE_LABEL: CONTAINER_ROLE_SERVER},
             host_ports=host_ports,
             gpu_ids=gpu_ids,
             network=docker_cfg.network,
         )
-        try:
-            server_container = await asyncio.to_thread(self._client.containers.run, **server_run_kwargs)
-        except Exception as exc:
+        if server_container is None:
             if gpu_ids and gpu_pool is not None:
                 gpu_pool.release_gpu(dep_key)
-            logger.exception("Failed to start container %s", c_name)
-            return BackendStatusUpdate(status="FAILED", status_message=f"Failed to start container: {exc}")
+            return BackendStatusUpdate(status="FAILED", status_message=run_error)
 
         # 3) Sidecars share the primary's network namespace + volumes; no ports/GPU.
         #
@@ -332,6 +324,96 @@ class DockerDeploymentBackend(DeploymentBackend):
             status_message=f"Container {c_name} created",
             endpoints=endpoints,
         )
+
+    async def _allocate_host_ports(
+        self,
+        container_spec: Container,
+        *,
+        exclude_ports: set[int] | None = None,
+    ) -> dict[int, int] | None:
+        """Map each published container port to a free host port.
+
+        Returns None when the configured range holds no more free ports.
+        """
+        excluded = set(exclude_ports or ())
+        host_ports: dict[int, int] = {}
+        for port_spec in container_spec.ports:
+            host_port = await find_available_port(
+                self._client,
+                self._executor_config.port_range_start,
+                self._executor_config.port_range_end,
+                exclude_ports=excluded | set(host_ports.values()),
+            )
+            if host_port is None:
+                return None
+            host_ports[port_spec.container_port] = host_port
+        return host_ports
+
+    async def _remove_container_by_name(self, name: str) -> None:
+        """Best-effort removal of a container this call just created."""
+        try:
+            container = await asyncio.to_thread(self._client.containers.get, name)
+            await asyncio.to_thread(container.remove, force=True)
+        except self._docker_errors.NotFound:
+            pass
+        except Exception:
+            logger.warning("Failed to remove container %s", name, exc_info=True)
+
+    async def _run_server_container(
+        self,
+        *,
+        workspace: str,
+        config: DeploymentConfig,
+        container_spec: Container,
+        name: str,
+        labels: dict[str, str],
+        host_ports: dict[int, int],
+        gpu_ids: list[int],
+        network: str | None,
+    ) -> tuple[DockerContainer | None, dict[int, int], str]:
+        """Start the primary container, reallocating host ports on Docker port conflicts.
+
+        Returns the started container (None on failure), the host ports it actually
+        published, and an error message when it could not be started.
+        """
+        rejected_ports: set[int] = set()
+        attempt = 0
+        while True:
+            attempt += 1
+            run_kwargs = self._build_run_kwargs(
+                workspace=workspace,
+                config=config,
+                container=container_spec,
+                name=name,
+                labels=labels,
+                host_ports=host_ports,
+                gpu_ids=gpu_ids,
+                network=network,
+            )
+            try:
+                container = await asyncio.to_thread(self._client.containers.run, **run_kwargs)
+                return container, host_ports, ""
+            except Exception as exc:
+                last_attempt = attempt == _PORT_CONFLICT_ATTEMPTS
+                if not host_ports or last_attempt or _PORT_CONFLICT_MARKER not in str(exc):
+                    logger.exception("Failed to start container %s", name)
+                    return None, host_ports, f"Failed to start container: {exc}"
+
+                rejected_ports |= set(host_ports.values())
+                logger.warning(
+                    "Host port conflict starting %s (attempt %d/%d); reallocating outside %s",
+                    name,
+                    attempt,
+                    _PORT_CONFLICT_ATTEMPTS,
+                    sorted(rejected_ports),
+                )
+                # containers.run() creates then starts, so a failed start leaves the
+                # created container holding the name and blocking the retry.
+                await self._remove_container_by_name(name)
+                reallocated = await self._allocate_host_ports(container_spec, exclude_ports=rejected_ports)
+                if reallocated is None:
+                    return None, host_ports, "No host ports available in configured range"
+                host_ports = reallocated
 
     def _build_run_kwargs(
         self,

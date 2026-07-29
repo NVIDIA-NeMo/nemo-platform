@@ -11,8 +11,6 @@ import os
 import socket
 from typing import TYPE_CHECKING
 
-from nemo_deployments_plugin.backends.labels import managed_by_filter
-
 import docker
 
 if TYPE_CHECKING:
@@ -30,9 +28,11 @@ def is_port_free(port: int) -> bool:
     if is_remote_docker_host():
         return True
     try:
+        # Bind the wildcard address Docker publishes on, without SO_REUSEADDR:
+        # probing 127.0.0.1 misses 0.0.0.0 publishers, and SO_REUSEADDR lets the
+        # bind succeed against an already-bound wildcard socket.
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(("127.0.0.1", port))
+            sock.bind(("0.0.0.0", port))
             return True
     except OSError:
         return False
@@ -62,11 +62,10 @@ async def find_available_port(
     exclude_ports: set[int] | None = None,
 ) -> int | None:
     try:
-        containers = await asyncio.to_thread(
-            client.containers.list,
-            all=True,
-            filters=managed_by_filter(),
-        )
+        # Every container on the daemon competes for host ports, not just the ones
+        # this platform manages. ``resource_scope`` scopes ownership and cleanup;
+        # port safety has to consider foreign containers too.
+        containers = await asyncio.to_thread(client.containers.list, all=True)
     except Exception:
         logger.exception("Failed to list containers for port allocation")
         return None

@@ -44,6 +44,12 @@ deployments:
   default_executor: local-docker
 ```
 
+A port is considered taken when any container on the daemon publishes it — not just
+platform-managed ones — or when the host socket is already bound. Docker's own
+reservations are not observable until a publish is attempted, so a port claimed
+concurrently is retried against a different port rather than failing the deployment.
+Pick a range nothing else on the host publishes on.
+
 Entity-level `backend_config.docker` accepts only deployment-specific overrides such
 as `network`.
 

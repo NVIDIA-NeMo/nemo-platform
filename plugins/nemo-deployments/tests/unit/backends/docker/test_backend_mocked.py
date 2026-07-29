@@ -8,10 +8,20 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from backends.docker.docker_helpers import container_attrs, lora_config, sample_config
+from backends.docker.docker_helpers import (
+    container_attrs,
+    lora_config,
+    published_port_config,
+    sample_config,
+)
 from docker.errors import APIError, NotFound
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate
-from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
+from nemo_deployments_plugin.backends.docker import ports as ports_mod
+from nemo_deployments_plugin.backends.docker.backend import (
+    _PORT_CONFLICT_ATTEMPTS,
+    _PORT_CONFLICT_MARKER,
+    DockerDeploymentBackend,
+)
 from nemo_deployments_plugin.backends.labels import (
     BACKOFF_LIMIT_LABEL,
     CONFIG_NAME_LABEL,
@@ -83,6 +93,103 @@ async def test_create_deployment_maps_command_to_entrypoint(
     _, run_kwargs = mock_docker_client.containers.run.call_args
     assert run_kwargs["entrypoint"] == ["echo"]
     assert run_kwargs["command"] == ["hello"]
+
+
+def _port_conflict_error(port: int) -> APIError:
+    return APIError(
+        f"driver failed programming external connectivity: Bind for 0.0.0.0:{port} failed: {_PORT_CONFLICT_MARKER}"
+    )
+
+
+@pytest.fixture
+def free_host_ports(monkeypatch: pytest.MonkeyPatch, mock_docker_client: MagicMock) -> None:
+    """Make host port allocation deterministic: nothing published, every probe free."""
+    mock_docker_client.containers.list.return_value = []
+    monkeypatch.setattr(ports_mod, "is_port_free", lambda port: True)
+
+
+def _published_host_ports(run_mock: MagicMock) -> list[int]:
+    return [kwargs["ports"]["8000/tcp"] for _, kwargs in run_mock.call_args_list]
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_reallocates_port_after_docker_conflict(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+    free_host_ports: None,
+) -> None:
+    """Docker's port reservations are invisible to the probe, so a publish can still lose a race."""
+    leftover = MagicMock()
+    mock_entities.get.return_value = published_port_config()
+    mock_docker_client.containers.get.side_effect = [NotFound("missing"), leftover]
+    mock_docker_client.containers.run.side_effect = [
+        _port_conflict_error(9000),
+        MagicMock(id="abc123"),
+    ]
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    assert _published_host_ports(mock_docker_client.containers.run) == [9000, 9001]
+    # run() creates then starts, so the container that failed to start still holds the name.
+    leftover.remove.assert_called_once_with(force=True)
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_fails_after_repeated_port_conflicts(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+    free_host_ports: None,
+) -> None:
+    mock_entities.get.return_value = published_port_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.run.side_effect = [
+        _port_conflict_error(9000 + offset) for offset in range(_PORT_CONFLICT_ATTEMPTS)
+    ]
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "FAILED"
+    assert _PORT_CONFLICT_MARKER in (update.status_message or "")
+    published = _published_host_ports(mock_docker_client.containers.run)
+    assert published == [9000 + offset for offset in range(_PORT_CONFLICT_ATTEMPTS)]
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_does_not_retry_unrelated_start_failure(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+    free_host_ports: None,
+) -> None:
+    mock_entities.get.return_value = published_port_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.run.side_effect = APIError("no such image")
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "FAILED"
+    mock_docker_client.containers.run.assert_called_once()
 
 
 @pytest.mark.asyncio

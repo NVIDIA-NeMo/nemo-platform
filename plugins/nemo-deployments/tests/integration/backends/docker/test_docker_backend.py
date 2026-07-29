@@ -34,16 +34,28 @@ pytestmark = [
 
 ALPINE_IMAGE = "alpine:3.20"
 
+# The 9000-9100 product default overlaps ClickHouse's native port (9000), which
+# other integration suites publish on the same daemon. Keep these tests in a range
+# nothing else in CI claims, and below the Linux ephemeral range (32768+).
+TEST_PORT_RANGE_START = 21000
+TEST_PORT_RANGE_END = 21100
+
 
 def _build_docker_backend(**config_overrides: Any) -> DockerDeploymentBackend:
     mock_entities = AsyncMock()
     mock_sdk = MagicMock()
+    executor_config: dict[str, Any] = {
+        "pull_images": True,
+        "port_range_start": TEST_PORT_RANGE_START,
+        "port_range_end": TEST_PORT_RANGE_END,
+        **config_overrides,
+    }
     with (
         patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
     ):
-        backend = DockerDeploymentBackend(mock_sdk, {"pull_images": True, **config_overrides})
+        backend = DockerDeploymentBackend(mock_sdk, executor_config)
     backend._entities = mock_entities
     return backend
 
