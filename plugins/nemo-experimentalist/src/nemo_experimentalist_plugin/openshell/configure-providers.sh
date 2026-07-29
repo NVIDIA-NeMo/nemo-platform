@@ -15,7 +15,12 @@ profile_dir="${NEMO_EXPERIMENTALIST_PROVIDER_PROFILE_DIR:-$PWD/tmp/experimentali
 bridge_provider="${NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_PROVIDER:-nemo-experimentalist-harbor-bridge}"
 inference_provider="${NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER:-nemo-experimentalist-inference}"
 inference_provider_type="${NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER_TYPE:-nvidia}"
-inference_model="${NEMO_EXPERIMENTALIST_INFERENCE_MODEL:-${EXPERIMENTALIST_SMART_MODEL_NAME:-}}"
+inference_model="${NEMO_EXPERIMENTALIST_INFERENCE_MODEL:-}"
+if [[ -z "$inference_model" && -n "${EXPERIMENTALIST_SMART_MODEL_NAME:-}" ]]; then
+  # NOOA prefixes OpenAI-compatible transports with "openai/"; OpenShell needs
+  # the provider's raw model ID when configuring inference.local.
+  inference_model="${EXPERIMENTALIST_SMART_MODEL_NAME#openai/}"
+fi
 gitlab_host="${NEMO_EXPERIMENTALIST_GITLAB_HOST:-${GITLAB_HOST:-gitlab.com}}"
 
 if [[ "$inference_provider_type" == "nvidia" && -z "${NVIDIA_API_KEY:-}" && -n "${NVIDIA_INTERNAL_API_KEY:-}" ]]; then
@@ -47,12 +52,30 @@ delete_provider_if_present() {
   fi
 }
 
+delete_profile_if_present() {
+  local profile_name="$1"
+  local profile_yaml
+  local profile_scope
+
+  if ! profile_yaml="$(openshell provider profile export "$profile_name" 2>/dev/null)"; then
+    return
+  fi
+
+  profile_scope="$(awk '$1 == "scope:" { print $2; exit }' <<<"$profile_yaml")"
+  if [[ "$profile_scope" == "platform" ]]; then
+    openshell provider profile delete --global "$profile_name"
+  else
+    openshell provider profile delete "$profile_name"
+  fi
+}
+
 replace_provider_from_existing() {
   local provider_name="$1"
   local provider_type="$2"
+  shift 2
 
   delete_provider_if_present "$provider_name"
-  openshell provider create --name "$provider_name" --type "$provider_type" --from-existing
+  openshell provider create --name "$provider_name" --type "$provider_type" --from-existing "$@"
 }
 
 replace_provider_with_credential() {
@@ -82,9 +105,7 @@ done
 
 for profile_path in "$profile_dir"/*.yaml; do
   profile_id="$(basename "$profile_path" .yaml)"
-  if openshell provider profile export "$profile_id" >/dev/null 2>&1; then
-    openshell provider profile delete "$profile_id"
-  fi
+  delete_profile_if_present "$profile_id"
 done
 
 # Provider credentials are injected without this gate, but provider endpoint
@@ -104,7 +125,14 @@ replace_provider_with_credential \
   NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN
 
 if [[ -n "$inference_model" ]]; then
-  replace_provider_from_existing "$inference_provider" "$inference_provider_type"
+  if [[ "$inference_provider_type" == "nvidia" ]]; then
+    replace_provider_from_existing \
+      "$inference_provider" \
+      "$inference_provider_type" \
+      --config NVIDIA_BASE_URL=https://inference-api.nvidia.com/v1
+  else
+    replace_provider_from_existing "$inference_provider" "$inference_provider_type"
+  fi
   openshell inference set --provider "$inference_provider" --model "$inference_model"
   echo "Configured inference.local with provider '$inference_provider' and model '$inference_model'."
 else
