@@ -12,8 +12,6 @@ import { type FC } from 'react';
 
 export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   workspace,
-  modelGroups,
-  isLoadingModels,
   models,
   onRemoveModel,
   onSetModel,
@@ -58,8 +56,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
         <div className="max-h-full flex-1 self-start overflow-auto rounded-lg border border-base bg-surface-raised">
           <ModelCompareTable
             models={models}
-            modelGroups={modelGroups}
-            isLoadingModels={isLoadingModels}
+            workspace={workspace}
             promptRows={promptRows}
             fileResult={fileResult}
             sampleMethod={sampleMethod}

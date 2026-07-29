@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import type { TableExpandableCellState } from '@nemo/common/src/components/DataView/TableExpandableCell';
 import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
 
@@ -34,8 +33,6 @@ export interface ExpandedCellState extends TableExpandableCellState {
 
 export interface ModelComparePromptsProps {
   workspace: string;
-  modelGroups: ModelWorkspaceGroup[];
-  isLoadingModels: boolean;
   models: SharedModelEntry[];
   onRemoveModel: (id: number) => void;
   onSetModel: (id: number, modelURN: string | null) => void;

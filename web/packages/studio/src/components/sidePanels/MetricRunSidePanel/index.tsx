@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { BASIC_ALL_MODELS_DROPDOWN_FILTER } from '@nemo/common/src/api/models/useModels';
-import { useModelsFromWorkspace } from '@nemo/common/src/api/models/useModelsFromWorkspace';
+import { useModelEntity } from '@nemo/common/src/api/models/useModelEntity';
+import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { VariableButton } from '@nemo/common/src/components/buttons/VariableButton';
 import {
   ChatCompletionInput,
@@ -51,6 +51,7 @@ import {
   FormProvider,
   useFieldArray,
   useForm,
+  useWatch,
   type UseFormReturn,
 } from 'react-hook-form';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -160,12 +161,8 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
   const [datasetVariables, setDatasetVariables] = useState<VariableDef[]>([]);
   const [selectedJobType, setSelectedJobType] =
     useState<MetricRunSidePanelFormData['jobType']>('online');
-  const { groups: modelGroups, isFetching: isLoadingModels } = useModelsFromWorkspace({
-    workspace,
-    query: BASIC_ALL_MODELS_DROPDOWN_FILTER,
-    queryOptions: { enabled: open },
-  });
-  const evaluationModels = useMemo(() => modelGroups.flatMap((g) => g.models), [modelGroups]);
+  const [modelSelectOpen, setModelSelectOpen] = useState(false);
+  const modelSearch = useModelSearch({ workspace, enabled: open && modelSelectOpen });
   const { mutateAsync: createEvaluateJob, isPending } = useEvaluatorCreateEvaluateJob();
 
   const modelSearchParam = searchParams.get(QUERY_PARAMETERS.model);
@@ -197,6 +194,18 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
     move: movePromptMessage,
     remove: removePromptMessage,
   } = useFieldArray({ control: form.control, name: 'promptMessages' });
+
+  const selectedModel = useWatch({ control: form.control, name: 'model' });
+  const fetchedModel = useModelEntity(selectedModel?.model, {
+    enabled: open && !!selectedModel?.adapter && !selectedModel?.entity,
+  });
+  const selectedModelEntity = selectedModel?.entity ?? fetchedModel;
+
+  useEffect(() => {
+    if (modelSearch.error) {
+      form.setError('model', { message: modelSearch.error.message });
+    }
+  }, [form, modelSearch.error]);
 
   useEffect(() => {
     if (open) {
@@ -259,7 +268,11 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
       if (formData.jobType === 'online') {
         const { model, adapter } = formData.model!;
         const modelValue = adapter ? `${model}::${adapter}` : model;
-        const result = buildModelPayload(modelValue, evaluationModels, PLATFORM_BASE_URL);
+        const result = buildModelPayload(
+          modelValue,
+          selectedModelEntity ? [selectedModelEntity] : [],
+          PLATFORM_BASE_URL
+        );
         if (!result.ok) {
           toast.error(result.error);
           return;
@@ -383,11 +396,11 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
                         slotError={fieldState.error?.message}
                       >
                         <ModelSelectV2
+                          {...modelSearch}
                           value={field.value}
                           disabled={isPending}
                           onValueChange={field.onChange}
-                          groups={modelGroups}
-                          loading={isLoadingModels}
+                          onOpenChange={setModelSelectOpen}
                           fullWidth
                           showParams
                           inferenceParams={inferenceParamsField.value}
