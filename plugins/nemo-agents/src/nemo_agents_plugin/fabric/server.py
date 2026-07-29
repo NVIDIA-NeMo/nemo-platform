@@ -11,7 +11,7 @@ import logging
 import sys
 import uuid
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -23,6 +23,7 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricInvocationRequest,
     FabricRuntimeExecutionError,
     FabricRuntimeResult,
+    FabricRuntimeStream,
     FabricRuntimeTimeoutError,
 )
 from nemo_agents_plugin.fabric.serving_models import (
@@ -40,7 +41,11 @@ from nemo_agents_plugin.fabric.session_manager import (
     FabricSessionStopError,
 )
 from nemo_agents_plugin.fabric.session_registry import FabricSessionNotFoundError, FabricSessionRegistry
-from nemo_agents_plugin.fabric.streaming import iter_fabric_assistant_text_deltas, iter_openai_chat_completion_sse
+from nemo_agents_plugin.fabric.streaming import (
+    iter_fabric_assistant_text_deltas,
+    iter_openai_chat_completion_sse,
+    openai_chat_completion_error_sse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -120,14 +125,14 @@ async def _validate_agent_config(config: AgentConfig, *, base_dir: Path) -> Any:
 
 
 async def _iter_streaming_chat_completion(
-    manager: FabricSessionManager,
-    session: Any,
-    invocation_request: FabricInvocationRequest,
+    stream_context: AbstractAsyncContextManager[FabricRuntimeStream],
+    fabric_stream: FabricRuntimeStream,
     *,
     completion_id: str,
     model: str,
 ) -> AsyncIterator[str]:
-    async with manager.stream_session(session, invocation_request) as fabric_stream:
+    completed = False
+    try:
         text_deltas = iter_fabric_assistant_text_deltas(fabric_stream)
         async for event in iter_openai_chat_completion_sse(
             completion_id=completion_id,
@@ -135,6 +140,23 @@ async def _iter_streaming_chat_completion(
             model=model,
         ):
             yield event
+        completed = True
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        logger.exception("Fabric streaming chat completion failed.")
+        yield openai_chat_completion_error_sse(error)
+    finally:
+        if not completed:
+            await _close_interrupted_stream(fabric_stream)
+        await stream_context.__aexit__(None, None, None)
+
+
+async def _close_interrupted_stream(fabric_stream: FabricRuntimeStream) -> None:
+    try:
+        await fabric_stream.aclose()
+    except Exception:
+        logger.exception("Failed to finalize interrupted Fabric stream.")
 
 
 async def _run_idle_session_cleanup(
@@ -220,11 +242,25 @@ def create_fabric_serving_app(
 
         invocation_request = _to_fabric_invocation_request(request, session_id=session.session_id)
         if request.stream:
+            stream_context = app.state.session_manager.stream_session(session, invocation_request)
+            try:
+                fabric_stream = await stream_context.__aenter__()
+            except FabricSessionNotFoundError as error:
+                raise HTTPException(
+                    status_code=404,
+                    detail=str(error),
+                    headers=_session_headers(session.session_id),
+                ) from error
+            except FabricRuntimeExecutionError as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail=str(error),
+                    headers=_session_headers(session.session_id),
+                ) from error
             return StreamingResponse(
                 _iter_streaming_chat_completion(
-                    app.state.session_manager,
-                    session,
-                    invocation_request,
+                    stream_context,
+                    fabric_stream,
                     completion_id=f"chatcmpl-{uuid.uuid4().hex}",
                     model=_request_model_name(request),
                 ),

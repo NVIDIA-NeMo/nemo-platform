@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -26,6 +27,43 @@ from nemo_agents_plugin.fabric.session_manager import (
     FabricSessionStopError,
 )
 from nemo_agents_plugin.fabric.session_registry import FabricSessionNotFoundError, FabricSessionRegistry
+
+
+class _FakeStreamContext:
+    def __init__(self, stream: Any = None, enter_error: BaseException | None = None) -> None:
+        self.stream = stream
+        self.enter_error = enter_error
+        self.exit_calls = 0
+
+    async def __aenter__(self) -> Any:
+        if self.enter_error is not None:
+            raise self.enter_error
+        return self.stream
+
+    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.exit_calls += 1
+
+
+class _FakeFabricStream:
+    def __init__(
+        self,
+        records: list[dict[str, Any]] | None = None,
+        *,
+        result: FabricRuntimeResult | None = None,
+    ) -> None:
+        self._records = records or []
+        self._result = result or FabricRuntimeResult(status="succeeded", response="done")
+        self.aclose_calls = 0
+
+    async def records(self) -> Any:
+        for record in self._records:
+            yield record
+
+    async def result(self) -> FabricRuntimeResult:
+        return self._result
+
+    async def aclose(self) -> None:
+        self.aclose_calls += 1
 
 
 @pytest.fixture()
@@ -61,6 +99,17 @@ def _write_agent_config(tmp_path: Path, config: dict[str, Any] | None = None) ->
     config_path = tmp_path / "agent.yaml"
     config_path.write_text(yaml.safe_dump(config or _example_config()), encoding="utf-8")
     return config_path
+
+
+def _sse_payload(event: str) -> dict[str, object]:
+    assert event.startswith("data: ")
+    assert event.endswith("\n\n")
+    return json.loads(event.removeprefix("data: ").removesuffix("\n\n"))
+
+
+def _sse_line_payload(line: str) -> dict[str, object]:
+    assert line.startswith("data: ")
+    return json.loads(line.removeprefix("data: "))
 
 
 def test_startup_loads_and_validates_agent_config(
@@ -309,6 +358,170 @@ def test_chat_completion_maps_session_resolution_errors(
     assert response.status_code == status_code
     assert SESSION_ID_HEADER not in response.headers
     assert response.json() == {"detail": str(error)}
+
+
+def test_streaming_chat_completion_maps_stream_start_errors(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_fabric_serving_app(_write_agent_config(tmp_path))
+
+    async def resolve_session(session_id: str | None) -> Any:
+        return SimpleNamespace(session_id="session-1", runtime=object())
+
+    def stream_session(session: Any, request: Any) -> _FakeStreamContext:
+        return _FakeStreamContext(enter_error=FabricRuntimeExecutionError("stream failed"))
+
+    with TestClient(app) as client:
+        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
+        monkeypatch.setattr(app.state.session_manager, "stream_session", stream_session)
+        response = client.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "hello"}], "stream": True},
+        )
+
+    assert response.status_code == 502
+    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert response.json() == {"detail": "stream failed"}
+
+
+def test_streaming_chat_completion_returns_openai_sse_response(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_fabric_serving_app(_write_agent_config(tmp_path))
+    resolve_calls: list[str | None] = []
+    stream_calls: list[tuple[Any, Any]] = []
+    runtime = object()
+    fabric_stream = _FakeFabricStream(
+        [
+            {"kind": "scope", "scope_category": "start", "name": "request"},
+            {"data": {"choices": [{"delta": {"content": "hel"}}]}},
+            {"data": {"type": "agentMessage", "phase": "final_answer", "text": "lo"}},
+        ],
+        result=FabricRuntimeResult(status="succeeded", response="hello"),
+    )
+    stream_context = _FakeStreamContext(fabric_stream)
+
+    async def resolve_session(session_id: str | None) -> Any:
+        resolve_calls.append(session_id)
+        return SimpleNamespace(session_id="session-1", runtime=runtime)
+
+    def stream_session(session: Any, request: Any) -> _FakeStreamContext:
+        stream_calls.append((session, request))
+        return stream_context
+
+    with TestClient(app) as client:
+        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
+        monkeypatch.setattr(app.state.session_manager, "stream_session", stream_session)
+        with client.stream(
+            "POST",
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "hello"}], "stream": True, "model": "test-model"},
+        ) as response:
+            lines = [line for line in response.iter_lines() if line]
+
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert resolve_calls == [None]
+    resolved_session, invocation_request = stream_calls[0]
+    assert resolved_session.runtime is runtime
+    assert invocation_request.input == "hello"
+    assert invocation_request.caller_context == {"session_id": "session-1"}
+    assert stream_context.exit_calls == 1
+    assert fabric_stream.aclose_calls == 0
+
+    assert lines[-1] == "data: [DONE]"
+    assert _sse_line_payload(lines[0])["choices"] == [{"index": 0, "delta": {"role": "assistant"}}]
+    assert _sse_line_payload(lines[1])["choices"] == [{"index": 0, "delta": {"content": "hel"}}]
+    assert _sse_line_payload(lines[2])["choices"] == [{"index": 0, "delta": {"content": "lo"}}]
+    assert _sse_line_payload(lines[3])["choices"] == [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+
+
+def test_streaming_chat_completion_reuses_supplied_session_id(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_fabric_serving_app(_write_agent_config(tmp_path))
+    resolve_calls: list[str | None] = []
+
+    async def resolve_session(session_id: str | None) -> Any:
+        resolve_calls.append(session_id)
+        return SimpleNamespace(session_id="session-1", runtime=object())
+
+    def stream_session(session: Any, request: Any) -> _FakeStreamContext:
+        return _FakeStreamContext(_FakeFabricStream(result=FabricRuntimeResult(status="succeeded", response="done")))
+
+    with TestClient(app) as client:
+        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
+        monkeypatch.setattr(app.state.session_manager, "stream_session", stream_session)
+        with client.stream(
+            "POST",
+            "/v1/chat/completions",
+            headers={SESSION_ID_HEADER: "session-1"},
+            json={"messages": [{"role": "user", "content": "hello"}], "stream": True},
+        ) as response:
+            lines = [line for line in response.iter_lines() if line]
+
+    assert response.status_code == 200
+    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert resolve_calls == ["session-1"]
+    assert _sse_line_payload(lines[1])["choices"] == [{"index": 0, "delta": {"content": "done"}}]
+
+
+@pytest.mark.asyncio
+async def test_streaming_chat_completion_emits_sse_error_and_closes_stream() -> None:
+    fabric_stream = _FakeFabricStream(
+        [{"data": {"choices": [{"delta": {"content": "partial"}}]}}],
+        result=FabricRuntimeResult(
+            status="failed",
+            error={"message": "terminal failure"},
+        ),
+    )
+    stream_context = _FakeStreamContext(fabric_stream)
+
+    events = [
+        event
+        async for event in server._iter_streaming_chat_completion(
+            stream_context,
+            fabric_stream,
+            completion_id="chatcmpl-test",
+            model="test-model",
+        )
+    ]
+
+    assert _sse_payload(events[1])["choices"] == [{"index": 0, "delta": {"content": "partial"}}]
+    assert _sse_payload(events[2]) == {
+        "error": {
+            "message": "terminal failure",
+            "type": "FabricStreamResultError",
+        }
+    }
+    assert fabric_stream.aclose_calls == 1
+    assert stream_context.exit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_chat_completion_closes_stream_on_generator_close() -> None:
+    fabric_stream = _FakeFabricStream([{"data": {"choices": [{"delta": {"content": "partial"}}]}}])
+    stream_context = _FakeStreamContext(fabric_stream)
+    events = server._iter_streaming_chat_completion(
+        stream_context,
+        fabric_stream,
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+
+    assert _sse_payload(await events.__anext__())["choices"] == [{"index": 0, "delta": {"role": "assistant"}}]
+
+    await events.aclose()
+
+    assert fabric_stream.aclose_calls == 1
+    assert stream_context.exit_calls == 1
 
 
 def test_chat_completion_maps_failed_run_result(

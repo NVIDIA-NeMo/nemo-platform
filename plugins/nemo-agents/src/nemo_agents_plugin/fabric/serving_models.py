@@ -83,3 +83,16 @@ class ChatCompletionStreamResponse(BaseModel):
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str = "unknown-model"
     choices: list[ChatCompletionStreamChoice]
+
+
+class ChatCompletionStreamError(BaseModel):
+    """OpenAI-compatible streaming error payload."""
+
+    message: str
+    type: str
+
+
+class ChatCompletionStreamErrorResponse(BaseModel):
+    """OpenAI-compatible streaming error frame payload."""
+
+    error: ChatCompletionStreamError

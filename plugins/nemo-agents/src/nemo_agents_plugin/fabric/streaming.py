@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any
 from nemo_agents_plugin.fabric.serving_models import (
     ChatCompletionStreamChoice,
     ChatCompletionStreamDelta,
+    ChatCompletionStreamError,
+    ChatCompletionStreamErrorResponse,
     ChatCompletionStreamResponse,
 )
 
@@ -107,6 +109,18 @@ async def iter_openai_chat_completion_sse(
     yield "data: [DONE]\n\n"
 
 
+def openai_chat_completion_error_sse(error: BaseException) -> str:
+    """Serialize a mid-stream error as an OpenAI-compatible SSE frame."""
+    return _to_sse_frame(
+        ChatCompletionStreamErrorResponse(
+            error=ChatCompletionStreamError(
+                message=str(error) or "Streaming response failed.",
+                type=type(error).__name__,
+            )
+        )
+    )
+
+
 async def iter_fabric_assistant_text_deltas(stream: FabricRuntimeStream) -> AsyncIterator[str]:
     """Yield assistant text deltas and validate the terminal Fabric result."""
     emitted_text = False
@@ -123,7 +137,7 @@ async def iter_fabric_assistant_text_deltas(stream: FabricRuntimeStream) -> Asyn
         yield result.response
 
 
-def _to_sse_frame(chunk: ChatCompletionStreamResponse) -> str:
+def _to_sse_frame(chunk: ChatCompletionStreamResponse | ChatCompletionStreamErrorResponse) -> str:
     data = chunk.model_dump(mode="json", exclude_none=True)
     return f"data: {json.dumps(data, separators=(',', ':'))}\n\n"
 
