@@ -204,19 +204,16 @@ async def _run_command(
     )
     stdout_chunks: list[bytes] = []
     stderr_chunks: list[bytes] = []
-    if stream_output is not None:
-        communication = asyncio.create_task(
-            _communicate_streaming(
-                process,
-                stdin=stdin,
-                redact=_make_line_redactor(environment),
-                stdout_chunks=stdout_chunks,
-                stderr_chunks=stderr_chunks,
-                output=stream_output,
-            )
+    communication = asyncio.create_task(
+        _communicate_streaming(
+            process,
+            stdin=stdin,
+            redact=_make_line_redactor(environment),
+            stdout_chunks=stdout_chunks,
+            stderr_chunks=stderr_chunks,
+            output=stream_output,
         )
-    else:
-        communication = asyncio.create_task(process.communicate(stdin))
+    )
 
     async def _abort() -> None:
         """Cancel communication, terminate the process group, and reap the task."""
@@ -258,7 +255,7 @@ async def _communicate_streaming(
     redact: Callable[[str], str],
     stdout_chunks: list[bytes],
     stderr_chunks: list[bytes],
-    output: IO[str],
+    output: IO[str] | None,
 ) -> tuple[bytes, bytes]:
     """Drain both subprocess streams while writing redacted progress lines.
 
@@ -268,7 +265,7 @@ async def _communicate_streaming(
         redact: Function that removes secrets from each emitted text line.
         stdout_chunks: Mutable accumulator for raw standard-output bytes.
         stderr_chunks: Mutable accumulator for raw standard-error bytes.
-        output: Text sink for redacted progress lines from both streams.
+        output: Optional text sink for redacted progress lines from both streams.
 
     Returns:
         Complete raw standard-output and standard-error byte strings.
@@ -319,7 +316,7 @@ async def _drain_stream(
     chunks: list[bytes],
     *,
     redact: Callable[[str], str],
-    output: IO[str],
+    output: IO[str] | None,
 ) -> None:
     """Capture raw stream bytes and emit each decoded line after redaction.
 
@@ -327,12 +324,13 @@ async def _drain_stream(
         stream: Async subprocess stream to read until EOF.
         chunks: Mutable raw-byte accumulator used for the command result.
         redact: Function applied before a decoded line leaves the provider.
-        output: Text sink that receives redacted lines and is flushed immediately.
+        output: Optional text sink that receives redacted lines and is flushed immediately.
     """
     while line := await stream.readline():
         chunks.append(line)
-        output.write(redact(line.decode("utf-8", errors="replace")))
-        output.flush()
+        if output is not None:
+            output.write(redact(line.decode("utf-8", errors="replace")))
+            output.flush()
 
 
 async def _retry_command(

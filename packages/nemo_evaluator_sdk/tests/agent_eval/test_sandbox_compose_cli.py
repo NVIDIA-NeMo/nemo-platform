@@ -163,6 +163,24 @@ async def test_streaming_timeout_retains_partial_output(tmp_path: Path) -> None:
     assert progress.getvalue() == "started\n"
 
 
+async def test_non_streaming_timeout_retains_partial_output(tmp_path: Path) -> None:
+    script = (
+        'import sys, time; print("started", flush=True); print("warning", file=sys.stderr, flush=True); time.sleep(30)'
+    )
+
+    result = await compose_cli._run_command(
+        (sys.executable, "-c", script),
+        cwd=tmp_path,
+        environment=os.environ,
+        timeout=1,
+        stdin=None,
+    )
+
+    assert result.timed_out
+    assert result.stdout == "started\n"
+    assert result.stderr.startswith("warning\nCommand timed out after 1.0s")
+
+
 async def test_streaming_cancellation_terminates_process(tmp_path: Path) -> None:
     progress = io.StringIO()
     script = 'import time; print("started", flush=True); time.sleep(30)'
