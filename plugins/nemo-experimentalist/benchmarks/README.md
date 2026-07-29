@@ -66,8 +66,13 @@ the task, `tau3-<domain>-<slugified upstream task ID>`. Re-deriving IDs from tha
 adapter against a `tau2-bench` checkout reproduces the banking manifest exactly,
 which is how the other three manifests were built.
 
-A domain's `reward_basis` decides whether scoring needs an LLM judge. Banking's 6/3/3
-fast partition draws only from its 87 pure-database-state tasks. Airline scores on
+Every fast partition is 6/3/3. Banking picks its tasks from a filtered subset; the
+other three sample each quality split at a fixed stride, so a smoke run spans the
+split instead of clustering at its start — telecom's task IDs sort by issue type, and
+the first twelve are all `mms_issue`.
+
+A domain's `reward_basis` decides whether scoring needs an LLM judge. Banking's fast
+partition draws only from its 87 pure-database-state tasks. Airline scores on
 database state and a substring check of the agent's messages, and telecom on
 environment assertions and expected actions, so both are judge-free in either
 partition. 112 of retail's 114 tasks carry an `NL_ASSERTION`, so retail always

@@ -20,9 +20,10 @@ partitions:
       The commit above identifies the `tau2-bench` revision these splits were derived from.
       `test` is this domain's upstream `split_tasks.json` test list; `validation` is every
       third entry of its train list, in upstream order, and `train` is the rest. Task IDs
-      only; no task content is copied here. The fast partition is the first 6/3/3 of each
-      quality split. 112 of the 114 retail tasks carry an `NL_ASSERTION` reward basis, so
-      retail scores through the LLM judge in both partitions.
+      only; no task content is copied here. The fast partition samples each quality split at a
+      fixed stride, 6/3/3, so a smoke run spans the split rather than clustering at its start.
+      112 of the 114 retail tasks carry an `NL_ASSERTION` reward basis, so retail scores
+      through the LLM judge in both partitions.
   quality:
     train: [
       "0", "1", "3", "4", "7", "8", "11", "13", "15", "16", "20", "21", "23", "24", "28", "29", "31",
@@ -41,11 +42,11 @@ partitions:
     ]
   fast:
     train: [
-      "0", "1", "3", "4", "7", "8"
+      "0", "15", "31", "54", "78", "93"
     ]
     validation: [
-      "2", "6", "10"
+      "2", "35", "81"
     ]
     test: [
-      "5", "9", "12"
+      "5", "42", "70"
     ]

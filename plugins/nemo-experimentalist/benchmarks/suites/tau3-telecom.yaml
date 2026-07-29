@@ -20,9 +20,10 @@ partitions:
       The commit above identifies the `tau2-bench` revision these splits were derived from.
       `test` is this domain's upstream `split_tasks.json` test list; `validation` is every
       third entry of its train list, in upstream order, and `train` is the rest. Task IDs
-      only; no task content is copied here. The fast partition is the first 6/3/3 of each
-      quality split. Telecom rewards score on environment assertions and expected actions, so
-      no LLM judge is involved.
+      only; no task content is copied here. The fast partition samples each quality split at a
+      fixed stride, 6/3/3, so a smoke run spans the split rather than clustering at its start.
+      Telecom rewards score on environment assertions and expected actions, so no LLM judge is
+      involved.
   quality:
     train:
       - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-both-permissions-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-disabled-off-persona-hard
@@ -144,16 +145,16 @@ partitions:
   fast:
     train:
       - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-both-permissions-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-disabled-off-persona-hard
-      - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-both-permissions-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-disabled-on-persona-hard
-      - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-storage-permission-data-mode-off-data-usage-exceeded-unseat-sim-card-persona-easy
-      - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-storage-permission-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-disabled-off-persona-easy
-      - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-app-sms-permission-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-disabled-off-persona-none
-      - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-app-storage-permission-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-enabled-off-persona-hard
+      - mms-issue-airplane-mode-on-bad-network-preference-break-apn-mms-setting-data-mode-off-unseat-sim-card-user-abroad-roaming-disabled-off-persona-easy
+      - mms-issue-bad-wifi-calling-break-apn-mms-setting-unseat-sim-card-user-abroad-roaming-enabled-off-persona-easy
+      - mobile-data-issue-airplane-mode-on-bad-network-preference-bad-vpn-data-mode-off-data-saver-mode-on-user-abroad-roaming-disabled-off-persona-hard
+      - mobile-data-issue-bad-network-preference-bad-vpn-data-mode-off-data-saver-mode-on-persona-none
+      - service-issue-airplane-mode-on-break-apn-settings-persona-hard
     validation:
       - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-sms-permission-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-enabled-off-persona-none
-      - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-storage-permission-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-disabled-off-persona-easy
-      - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-app-storage-permission-unseat-sim-card-persona-hard
+      - mms-issue-break-apn-mms-setting-data-mode-off-data-usage-exceeded-user-abroad-roaming-disabled-on-persona-hard
+      - mobile-data-issue-bad-network-preference-bad-vpn-user-abroad-roaming-disabled-on-persona-none
     test:
       - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-both-permissions-unseat-sim-card-user-abroad-roaming-enabled-off-persona-hard
-      - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-sms-permission-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-disabled-on-persona-none
-      - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-storage-permission-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-disabled-on-persona-easy
+      - mms-issue-bad-wifi-calling-break-apn-mms-setting-break-app-both-permissions-data-mode-off-data-usage-exceeded-user-abroad-roaming-disabled-off-persona-none
+      - service-issue-airplane-mode-on-break-apn-settings-contract-end-suspension-lock-sim-card-pin-unseat-sim-card-persona-easy
