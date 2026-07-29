@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -29,8 +30,6 @@ class ChatCompletionRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_current_turn(self) -> ChatCompletionRequest:
-        if self.stream:
-            raise ValueError("Streaming chat completions are not supported.")
         if self.messages[-1].role != "user":
             raise ValueError("The final chat message must have role 'user'.")
         return self
@@ -59,3 +58,41 @@ class ChatCompletionResponse(BaseModel):
     model: str = "unknown-model"
     choices: list[ChatCompletionChoice]
     usage: dict[str, Any] | None = None
+
+
+class ChatCompletionStreamDelta(BaseModel):
+    """OpenAI-compatible streaming response delta."""
+
+    role: Literal["assistant"] | None = None
+    content: str | None = None
+
+
+class ChatCompletionStreamChoice(BaseModel):
+    """OpenAI-compatible streaming chat-completion choice."""
+
+    index: int = 0
+    delta: ChatCompletionStreamDelta
+    finish_reason: Literal["stop"] | None = None
+
+
+class ChatCompletionStreamResponse(BaseModel):
+    """OpenAI-compatible streaming chunk for one Fabric runtime invocation."""
+
+    id: str
+    object: Literal["chat.completion.chunk"] = "chat.completion.chunk"
+    created: int = Field(default_factory=lambda: int(time.time()))
+    model: str = "unknown-model"
+    choices: list[ChatCompletionStreamChoice]
+
+
+class ChatCompletionStreamError(BaseModel):
+    """OpenAI-compatible streaming error payload."""
+
+    message: str
+    type: str
+
+
+class ChatCompletionStreamErrorResponse(BaseModel):
+    """OpenAI-compatible streaming error frame payload."""
+
+    error: ChatCompletionStreamError

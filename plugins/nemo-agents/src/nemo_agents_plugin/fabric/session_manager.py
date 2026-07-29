@@ -7,11 +7,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric.environment import ensure_local_workspace_dir
-from nemo_agents_plugin.fabric.runtime import FabricInvocationRequest, FabricRuntimeResult, invoke_fabric_runtime
+from nemo_agents_plugin.fabric.runtime import (
+    FabricInvocationRequest,
+    FabricRuntimeResult,
+    FabricRuntimeStream,
+    invoke_fabric_runtime,
+    stream_fabric_runtime,
+)
 from nemo_agents_plugin.fabric.session_registry import (
     FabricRuntimeSession,
     FabricSessionNotFoundError,
@@ -20,7 +28,7 @@ from nemo_agents_plugin.fabric.session_registry import (
 from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
 
 # CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
-from nemo_fabric import Fabric, FabricError  # ty: ignore[unresolved-import]
+from nemo_fabric import Fabric, FabricConfig, FabricError  # ty: ignore[unresolved-import]
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +78,11 @@ class FabricSessionManager:
         await asyncio.to_thread(ensure_local_workspace_dir, self._agent_config, self._base_dir)
         fabric = self._fabric or Fabric()
         try:
-            runtime = await fabric.start_runtime(fabric_config, base_dir=self._base_dir)
+            runtime = await fabric.start_runtime(
+                _prepare_serving_fabric_config(fabric_config),
+                base_dir=self._base_dir,
+                streaming=True,
+            )
         except FabricError as error:
             raise FabricSessionStartError(f"Fabric runtime startup failed: {error}") from error
 
@@ -104,6 +116,25 @@ class FabricSessionManager:
                     return await invoke_fabric_runtime(session.runtime, request)
                 async with self._invocation_semaphore:
                     return await invoke_fabric_runtime(session.runtime, request)
+            finally:
+                await self._session_registry.refresh_activity(session)
+
+    @asynccontextmanager
+    async def stream_session(
+        self,
+        session: FabricRuntimeSession,
+        request: FabricInvocationRequest,
+    ) -> AsyncIterator[FabricRuntimeStream]:
+        """Serialize and stream one turn on a session's active runtime."""
+        async with session.invocation_lock:
+            if session.closing:
+                raise FabricSessionNotFoundError(f"Fabric session '{session.session_id}' was not found.")
+            try:
+                if self._invocation_semaphore is None:
+                    yield stream_fabric_runtime(session.runtime, request)
+                else:
+                    async with self._invocation_semaphore:
+                        yield stream_fabric_runtime(session.runtime, request)
             finally:
                 await self._session_registry.refresh_activity(session)
 
@@ -155,3 +186,8 @@ class FabricSessionManager:
                 await session.runtime.stop()
             except FabricError as error:
                 raise FabricSessionStopError(f"Fabric runtime shutdown failed: {error}") from error
+
+
+def _prepare_serving_fabric_config(fabric_config: FabricConfig) -> FabricConfig:
+    """Enable serving-owned Relay support without mutating the translated config."""
+    return fabric_config.model_copy(deep=True).enable_relay()

@@ -14,7 +14,7 @@ translation, CLI/API wiring, deploy semantics, or durable session management.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -79,6 +79,54 @@ class FabricRuntimeResult:
     request_id: str | None = None
 
 
+class FabricRuntimeStream:
+    """Platform-owned handle for one streaming Fabric runtime invocation."""
+
+    def __init__(self, stream: Any, timeout_seconds: float | None = None) -> None:
+        self._stream = stream
+        self._timeout_seconds = timeout_seconds
+
+    async def records(self) -> AsyncIterator[dict[str, Any]]:
+        """Yield raw NeMo Relay ATOF records from Fabric."""
+        try:
+            async for record in self._stream:
+                yield dict(record)
+        except TimeoutError as error:
+            raise FabricRuntimeTimeoutError(
+                _timeout_error_message(self._timeout_seconds),
+            ) from error
+        except FabricError as error:
+            raise FabricRuntimeExecutionError(
+                f"Fabric runtime streaming failed: {error}",
+            ) from error
+
+    async def result(self) -> FabricRuntimeResult:
+        """Return the authoritative terminal Fabric result for this stream."""
+        try:
+            result = await asyncio.wait_for(
+                self._stream.result(),
+                timeout=self._timeout_seconds,
+            )
+        except TimeoutError as error:
+            raise FabricRuntimeTimeoutError(
+                _timeout_error_message(self._timeout_seconds),
+            ) from error
+        except FabricError as error:
+            raise FabricRuntimeExecutionError(
+                f"Fabric runtime streaming failed: {error}",
+            ) from error
+        return _normalize_fabric_run_result(result)
+
+    async def aclose(self) -> None:
+        """Finalize unread stream records without cancelling the harness turn."""
+        try:
+            await self._stream.aclose()
+        except FabricError as error:
+            raise FabricRuntimeExecutionError(
+                f"Fabric runtime streaming cleanup failed: {error}",
+            ) from error
+
+
 class FabricRuntimeExecutionError(RuntimeError):
     """Raised when Fabric cannot return a normalized runtime result."""
 
@@ -113,6 +161,20 @@ async def invoke_fabric_runtime(
         ) from error
 
     return _normalize_fabric_run_result(result)
+
+
+def stream_fabric_runtime(
+    runtime: Runtime,
+    request: FabricInvocationRequest,
+) -> FabricRuntimeStream:
+    """Start streaming one turn on an active Fabric runtime."""
+    try:
+        stream = runtime.invoke_stream(request=_with_platform_invocation_context(request))
+    except FabricError as error:
+        raise FabricRuntimeExecutionError(
+            f"Fabric runtime streaming failed: {error}",
+        ) from error
+    return FabricRuntimeStream(stream, request.timeout_seconds)
 
 
 async def run_fabric_agent_once(

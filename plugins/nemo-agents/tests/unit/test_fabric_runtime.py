@@ -18,6 +18,7 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeTimeoutError,
     invoke_fabric_runtime,
     run_fabric_agent_once,
+    stream_fabric_runtime,
 )
 from nemo_fabric import FabricConfig  # ty: ignore[unresolved-import]
 
@@ -65,6 +66,8 @@ class _FakeRuntime:
         self.exited = False
         self.runtime_id = "runtime-1"
         self.invoke_requests: list[Any] = []
+        self.invoke_stream_requests: list[Any] = []
+        self.stream: _FakeInvokeStream | None = None
 
     async def __aenter__(self) -> "_FakeRuntime":
         self.entered = True
@@ -85,6 +88,47 @@ class _FakeRuntime:
         if self.invoke_error is not None:
             raise self.invoke_error
         return self.result
+
+    def invoke_stream(self, *, request: Any) -> "_FakeInvokeStream":
+        self.invoke_stream_requests.append(request)
+        if self.invoke_error is not None:
+            raise self.invoke_error
+        self.stream = _FakeInvokeStream(result=self.result)
+        return self.stream
+
+
+class _FakeInvokeStream:
+    def __init__(
+        self,
+        *,
+        records: list[dict[str, Any]] | None = None,
+        result: Any | None = None,
+        result_error: Exception | None = None,
+        close_error: Exception | None = None,
+    ) -> None:
+        self.records = list(records or [{"type": "span", "message": "thinking"}])
+        self.result_value = result if result is not None else _FakeRunResult()
+        self.result_error = result_error
+        self.close_error = close_error
+        self.close_calls = 0
+
+    def __aiter__(self) -> "_FakeInvokeStream":
+        return self
+
+    async def __anext__(self) -> dict[str, Any]:
+        if not self.records:
+            raise StopAsyncIteration
+        return self.records.pop(0)
+
+    async def result(self) -> Any:
+        if self.result_error is not None:
+            raise self.result_error
+        return self.result_value
+
+    async def aclose(self) -> None:
+        self.close_calls += 1
+        if self.close_error is not None:
+            raise self.close_error
 
 
 class _FakeFabric:
@@ -274,3 +318,64 @@ class TestInvokeFabricRuntime:
 
         assert fake_runtime.entered is False
         assert fake_runtime.exited is False
+
+
+@pytest.mark.asyncio
+class TestStreamFabricRuntime:
+    async def test_starts_streaming_turn_and_preserves_request_context(self) -> None:
+        fake_runtime = _FakeRuntime()
+        request = FabricInvocationRequest(
+            input={"prompt": "hi"},
+            request_id="platform-request-1",
+            caller_context={"session_id": "session-1"},
+        )
+
+        stream = stream_fabric_runtime(cast(Any, fake_runtime), request)
+
+        fabric_request = fake_runtime.invoke_stream_requests[0]
+        assert fabric_request.input == {"prompt": "hi"}
+        assert fabric_request.request_id == "platform-request-1"
+        assert fabric_request.context == {"session_id": "session-1"}
+
+        records = [record async for record in stream.records()]
+        assert records == [{"type": "span", "message": "thinking"}]
+
+        result = await stream.result()
+        assert result.status == "succeeded"
+        assert result.response == "hello"
+        assert result.runtime_id == "runtime-1"
+
+    async def test_wraps_stream_start_errors(self) -> None:
+        fake_runtime = _FakeRuntime(invoke_error=fabric_runtime.FabricError("streaming unavailable"))
+
+        with pytest.raises(FabricRuntimeExecutionError, match="Fabric runtime streaming failed"):
+            stream_fabric_runtime(cast(Any, fake_runtime), FabricInvocationRequest())
+
+    async def test_wraps_stream_result_errors(self) -> None:
+        fake_runtime = _FakeRuntime()
+        stream = _FakeInvokeStream(result_error=fabric_runtime.FabricError("stream failed"))
+        fake_runtime.stream = stream
+
+        runtime_stream = fabric_runtime.FabricRuntimeStream(stream)
+
+        with pytest.raises(FabricRuntimeExecutionError, match="Fabric runtime streaming failed"):
+            await runtime_stream.result()
+
+    async def test_wraps_stream_result_timeout(self) -> None:
+        class _SlowInvokeStream(_FakeInvokeStream):
+            async def result(self) -> Any:
+                await asyncio.sleep(1.0)
+                return await super().result()
+
+        runtime_stream = fabric_runtime.FabricRuntimeStream(_SlowInvokeStream(), 0.01)
+
+        with pytest.raises(FabricRuntimeTimeoutError, match="timed out after 0.01s"):
+            await runtime_stream.result()
+
+    async def test_closes_underlying_stream(self) -> None:
+        fake_stream = _FakeInvokeStream()
+        runtime_stream = fabric_runtime.FabricRuntimeStream(fake_stream)
+
+        await runtime_stream.aclose()
+
+        assert fake_stream.close_calls == 1
