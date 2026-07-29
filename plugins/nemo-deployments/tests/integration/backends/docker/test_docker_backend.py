@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,8 +32,10 @@ pytestmark = [
 ]
 
 
-@pytest.fixture
-def docker_backend() -> DockerDeploymentBackend:
+ALPINE_IMAGE = "alpine:3.20"
+
+
+def _build_docker_backend(**config_overrides: Any) -> DockerDeploymentBackend:
     mock_entities = AsyncMock()
     mock_sdk = MagicMock()
     with (
@@ -40,9 +43,14 @@ def docker_backend() -> DockerDeploymentBackend:
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
     ):
-        backend = DockerDeploymentBackend(mock_sdk, {"pull_images": True})
+        backend = DockerDeploymentBackend(mock_sdk, {"pull_images": True, **config_overrides})
     backend._entities = mock_entities
     return backend
+
+
+@pytest.fixture
+def docker_backend() -> DockerDeploymentBackend:
+    return _build_docker_backend()
 
 
 def _never_config() -> DeploymentConfig:
@@ -50,7 +58,7 @@ def _never_config() -> DeploymentConfig:
         name="echo-cfg",
         workspace="itest",
         restart_policy="Never",  # ty: ignore[unknown-argument]
-        containers=[Container(name="main", image="alpine:3.20", command=["echo"], args=["hello"])],
+        containers=[Container(name="main", image=ALPINE_IMAGE, command=["echo"], args=["hello"])],
     )
 
 
@@ -62,7 +70,7 @@ def _never_sleep_config(*, sleep_seconds: int) -> DeploymentConfig:
         containers=[
             Container(
                 name="main",
-                image="alpine:3.20",
+                image=ALPINE_IMAGE,
                 command=["sleep"],
                 args=[str(sleep_seconds)],
             )
@@ -74,22 +82,7 @@ def _docker_backend_with_observe_timeout(
     *,
     oneshot_observe_timeout_seconds: int,
 ) -> DockerDeploymentBackend:
-    mock_entities = AsyncMock()
-    mock_sdk = MagicMock()
-    with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
-        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
-        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
-    ):
-        backend = DockerDeploymentBackend(
-            mock_sdk,
-            {
-                "pull_images": True,
-                "oneshot_observe_timeout_seconds": oneshot_observe_timeout_seconds,
-            },
-        )
-    backend._entities = mock_entities
-    return backend
+    return _build_docker_backend(oneshot_observe_timeout_seconds=oneshot_observe_timeout_seconds)
 
 
 def _always_http_config() -> DeploymentConfig:
@@ -165,6 +158,10 @@ async def test_never_deployment_outlives_observe_wait_then_succeeds() -> None:
     client = docker.from_env()
 
     try:
+        # Warm the image cache so the timed window below measures the observe wait
+        # rather than an uncached image pull.
+        await asyncio.to_thread(client.images.pull, ALPINE_IMAGE)
+
         started = time.monotonic()
         created = await docker_backend.create_deployment(
             workspace="itest",
@@ -177,7 +174,7 @@ async def test_never_deployment_outlives_observe_wait_then_succeeds() -> None:
 
         assert created.status == "STARTING"
         assert "after observe wait" in (created.status_message or "")
-        assert create_elapsed < 3.0
+        assert create_elapsed < observe_timeout_seconds + 2.0
 
         deadline = time.monotonic() + 15.0
         status = created

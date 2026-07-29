@@ -432,7 +432,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         def _run_and_wait() -> int:
             container = self._client.containers.run(**run_kwargs)
             result = container.wait(timeout=self._executor_config.docker_timeout)
-            exit_code = int(result.get("StatusCode", 1)) if isinstance(result, dict) else int(result)
+            exit_code = self._exit_code_from_wait_result(result)
             try:
                 container.remove(force=True)
             except Exception:
@@ -550,6 +550,11 @@ class DockerDeploymentBackend(DeploymentBackend):
 
         return BackendStatusUpdate(status="STARTING", status_message=f"Container state: {state}")
 
+    @staticmethod
+    def _exit_code_from_wait_result(result: dict[str, Any] | int) -> int:
+        """Normalize a docker `container.wait()` result to an exit code."""
+        return int(result.get("StatusCode", 1)) if isinstance(result, dict) else int(result)
+
     def _status_from_exited_container(
         self,
         *,
@@ -615,8 +620,7 @@ class DockerDeploymentBackend(DeploymentBackend):
             observe_timeout = self._executor_config.oneshot_observe_timeout_seconds
 
             def _wait_for_exit() -> int:
-                result = container.wait(timeout=observe_timeout)
-                return int(result.get("StatusCode", 1)) if isinstance(result, dict) else int(result)
+                return self._exit_code_from_wait_result(container.wait(timeout=observe_timeout))
 
             try:
                 exit_code = await asyncio.to_thread(_wait_for_exit)
