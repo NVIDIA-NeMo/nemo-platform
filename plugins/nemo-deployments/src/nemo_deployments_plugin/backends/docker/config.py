@@ -37,13 +37,13 @@ class DockerExecutorConfig(BaseModel):
         ),
     )
     port_range_start: int = Field(
-        default=9000,
+        default=49152,
         ge=1,
         le=65535,
         description="First host port to consider when publishing container ports for this executor.",
     )
     port_range_end: int = Field(
-        default=9100,
+        default=49251,
         ge=1,
         le=65535,
         description="Last host port (inclusive) to consider when publishing container ports for this executor.",

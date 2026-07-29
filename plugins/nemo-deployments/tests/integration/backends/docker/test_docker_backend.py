@@ -34,9 +34,8 @@ pytestmark = [
 
 ALPINE_IMAGE = "alpine:3.20"
 
-# The 9000-9100 product default overlaps ClickHouse's native port (9000), which
-# other integration suites publish on the same daemon. Keep these tests in a range
-# nothing else in CI claims, and below the Linux ephemeral range (32768+).
+# Keep these tests in a dedicated range that nothing else in CI claims, separate
+# from both service ports and the product's dynamic/private default range.
 TEST_PORT_RANGE_START = 21000
 TEST_PORT_RANGE_END = 21100
 
