@@ -21,6 +21,7 @@ from urllib.parse import quote, urlencode, urlparse
 import httpx
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from nmp.common.entities.constants import NAME_PATTERN
 from nmp.studio import studio_links
 from nmp.studio.coding_agent_artifacts import (
     ChatArtifactsResponse,
@@ -50,7 +51,7 @@ from nmp.studio.coding_agent_mcp_tools import (
     permission_prompt_tool,
 )
 from nmp.studio.coding_agent_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import NoMatchFound
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ PUBLIC_MCP_PATH = "/studio/api/coding-agents/mcp/{session_id}"
 CLAUDE_MCP_TOOL_TIMEOUT_MS = 2_147_483_647
 MCP_KEEPALIVE_INTERVAL_SECONDS = 15
 DEFAULT_STUDIO_CODING_AGENT_NAME = "nemo-agent-local-poc"
+DEFAULT_STUDIO_CODING_AGENT_BASE_URL = "http://127.0.0.1:8080"
 STUDIO_CODING_AGENT_TIMEOUT_SECONDS = 600.0
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
@@ -87,7 +89,9 @@ class MessageRequest(BaseModel):
     message: str = Field(min_length=1)
     studio_base_url: str | None = Field(default=None, min_length=1)
     studio_pathname: str | None = Field(default=None, min_length=1)
-    workspace: str | None = Field(default=None, min_length=1)
+    workspace: str | None = Field(default=None, min_length=1, pattern=NAME_PATTERN)
+
+    model_config = ConfigDict(regex_engine="python-re")
 
 
 class PermissionDecision(BaseModel):
@@ -1212,16 +1216,36 @@ def _studio_coding_agent_name() -> str:
     return _trimmed_string(os.environ.get("STUDIO_CODING_AGENT_NAME")) or DEFAULT_STUDIO_CODING_AGENT_NAME
 
 
-def _studio_coding_agent_url(request: Request, workspace: str) -> str:
+def _studio_coding_agent_base_url() -> str:
     base_url = (
         _trimmed_string(os.environ.get("STUDIO_CODING_AGENT_BASE_URL"))
         or _trimmed_string(os.environ.get("NMP_BASE_URL"))
-        or str(request.base_url)
+        or DEFAULT_STUDIO_CODING_AGENT_BASE_URL
     )
-    if base_url is None:  # pragma: no cover - Request always has a base URL
-        raise RuntimeError("Could not determine the NeMo Platform base URL")
+    parsed = urlparse(base_url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("The configured coding-agent base URL is invalid")
+    return base_url.rstrip("/")
+
+
+def _workspace_path_segment(workspace: str) -> str:
+    if re.fullmatch(NAME_PATTERN, workspace) is None:
+        raise ValueError("Invalid workspace name")
+    return quote(workspace, safe="")
+
+
+def _studio_coding_agent_url(workspace: str) -> str:
+    # MessageRequest validates workspace against the platform's restricted entity-name
+    # pattern before it can become part of this internal request path.
     return (
-        f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{quote(workspace, safe='')}"
+        f"{_studio_coding_agent_base_url()}/apis/agents/v2/workspaces/{_workspace_path_segment(workspace)}"
         f"/agents/{quote(_studio_coding_agent_name(), safe='')}/-/v1/chat/completions"
     )
 
@@ -1247,6 +1271,15 @@ def _nemo_agent_response(body: Any) -> tuple[str, str]:
         raise RuntimeError("NeMo Agent response did not include assistant text")
     model = _trimmed_string(body.get("model")) or _studio_coding_agent_name()
     return message["content"], model
+
+
+def _nemo_agent_error_detail(exc: httpx.HTTPError | RuntimeError | ValueError) -> str:
+    """Return a safe client-facing error without leaking exception or upstream response details."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"The deployed NeMo Agent returned HTTP {exc.response.status_code}."
+    if isinstance(exc, httpx.HTTPError):
+        return "The deployed NeMo Agent could not be reached."
+    return "The deployed NeMo Agent returned an invalid response."
 
 
 async def _invoke_nemo_agent(
@@ -1352,16 +1385,8 @@ async def _stream_nemo_agent(
         raise
     except (httpx.HTTPError, RuntimeError, ValueError) as exc:
         logger.exception("NeMo Agent invocation failed for session %s", session_id)
-        detail = str(exc)
-        if isinstance(exc, httpx.HTTPStatusError):
-            try:
-                body = exc.response.json()
-            except ValueError:
-                body = None
-            if isinstance(body, dict) and isinstance(body.get("detail"), str):
-                detail = body["detail"]
         yield _sse(
-            json.dumps({"message": f"NeMo Agent failed: {detail}"}),
+            json.dumps({"message": _nemo_agent_error_detail(exc)}),
             event="error",
         )
     finally:
@@ -1391,7 +1416,7 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
         _stream_nemo_agent(
             sid,
             body.message,
-            _studio_coding_agent_url(request, workspace),
+            _studio_coding_agent_url(workspace),
             _coding_agent_request_headers(request),
             system_prompt,
         ),

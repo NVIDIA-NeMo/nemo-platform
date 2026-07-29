@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -1699,7 +1700,7 @@ def test_platform_route_stream_uses_deployed_nemo_agent(monkeypatch: pytest.Monk
     assert "event: done" in response.text
     assert captured["session_id"] == session_id
     assert captured["agent_url"] == (
-        "http://testserver/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
+        "http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
     )
     assert captured["headers"] == {}
     assert captured["message"] == "hello"
@@ -1779,18 +1780,51 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
             "workspace": "default",
         },
         headers={
+            "host": "attacker.example",
             "origin": "http://ns.local.aire.nvidia.com:5173",
             "referer": "http://ns.local.aire.nvidia.com:5173/workspaces/default/dashboard/code-agent",
         },
     )
 
     assert response.status_code == 200
-    assert captured["agent_url"].endswith(
-        "/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
+    assert captured["agent_url"] == (
+        "http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
     )
     assert captured["message"] == "can you give me a link to it?"
     assert "Studio UI base URL: http://ns.local.aire.nvidia.com:5173" in captured["studio_system_prompt"]
     assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
+
+
+def test_coding_agent_url_uses_only_configured_base_url(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("NMP_BASE_URL", "https://nmp.dev.aire.nvidia.com")
+
+    assert coding_agents._studio_coding_agent_url("default") == (
+        "https://nmp.dev.aire.nvidia.com/apis/agents/v2/workspaces/default/"
+        "agents/nemo-agent-local-poc/-/v1/chat/completions"
+    )
+
+
+def test_platform_route_rejects_workspace_path_injection(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/sessions/{session_id}/messages",
+        json={"message": "hello", "workspace": "../internal?target=metadata"},
+        headers={"host": "attacker.example"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_nemo_agent_error_detail_does_not_expose_exception_text():
+    request = httpx.Request("POST", "https://platform.test/agent")
+    response = httpx.Response(502, request=request)
+    status_error = httpx.HTTPStatusError("private upstream detail", request=request, response=response)
+
+    assert coding_agents._nemo_agent_error_detail(status_error) == "The deployed NeMo Agent returned HTTP 502."
+    assert coding_agents._nemo_agent_error_detail(RuntimeError("private stack detail")) == (
+        "The deployed NeMo Agent returned an invalid response."
+    )
 
 
 def test_public_mcp_route_is_mounted_before_static_fallback():
