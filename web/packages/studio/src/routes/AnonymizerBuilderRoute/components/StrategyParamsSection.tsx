@@ -5,11 +5,13 @@ import { ControlledCheckbox } from '@nemo/common/src/components/form/ControlledC
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { Stack } from '@nvidia/foundations-react-core';
+import { RewriteParamsSection } from '@studio/routes/AnonymizerBuilderRoute/components/RewriteParamsSection';
 import {
   HASH_ALGORITHM_OPTIONS,
   STRATEGY_ANNOTATE,
   STRATEGY_HASH,
   STRATEGY_REDACT,
+  STRATEGY_REWRITE,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { FC } from 'react';
@@ -47,6 +49,10 @@ export const StrategyParamsSection: FC = () => {
         }}
       />
     );
+  }
+
+  if (strategy === STRATEGY_REWRITE) {
+    return <RewriteParamsSection />;
   }
 
   if (strategy === STRATEGY_HASH) {

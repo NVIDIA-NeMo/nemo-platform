@@ -50,6 +50,11 @@ def test_delete_deployment_config_204(client: TestClient, mock_entity_client: As
     mock_entity_client.list.return_value = list_response([])
     resp = client.delete("/apis/deployments/v2/workspaces/default/deployment-configs/cfg1")
     assert resp.status_code == 204
+    mock_entity_client.delete.assert_awaited_once_with(
+        configs_module.DeploymentConfig,
+        name="cfg1",
+        workspace="default",
+    )
 
 
 def test_delete_deployment_config_409_when_referenced(client: TestClient, mock_entity_client: AsyncMock) -> None:
@@ -58,6 +63,13 @@ def test_delete_deployment_config_409_when_referenced(client: TestClient, mock_e
     assert resp.status_code == 409
     assert "referenced" in resp.json()["detail"].lower()
     mock_entity_client.delete.assert_not_awaited()
+
+
+def test_delete_deployment_config_409_when_changed(client: TestClient, mock_entity_client: AsyncMock) -> None:
+    mock_entity_client.list.return_value = list_response([])
+    mock_entity_client.delete.side_effect = NemoEntityConflictError("changed")
+    resp = client.delete("/apis/deployments/v2/workspaces/default/deployment-configs/cfg1")
+    assert resp.status_code == 409
 
 
 def test_create_deployment_config_409(client: TestClient, mock_entity_client: AsyncMock) -> None:

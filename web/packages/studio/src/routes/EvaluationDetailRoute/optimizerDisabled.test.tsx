@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type {
-  EvaluationResponse,
-  ExperimentGroupResponse,
-} from '@nemo/sdk/generated/platform/schema';
+import type { EvaluationResponse, ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
 import { EvaluationDetailRoute } from '@studio/routes/EvaluationDetailRoute';
@@ -35,7 +32,7 @@ const group = {
   insight_id: 'insight-id',
   default_sort: '-created_at',
   evaluation_count: 0,
-} satisfies Partial<ExperimentGroupResponse>;
+} satisfies Partial<ExperimentResponse>;
 
 describe('EvaluationDetailRoute with Optimizer disabled', () => {
   it('renders the evaluation description without requesting or linking to the insight', async () => {
@@ -44,7 +41,7 @@ describe('EvaluationDetailRoute with Optimizer disabled', () => {
       http.get('*/apis/intake/v2/workspaces/:workspace/evaluations/:name', () =>
         HttpResponse.json(evaluation)
       ),
-      http.get('*/apis/intake/v2/workspaces/:workspace/experiment-groups/:name', () =>
+      http.get('*/apis/intake/v2/workspaces/:workspace/experiments/:name', () =>
         HttpResponse.json(group)
       ),
       http.get('*/apis/intake/v2/workspaces/:workspace/evaluations/:name/sessions', () =>

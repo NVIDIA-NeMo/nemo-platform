@@ -20,7 +20,7 @@ from nmp.intake.api.v2.experiments.endpoints import _sort_evaluations, _validate
 from nmp.intake.api.v2.experiments.schemas import EvaluationResponse, EvaluatorAggregate
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _exp(
@@ -149,7 +149,7 @@ def test_entity_coerces_legacy_non_string_metadata_values() -> None:
 
 
 def test_create_group_defaults_sort_to_created_at(client: TestClient) -> None:
-    resp = client.post(GROUPS, json={"name": "g-default"})
+    resp = client.post(EXPERIMENTS, json={"name": "g-default"})
     assert resp.status_code == 201, resp.text
     assert resp.json()["default_sort"] == "-created_at"
 
@@ -158,19 +158,19 @@ def test_create_group_with_default_sort_round_trips(client: TestClient) -> None:
     for i, value in enumerate(
         ("-cost_usd.mean", "-created_at", "-evaluators.reward.mean,cost_usd.mean"),
     ):
-        resp = client.post(GROUPS, json={"name": f"g-sort-{i}", "default_sort": value})
+        resp = client.post(EXPERIMENTS, json={"name": f"g-sort-{i}", "default_sort": value})
         assert resp.status_code == 201, resp.text
         assert resp.json()["default_sort"] == value
 
 
 def test_create_group_rejects_unsortable_field(client: TestClient) -> None:
     for i, value in enumerate(("bogus", "cost_usd.bogus")):
-        resp = client.post(GROUPS, json={"name": f"g-bad-{i}", "default_sort": value})
+        resp = client.post(EXPERIMENTS, json={"name": f"g-bad-{i}", "default_sort": value})
         assert resp.status_code == 400, resp.text
 
 
 def test_default_order_floats_pinned_first(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "g-pin"}).json()
+    group = client.post(EXPERIMENTS, json={"name": "g-pin"}).json()
     for name in ("exp-a", "exp-b"):
         created = client.post(
             EVALUATIONS, json={"name": name, "experiment_group_id": group["id"], "dataset_name": "ds"}

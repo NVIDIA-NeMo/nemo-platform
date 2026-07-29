@@ -33,7 +33,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { InsightOpenModal } from '@studio/routes/optimizer/InsightOpenModal';
 import { insightActions, insightStatusColor } from '@studio/routes/optimizer/insightStatus';
 import { InsightTracesTable } from '@studio/routes/optimizer/InsightTracesTable';
-import { InsightExperimentGroups } from '@studio/routes/optimizer/OptimizerInsightRoute/InsightExperimentGroups';
+import { InsightExperiments } from '@studio/routes/optimizer/OptimizerInsightRoute/InsightExperiments';
 import { getOptimizerRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useState } from 'react';
@@ -191,7 +191,7 @@ export const OptimizerInsightRoute: FC = () => {
           </Card>
 
           <Card className="w-1/2 min-w-0">
-            <InsightExperimentGroups
+            <InsightExperiments
               workspace={workspace}
               insightId={insightId}
               onRunExperiment={() => handleAction('open')}

@@ -20,7 +20,7 @@ import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeVar, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -50,8 +50,10 @@ from nemo_experimentalist_plugin.resolve import (
 )
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
 async def _upload_trace_otlp(
@@ -368,13 +370,13 @@ class RemoteExperimentalistBackend(ExperimentalistBackend):
         return await self._files.get_agent_spec(workspace=workspace, spec=spec, dest=dest)
 
 
-def _load_entity(cls: type, path: Path) -> Any:
+def _load_entity(cls: type[_ModelT], path: Path) -> _ModelT:
     """Deserialize *path* as JSON into *cls*, restoring the private ``_id`` field."""
     data = json.loads(path.read_text())
     entity_id = data.get("id", "")
     obj = cls.model_validate(data)
     if entity_id:
-        obj._id = entity_id  # PrivateAttr set the same way as the real entity client
+        cast(Any, obj)._id = entity_id  # PrivateAttr set the same way as the real entity client
     return obj
 
 
@@ -854,7 +856,11 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             return ""
 
     async def persist_result(self, *, workspace: str, result: ExperimentalistResult) -> None:
-        (self._eo / "OPTIMIZATION.md").write_text(result.summary)
+        report_path = self._eo / "OPTIMIZATION.md"
+        # The optimizer's report writer creates the full document before this call.
+        # Use the compact result summary only as a fallback when no report was produced.
+        if not report_path.exists() or not report_path.read_text().strip():
+            report_path.write_text(result.summary)
         run_path = self._eo / "run.json"
         if run_path.exists():
             run: ExperimentRun = _load_entity(ExperimentRun, run_path)

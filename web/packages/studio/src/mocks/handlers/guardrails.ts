@@ -10,6 +10,7 @@ export const mockGuardrailConfigs: GuardrailConfig[] = [
     id: 'cfg-1',
     entity_id: 'cfg-1',
     parent: 'ws-default',
+    db_version: 1,
     name: 'pii-filter',
     workspace: 'default',
     description: 'Blocks PII in user inputs and outputs',
@@ -32,6 +33,7 @@ export const mockGuardrailConfigs: GuardrailConfig[] = [
     id: 'cfg-2',
     entity_id: 'cfg-2',
     parent: 'ws-default',
+    db_version: 1,
     name: 'toxicity-guard',
     workspace: 'default',
     description: 'Detects and blocks toxic language',
@@ -67,6 +69,16 @@ export const guardrailsHandlers = [
     ({ params }) => {
       const config = mockGuardrailConfigs.find((c) => c.name === params.name);
       if (!config) return new HttpResponse(null, { status: 404 });
+      return HttpResponse.json(config);
+    }
+  ),
+  http.patch(
+    `${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs/:name`,
+    async ({ params, request }) => {
+      const config = mockGuardrailConfigs.find((c) => c.name === params.name);
+      if (!config) return new HttpResponse(null, { status: 404 });
+      const body = (await request.json()) as Partial<GuardrailConfig>;
+      Object.assign(config, body);
       return HttpResponse.json(config);
     }
   ),

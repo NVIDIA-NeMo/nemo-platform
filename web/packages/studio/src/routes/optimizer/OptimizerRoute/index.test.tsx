@@ -12,7 +12,7 @@ import { renderRoute, screen, within } from '@studio/tests/util/render';
 import { http, HttpResponse } from 'msw';
 
 const INSIGHTS_URL = `${PLATFORM_BASE_URL}/apis/insights/v2/workspaces/:workspace/insights`;
-const EXPERIMENT_GROUPS_URL = '*/apis/intake/v2/workspaces/:workspace/experiment-groups';
+const EXPERIMENTS_URL = '*/apis/intake/v2/workspaces/:workspace/experiments';
 
 const makeInsight = (id: string, title: string): InsightListItem => ({
   id,
@@ -56,7 +56,7 @@ const findCell = async (insightTitle: string, columnName: string): Promise<HTMLE
 
 describe('OptimizerRoute', () => {
   it('renders server-provided list metadata without per-row requests', async () => {
-    const experimentGroupRequest = vi.fn(() => HttpResponse.json({}));
+    const experimentRequest = vi.fn(() => HttpResponse.json({}));
     const insights = [
       {
         ...makeInsight('positive', 'Positive count'),
@@ -68,7 +68,7 @@ describe('OptimizerRoute', () => {
     ];
     server.use(
       http.get(INSIGHTS_URL, () => HttpResponse.json(insightsPage(insights))),
-      http.get(EXPERIMENT_GROUPS_URL, experimentGroupRequest)
+      http.get(EXPERIMENTS_URL, experimentRequest)
     );
 
     renderList();
@@ -81,6 +81,6 @@ describe('OptimizerRoute', () => {
       '2026-07-21T12:00:00Z'
     );
     expect(await findCell('Zero count', 'Last Seen')).toHaveTextContent('—');
-    expect(experimentGroupRequest).not.toHaveBeenCalled();
+    expect(experimentRequest).not.toHaveBeenCalled();
   });
 });

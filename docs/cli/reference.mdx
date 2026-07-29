@@ -509,7 +509,8 @@ nemo skills show [OPTIONS] NAME
 Install Nemo skill files for an AI coding agent.
 
 By default, installs all skills to project scope.
-Use --skill to select specific skills, --user for user scope.
+Use --skill to select specific skills, --user for user scope, or
+--project-dir to explicitly select the project install directory.
 
 **Examples:**
 
@@ -517,6 +518,7 @@ Use --skill to select specific skills, --user for user scope.
 nemo skills install --agent claude
 nemo skills install --agent claude --user
 nemo skills install --agent claude --skill inference
+nemo skills install --agent claude --project-dir /path/to/project
 ```
 
 **Usage:**
@@ -530,6 +532,7 @@ nemo skills install [OPTIONS]
 * `--agent, -a`: Agent to install for (required). Supported: claude, codex, cursor, opencode
 * `--skill, -s`: Install specific skill(s) only. Can be repeated.
 * `--user`: Install to user scope (default: project scope)
+* `--project-dir, --project-root <DIRECTORY>`: Project directory to install into (default: current working directory)
 
 **Help:**
 
@@ -3468,6 +3471,7 @@ nemo inference virtual-models delete [OPTIONS] NAME
 **Options:**
 
 * `--workspace`
+* `--expected-db-version <INTEGER>`: Optional database version for optimistic locking. Delete only succeeds if the VirtualModel still has this version.
 
 **Help:**
 

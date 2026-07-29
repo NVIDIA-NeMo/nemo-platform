@@ -27,13 +27,11 @@ API_TAG = "Traces"
 TRACE_INDEX_FILTER_FIELDS = frozenset(
     {
         "evaluation_id",
-        "experiment_id",  # deprecated alias for evaluation_id
         "test_case_id",
     }
 )
 TRACE_INDEX_FILTER_ALIASES = {
     "evaluation_id": "evaluation_id",
-    "experiment_id": "evaluation_id",  # deprecated alias resolves to the evaluation_id filter
     "test_case_id": "test_case_id",
 }
 
@@ -47,7 +45,7 @@ TRACE_INDEX_FILTER_ALIASES = {
         filter_schema=TraceFilter,
         filter_description=(
             "Filter root-span-backed traces by id, session_id, root status, root span started_at, "
-            "evaluation_id (or its deprecated alias experiment_id), and test_case_id."
+            "evaluation_id, and test_case_id."
         ),
     ),
 )

@@ -1,0 +1,61 @@
+config_format: nemo-agents-spec-v1
+name: test-agent
+description: Test agent config
+
+default_harness: codex
+
+harnesses:
+  hermes:
+    kind: hermes
+    model:
+      provider: nvidia
+      model: nvidia/nemotron-3-nano-30b-a3b
+      api_key_env: NVIDIA_API_KEY
+      temperature: 0.0
+    settings:
+      python_env: HERMES_ADAPTER_PYTHON
+      base_url: https://integrate.api.nvidia.com/v1
+      max_iterations: 1
+      max_tokens: 512
+      reasoning_config:
+        effort: none
+      enabled_toolsets: []
+      system_prompt: You are a concise test assistant.
+  codex:
+    kind: codex
+    settings:
+      sandbox: workspace-write
+      system_prompt: You are a concise test assistant.
+      config_overrides:
+        model_reasoning_effort: high
+
+models:
+  default:
+    provider: openai
+    model: openai/gpt-5.4
+
+skills:
+  paths: []
+
+mcp:
+  servers: {}
+
+tools:
+  blocked: []
+
+environment:
+  workspace: ./workspace
+  artifacts: ./artifacts
+
+telemetry:
+  enabled: true
+  provider: relay
+  output_dir: ./artifacts/relay
+  project: test-agent
+  atif:
+    enabled: true
+    filename_template: trajectory-{session_id}.atif.json
+  atof:
+    enabled: true
+    filename: events.atof.jsonl
+    mode: overwrite

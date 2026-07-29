@@ -4,43 +4,50 @@
 """Span repository tests."""
 
 from datetime import datetime, timezone
-from typing import cast
 
 import pytest
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseQuery
+from nmp.intake.repository.clickhouse.span import (
+    SPAN_COLUMNS,
+    SPAN_GROUP_COLUMN_FIELDS,
+    ClickHouseSpanRepository,
+    _order_by,
+)
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
 from nmp.intake.spans.api.spans_schemas import SpanGroupBy
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.domain import SpanListFilter
-from nmp.intake.spans.span_repository import SPAN_COLUMNS, SPAN_GROUP_COLUMN_FIELDS, SpanRepository, _order_by
+from nmp.intake.spans.domain import SpanListFilter, SpanStatus
 from nmp.intake.spans.storage import make_pagination
 
 
 class _QueryResult:
     def __init__(self, rows: list[tuple[object, ...]], columns: list[str] | None = None) -> None:
         self.result_rows = rows
-        self.column_names = columns or []
+        self.column_names = columns or (["count()"] if rows and len(rows[0]) == 1 else [])
 
 
-class _Client:
+class _Client(ClickHouseExecutor):
     def __init__(self, query_results: list[_QueryResult] | None = None) -> None:
         self.queries: list[str] = []
         self.parameters: list[dict[str, object]] = []
         self.query_results = query_results or []
 
-    def table(self, name: str) -> str:
-        return name
+    def table(self, table: ClickHouseTable) -> str:
+        return table.value
 
-    async def query(self, query: str, *, parameters: dict[str, object]) -> _QueryResult:
-        self.queries.append(query)
-        self.parameters.append(parameters)
+    async def fetch_all(self, query: ClickHouseQuery) -> list[dict[str, object]]:
+        self.queries.append(query.statement)
+        self.parameters.append(dict(query.parameters))
         if self.query_results:
-            return self.query_results.pop(0)
-        if query.lstrip().startswith("SELECT count()"):
-            return _QueryResult([(0,)])
-        return _QueryResult([])
+            result = self.query_results.pop(0)
+        elif query.statement.lstrip().startswith("SELECT count()"):
+            result = _QueryResult([(0,)], ["count()"])
+        else:
+            result = _QueryResult([])
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
 
 
-def _repository(client: _Client) -> SpanRepository:
-    return SpanRepository(cast(ClickHouseSpanClient, client))
+def _repository(client: _Client) -> ClickHouseSpanRepository:
+    return ClickHouseSpanRepository(client)
 
 
 def test_order_by_whitelists_supported_span_sort_keys():
@@ -197,7 +204,7 @@ async def test_list_span_groups_reuses_span_filters():
     repository = _repository(client)
 
     await repository.list_span_groups(
-        filters=SpanListFilter(workspace="workspace-a", status="error"),
+        filters=SpanListFilter(workspace="workspace-a", status=SpanStatus.ERROR),
         group_by=["trace_id"],
         page=1,
         page_size=10,

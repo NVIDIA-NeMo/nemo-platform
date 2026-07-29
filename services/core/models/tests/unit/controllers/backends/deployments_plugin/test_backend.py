@@ -394,7 +394,12 @@ async def test_delete_completes_when_plugin_deployment_failed() -> None:
     result = await backend.delete_model_deployment("default", "my-dep")
 
     assert result.status == "DELETED"
-    backend._entities.delete.assert_any_await(Deployment, name="my-dep-server", workspace="default")
+    backend._entities.delete.assert_any_await(
+        Deployment,
+        name="my-dep-server",
+        workspace="default",
+        expected_db_version=server.db_version,
+    )
 
 
 @pytest.mark.asyncio

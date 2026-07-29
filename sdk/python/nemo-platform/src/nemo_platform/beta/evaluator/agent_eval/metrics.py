@@ -117,12 +117,12 @@ class EvidencePresenceMetric:
 class SkillUsedMetric:
     """Emit ``skill_present`` and ``skill_used`` so an eval can flag a failure to use an injected skill.
 
-    * ``skill_present`` — ``True`` when a skill was injected into the trial. Reads the provenance a
-      skill-aware runtime stamps onto candidate metadata under the ``"skill"`` key
-      (``{"name", "hash", "mode", "adapter_id", "location", ...}``, see ``fabric.skills.SkillProvenance``);
-      baseline trials carry none.
-    * ``skill_used`` — best-effort ``True`` when the agent referenced the injected skill in its ATIF
-      trajectory. It matches the skill's staged ``location`` (a specific, low-false-positive path
+    * ``skill_present`` — ``True`` when one or more skills were injected into the trial. Reads
+      the ``"skills"`` metadata key a skill-aware runtime stamps — a list of provenance dicts
+      (``{"name", "hash", "mode", "adapter_id", "location", ...}``, see ``fabric.skills.SkillProvenance``).
+      Baseline trials carry an empty list.
+    * ``skill_used`` — best-effort ``True`` when the agent referenced *any* injected skill in its ATIF
+      trajectory. It matches each skill's staged ``location`` (a specific, low-false-positive path
       signal — e.g. a read of ``.agents/skills/<name>/SKILL.md``) against tool-call names/arguments,
       step messages, reasoning, and observations. A bare skill-*name* match is intentionally NOT
       counted (the name commonly appears in the task prompt), so ``skill_present=True, skill_used=False``
@@ -137,8 +137,8 @@ class SkillUsedMetric:
     metric_type: str = "skill_used"
     OUTPUT_PRESENT: str = "skill_present"
     OUTPUT_USED: str = "skill_used"
-    # Metadata key skill-aware runtimes stamp the provenance under (matches the fabric runtime).
-    _METADATA_KEY: str = "skill"
+    # Metadata key skill-aware runtimes stamp the provenance list under (matches the fabric runtime).
+    _SKILLS_KEY: str = "skills"
 
     def __init__(self, *, trace_evidence: str = EVIDENCE_TRACE) -> None:
         self._trace_evidence = trace_evidence
@@ -154,9 +154,9 @@ class SkillUsedMetric:
         ]
 
     async def compute_scores(self, input: MetricInput) -> MetricResult:
-        provenance = input.candidate.metadata.get(self._METADATA_KEY)
-        present = isinstance(provenance, Mapping) and bool(provenance)
-        used = await self._skill_used(input.candidate, provenance) if present else False
+        provenances = self._extract_provenances(input.candidate.metadata)
+        present = bool(provenances)
+        used = await self._any_skill_used(input.candidate, provenances) if present else False
         return MetricResult(
             outputs=[
                 MetricOutput(name=self.OUTPUT_PRESENT, value=present),
@@ -164,9 +164,15 @@ class SkillUsedMetric:
             ]
         )
 
-    async def _skill_used(self, candidate: CandidateOutput, provenance: Mapping[str, Any]) -> bool:
-        location = provenance.get("location")
-        if not isinstance(location, str) or not location:
+    def _extract_provenances(self, metadata: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+        skills = metadata.get(self._SKILLS_KEY)
+        if isinstance(skills, list):
+            return [p for p in skills if isinstance(p, Mapping) and p]
+        return []
+
+    async def _any_skill_used(self, candidate: CandidateOutput, provenances: list[Mapping[str, Any]]) -> bool:
+        locations = [loc for p in provenances if isinstance(loc := p.get("location"), str) and loc]
+        if not locations:
             return False
         evidence = candidate.evidence
         if evidence is None or evidence.get(self._trace_evidence) is None:
@@ -180,7 +186,7 @@ class SkillUsedMetric:
                 "SkillUsedMetric scored skill_used=False: could not read trace %r: %s", self._trace_evidence, exc
             )
             return False
-        return _trajectory_references(trajectory, location)
+        return any(_trajectory_references(trajectory, loc) for loc in locations)
 
 
 class TrialMeasurements(BaseModel):

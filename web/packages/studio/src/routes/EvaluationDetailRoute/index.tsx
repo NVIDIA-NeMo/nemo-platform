@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useGetEvaluation, useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
+import { useGetEvaluation, useGetExperiment } from '@nemo/sdk/generated/platform/api';
 import { Badge, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
@@ -12,20 +12,20 @@ import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { EvaluationDetailMetrics } from '@studio/routes/EvaluationDetailRoute/EvaluationDetailMetrics';
-import { getExperimentGroupDetailRoute, getExperimentRoute } from '@studio/routes/utils';
+import { getExperimentDetailRoute, getExperimentRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { type FC } from 'react';
 
 export const EvaluationDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
-  const { experimentGroupName, evaluationName } = useRequiredPathParams([
-    ROUTE_PARAMS.experimentGroupName,
+  const { experimentName, evaluationName } = useRequiredPathParams([
+    ROUTE_PARAMS.experimentName,
     ROUTE_PARAMS.evaluationName,
   ]);
   const { data: evaluation } = useGetEvaluation(workspace, evaluationName);
   // Evaluations reach their originating insight through the owning group's insight_id.
-  const { data: experimentGroup } = useGetExperimentGroup(workspace, experimentGroupName);
-  const insightId = experimentGroup?.insight_id ?? '';
+  const { data: experiment } = useGetExperiment(workspace, experimentName);
+  const insightId = experiment?.insight_id ?? '';
   const { data: insight } = useOptimizerGetInsight(workspace, insightId, {
     query: { enabled: OPTIMIZER_ENABLED && Boolean(insightId) },
   });
@@ -33,10 +33,10 @@ export const EvaluationDetailRoute: FC = () => {
 
   useBreadcrumbs({
     items: [
-      { href: getExperimentRoute(workspace), slotLabel: 'Experiment Groups' },
+      { href: getExperimentRoute(workspace), slotLabel: 'Experiments' },
       {
-        href: getExperimentGroupDetailRoute(workspace, experimentGroupName),
-        slotLabel: experimentGroupName,
+        href: getExperimentDetailRoute(workspace, experimentName),
+        slotLabel: experimentName,
       },
       { slotLabel: evaluationName },
     ],
@@ -73,7 +73,7 @@ export const EvaluationDetailRoute: FC = () => {
           </div>
           <EvaluationSessionsDataView
             evaluationName={evaluationName}
-            experimentGroupName={experimentGroupName}
+            experimentName={experimentName}
           />
         </div>
       </Stack>

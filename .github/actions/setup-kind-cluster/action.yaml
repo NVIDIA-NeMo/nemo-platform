@@ -163,7 +163,7 @@ runs:
         HELM_VALUES: ${{ inputs['helm-values'] }}
         REQUIRE_NMP_E2E_IMAGES: "true"
         POSTGRES_IMAGE: docker.io/library/postgres
-        BUSYBOX_IMAGE: docker.io/library/busybox
+        BUSYBOX_IMAGE: docker.io/library/busybox:stable
         GITHUB_TOKEN: ${{ inputs['kind-image-pull-token'] }}
       run: |
         if ! e2e/k8s/scripts/install_helm_e2e.sh; then

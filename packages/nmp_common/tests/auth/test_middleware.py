@@ -84,6 +84,14 @@ def create_test_app(auth_config: AuthConfig) -> FastAPI:
     async def hf_download_endpoint(workspace: str, name: str, revision: str, path: str):
         return {"workspace": workspace, "name": name, "path": path}
 
+    @app.post("/apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs")
+    async def files_otlp_logs_upload(workspace: str, name: str):
+        return {"workspace": workspace, "name": name}
+
+    @app.post("/apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs/query")
+    async def files_otlp_logs_query(workspace: str, name: str):
+        return {"workspace": workspace, "name": name}
+
     Configuration.set_override(auth_config)
     app.add_middleware(AuthorizationMiddleware, service_name="test-service")
 
@@ -426,12 +434,8 @@ class TestServicePrincipalAuth:
             mock_authorize.assert_called_once()
 
 
-class TestHfEndpointAuth:
-    """Tests for HuggingFace-compatible endpoint authentication.
-
-    HF endpoints accept service principal tokens via Bearer header (HF_TOKEN),
-    allowing huggingface-hub clients to authenticate with HF_TOKEN=service:<name>.
-    """
+class TestCompatibilityAuth:
+    """Tests for compatibility auth paths used by non-standard clients."""
 
     @pytest.mark.parametrize(
         "token,expected_status",
@@ -474,6 +478,57 @@ class TestHfEndpointAuth:
         assert response.status_code == 200
         auth_client = mock_authorize.call_args.args[0]
         assert auth_client.principal.id == "service:models"
+
+    def test_files_otlp_logs_upload_accepts_service_principal_header(self, auth_config_enabled):
+        """Job log uploads accept the launcher fallback service principal header."""
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=True)
+
+            response = client.post(
+                "/apis/files/v2/workspaces/my-workspace/filesets/job-fileset-1/otlp/v1/logs",
+                headers={"X-NMP-Principal-Id": "service:jobs"},
+            )
+
+        assert response.status_code == 200
+        auth_client = mock_authorize.call_args.args[0]
+        assert auth_client.principal.id == "service:jobs"
+
+    def test_files_otlp_logs_upload_does_not_accept_service_bearer_token(self, auth_config_enabled):
+        """Job log uploads use X-NMP service headers, not raw service bearer tokens."""
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("nmp.common.auth.jwt.JWTValidator.validate_token") as mock_validate:
+            mock_validate.return_value = None
+            with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+                response = client.post(
+                    "/apis/files/v2/workspaces/my-workspace/filesets/job-fileset-1/otlp/v1/logs",
+                    headers={"Authorization": "Bearer service:jobs"},
+                )
+
+        assert response.status_code == 401
+        mock_validate.assert_called_once()
+        mock_authorize.assert_not_called()
+
+    def test_regular_endpoint_does_not_accept_service_bearer_token(self, auth_config_enabled):
+        """Raw service bearer tokens are not accepted on arbitrary routes."""
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("nmp.common.auth.jwt.JWTValidator.validate_token") as mock_validate:
+            mock_validate.return_value = None
+            with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+                response = client.get(
+                    "/test",
+                    headers={"Authorization": "Bearer service:jobs"},
+                )
+
+        assert response.status_code == 401
+        mock_validate.assert_called_once()
+        mock_authorize.assert_not_called()
 
 
 class TestInternalServiceOnlyRoutes:

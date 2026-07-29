@@ -32,9 +32,6 @@ class TraceFilterParam(TypedDict, total=False):
     evaluation_id: str
     """Filter by root-span evaluation id."""
 
-    experiment_id: str
-    """Deprecated alias for evaluation_id. Filter by root-span evaluation id."""
-
     session_id: str
     """Filter by session id."""
 

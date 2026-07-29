@@ -4,53 +4,47 @@
 """Session repository tests."""
 
 from datetime import datetime, timedelta, timezone
-from typing import cast
 
 import pytest
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.session_repository import SESSION_COLUMNS, SessionRepository, session_detail_sql
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseQuery
+from nmp.intake.repository.clickhouse.session import ClickHouseSessionRepository, _session_detail_query
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
 
 
-class _QueryResult:
-    def __init__(self, rows: list[tuple[object, ...]], columns: list[str] | None = None) -> None:
-        self.result_rows = rows
-        self.column_names = columns or []
+class _Executor(ClickHouseExecutor):
+    def __init__(self, rows: list[dict[str, object]] | None = None) -> None:
+        self.rows = rows or []
+        self.queries: list[ClickHouseQuery] = []
 
+    def table(self, table: ClickHouseTable) -> str:
+        assert table is ClickHouseTable.SPANS
+        return "spans"
 
-class _Client:
-    def __init__(self, query_result: _QueryResult | None = None) -> None:
-        self.query_result = query_result or _QueryResult([])
-        self.queries: list[str] = []
-        self.parameters: list[dict[str, object]] = []
-
-    def table(self, name: str) -> str:
-        return name
-
-    async def query(self, query: str, *, parameters: dict[str, object]) -> _QueryResult:
+    async def fetch_all(self, query: ClickHouseQuery) -> list[dict[str, object]]:
         self.queries.append(query)
-        self.parameters.append(parameters)
-        return self.query_result
+        return self.rows
 
 
-def _repository(client: _Client) -> SessionRepository:
-    return SessionRepository(cast(ClickHouseSpanClient, client))
+def _repository(executor: _Executor) -> ClickHouseSessionRepository:
+    return ClickHouseSessionRepository(executor)
 
 
 def test_session_query_is_primary_key_pruned_and_payload_free() -> None:
-    query, parameters = session_detail_sql("spans")
+    query = _session_detail_query("spans")
 
-    assert "FROM spans AS session_spans FINAL" in query
-    assert "PREWHERE" in query
-    assert "session_spans.workspace = %(workspace)s" in query
-    assert "session_spans.session_id = %(session_id)s" in query
-    assert "trace_index" not in query
-    assert "JOIN" not in query
-    assert "session_spans.input" not in query
-    assert "session_spans.output" not in query
-    assert "uniqExact(session_spans.source_format, session_spans.trace_id) AS trace_count" in query
-    assert "count() AS span_count" in query
-    assert parameters["input_tokens_key"] == "llm.token_count.prompt"
-    assert parameters["cost_usd_key"] == "cost.total"
+    assert query.name == "sessions.get"
+    assert "FROM spans AS session_spans FINAL" in query.statement
+    assert "PREWHERE" in query.statement
+    assert "session_spans.workspace = %(workspace)s" in query.statement
+    assert "session_spans.session_id = %(session_id)s" in query.statement
+    assert "trace_index" not in query.statement
+    assert "JOIN" not in query.statement
+    assert "session_spans.input" not in query.statement
+    assert "session_spans.output" not in query.statement
+    assert "uniqExact(session_spans.source_format, session_spans.trace_id) AS trace_count" in query.statement
+    assert "count() AS span_count" in query.statement
+    assert query.parameters["input_tokens_key"] == "llm.token_count.prompt"
+    assert query.parameters["cost_usd_key"] == "cost.total"
 
 
 @pytest.mark.asyncio
@@ -73,10 +67,9 @@ async def test_get_session_maps_aggregate_row() -> None:
         "trace_count": 2,
         "span_count": 5,
     }
-    row = tuple(values[column] for column in SESSION_COLUMNS)
-    client = _Client(_QueryResult([row], SESSION_COLUMNS))
+    executor = _Executor([values])
 
-    session = await _repository(client).get_session(workspace="workspace-a", session_id="session-a")
+    session = await _repository(executor).get_session(workspace="workspace-a", session_id="session-a")
 
     assert session is not None
     assert session.id == "session-a"
@@ -89,12 +82,20 @@ async def test_get_session_maps_aggregate_row() -> None:
     assert session.span_count == 5
     assert session.total_tokens == 858
     assert session.cost_usd == 0.0061
-    assert client.parameters[0]["workspace"] == "workspace-a"
-    assert client.parameters[0]["session_id"] == "session-a"
+    assert executor.queries[0].parameters["workspace"] == "workspace-a"
+    assert executor.queries[0].parameters["session_id"] == "session-a"
 
 
 @pytest.mark.asyncio
 async def test_get_session_returns_none_when_no_current_spans_exist() -> None:
-    session = await _repository(_Client()).get_session(workspace="workspace-a", session_id="missing")
+    workspace = "workspace' OR 1 = 1 --"
+    session_id = "session'); DROP TABLE spans; --"
+    executor = _Executor()
+
+    session = await _repository(executor).get_session(workspace=workspace, session_id=session_id)
 
     assert session is None
+    assert workspace not in executor.queries[0].statement
+    assert session_id not in executor.queries[0].statement
+    assert executor.queries[0].parameters["workspace"] == workspace
+    assert executor.queries[0].parameters["session_id"] == session_id

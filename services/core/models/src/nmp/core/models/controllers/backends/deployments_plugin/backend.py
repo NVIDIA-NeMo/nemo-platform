@@ -9,7 +9,7 @@ from typing import Any
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Prerequisite, Volume
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.resources.entities import AsyncEntitiesResource
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
+from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nmp.common.config import Runtime
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
@@ -211,9 +211,16 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
                 # Plugin reconciler gave up on substrate teardown; remove the stale
                 # entity so models delete can finish config/volume cleanup.
                 try:
-                    await self._entity_client().delete(Deployment, name=deployment_name, workspace=workspace)
+                    await self._entity_client().delete(
+                        Deployment,
+                        name=deployment.name,
+                        workspace=workspace,
+                        expected_db_version=deployment.db_version,
+                    )
                 except NemoEntityNotFoundError:
                     pass
+                except NemoEntityConflictError:
+                    return False
             elif deployment.status != "DELETING" or deployment.desired_state != "STOPPED":
                 deployment.status = "DELETING"
                 deployment.desired_state = "STOPPED"

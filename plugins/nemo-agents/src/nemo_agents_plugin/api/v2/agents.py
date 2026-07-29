@@ -14,16 +14,11 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from nemo_agents_plugin.agent_config import AgentConfig
+from nemo_agents_plugin.agent_config_formats import AgentConfigFormatError, validate_agent_config
 from nemo_agents_plugin.api.v2._perms import AgentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.entities import (
-    NAT_WORKFLOW_CONFIG_FORMAT,
-    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
-    Agent,
-    AgentDeployment,
-)
+from nemo_agents_plugin.entities import Agent, AgentDeployment
 from nemo_agents_plugin.schema import (
     AgentFilter,
     AgentPage,
@@ -33,7 +28,6 @@ from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
-from pydantic import ValidationError
 
 # Deployment statuses that block agent deletion.
 # "failed" and "deleting" are excluded — they are terminal/in-cleanup and
@@ -186,19 +180,21 @@ async def delete_agent(
             status_code=404,
             detail=f"Agent '{name}' not found in workspace '{workspace}'.",
         ) from exc
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Agent '{name}' was modified by another request in workspace '{workspace}'. "
+                "Refresh the agent and try again."
+            ),
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to delete agent '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to delete agent.") from exc
 
 
 def _validate_agent_config_for_create(body: CreateAgentRequest) -> dict[str, Any]:
-    if body.config_format == NAT_WORKFLOW_CONFIG_FORMAT:
-        return body.config
-
-    if body.config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-        try:
-            return AgentConfig.model_validate(body.config).model_dump(exclude_none=True)
-        except ValidationError as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid agent config: {exc}") from exc
-
-    raise HTTPException(status_code=400, detail=f"Unsupported config_format {body.config_format!r}.")
+    try:
+        return validate_agent_config(body.config_format, body.config)
+    except AgentConfigFormatError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

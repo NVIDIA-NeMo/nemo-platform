@@ -200,7 +200,7 @@ class TestTranslateAgentConfig:
         assert fabric_config.relay.project == "example-agent"
         assert fabric_config.relay.output_dir == "./artifacts/relay"
         assert fabric_config.relay.observability.model_dump(exclude_none=True) == {
-            "version": 1,
+            "version": 2,
             "atif": {
                 "enabled": True,
                 "filename_template": "trajectory-{session_id}.atif.json",
@@ -210,8 +210,38 @@ class TestTranslateAgentConfig:
             },
             "atof": {
                 "enabled": True,
-                "filename": "events.atof.jsonl",
-                "mode": "overwrite",
-                "output_directory": "./artifacts/relay",
+                "sinks": [
+                    {
+                        "type": "file",
+                        "output_directory": "./artifacts/relay",
+                        "filename": "events.atof.jsonl",
+                        "mode": "overwrite",
+                    }
+                ],
             },
         }
+
+    def test_relay_atof_endpoint_sinks_translate_to_stream_sinks(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["telemetry"]["enabled"] = True
+        payload["telemetry"]["atof"] = {
+            "enabled": True,
+            "endpoints": [
+                {
+                    "type": "file",
+                    "endpoint": "http://localhost:4318/v1/events",
+                    "timeout_millis": 3000,
+                }
+            ],
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.relay.observability.model_dump(exclude_none=True)["atof"]["sinks"] == [
+            {
+                "type": "stream",
+                "url": "http://localhost:4318/v1/events",
+                "timeout_millis": 3000,
+            }
+        ]

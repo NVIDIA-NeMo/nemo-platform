@@ -98,6 +98,7 @@ def _build_prepared_request(
     client_option_names: set[str],
     response_type: type | None,
     get_on_conflict: ConflictResolver | None,
+    additional_success_status_codes: tuple[int, ...],
     args: tuple,
     kwargs: dict,
 ) -> PreparedRequest:
@@ -163,6 +164,7 @@ def _build_prepared_request(
         response_type=response_type,
         query_params=query_params,
         client_options=client_options,
+        additional_success_status_codes=additional_success_status_codes,
         on_conflict_get=on_conflict_get,
     )
 
@@ -172,6 +174,7 @@ def _make_endpoint(
     path: str,
     fn: Callable[P, ResponseT],
     get_on_conflict: ConflictResolver | None = None,
+    additional_success_status_codes: tuple[int, ...] = (),
 ) -> Callable[P, PreparedRequest[ResponseT]]:
     """Create a callable that builds PreparedRequests from the function's signature."""
     sig = inspect.signature(fn)
@@ -204,6 +207,7 @@ def _make_endpoint(
             client_option_names,
             response_type,
             get_on_conflict,
+            additional_success_status_codes,
             args,
             kwargs,
         )
@@ -216,11 +220,13 @@ def _make_endpoint(
 # ---------------------------------------------------------------------------
 
 
-def get(path: str) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedRequest[ResponseT]]]:
+def get(
+    path: str, *, additional_success_status_codes: tuple[int, ...] = ()
+) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedRequest[ResponseT]]]:
     """Define a GET endpoint (no request body)."""
 
     def decorator(fn: Callable[P, ResponseT]) -> Callable[P, PreparedRequest[ResponseT]]:
-        return _make_endpoint("GET", path, fn)
+        return _make_endpoint("GET", path, fn, additional_success_status_codes=additional_success_status_codes)
 
     return decorator
 

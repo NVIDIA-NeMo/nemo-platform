@@ -9,18 +9,29 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nmp.intake.service import IntakeService
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient, bootstrap_schema
+from nmp.intake.spans.clickhouse_migrations import quote_clickhouse_identifier
+
+
+def test_clickhouse_server_matches_supported_lts(
+    clickhouse_client: ClickHouseSpanClient,
+    clickhouse_version: str,
+    run_async,
+) -> None:
+    result = run_async(clickhouse_client.query("SELECT version()"))
+
+    assert len(result.result_rows) == 1
+    assert str(result.result_rows[0][0]).startswith(f"{clickhouse_version}.")
 
 
 def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanClient, run_async):
     run_async(bootstrap_schema(clickhouse_client))
     run_async(bootstrap_schema(clickhouse_client))
 
-    result = run_async(
-        clickhouse_client.query(
-            f"SELECT version_num FROM {clickhouse_client.table('clickhouse_alembic_version')} FINAL"
-            " ORDER BY version_num"
-        )
+    version_table = (
+        f"{quote_clickhouse_identifier(clickhouse_client.database)}."
+        f"{quote_clickhouse_identifier('clickhouse_alembic_version')}"
     )
+    result = run_async(clickhouse_client.query(f"SELECT version_num FROM {version_table} FINAL ORDER BY version_num"))
     assert result.result_rows == [
         ("ch_annotations_0001",),
         ("ch_evaluator_results_0001",),

@@ -21,7 +21,6 @@ from typing import Dict
 from typing_extensions import Required, TypedDict
 
 from ..evaluation_context_param import EvaluationContextParam
-from ..experiment_context_param import ExperimentContextParam
 from .captured_chat_completions_request_param import CapturedChatCompletionsRequestParam
 from .captured_chat_completions_response_param import CapturedChatCompletionsResponseParam
 
@@ -59,12 +58,6 @@ class ChatCompletionCreateParams(TypedDict, total=False):
     `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
     evaluation_run_id, metadata) keeps ingesting without error rather than being
     rejected.
-    """
-
-    experiment_context: ExperimentContextParam
-    """Deprecated alias for :class:`EvaluationContext`.
-
-    Producers should send `evaluation_context`.
     """
 
     provider: str
