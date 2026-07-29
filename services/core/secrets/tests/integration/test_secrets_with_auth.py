@@ -1001,8 +1001,7 @@ class TestSecretNameValidation:
             PlatformSecretCreateRequest(name=invalid_name, value=SecretStr("test-value"))
         assert "should match pattern" in str(local_exc.value).lower()
 
-        # model_construct skips validation so the bad name still reaches the server,
-        # which is where the 500-vs-422 regression lived.
+        # model_construct skips validation so the name still reaches the server.
         with pytest.raises(ClientUnprocessableEntityError) as exc_info:
             admin_secrets.create_secret(
                 body=PlatformSecretCreateRequest.model_construct(

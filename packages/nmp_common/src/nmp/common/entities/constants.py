@@ -3,8 +3,6 @@
 
 """Constants for entity validation."""
 
-# Defined in nemo_platform_plugin so plugins can reach it without depending on
-# nmp_common, which would be circular. Re-exported here for existing callers.
 from nemo_platform_plugin.entity_naming import (
     NAME_MAX_LENGTH as NAME_MAX_LENGTH,
 )

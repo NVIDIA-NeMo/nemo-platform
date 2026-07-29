@@ -1,18 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""The single definition of the entity name rule.
+"""Single definition of the entity name rule; ``nmp.common`` re-exports it.
 
-This lives in ``nemo_platform_plugin`` rather than ``nmp_common`` because the
-dependency runs that way — ``nmp_common`` depends on this package, so anything
-here is importable from both sides. ``nmp.common.entities.constants`` re-exports
-these names.
-
-Imports nothing, so modules that need to stay leaf nodes can still use it.
-
-Any Pydantic model declaring ``pattern=NAME_PATTERN`` must also set
-``model_config = ConfigDict(regex_engine="python-re")``; the pattern uses
-lookaround, which Pydantic's default Rust engine rejects.
+Lives here because ``nmp_common`` depends on this package, not the reverse.
+Models using ``pattern=NAME_PATTERN`` need ``regex_engine="python-re"``.
 """
 
 # RFC 1035 compliant pattern with temporary support for special characters.
