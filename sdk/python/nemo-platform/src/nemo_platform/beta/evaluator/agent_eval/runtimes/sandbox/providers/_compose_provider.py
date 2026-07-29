@@ -392,14 +392,27 @@ class DockerComposeSandboxProvider:
         source_path: Path,
         target_path: str,
     ) -> None:
-        """Upload one file and make it writable by the target service user.
+        """Upload one file under the target service user's parent-directory authority.
+
+        The destination must name an exact, non-root file. Missing parents are created
+        as the target service user; if that user cannot create them, the upload fails
+        without changing parent or ancestor ownership or permissions. After copying,
+        only the regular non-symlink file leaf is assigned to the runtime identity and
+        made owner-writable.
+
+        Upload is non-atomic: a copy followed by failed leaf repair may leave the file
+        in place, and retrying the same source and destination is supported. The caller
+        must keep the destination and its complete ancestor chain stable during the
+        operation. Stable symlink ancestors follow normal POSIX path resolution; this
+        API is not a security boundary against concurrent in-container path mutation.
 
         Args:
             handle: Active handle returned by this provider.
             source_path: Existing host file to copy.
-            target_path: Destination file path inside the target service.
+            target_path: Exact non-root file path inside the target service.
 
         Raises:
+            ValueError: If ``target_path`` is empty, root, or directory-shaped.
             RuntimeError: If target preparation, copying, or ownership repair fails.
         """
         await self._copy_to_service(handle, source_path, target_path, directory=False)
@@ -410,7 +423,17 @@ class DockerComposeSandboxProvider:
         source_dir: Path,
         target_dir: str,
     ) -> None:
-        """Upload directory contents into a service-owned target directory.
+        """Upload directory contents into a dedicated service-owned target directory.
+
+        The destination must be a non-root exact target that is not itself a symlink.
+        The provider merges the source contents into that directory and recursively
+        assigns the entire resulting tree to the target service user. Callers must not
+        use a shared or externally owned tree for this operation.
+
+        The caller must keep the destination and its complete ancestor chain stable
+        during the upload. Stable symlink ancestors follow normal POSIX path resolution;
+        this API is not a security boundary against concurrent in-container path
+        mutation.
 
         Args:
             handle: Active handle returned by this provider.
@@ -419,6 +442,7 @@ class DockerComposeSandboxProvider:
                 recursively assigns this entire target tree to the service runtime user.
 
         Raises:
+            ValueError: If ``target_dir`` is empty or resolves to the container root.
             RuntimeError: If target preparation, copying, or ownership repair fails.
 
         Example:

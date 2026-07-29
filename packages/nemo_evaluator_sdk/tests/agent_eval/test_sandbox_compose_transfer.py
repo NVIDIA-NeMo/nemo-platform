@@ -16,6 +16,7 @@ from packages.nemo_evaluator_sdk.tests.agent_eval._compose_testkit import _compo
 
 _FILE_TARGET_OPERATION = "nemo-compose-file-target"
 _FILE_REPAIR_OPERATION = "nemo-compose-file-repair"
+_DIRECTORY_TARGET_OPERATION = "nemo-compose-directory-target"
 
 
 def _assert_file_target_operation(command: tuple[str, ...], parent: str, target: str) -> None:
@@ -41,6 +42,16 @@ def _assert_file_repair_operation(command: tuple[str, ...], target: str) -> None
     assert '[ -f "$target" ] && [ ! -L "$target" ]' in script
     assert 'chown -h "$identity" "$target"' in script
     assert 'chmod u+w "$target"' in script
+
+
+def _assert_directory_target_operation(command: tuple[str, ...], target: str) -> None:
+    assert command[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c")
+    script, operation, target_arg = command[7:]
+    assert operation == _DIRECTORY_TARGET_OPERATION
+    assert target_arg == target
+    assert target not in script
+    assert '[ ! -L "$target" ]' in script
+    assert 'mkdir -p "$target"' in script
 
 
 @pytest.mark.parametrize(
@@ -155,8 +166,8 @@ async def test_directory_transfers_copy_contents_into_prepared_targets(
     suffixes = [
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
-    assert suffixes[:4] == [
-        ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/work/existing"),
+    _assert_directory_target_operation(suffixes[0], "/work/existing")
+    assert suffixes[1:4] == [
         ("cp", f"{source}{os.sep}.", "agent:/work/existing"),
         ("exec", "--no-TTY", "agent", "sh", "-c", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
         ("exec", "--no-TTY", "--user", "0", "agent", "chown", "-R", "1001:1002", "--", "/work/existing"),
@@ -165,6 +176,66 @@ async def test_directory_transfers_copy_contents_into_prepared_targets(
     assert ("cp", "agent:/out/.", str(absent_download)) in suffixes
     assert existing_download.is_dir()
     assert absent_download.is_dir()
+    await provider.close(handle)
+
+
+@pytest.mark.parametrize(
+    ("target", "target_kind", "exception_type", "message"),
+    [
+        ("/", None, ValueError, "Directory upload target cannot be the container root"),
+        ("/work/link", "symlink", RuntimeError, "Compose upload target preparation failed"),
+    ],
+)
+async def test_upload_dir_rejects_root_and_exact_symlink_targets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    target: str,
+    target_kind: str | None,
+    exception_type: type[Exception],
+    message: str,
+) -> None:
+    runner = _Runner()
+    if target_kind is not None:
+        runner.directory_target_kinds[target] = target_kind
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "seed.txt").write_text("seed", encoding="utf-8")
+    transfer_start = len(runner.calls)
+
+    with pytest.raises(exception_type, match=message):
+        await provider.upload_dir(handle, source, target)
+
+    suffixes = [
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
+    ]
+    assert not any(args[:1] == ("cp",) for args in suffixes)
+    assert not any(args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "chown") for args in suffixes)
+    await provider.close(handle)
+
+
+async def test_upload_dir_preparation_failure_stops_before_copy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    runner.failures.add("directory_prepare")
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "seed.txt").write_text("seed", encoding="utf-8")
+    transfer_start = len(runner.calls)
+
+    with pytest.raises(RuntimeError, match="Compose upload target preparation failed"):
+        await provider.upload_dir(handle, source, "/work/upload")
+
+    suffixes = [
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
+    ]
+    _assert_directory_target_operation(suffixes[0], "/work/upload")
+    assert not any(args[:1] == ("cp",) for args in suffixes)
     await provider.close(handle)
 
 
@@ -209,7 +280,7 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
     _assert_file_target_operation(suffixes[4], "/", "/root-seed.txt")
     assert ("cp", str(source_file), "agent:/root-seed.txt") in suffixes
     _assert_file_repair_operation(suffixes[6], "/root-seed.txt")
-    assert ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/workspace") in suffixes
+    _assert_directory_target_operation(suffixes[7], "/workspace")
     assert ("cp", f"{source_dir}{os.sep}.", "agent:/workspace") in suffixes
     await provider.close(handle)
 

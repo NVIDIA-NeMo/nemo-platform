@@ -19,6 +19,7 @@ from ._compose_state import _ComposeSession
 
 _FILE_TARGET_OPERATION = "nemo-compose-file-target"
 _REPAIR_FILE_OPERATION = "nemo-compose-file-repair"
+_DIRECTORY_TARGET_OPERATION = "nemo-compose-directory-target"
 _PREPARE_FILE_TARGET_SCRIPT = """\
 parent=$1
 target=$2
@@ -37,6 +38,12 @@ identity=$2
 chown -h "$identity" "$target" || exit 1
 chmod u+w "$target" || exit 1
 [ -f "$target" ] && [ ! -L "$target" ] || exit 1
+"""
+_PREPARE_DIRECTORY_TARGET_SCRIPT = """\
+target=$1
+[ ! -L "$target" ] || exit 1
+mkdir -p "$target" || exit 1
+[ -d "$target" ] && [ ! -L "$target" ] || exit 1
 """
 
 
@@ -142,6 +149,36 @@ async def _repair_uploaded_file(
         )
 
 
+async def _prepare_directory_target(
+    cli: _ComposeCli,
+    session: _ComposeSession,
+    target: str,
+    *,
+    command_timeout_seconds: float,
+) -> None:
+    """Prepare a dedicated non-symlink directory target as root."""
+    prepared = await _run_target_root(
+        cli,
+        session,
+        [
+            "sh",
+            "-c",
+            _PREPARE_DIRECTORY_TARGET_SCRIPT,
+            _DIRECTORY_TARGET_OPERATION,
+            target,
+        ],
+        command_timeout_seconds=command_timeout_seconds,
+    )
+    if not prepared.ok:
+        raise RuntimeError(
+            cli.failure_message(
+                "Compose upload target preparation failed",
+                prepared,
+                session.environment,
+            )
+        )
+
+
 async def _copy_to_service(
     cli: _ComposeCli,
     session: _ComposeSession,
@@ -173,20 +210,12 @@ async def _copy_to_service(
     container_target = _normalized_upload_target(target, directory=directory)
     remote_directory = container_target if directory else posixpath.dirname(container_target)
     if directory:
-        prepared = await _run_target_root(
+        await _prepare_directory_target(
             cli,
             session,
-            ["mkdir", "-p", "--", remote_directory],
+            remote_directory,
             command_timeout_seconds=command_timeout_seconds,
         )
-        if not prepared.ok:
-            raise RuntimeError(
-                cli.failure_message(
-                    "Compose upload target preparation failed",
-                    prepared,
-                    session.environment,
-                )
-            )
     else:
         await _prepare_file_target(
             cli,

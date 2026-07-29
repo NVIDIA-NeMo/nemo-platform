@@ -26,6 +26,7 @@ _TOPOLOGY = ComposeServiceTopology(
 
 _FILE_TARGET_OPERATION = "nemo-compose-file-target"
 _FILE_REPAIR_OPERATION = "nemo-compose-file-repair"
+_DIRECTORY_TARGET_OPERATION = "nemo-compose-directory-target"
 
 
 class _Runner:
@@ -55,6 +56,8 @@ class _Runner:
         self.file_repairs: list[tuple[str, str]] = []
         self.retained_file_targets: set[str] = set()
         self.prepared_file_targets: list[tuple[str, str]] = []
+        self.directory_target_kinds: dict[str, str] = {}
+        self.prepared_directory_targets: list[str] = []
         self.repair_failures_remaining = 0
         self._down_attempts = 0
 
@@ -141,6 +144,18 @@ class _Runner:
                     f"token={environment.get('TEST_TOKEN', 'chmod failed')}",
                 )
             self.file_repairs.append((target, identity))
+            return ComposeCommandResult(argv, 0, "", "")
+        if (
+            args[:7] == ("exec", "--no-TTY", "--user", "0", "agent", "sh", "-c")
+            and args[-2] == _DIRECTORY_TARGET_OPERATION
+        ):
+            target = args[-1]
+            if "directory_prepare" in self.failures:
+                return ComposeCommandResult(argv, 1, "", "directory preparation failed")
+            if self.directory_target_kinds.get(target, "absent") not in {"absent", "directory"}:
+                return ComposeCommandResult(argv, 1, "", "unsafe exact directory target")
+            self.directories.add(target)
+            self.prepared_directory_targets.append(target)
             return ComposeCommandResult(argv, 0, "", "")
         if args[:1] == ("exec",) and "printf" in args[-1]:
             if "identity" in self.failures:
