@@ -489,13 +489,13 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
               {
                 // `fill-none` overrides the menu's cloned `fill: 'solid'`, which would otherwise paint
                 // the folder body over the "+"/"-" (they're drawn before the folder shape).
-                label: 'Add to group',
+                label: 'Add to experiment',
                 icon: <FolderPlus className="fill-none" size={16} />,
                 onSelect: () =>
                   setAddToGroupState({ evaluations: [row.original], clearSelection: () => {} }),
               },
               {
-                label: 'Remove from group',
+                label: 'Remove from experiment',
                 icon: <FolderMinus className="fill-none" size={16} />,
                 onSelect: () => removeFromGroup(row.original),
               },
@@ -560,7 +560,7 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
             }
           >
             <FolderPlus />
-            Add to experiment group
+            Add to experiment
           </Button>
         )}
         toolbarSlotEnd={

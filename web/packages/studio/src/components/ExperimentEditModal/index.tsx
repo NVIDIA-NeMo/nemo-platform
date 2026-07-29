@@ -93,14 +93,14 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
           : error instanceof Error
             ? error.message
             : 'Unknown error';
-      toast.error(`Failed to update experiment group: ${message}`);
+      toast.error(`Failed to update experiment: ${message}`);
     }
   };
 
   return (
     <FormModal
-      title="Edit experiment group"
-      instruction="Update the group's description and default sort order."
+      title="Edit experiment"
+      instruction="Update the experiment's description and default sort order."
       submitButtonText={isPending ? 'Saving…' : 'Save'}
       disabled={isPending}
       loading={isPending}

@@ -43,7 +43,7 @@ import { type ComponentProps, type FC, useMemo, useState } from 'react';
 const DEFAULT_PAGE_SIZE = 10;
 
 /**
- * Column filters available for experiment groups. `created_at` / `updated_at` are base entity
+ * Column filters available for experiments. `created_at` / `updated_at` are base entity
  * fields the list endpoint filters via `$gte` / `$lte` ranges. They are not declared on the
  * generated `ExperimentFilter` type, so the API filter is widened here and coerced back at
  * the SDK boundary (see `filter` below).
@@ -105,24 +105,24 @@ export const ExperimentRoute: FC = () => {
     { query: { placeholderData: keepPreviousData } }
   );
 
-  const groups = data?.data ?? [];
+  const experiments = data?.data ?? [];
   const totalResults = data?.pagination?.total_results ?? 0;
 
   return (
-    <AccessibleTitle title="Experiment groups">
+    <AccessibleTitle title="Experiments">
       <Stack className="h-full min-h-0" gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="p-0 shrink-0"
           slotHeading={
             <>
-              Experiment groups
+              Experiments
               <FeatureFlagBadge flag="experiment" />
             </>
           }
-          slotDescription="Manage groups for online optimization. Review reports down to the frame level."
+          slotDescription="Manage experiments for online optimization. Review runs down to the frame level."
           slotActions={
             <Button color="brand" onClick={() => setIsCreateModalOpen(true)}>
-              New experiment group
+              New experiment
             </Button>
           }
         />
@@ -137,11 +137,11 @@ export const ExperimentRoute: FC = () => {
           searchField="name"
           attributes={{
             DataViewRoot: {
-              data: groups,
+              data: experiments,
               totalCount: totalResults,
               requestStatus: error ? 'error' : isLoading ? 'loading' : undefined,
             },
-            DataViewSearchBar: { placeholder: 'Search experiment groups...' },
+            DataViewSearchBar: { placeholder: 'Search experiments...' },
           }}
         >
           <Stack className="h-full min-h-0" gap="density-md">
@@ -152,8 +152,8 @@ export const ExperimentRoute: FC = () => {
                   <Flex justify="center" className="p-density-2xl">
                     <Text kind="body/regular/md" className="text-secondary">
                       {hasSearchApplied || hasFiltersApplied
-                        ? 'No experiment groups match your search or filters.'
-                        : 'No experiment groups yet.'}
+                        ? 'No experiments match your search or filters.'
+                        : 'No experiments yet.'}
                     </Text>
                   </Flex>
                 )}

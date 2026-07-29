@@ -183,9 +183,13 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
       });
     } catch (error) {
       // Creation failed (e.g. duplicate name) — surface inline on the name field where possible and
-      // keep the modal open. No group was created, so there's nothing to add.
+      // keep the modal open. No experiment was created, so there's nothing to add.
       const detail = error instanceof AxiosError ? error.response?.data?.detail : undefined;
-      if (detail === `Experiment group ${data.name} already exists.`) {
+      if (
+        error instanceof AxiosError &&
+        error.response?.status === 409 &&
+        typeof detail === 'string'
+      ) {
         setError('name', { message: detail });
         return;
       }
@@ -195,7 +199,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
           : error instanceof Error
             ? error.message
             : 'Unknown error';
-      toast.error(`Failed to create experiment group: ${message}`);
+      toast.error(`Failed to create experiment: ${message}`);
       return;
     }
     // Group now exists; adding evaluations is best-effort (a group with fewer evals is still valid).
@@ -224,8 +228,8 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
 
   return (
     <FormModal
-      title="Add to experiment group"
-      instruction={`Add ${countLabel} to another experiment group to compare across boards.`}
+      title="Add to experiment"
+      instruction={`Add ${countLabel} to another experiment to compare across boards.`}
       submitButtonText={submitButtonText}
       disabled={busy}
       loading={busy}
@@ -237,7 +241,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
       className="w-[560px]"
     >
       <Stack gap="density-2xl" className="w-full">
-        <FormField slotLabel="Experiment group">
+        <FormField slotLabel="Experiment">
           <SelectRoot
             value={selectedGroupId}
             onValueChange={setSelectedGroupId}
@@ -245,10 +249,10 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
           >
             <SelectTrigger
               className="w-full"
-              placeholder={isLoading ? 'Loading groups…' : 'Select or create a group'}
-              aria-label="Experiment group"
+              placeholder={isLoading ? 'Loading experiments…' : 'Select or create an experiment'}
+              aria-label="Experiment"
               renderValue={(v) => {
-                if (v === CREATE_NEW) return 'Create new group';
+                if (v === CREATE_NEW) return 'Create new experiment';
                 return typeof v === 'string' && v ? (groupNameById.get(v) ?? undefined) : undefined;
               }}
             />
@@ -263,7 +267,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
                 <SelectItem value={CREATE_NEW}>
                   <Flex gap="density-sm" align="center">
                     <Plus className="size-4" />
-                    Create new group
+                    Create new experiment
                   </Flex>
                 </SelectItem>
               </SelectListbox>

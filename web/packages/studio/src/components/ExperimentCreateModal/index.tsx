@@ -96,7 +96,11 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
           ? error.response.data.detail
           : undefined;
 
-      if (errorDetail === `Experiment group ${data.name} already exists.`) {
+      if (
+        error instanceof AxiosError &&
+        error.response?.status === 409 &&
+        typeof errorDetail === 'string'
+      ) {
         setError('name', { message: errorDetail });
       } else {
         let errorMessage: string;
@@ -110,15 +114,15 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
           errorMessage = 'Unknown error';
         }
 
-        toast.error(`Failed to create experiment group: ${errorMessage}`);
+        toast.error(`Failed to create experiment: ${errorMessage}`);
       }
     }
   };
 
   return (
     <FormModal
-      title="Create experiment group"
-      instruction="Group experiments to allow easy comparison of top level and test cases"
+      title="Create experiment"
+      instruction="Group evaluations to allow easy comparison of top level and test cases"
       submitButtonText="Create"
       disabled={formDisabled}
       loading={isSubmitting}
@@ -132,7 +136,7 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
     >
       <TabsRoot defaultValue="create" className="w-full min-w-0">
         <TabsList>
-          <TabsTrigger value="create">Create group</TabsTrigger>
+          <TabsTrigger value="create">Create experiment</TabsTrigger>
           <TabsTrigger value="coding-agent">Coding agent</TabsTrigger>
           <TabsTrigger value="cli">CLI command</TabsTrigger>
         </TabsList>

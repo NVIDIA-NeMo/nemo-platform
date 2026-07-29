@@ -87,11 +87,11 @@ describe('AddToGroupModal', () => {
     });
   });
 
-  it('offers "Create new group" plus only groups not every selected evaluation already belongs to', async () => {
+  it('offers "Create new experiment" plus only groups not every selected evaluation already belongs to', async () => {
     const user = userEvent.setup();
     renderModal();
-    await user.click(screen.getByRole('combobox', { name: /experiment group/i }));
-    expect(await screen.findByRole('option', { name: /create new group/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: /experiment/i }));
+    expect(await screen.findByRole('option', { name: /create new experiment/i })).toBeInTheDocument();
     // g1: both evals are members -> excluded. g2: only eval-2 is a member -> still offered. g3: none.
     expect(screen.getByRole('option', { name: 'Beta benchmarks' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Gamma benchmarks' })).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe('AddToGroupModal', () => {
     const user = userEvent.setup();
     const { onSuccess } = renderModal();
 
-    await user.click(screen.getByRole('combobox', { name: /experiment group/i }));
+    await user.click(screen.getByRole('combobox', { name: /experiment/i }));
     await user.click(await screen.findByRole('option', { name: 'Gamma benchmarks' }));
     await user.click(screen.getByRole('button', { name: 'Add' }));
 
@@ -125,8 +125,8 @@ describe('AddToGroupModal', () => {
     const user = userEvent.setup();
     const { onSuccess } = renderModal();
 
-    await user.click(screen.getByRole('combobox', { name: /experiment group/i }));
-    await user.click(await screen.findByRole('option', { name: /create new group/i }));
+    await user.click(screen.getByRole('combobox', { name: /experiment/i }));
+    await user.click(await screen.findByRole('option', { name: /create new experiment/i }));
     await user.type(screen.getByRole('textbox', { name: /^name$/i }), 'regression-suite');
     await user.click(screen.getByRole('button', { name: 'Create & add' }));
 
@@ -149,7 +149,7 @@ describe('AddToGroupModal', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
 
-  it('still offers "Create new group" when every group already contains all selected evaluations', async () => {
+  it('still offers "Create new experiment" when every group already contains all selected evaluations', async () => {
     const user = userEvent.setup();
     mockUseListExperiments.mockReturnValue({
       data: { data: [makeGroup('g1', 'Alpha benchmarks')] },
@@ -157,10 +157,10 @@ describe('AddToGroupModal', () => {
     });
     renderModal([makeEvaluation('eval-1', ['g1']), makeEvaluation('eval-2', ['g1'])]);
 
-    const trigger = screen.getByRole('combobox', { name: /experiment group/i });
+    const trigger = screen.getByRole('combobox', { name: /experiment/i });
     expect(trigger).toBeEnabled();
     await user.click(trigger);
-    expect(await screen.findByRole('option', { name: /create new group/i })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: /create new experiment/i })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Alpha benchmarks' })).not.toBeInTheDocument();
   });
 });

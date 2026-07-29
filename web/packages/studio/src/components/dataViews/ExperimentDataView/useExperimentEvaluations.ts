@@ -193,10 +193,10 @@ export function useExperimentEvaluations({
   const { mutate: patchEvaluation } = usePatchEvaluation({
     mutation: {
       onSuccess: () => {
-        toast.success('Removed the evaluation from this group.');
+        toast.success('Removed the evaluation from this experiment.');
         return invalidateList();
       },
-      onError: () => toast.error('Failed to remove the evaluation from this group.'),
+      onError: () => toast.error('Failed to remove the evaluation from this experiment.'),
       onSettled: (_data, _error, { name }) => {
         pendingRef.current.delete(name);
       },
@@ -210,7 +210,7 @@ export function useExperimentEvaluations({
       // The API rejects an empty `experiment_ids`, so block removing an evaluation's only group and
       // explain why rather than firing a request that would 400.
       if (row.experiment_ids.length <= 1) {
-        toast.error('This evaluation must belong to at least one experiment group.');
+        toast.error('This evaluation must belong to at least one experiment.');
         return;
       }
       pendingRef.current.add(name);

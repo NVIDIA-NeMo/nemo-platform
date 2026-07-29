@@ -59,7 +59,7 @@ export const ExperimentDetailRoute: FC = () => {
           }
         />
         {error ? (
-          <ErrorMessage message="Failed to load experiment group." />
+          <ErrorMessage message="Failed to load experiment." />
         ) : (
           <>
             {group && (
