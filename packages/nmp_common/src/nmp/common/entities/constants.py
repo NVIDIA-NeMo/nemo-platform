@@ -12,6 +12,8 @@
 # TODO(#3530): Remove @, ., +, _ once versioning is implemented and predefined target names (e.g., llama-3.2-3b-instruct@v1.0.0+A100) are updated.
 NAME_PATTERN = r"^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$"
 
+NAME_MAX_LENGTH = 63
+
 NAME_PATTERN_DESCRIPTION = (
     "Name must start with a lowercase letter, be 2-63 characters, "
     "and contain only lowercase letters, digits, and hyphens "

@@ -9416,11 +9416,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'The name of the fileset. Allowed characters: letters (a-z,
-            A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: The name of the fileset. Name must start with a lowercase letter,
+            be 2-63 characters, and contain only lowercase letters, digits, and hyphens
+            (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - training-data-v1
           - llama-checkpoint
@@ -9686,11 +9687,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the model provider. Allowed characters: letters (a-z,
-            A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the model provider. Name must start with a lowercase
+            letter, be 2-63 characters, and contain only lowercase letters, digits,
+            and hyphens (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - my-nim-provider
           - openai-endpoint
@@ -16480,9 +16482,12 @@ components:
       properties:
         name:
           type: string
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'The name of the secret to create. Allowed characters: letters
-            (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: The name of the secret to create. Name must start with a lowercase
+            letter, be 2-63 characters, and contain only lowercase letters, digits,
+            and hyphens (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - hf-token
           - wandb-api-key

@@ -34,7 +34,7 @@ from nmp.testing import (
     short_unique_name,
     unique_email,
 )
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 # Service principals have elevated access (like platform admin)
 SERVICE_PRINCIPAL = "service:integration-test"
@@ -997,9 +997,17 @@ class TestSecretNameValidation:
         # Name with uppercase letter - violates DNS-compliant naming rules
         invalid_name = "test-secret-123-Test"
 
+        with pytest.raises(ValidationError) as local_exc:
+            PlatformSecretCreateRequest(name=invalid_name, value=SecretStr("test-value"))
+        assert "should match pattern" in str(local_exc.value).lower()
+
+        # model_construct skips validation so the bad name still reaches the server,
+        # which is where the 500-vs-422 regression lived.
         with pytest.raises(ClientUnprocessableEntityError) as exc_info:
             admin_secrets.create_secret(
-                body=PlatformSecretCreateRequest(name=invalid_name, value=SecretStr("test-value")),
+                body=PlatformSecretCreateRequest.model_construct(
+                    name=invalid_name, value=SecretStr("test-value"), description=None
+                ),
                 workspace="default",
             )
 
@@ -1016,9 +1024,15 @@ class TestSecretNameValidation:
         admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         invalid_name = "TEST-SECRET"
 
+        with pytest.raises(ValidationError) as local_exc:
+            PlatformSecretCreateRequest(name=invalid_name, value=SecretStr("test-value"))
+        assert "should match pattern" in str(local_exc.value).lower()
+
         with pytest.raises(ClientUnprocessableEntityError) as exc_info:
             admin_secrets.create_secret(
-                body=PlatformSecretCreateRequest(name=invalid_name, value=SecretStr("test-value")),
+                body=PlatformSecretCreateRequest.model_construct(
+                    name=invalid_name, value=SecretStr("test-value"), description=None
+                ),
                 workspace="default",
             )
 
