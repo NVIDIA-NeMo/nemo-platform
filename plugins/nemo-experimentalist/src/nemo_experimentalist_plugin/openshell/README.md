@@ -73,14 +73,18 @@ uv run --frozen nemo-experimentalist-harbor-bridge --host 0.0.0.0
 request; use a host firewall on untrusted networks.
 
 In another shell with the same token, configure the provider profiles. The
-inference provider is held by the gateway and backs `inference.local`; its
-credential is never attached to the sandbox. The bridge and selected
-source-control provider expose randomized placeholders in the sandbox, which
-OpenShell replaces only in proxied requests:
+NVIDIA provider is explicitly configured with
+`NVIDIA_BASE_URL=https://inference-api.nvidia.com/v1` and is held by the gateway
+behind `inference.local`; its credential is never attached to the sandbox. The
+bridge and selected source-control provider expose randomized placeholders in
+the sandbox, which OpenShell replaces only in proxied requests:
 
 ```bash
 export NVIDIA_API_KEY=nvapi-...
-export NEMO_EXPERIMENTALIST_INFERENCE_MODEL=meta/llama-3.3-70b-instruct
+export NEMO_EXPERIMENTALIST_INFERENCE_MODEL=aws/anthropic/claude-haiku-4-5-v1
+export EXPERIMENTALIST_SMART_MODEL_NAME=openai/aws/anthropic/claude-haiku-4-5-v1
+export EXPERIMENTALIST_MID_MODEL_NAME="$EXPERIMENTALIST_SMART_MODEL_NAME"
+export EXPERIMENTALIST_FAST_MODEL_NAME="$EXPERIMENTALIST_SMART_MODEL_NAME"
 
 # Configure either or both source-control credentials. Only one is attached
 # to any individual sandbox by run.sh.
@@ -91,6 +95,11 @@ export NEMO_EXPERIMENTALIST_GITLAB_HOST=gitlab.example.com
 
 plugins/nemo-experimentalist/src/nemo_experimentalist_plugin/openshell/configure-providers.sh
 ```
+
+`NEMO_EXPERIMENTALIST_INFERENCE_MODEL` is the raw Inference Hub model ID.
+Experimentalist's NOOA model names add the `openai/` transport prefix. When the
+explicit inference model is unset, the setup script derives it from the smart
+model by removing that prefix.
 
 The setup script enables the gateway-global OpenShell
 `providers_v2_enabled=true` setting. Without it OpenShell injects credential

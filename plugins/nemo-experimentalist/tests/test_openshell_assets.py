@@ -115,7 +115,87 @@ def test_provider_setup_imports_scoped_profiles_and_keeps_inference_on_gateway()
     assert "nemo-experimentalist-gitlab-publish" in setup
     assert "openshell inference set" in setup
     assert "--from-existing" in setup
+    assert "NVIDIA_BASE_URL=https://inference-api.nvidia.com/v1" in setup
     assert '--credential "$credential_env"' in setup
+
+
+def test_provider_setup_deletes_platform_scoped_profiles(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    openshell_log = tmp_path / "openshell.log"
+    fake_openshell = fake_bin / "openshell"
+    fake_openshell.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >>"$FAKE_OPENSHELL_LOG"
+if [[ "$1 $2" == "provider get" ]]; then
+  exit 1
+fi
+if [[ "$1 $2 $3" == "provider profile export" ]]; then
+  printf 'id: %s\\nscope: platform\\n' "$4"
+fi
+""",
+        encoding="utf-8",
+    )
+    fake_openshell.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(PROVIDER_SETUP_PATH)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=os.environ
+        | {
+            "FAKE_OPENSHELL_LOG": str(openshell_log),
+            "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN": "bridge-placeholder",
+            "NEMO_EXPERIMENTALIST_PROVIDER_PROFILE_DIR": str(tmp_path / "profiles"),
+            "PATH": f"{fake_bin}:/usr/bin:/bin",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    log = openshell_log.read_text(encoding="utf-8")
+    for profile_path in PROVIDER_PROFILE_DIR.glob("*.yaml"):
+        assert f"provider profile delete --global {profile_path.stem}" in log
+
+
+def test_provider_setup_derives_raw_inference_hub_model_id(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    openshell_log = tmp_path / "openshell.log"
+    fake_openshell = fake_bin / "openshell"
+    fake_openshell.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >>"$FAKE_OPENSHELL_LOG"
+if [[ "$1 $2" == "provider get" || "$1 $2 $3" == "provider profile export" ]]; then
+  exit 1
+fi
+""",
+        encoding="utf-8",
+    )
+    fake_openshell.chmod(0o755)
+    env = os.environ.copy()
+    env.pop("NEMO_EXPERIMENTALIST_INFERENCE_MODEL", None)
+    env |= {
+        "EXPERIMENTALIST_SMART_MODEL_NAME": "openai/aws/anthropic/claude-haiku-4-5-v1",
+        "FAKE_OPENSHELL_LOG": str(openshell_log),
+        "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN": "bridge-placeholder",
+        "NEMO_EXPERIMENTALIST_PROVIDER_PROFILE_DIR": str(tmp_path / "profiles"),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+    }
+
+    result = subprocess.run(
+        ["bash", str(PROVIDER_SETUP_PATH)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    log = openshell_log.read_text(encoding="utf-8")
+    assert "inference set --provider nemo-experimentalist-inference --model aws/anthropic/claude-haiku-4-5-v1" in log
 
 
 def test_source_control_profiles_separate_read_and_publish_authority() -> None:
