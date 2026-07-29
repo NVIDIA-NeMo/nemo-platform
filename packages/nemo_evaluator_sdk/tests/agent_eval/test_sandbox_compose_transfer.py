@@ -37,7 +37,7 @@ async def test_exec_transfer_and_status_target_configured_service(
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
     assert transfer_suffixes[:5] == [
-        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "--", "/missing/parent"),
+        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "/missing/parent"),
         ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/missing/parent"),
         ("cp", str(source), "agent:/missing/parent/seed.txt"),
         ("exec", "--no-TTY", "agent", "sh", "-c", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
@@ -114,7 +114,7 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
     assert suffixes[:5] == [
-        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "--", "/missing/parent"),
+        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "/missing/parent"),
         ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/missing/parent"),
         ("cp", str(source_file), "agent:/missing/parent/seed.txt"),
         ("exec", "--no-TTY", "agent", "sh", "-c", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
@@ -198,7 +198,7 @@ async def test_upload_file_does_not_repair_a_preexisting_parent(
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
     assert suffixes == [
-        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "--", "/existing/parent"),
+        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "/existing/parent"),
         ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/existing/parent"),
         ("cp", str(source), "agent:/existing/parent/seed.txt"),
         ("exec", "--no-TTY", "agent", "sh", "-c", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
@@ -240,7 +240,7 @@ async def test_upload_file_stops_after_an_unconfirmed_parent_probe(
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
     assert suffixes == [
-        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "--", "/existing/parent"),
+        ("exec", "--no-TTY", "--user", "0", "agent", "test", "-d", "/existing/parent"),
     ]
     await provider.close(handle)
 

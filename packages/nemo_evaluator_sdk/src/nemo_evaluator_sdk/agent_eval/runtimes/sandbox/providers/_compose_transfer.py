@@ -78,7 +78,7 @@ async def _copy_to_service(
             existing_parent = await _run_target_root(
                 cli,
                 session,
-                ["test", "-d", "--", remote_directory],
+                ["test", "-d", remote_directory],
                 command_timeout_seconds=command_timeout_seconds,
             )
             if existing_parent.return_code == 1 and not existing_parent.timed_out:
