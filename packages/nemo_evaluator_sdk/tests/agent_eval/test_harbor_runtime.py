@@ -35,8 +35,13 @@ _HELLO_WORLD_DATASET = Path(__file__).resolve().parents[2] / "examples" / "harbo
 
 
 def _write_trial(
-    job_dir: Path, trial_name: str, task_name: str, *, reward: float | None, exception: str | None = None
+    job_dir: Path, trial_name: str, task_name: str, *, reward: float | None, exception: object | None = None
 ) -> None:
+    """Write one Harbor trial dir. ``exception`` is stored verbatim as ``exception_info``.
+
+    Typed loosely on purpose: Harbor writes a mapping there, older runs wrote a bare
+    string, so the adapter has to cope with both.
+    """
     trial_dir = job_dir / trial_name
     (trial_dir / "agent").mkdir(parents=True)
     (trial_dir / "verifier").mkdir(parents=True)
@@ -1156,3 +1161,101 @@ def test_every_harbor_job_config_field_is_classified_against_the_sdk_stamp() -> 
     assert not classified - actual, (
         f"{sorted(classified - actual)} no longer exist on Harbor's JobConfig; drop them from the classification."
     )
+
+
+def test_trial_dir_without_result_json_is_skipped_and_its_task_reported_missing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A trial that died before the verifier leaves a dir but no result.json.
+
+    Harbor still creates the trial dir (and often an exception.txt), so the adapter
+    has to tolerate the absence rather than raise, while the task it belonged to
+    must not silently vanish from the run — it is reported as having no result.
+    """
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(job_dir, "ok-task__aaa", "ok-task", reward=1.0)
+    crashed = job_dir / "crashed-task__bbb"
+    (crashed / "agent").mkdir(parents=True)
+    (crashed / "exception.txt").write_text("Traceback (most recent call last): ...")
+
+    tasks = [
+        AgentEvalTask(id="ok-task", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()]),
+        AgentEvalTask(id="crashed-task", intent="y", inputs={"instruction": "q"}, metrics=[HarborRewardMetric()]),
+    ]
+    with caplog.at_level(logging.WARNING):
+        trials = build_trials_from_job_dir(job_dir, tasks)
+
+    assert [trial.task_id for trial in trials] == ["ok-task"]
+    assert "crashed-task" in caplog.text
+
+
+def test_unreadable_result_json_is_skipped_without_raising(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A truncated result.json must not take the whole job's adaptation down."""
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(job_dir, "ok-task__aaa", "ok-task", reward=1.0)
+    broken = job_dir / "broken-task__bbb"
+    broken.mkdir()
+    (broken / "result.json").write_text("{not json")
+
+    tasks = [
+        AgentEvalTask(id="ok-task", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()]),
+        AgentEvalTask(id="broken-task", intent="y", inputs={"instruction": "q"}, metrics=[HarborRewardMetric()]),
+    ]
+    with caplog.at_level(logging.WARNING):
+        trials = build_trials_from_job_dir(job_dir, tasks)
+
+    assert [trial.task_id for trial in trials] == ["ok-task"]
+    assert "broken-task" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("exception_info", "expected_type"),
+    [
+        ({"exception_type": "TimeoutError"}, "TimeoutError"),
+        ({"type": "TimeoutError"}, "TimeoutError"),
+        ({"name": "TimeoutError"}, "TimeoutError"),
+        ({"class": "TimeoutError"}, "TimeoutError"),
+        # A mapping Harbor filled with something unexpected still counts as failed.
+        ({"message": "boom"}, "UnknownException"),
+        ({}, "UnknownException"),
+        # Older/other writers put a bare value there.
+        ("NonZeroAgentExitCodeError", "NonZeroAgentExitCodeError"),
+        (17, "17"),
+    ],
+)
+def test_exception_info_shapes_all_resolve_to_a_type(
+    tmp_path: Path, exception_info: object, expected_type: str
+) -> None:
+    """Any non-null exception_info must mark the trial failed, whatever its shape.
+
+    Only a bare string was covered before, so a mapping — which is what Harbor
+    actually writes — went untested. Resolving to None here would silently promote
+    a crashed trial to COMPLETED and let it score.
+    """
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(job_dir, "t__aaa", "t", reward=1.0, exception=exception_info)
+
+    trials = build_trials_from_job_dir(
+        job_dir, [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
+    )
+
+    assert len(trials) == 1
+    assert trials[0].metadata["exception_type"] == expected_type
+    assert trials[0].status is AgentEvalTrialStatus.PARTIAL
+
+
+def test_absent_exception_info_leaves_the_trial_completed(tmp_path: Path) -> None:
+    """The negative case that gives the parametrization above its meaning."""
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(job_dir, "t__aaa", "t", reward=1.0, exception=None)
+
+    trials = build_trials_from_job_dir(
+        job_dir, [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
+    )
+
+    assert "exception_type" not in trials[0].metadata
+    assert trials[0].status is AgentEvalTrialStatus.COMPLETED
