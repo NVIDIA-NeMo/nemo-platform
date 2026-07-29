@@ -67,7 +67,7 @@ fabric = [
     "nemo-fabric-adapters-claude[harness]>=0.1.0rc4,<0.2.0",
     "nemo-fabric-adapters-codex[harness]>=0.1.0rc4,<0.2.0",
     "nemo-fabric-adapters-deepagents[harness]>=0.1.0rc4,<0.2.0",
-    # TODO(AIRCORE-952): Switch to [harness] once hermes-agent packaging resolves its Pillow constraints.
+    # TODO(AIRCORE-952): Switch to [harness] once hermes-agent relaxes vulnerable exact dependency pins.
     "nemo-fabric-adapters-hermes>=0.1.0rc4,<0.2.0; python_version < '3.14'",
 ]
 container = [

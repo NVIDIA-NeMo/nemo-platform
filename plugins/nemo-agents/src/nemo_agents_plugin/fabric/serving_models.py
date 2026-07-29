@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -57,3 +58,28 @@ class ChatCompletionResponse(BaseModel):
     model: str = "unknown-model"
     choices: list[ChatCompletionChoice]
     usage: dict[str, Any] | None = None
+
+
+class ChatCompletionStreamDelta(BaseModel):
+    """OpenAI-compatible streaming response delta."""
+
+    role: Literal["assistant"] | None = None
+    content: str | None = None
+
+
+class ChatCompletionStreamChoice(BaseModel):
+    """OpenAI-compatible streaming chat-completion choice."""
+
+    index: int = 0
+    delta: ChatCompletionStreamDelta
+    finish_reason: Literal["stop"] | None = None
+
+
+class ChatCompletionStreamResponse(BaseModel):
+    """OpenAI-compatible streaming chunk for one Fabric runtime invocation."""
+
+    id: str
+    object: Literal["chat.completion.chunk"] = "chat.completion.chunk"
+    created: int = Field(default_factory=lambda: int(time.time()))
+    model: str = "unknown-model"
+    choices: list[ChatCompletionStreamChoice]
