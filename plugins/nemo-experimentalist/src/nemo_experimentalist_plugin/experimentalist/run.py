@@ -5,7 +5,7 @@
 
 import importlib
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol, TextIO, cast
 
 from nemo_experimentalist_plugin.experimentalist.agent import build_experimentalist_agent
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
@@ -14,11 +14,27 @@ from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     make_experimentalist_backend,
 )
+from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, Verbosity
 from nemo_platform import AsyncNeMoPlatform
 
 
 class _LiteLLMModule(Protocol):
     drop_params: bool
+
+
+def build_run_reporter(
+    *,
+    run_dir: Path,
+    agent: str,
+    insight: str | None,
+    strategy: str = "evolutionary",
+    sink: TextIO | None = None,
+    verbosity: Verbosity = Verbosity.NORMAL,
+) -> RunReporter:
+    """Construct a reporter and announce the run start."""
+    reporter = RunReporter(sink=sink, verbosity=verbosity)
+    reporter.run_started(run_dir=run_dir, agent=agent, insight=insight, strategy=strategy)
+    return reporter
 
 
 async def run_experimentalist(
@@ -74,6 +90,12 @@ async def run_experimentalist(
     # A local file path is resolved; a platform insight id (str) is forwarded verbatim.
     insight = insight.resolve() if isinstance(insight, Path) else insight
 
+    reporter = build_run_reporter(
+        run_dir=experiment_dir,
+        agent=agent or "(from insight)",
+        insight=str(insight) if insight is not None else None,
+    )
+
     backend = make_experimentalist_backend(
         client=client,
         experiments_output=str(experiment_dir),
@@ -89,6 +111,7 @@ async def run_experimentalist(
         validation_dataset=validation_dataset,
         task_template=task_template,
         backend=backend,
+        reporter=reporter,
         config=config,
     )
     experimentalist = build_experimentalist_agent(
@@ -97,6 +120,14 @@ async def run_experimentalist(
         framework_skills_dirs=framework_skills_dirs,
     )
     result = await experimentalist.run(deps)
+    winner = result.winner
+    reporter.run_finished(
+        winner=winner.label if winner is not None else None,
+        scores=dict(winner.validation_reward) if winner and winner.validation_reward else {},
+        report_path=(experiment_dir / "eval-and-optimize" / "final_report.md")
+        if winner is not None
+        else None,
+    )
     return result.summary
 
 

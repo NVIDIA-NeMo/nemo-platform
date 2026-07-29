@@ -140,3 +140,35 @@ def test_full_run_transcript_is_the_loop_emission_contract() -> None:
     assert out.index("baseline") < out.index("evaluating candidates") < out.index("Finished")
     assert "agent-1 · validation" in out
     assert "+0.140" in out
+
+
+def test_build_run_reporter_emits_header_and_is_reusable() -> None:
+    from nemo_experimentalist_plugin.experimentalist.run import build_run_reporter
+
+    sink = io.StringIO()
+    reporter = build_run_reporter(
+        run_dir=Path("/exp/run-2"), agent="nemo-oo-airline",
+        insight="insight-892a", sink=sink,
+    )
+    out = sink.getvalue()
+    assert "strategy=evolutionary" in out       # default strategy
+    assert "/exp/run-2" in out
+    # returned reporter is live and usable for later verbs
+    reporter.progress(phase="baseline", completed=0, total=15)
+    assert "baseline" in sink.getvalue()
+
+
+def test_deps_accepts_a_reporter() -> None:
+    from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+    from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
+
+    reporter = RunReporter(sink=io.StringIO())
+    deps = ExperimentalistDeps(
+        workspace="w",
+        reporter=reporter,
+        insight=Path("/test/insight"),
+        train_dataset=DatasetRef(uri="test-train"),
+        validation_dataset=DatasetRef(uri="test-val"),
+        task_template=DatasetRef(uri="test-task"),
+    )
+    assert deps.reporter is reporter

@@ -18,6 +18,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
+from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 from pydantic import BaseModel, model_validator
 
@@ -56,6 +57,7 @@ class ExperimentalistDeps(BaseModel):
     evaluator_type: EvaluatorType = "harbor"
     agent_spec: str | None = None
     backend: ExperimentalistBackend | None = None
+    reporter: RunReporter | None = None
     config: EvolutionaryOptimizerConfig | None = None
 
     @model_validator(mode="after")
