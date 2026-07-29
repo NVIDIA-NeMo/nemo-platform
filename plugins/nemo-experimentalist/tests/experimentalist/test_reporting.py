@@ -22,8 +22,7 @@ def _reporter(verbosity: Verbosity = Verbosity.NORMAL) -> tuple[RunReporter, io.
 
 def test_run_started_emits_header_with_run_dir_and_insight() -> None:
     r, sink = _reporter()
-    r.run_started(run_dir=Path("/exp/run-1"), agent="nemo-oo-airline",
-                  insight="insight-892a", strategy="evolutionary")
+    r.run_started(run_dir=Path("/exp/run-1"), agent="nemo-oo-airline", insight="insight-892a", strategy="evolutionary")
     out = sink.getvalue()
     assert "strategy=evolutionary" in out
     assert "agent=nemo-oo-airline" in out
@@ -49,10 +48,12 @@ def test_progress_renders_fraction_and_bare_phase() -> None:
 
 def test_candidate_evaluated_sets_baseline_then_shows_delta() -> None:
     r, sink = _reporter()
-    r.candidate_evaluated(label="agent-0", split="validation", reward=0.05,
-                          artifacts=Path("/exp/results/agent-0-validation"))
-    r.candidate_evaluated(label="agent-1", split="validation", reward=0.19,
-                          artifacts=Path("/exp/results/agent-1-validation"))
+    r.candidate_evaluated(
+        label="agent-0", split="validation", reward=0.05, artifacts=Path("/exp/results/agent-0-validation")
+    )
+    r.candidate_evaluated(
+        label="agent-1", split="validation", reward=0.19, artifacts=Path("/exp/results/agent-1-validation")
+    )
     lines = sink.getvalue().splitlines()
     assert "reward 0.050" in lines[0]
     assert "▲" not in lines[0]  # baseline has no delta
@@ -62,18 +63,15 @@ def test_candidate_evaluated_sets_baseline_then_shows_delta() -> None:
 
 def test_train_split_shows_no_delta() -> None:
     r, sink = _reporter()
-    r.candidate_evaluated(label="agent-0", split="train", reward=0.23,
-                          artifacts=Path("/exp/results/agent-0-train"))
+    r.candidate_evaluated(label="agent-0", split="train", reward=0.23, artifacts=Path("/exp/results/agent-0-train"))
     assert "▲" not in sink.getvalue()
     assert "▼" not in sink.getvalue()
 
 
 def test_run_finished_winner_and_no_winner() -> None:
     r, sink = _reporter()
-    r.candidate_evaluated(label="agent-0", split="validation", reward=0.05,
-                          artifacts=Path("/x"))
-    r.run_finished(winner="agent-1", scores={"reward": 0.19},
-                   report_path=Path("/exp/final_report.md"))
+    r.candidate_evaluated(label="agent-0", split="validation", reward=0.05, artifacts=Path("/x"))
+    r.run_finished(winner="agent-1", scores={"reward": 0.19}, report_path=Path("/exp/final_report.md"))
     out = sink.getvalue()
     assert "winner=agent-1" in out
     assert "validation 0.190" in out
@@ -92,10 +90,10 @@ def test_quiet_suppresses_phase_and_candidate_but_keeps_header_footer() -> None:
     r.candidate_evaluated(label="agent-0", split="validation", reward=0.05, artifacts=Path("/x"))
     r.run_finished(winner="agent-0", scores={"reward": 0.05}, report_path=None)
     out = sink.getvalue()
-    assert "strategy=evolutionary" in out   # header kept
-    assert "winner=agent-0" in out          # footer kept
-    assert "baseline" not in out            # phase suppressed
-    assert "reward 0.050" not in out        # candidate suppressed
+    assert "strategy=evolutionary" in out  # header kept
+    assert "winner=agent-0" in out  # footer kept
+    assert "baseline" not in out  # phase suppressed
+    assert "reward 0.050" not in out  # candidate suppressed
 
 
 def test_methods_never_raise_on_broken_sink() -> None:
@@ -123,7 +121,9 @@ def test_candidate_evaluated_renders_subset_style_result_id_verbatim() -> None:
     r = RunReporter(sink=sink)
     # Real candidate train dirs look like agent-1-train-subset-1-<sha>, not agent-1-train.
     r.candidate_evaluated(
-        label="agent-1", split="train", reward=0.2,
+        label="agent-1",
+        split="train",
+        reward=0.2,
         artifacts=Path("/exp/results/agent-1-train-subset-1-42e2eab5a4e0"),
     )
     assert "agent-1-train-subset-1-42e2eab5a4e0" in sink.getvalue()
@@ -133,19 +133,18 @@ def test_full_run_transcript_is_the_loop_emission_contract() -> None:
     # This scripts the exact sequence loop.py must emit, locking the contract
     # the wiring tasks implement.
     r, sink = _reporter()
-    r.run_started(run_dir=Path("/exp/run-1"), agent="nemo-oo-airline",
-                  insight="insight-892a", strategy="evolutionary")
+    r.run_started(run_dir=Path("/exp/run-1"), agent="nemo-oo-airline", insight="insight-892a", strategy="evolutionary")
     r.progress(phase="baseline", completed=0, total=15)
-    r.candidate_evaluated(label="agent-0", split="validation", reward=0.05,
-                          artifacts=Path("/exp/results/agent-0-validation"))
-    r.candidate_evaluated(label="agent-0", split="train", reward=0.23,
-                          artifacts=Path("/exp/results/agent-0-train"))
+    r.candidate_evaluated(
+        label="agent-0", split="validation", reward=0.05, artifacts=Path("/exp/results/agent-0-validation")
+    )
+    r.candidate_evaluated(label="agent-0", split="train", reward=0.23, artifacts=Path("/exp/results/agent-0-train"))
     r.progress(phase="evaluating candidates", completed=1, total=15)
     r.candidate_started(label="agent-1", optimization="ground tool signatures", i=1, n=3)
-    r.candidate_evaluated(label="agent-1", split="validation", reward=0.19,
-                          artifacts=Path("/exp/results/agent-1-validation"))
-    r.run_finished(winner="agent-1", scores={"reward": 0.19},
-                   report_path=Path("/exp/final_report.md"))
+    r.candidate_evaluated(
+        label="agent-1", split="validation", reward=0.19, artifacts=Path("/exp/results/agent-1-validation")
+    )
+    r.run_finished(winner="agent-1", scores={"reward": 0.19}, report_path=Path("/exp/final_report.md"))
     out = sink.getvalue()
     # ordering sanity: baseline before round-1 before finish
     assert out.index("baseline") < out.index("evaluating candidates") < out.index("Finished")
@@ -158,11 +157,13 @@ def test_build_run_reporter_emits_header_and_is_reusable() -> None:
 
     sink = io.StringIO()
     reporter = build_run_reporter(
-        run_dir=Path("/exp/run-2"), agent="nemo-oo-airline",
-        insight="insight-892a", sink=sink,
+        run_dir=Path("/exp/run-2"),
+        agent="nemo-oo-airline",
+        insight="insight-892a",
+        sink=sink,
     )
     out = sink.getvalue()
-    assert "strategy=evolutionary" in out       # default strategy
+    assert "strategy=evolutionary" in out  # default strategy
     assert "/exp/run-2" in out
     # returned reporter is live and usable for later verbs
     reporter.progress(phase="baseline", completed=0, total=15)

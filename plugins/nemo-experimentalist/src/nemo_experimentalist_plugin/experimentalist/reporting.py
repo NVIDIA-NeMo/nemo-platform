@@ -61,9 +61,7 @@ class RunReporter:
         except Exception:  # noqa: BLE001 - narration must never break the run
             pass
 
-    def run_started(
-        self, *, run_dir: Path, agent: str, insight: str | None, strategy: str
-    ) -> None:
+    def run_started(self, *, run_dir: Path, agent: str, insight: str | None, strategy: str) -> None:
         try:
             self._emit(_RULE)
             self._emit(f" NeMo Experimentalist · strategy={strategy} · agent={agent}")
@@ -86,18 +84,12 @@ class RunReporter:
         try:
             frac = ""
             if completed is not None:
-                frac = (
-                    f" {unit} {completed}/≤{total}"
-                    if total is not None
-                    else f" {unit} {completed}"
-                )
+                frac = f" {unit} {completed}/≤{total}" if total is not None else f" {unit} {completed}"
             self._emit(f"▶{frac} · {phase}")
         except Exception:  # noqa: BLE001
             pass
 
-    def candidate_started(
-        self, *, label: str, optimization: str, i: int | None, n: int | None
-    ) -> None:
+    def candidate_started(self, *, label: str, optimization: str, i: int | None, n: int | None) -> None:
         if self._verbosity is Verbosity.QUIET:
             return
         try:
@@ -106,9 +98,7 @@ class RunReporter:
         except Exception:  # noqa: BLE001
             pass
 
-    def candidate_evaluated(
-        self, *, label: str, split: str, reward: float, artifacts: Path
-    ) -> None:
+    def candidate_evaluated(self, *, label: str, split: str, reward: float, artifacts: Path) -> None:
         if self._verbosity is Verbosity.QUIET:
             return
         try:
@@ -119,15 +109,11 @@ class RunReporter:
                 else:
                     d = reward - self._baseline_val
                     delta = f"  {'▲' if d >= 0 else '▼'}{d:+.3f}"
-            self._emit(
-                f"   {label} · {split:<10} · reward {reward:.3f}{delta}   → {artifacts}"
-            )
+            self._emit(f"   {label} · {split:<10} · reward {reward:.3f}{delta}   → {artifacts}")
         except Exception:  # noqa: BLE001
             pass
 
-    def run_finished(
-        self, *, winner: str | None, scores: dict[str, float], report_path: Path | None
-    ) -> None:
+    def run_finished(self, *, winner: str | None, scores: dict[str, float], report_path: Path | None) -> None:
         try:
             self._emit(_THIN)
             if winner is None:
@@ -136,11 +122,7 @@ class RunReporter:
                 head = f" Finished · winner={winner}"
                 val = scores.get("reward")
                 if val is not None:
-                    base = (
-                        f" (baseline {self._baseline_val:.3f})"
-                        if self._baseline_val is not None
-                        else ""
-                    )
+                    base = f" (baseline {self._baseline_val:.3f})" if self._baseline_val is not None else ""
                     head += f" · validation {val:.3f}{base}"
                 self._emit(head)
             if report_path is not None:
