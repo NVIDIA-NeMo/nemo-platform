@@ -449,6 +449,7 @@ class DockerDeploymentBackend(DeploymentBackend):
 
     async def read_status(self, *, workspace: str, name: str) -> BackendStatusUpdate:
         c_name = container_name(workspace, name)
+        dep_key = deployment_key(workspace, name)
         try:
             container = await asyncio.to_thread(self._client.containers.get, c_name)
             if not self._container_matches_deployment_group(container, workspace, name):
@@ -457,7 +458,10 @@ class DockerDeploymentBackend(DeploymentBackend):
             await asyncio.to_thread(container.reload)
         except self._docker_errors.NotFound:
             restart_policy = await self._resolve_restart_policy(workspace, name)
-            return missing_container_status(restart_policy, container_name=c_name)
+            status_update = missing_container_status(restart_policy, container_name=c_name)
+            if restart_policy in _ONE_SHOT_RESTART_POLICIES and self._gpu_pool is not None:
+                self._gpu_pool.release_gpu(dep_key)
+            return status_update
         except (
             self._docker_errors.APIError,
             ReadTimeout,
@@ -523,7 +527,6 @@ class DockerDeploymentBackend(DeploymentBackend):
         if state in ("exited", "dead"):
             exit_code = int(container.attrs.get("State", {}).get("ExitCode", 1))
             if exit_code == 0 and restart_policy in ("Never", "OnFailure"):
-                dep_key = deployment_key(workspace, name)
                 if self._gpu_pool is not None:
                     self._gpu_pool.release_gpu(dep_key)
                 return BackendStatusUpdate(
@@ -549,7 +552,6 @@ class DockerDeploymentBackend(DeploymentBackend):
                         exit_code=exit_code,
                         endpoints=endpoints,
                     )
-            dep_key = deployment_key(workspace, name)
             if self._gpu_pool is not None:
                 self._gpu_pool.release_gpu(dep_key)
             status = map_exited_status(exit_code, restart_policy)
