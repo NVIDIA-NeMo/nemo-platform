@@ -7,11 +7,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric.environment import ensure_local_workspace_dir
-from nemo_agents_plugin.fabric.runtime import FabricInvocationRequest, FabricRuntimeResult, invoke_fabric_runtime
+from nemo_agents_plugin.fabric.runtime import (
+    FabricInvocationRequest,
+    FabricRuntimeResult,
+    FabricRuntimeStream,
+    invoke_fabric_runtime,
+    stream_fabric_runtime,
+)
 from nemo_agents_plugin.fabric.session_registry import (
     FabricRuntimeSession,
     FabricSessionNotFoundError,
@@ -108,6 +116,25 @@ class FabricSessionManager:
                     return await invoke_fabric_runtime(session.runtime, request)
                 async with self._invocation_semaphore:
                     return await invoke_fabric_runtime(session.runtime, request)
+            finally:
+                await self._session_registry.refresh_activity(session)
+
+    @asynccontextmanager
+    async def stream_session(
+        self,
+        session: FabricRuntimeSession,
+        request: FabricInvocationRequest,
+    ) -> AsyncIterator[FabricRuntimeStream]:
+        """Serialize and stream one turn on a session's active runtime."""
+        async with session.invocation_lock:
+            if session.closing:
+                raise FabricSessionNotFoundError(f"Fabric session '{session.session_id}' was not found.")
+            try:
+                if self._invocation_semaphore is None:
+                    yield stream_fabric_runtime(session.runtime, request)
+                else:
+                    async with self._invocation_semaphore:
+                        yield stream_fabric_runtime(session.runtime, request)
             finally:
                 await self._session_registry.refresh_activity(session)
 

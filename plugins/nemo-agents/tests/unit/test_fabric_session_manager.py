@@ -381,6 +381,36 @@ async def test_invoke_session_refreshes_activity(
 
 
 @pytest.mark.asyncio
+async def test_stream_session_refreshes_activity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = FabricSessionRegistry()
+    session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+    )
+    stream = object()
+    refresh_calls: list[Any] = []
+
+    def stream_fabric_runtime(runtime: Any, request: FabricInvocationRequest) -> object:
+        return stream
+
+    async def refresh_activity(resolved_session: Any) -> None:
+        refresh_calls.append(resolved_session)
+
+    monkeypatch.setattr(session_manager, "stream_fabric_runtime", stream_fabric_runtime)
+    monkeypatch.setattr(registry, "refresh_activity", refresh_activity)
+
+    async with manager.stream_session(session, FabricInvocationRequest(input="hello")) as resolved_stream:
+        assert resolved_stream is stream
+
+    assert refresh_calls == [session]
+
+
+@pytest.mark.asyncio
 async def test_invoke_session_serializes_turns_for_same_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -429,6 +459,51 @@ async def test_invoke_session_serializes_turns_for_same_runtime(
     assert invocation_order == ["first", "second"]
     assert max_active_invocations == 1
     assert [result.response for result in results] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_stream_session_serializes_turns_for_same_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = FabricSessionRegistry()
+    session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+        fabric=cast(Any, _FakeFabric(_FakeRuntime())),
+    )
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    invocation_order: list[str] = []
+
+    def stream_fabric_runtime(runtime: Any, request: FabricInvocationRequest) -> object:
+        invocation_order.append(request.input)
+        return object()
+
+    monkeypatch.setattr(session_manager, "stream_fabric_runtime", stream_fabric_runtime)
+
+    async def stream_first() -> None:
+        async with manager.stream_session(session, FabricInvocationRequest(input="first")):
+            first_started.set()
+            await release_first.wait()
+
+    async def stream_second() -> None:
+        async with manager.stream_session(session, FabricInvocationRequest(input="second")):
+            pass
+
+    first = asyncio.create_task(stream_first())
+    await first_started.wait()
+    second = asyncio.create_task(stream_second())
+    await asyncio.sleep(0)
+
+    assert invocation_order == ["first"]
+
+    release_first.set()
+    await asyncio.gather(first, second)
+
+    assert invocation_order == ["first", "second"]
 
 
 @pytest.mark.asyncio

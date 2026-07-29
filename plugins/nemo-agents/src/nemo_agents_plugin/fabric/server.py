@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from nemo_agents_plugin.agent_config import AgentConfig, load_agent_config
 from nemo_agents_plugin.fabric.runtime import (
     FabricInvocationRequest,
@@ -39,6 +40,7 @@ from nemo_agents_plugin.fabric.session_manager import (
     FabricSessionStopError,
 )
 from nemo_agents_plugin.fabric.session_registry import FabricSessionNotFoundError, FabricSessionRegistry
+from nemo_agents_plugin.fabric.streaming import iter_fabric_assistant_text_deltas, iter_openai_chat_completion_sse
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,11 @@ def _session_headers(session_id: str) -> dict[str, str]:
     return {SESSION_ID_HEADER: session_id}
 
 
+def _request_model_name(request: ChatCompletionRequest) -> str:
+    model = getattr(request, "model", None)
+    return model if isinstance(model, str) and model else "unknown-model"
+
+
 def _failed_result_detail(result: FabricRuntimeResult) -> str:
     if isinstance(result.error, Mapping):
         message = result.error.get("message")
@@ -110,6 +117,24 @@ async def _validate_agent_config(config: AgentConfig, *, base_dir: Path) -> Any:
     from nemo_agents_plugin.fabric.validation import validate_platform_agent_config
 
     return await validate_platform_agent_config(config, base_dir=base_dir)
+
+
+async def _iter_streaming_chat_completion(
+    manager: FabricSessionManager,
+    session: Any,
+    invocation_request: FabricInvocationRequest,
+    *,
+    completion_id: str,
+    model: str,
+) -> AsyncIterator[str]:
+    async with manager.stream_session(session, invocation_request) as fabric_stream:
+        text_deltas = iter_fabric_assistant_text_deltas(fabric_stream)
+        async for event in iter_openai_chat_completion_sse(
+            completion_id=completion_id,
+            content_chunks=text_deltas,
+            model=model,
+        ):
+            yield event
 
 
 async def _run_idle_session_cleanup(
@@ -180,12 +205,12 @@ def create_fabric_serving_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/v1/chat/completions", response_model_exclude_none=True)
+    @app.post("/v1/chat/completions", response_model=None, response_model_exclude_none=True)
     async def chat_completions(
         request: ChatCompletionRequest,
         response: Response,
         session_id: Annotated[str | None, Header(alias=SESSION_ID_HEADER)] = None,
-    ) -> ChatCompletionResponse:
+    ) -> ChatCompletionResponse | StreamingResponse:
         try:
             session = await app.state.session_manager.resolve_session(session_id)
         except FabricSessionNotFoundError as error:
@@ -194,6 +219,19 @@ def create_fabric_serving_app(
             raise HTTPException(status_code=503, detail=str(error)) from error
 
         invocation_request = _to_fabric_invocation_request(request, session_id=session.session_id)
+        if request.stream:
+            return StreamingResponse(
+                _iter_streaming_chat_completion(
+                    app.state.session_manager,
+                    session,
+                    invocation_request,
+                    completion_id=f"chatcmpl-{uuid.uuid4().hex}",
+                    model=_request_model_name(request),
+                ),
+                media_type="text/event-stream",
+                headers=_session_headers(session.session_id),
+            )
+
         try:
             result = await app.state.session_manager.invoke_session(session, invocation_request)
         except FabricSessionNotFoundError as error:
