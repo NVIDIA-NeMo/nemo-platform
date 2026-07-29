@@ -120,11 +120,12 @@ async def test_create_deployment_reallocates_port_after_docker_conflict(
     free_host_ports: None,
 ) -> None:
     """Docker's port reservations are invisible to the probe, so a publish can still lose a race."""
+    first_port = docker_backend._executor_config.port_range_start
     leftover = MagicMock()
     mock_entities.get.return_value = published_port_config()
     mock_docker_client.containers.get.side_effect = [NotFound("missing"), leftover]
     mock_docker_client.containers.run.side_effect = [
-        _port_conflict_error(9000),
+        _port_conflict_error(first_port),
         MagicMock(id="abc123"),
     ]
 
@@ -137,7 +138,7 @@ async def test_create_deployment_reallocates_port_after_docker_conflict(
     )
 
     assert update.status == "STARTING"
-    assert _published_host_ports(mock_docker_client.containers.run) == [9000, 9001]
+    assert _published_host_ports(mock_docker_client.containers.run) == [first_port, first_port + 1]
     # run() creates then starts, so the container that failed to start still holds the name.
     leftover.remove.assert_called_once_with(force=True)
 
@@ -149,10 +150,11 @@ async def test_create_deployment_fails_after_repeated_port_conflicts(
     mock_docker_client: MagicMock,
     free_host_ports: None,
 ) -> None:
+    first_port = docker_backend._executor_config.port_range_start
     mock_entities.get.return_value = published_port_config()
     mock_docker_client.containers.get.side_effect = NotFound("missing")
     mock_docker_client.containers.run.side_effect = [
-        _port_conflict_error(9000 + offset) for offset in range(_PORT_CONFLICT_ATTEMPTS)
+        _port_conflict_error(first_port + offset) for offset in range(_PORT_CONFLICT_ATTEMPTS)
     ]
 
     update = await docker_backend.create_deployment(
@@ -166,7 +168,7 @@ async def test_create_deployment_fails_after_repeated_port_conflicts(
     assert update.status == "FAILED"
     assert _PORT_CONFLICT_MARKER in (update.status_message or "")
     published = _published_host_ports(mock_docker_client.containers.run)
-    assert published == [9000 + offset for offset in range(_PORT_CONFLICT_ATTEMPTS)]
+    assert published == [first_port + offset for offset in range(_PORT_CONFLICT_ATTEMPTS)]
 
 
 @pytest.mark.asyncio
