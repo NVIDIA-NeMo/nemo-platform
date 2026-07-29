@@ -9,9 +9,10 @@ from pydantic import ValidationError
 
 def test_docker_executor_config_defaults() -> None:
     cfg = DockerExecutorConfig()
-    assert cfg.port_range_start == 9000
-    assert cfg.port_range_end == 9100
+    assert cfg.port_range_start == 49152
+    assert cfg.port_range_end == 49251
     assert cfg.resource_scope == DEFAULT_RESOURCE_SCOPE
+    assert cfg.oneshot_observe_timeout_seconds == 5
 
 
 def test_docker_executor_config_rejects_inverted_port_range() -> None:

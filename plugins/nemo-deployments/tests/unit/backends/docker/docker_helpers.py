@@ -27,6 +27,22 @@ def sample_config(*, restart_policy: RestartPolicy = "Always") -> DeploymentConf
     )
 
 
+def published_port_config(*, restart_policy: RestartPolicy = "Always") -> DeploymentConfig:
+    """Single-container config that publishes a host port."""
+    return DeploymentConfig(
+        name="cfg1",
+        workspace="default",
+        containers=[
+            Container(
+                name="main",
+                image="alpine:latest",
+                ports=[ContainerPort(name="http", containerPort=8000)],
+            )
+        ],
+        restart_policy=restart_policy,  # ty: ignore[unknown-argument]
+    )
+
+
 def lora_config(*, restart_policy: RestartPolicy = "Always") -> DeploymentConfig:
     """A LoRA-shaped multi-container config: init + server + adapters sidecar.
 
