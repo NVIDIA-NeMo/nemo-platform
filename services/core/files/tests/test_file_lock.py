@@ -46,7 +46,12 @@ async def test_acquire_succeeds_when_no_existing_lock(lock_manager, mock_entity_
     assert created_lock.workspace == "test-workspace"
 
     # Should have released the lock
-    mock_entity_client.delete.assert_called_once_with(FileLock, expected_lock_name, workspace="test-workspace")
+    mock_entity_client.delete.assert_called_once_with(
+        FileLock,
+        expected_lock_name,
+        workspace="test-workspace",
+        expected_db_version=1,
+    )
 
 
 async def test_acquire_fails_when_fresh_lock_exists(lock_manager, mock_entity_client):
@@ -118,7 +123,12 @@ async def test_acquire_succeeds_after_cleaning_stale_lock(lock_manager, mock_ent
     assert updated_entity.acquired_at > stale_time
     assert updated_entity._db_version == 2  # db_version from stale lock is preserved
     # Lock should be released when context manager exits (delete is called in _release)
-    mock_entity_client.delete.assert_called_once_with(FileLock, lock_name, workspace="test-workspace")
+    mock_entity_client.delete.assert_called_once_with(
+        FileLock,
+        lock_name,
+        workspace="test-workspace",
+        expected_db_version=3,
+    )
 
 
 async def test_acquire_handles_update_version_conflict(lock_manager, mock_entity_client):
@@ -262,7 +272,12 @@ async def test_lock_released_on_success(lock_manager, mock_entity_client):
         await asyncio.sleep(0.01)
 
     # Lock should be released
-    mock_entity_client.delete.assert_called_with(FileLock, expected_lock_name, workspace="test-workspace")
+    mock_entity_client.delete.assert_called_with(
+        FileLock,
+        expected_lock_name,
+        workspace="test-workspace",
+        expected_db_version=1,
+    )
 
 
 async def test_lock_released_on_exception(lock_manager, mock_entity_client):
@@ -277,7 +292,12 @@ async def test_lock_released_on_exception(lock_manager, mock_entity_client):
             raise ValueError("test error")
 
     # Lock should still be released
-    mock_entity_client.delete.assert_called_with(FileLock, expected_lock_name, workspace="test-workspace")
+    mock_entity_client.delete.assert_called_with(
+        FileLock,
+        expected_lock_name,
+        workspace="test-workspace",
+        expected_db_version=1,
+    )
 
 
 async def test_lock_not_released_if_already_gone(lock_manager, mock_entity_client):
@@ -290,6 +310,17 @@ async def test_lock_not_released_if_already_gone(lock_manager, mock_entity_clien
         assert acquired is True
 
     # Delete was called but didn't raise despite EntityNotFoundError
+    mock_entity_client.delete.assert_called_once()
+
+
+async def test_lock_not_released_if_version_changed(lock_manager, mock_entity_client):
+    """Test that a lock reacquired by another request is not deleted by stale release."""
+    mock_entity_client.create.return_value = None
+    mock_entity_client.delete.side_effect = EntityConflictError("changed")
+
+    async with lock_manager.acquire("test/file.bin") as acquired:
+        assert acquired is True
+
     mock_entity_client.delete.assert_called_once()
 
 

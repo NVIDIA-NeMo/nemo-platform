@@ -428,6 +428,7 @@ async def test_create_deployment_cleans_config_on_deployment_failure() -> None:
     delete_call = entities.delete.await_args
     assert delete_call is not None
     assert delete_call.args[0] is DeploymentConfig
+    assert delete_call.kwargs["expected_db_version"] == 1
 
 
 @pytest.mark.asyncio
@@ -462,8 +463,10 @@ async def test_delete_waits_for_deployment_gone_before_config_delete() -> None:
         deployment_config="hello-dep",
         status="READY",
     )
-    # First get returns the deployment; subsequent gets in the wait loop raise NotFound.
-    entities.get = AsyncMock(side_effect=[deployment, NemoEntityNotFoundError("gone")])
+    deployment_config = DeploymentConfig(name="hello-dep", workspace="default")
+    # First get returns the deployment; the wait-loop get raises NotFound; final get
+    # fetches the config version used for the conditional delete.
+    entities.get = AsyncMock(side_effect=[deployment, NemoEntityNotFoundError("gone"), deployment_config])
     entities.update = AsyncMock()
     entities.delete = AsyncMock()
     backend._entities = entities
@@ -478,6 +481,7 @@ async def test_delete_waits_for_deployment_gone_before_config_delete() -> None:
     delete_call = entities.delete.await_args
     assert delete_call is not None
     assert delete_call.args[0] is DeploymentConfig
+    assert delete_call.kwargs["expected_db_version"] == 1
 
 
 @pytest.mark.asyncio

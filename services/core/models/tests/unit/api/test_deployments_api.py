@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.auth import AuthClient, Principal, get_auth_client
-from nmp.common.entities.client import EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityValidationError
 from nmp.core.models.api.service.model_deployment_service import DeploymentStatusConflictError, ModelDeploymentService
 from nmp.core.models.api.v2.deployments import router
 from nmp.core.models.api.v2.utils import ERR_DEPLOYMENTS_NOT_ENABLED as _DEPLOYMENTS_NOT_ENABLED
@@ -450,3 +450,23 @@ def test_delete_deployment_version_when_deployments_disabled_returns_422(
     assert response.status_code == 422
     assert response.json()["detail"] == _DEPLOYMENTS_NOT_ENABLED
     assert not mock_deployment_service.delete_deployment.called
+
+
+@patch("nmp.core.models.api.v2.deployments.deployments_enabled", return_value=True)
+def test_delete_deployment_conflict_returns_409(_mock_deployments_enabled, client, mock_deployment_service):
+    """Stale deployment deletes return 409."""
+    mock_deployment_service.delete_deployment.side_effect = EntityConflictError("stale version")
+
+    response = client.delete("/v2/workspaces/default/deployments/d")
+
+    assert response.status_code == 409
+
+
+@patch("nmp.core.models.api.v2.deployments.deployments_enabled", return_value=True)
+def test_delete_deployment_version_conflict_returns_409(_mock_deployments_enabled, client, mock_deployment_service):
+    """Stale deployment version deletes return 409."""
+    mock_deployment_service.delete_deployment.side_effect = EntityConflictError("stale version")
+
+    response = client.delete("/v2/workspaces/default/deployments/d/versions/1")
+
+    assert response.status_code == 409

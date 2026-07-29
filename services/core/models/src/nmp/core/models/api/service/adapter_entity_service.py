@@ -186,7 +186,12 @@ class AdapterEntityService:
             )
             return -2
 
-        await self.entity_client.delete_by_id(Adapter, adapter.id)
+        await self.entity_client.delete(
+            Adapter,
+            adapter.name,
+            workspace=adapter_workspace,
+            parent=adapter.parent,
+        )
         logger.info(
             f"Successfully deleted adapter {adapter_name} from model entity: {adapter_workspace}/{parent_model_ref}"
         )
@@ -243,7 +248,12 @@ class AdapterEntityService:
             raise ValueError(str(err)) from err
         if to_delete is None or not to_delete.parent:
             return -2
-        await self.entity_client.delete(Adapter, to_delete.name, workspace=adapter_workspace, parent=to_delete.parent)
+        await self.entity_client.delete(
+            Adapter,
+            to_delete.name,
+            workspace=adapter_workspace,
+            parent=to_delete.parent,
+        )
         logger.info(f"Successfully deleted adapter: {adapter_workspace}/{adapter_name}")
         return 0
 

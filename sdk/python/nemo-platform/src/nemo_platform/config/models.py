@@ -221,6 +221,10 @@ class ConfigFile(BaseModel):
         default=None,
         description="User-selected paths for local services (set by `nemo setup`).",
     )
+    telemetry_enabled: bool = Field(
+        default=True,
+        description="Whether anonymous usage telemetry is enabled. Set to false to opt out.",
+    )
 
     def ensure_context(
         self,

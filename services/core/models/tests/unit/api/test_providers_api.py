@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.auth import AuthClient, Principal, get_auth_client
-from nmp.common.entities.client import EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityValidationError
 from nmp.core.models.api.service.model_provider_service import ModelProviderService, ModelProviderValidationError
 from nmp.core.models.api.v2.providers import router
 from nmp.core.models.schemas import ModelProvider, ModelProviderStatus
@@ -503,3 +503,12 @@ def test_update_provider_status_entity_validation_error_returns_422(client, mock
 
     assert response.status_code == 422
     assert "served_models invalid" in response.json()["detail"]
+
+
+def test_delete_provider_conflict_returns_409(client, mock_model_provider_service):
+    """Test stale provider deletes return 409."""
+    mock_model_provider_service.delete_model_provider.side_effect = EntityConflictError("stale version")
+
+    response = client.delete("/apis/models/v2/workspaces/default/providers/test-provider")
+
+    assert response.status_code == 409

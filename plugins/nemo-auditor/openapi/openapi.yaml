@@ -890,6 +890,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -900,6 +905,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: AuditConfigOutput
       description: Audit configuration stored in the entity store.
     AuditInputSpec:
@@ -1427,6 +1433,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -1439,6 +1450,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: AuditTargetOutput
       description: Audit target (model under test) stored in the entity store.
     ConfigFilter:

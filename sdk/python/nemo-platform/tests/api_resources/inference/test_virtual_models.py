@@ -265,6 +265,16 @@ class TestVirtualModels:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
+    def test_method_delete_with_all_params(self, client: NeMoPlatform) -> None:
+        virtual_model = client.inference.virtual_models.delete(
+            name="name",
+            workspace="workspace",
+            expected_db_version=0,
+        )
+        assert virtual_model is None
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
     def test_raw_response_delete(self, client: NeMoPlatform) -> None:
         response = client.inference.virtual_models.with_raw_response.delete(
             name="name",
@@ -630,6 +640,16 @@ class TestAsyncVirtualModels:
         virtual_model = await async_client.inference.virtual_models.delete(
             name="name",
             workspace="workspace",
+        )
+        assert virtual_model is None
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_delete_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
+        virtual_model = await async_client.inference.virtual_models.delete(
+            name="name",
+            workspace="workspace",
+            expected_db_version=0,
         )
         assert virtual_model is None
 

@@ -680,20 +680,38 @@ def test_daemonize_services_bounds_probe_and_sleep_by_remaining_deadline(
     proc = MagicMock()
     proc.pid = 4242
     proc.poll.return_value = None
+    clock = 0.0
+    sleep_calls: list[float] = []
+
+    def monotonic() -> float:
+        nonlocal clock
+        if clock == 0.0:
+            clock = 4.0
+            return 0.0
+        return clock
+
+    def probe_status(*_args: object, **_kwargs: object) -> bool:
+        nonlocal clock
+        clock = 4.5
+        return False
+
+    def sleep(duration: float) -> None:
+        nonlocal clock
+        sleep_calls.append(duration)
+        clock += duration
 
     with (
         patch("nemo_platform.local.services.require_services_extra"),
-        patch("nemo_platform.local.services.probe_status", return_value=False) as probe_status,
+        patch("nemo_platform.local.services.probe_status", side_effect=probe_status) as probe_status_mock,
         patch("nemo_platform.local.services.subprocess.Popen", return_value=proc),
-        patch("nemo_platform.local.services.time.monotonic", side_effect=[0.0, 4.0, 4.5, 5.0]),
-        patch("nemo_platform.local.services.time.sleep") as sleep,
+        patch("nemo_platform.local.services.time.monotonic", side_effect=monotonic),
+        patch("nemo_platform.local.services.time.sleep", side_effect=sleep),
     ):
         with pytest.raises(services.ServicesStartupTimeoutError):
             services.daemonize_services(cfg)
 
-    assert probe_status.call_args.kwargs["timeout"] == pytest.approx(1.0)
-    sleep.assert_called_once()
-    assert sleep.call_args.args[0] == pytest.approx(0.5)
+    assert probe_status_mock.call_args.kwargs["timeout"] == pytest.approx(1.0)
+    assert sleep_calls == [pytest.approx(0.5)]
     proc.terminate.assert_called_once_with()
 
 

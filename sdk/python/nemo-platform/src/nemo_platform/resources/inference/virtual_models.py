@@ -32,17 +32,18 @@ from ..._response import (
     async_to_streamed_response_wrapper,
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
+from ..._exceptions import ConflictError
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.inference import (
     virtual_model_list_params,
     virtual_model_patch_params,
     virtual_model_create_params,
+    virtual_model_delete_params,
 )
 from ...types.inference.virtual_model import VirtualModel
 from ...types.inference.middleware_call_param import MiddlewareCallParam
 from ...types.inference.virtual_model_filter_param import VirtualModelFilterParam
 from ...types.inference.virtual_model_inference_config_param import VirtualModelInferenceConfigParam
-from ..._exceptions import ConflictError
 
 __all__ = ["VirtualModelsResource", "AsyncVirtualModelsResource"]
 
@@ -165,7 +166,7 @@ class VirtualModelsResource(SyncAPIResource):
         except ConflictError:
             if not exist_ok:
                 raise
-            return self.retrieve(name = name, workspace = workspace)
+            return self.retrieve(name=name, workspace=workspace)
 
     def retrieve(
         self,
@@ -282,6 +283,7 @@ class VirtualModelsResource(SyncAPIResource):
         name: str,
         *,
         workspace: str | None = None,
+        expected_db_version: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -296,6 +298,9 @@ class VirtualModelsResource(SyncAPIResource):
         VirtualModel. IGW's model cache is refreshed on its next polling cycle.
 
         Args:
+          expected_db_version: Optional database version for optimistic locking. Delete only succeeds if the
+              VirtualModel still has this version.
+
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request
@@ -318,7 +323,13 @@ class VirtualModelsResource(SyncAPIResource):
                 name=name,
             ),
             options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                extra_headers=extra_headers,
+                extra_query=extra_query,
+                extra_body=extra_body,
+                timeout=timeout,
+                query=maybe_transform(
+                    {"expected_db_version": expected_db_version}, virtual_model_delete_params.VirtualModelDeleteParams
+                ),
             ),
             cast_to=NoneType,
         )
@@ -535,7 +546,7 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
         except ConflictError:
             if not exist_ok:
                 raise
-            return await self.retrieve(name = name, workspace = workspace)
+            return await self.retrieve(name=name, workspace=workspace)
 
     async def retrieve(
         self,
@@ -652,6 +663,7 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
         name: str,
         *,
         workspace: str | None = None,
+        expected_db_version: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -666,6 +678,9 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
         VirtualModel. IGW's model cache is refreshed on its next polling cycle.
 
         Args:
+          expected_db_version: Optional database version for optimistic locking. Delete only succeeds if the
+              VirtualModel still has this version.
+
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request
@@ -688,7 +703,13 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
                 name=name,
             ),
             options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                extra_headers=extra_headers,
+                extra_query=extra_query,
+                extra_body=extra_body,
+                timeout=timeout,
+                query=await async_maybe_transform(
+                    {"expected_db_version": expected_db_version}, virtual_model_delete_params.VirtualModelDeleteParams
+                ),
             ),
             cast_to=NoneType,
         )

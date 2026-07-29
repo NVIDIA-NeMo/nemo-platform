@@ -6,7 +6,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from nmp.common.entities.client import EntityClient, EntityConflictError
+from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
 from nmp.hello_world.api.v1.messages.schemas import CreateHelloWorldMessageRequest, UpdateHelloWorldMessageRequest
 from nmp.hello_world.entities import HelloWorldMessage
@@ -107,18 +107,14 @@ async def delete_message(
     entity_store: EntityClient = Depends(get_entity_client),
 ) -> None:
     """Delete a HelloWorld message."""
-    # Get the message to find its ID
     try:
-        existing = await entity_store.get(HelloWorldMessage, name=name, workspace=workspace)
-    except Exception as e:
-        if "not found" in str(e).lower() or "404" in str(e):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Message '{name}' not found in workspace '{workspace}'",
-            ) from e
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-    try:
-        await entity_store.delete(HelloWorldMessage, existing.name, workspace=workspace)
+        await entity_store.delete(HelloWorldMessage, name, workspace=workspace)
+    except EntityConflictError as e:
+        raise HTTPException(status_code=409, detail="Concurrent modification - please retry.") from e
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Message '{name}' not found in workspace '{workspace}'",
+        ) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e

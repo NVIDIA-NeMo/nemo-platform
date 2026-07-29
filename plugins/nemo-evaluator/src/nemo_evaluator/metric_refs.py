@@ -12,8 +12,6 @@ converted, so the canonical job spec and execution path only ever see runtime
 
 from __future__ import annotations
 
-from typing import Any
-
 # ``MetricRef`` / ``MetricRefOrInline`` are defined in ``api.schemas`` (next to ``MetricInline``) so
 # entity/DTO modules can reference them without importing this module's entities-dependent resolution
 # logic (which would create an import cycle). Imported here for use below and re-exported for the
@@ -23,7 +21,7 @@ from nemo_evaluator.entities import MetricBundleEntity
 from nemo_evaluator.metric_storage import load_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.entities import EntityNotFoundError
+from nemo_platform_plugin.entity_client import NemoEntityGetterProtocol, NemoEntityNotFoundError
 
 
 def parse_metric_ref(root: str, default_workspace: str) -> tuple[str, str]:
@@ -39,7 +37,7 @@ async def resolve_metric_ref(
     ref: MetricRef,
     *,
     workspace: str,
-    entity_client: Any,
+    entity_client: NemoEntityGetterProtocol[MetricBundleEntity] | None,
     async_sdk: AsyncNeMoPlatform | None,
 ) -> MetricBundle:
     """Load and reconstruct the stored metric a reference points at."""
@@ -51,7 +49,7 @@ async def resolve_metric_ref(
     ref_workspace, name = parse_metric_ref(ref.root, workspace)
     try:
         entity = await entity_client.get(MetricBundleEntity, name=name, workspace=ref_workspace)
-    except EntityNotFoundError as exc:
+    except NemoEntityNotFoundError as exc:
         raise ValueError(
             f"Metric reference '{ref.root}' not found. "
             f"Ensure a stored metric named '{name}' exists in workspace '{ref_workspace}', "
@@ -64,7 +62,7 @@ async def resolve_metric_specs(
     metrics: list[MetricRefOrInline],
     *,
     workspace: str,
-    entity_client: Any,
+    entity_client: NemoEntityGetterProtocol[MetricBundleEntity] | None,
     async_sdk: AsyncNeMoPlatform | None,
 ) -> list[MetricBundle]:
     """Resolve a wire metric list into runtime bundles.

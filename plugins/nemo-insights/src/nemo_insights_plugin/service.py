@@ -303,6 +303,8 @@ def _build_insights_router() -> APIRouter:
                 status_code=404,
                 detail=f"Insight '{insight_id}' not found in workspace '{workspace}'.",
             ) from exc
+        except NemoEntityConflictError as exc:
+            raise HTTPException(status_code=409, detail="Concurrent modification - please retry.") from exc
         except Exception as exc:
             logger.exception("Failed to delete insight")
             raise HTTPException(status_code=500, detail="Failed to delete insight.") from exc

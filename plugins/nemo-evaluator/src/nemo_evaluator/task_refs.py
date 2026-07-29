@@ -19,7 +19,7 @@ from __future__ import annotations
 from nemo_evaluator.api.schemas import TasksetRef, parse_entity_ref
 from nemo_evaluator.entities import TaskEntity, TasksetEntity
 from nemo_evaluator.jobs.agent_spec import AgentEvalTaskInput
-from nemo_platform_plugin.entities import EntityClient, EntityNotFoundError
+from nemo_platform_plugin.entity_client import NemoAnyEntityGetterProtocol, NemoEntityNotFoundError
 
 
 def _entity_to_task_input(entity: TaskEntity) -> AgentEvalTaskInput:
@@ -44,7 +44,7 @@ async def resolve_taskset_ref(
     ref: TasksetRef,
     *,
     workspace: str,
-    entity_client: EntityClient | None,
+    entity_client: NemoAnyEntityGetterProtocol | None,
 ) -> list[AgentEvalTaskInput]:
     """Load a stored taskset and expand its members into inline task DTOs.
 
@@ -59,7 +59,7 @@ async def resolve_taskset_ref(
     ref_workspace, name = parse_entity_ref(ref.root, workspace)
     try:
         taskset = await entity_client.get(TasksetEntity, name=name, workspace=ref_workspace)
-    except EntityNotFoundError as exc:
+    except NemoEntityNotFoundError as exc:
         raise ValueError(
             f"Taskset reference '{ref.root}' not found. "
             f"Ensure a stored taskset named '{name}' exists in workspace '{ref_workspace}', "
@@ -75,7 +75,7 @@ async def resolve_taskset_ref(
         task_workspace, task_name = parse_entity_ref(task_ref.root, ref_workspace)
         try:
             entity = await entity_client.get(TaskEntity, name=task_name, workspace=task_workspace)
-        except EntityNotFoundError as exc:
+        except NemoEntityNotFoundError as exc:
             raise ValueError(
                 f"Task '{task_ref.root}' referenced by taskset '{ref.root}' was not found; "
                 "the stored task may have been deleted after the taskset was created."
@@ -97,7 +97,7 @@ async def resolve_agent_eval_tasks(
     tasks: TasksetRef | list[AgentEvalTaskInput],
     *,
     workspace: str,
-    entity_client: EntityClient | None,
+    entity_client: NemoAnyEntityGetterProtocol | None,
 ) -> list[AgentEvalTaskInput]:
     """Normalize an agent-eval ``tasks`` field to an inline task list.
 

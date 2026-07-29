@@ -200,6 +200,14 @@ async def delete_target(
             status_code=404,
             detail=f"AuditTarget '{name}' not found in workspace '{workspace}'.",
         ) from exc
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"AuditTarget '{name}' was modified by another request in workspace '{workspace}'. "
+                "Refresh the target and try again."
+            ),
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to delete audit target '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to delete audit target.") from exc

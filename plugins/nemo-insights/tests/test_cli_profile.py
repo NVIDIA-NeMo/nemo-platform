@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -15,6 +16,7 @@ from pydantic_ai import AgentRunError
 from typer.testing import CliRunner
 
 runner = CliRunner()
+_PROFILE_ENV_KEYS = ("NMP_BASE_URL", "INFERENCE_API_KEY")
 
 
 class AnalystRecorder:
@@ -32,7 +34,21 @@ def app() -> typer.Typer:
 
 
 @pytest.fixture(autouse=True)
-def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
+def restore_profile_env() -> Iterator[None]:
+    original = {key: os.environ.get(key) for key in _PROFILE_ENV_KEYS}
+    missing = {key for key in _PROFILE_ENV_KEYS if key not in os.environ}
+    yield
+    for key in _PROFILE_ENV_KEYS:
+        if key in missing:
+            os.environ.pop(key, None)
+        else:
+            value = original[key]
+            if value is not None:
+                os.environ[key] = value
+
+
+@pytest.fixture(autouse=True)
+def quiet_preflight(monkeypatch: pytest.MonkeyPatch, restore_profile_env: None) -> None:
     async def queryable(base_url: str, workspace: str, agent: str) -> bool:
         return True
 
