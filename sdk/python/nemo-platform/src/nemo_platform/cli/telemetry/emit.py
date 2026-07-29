@@ -4,8 +4,8 @@
 
 from __future__ import annotations
 
-import logging
 import sys
+import logging
 from pathlib import Path
 
 from nemo_platform.cli.telemetry.events import PlatformTelemetryEvent
@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 _invocation_opt_out = False
 
 _NOTICE_TEXT = (
-    "NeMo Platform collects anonymous usage data to improve the product. "
-    "No prompts, data, or personal information leave your machine. "
-    "Turn it off at any time with NEMO_TELEMETRY_ENABLED=false. "
+    "NeMo Platform CLI telemetry is on by default and sends anonymous usage data to improve the product. "
+    "It does not send prompts, model inputs or outputs, datasets, secrets, file contents, or personal identifiers. "
+    "Turn it off with NEMO_TELEMETRY_ENABLED=false or telemetry_enabled: false in the CLI config. "
     "Run nemo docs cli/configuration for details.\n"
 )
 

@@ -13,17 +13,17 @@ Environment variables:
 
 from __future__ import annotations
 
+import os
 import asyncio
 import logging
-import os
 import platform
 import threading
+from typing import Any
+from datetime import datetime, timezone
+from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 from collections.abc import Coroutine
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -37,12 +37,18 @@ MAX_RETRIES = 3
 # at exit for longer than this. httpx's default is ~5s, which is too long for a
 # best-effort flush that runs synchronously on the command's exit path.
 SEND_TIMEOUT_SECONDS = 2.0
-CPU_ARCHITECTURE = platform.uname().machine
 logger = logging.getLogger(__name__)
 
 
 def _telemetry_enabled() -> bool:
-    return os.getenv("NEMO_TELEMETRY_ENABLED", "true").lower() in ("1", "true", "yes")
+    value = os.getenv("NEMO_TELEMETRY_ENABLED")
+    if value is None:
+        return True
+    return value.strip().lower() == "true"
+
+
+def _cpu_architecture() -> str:
+    return platform.machine() or "undefined"
 
 
 def _telemetry_endpoint() -> str:
@@ -87,7 +93,7 @@ def build_payload(
         "clientType": "Native",
         "clientVariant": "Release",
         "clientVer": source_client_version,
-        "cpuArchitecture": CPU_ARCHITECTURE,
+        "cpuArchitecture": _cpu_architecture(),
         "deviceGdprBehOptIn": "None",
         "deviceGdprFuncOptIn": "None",
         "deviceGdprTechOptIn": "None",

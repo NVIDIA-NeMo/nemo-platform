@@ -4,20 +4,21 @@
 import asyncio
 import importlib
 import threading
-from datetime import datetime, timezone
 from typing import ClassVar
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import Field
+
 from nemo_platform.cli.telemetry.events import DeploymentTypeEnum, PlatformTelemetryEvent, _deployment_type
 from nemo_platform.cli.telemetry.handler import (
     QueuedEvent,
     TelemetryHandler,
+    build_payload,
     _telemetry_enabled,
     _telemetry_endpoint,
-    build_payload,
 )
-from pydantic import Field
 
 telemetry_module = importlib.import_module("nemo_platform.cli.telemetry.handler")
 
@@ -53,6 +54,15 @@ class TestEnvHelpers:
 
     def test_telemetry_enabled_disabled(self, monkeypatch):
         monkeypatch.setenv("NEMO_TELEMETRY_ENABLED", "false")
+        assert _telemetry_enabled() is False
+
+    def test_telemetry_enabled_true_when_explicitly_true(self, monkeypatch):
+        monkeypatch.setenv("NEMO_TELEMETRY_ENABLED", "true")
+        assert _telemetry_enabled() is True
+
+    @pytest.mark.parametrize("value", ["", "0", "1", "yes", "yep", "for sure"])
+    def test_telemetry_enabled_non_true_values_disable(self, monkeypatch, value):
+        monkeypatch.setenv("NEMO_TELEMETRY_ENABLED", value)
         assert _telemetry_enabled() is False
 
     def test_telemetry_endpoint_preserves_case(self, monkeypatch):
@@ -122,6 +132,16 @@ class TestBuildPayload:
         queued = self._make_queued()
         payload = build_payload([queued], source_client_version="1.0.0")
         assert payload["sessionId"] == "undefined"
+
+    def test_cpu_architecture_uses_platform_machine(self, monkeypatch):
+        monkeypatch.setattr(telemetry_module.platform, "machine", lambda: "arm64")
+        payload = build_payload([self._make_queued()], source_client_version="1.0.0")
+        assert payload["cpuArchitecture"] == "arm64"
+
+    def test_cpu_architecture_empty_value_falls_back_to_undefined(self, monkeypatch):
+        monkeypatch.setattr(telemetry_module.platform, "machine", lambda: "")
+        payload = build_payload([self._make_queued()], source_client_version="1.0.0")
+        assert payload["cpuArchitecture"] == "undefined"
 
     def test_empty_events_raises(self):
         with pytest.raises(ValueError):

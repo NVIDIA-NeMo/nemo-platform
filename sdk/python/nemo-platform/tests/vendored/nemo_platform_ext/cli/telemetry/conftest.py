@@ -4,6 +4,7 @@
 from collections.abc import Iterator
 
 import pytest
+
 from nemo_platform.cli.telemetry.events import _CI_ENV_VARS
 
 

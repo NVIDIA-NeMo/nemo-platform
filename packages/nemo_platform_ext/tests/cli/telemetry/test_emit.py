@@ -16,6 +16,7 @@ from nemo_platform_ext.cli.telemetry.events import CommandInvokedEvent, TaskStat
 @pytest.fixture(autouse=True)
 def _isolate_local_telemetry_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     session_mod._cached_state = None
+    monkeypatch.delenv("NEMO_TELEMETRY_ENABLED", raising=False)
     monkeypatch.setenv("NMP_CONFIG_FILE", str(tmp_path / "config.yaml"))
     monkeypatch.setattr(session_mod, "_session_state_path", lambda: tmp_path / "telemetry-state.json")
     yield
