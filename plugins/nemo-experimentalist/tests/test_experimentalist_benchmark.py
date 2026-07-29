@@ -27,17 +27,29 @@ def _load_runner() -> ModuleType:
     return module
 
 
+# Quality and fast train/validation/test sizes, as documented in benchmarks/README.md.
+DOCUMENTED_SPLIT_SIZES = {
+    "terminal-bench-2.1": ((38, 25, 26), (35, 12, 12)),
+    "tau3-banking": ((41, 28, 28), (6, 3, 3)),
+    "tau3-airline": ((20, 10, 20), (6, 3, 3)),
+    "tau3-retail": ((50, 24, 40), (6, 3, 3)),
+    "tau3-telecom": ((50, 24, 40), (6, 3, 3)),
+}
+
+
 @pytest.mark.parametrize(
     "suite_path",
     sorted((BENCHMARK_ROOT / "suites").glob("*.yaml")),
     ids=lambda path: path.stem,
 )
 def test_shipped_suite_agrees_with_its_own_partitions(suite_path: Path) -> None:
-    """Check each manifest against the runner's canonical rules, minus the live Hub.
+    """Check each manifest for the mistakes that do not need the live Hub to detect.
 
-    Substituting the quality partition for the Hub's task list still catches an
-    ``expected_task_count`` that disagrees with the split, a fast entry outside the
-    domain, and overlapping splits — the ways a hand-written manifest goes wrong.
+    Substituting the quality partition for the Hub's task list leaves the ID-level
+    checks tautological, but still catches an ``expected_task_count`` that disagrees
+    with the split, a fast entry outside the quality partition, overlapping splits,
+    entries YAML read as something other than strings, and a framework skill that
+    resolves to no directory. Rebalancing a split stays caught by its recorded sizes.
     """
     runner = _load_runner()
     suite = runner.load_suite(suite_path)
@@ -49,6 +61,9 @@ def test_shipped_suite_agrees_with_its_own_partitions(suite_path: Path) -> None:
     )
 
     assert suite.framework_skills_dirs(PLUGIN_ROOT)
+    quality_sizes, fast_sizes = DOCUMENTED_SPLIT_SIZES[suite_path.stem]
+    for split, expected in ((suite.partitions.quality, quality_sizes), (suite.partitions.fast, fast_sizes)):
+        assert (len(split.train), len(split.validation), len(split.test)) == expected
 
 
 def test_terminal_bench_suite_corrects_the_upstream_task_id() -> None:

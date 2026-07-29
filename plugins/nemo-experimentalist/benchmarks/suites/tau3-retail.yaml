@@ -18,12 +18,12 @@ partitions:
     commit: 363133ada1936491fb5bcec33cd62c3518a99f65
     note: >-
       The commit above identifies the `tau2-bench` revision these splits were derived from.
-      `test` is this domain's upstream `split_tasks.json` test list; `validation` is every
-      third entry of its train list, in upstream order, and `train` is the rest. Task IDs
-      only; no task content is copied here. The fast partition samples each quality split at a
-      fixed stride, 6/3/3, so a smoke run spans the split rather than clustering at its start.
-      112 of the 114 retail tasks carry an `NL_ASSERTION` reward basis, so retail scores
-      through the LLM judge in both partitions.
+      `test` is this domain's upstream `split_tasks.json` test list, taken verbatim; its train
+      list supplies `validation` at indices 2, 5, 8, ... and `train` from the rest. The fast
+      partition takes `split[:: len(split) // n][:n]` for n of 6, 3, and 3, so a smoke run
+      spans each split rather than clustering at its start. Task IDs only; no task content is
+      copied here. Retail is the one tau3 domain whose fast partition cannot avoid the LLM
+      judge: only tasks 33 and 34 score on database state alone.
   quality:
     train: [
       "0", "1", "3", "4", "7", "8", "11", "13", "15", "16", "20", "21", "23", "24", "28", "29", "31",

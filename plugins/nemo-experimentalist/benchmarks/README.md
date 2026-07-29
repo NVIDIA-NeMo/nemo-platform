@@ -39,44 +39,54 @@ asserts that the quality partition covers all 89 canonical IDs exactly once.
 
 ## tau3 provenance
 
-Each tau3 suite scopes one domain of `sierra-research/tau3-bench@1` by task-ID prefix.
-All four share the package's 375 tasks, its content hash
-`sha256:a57304f682894ac061090769af771a3617664f3ff6e5417d4eadf8e30433e4d9`, and its
+Each tau3 suite scopes one domain of `sierra-research/tau3-bench@1` by task-ID prefix,
+so the four cover disjoint subsets of the package's 375 tasks. All share its content
+hash `sha256:a57304f682894ac061090769af771a3617664f3ff6e5417d4eadf8e30433e4d9` and its
 Harbor Hub record
 <https://hub.harborframework.com/datasets/sierra-research/tau3-bench/1>:
 
-| Suite | Task-ID prefix | Tasks | Quality split |
+| Suite | Task-ID prefix | Quality split | LLM judge scores it? |
 | --- | --- | --- | --- |
-| `tau3-banking.yaml` | `tau3-bench__tau3-banking_knowledge-` | 97 | 41/28/28 |
-| `tau3-airline.yaml` | `tau3-bench__tau3-airline-` | 50 | 20/10/20 |
-| `tau3-retail.yaml` | `tau3-bench__tau3-retail-` | 114 | 50/24/40 |
-| `tau3-telecom.yaml` | `tau3-bench__tau3-telecom-` | 114 | 50/24/40 |
+| `tau3-banking.yaml` | `tau3-bench__tau3-banking_knowledge-` | 41/28/28 | quality only |
+| `tau3-airline.yaml` | `tau3-bench__tau3-airline-` | 20/10/20 | no |
+| `tau3-retail.yaml` | `tau3-bench__tau3-retail-` | 50/24/40 | yes |
+| `tau3-telecom.yaml` | `tau3-bench__tau3-telecom-` | 50/24/40 | no |
 
 Banking's partition came from `optimization-datasets` `feat/tau2-other-domains`
 commit `025ecd2ef2b518ad81f6b22d3f3937af8906fb01`, whose
 `tau2-banking-knowledge-NNN` names map onto the canonical
-`tau3-bench__tau3-banking_knowledge-task-NNN` IDs. The other three take `test`
-from the domain's upstream `split_tasks.json` test list and carve `validation` out
-of its train list, every third entry in upstream order; that file's train and test
-lists partition the domain exactly, so the quality split needs nothing invented
-beyond the validation stride.
+`tau3-bench__tau3-banking_knowledge-task-NNN` IDs. The other three domains ship an
+upstream `split_tasks.json` whose train and test lists partition the domain exactly,
+so `test` is that file's test list verbatim and only `validation` is carved out, at
+train indices 2, 5, 8, and so on.
 
 A canonical ID is `tau3-bench__` plus the name Harbor's `adapters/tau3-bench` gives
-the task, `tau3-<domain>-<slugified upstream task ID>`. Re-deriving IDs from that
-adapter against a `tau2-bench` checkout reproduces the banking manifest exactly,
-which is how the other three manifests were built.
+the task, `tau3-<domain>-<slugified upstream task ID>`. Running that adapter's naming
+rule over a `tau2-bench` checkout reproduces the banking manifest exactly, and its
+`adapter_metadata.json` records the same per-domain counts this directory claims
+(`airline=50, retail=114, telecom=114, banking_knowledge=97`). Those two checks agree
+on every ID and count, but neither is the published package: only
+`run.py --validate-only` compares a manifest against the Hub, and banking is the one
+domain the adapter enumerates from a task directory rather than from
+`split_tasks.json`, so reproducing it does not exercise that selection path.
 
-Every fast partition is 6/3/3. Banking picks its tasks from a filtered subset; the
-other three sample each quality split at a fixed stride, so a smoke run spans the
-split instead of clustering at its start — telecom's task IDs sort by issue type, and
-the first twelve are all `mms_issue`.
+Every fast partition is 6/3/3. Banking picks from a filtered subset; the other three
+take `split[:: len(split) // n][:n]`, which spans each split instead of clustering at
+its start — telecom's IDs sort by issue type, and its first twelve are all
+`mms_issue`.
 
-A domain's `reward_basis` decides whether scoring needs an LLM judge. Banking's fast
-partition draws only from its 87 pure-database-state tasks. Airline scores on
-database state and a substring check of the agent's messages, and telecom on
-environment assertions and expected actions, so both are judge-free in either
-partition. 112 of retail's 114 tasks carry an `NL_ASSERTION`, so retail always
-scores through the judge.
+Whether scoring needs an LLM judge is per task, set by each task's `reward_basis`.
+Banking's fast partition draws only from its 87 pure-database-state tasks, so smoke
+runs skip the judge. Telecom scores on environment assertions and expected actions,
+and airline on database state plus a substring check of the agent's messages, so
+neither reaches the judge at all. Retail does: only its tasks 33 and 34 score on
+database state alone.
+
+Two caveats these domains inherit from the package. Airline's tasks all carry
+`nl_assertions` that its `reward_basis` omits, and only 6 of the 50 assert
+`communicate_info`, so 44 of them are scored on database state alone — a weaker bar
+than upstream tau2 airline. And airline is small enough that its quality split leaves
+the optimizer 20 train and 10 validation tasks, the least signal of any suite here.
 
 Each task also runs a `tau3-runtime` sidecar hosting the tau2 environment and user
 simulator. Tau-style suites set `models.user_simulator`, which makes the runner
@@ -140,8 +150,7 @@ uv run python benchmarks/run.py \
   --agent examples/tau3-nooa-agent
 ```
 
-The other tau3 domains change only `--suite`; the two tau3 configs and the agent are
-domain-independent.
+The other tau3 domains change only `--suite`.
 
 Both setup and agent execution require network access. Each AUT installs its own
 dependencies from its committed `uv.lock` inside the task container and does not

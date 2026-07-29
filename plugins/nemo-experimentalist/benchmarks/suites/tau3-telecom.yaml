@@ -18,12 +18,11 @@ partitions:
     commit: 363133ada1936491fb5bcec33cd62c3518a99f65
     note: >-
       The commit above identifies the `tau2-bench` revision these splits were derived from.
-      `test` is this domain's upstream `split_tasks.json` test list; `validation` is every
-      third entry of its train list, in upstream order, and `train` is the rest. Task IDs
-      only; no task content is copied here. The fast partition samples each quality split at a
-      fixed stride, 6/3/3, so a smoke run spans the split rather than clustering at its start.
-      Telecom rewards score on environment assertions and expected actions, so no LLM judge is
-      involved.
+      `test` is this domain's upstream `split_tasks.json` test list, taken verbatim; its train
+      list supplies `validation` at indices 2, 5, 8, ... and `train` from the rest. The fast
+      partition takes `split[:: len(split) // n][:n]` for n of 6, 3, and 3, so a smoke run
+      spans each split rather than clustering at its start. Task IDs only; no task content is
+      copied here.
   quality:
     train:
       - mms-issue-airplane-mode-on-bad-network-preference-bad-wifi-calling-break-apn-mms-setting-break-app-both-permissions-data-mode-off-data-usage-exceeded-unseat-sim-card-user-abroad-roaming-disabled-off-persona-hard
