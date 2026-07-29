@@ -9420,8 +9420,8 @@ components:
           pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
           description: The name of the fileset. Name must start with a lowercase letter,
-            be 2-63 characters, and contain only lowercase letters, digits, and hyphens
-            (no consecutive hyphens, cannot end with a hyphen).
+            be 2-63 characters, and contain only lowercase letters, digits, hyphens,
+            and @ . + _ (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - training-data-v1
           - llama-checkpoint
@@ -9692,7 +9692,7 @@ components:
           title: Name
           description: Name of the model provider. Name must start with a lowercase
             letter, be 2-63 characters, and contain only lowercase letters, digits,
-            and hyphens (no consecutive hyphens, cannot end with a hyphen).
+            hyphens, and @ . + _ (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - my-nim-provider
           - openai-endpoint
@@ -10441,8 +10441,8 @@ components:
           title: Name
           description: Entity name (optional - auto-generated if not provided). Name
             must start with a lowercase letter, be 2-63 characters, and contain only
-            lowercase letters, digits, and hyphens (no consecutive hyphens, cannot
-            end with a hyphen).
+            lowercase letters, digits, hyphens, and @ . + _ (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - my-config
           - baseline-model-v1
@@ -10478,7 +10478,7 @@ components:
           title: New Name
           description: Updated entity name (optional). Name must start with a lowercase
             letter, be 2-63 characters, and contain only lowercase letters, digits,
-            and hyphens (no consecutive hyphens, cannot end with a hyphen).
+            hyphens, and @ . + _ (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - my-config
           - baseline-model-v1
@@ -16006,8 +16006,8 @@ components:
           title: Name
           description: The name of the step. Must be unique for all steps in a job.
             Name must start with a lowercase letter, be 2-63 characters, and contain
-            only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot
-            end with a hyphen).
+            only lowercase letters, digits, hyphens, and @ . + _ (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - preprocess
           - train-model
@@ -16056,8 +16056,8 @@ components:
           title: Name
           description: The name of the step. Must be unique for all steps in a job.
             Name must start with a lowercase letter, be 2-63 characters, and contain
-            only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot
-            end with a hyphen).
+            only lowercase letters, digits, hyphens, and @ . + _ (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - preprocess
           - train-model
@@ -16487,7 +16487,7 @@ components:
           title: Name
           description: The name of the secret to create. Name must start with a lowercase
             letter, be 2-63 characters, and contain only lowercase letters, digits,
-            and hyphens (no consecutive hyphens, cannot end with a hyphen).
+            hyphens, and @ . + _ (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - hf-token
           - wandb-api-key
@@ -16688,7 +16688,8 @@ components:
           title: Name
           description: Project name (unique within workspace). Name must start with
             a lowercase letter, be 2-63 characters, and contain only lowercase letters,
-            digits, and hyphens (no consecutive hyphens, cannot end with a hyphen).
+            digits, hyphens, and @ . + _ (no consecutive hyphens, cannot end with
+            a hyphen).
           examples:
           - ml-project
           - nlp-research
@@ -19725,7 +19726,8 @@ components:
           title: Name
           description: Workspace name (unique identifier). Name must start with a
             lowercase letter, be 2-63 characters, and contain only lowercase letters,
-            digits, and hyphens (no consecutive hyphens, cannot end with a hyphen).
+            digits, hyphens, and @ . + _ (no consecutive hyphens, cannot end with
+            a hyphen).
           examples:
           - ml-team
           - research
