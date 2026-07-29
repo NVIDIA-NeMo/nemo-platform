@@ -112,12 +112,12 @@ download_opa() {
   url="${OPA_DOWNLOAD_BASE_URL}/${OPA_VERSION}/${asset}"
   sha_url="${url}.sha256"
   echo "Downloading OPA ${OPA_VERSION} from ${url}..." >&2
-  if ! curl -fsSL "${url}" -o "${tmp_bin}"; then
+  if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "${url}" -o "${tmp_bin}"; then
     echo "Failed to download OPA binary from ${url}." >&2
     print_opa_help "${asset}"
     exit 1
   fi
-  if ! curl -fsSL "${sha_url}" -o "${tmp_sha}"; then
+  if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "${sha_url}" -o "${tmp_sha}"; then
     echo "Failed to download OPA checksum from ${sha_url}." >&2
     print_opa_help "${asset}"
     exit 1
