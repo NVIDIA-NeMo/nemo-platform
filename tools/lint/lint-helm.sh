@@ -18,6 +18,19 @@ helm dependency update "${HELM_FOLDER}"
 # Lint the Helm chart
 helm lint --strict "${HELM_FOLDER}"
 
+# Utilization-based autoscaling must reject missing CPU requests.
+helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set api.autoscaling.enabled=true >/dev/null 2>&1 && {
+  echo "API autoscaling accepted a missing CPU request" >&2
+  exit 1
+}
+helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set platformConfig.auth.enabled=true \
+  --set envoyProxy.autoscaling.enabled=true >/dev/null 2>&1 && {
+  echo "Envoy autoscaling accepted a missing CPU request" >&2
+  exit 1
+}
+
 # Validate the Helm chart by rendering templates with all values files in ci/ directory
 shopt -s nullglob
 for value_file in "${HELM_FOLDER}"/ci/*.yaml; do

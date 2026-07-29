@@ -1,5 +1,12 @@
 {{- if .Values.api.enabled }}
 {{- if .Values.api.autoscaling.enabled }}
+{{- $requests := .Values.api.resources.requests | default dict }}
+{{- if and .Values.api.autoscaling.targetCPUUtilizationPercentage (not $requests.cpu) }}
+{{- fail "api.resources.requests.cpu is required when API CPU autoscaling is enabled" }}
+{{- end }}
+{{- if and .Values.api.autoscaling.targetMemoryUtilizationPercentage (not $requests.memory) }}
+{{- fail "api.resources.requests.memory is required when API memory autoscaling is enabled" }}
+{{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
