@@ -4,7 +4,7 @@
 
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from typing import Any, Protocol
 from urllib.parse import urlparse
@@ -118,7 +118,7 @@ def create_experiment(
     experiment_group_id: str,
     dataset_name: str,
     dataset_version: str,
-    metadata: dict,
+    metadata: Mapping[str, object],
     client: httpx.Client | None = None,
 ) -> None:
     """Create the per-run Experiment under ``experiment_group_id``.
@@ -133,7 +133,7 @@ def create_experiment(
         "experiment_group_id": experiment_group_id,
         "dataset_name": dataset_name,
         "dataset_version": dataset_version,
-        "metadata": metadata,
+        "metadata": {key: str(value) for key, value in metadata.items()},
     }
     owns_client = client is None
     client = client or httpx.Client(timeout=30.0)
