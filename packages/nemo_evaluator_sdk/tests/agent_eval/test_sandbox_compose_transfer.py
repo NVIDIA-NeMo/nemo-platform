@@ -150,15 +150,21 @@ async def test_upload_file_derives_parent_from_normalized_target(
     await provider.upload_file(handle, source, "ignored/../root-seed.txt")
 
     suffixes = [
-        _compose_suffix(argv)
-        for argv, _, _ in runner.calls[transfer_start:]
-        if argv[:2] == ("docker", "compose")
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
     assert not any(args[-3:] == ("-p", "--", "/") for args in suffixes)
     assert ("cp", str(source), "agent:/root-seed.txt") in suffixes
     assert (
-        "exec", "--no-TTY", "--user", "0", "agent",
-        "chown", "-R", "1001:1002", "--", "/root-seed.txt",
+        "exec",
+        "--no-TTY",
+        "--user",
+        "0",
+        "agent",
+        "chown",
+        "-R",
+        "1001:1002",
+        "--",
+        "/root-seed.txt",
     ) in suffixes
     await provider.close(handle)
 

@@ -374,7 +374,7 @@ def test_project_lock_and_generated_names(
     second = _provider(tmp_path, project_name="shared")
     lock_paths = {first.lock_path, second.lock_path}
 
-    def record_open(path: Path, flags: int, mode: int = 0o777) -> int:
+    def record_open(path: Path, flags: int, mode: int = 0o600) -> int:
         fd = open_fd(path, flags, mode)
         if Path(path) in lock_paths:
             opened_fds.append(fd)
