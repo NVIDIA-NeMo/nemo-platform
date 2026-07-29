@@ -4,9 +4,9 @@
 import os
 from datetime import timedelta
 
-from mcp_timeout import create_tool
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.config import CodeActConfig
+from nooa.mcp import MCPManager
 from nooa.tools import ShellTools
 from nooa.tracing import enable_tracing, exporters
 from nooa.unifiedllm import CompletionClient
@@ -35,9 +35,10 @@ class Codeact(Agent, llm=llm):
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self.shell = ShellTools()
-        self.tau3_runtime = create_tool(
+        self.tau3_runtime = MCPManager.create_from_server(
             "tau3-runtime",
             url=os.environ.get("TAU3_RUNTIME_URL", "http://tau3-runtime:8000/mcp"),
+            transport="streamable-http",
             tool_call_timeout=timedelta(seconds=MCP_TOOL_TIMEOUT_SECONDS),
         )
 

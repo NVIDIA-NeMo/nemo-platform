@@ -17,10 +17,10 @@ the agent runs in. `harbor_wrapper` therefore passes `OPENAI_API_KEY` and
 `OPENAI_BASE_URL` through at exec time; `INFERENCE_API_KEY` / `INFERENCE_API_BASE` are
 honored as a fallback when running `main.py` outside the wrapper.
 
-`mcp_timeout.py` exists because nooa 0.0.6 gives its MCP transport no HTTP timeout, so
-httpx's 5 second default silently strands any tool call that takes longer — which the
-sidecar's user-simulator calls always do. See that module for the details and for when
-it can be deleted. `TAU3_MCP_TOOL_TIMEOUT_SECONDS` overrides the 300 second default.
+The agent raises nooa's `tool_call_timeout` to 300 seconds, overridable with
+`TAU3_MCP_TOOL_TIMEOUT_SECONDS`, because the sidecar runs a user-simulator LLM inside
+`start_conversation` and `send_message_to_user`. The default of 60 seconds would be
+enough today, but leaves no room for a slower model.
 
 Run this agent through the benchmark harness rather than invoking it directly:
 

@@ -369,8 +369,10 @@ nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
-# Not published to PyPI yet; pinned to an immutable public tag.
-nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", tag = "v0.0.6" }
+# Not published to PyPI yet, so this pins an immutable public commit. It is a commit
+# rather than a tag because the MCP transport-timeout fix landed after v0.0.6; move
+# back to a tag once one ships that contains it.
+nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "bea4614a0e2a6cf88f76225466159af883da80a0" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
