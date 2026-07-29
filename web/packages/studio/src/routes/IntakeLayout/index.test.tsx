@@ -4,19 +4,32 @@
 import { IntakeLayout } from '@studio/routes/IntakeLayout';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 
-const mockUseBreadcrumbs = vi.fn();
-
-vi.mock('@studio/providers/breadcrumbs/useBreadcrumbs', () => ({
-  useBreadcrumbs: mockUseBreadcrumbs,
+const { mockUseBreadcrumbs } = vi.hoisted(() => ({
+  mockUseBreadcrumbs: vi.fn(),
 }));
+
+vi.mock('@studio/providers/breadcrumbs/useBreadcrumbs', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@studio/providers/breadcrumbs/useBreadcrumbs')>();
+  return {
+    ...actual,
+    useBreadcrumbs: mockUseBreadcrumbs,
+  };
+});
 
 describe('IntakeLayout', () => {
   it('uses Traces for the section heading, breadcrumb, and document title', async () => {
-    renderRoute(<IntakeLayout />, {
+    renderRoute(undefined, {
       history: '/workspaces/default/intake/traces',
+      routes: [
+        {
+          path: '/workspaces/:workspace/intake/:selectedTab',
+          element: <IntakeLayout />,
+        },
+      ],
     });
 
-    expect(screen.getByRole('heading')).toHaveTextContent('Traces');
+    expect(screen.getByTestId('nv-page-header-heading')).toHaveTextContent('Traces');
     expect(mockUseBreadcrumbs).toHaveBeenCalledWith({
       items: [{ slotLabel: 'Traces' }],
     });
