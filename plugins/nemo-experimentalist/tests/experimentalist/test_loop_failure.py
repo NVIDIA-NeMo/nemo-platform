@@ -35,7 +35,9 @@ async def test_baseline_failure_marks_run_failed(monkeypatch, tmp_path, failure_
     monkeypatch.setattr(
         loop_module,
         "EvaluatorFactory",
-        lambda: SimpleNamespace(build_evaluator=lambda *args, **kwargs: object()),
+        lambda: SimpleNamespace(
+            build_evaluator=lambda *args, **kwargs: SimpleNamespace(prepare_dataset=lambda dataset: dataset)
+        ),
     )
     monkeypatch.setattr(
         loop_module,

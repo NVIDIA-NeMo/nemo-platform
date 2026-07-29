@@ -60,6 +60,9 @@ $NEMO experimentalist doctor
 The sandbox contains the optimization agents but has no Docker CLI or socket.
 Harbor evaluation crosses a narrow API to the local bridge described in the
 [OpenShell setup](src/nemo_experimentalist_plugin/openshell/README.md).
+Rationalizer and TraceAnalyzer use bridge-owned task dependency sessions, so
+their shell commands run inside the Harbor task environment without granting
+Docker authority to the sandbox.
 
 From a source checkout, the CLI reuses a compatible
 `local/nmp-experimentalist:local` image and otherwise builds that image for the

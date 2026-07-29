@@ -128,9 +128,19 @@ class Rationalizer(Agent, llm=get_smart_model()):
         if cached is not None:
             return cached
         async with task.start_deps() as runtime:
-            rationale = await self.solve(task, runtime, agent_spec=agent_spec)
-            rationale = await self.verify(task, runtime, rationale, agent_spec=agent_spec)
-            cache.store(self._workspace_path, key, rationale)
+            had_dependencies = "dependencies" in self.context
+            previous_dependencies = self.context.get("dependencies")
+            self.context["dependencies"] = runtime
+            try:
+                with self.shell.use_dependency_runtime(runtime):
+                    rationale = await self.solve(task, runtime, agent_spec=agent_spec)
+                    rationale = await self.verify(task, runtime, rationale, agent_spec=agent_spec)
+                    cache.store(self._workspace_path, key, rationale)
+            finally:
+                if had_dependencies:
+                    self.context["dependencies"] = previous_dependencies
+                else:
+                    self.context.pop("dependencies", None)
         return rationale
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=30, cell_timeout=120.0)))
@@ -484,12 +494,11 @@ class Rationalizer(Agent, llm=get_smart_model()):
         runtime injects to discover how to reach it — do not assume any
         specific mechanism (container, process, HTTP service, etc.).
 
-        The rationalizer's ``self.shell`` runs on the host. It can reach the
-        task's runtime only through whatever interface the runtime exposes
-        (e.g. env vars pointing to endpoints or exec wrappers). Never execute
-        host-side commands and record their output as if they were the AUT's
-        in-runtime experience — the paths, permissions, and tools available
-        on the host differ from those in the task runtime.
+        During this method, ``self.shell`` is bound to the active task runtime
+        when that runtime exposes command execution. Otherwise it runs on the
+        rationalizer host and can reach the task only through interfaces the
+        runtime exposes (for example, env vars pointing to endpoints). Never
+        record host-only output as if it were the AUT's in-runtime experience.
 
         Never include in rationale steps:
         - Paths or commands that only work on the rationalizer host, not in

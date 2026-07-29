@@ -410,14 +410,18 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             task_template_ref = staged_inputs.task_template
 
         # ---- Resolve datasets to evaluator-domain objects -----------------
-        train_eval_dataset = dataset_factory.build_dataset(
-            deps.evaluator_type,
-            train_dataset_ref,
+        train_eval_dataset = evaluator.prepare_dataset(
+            dataset_factory.build_dataset(
+                deps.evaluator_type,
+                train_dataset_ref,
+            )
         )
 
-        validation_eval_dataset = dataset_factory.build_dataset(
-            deps.evaluator_type,
-            validation_dataset_ref,
+        validation_eval_dataset = evaluator.prepare_dataset(
+            dataset_factory.build_dataset(
+                deps.evaluator_type,
+                validation_dataset_ref,
+            )
         )
 
         # ---- Resolve insight (Mode 1) vs local agent (Mode 2) -----------
@@ -463,9 +467,10 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                 train_dataset=train_eval_dataset,
                 validation_dataset=validation_eval_dataset,
                 client=backend.client,
+                prepare_dataset=evaluator.prepare_dataset,
             )
-            train_eval_dataset = eval_author_result.train_dataset
-            validation_eval_dataset = eval_author_result.validation_dataset
+            train_eval_dataset = evaluator.prepare_dataset(eval_author_result.train_dataset)
+            validation_eval_dataset = evaluator.prepare_dataset(eval_author_result.validation_dataset)
         else:
             # Mode 2: local agent directory as baseline, no insight required.
             insight = None

@@ -1119,6 +1119,15 @@ async def test_harbor_dependency_context_stop_started_runtime_no_environment(mon
 
 
 @pytest.mark.asyncio
+async def test_harbor_dependency_context_execute_requires_running_environment(tmp_path):
+    runtime = HarborDependencyRuntime(task_path=ResourceRef(uri=(tmp_path / "task").as_uri(), description=""))
+    ctx = HarborDependencyContext(runtime)
+
+    with pytest.raises(RuntimeError, match="environment is not running"):
+        await ctx.execute("pwd")
+
+
+@pytest.mark.asyncio
 async def test_harbor_dependency_context_stop_started_runtime_with_environment(monkeypatch):
     runtime = HarborDependencyRuntime(task_path=ResourceRef(uri="file:///tmp/task", description=""), delete=True)
     ctx = HarborDependencyContext(runtime)

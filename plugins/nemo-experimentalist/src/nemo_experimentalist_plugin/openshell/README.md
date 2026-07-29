@@ -18,11 +18,12 @@ OpenShell sandbox: nmp-experimentalist
   - no Docker CLI
   - no Docker socket
       |
-      | authenticated, typed POST /v1/evaluations
+      | authenticated evaluation and dependency-session API
       v
 local Harbor bridge
   - fixed trusted candidate adapter
   - validates and hardens Harbor tasks
+  - owns analyzer task environments
   - owns Harbor and the host Docker client
       |
       v
@@ -31,8 +32,11 @@ Harbor task containers
 
 The OpenShell sandbox has no Docker CLI or socket. Candidate Python is archived
 as data, authenticated through a narrow bridge request, and uploaded by fixed
-bridge code into each Harbor task container. The Docker-owning bridge never
-imports the candidate's `harbor_wrapper.py`.
+bridge code into each Harbor task container. Rationalizer and TraceAnalyzer
+start task dependency sessions through the same bridge and route their shell
+commands into the bridge-owned task container. The Docker-owning bridge never
+imports the candidate's `harbor_wrapper.py`, and analyzer commands never execute
+in the bridge host process.
 
 ## Start the local components
 
@@ -144,6 +148,18 @@ files.
 The packaged `run.sh` is the lower-level launcher used by the CLI. Invoke it
 directly only when debugging the OpenShell integration.
 
+For a release smoke against a workspace with a complete `optimizer.yaml`, run:
+
+```bash
+plugins/nemo-experimentalist/src/nemo_experimentalist_plugin/openshell/smoke-full-run.sh \
+  path/to/agent-workspace
+```
+
+The smoke uses the normal Dockerless OpenShell launcher, requires a complete
+optimization round to produce a round-analysis artifact, and fails if the
+artifact contains `analysis_error`. Pass normal `nemo experimentalist run`
+options after the workspace path when the profile needs overrides.
+
 Experimentalist itself calls `git` for clone, fetch, checkout, commit, and
 push. It calls `gh pr create` for a GitHub winner and `glab mr create` for a
 GitLab winner; preflight also calls `gh auth status` or `glab auth status`.
@@ -161,10 +177,13 @@ because the Docker Desktop kernel does not expose Landlock.
 
 ## Boundary and remaining risk
 
-The bridge accepts only bounded evaluator settings, candidate/dataset archives,
-and task IDs. It rejects caller-selected import paths, Docker Compose,
-host-environment interpolation, MCP servers, and accelerators, and forces
-Harbor's verifier into a separate container.
+The bridge accepts bounded evaluator settings, candidate/dataset/task archives,
+task IDs, and authenticated analyzer commands scoped to an active task
+environment. Dependency sessions expose start, in-container exec, and stop;
+they do not expose Docker commands, image/runtime selection, host paths, service
+selection, or host command execution. The bridge rejects caller-selected import
+paths, Docker Compose, host-environment interpolation, MCP servers, and
+accelerators, and forces Harbor's verifier into a separate container.
 
 The bridge still owns a host-root-equivalent Docker socket. Uploaded Harbor
 tasks can contain arbitrary Dockerfiles, and the candidate receives its model
@@ -186,6 +205,14 @@ host; neither endpoint reflects the resolved Authorization header. Endpoint
 binding in OpenShell would make this defense stronger.
 
 Registry download is not granted by this policy.
+
+The preview keeps dependency sessions in bridge memory. A bridge restart stops
+the sessions and fails the optimization run clearly; there is no durable
+reattachment, distributed scheduling, or multi-bridge routing yet.
+Only Docker-backed Harbor task dependencies with `delete=true` and no custom
+start, readiness, or stop commands are supported. Other dependency runtime
+forms fail before analysis begins. The existing force-build, health-check, and
+build-timeout behavior is preserved across the bridge.
 
 The host CLI has no direct-execution option. Experimentalist's in-process
 command path is enabled only inside the marked container image used by the

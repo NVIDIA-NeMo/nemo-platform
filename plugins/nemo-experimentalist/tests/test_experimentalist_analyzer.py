@@ -28,6 +28,7 @@ from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
     FailureClassification,
     PeerComparison,
 )
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DependencyRuntimeError
 from nemo_experimentalist_plugin.experimentalist.components.rationalizer import Rationale
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 
@@ -218,3 +219,29 @@ async def test_intake_availability_is_part_of_cache_key(tmp_path: Path, monkeypa
     assert len(calls) == 2
     assert calls[0]["client"] is None
     assert calls[1]["client"] is not None
+
+
+@pytest.mark.asyncio
+async def test_dependency_runtime_failure_is_not_converted_to_analysis_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingRationalizer(_FakeRationalizer):
+        async def run(self, task: Any, agent_spec: Any = None) -> Rationale:
+            raise DependencyRuntimeError("remote Harbor dependency startup failed")
+
+    calls: list[dict[str, Any]] = []
+    _install_fakes(monkeypatch, calls)
+    monkeypatch.setattr(analyzer_module, "Rationalizer", FailingRationalizer)
+    trial, dataset, evaluation = _fixtures()
+    analyzer = _make_analyzer(tmp_path, [trial])
+
+    with pytest.raises(DependencyRuntimeError, match="remote Harbor dependency startup failed"):
+        await analyzer.run(
+            agent="agent-a",
+            dataset=cast(Any, dataset),
+            evaluation=cast(Any, evaluation),
+            round=0,
+        )
+
+    assert calls == []

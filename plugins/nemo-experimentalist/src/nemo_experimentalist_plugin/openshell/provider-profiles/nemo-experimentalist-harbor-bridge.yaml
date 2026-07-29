@@ -3,7 +3,7 @@
 
 id: nemo-experimentalist-harbor-bridge
 display_name: NeMo Experimentalist Harbor bridge
-description: Authenticated access to the local Harbor evaluation bridge
+description: Authenticated access to local Harbor evaluation and task dependency sessions
 category: other
 credentials:
   - name: bridge_token
@@ -26,6 +26,15 @@ endpoints:
       - allow:
           method: POST
           path: /v1/evaluations
+      - allow:
+          method: POST
+          path: /v1/dependencies
+      - allow:
+          method: POST
+          path: /v1/dependencies/*/exec
+      - allow:
+          method: DELETE
+          path: /v1/dependencies/*
 binaries:
   - /app/.venv/bin/python
   - /app/.venv/bin/python3.13

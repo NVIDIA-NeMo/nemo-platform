@@ -9,6 +9,7 @@ before beginning insight-driven optimization.
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,10 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+    DependencyRuntimeError,
+    ResourceRef,
+)
 from nemo_experimentalist_plugin.experimentalist.components.model_config import get_fast_model, get_smart_model
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
@@ -261,6 +265,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         validation_dataset: Dataset,
         *,
         client: AsyncNeMoPlatform,
+        prepare_dataset: Callable[[Dataset], Dataset] | None = None,
     ) -> EvalAuthorResult:
         """Curate an evaluation suite and always close the owned shell session."""
         try:
@@ -271,6 +276,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                 train_dataset=train_dataset,
                 validation_dataset=validation_dataset,
                 client=client,
+                prepare_dataset=prepare_dataset,
             )
         finally:
             await self.shell.close()
@@ -284,6 +290,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         validation_dataset: Dataset,
         *,
         client: AsyncNeMoPlatform,
+        prepare_dataset: Callable[[Dataset], Dataset] | None = None,
     ) -> EvalAuthorResult:
         """Curate an evaluation suite from an Insight and its production traces.
 
@@ -294,6 +301,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             train_dataset: The train dataset to augment.
             validation_dataset: The validation dataset to augment.
             client: Existing NeMo Platform client used for Intake requests.
+            prepare_dataset: Optional evaluator hook that binds task runtimes.
         """
         resolved_agent = self.experiment_dir / agent_path
         insight_id = insight.id
@@ -319,6 +327,8 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                 await self.fill_task_template(staged.trace_ref, staged.task, client, insight.workspace)
                 insight_suite.validate(staged)
             materialized_dataset = insight_suite.promote_local(refs, staged_tasks)
+            if prepare_dataset is not None:
+                materialized_dataset = prepare_dataset(materialized_dataset)
         except BaseException:
             insight_suite.discard()
             raise
@@ -349,6 +359,8 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         analysis_statuses: dict[str, tuple[str, str | None]] = {}
         for task, ref, result in zip(tasks, refs, raw_diagnostics, strict=True):
             if isinstance(result, asyncio.CancelledError):
+                raise result
+            if isinstance(result, DependencyRuntimeError):
                 raise result
             if isinstance(result, BaseException):
                 logger.warning("Trace analysis failed for %s: %s", ref, result)

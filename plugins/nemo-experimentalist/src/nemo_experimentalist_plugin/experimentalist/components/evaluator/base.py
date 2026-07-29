@@ -39,6 +39,10 @@ class Evaluator(ABC):
         self.options = options
         self.experiment_dir = experiment_dir
 
+    def prepare_dataset(self, dataset: Dataset) -> Dataset:
+        """Bind evaluator-specific runtime behavior to a dataset."""
+        return dataset
+
     async def aggregate_results(self, results: Sequence[TrialResult]) -> dict[str, float | int]:
         """
         Aggregate evaluation results from multiple runs.

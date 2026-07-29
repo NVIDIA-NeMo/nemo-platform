@@ -18,6 +18,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
     DatasetRef,
     DatasetValidationError,
+    DependencyRuntimeError,
     Task,
     TrialResult,
 )
@@ -358,6 +359,34 @@ async def test_run_enforces_max_traces(
 
 
 @pytest.mark.asyncio
+async def test_run_prepares_materialized_dataset_before_trace_analysis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eval_author = _eval_author(tmp_path)
+    calls = _install_pipeline(monkeypatch, [_diagnostic("prepared")], eval_author)
+    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
+    prepared: list[Dataset] = []
+
+    def prepare_dataset(dataset: Dataset) -> Dataset:
+        prepared.append(dataset)
+        return dataset
+
+    await eval_author.run(
+        _insight(["trace-1"]),
+        Path("agent"),
+        Task(id="template"),
+        Dataset(id="train"),
+        Dataset(id="validation"),
+        client=cast(Any, object()),
+        prepare_dataset=prepare_dataset,
+    )
+
+    assert len(prepared) == 1
+    assert calls.analyzer_run[0].task is prepared[0].tasks[0]
+
+
+@pytest.mark.asyncio
 async def test_run_discards_staged_suite_when_filling_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -457,6 +486,29 @@ async def test_run_skips_failed_trace_analysis_and_keeps_successes(
     assert calls.augment_args[0][1] == [("trace-good", successful)]
     assert len(calls.fileset_publications) == 1
     assert "Trace analysis failed for trace-bad: analysis failed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_run_propagates_dependency_runtime_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eval_author = _eval_author(tmp_path)
+    _install_pipeline(
+        monkeypatch,
+        [DependencyRuntimeError("remote Harbor dependency startup failed")],
+        eval_author,
+    )
+
+    with pytest.raises(DependencyRuntimeError, match="remote Harbor dependency startup failed"):
+        await eval_author.run(
+            _insight(["trace-bad"]),
+            Path("agent"),
+            Task(id="template"),
+            Dataset(id="train"),
+            Dataset(id="validation"),
+            client=cast(Any, object()),
+        )
 
 
 @pytest.mark.asyncio

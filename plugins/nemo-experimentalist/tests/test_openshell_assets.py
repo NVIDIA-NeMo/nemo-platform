@@ -14,6 +14,7 @@ POLICY_PATH = OPENSHELL_ROOT / "policy.yaml"
 DOCKER_DESKTOP_POLICY_PATH = OPENSHELL_ROOT / "policy.docker-desktop.yaml"
 LAUNCHER_PATH = OPENSHELL_ROOT / "launcher.py"
 RUNNER_PATH = OPENSHELL_ROOT / "run.sh"
+FULL_RUN_SMOKE_PATH = OPENSHELL_ROOT / "smoke-full-run.sh"
 PROVIDER_SETUP_PATH = OPENSHELL_ROOT / "configure-providers.sh"
 ASKPASS_PATH = OPENSHELL_ROOT / "git-askpass.sh"
 PROVIDER_PROFILE_DIR = OPENSHELL_ROOT / "provider-profiles"
@@ -93,7 +94,8 @@ def test_openshell_launcher_uses_policy_and_inference_route() -> None:
     assert "--runtime" not in runner
     assert "local/nmp-experimentalist:local" in runner
     assert "--no-git-ignore" not in runner
-    assert "docker.sock" not in runner
+    assert "command -v docker" in runner
+    assert "/var/run/docker.sock" in runner
     assert LAUNCHER_PATH.is_file()
 
 
@@ -170,7 +172,7 @@ def test_source_control_profiles_separate_read_and_publish_authority() -> None:
     }
 
 
-def test_harbor_bridge_profile_has_only_the_evaluation_contract() -> None:
+def test_harbor_bridge_profile_has_only_bounded_evaluation_and_dependency_contracts() -> None:
     profile = yaml.safe_load(
         (PROVIDER_PROFILE_DIR / "nemo-experimentalist-harbor-bridge.yaml").read_text(encoding="utf-8")
     )
@@ -181,11 +183,14 @@ def test_harbor_bridge_profile_has_only_the_evaluation_contract() -> None:
     assert [rule["allow"] for rule in endpoint["rules"]] == [
         {"method": "GET", "path": "/health/ready"},
         {"method": "POST", "path": "/v1/evaluations"},
+        {"method": "POST", "path": "/v1/dependencies"},
+        {"method": "POST", "path": "/v1/dependencies/*/exec"},
+        {"method": "DELETE", "path": "/v1/dependencies/*"},
     ]
 
 
 def test_openshell_shell_assets_parse() -> None:
-    for path in (RUNNER_PATH, PROVIDER_SETUP_PATH, ASKPASS_PATH):
+    for path in (RUNNER_PATH, FULL_RUN_SMOKE_PATH, PROVIDER_SETUP_PATH, ASKPASS_PATH):
         result = subprocess.run(
             ["bash", "-n", str(path)],
             check=False,
@@ -193,6 +198,14 @@ def test_openshell_shell_assets_parse() -> None:
             text=True,
         )
         assert result.returncode == 0, result.stderr
+
+
+def test_full_run_smoke_invokes_normal_runtime_and_rejects_degraded_analysis() -> None:
+    smoke = FULL_RUN_SMOKE_PATH.read_text(encoding="utf-8")
+
+    assert '"$nemo_bin" experimentalist run --experiment-dir "$smoke_output" "$@"' in smoke
+    assert "eval-and-optimize/analysis/round-*.md" in smoke
+    assert "analysis_error" in smoke
 
 
 def test_git_askpass_uses_provider_placeholders() -> None:
