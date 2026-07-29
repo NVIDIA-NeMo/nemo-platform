@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.base import SandboxCreateError, SandboxStatus
+from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers import _compose_transfer as compose_transfer
 
 from packages.nemo_evaluator_sdk.tests.agent_eval._compose_testkit import _compose_suffix, _create, _provider, _Runner
 
@@ -26,6 +27,37 @@ def _assert_file_parent_operation(command: tuple[str, ...], parent: str) -> None
     assert parent not in script
     assert identity not in script
     assert 'chown -h "$identity" -- "$parent"' in script
+
+
+@pytest.mark.parametrize(
+    ("target", "directory", "message"),
+    [
+        ("", False, "Container path cannot be empty"),
+        ("/", False, "File upload target cannot be the container root"),
+        (".", False, "File upload target cannot be the container root"),
+        ("work/", False, "File upload target must name an exact file"),
+        ("/", True, "Directory upload target cannot be the container root"),
+        (".", True, "Directory upload target cannot be the container root"),
+    ],
+)
+def test_upload_target_validation_rejects_unsafe_paths(
+    target: str,
+    directory: bool,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        compose_transfer._normalized_upload_target(target, directory=directory)
+
+
+def test_upload_target_validation_normalizes_once() -> None:
+    assert (
+        compose_transfer._normalized_upload_target(
+            "ignored/../work/seed.txt",
+            directory=False,
+        )
+        == "/work/seed.txt"
+    )
+    assert compose_transfer._normalized_upload_target("ignored/../work", directory=True) == "/work"
 
 
 async def test_exec_transfer_and_status_target_configured_service(

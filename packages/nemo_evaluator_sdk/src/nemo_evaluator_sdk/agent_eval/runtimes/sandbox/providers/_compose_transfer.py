@@ -144,7 +144,7 @@ async def _copy_to_service(
         With ``directory=True``, source ``/tmp/work`` is passed as ``/tmp/work/.`` so
         Docker merges its contents directly into the prepared target directory.
     """
-    container_target = _absolute_container_path(target)
+    container_target = _normalized_upload_target(target, directory=directory)
     remote_directory = container_target if directory else posixpath.dirname(container_target)
     if remote_directory != "/":
         if directory:
@@ -307,3 +307,16 @@ def _absolute_container_path(path: str) -> str:
     if not path:
         raise ValueError("Container path cannot be empty")
     return posixpath.normpath(f"/{path.lstrip('/')}")
+
+
+def _normalized_upload_target(target: str, *, directory: bool) -> str:
+    """Normalize and validate an exact upload destination."""
+    if not target:
+        raise ValueError("Container path cannot be empty")
+    normalized = _absolute_container_path(target)
+    if normalized == "/":
+        kind = "Directory" if directory else "File"
+        raise ValueError(f"{kind} upload target cannot be the container root")
+    if not directory and target.endswith("/"):
+        raise ValueError("File upload target must name an exact file")
+    return normalized
