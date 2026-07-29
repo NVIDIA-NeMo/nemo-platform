@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Run the canonical Terminal-Bench Experimentalist benchmark."""
+"""Run a canonical Experimentalist benchmark suite."""
 
 import argparse
 import asyncio
@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, model_validator
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_ROOT = Path(__file__).resolve().parent
 DEFAULT_SUITE = BENCHMARK_ROOT / "suites" / "terminal-bench-2.1.yaml"
-DEFAULT_CONFIG = BENCHMARK_ROOT / "configs" / "smoke.yaml"
+DEFAULT_CONFIG = BENCHMARK_ROOT / "configs" / "terminal-bench-smoke.yaml"
 DEFAULT_AGENT = PLUGIN_ROOT / "examples" / "terminal-bench-agent"
 DEFAULT_DATASET_CACHE = PLUGIN_ROOT / "tmp" / "benchmark-datasets"
 DEFAULT_RUNTIME_CACHE = PLUGIN_ROOT / "tmp" / "runtime-cache"
@@ -45,6 +45,7 @@ class CanonicalDatasetSpec(BaseModel):
     registry_url: str
     source_url: str
     expected_task_count: int = Field(gt=0)
+    task_id_prefix: str | None = None
 
     @property
     def requested_reference(self) -> str:
@@ -88,6 +89,36 @@ class SuiteSpec(BaseModel):
     schema_version: Literal[1]
     dataset: CanonicalDatasetSpec
     partitions: PartitionsSpec
+    workspace: str
+    framework_skills: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def expand_partition_task_ids(self) -> Self:
+        """Read partition entries as names inside the suite's ``task_id_prefix``.
+
+        Every ID in a domain-scoped package repeats that prefix, which buries the part
+        that differs. Manifests write the distinguishing name and the prefix is joined
+        back on here, so the rest of the runner still works in canonical IDs. A manifest
+        that writes full IDs anyway fails the quality-coverage check with both forms in
+        the message.
+        """
+        prefix = self.dataset.task_id_prefix
+        if prefix is None:
+            return self
+        for split in (self.partitions.quality, self.partitions.fast):
+            for role in ("train", "validation", "test"):
+                setattr(split, role, [f"{prefix}{name}" for name in getattr(split, role)])
+        return self
+
+    def framework_skills_dirs(self, plugin_root: Path) -> list[Path]:
+        """Resolve framework-skill names to directories, failing on unknown names."""
+        dirs: list[Path] = []
+        for name in self.framework_skills:
+            path = plugin_root / "framework-skills" / name
+            if not path.is_dir():
+                raise ValueError(f"Unknown framework skill {name!r}: {path} is not a directory")
+            dirs.append(path)
+        return dirs
 
 
 class ModelSpec(BaseModel):
@@ -95,6 +126,7 @@ class ModelSpec(BaseModel):
     experimentalist_smart: str
     experimentalist_mid: str
     experimentalist_fast: str
+    user_simulator: str | None = None
 
 
 class BenchmarkConfig(BaseModel):
@@ -126,13 +158,23 @@ def validate_canonical_suite(
     *,
     canonical_task_ids: set[str],
     resolved_ref: str,
-) -> None:
-    """Verify immutable revision, quality coverage, and all partition IDs."""
+) -> set[str]:
+    """Verify immutable revision, quality coverage, and all partition IDs.
+
+    Returns the canonical task IDs scoped to this suite's domain. When the suite
+    sets ``task_id_prefix``, the package may hold other domains; coverage is then
+    enforced against the matching subset rather than the whole package.
+    """
     if resolved_ref != suite.dataset.resolved_ref:
         raise ValueError(
             f"Dataset {suite.dataset.requested_reference} resolved to {resolved_ref}, "
             f"expected {suite.dataset.resolved_ref}"
         )
+    prefix = suite.dataset.task_id_prefix
+    if prefix is not None:
+        canonical_task_ids = {task_id for task_id in canonical_task_ids if task_id.startswith(prefix)}
+        if not canonical_task_ids:
+            raise ValueError(f"No canonical tasks match task_id_prefix {prefix!r}")
     if len(canonical_task_ids) != suite.dataset.expected_task_count:
         raise ValueError(
             f"Canonical dataset has {len(canonical_task_ids)} tasks, expected {suite.dataset.expected_task_count}"
@@ -147,6 +189,7 @@ def validate_canonical_suite(
     unknown_fast = sorted(set(suite.partitions.fast.all_ids()) - canonical_task_ids)
     if unknown_fast:
         raise ValueError(f"Fast partition contains unknown canonical task IDs: {unknown_fast}")
+    return canonical_task_ids
 
 
 def _configure_models(models: ModelSpec) -> None:
@@ -164,6 +207,16 @@ def _configure_models(models: ModelSpec) -> None:
     os.environ["EXPERIMENTALIST_MID_MODEL_NAME"] = models.experimentalist_mid
     os.environ["EXPERIMENTALIST_FAST_MODEL_NAME"] = models.experimentalist_fast
     os.environ.setdefault("NEMO_EXPERIMENTALIST_RUNTIME_CACHE", str(DEFAULT_RUNTIME_CACHE))
+    if models.user_simulator is not None:
+        # tau-style tasks run a user simulator and NL-assertion judge inside the task
+        # environment, which read OpenAI-style variables and need the /v1 suffix.
+        # Assigned rather than setdefault: an ambient OPENAI_API_KEY from the developer's
+        # shell would otherwise be paired with this gateway base URL and always 401.
+        trimmed_base = api_base.rstrip("/")
+        os.environ["OPENAI_API_KEY"] = api_key
+        os.environ["OPENAI_BASE_URL"] = trimmed_base if trimmed_base.endswith("/v1") else f"{trimmed_base}/v1"
+        os.environ["TAU2_USER_MODEL"] = models.user_simulator
+        os.environ["TAU2_NL_ASSERTIONS_MODEL"] = models.user_simulator
 
 
 def _agent_digest(agent_dir: Path) -> str:
@@ -342,7 +395,12 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
     package_client = PackageDatasetClient()
     metadata = await package_client.get_dataset_metadata(suite.dataset.requested_reference)
     canonical_task_ids = {task.name for task in metadata.task_ids}
-    validate_canonical_suite(suite, canonical_task_ids=canonical_task_ids, resolved_ref=metadata.version)
+    canonical_task_ids = validate_canonical_suite(
+        suite, canonical_task_ids=canonical_task_ids, resolved_ref=metadata.version
+    )
+    # Resolved up front: the optimizer only needs these after the baseline evaluation,
+    # which is hours of image builds to discover a typo'd skill name.
+    framework_skills_dirs = suite.framework_skills_dirs(PLUGIN_ROOT)
 
     if args.validate_only:
         print(
@@ -397,10 +455,10 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
             metadata={"id": f"{benchmark_config.suite_partition}-validation", "task_ids": split.validation},
         ),
         experiment_dir=experimentalist_dir,
-        workspace="canonical-terminal-bench-2-1",
+        workspace=suite.workspace,
         client=None,
         config=benchmark_config.optimizer,
-        framework_skills_dirs=[PLUGIN_ROOT / "framework-skills" / "langchain-framework"],
+        framework_skills_dirs=framework_skills_dirs,
     )
     run_document = json.loads((experimentalist_dir / "eval-and-optimize" / "run.json").read_text(encoding="utf-8"))
     winner_label = run_document.get("winner_agent")

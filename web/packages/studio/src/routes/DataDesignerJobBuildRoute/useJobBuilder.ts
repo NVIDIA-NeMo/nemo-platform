@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
 import type { AddColumnSelection } from '@studio/components/AddColumnPalette/types';
 import type { FilesetTemplate } from '@studio/components/CreateFilesetStart/types';
@@ -15,6 +14,7 @@ import {
   type BuilderModel,
   buildModelsFromTemplate,
   builderModelFromSelection,
+  fetchAutoFillCandidates,
   resolveTemplateModel,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -56,16 +56,15 @@ export interface JobBuilderSeed {
  * Job-level concerns (name, row count, validation, preview, submit) live in the route so
  * this hook stays a pure graph-editing store.
  *
- * `modelGroups` auto-fills a template's seeded models once the platform model list loads.
- * `modelsSettled` gates that auto-fill on the full (all-pages) model list being available.
+ * A template's seeded models are auto-filled once from `workspace`, resolving each spec with a
+ * targeted lookup rather than the whole model catalogue.
  *
  * `seed`, when provided (cloning a job), takes precedence over the template and pre-fills the
  * form with the source job's columns, models, name, and row count.
  */
 export const useJobBuilder = (
   template: FilesetTemplate | null,
-  modelGroups: ModelWorkspaceGroup[],
-  modelsSettled: boolean,
+  workspace: string,
   seed: JobBuilderSeed | null = null
 ) => {
   // Seed once from the clone source, else the template (if any). `useForm` keeps these values
@@ -107,16 +106,30 @@ export const useJobBuilder = (
 
   const autoFilled = useRef(false);
   useEffect(() => {
-    if (autoFilled.current || !modelsSettled || modelGroups.length === 0) return;
+    if (autoFilled.current || !workspace) return;
+    const pending = getValues('models').filter((model) => !model.provider);
+    if (pending.length === 0) return;
     autoFilled.current = true;
-    const models = getValues('models');
-    const nextModels = models.map((model) => {
-      if (model.provider) return model;
-      const resolved = resolveTemplateModel(modelGroups, model.model || undefined);
-      return resolved ? { ...model, ...resolved } : { ...model, model: '' };
-    });
-    setValue('models', nextModels);
-  }, [getValues, modelGroups, modelsSettled, setValue]);
+
+    void (async () => {
+      const resolutions = await Promise.all(
+        pending.map(async (model) => {
+          const preferred = model.model || undefined;
+          const candidates = await fetchAutoFillCandidates(workspace, preferred).catch(() => []);
+          return [model.id, resolveTemplateModel(candidates, preferred)] as const;
+        })
+      );
+      const byId = new Map(resolutions);
+      setValue(
+        'models',
+        getValues('models').map((model) => {
+          if (!byId.has(model.id)) return model;
+          const resolved = byId.get(model.id);
+          return resolved ? { ...model, ...resolved } : { ...model, model: '' };
+        })
+      );
+    })();
+  }, [getValues, setValue, workspace]);
 
   const selectColumn = useCallback((id: string | null) => {
     setSelectedId(id);

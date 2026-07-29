@@ -207,46 +207,6 @@ def test_preview_collector_propagates_error_frame_message(
 
 
 # ---------------------------------------------------------------------------
-# Client-side seed-source validation gate (_get_config_for_api_call)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("seed_kind", ["df", "local", "directory", "file_contents"])
-def test_preview_rejects_local_only_seed_sources_before_sending_request(
-    resource: DataDesignerResource,
-    config_builder: dd.DataDesignerConfigBuilder,
-    seed_kind: str,
-    tmp_path,
-) -> None:
-    """The validation gate inside ``_get_config_for_api_call`` rejects seed sources that
-    only make sense locally (DataFrame, LocalFile, Directory, FileContents), so the SDK
-    fails fast with a typed error instead of letting the server emit a 422 round-trip
-    later. Patching ``_preview`` to raise an AssertionError catches any regression where
-    the request is sent anyway.
-    """
-    if seed_kind == "df":
-        seed_source = dd.DataFrameSeedSource(df=pd.DataFrame(data={"foo": [1, 2, 3]}))
-    elif seed_kind == "local":
-        seed_file = tmp_path / "seed.parquet"
-        _make_basic_dataset().to_parquet(seed_file)
-        seed_source = dd.LocalFileSeedSource(path=str(seed_file))
-    elif seed_kind == "directory":
-        seed_source = dd.DirectorySeedSource(path=str(tmp_path))
-    else:
-        seed_source = dd.FileContentsSeedSource(path=str(tmp_path))
-
-    config_builder.with_seed_dataset(seed_source)
-
-    with (
-        patch.object(resource, "_preview", side_effect=AssertionError("preview request should not be sent")),
-        pytest.raises(DataDesignerConfigValidationError) as exc_info,
-    ):
-        resource.preview(config_builder)
-
-    assert "only supports seed data" in str(exc_info.value)
-
-
-# ---------------------------------------------------------------------------
 # Default model surfaces
 # ---------------------------------------------------------------------------
 

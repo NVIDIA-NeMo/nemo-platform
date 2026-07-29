@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  BASIC_ALL_MODELS_DROPDOWN_FILTER,
-  buildWorkspaceGroup,
-  type ModelWorkspaceGroup,
-  useAllModels,
-} from '@nemo/common/src/api/models/useModels';
+import { useModelEntity } from '@nemo/common/src/api/models/useModelEntity';
+import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { ComposerMode } from '@nemo/common/src/components/AssistantChat';
 import type { BroadcastSignal } from '@nemo/common/src/components/AssistantChat/types';
+import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
+import { hasModelProvider } from '@nemo/common/src/utils/models';
 import { PageHeader, Tabs, Tooltip } from '@nvidia/foundations-react-core';
 import { ChatEmptyState } from '@studio/components/chat/ChatEmptyState';
 import { CompareComposer } from '@studio/components/chat/CompareComposer';
@@ -37,18 +35,13 @@ const makeDefaultEntry = (
 
 export const ModelCompareRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
-  const { data, isFetching: isLoadingModels } = useAllModels({
-    workspace: workspace ?? undefined,
-    query: BASIC_ALL_MODELS_DROPDOWN_FILTER,
-  });
-  const modelGroups = useMemo((): ModelWorkspaceGroup[] => {
-    if (!workspace) return [];
-    const allModels = data?.pages.flatMap((p) => (Array.isArray(p.data) ? p.data : [])) ?? [];
-    const available = allModels.filter(
-      (m) => Array.isArray(m.model_providers) && m.model_providers.length > 0
-    );
-    return available.length > 0 ? [buildWorkspaceGroup(workspace, available)] : [];
-  }, [data, workspace]);
+  const availableModels = useModelSearch({ workspace, include: hasModelProvider });
+  const hasNoModels =
+    !availableModels.loading &&
+    !availableModels.error &&
+    !availableModels.hasMore &&
+    availableModels.models.length === 0;
+
   const [searchParams] = useSearchParams();
   const [activeView, setActiveView] = useState<CompareView>('compare');
   const [perPanelInput, setPerPanelInput] = useState(false);
@@ -57,26 +50,33 @@ export const ModelCompareRoute: FC = () => {
     makeDefaultEntry(1),
   ]);
   const nextIdRef = useRef(2);
-  const didPreselectRef = useRef(false);
+  const preselectedUrnRef = useRef<string | null>(null);
 
-  // Preselect panel 0 from ?model= query param once models load.
+  // Preselect panel 0 from ?model=, which carries either a full URN or a bare name in this
+  // workspace. Resolved with a single lookup rather than by scanning the whole catalogue.
+  const modelParam = searchParams.get('model');
+  const preselectUrn =
+    modelParam && workspace
+      ? modelParam.includes('/')
+        ? modelParam
+        : `${workspace}/${modelParam}`
+      : null;
+  const preselectModel = useModelEntity(preselectUrn, {
+    enabled: !!preselectUrn && preselectedUrnRef.current !== preselectUrn,
+  });
+
   useEffect(() => {
-    if (didPreselectRef.current || isLoadingModels || modelGroups.length === 0) return;
-    const param = searchParams.get('model');
-    if (!param) {
-      didPreselectRef.current = true;
-      return;
-    }
-    const match = modelGroups
-      .flatMap((g) => g.models)
-      .find((m) => `${m.workspace}/${m.name}` === param || m.name === param);
-    if (match) {
+    if (!preselectUrn || preselectedUrnRef.current === preselectUrn) return;
+    if (!preselectModel) return;
+    if (preselectModel.workspace === workspace && hasModelProvider(preselectModel)) {
       setModels((prev) =>
-        prev.map((m, i) => (i === 0 ? { ...m, modelURN: `${match.workspace}/${match.name}` } : m))
+        prev.map((m, i) =>
+          i === 0 ? { ...m, modelURN: `${preselectModel.workspace}/${preselectModel.name}` } : m
+        )
       );
     }
-    didPreselectRef.current = true;
-  }, [isLoadingModels, modelGroups, searchParams]);
+    preselectedUrnRef.current = preselectUrn;
+  }, [preselectModel, preselectUrn, workspace]);
 
   // Seed transfer: broadcast→panels and panel→broadcast.
   const compareComposerDraftRef = useRef('');
@@ -162,8 +162,12 @@ export const ModelCompareRoute: FC = () => {
   const atMaxModels = models.length >= MAX_MODELS;
   const readyPanelCount = models.filter((m) => !!m.modelURN).length;
 
-  // Empty state when the workspace has zero models and we're not still loading.
-  if (!isLoadingModels && modelGroups.length === 0) {
+  if (availableModels.error) {
+    return <ErrorMessage header="Couldn't load models" message={availableModels.error.message} />;
+  }
+
+  // Empty state when the workspace has no servable models and we're not still loading.
+  if (hasNoModels) {
     return <ChatEmptyState hasModels={false} />;
   }
 
@@ -187,8 +191,6 @@ export const ModelCompareRoute: FC = () => {
         <div className={`h-full ${showChatPanels ? '' : 'hidden'}`}>
           <ModelCompareChat
             workspace={workspace}
-            modelGroups={modelGroups}
-            isLoadingModels={isLoadingModels}
             models={models}
             onRemoveModel={removeModel}
             onSetModel={setModelRef}
@@ -268,8 +270,6 @@ export const ModelCompareRoute: FC = () => {
         <div className={`h-full overflow-hidden ${activeView !== 'prompts' ? 'hidden' : ''}`}>
           <ModelComparePrompts
             workspace={workspace}
-            modelGroups={modelGroups}
-            isLoadingModels={isLoadingModels}
             models={models}
             onRemoveModel={removeModel}
             onSetModel={setModelRef}

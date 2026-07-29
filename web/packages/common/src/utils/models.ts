@@ -35,6 +35,9 @@ export const groupModelsByWorkspace = (
   return entries.map(([ws, ms]) => buildWorkspaceGroup(ws, ms));
 };
 
+export const hasModelProvider = (model: ModelEntity): boolean =>
+  Array.isArray(model.model_providers) && model.model_providers.length > 0;
+
 /**
  * Returns true if the model is a base model, false otherwise. This is determined by
  * checking if the model has a base_model property.

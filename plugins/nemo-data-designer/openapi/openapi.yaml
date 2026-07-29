@@ -439,9 +439,9 @@ components:
             required for ATIF trajectories. When omitted, built-in defaults are used
             for formats that define one. Claude Code defaults to ~/.claude/projects,
             Codex defaults to ~/.codex/sessions, Hermes Agent defaults to ~/.hermes/sessions,
-            and Pi Coding Agent defaults to ~/.pi/agent/sessions. Relative paths are
-            resolved from the current working directory when the config is loaded,
-            not from the config file location.
+            and Pi Coding Agent defaults to ~/.pi/agent/sessions. Relative local paths
+            are resolved by the active filesystem provider when the seed is validated
+            or read, not when the config object is constructed.
           type: string
         file_pattern:
           title: File Pattern
@@ -1154,9 +1154,9 @@ components:
         path:
           type: string
           title: Path
-          description: Directory containing seed artifacts. Relative paths are resolved
-            from the current working directory when the config is loaded, not from
-            the config file location.
+          description: Directory containing seed artifacts. Relative local paths are
+            resolved by the active filesystem provider when the seed is validated
+            or read, not when the config object is constructed.
         file_pattern:
           type: string
           title: File Pattern
@@ -1365,9 +1365,9 @@ components:
         path:
           type: string
           title: Path
-          description: Directory containing seed artifacts. Relative paths are resolved
-            from the current working directory when the config is loaded, not from
-            the config file location.
+          description: Directory containing seed artifacts. Relative local paths are
+            resolved by the active filesystem provider when the seed is validated
+            or read, not when the config object is constructed.
         file_pattern:
           type: string
           title: File Pattern

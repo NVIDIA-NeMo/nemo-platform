@@ -10,8 +10,8 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from nemo_experimentalist_plugin.eval_author import materialization as materialization_module
-from nemo_experimentalist_plugin.eval_author.materialization import InsightSuite
+from nemo_eval_author_plugin.eval_author import materialization as materialization_module
+from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 

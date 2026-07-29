@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useAllModels } from '@nemo/common/src/api/models/useModels';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@nemo/common/src/constants/api';
-import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
 import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/api';
 import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
 import { Flex, Stack } from '@nvidia/foundations-react-core';
@@ -89,22 +87,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
     ],
   });
 
-  const {
-    data: modelsData,
-    isLoading: isLoadingModels,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useAllModels({ workspace });
-  const modelGroups = useMemo(
-    () =>
-      groupModelsByWorkspace(modelsData?.pages.flatMap((page) => page.data ?? []) ?? [], {
-        sort: true,
-      }),
-    [modelsData?.pages]
-  );
-  const modelsSettled = !isLoadingModels && !hasNextPage && !isFetchingNextPage;
-
-  const builder = useJobBuilder(template, modelGroups, modelsSettled, cloneSeed);
+  const builder = useJobBuilder(template, workspace, cloneSeed);
   const { data: providersPage } = useModelsListProviders(
     workspace,
     { page_size: DEFAULT_LARGE_PAGE_SIZE },
@@ -209,8 +192,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
               tab={builder.paletteTab}
               onTabChange={builder.setPaletteTab}
               selectedModelId={builder.selectedModelId}
-              modelGroups={modelGroups}
-              isLoadingModels={isLoadingModels}
+              workspace={workspace}
               onAddColumn={builder.handleAddColumn}
               onAddModel={builder.handleAddModel}
               onSelectModel={builder.selectModel}
@@ -235,8 +217,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
             <BuilderConfigPane
               selectedColumnId={builder.selectedColumnId}
               selectedModelId={builder.selectedModelId}
-              modelGroups={modelGroups}
-              isLoadingModels={isLoadingModels}
+              workspace={workspace}
               onColumnRemove={() =>
                 builder.selectedColumnId && builder.removeColumn(builder.selectedColumnId)
               }

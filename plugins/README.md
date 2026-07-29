@@ -61,6 +61,7 @@ The package name is the `name` field in the plugin's `pyproject.toml`, not the d
 | `nemo-agents/` | `nemo-agents-plugin` |
 | `nemo-anonymizer/` | `nemo-anonymizer-plugin` |
 | `nemo-data-designer/` | `nemo-data-designer-plugin` |
+| `nemo-eval-author/` | `nemo-eval-author-plugin` |
 | `nemo-evaluator/` | `nemo-evaluator-plugin` |
 | `nemo-experimentalist/` | `nemo-experimentalist-plugin` |
 | `nemo-guardrails/` | `nemo-guardrails-plugin` |

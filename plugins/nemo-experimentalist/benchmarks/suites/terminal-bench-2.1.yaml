@@ -9,6 +9,9 @@ dataset:
   registry_url: https://raw.githubusercontent.com/laude-institute/harbor/main/registry.json
   source_url: https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1/6
   expected_task_count: 89
+workspace: canonical-terminal-bench-2-1
+framework_skills:
+  - langchain-framework
 partitions:
   source:
     commit: 1b7688ad257dacd1a3267dddb88db6cefdc31376

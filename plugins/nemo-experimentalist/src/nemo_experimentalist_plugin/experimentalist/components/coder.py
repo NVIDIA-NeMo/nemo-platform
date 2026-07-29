@@ -14,6 +14,14 @@ from typing import Any
 
 import httpx
 from nemo_experimentalist_plugin.entities import Candidate
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+    Dataset,
+    EvaluationResult,
+    Evaluator,
+    EvaluatorConfig,
+    Task,
+    TrialResult,
+)
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -25,7 +33,6 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .evaluator import Dataset, EvaluationResult, Evaluator, EvaluatorConfig, Task, TrialResult
 from .model_config import get_fast_model, get_mid_model, get_smart_model
 from .tools import GuardedShellTools
 from .util import load_framework_skills

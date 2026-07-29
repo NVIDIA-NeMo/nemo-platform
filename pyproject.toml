@@ -68,8 +68,13 @@ version = "0.0.0"
 [dependency-groups]
 # Insights analyst plugin convenience group.
 insights = ["nemo-insights-plugin"]
-# Experimentalist and its nooa framework currently support Python 3.12 and 3.13.
-experimentalist = ["nemo-experimentalist-plugin ; python_full_version < '3.14'"]
+# Experimentalist and Eval Author currently support Python 3.12 and 3.13. Both are listed
+# because insight mode imports Eval Author at module scope, while Eval Author still depends
+# back on Experimentalist for evaluator/trace helpers (see plugins/nemo-eval-author/README.md).
+experimentalist = [
+  "nemo-experimentalist-plugin ; python_full_version < '3.14'",
+  "nemo-eval-author-plugin ; python_full_version < '3.14'",
+]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -172,6 +177,7 @@ enabled-plugins = [
   "nemo-evaluator-plugin",
   "nemo-insights-plugin",
   "nemo-experimentalist-plugin ; python_full_version < '3.14'",
+  "nemo-eval-author-plugin ; python_full_version < '3.14'",
   "nemo-guardrails-plugin",
   "nemo-auditor-plugin",
   "nemo-safe-synthesizer-plugin",
@@ -326,7 +332,7 @@ override-dependencies = [
   "xgrammar>=0.1.32",        # High – customizer + nmp-gpu-tasks
   "fastmcp>=3.2.0",          # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
   "wandb>=0.28.1",           # wandb-core Go CVEs (nspect); unsloth + training images
-  "cryptography>=48.0.1,<49", # Pulse Critical; overrides data-designer-engine 0.7.0's <47 cap after changelog review
+  "cryptography>=48.0.1,<49", # Pulse Critical; overrides nvidia-nat-core's <47 cap after changelog review
   "click>=8.2.0",            # Below CVEs are based on constraints that garak has
   "litellm>=1.83.10",        # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
   "python-dotenv>=1.2.2",
@@ -367,9 +373,12 @@ nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
+nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
-# Not published to PyPI yet; pinned to an immutable public tag.
-nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", tag = "v0.0.6" }
+# Not published to PyPI yet, so this pins an immutable public commit. It is a commit
+# rather than a tag because the MCP transport-timeout fix landed after v0.0.6; move
+# back to a tag once one ships that contains it.
+nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "bea4614a0e2a6cf88f76225466159af883da80a0" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
@@ -436,6 +445,7 @@ members = [
   "plugins/nemo-agents",
   "plugins/nemo-deployments",
   "plugins/nemo-insights",
+  "plugins/nemo-eval-author",
   "plugins/nemo-experimentalist",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
@@ -559,6 +569,8 @@ extra-paths = [
   "plugins/nemo-evaluator/src",
   # Source path for the Insights analyst plugin.
   "plugins/nemo-insights/src",
+  # Source path for the Eval Author plugin.
+  "plugins/nemo-eval-author/src",
   # Source path for Experimentalist; its tests also import the benchmark runner.
   "plugins/nemo-experimentalist/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
@@ -620,8 +632,8 @@ exclude = [
   # root `ty` until that cleanup lands in a focused follow-up.
   "plugins/nemo-switchyard/",
 
-  # Standalone Terminal-Bench agent-under-test: resolved from its own lockfile inside
-  # the benchmark's task containers, so its imports are absent from the workspace env.
+  # Standalone agents-under-test: each resolves from its own lockfile inside the
+  # benchmark's task containers, so its imports are absent from the workspace env.
   "plugins/nemo-experimentalist/examples/",
 
   "docs/",
@@ -634,9 +646,12 @@ exclude = [
 
 # nooa agents declare their LLM-generated methods as annotated signatures with an
 # ellipsis body; the framework fills them in at runtime. ty reads that as a missing
-# return, so the rule is off for the Experimentalist's agent classes only.
+# return, so the rule is off for the Experimentalist and Eval Author agent classes only.
 [[tool.ty.overrides]]
-include = ["plugins/nemo-experimentalist/src/**"]
+include = [
+  "plugins/nemo-experimentalist/src/**",
+  "plugins/nemo-eval-author/src/**",
+]
 
 [tool.ty.overrides.rules]
 empty-body = "ignore"

@@ -9,8 +9,9 @@ import os
 from pathlib import Path
 
 import pytest
-from nemo_experimentalist_plugin.eval_author.agent import EvalAuthor
-from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig
+from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
+from nemo_eval_author_plugin.model_config import get_fast_model
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     DatasetValidationError,
     local_path_from_uri,
@@ -20,13 +21,24 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_experimentalist_plugin.experimentalist.components.model_config import get_fast_model
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 from nemo_insights_plugin.entities import Insight
 
-_HAS_EXPERIMENTALIST_LLM = bool(
-    os.environ.get("EXPERIMENTALIST_API_BASE") and os.environ.get("EXPERIMENTALIST_API_KEY")
-)
+
+def _has_real_llm_credentials() -> bool:
+    """Report whether real credentials are present, rather than the conftest stand-ins.
+
+    conftest fills placeholder credentials so agent classes can be imported at collection
+    time, which means a plain "is it set?" check always passes. These canaries call a live
+    model, so they have to look past the stand-ins.
+    """
+    base = os.environ.get("AUTHOR_API_BASE") or os.environ.get("EXPERIMENTALIST_API_BASE") or ""
+    key = os.environ.get("AUTHOR_API_KEY") or os.environ.get("EXPERIMENTALIST_API_KEY") or ""
+    return bool(base and key) and "placeholder" not in base and "placeholder" not in key
+
+
+_HAS_LLM = _has_real_llm_credentials()
+_CREDENTIALS_HINT = "AUTHOR_API_BASE and AUTHOR_API_KEY (or their EXPERIMENTALIST_* equivalents)"
 _RUN_EVAL_AUTHOR_REPAIR_E2E = os.environ.get("RUN_EVAL_AUTHOR_REPAIR_E2E") == "1"
 _RUN_EVAL_AUTHOR_HARBOR_E2E = os.environ.get("RUN_EVAL_AUTHOR_HARBOR_E2E") == "1"
 _MALFORMED_VERIFIER = """\
@@ -191,10 +203,8 @@ class WrappedAgent(BaseAgent):
 
 
 @pytest.mark.skipif(
-    not (_RUN_EVAL_AUTHOR_REPAIR_E2E and _HAS_EXPERIMENTALIST_LLM),
-    reason=(
-        "Set RUN_EVAL_AUTHOR_REPAIR_E2E=1 with EXPERIMENTALIST_API_BASE and EXPERIMENTALIST_API_KEY to run the Eval Author repair canary."
-    ),
+    not (_RUN_EVAL_AUTHOR_REPAIR_E2E and _HAS_LLM),
+    reason=f"Set RUN_EVAL_AUTHOR_REPAIR_E2E=1 with {_CREDENTIALS_HINT} to run the Eval Author repair canary.",
 )
 async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
     tmp_path: Path,
@@ -215,7 +225,9 @@ async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
     assert "SyntaxError: expected 'except' or 'finally' block" in validation_feedback
 
     llm = get_fast_model()
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY")
+    # Construction must not need EXPERIMENTALIST_API_KEY: Eval Author owns AUTHOR_* and only
+    # bridges into the Experimentalist slots, which are already resolved by this point.
+    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
     eval_author = EvalAuthor(
         experiment_dir=tmp_path,
         config=EvalAuthorConfig(),
@@ -259,11 +271,8 @@ async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
 
 
 @pytest.mark.skipif(
-    not (_RUN_EVAL_AUTHOR_HARBOR_E2E and _HAS_EXPERIMENTALIST_LLM),
-    reason=(
-        "Set RUN_EVAL_AUTHOR_HARBOR_E2E=1 with EXPERIMENTALIST_API_BASE and EXPERIMENTALIST_API_KEY "
-        "to run the live Harbor metric canary."
-    ),
+    not (_RUN_EVAL_AUTHOR_HARBOR_E2E and _HAS_LLM),
+    reason=f"Set RUN_EVAL_AUTHOR_HARBOR_E2E=1 with {_CREDENTIALS_HINT} to run the live Harbor metric canary.",
 )
 async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
     tmp_path: Path,
@@ -279,7 +288,8 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
 
     llm = get_fast_model()
     llm.config["temperature"] = 0.0
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY")
+    # See the repair canary above: construction must not need EXPERIMENTALIST_API_KEY.
+    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
     eval_author = EvalAuthor(
         experiment_dir=tmp_path,
         config=EvalAuthorConfig(),

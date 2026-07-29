@@ -16,6 +16,7 @@
 {"name": "anyascii", "license": "ISC", "compatible": true}
 {"name": "anyio", "license": "MIT", "compatible": true}
 {"name": "appdirs", "license": "MIT", "compatible": true}
+{"name": "asciichartpy", "license": "MIT", "compatible": true}
 {"name": "asgiref", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "asyncpg", "license": "APACHE-2.0", "compatible": true}
 {"name": "attrs", "license": "MIT", "compatible": true}

@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
-import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
+import {
+  WorkspaceModelSelect,
+  type ModelSelection,
+} from '@nemo/common/src/components/ModelSelectV2';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
+import { hasModelProvider } from '@nemo/common/src/utils/models';
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { DEFAULT_INFERENCE_PARAMS, type InferenceParams } from '@studio/components/chat/params';
 import { ParamsPopover } from '@studio/components/chat/ParamsPopover';
@@ -20,8 +23,6 @@ interface ModelChatPanelProps extends PanelChatControls {
   panel: PanelState;
   /** Fallback workspace used only if a panel has no model assigned yet. */
   fallbackWorkspace: string;
-  modelGroups: ModelWorkspaceGroup[];
-  isLoadingModels: boolean;
   onToggle: (id: number) => void;
   onRemove: (id: number) => void;
   /** Receives the full URN ("workspace/name"), or null when cleared. */
@@ -33,8 +34,6 @@ interface ModelChatPanelProps extends PanelChatControls {
 export const ModelChatPanel: FC<ModelChatPanelProps> = ({
   panel,
   fallbackWorkspace,
-  modelGroups,
-  isLoadingModels,
   onToggle,
   onRemove,
   onModelChange,
@@ -110,11 +109,11 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
       {/* Model picker + inference params — shared across single and compare modes. */}
       <Flex className="shrink-0 items-center gap-2 border-b border-base px-3 py-2">
         <div className="flex-1">
-          <ModelSelectV2
+          <WorkspaceModelSelect
+            workspace={modelWorkspace}
+            include={hasModelProvider}
             value={selectedModel}
             onValueChange={handleModelChange}
-            groups={modelGroups}
-            loading={isLoadingModels}
             hideAdapters
             fullWidth
             disabled={panel.locked}

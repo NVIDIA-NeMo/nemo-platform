@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2/ModelSelectV2';
+export { WorkspaceModelSelect } from '@nemo/common/src/components/ModelSelectV2/WorkspaceModelSelect';
+export type { WorkspaceModelSelectProps } from '@nemo/common/src/components/ModelSelectV2/WorkspaceModelSelect';
 export type {
   ModelSelectV2Props,
   ModelSelection,

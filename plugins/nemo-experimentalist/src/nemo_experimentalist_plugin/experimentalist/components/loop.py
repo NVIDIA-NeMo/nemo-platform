@@ -18,8 +18,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Literal, cast, get_args
 
+from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
-from nemo_experimentalist_plugin.eval_author.agent import EvalAuthor
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer, AnalyzerConfig
 from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs

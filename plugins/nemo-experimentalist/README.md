@@ -28,8 +28,8 @@ export NEMO=/path/to/nemo-platform/.venv/bin/nemo
 ```
 
 The source dependencies are pinned to tagged or immutable revisions in
-`pyproject.toml`. NVIDIA-labs OO Agents (NOOA) is pinned to its public
-GitHub `v0.0.6` release.
+`pyproject.toml`. NVIDIA-labs OO Agents (NOOA) is pinned to a public GitHub
+commit, currently one past `v0.0.6` that carries an MCP transport-timeout fix.
 
 ## Insight-to-experiment flow
 

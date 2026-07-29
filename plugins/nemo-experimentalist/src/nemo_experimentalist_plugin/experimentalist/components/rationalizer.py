@@ -22,23 +22,11 @@ from pydantic import BaseModel, Field
 
 from . import cache
 from .model_config import get_fast_model, get_smart_model
+from .rationale import Rationale, RationaleStep
 from .tools import GuardedShellTools
 from .util import load_framework_skills
 
-
-class RationaleStep(BaseModel):
-    """One reasoning step in a task rationale."""
-
-    thought: str
-    action: str
-    observation: str = ""
-
-
-class Rationale(BaseModel):
-    """Task-level context produced by the Rationalizer before trace analysis."""
-
-    task_name: str
-    steps: list[RationaleStep] = Field(default_factory=list)
+__all__ = ["Rationale", "RationaleStep", "Rationalizer", "RationalizerConfig"]
 
 
 class RationalizerConfig(BaseModel):

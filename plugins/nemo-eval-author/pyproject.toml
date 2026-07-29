@@ -1,0 +1,26 @@
+[project]
+name = "nemo-eval-author-plugin"
+version = "0.1.0"
+description = "Eval Author agent for NeMo Platform (hard-depends on Experimentalist for evaluator/trace helpers)."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "pydantic>=2",
+    "harbor>=0.16",
+    "nooa",
+    "nemo-experimentalist-plugin",
+    "nemo-insights-plugin",
+    "nemo-platform",
+    "tomlkit>=0.13.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_eval_author_plugin"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]
