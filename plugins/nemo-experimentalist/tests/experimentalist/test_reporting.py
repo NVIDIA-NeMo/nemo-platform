@@ -118,6 +118,17 @@ def test_reward_scalar_defaults_to_zero_when_absent() -> None:
     assert reward_scalar({}) == 0.0
 
 
+def test_candidate_evaluated_renders_subset_style_result_id_verbatim() -> None:
+    sink = io.StringIO()
+    r = RunReporter(sink=sink)
+    # Real candidate train dirs look like agent-1-train-subset-1-<sha>, not agent-1-train.
+    r.candidate_evaluated(
+        label="agent-1", split="train", reward=0.2,
+        artifacts=Path("/exp/results/agent-1-train-subset-1-42e2eab5a4e0"),
+    )
+    assert "agent-1-train-subset-1-42e2eab5a4e0" in sink.getvalue()
+
+
 def test_full_run_transcript_is_the_loop_emission_contract() -> None:
     # This scripts the exact sequence loop.py must emit, locking the contract
     # the wiring tasks implement.

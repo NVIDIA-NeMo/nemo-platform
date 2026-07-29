@@ -36,7 +36,7 @@ class Verbosity(str, Enum):
     VERBOSE = "verbose"  # == NORMAL for now; see class docstring
 
 
-def reward_scalar(aggregate_metrics: dict[str, float]) -> float:
+def reward_scalar(aggregate_metrics: dict[str, float | int]) -> float:
     """Extract the scalar reward from an evaluation's aggregate metrics."""
     return float(aggregate_metrics.get("reward", 0.0))
 

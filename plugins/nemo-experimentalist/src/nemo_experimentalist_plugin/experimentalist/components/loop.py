@@ -573,7 +573,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                         label=candidates[0].label,
                         split="validation",
                         reward=reward_scalar(validation_result.aggregate_metrics),
-                        artifacts=self._results_dir(candidates[0].label, "validation"),
+                        artifacts=self._results_dir(validation_result.id),
                     )
             except Exception:
                 run_entity.status = "failed"
@@ -672,7 +672,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                                 label=survivor.label,
                                 split="train",
                                 reward=reward_scalar(train_candidate_results[survivor.label].aggregate_metrics),
-                                artifacts=self._results_dir(survivor.label, "train"),
+                                artifacts=self._results_dir(train_candidate_results[survivor.label].id),
                             )
                 analysis = await self._analyze_round(
                     analysis_dir=analysis_dir,
@@ -791,7 +791,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                                 label=candidate.label,
                                 split="validation",
                                 reward=reward_scalar(validation_candidate_results[candidate.label].aggregate_metrics),
-                                artifacts=self._results_dir(candidate.label, "validation"),
+                                artifacts=self._results_dir(validation_candidate_results[candidate.label].id),
                             )
                 if not config.disable_trajectory_scoring:
                     trajectory_results = await self._reward_trajectories(
@@ -1239,8 +1239,8 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                 best = (n, p)
         return best[1] if best else None
 
-    def _results_dir(self, label: str, split: str) -> Path:
-        return self.working_dir / "eval-and-optimize" / "results" / f"{label}-{split}"
+    def _results_dir(self, result_id: str) -> Path:
+        return self.working_dir / "eval-and-optimize" / "results" / result_id
 
     def _load_goal_tree(
         self,
