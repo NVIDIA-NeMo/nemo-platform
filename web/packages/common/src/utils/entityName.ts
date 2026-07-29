@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { entitiesCreateEntityBodyNameRegExp } from '@nemo/sdk/generated/platform/zod/entity-store';
 import { z } from 'zod';
 
-// Mirrors NAME_PATTERN in packages/nmp_common/src/nmp/common/entities/constants.py.
-// The generated zod uses the looser pattern the service DTOs advertise, which lets
-// invalid names through to a 422 from the entity store.
-export const ENTITY_NAME_REGEXP = /^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$/;
+export const ENTITY_NAME_REGEXP = entitiesCreateEntityBodyNameRegExp;
 
 export const ENTITY_NAME_MIN_LENGTH = 2;
+// Entity-store schema declares no maxLength; the test pins this against ones that do.
 export const ENTITY_NAME_MAX_LENGTH = 63;
 
 export const ENTITY_NAME_HELP =

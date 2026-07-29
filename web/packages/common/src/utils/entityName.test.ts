@@ -2,12 +2,41 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  ENTITY_NAME_MAX_LENGTH,
   ENTITY_NAME_REGEXP,
   entityNameSchema,
   getEntityNameError,
   sanitizeEntityName,
   toValidEntityName,
 } from '@nemo/common/src/utils/entityName';
+import { entitiesCreateEntityBodyNameRegExp } from '@nemo/sdk/generated/platform/zod/entity-store';
+import {
+  filesCreateFilesetBodyNameMax,
+  filesCreateFilesetBodyNameRegExp,
+} from '@nemo/sdk/generated/platform/zod/files';
+import { modelsCreateProviderBodyNameRegExp } from '@nemo/sdk/generated/platform/zod/model-providers';
+import {
+  secretsCreateSecretBodyNameMax,
+  secretsCreateSecretBodyNameRegExp,
+} from '@nemo/sdk/generated/platform/zod/secrets';
+
+describe('generated schema agreement', () => {
+  it.each([
+    ['entity', entitiesCreateEntityBodyNameRegExp],
+    ['fileset', filesCreateFilesetBodyNameRegExp],
+    ['secret', secretsCreateSecretBodyNameRegExp],
+    ['model provider', modelsCreateProviderBodyNameRegExp],
+  ])('%s create schema uses the same name pattern', (_name, pattern) => {
+    expect(pattern.source).toBe(ENTITY_NAME_REGEXP.source);
+  });
+
+  it.each([
+    ['fileset', filesCreateFilesetBodyNameMax],
+    ['secret', secretsCreateSecretBodyNameMax],
+  ])('%s create schema agrees on the max length', (_name, max) => {
+    expect(max).toBe(ENTITY_NAME_MAX_LENGTH);
+  });
+});
 
 describe('getEntityNameError', () => {
   it.each(['sparl', 'a1', 'my-provider', 'llama-3.2-3b-instruct@v1.0.0+A100'.toLowerCase(), 'a_b'])(
