@@ -112,16 +112,20 @@ download_opa() {
   url="${OPA_DOWNLOAD_BASE_URL}/${OPA_VERSION}/${asset}"
   sha_url="${url}.sha256"
   echo "Downloading OPA ${OPA_VERSION} from ${url}..." >&2
-  # Bound each attempt: without --max-time a stalled connection consumes the whole job and the
-  # retries never get a turn. 120s is ~25x headroom for a ~23 MB binary on a CI runner.
+  # Bound both a single attempt (--max-time) and the whole retry window (--retry-max-time).
+  # --max-time RESETS on each retry, so without --retry-max-time the aggregate is unbounded: 4
+  # attempts could run for minutes. That matters because callers impose their own ceiling —
+  # embedded_pdp/policy_wasm.py runs this script with DEFAULT_BUILD_TIMEOUT_SECONDS=120 — and would
+  # kill the build mid-retry. Budget: <=45s aggregate + <=30s final attempt here, <=15s + <=10s for
+  # the checksum, leaving headroom for the `opa build` itself inside 120s.
   if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
-      --connect-timeout 15 --max-time 120 "${url}" -o "${tmp_bin}"; then
+      --connect-timeout 10 --max-time 30 --retry-max-time 45 "${url}" -o "${tmp_bin}"; then
     echo "Failed to download OPA binary from ${url}." >&2
     print_opa_help "${asset}"
     exit 1
   fi
   if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
-      --connect-timeout 15 --max-time 60 "${sha_url}" -o "${tmp_sha}"; then
+      --connect-timeout 10 --max-time 10 --retry-max-time 15 "${sha_url}" -o "${tmp_sha}"; then
     echo "Failed to download OPA checksum from ${sha_url}." >&2
     print_opa_help "${asset}"
     exit 1
