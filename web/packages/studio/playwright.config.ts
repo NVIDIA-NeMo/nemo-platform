@@ -20,7 +20,10 @@ export default defineConfig({
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: process.env.CI
     ? [['html'], ['junit', { outputFile: 'test-results/results.xml' }], ['list']]
-    : 'html',
+    : // `list` prints per-test pass/skip results inline; `html` with open:'never' still
+      // generates the report (open it with `npx playwright show-report`) but never spawns
+      // a blocking report server, so a plain `pnpm test:e2e` run can't hang the terminal.
+      [['list'], ['html', { open: 'never' }]],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
