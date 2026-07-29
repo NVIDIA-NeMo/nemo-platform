@@ -19,7 +19,6 @@ export interface ResultPreview {
   readonly error: Error | null;
 }
 
-/** Reads the first {@link RESULT_PREVIEW_ROWS} rows of a finished job's result fileset. */
 export const useResultPreview = (
   workspace: string,
   artifactUrl: string | undefined
@@ -48,7 +47,6 @@ export const useResultPreview = (
 
   const rows = useMemo<DataFileRow[]>(() => {
     if (!dataset) return [];
-    // parseDataFile throws on a malformed line; no route error boundary is wired.
     try {
       return parseDataFile(dataset, 'jsonl');
     } catch {

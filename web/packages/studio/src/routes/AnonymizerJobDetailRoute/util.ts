@@ -29,7 +29,6 @@ export const parseArtifactUrl = (artifactUrl: string | undefined): ArtifactLocat
   return fileset ? { fileset, basePath } : undefined;
 };
 
-/** `metadata.json` records the source column the run anonymized. */
 export const metadataTextColumn = (metadata: string | undefined): string | undefined => {
   try {
     return (JSON.parse(metadata ?? '{}') as { original_text_column?: string }).original_text_column;
@@ -41,10 +40,6 @@ export const metadataTextColumn = (metadata: string | undefined): string | undef
 /** Rewrite writes `<column>_rewritten`; the replace strategies write `<column>_replaced`. */
 const OUTPUT_SUFFIXES = ['_rewritten', '_replaced'];
 
-/**
- * Source column first, then its anonymized counterpart, then whatever else the run produced.
- * Matching the suffix exactly matters — replace runs also emit `<column>_with_spans`.
- */
 export const orderResultColumns = (columns: string[], textColumn: string | undefined): string[] => {
   if (!textColumn || !columns.includes(textColumn)) return columns;
   const output = OUTPUT_SUFFIXES.map((suffix) => `${textColumn}${suffix}`).find((column) =>
