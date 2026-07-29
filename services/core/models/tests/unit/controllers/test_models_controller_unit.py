@@ -8,7 +8,9 @@ import json
 import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+from nemo_platform_plugin.client.errors import NotFoundError
 from nmp.core.models.config import config as models_config
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.models_controller import NON_TERMINAL_STATES, ModelsController
@@ -301,6 +303,40 @@ async def test_async_controller_step_calls_reconcilers(mock_get_config_patch, mo
 
 
 @pytest.mark.asyncio
+async def test_async_controller_step_skips_contexts_without_a_deployment(
+    mock_get_config_patch, mock_models_sdk, mock_backend_registry
+):
+    """Orphan detection derives its known set only from contexts that carry one.
+
+    ``ModelContext.model_deployment`` is Optional. Reading it unguarded raises
+    inside the step, which aborts provider reconciliation and VirtualModel cleanup
+    for that tick and marks the controller unhealthy, every tick, until fixed.
+    """
+    deployment = MagicMock()
+    deployment.workspace = "default"
+    deployment.name = "has-deployment"
+    contexts = [
+        ModelContext(model_deployment=deployment, model_deployment_config=None, model_entity=None),
+        ModelContext(model_deployment=None, model_deployment_config=None, model_entity=None),
+    ]
+
+    with patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk", return_value=mock_models_sdk):
+        controller = ModelsController(backend_registry=mock_backend_registry)
+
+        controller.retrieve_non_terminal_deployments = AsyncMock(return_value=contexts)
+        controller.retrieve_error_deployments = AsyncMock(return_value=[])
+        controller.retrieve_model_providers = AsyncMock(return_value=[])
+        controller._deployment_reconciler.reconcile_deployments = AsyncMock()
+        controller._deployment_reconciler.reconcile_orphans = AsyncMock()
+        controller._deployment_reconciler.gc_error_deployments = AsyncMock()
+        controller._provider_reconciler.reconcile_model_providers = AsyncMock()
+
+        await controller.async_controller_step()
+
+    controller._deployment_reconciler.reconcile_orphans.assert_awaited_once_with({"default/has-deployment"})
+
+
+@pytest.mark.asyncio
 async def test_async_controller_step_runs_provider_reconciler_with_no_providers(
     mock_get_config_patch, mock_models_sdk, mock_backend_registry
 ):
@@ -568,6 +604,125 @@ async def test_retrieve_model_entity_for_config_invalid_model_entity_id_falls_ba
 
     assert result is mock_entity
     mock_models_sdk.get_model.assert_called_once_with(name="fallback-model", workspace="fallback-ns")
+
+
+# =============================================================================
+# _retrieve_model_entity: entity cache vs direct fetch
+#
+# The cache is refreshed at the start of every controller phase, so at runtime
+# `loaded` is True and revision-less lookups are answered from it. The tests above
+# reach the direct-fetch path only because they never run a phase.
+# =============================================================================
+
+
+async def _controller_with_cache(mock_models_sdk, mock_backend_registry, entities):
+    """Build a controller whose entity cache holds ``entities``."""
+    mock_models_sdk.list_models = AsyncMock(return_value=MockAsyncPaginator(entities))
+    with patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk", return_value=mock_models_sdk):
+        controller = ModelsController(backend_registry=mock_backend_registry)
+    await controller._entity_cache.refresh()
+    mock_models_sdk.get_model.reset_mock()
+    return controller
+
+
+def _entity(workspace, name):
+    entity = MagicMock()
+    entity.workspace = workspace
+    entity.name = name
+    return entity
+
+
+@pytest.mark.asyncio
+async def test_retrieve_model_entity_reads_the_loaded_cache_instead_of_the_api(
+    mock_get_config_patch, mock_models_sdk, mock_backend_registry
+):
+    """A revision-less hit is served from the snapshot, costing no round trip.
+
+    Avoiding the per-model round trip is the entire point of the cache, so the
+    assertion that matters is that get_model was never called.
+    """
+    entity = _entity("my-ws", "my-model")
+    controller = await _controller_with_cache(mock_models_sdk, mock_backend_registry, [entity])
+
+    result = await controller._retrieve_model_entity(workspace="my-ws", model_name="my-model")
+
+    assert result is entity
+    mock_models_sdk.get_model.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_retrieve_model_entity_returns_none_on_cache_miss_without_falling_back(
+    mock_get_config_patch, mock_models_sdk, mock_backend_registry
+):
+    """A miss against a loaded cache is reported as absent, with no API fallback.
+
+    This is a deliberate behaviour change: an entity created after the phase's
+    refresh reads as nonexistent until the next tick re-reads the snapshot.
+    """
+    controller = await _controller_with_cache(mock_models_sdk, mock_backend_registry, [])
+
+    result = await controller._retrieve_model_entity(workspace="my-ws", model_name="absent")
+
+    assert result is None
+    mock_models_sdk.get_model.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_retrieve_model_entity_bypasses_the_cache_when_a_revision_is_given(
+    mock_get_config_patch, mock_models_sdk, mock_backend_registry
+):
+    """A revision resolves server-side and has no cache key, so it must be fetched.
+
+    The cache is keyed by bare name, so answering a revisioned lookup from it
+    would hand back whichever revision happened to be current.
+    """
+    cached = _entity("my-ws", "my-model")
+    controller = await _controller_with_cache(mock_models_sdk, mock_backend_registry, [cached])
+    fetched = _entity("my-ws", "my-model")
+    mock_models_sdk.get_model = AsyncMock(return_value=MockResponse(fetched))
+
+    result = await controller._retrieve_model_entity(workspace="my-ws", model_name="my-model", revision="v2")
+
+    assert result is fetched
+    mock_models_sdk.get_model.assert_called_once_with(name="my-model@v2", workspace="my-ws")
+
+
+@pytest.mark.asyncio
+async def test_retrieve_model_entity_queries_the_api_while_the_cache_is_unloaded(
+    mock_get_config_patch, mock_models_sdk, mock_backend_registry
+):
+    """Before the first refresh a miss is indistinguishable from absence."""
+    entity = _entity("my-ws", "my-model")
+    mock_models_sdk.get_model = AsyncMock(return_value=MockResponse(entity))
+
+    with patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk", return_value=mock_models_sdk):
+        controller = ModelsController(backend_registry=mock_backend_registry)
+        assert controller._entity_cache.loaded is False
+        result = await controller._retrieve_model_entity(workspace="my-ws", model_name="my-model")
+
+    assert result is entity
+    mock_models_sdk.get_model.assert_called_once_with(name="my-model", workspace="my-ws")
+
+
+@pytest.mark.asyncio
+async def test_retrieve_model_entity_returns_none_when_the_api_reports_not_found(
+    mock_get_config_patch, mock_models_sdk, mock_backend_registry
+):
+    """NIMs with baked-in weights have no registered entity; that is not an error.
+
+    The clause catches the typed client's NotFoundError. Catching the umbrella
+    SDK's instead would let this escape into the generic handler and be logged as
+    an unexpected exception on every pass.
+    """
+    mock_models_sdk.get_model = AsyncMock(
+        side_effect=NotFoundError(httpx.Response(404, request=httpx.Request("GET", "http://test")))
+    )
+
+    with patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk", return_value=mock_models_sdk):
+        controller = ModelsController(backend_registry=mock_backend_registry)
+        result = await controller._retrieve_model_entity(workspace="my-ws", model_name="missing")
+
+    assert result is None
 
 
 # =============================================================================

@@ -3,10 +3,15 @@
 
 """Test fixtures for Models Controller tests."""
 
-from typing import Generic, TypeVar
+import inspect
+from typing import Generic, TypeVar, get_origin
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import nemo_platform_plugin.client.types as _client_types
+import nemo_platform_plugin.models.types as _models_types
 import pytest
+from nemo_platform_plugin.client.method import EndpointMethod
+from nemo_platform_plugin.client.types import Paginated
 from nemo_platform_plugin.models.client import AsyncModelsClient
 from nmp.common.config import PlatformConfig
 
@@ -256,29 +261,56 @@ def response(data: T) -> Response[T]:
     return Response(data)
 
 
-# Derived from the real client so a method that does not exist on AsyncModelsClient
-# is not silently mockable, and so new endpoints are picked up without edits here.
-_MODELS_CLIENT_METHODS = tuple(
-    name for name in vars(AsyncModelsClient).keys() | set(dir(AsyncModelsClient)) if not name.startswith("_")
-)
+def _endpoint_returns_paginated(descriptor: EndpointMethod) -> bool:
+    """Whether an endpoint's declared return type is ``Paginated[...]``.
+
+    Read from the endpoint's own annotation rather than guessed from its name:
+    ``list_deployment_versions`` and ``list_deployment_config_versions`` return
+    plain lists, so a name-prefix rule hands them the wrong response shape.
+    """
+    annotation = inspect.signature(inspect.unwrap(descriptor)).return_annotation
+    if isinstance(annotation, str):
+        try:
+            annotation = eval(annotation, {**vars(_models_types), **vars(_client_types)})  # noqa: S307
+        except Exception:
+            return False
+    return annotation is Paginated or get_origin(annotation) is Paginated
+
+
+# Derived from the real client: only the method() descriptors are endpoints, so
+# the URL builders and the wait_for_* helpers keep the sync/return shapes they
+# actually have, and a new endpoint is picked up here without an edit.
+_MODELS_CLIENT_ENDPOINTS = {
+    name: _endpoint_returns_paginated(descriptor)
+    for name in dir(AsyncModelsClient)
+    if not name.startswith("_")
+    and isinstance(descriptor := inspect.getattr_static(AsyncModelsClient, name), EndpointMethod)
+}
 
 
 def make_models_client(*, strict: bool = True) -> MagicMock:
-    """A mock AsyncModelsClient whose calls are awaitable and return typed-shaped results.
+    """A mock AsyncModelsClient whose endpoint calls are awaitable and typed-shaped.
 
-    ``list_*`` calls yield an empty page; everything else resolves to a ``Response``
+    Paginated endpoints yield an empty page; the rest resolve to a ``Response``
     wrapping a MagicMock. Tests override the specific calls they care about.
+
+    Only ``method()`` endpoints are wired. Everything else on the client keeps
+    whatever ``spec`` gives it, which is already right: the OpenAI route builders
+    are sync and return ``str``, and ``wait_for_*`` returns ``bool``, so forcing
+    them into the endpoint shape would hand tests a coroutine where production
+    has a string.
 
     ``strict=False`` drops the spec so the same mock can also stand in for the
     umbrella platform SDK, which the models controller passes to the provider
     reconciler for IGW and VirtualModel work.
     """
     client = MagicMock(spec=AsyncModelsClient) if strict else MagicMock()
-    for name in _MODELS_CLIENT_METHODS:
-        if name.startswith("list_"):
-            setattr(client, name, AsyncMock(return_value=PaginatedResponse([])))
-        elif name.startswith(("get_", "create_", "update_", "delete_", "upsert_", "wait_for_")):
-            setattr(client, name, AsyncMock(return_value=Response(MagicMock())))
+    for name, paginated_return in _MODELS_CLIENT_ENDPOINTS.items():
+        result = PaginatedResponse([]) if paginated_return else Response(MagicMock())
+        setattr(client, name, AsyncMock(return_value=result))
+    if not strict:
+        # No spec to supply it, and the provider reconciler calls it on the SDK.
+        client.send = AsyncMock(return_value=Response(MagicMock()))
     return client
 
 

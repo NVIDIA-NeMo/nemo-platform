@@ -18,6 +18,7 @@ from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.entity_cache import ModelEntityCache
 from nmp.core.models.controllers.provider_reconciler import (
+    _VIRTUAL_MODEL_PAGE_SIZE,
     PROVIDER_ERROR_RETRY_INTERVAL_SECONDS,
     PROVIDER_ERROR_THRESHOLD_SECONDS,
     PROVIDER_LOST_THRESHOLD_SECONDS,
@@ -52,6 +53,13 @@ def _response(data: T) -> _Response[T]:
 
 def _client_error(error_type: type[NemoHTTPError], status_code: int) -> NemoHTTPError:
     return error_type(httpx.Response(status_code, request=httpx.Request("GET", "http://test")))
+
+
+def _api_status_error(status_code: int, detail: str = "upstream error") -> APIStatusError:
+    """An umbrella-SDK API failure, as opposed to a bug in our own code."""
+    response = MagicMock()
+    response.status_code = status_code
+    return APIStatusError("api failure", response=response, body={"detail": detail})
 
 
 def _discovery_models_from_ids(ids: list[str]) -> list[DiscoveredModel]:
@@ -1043,7 +1051,7 @@ async def test_virtual_model_listing_failure_does_not_abort_provider_reconciliat
         model_entity=None,
     )
 
-    mock_models_sdk.inference.virtual_models.list = MagicMock(side_effect=Exception("listing unavailable"))
+    mock_models_sdk.inference.virtual_models.list = MagicMock(side_effect=_api_status_error(503))
     mock_models_client.create_model = AsyncMock(return_value=_response(MagicMock()))
     mock_models_client.update_provider_status = AsyncMock(return_value=_response(MagicMock()))
 
@@ -2210,6 +2218,60 @@ async def test_cleanup_delete_failure_is_logged_and_non_fatal(reconciler, mock_m
         expected_db_version=1,
     )
     assert any("Failed to delete orphaned autoprovisioned VirtualModel ws/model-a" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_skips_orphaned_virtual_model_without_a_name(reconciler, mock_models_sdk, caplog):
+    """``VirtualModel.name`` is Optional on the wire, so an unnamed one must be skipped.
+
+    Without the guard the delete goes out as ``name=None``, which is a malformed
+    request against IGW that the surrounding ``except Exception`` would downgrade
+    to a warning.
+    """
+    mock_models_sdk.inference.virtual_models.list = MagicMock(
+        return_value=_AsyncPaginator(
+            [
+                _virtual_model(
+                    None,
+                    default_model_entity="ws/orphan",
+                    autoprovisioned=True,
+                    db_version=1,
+                )
+            ]
+        )
+    )
+
+    with caplog.at_level(logging.WARNING):
+        vm_snapshot, _ = await reconciler._load_virtual_models()
+        await reconciler._cleanup_orphaned_virtual_models([], vm_snapshot)
+
+    mock_models_sdk.inference.virtual_models.delete.assert_not_awaited()
+    assert any("Skipping autoprovisioned VirtualModel with no name" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_load_virtual_models_does_not_swallow_programming_errors(reconciler, mock_models_sdk):
+    """Only API failures mean "state unknown"; a bug in our own code must surface.
+
+    An earlier version caught every exception here, which turned an AttributeError
+    into a routine "listing failed" warning and silently disabled orphan cleanup
+    on every pass while the suite stayed green.
+    """
+    mock_models_sdk.inference.virtual_models.list = MagicMock(side_effect=AttributeError("no such attribute"))
+
+    with pytest.raises(AttributeError):
+        await reconciler._load_virtual_models()
+
+
+@pytest.mark.asyncio
+async def test_load_virtual_models_reports_unknown_state_on_api_failure(reconciler, mock_models_sdk):
+    """A genuine API failure still degrades to None rather than propagating."""
+    mock_models_sdk.inference.virtual_models.list = MagicMock(side_effect=_api_status_error(503))
+
+    assert await reconciler._load_virtual_models() is None
+    mock_models_sdk.inference.virtual_models.list.assert_called_once_with(
+        workspace="-", page_size=_VIRTUAL_MODEL_PAGE_SIZE
+    )
 
 
 @pytest.mark.asyncio

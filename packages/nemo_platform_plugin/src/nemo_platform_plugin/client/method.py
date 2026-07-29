@@ -71,13 +71,27 @@ class EndpointMethod(Generic[P, SyncReturnT, AsyncReturnT]):
     the response type that ``send()`` returns for each endpoint marker.
     """
 
+    # Copied from the endpoint in __init__ so help() and autodoc describe the
+    # endpoint. Declared here so the descriptor's introspection surface is part of
+    # its type rather than something callers have to discover at runtime.
+    __wrapped__: Callable[P, PreparedRequest]
+    __name__: str
+    __qualname__: str
+    __doc__: str | None
+    __module__: str
+
     def __init__(self, endpoint_fn: Callable[P, PreparedRequest]) -> None:
         self._endpoint_fn = endpoint_fn
-        # Carry the endpoint's identity onto the descriptor so class-level
-        # introspection (inspect.signature, help(), autodoc) resolves through
-        # __wrapped__ to the real parameter list instead of stopping here.
+        # Carry the endpoint's name, docstring, and annotations onto the descriptor
+        # so help() and autodoc describe the endpoint rather than the descriptor.
         # Set directly rather than via functools.update_wrapper, which expects a
-        # callable wrapper; a descriptor is not one.
+        # callable wrapper; a descriptor is not one, and which would also copy
+        # __dict__ and with it the endpoint's __isabstractmethod__ marker.
+        #
+        # This does NOT make inspect.signature(SomeClient.method) work: signature()
+        # rejects a non-callable before it ever consults __wrapped__. Reach the
+        # parameter list via inspect.unwrap() at class level, or just read it off
+        # an instance, where __get__ hands back the bound function.
         self.__wrapped__ = endpoint_fn
         for attr in functools.WRAPPER_ASSIGNMENTS:
             try:

@@ -391,6 +391,148 @@ async def test_flush_reports_progress_even_when_an_entity_write_fails(mock_model
     assert len(heartbeat_calls) == 2
 
 
+# ---------------------------------------------------------------------------
+# The typed client returns responses, not entities. Dropping .data() would put a
+# NemoResponse into the snapshot, and dropping the write-back would make a second
+# change to the same entity in the same phase take a create/409 round trip.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_created_entity_is_unwrapped_into_the_snapshot(mock_models_client, cache):
+    """A create seeds the snapshot with the entity, so the phase can build on it."""
+    await _load(mock_models_client, cache)
+    server_entity = _entity("ws", "model", ["ws/p1"])
+    mock_models_client.create_model = AsyncMock(return_value=response(server_entity))
+
+    cache.stage_create("ws", "model", description="d")
+    cache.stage_provider_link("ws", "model", "ws/p1")
+    await cache.flush()
+
+    # The server's entity is in the snapshot, not the response wrapping it.
+    assert cache.get("ws", "model") is server_entity
+
+    # A second link in the same phase is therefore an update, not another create.
+    cache.stage_provider_link("ws", "model", "ws/p2")
+    await cache.flush()
+
+    mock_models_client.create_model.assert_awaited_once()
+    _assert_updated(mock_models_client, workspace="ws", name="model", model_providers=["ws/p1", "ws/p2"])
+
+
+@pytest.mark.asyncio
+async def test_updated_entity_is_unwrapped_into_the_snapshot(mock_models_client, cache):
+    """An update replaces the snapshot entry with what the server returned."""
+    await _load(mock_models_client, cache, [_entity("ws", "model", [])])
+    server_entity = _entity("ws", "model", ["ws/p1"], fileset="hub/model")
+    mock_models_client.update_model = AsyncMock(return_value=response(server_entity))
+
+    cache.stage_provider_link("ws", "model", "ws/p1")
+    await cache.flush()
+
+    assert cache.get("ws", "model") is server_entity
+    # Reading back a server-side value the request never carried proves the
+    # snapshot came from the response rather than from the pre-write entity.
+    assert cache.get("ws", "model").fileset == "hub/model"
+
+
+@pytest.mark.asyncio
+async def test_create_body_carries_staged_field_updates(mock_models_client, cache):
+    """stage_create + stage_field_updates is the only create shape in production.
+
+    provider_reconciler stages the description and backend_format, then stages
+    fileset and api_endpoint separately. Both have to reach the same POST body.
+    """
+    await _load(mock_models_client, cache)
+
+    cache.stage_create("ws", "model", description="auto-discovered", backend_format="OPENAI_CHAT")
+    cache.stage_provider_link("ws", "model", "ws/p1")
+    cache.stage_field_updates("ws", "model", fileset="hub/model", api_endpoint=None)
+    await cache.flush()
+
+    _assert_created(
+        mock_models_client,
+        workspace="ws",
+        name="model",
+        description="auto-discovered",
+        backend_format="OPENAI_CHAT",
+        fileset="hub/model",
+        model_providers=["ws/p1"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_field_updates_win_over_create_attributes(mock_models_client, cache):
+    """A staged field update overrides the same attribute staged for creation."""
+    await _load(mock_models_client, cache)
+
+    cache.stage_create("ws", "model", backend_format="OPENAI_CHAT")
+    cache.stage_field_updates("ws", "model", backend_format="ANTHROPIC_MESSAGES")
+    await cache.flush()
+
+    _assert_created(mock_models_client, workspace="ws", name="model", backend_format="ANTHROPIC_MESSAGES")
+
+
+@pytest.mark.asyncio
+async def test_create_addresses_the_entity_by_its_cache_key(mock_models_client, cache):
+    """The name and workspace on the wire come from the cache key.
+
+    ``stage_create`` takes both positionally, so an attribute of either name
+    cannot reach ``create_kwargs`` and the filter that drops them in ``_create``
+    is unreachable. This pins the property that filter was defending.
+    """
+    await _load(mock_models_client, cache)
+
+    cache.stage_create("ws", "real", description="d")
+    await cache.flush()
+
+    _assert_created(mock_models_client, workspace="ws", name="real", description="d")
+
+
+# ---------------------------------------------------------------------------
+# Staging is idempotent and order-independent
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_repeated_staging_of_the_same_provider_does_not_duplicate_it(mock_models_client, cache):
+    """Several providers converging on one entity must not produce duplicate links."""
+    await _load(mock_models_client, cache, [_entity("ws", "model", [])])
+
+    cache.stage_provider_link("ws", "model", "ws/p1")
+    cache.stage_provider_link("ws", "model", "ws/p1")
+    await cache.flush()
+
+    _assert_updated(mock_models_client, workspace="ws", name="model", model_providers=["ws/p1"])
+
+
+@pytest.mark.asyncio
+async def test_repeated_unlink_of_the_same_provider_is_staged_once(mock_models_client, cache):
+    await _load(mock_models_client, cache, [_entity("ws", "model", ["ws/p1", "ws/p2"])])
+
+    cache.stage_provider_unlink("ws", "model", "ws/p1")
+    cache.stage_provider_unlink("ws", "model", "ws/p1")
+    await cache.flush()
+
+    _assert_updated(mock_models_client, workspace="ws", name="model", model_providers=["ws/p2"])
+
+
+@pytest.mark.asyncio
+async def test_unlink_after_link_for_the_same_provider_cancels_out(mock_models_client, cache):
+    """The mirror of the link-after-unlink case.
+
+    Reachable when a provider is discovered and then deleted within one phase.
+    """
+    await _load(mock_models_client, cache, [_entity("ws", "model", [])])
+
+    cache.stage_provider_link("ws", "model", "ws/p1")
+    cache.stage_provider_unlink("ws", "model", "ws/p1")
+    await cache.flush()
+
+    assert cache.get("ws", "model").model_providers == []
+    mock_models_client.update_model.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_conflict_adoption_does_not_overwrite_the_existing_entity_attributes(mock_models_client, cache):
     """Adopting a concurrently-created entity leaves its own attributes alone.

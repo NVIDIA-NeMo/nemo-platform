@@ -13,7 +13,7 @@ from nemo_platform import AsyncNeMoPlatform
 
 # IGW discovery and VirtualModel operations still go through the umbrella SDK, so
 # their exception types are the Stainless ones and are named to say so.
-from nemo_platform._exceptions import APIStatusError
+from nemo_platform._exceptions import APIError, APIStatusError
 from nemo_platform._exceptions import ConflictError as StainlessConflictError
 from nemo_platform._exceptions import NotFoundError as StainlessNotFoundError
 from nemo_platform.types.inference.virtual_model import VirtualModel
@@ -417,6 +417,11 @@ class ModelProviderReconciler:
         Returns ``None`` if the listing failed, which callers read as "the
         VirtualModel state is unknown this pass" and skip VirtualModel work rather
         than acting on a partial view.
+
+        Only API failures are treated that way. A bug in this method is not an
+        unreachable service, and catching everything here once turned an
+        ``AttributeError`` into a routine "listing failed" warning that silently
+        disabled orphan cleanup for every pass while the tests stayed green.
         """
         vm_snapshot: list[VirtualModel] = []
         try:
@@ -425,7 +430,7 @@ class ModelProviderReconciler:
             ):
                 vm_snapshot.append(virtual_model)
                 self._emit_heartbeat()
-        except Exception:
+        except APIError:
             logger.warning("Failed to list VirtualModels for provider reconciliation", exc_info=True)
             return None
         existing_vm_names = {(vm.workspace, vm.name) for vm in vm_snapshot}
