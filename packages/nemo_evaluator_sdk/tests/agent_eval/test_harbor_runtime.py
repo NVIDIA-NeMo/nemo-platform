@@ -9,7 +9,9 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
@@ -18,6 +20,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     HarborRewardMetric,
     HarborRuntimeConfig,
     HarborTasksetLoader,
+    _build_native_job,
     build_trials_from_job_dir,
     discover_harbor_tasks,
     reward_payload_from_result,
@@ -26,7 +29,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 _HELLO_WORLD_DATASET = Path(__file__).resolve().parents[2] / "examples" / "harbor" / "hello_world_dataset"
 
@@ -282,10 +285,12 @@ async def test_changed_inputs_discard_the_job_dir(tmp_path: Path, monkeypatch: p
 
 
 @pytest.mark.asyncio
-async def test_scoped_agent_import_always_discards(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # With agent_dir set, scoped_harbor_agent_import bakes a fresh uuid into the
-    # import path, so Harbor's own JobConfig never matches on a rerun and it raises
-    # FileExistsError instead of resuming. Discard even when the stamp matches.
+async def test_under_covered_job_resumes_with_agent_dir_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression for AALGO-430. This used to discard unconditionally: the scoped
+    # import path carried a fresh uuid per run, so Harbor's JobConfig never matched
+    # and it raised FileExistsError instead of resuming. Now the path is
+    # content-addressed, so an unchanged agent resumes and keeps completed Docker
+    # work — the same as the agent_dir-unset case below.
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
     (agent_dir / "wrapper.py").write_text("x = 1\n")
@@ -297,14 +302,15 @@ async def test_scoped_agent_import_always_discards(tmp_path: Path, monkeypatch: 
 
     await HarborAgentTaskRunner(config=config).run_tasks([task])
 
-    assert calls == [True]
+    assert calls == [False], "an unchanged agent must resume, not discard completed trials"
 
 
 @pytest.mark.asyncio
 async def test_under_covered_job_resumes_when_harbor_can(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Inputs unchanged, some attempts missing, and agent_dir unset — Harbor's
-    # AgentConfig is deterministic here, so it can resume per trial. Discarding
-    # would throw away completed Docker work for nothing.
+    # Inputs unchanged, some attempts missing, agent_dir unset — Harbor's
+    # AgentConfig is deterministic, so it resumes per trial. Discarding would throw
+    # away completed Docker work for nothing. The agent_dir-set case above now
+    # behaves identically (AALGO-430).
     config, job_dir, task = _seed_cached_job(tmp_path)
     config = config.model_copy(update={"n_attempts": 2})
     _stamp_for(config, task, job_dir)  # stamp matches the new config
@@ -719,3 +725,434 @@ def test_digest_survives_readlink_failing_mid_walk(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr(os, "readlink", exploding_readlink)
 
     assert _digest_directory(agent)  # must not raise
+
+
+def _scoped_path(agent_dir: Path) -> str:
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import scoped_harbor_agent_import
+
+    with scoped_harbor_agent_import(agent_dir, "wrapper:Agent") as scoped:
+        return scoped
+
+
+def test_scoped_import_path_is_stable_for_unchanged_contents(tmp_path: Path) -> None:
+    # The import path lands in Harbor's JobConfig, which Harbor compares field-by-field
+    # when deciding whether a job dir may be resumed. A per-run random suffix made that
+    # comparison fail every time, so Harbor could never resume (AALGO-430).
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    (agent_dir / "wrapper.py").write_text("x = 1\n")
+
+    assert _scoped_path(agent_dir) == _scoped_path(agent_dir)
+
+
+def test_scoped_import_path_changes_when_the_agent_changes(tmp_path: Path) -> None:
+    # The flip side: an edited agent must NOT resume a job dir built from the old one.
+    # Harbor's own config check now catches that without help from the cache stamp.
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    (agent_dir / "wrapper.py").write_text("x = 1\n")
+    before = _scoped_path(agent_dir)
+
+    (agent_dir / "wrapper.py").write_text("x = 2\n")
+
+    assert _scoped_path(agent_dir) != before
+
+
+def test_distinct_agents_do_not_share_a_scoped_package(tmp_path: Path) -> None:
+    # Content-addressing must not collapse different agents onto one sys.modules entry.
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    for path, body in ((first, "x = 1\n"), (second, "x = 2\n")):
+        path.mkdir()
+        (path / "wrapper.py").write_text(body)
+
+    assert _scoped_path(first) != _scoped_path(second)
+
+
+def test_overlapping_scopes_on_one_agent_survive_the_inner_exit(tmp_path: Path) -> None:
+    # Identical contents now share a package name, so teardown is refcounted: the inner
+    # scope exiting must not strip sys.modules out from under the outer one.
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import scoped_harbor_agent_import
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    (agent_dir / "wrapper.py").write_text("VALUE = 7\n")
+
+    with scoped_harbor_agent_import(agent_dir, "wrapper:Agent") as outer:
+        package = outer.split(":")[0].rsplit(".", 1)[0]
+        with scoped_harbor_agent_import(agent_dir, "wrapper:Agent"):
+            pass
+        # Inner scope closed; the outer one is still open and must still resolve.
+        assert package in sys.modules
+        assert importlib.import_module(f"{package}.wrapper").VALUE == 7
+
+    assert package not in sys.modules, "the last scope to exit must clean up"
+
+
+def test_scoped_import_teardown_is_complete_after_overlap(tmp_path: Path) -> None:
+    # Refcounting must not leak: no stray refcount entries or sys.modules residue.
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
+        _AGENT_IMPORT_ROOT,
+        _AGENT_PACKAGE_REFCOUNTS,
+        scoped_harbor_agent_import,
+    )
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    (agent_dir / "wrapper.py").write_text("x = 1\n")
+
+    with scoped_harbor_agent_import(agent_dir, "wrapper:Agent"):
+        with scoped_harbor_agent_import(agent_dir, "wrapper:Agent"):
+            pass
+
+    assert _AGENT_PACKAGE_REFCOUNTS == {}
+    assert not [name for name in sys.modules if name.startswith(f"{_AGENT_IMPORT_ROOT}.")]
+
+
+def test_scoped_import_path_ignores_a_jobs_dir_nested_under_the_agent(tmp_path: Path) -> None:
+    # jobs_dir is caller-chosen and may sit *under* agent_dir. Without the same
+    # exclusion the cache stamp applies, Harbor's own results would feed the package
+    # name, so the import path would move every run and the resume this whole change
+    # exists to enable could never happen.
+    agent_dir = tmp_path / "agent"
+    jobs_dir = agent_dir / "results"
+    jobs_dir.mkdir(parents=True)
+    (agent_dir / "wrapper.py").write_text("x = 1\n")
+    excluded = frozenset({jobs_dir.resolve()})
+
+    with scoped_harbor_agent_import(agent_dir, "wrapper:Agent", exclude=excluded) as before:
+        pass
+    (jobs_dir / "trial-a").mkdir()
+    (jobs_dir / "trial-a" / "result.json").write_text("{}")
+    with scoped_harbor_agent_import(agent_dir, "wrapper:Agent", exclude=excluded) as after:
+        pass
+
+    assert before == after, "accumulating results must not move the agent's import path"
+
+
+def test_failed_scoped_import_install_does_not_wedge_the_refcount(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The refcount is taken only once the sys.modules injection has succeeded. Taking
+    # it first would strand the count at 1 when the injection raises — no scope ever
+    # opened, so nothing decrements it, and the package could never be torn down again.
+    from nemo_evaluator_sdk.agent_eval.runtimes import harbor_runtime
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _AGENT_IMPORT_ROOT, _AGENT_PACKAGE_REFCOUNTS
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    (agent_dir / "wrapper.py").write_text("x = 1\n")
+
+    def explode(_name: str) -> ModuleType:
+        raise RuntimeError("synthetic package could not be built")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(harbor_runtime, "ModuleType", explode)
+        with pytest.raises(RuntimeError, match="synthetic package"):
+            with scoped_harbor_agent_import(agent_dir, "wrapper:Agent"):
+                pass
+
+    assert _AGENT_PACKAGE_REFCOUNTS == {}, "a failed install must not leave a refcount behind"
+    # And a later scope must still install and then fully tear down.
+    with scoped_harbor_agent_import(agent_dir, "wrapper:Agent"):
+        pass
+    assert _AGENT_PACKAGE_REFCOUNTS == {}
+    assert not [name for name in sys.modules if name.startswith(f"{_AGENT_IMPORT_ROOT}.")]
+
+
+class _DriftConfig(BaseModel):
+    """Stands in for Harbor's JobConfig: a field it ignores, one it compares, one defaulted."""
+
+    job_name: str = "job"
+    n_concurrent_trials: int = 4
+    quiet: bool = True
+
+
+def _stub_harbor(monkeypatch: pytest.MonkeyPatch, job_create: Callable[[object], Awaitable[object]]) -> None:
+    """Install a minimal fake ``harbor`` package so ``run_job`` can execute.
+
+    Only the names ``_build_native_job``'s ``run_job`` imports are provided.
+    ``job_create`` becomes ``Job.create``; every config class is a permissive stub,
+    since what is under test is the control flow around Harbor, not the payload.
+    """
+
+    def _module(name: str, **attrs: object) -> None:
+        module = ModuleType(name)
+        for key, value in attrs.items():
+            setattr(module, key, value)
+        monkeypatch.setitem(sys.modules, name, module)
+
+    def _anything(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    class _Job:
+        create = staticmethod(job_create)
+
+    _module("harbor")
+    # JobConfig is a real model, not `_anything`: the resume-refusal path reads and
+    # re-validates the persisted one to report what differed. Pydantic ignores the
+    # kwargs _build_native_job passes that this stand-in doesn't declare.
+    _module("harbor.job", DatasetConfig=_anything, Job=_Job, JobConfig=_DriftConfig)
+    _module("harbor.models")
+    _module("harbor.models.job")
+    _module("harbor.models.job.config", RetryConfig=_anything)
+    _module("harbor.models.trial")
+    _module("harbor.models.trial.config", AgentConfig=_anything, ArtifactConfig=_anything)
+
+
+class _FakeJob:
+    async def run(self) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_harbor_refusing_to_resume_discards_and_reruns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Harbor compares its whole persisted JobConfig (and lock.json) before resuming and
+    # raises FileExistsError on any mismatch. The SDK cache stamp is looser on purpose:
+    # `quiet`, `n_concurrent_trials` and the `task_names` filter change the JobConfig
+    # without changing the results, so a job dir that passes the stamp — and is
+    # therefore handed over with force_rerun=False — can still be rejected by Harbor.
+    # That must degrade to a clean re-run rather than crash the evaluation.
+    jobs_dir = tmp_path / "jobs"
+    job_dir = jobs_dir / "pinned"
+    (job_dir / "old-trial").mkdir(parents=True)
+    # The dir was produced on a 10-core box; this run defaults to 4. Nothing about the
+    # results changed, so the SDK stamp would still call it fresh — Harbor won't.
+    (job_dir / "config.json").write_text(
+        _DriftConfig(job_name="pinned", n_concurrent_trials=10).model_dump_json(exclude_defaults=True),
+        encoding="utf-8",
+    )
+    dir_existed_at_attempt: list[bool] = []
+
+    async def create(_config: object) -> _FakeJob:
+        dir_existed_at_attempt.append(job_dir.exists())
+        if len(dir_existed_at_attempt) == 1:
+            raise FileExistsError(
+                f"Job directory {job_dir} already exists and cannot be resumed with a different config."
+            )
+        return _FakeJob()
+
+    _stub_harbor(monkeypatch, create)
+    config = HarborRuntimeConfig(jobs_dir=jobs_dir, job_name="pinned")
+    _built, run_job = _build_native_job(config, tmp_path / "dataset", None, job_name="pinned", force_rerun=False)
+
+    with caplog.at_level(logging.WARNING):
+        await run_job()
+
+    assert dir_existed_at_attempt == [True, False], "the refused dir must be discarded before the retry"
+    assert not (job_dir / "old-trial").exists(), "the stale trial must be gone, not resumed onto"
+    assert "refused to resume" in caplog.text, "silently deleting completed trials must be visible"
+    assert "n_concurrent_trials: 10 -> 4" in caplog.text, "the warning must name what forced the discard"
+
+
+@pytest.mark.asyncio
+async def test_file_exists_error_without_a_job_dir_propagates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The retry is scoped to Harbor's resume refusal. A FileExistsError raised with no
+    # job dir to discard is something else entirely and must not be swallowed, nor
+    # turned into a second Docker run.
+    attempts: list[int] = []
+
+    async def create(_config: object) -> _FakeJob:
+        attempts.append(1)
+        raise FileExistsError("something unrelated")
+
+    _stub_harbor(monkeypatch, create)
+    config = HarborRuntimeConfig(jobs_dir=tmp_path / "jobs", job_name="pinned")
+    _built, run_job = _build_native_job(config, tmp_path / "dataset", None, job_name="pinned", force_rerun=False)
+
+    with pytest.raises(FileExistsError, match="something unrelated"):
+        await run_job()
+
+    assert attempts == [1], "an unrelated FileExistsError must not be retried"
+
+
+@pytest.mark.asyncio
+async def test_unrelated_file_exists_error_mid_run_leaves_the_job_dir_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The dangerous shape: a job dir that *does* exist, and a FileExistsError raised
+    # from inside the run rather than by Harbor's resume check — a trial, a hook, an
+    # environment build. Treating that as drift would delete completed work and re-run
+    # for an error that has nothing to do with the config.
+    jobs_dir = tmp_path / "jobs"
+    job_dir = jobs_dir / "pinned"
+    (job_dir / "finished-trial").mkdir(parents=True)
+    attempts: list[int] = []
+
+    class _ExplodingJob:
+        async def run(self) -> None:
+            attempts.append(1)
+            raise FileExistsError(17, "File exists", str(tmp_path / "scratch" / "artifact.tar"))
+
+    async def create(_config: object) -> _ExplodingJob:
+        return _ExplodingJob()
+
+    _stub_harbor(monkeypatch, create)
+    config = HarborRuntimeConfig(jobs_dir=jobs_dir, job_name="pinned")
+    _built, run_job = _build_native_job(config, tmp_path / "dataset", None, job_name="pinned", force_rerun=False)
+
+    with pytest.raises(FileExistsError):
+        await run_job()
+
+    assert attempts == [1], "an unrelated failure must not be retried"
+    assert (job_dir / "finished-trial").exists(), "completed work must survive an error that is not resume drift"
+
+
+@pytest.mark.parametrize(
+    ("message", "errno", "expected"),
+    [
+        ("Job directory {job_dir} already exists and cannot be resumed with a different config.", None, True),
+        ("Job directory {job_dir} already has a lock.json that does not match the resolved job lock.", None, True),
+        # Same words, but an OS-level EEXIST: errno is set, so it is not Harbor's refusal.
+        ("Job directory {job_dir} already exists and cannot be resumed with a different config.", 17, False),
+        # A refusal naming a *different* job dir is not ours to act on.
+        ("Job directory /somewhere/else already exists and cannot be resumed with a different config.", None, False),
+        ("[Errno 17] File exists: '{job_dir}/trial/artifact.tar'", None, False),
+    ],
+)
+def test_only_harbors_resume_refusal_authorises_deleting_the_job_dir(
+    tmp_path: Path, message: str, errno: int | None, expected: bool
+) -> None:
+    # Deleting a job dir is the one irreversible thing this runtime does, so the
+    # predicate that authorises it is pinned directly. Anything unrecognised must
+    # answer False and let the error propagate — the safe direction if Harbor rewords.
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _is_harbor_resume_refusal
+
+    job_dir = tmp_path / "jobs" / "pinned"
+    rendered = message.format(job_dir=job_dir)
+    exc = FileExistsError(rendered) if errno is None else FileExistsError(errno, "File exists", rendered)
+
+    assert _is_harbor_resume_refusal(exc, job_dir) is expected
+
+
+def test_job_config_drift_names_the_field_that_forced_the_discard(tmp_path: Path) -> None:
+    # Harbor says only *that* a config differs, so the discard looks arbitrary in the
+    # log. This pins three things at once: the differing field is named, a field Harbor
+    # ignores is not, and a field left at its default is not — the last only holds
+    # because the persisted JSON (written with exclude_defaults=True) is re-validated
+    # rather than compared raw, which would see a missing key as a difference.
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _describe_job_config_drift
+
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    stored = _DriftConfig(job_name="pinned", n_concurrent_trials=10)
+    (job_dir / "config.json").write_text(stored.model_dump_json(exclude_defaults=True), encoding="utf-8")
+
+    drift = _describe_job_config_drift(job_dir, _DriftConfig(job_name="renamed", n_concurrent_trials=4))
+
+    assert drift == "n_concurrent_trials: 10 -> 4"
+
+
+def test_job_config_drift_is_silent_when_it_cannot_tell(tmp_path: Path) -> None:
+    # No config.json is the lock.json-refusal case: there is no JobConfig difference to
+    # report. Diagnostics must degrade to silence, never to a raised exception that
+    # would mask the FileExistsError being explained.
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _describe_job_config_drift
+
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+
+    assert _describe_job_config_drift(job_dir, _DriftConfig()) == ""
+    (job_dir / "config.json").write_text("{not json", encoding="utf-8")
+    assert _describe_job_config_drift(job_dir, _DriftConfig()) == ""
+
+
+# Harbor JobConfig field -> the HarborRuntimeConfig fields that feed it. Each of these
+# must sit inside the cache fingerprint: if one drops out, the stamp could call a job
+# dir reusable that Harbor will then reject. `agents` also carries the agent contents,
+# which the stamp digests separately (that is why `agent_dir` itself is irrelevant).
+_STAMP_COVERED_HARBOR_FIELDS = {
+    "n_attempts": {"n_attempts"},
+    "artifacts": {"artifacts", "trace_dir"},
+    "retry": {"max_retries"},
+    "agents": {"agent_name", "agent_import_path", "agent_model_name"},
+    "timeout_multiplier": {"timeout_multiplier"},
+    "agent_timeout_multiplier": {"agent_timeout_multiplier"},
+    "verifier_timeout_multiplier": {"verifier_timeout_multiplier"},
+    "agent_setup_timeout_multiplier": {"agent_setup_timeout_multiplier"},
+    "environment_build_timeout_multiplier": {"environment_build_timeout_multiplier"},
+}
+# Left at Harbor's defaults by _build_native_job, so two SDK-built configs can never
+# disagree on them. (A dir written by the Harbor CLI could, but it carries no SDK cache
+# stamp, so it is stale and gets discarded before Harbor ever sees it.)
+_SDK_NEVER_SETS = {"install_only", "environment", "verifier", "metrics", "tasks", "extra_instruction_paths"}
+# Compared by Harbor, deliberately *not* keyed by the SDK stamp. Harbor asks "can I
+# resume this directory?"; the stamp asks "did these inputs produce these results?".
+# Where the answers diverge, _build_native_job absorbs Harbor's refusal.
+_KNOWINGLY_LOOSER = {
+    "jobs_dir": "implied by having found the job dir at all",
+    "n_concurrent_trials": "scheduling only; keying it would discard a cached run on a box with a different core count",
+    "quiet": "display only; changes nothing about the results",
+    "datasets": "`path` is covered by the per-task digests; the `task_names` filter is left unkeyed so a subset of a "
+    "cached job still hits (see _stamp_coverage)",
+}
+
+
+def test_harbor_still_words_its_resume_refusals_the_way_we_match_them() -> None:
+    # The predicate that authorises deleting a job dir keys off Harbor's message text.
+    # If Harbor rewords, the predicate stops matching and the refusal propagates as a
+    # crash — the safe direction, but a silent loss of the graceful re-run. Catch that
+    # at upgrade time here instead of in someone's failed experiment.
+    pytest.importorskip("harbor.job", reason="harbor needs python >= 3.12")
+    import inspect
+
+    from harbor.job import Job
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _HARBOR_RESUME_REFUSALS
+
+    source = inspect.getsource(Job)
+    for phrase in _HARBOR_RESUME_REFUSALS:
+        assert phrase in source, (
+            f"Harbor no longer raises its resume refusal with {phrase!r}. Re-read Job._maybe_init_existing_job "
+            "and Job._write_job_lock, then update _HARBOR_RESUME_REFUSALS. Keep each phrase inside a single "
+            "source string literal — one spanning an implicit concatenation will not be found here."
+        )
+
+
+def test_harbor_job_config_equality_still_behaves_as_the_retry_assumes() -> None:
+    # The FileExistsError retry exists because Harbor compares its whole JobConfig and
+    # ignores only identity/logging fields. Pin that behaviourally, so a Harbor upgrade
+    # that changes the rule surfaces here rather than as a mystery re-run in production.
+    job_config = pytest.importorskip("harbor.models.job.config", reason="harbor needs python >= 3.12")
+
+    baseline = job_config.JobConfig(job_name="a")
+    assert baseline == job_config.JobConfig(job_name="b"), "job_name must stay outside Harbor's comparison"
+    assert baseline != job_config.JobConfig(job_name="a", n_concurrent_trials=99), (
+        "n_concurrent_trials must stay inside it — that is the case the retry absorbs"
+    )
+
+
+def test_every_harbor_job_config_field_is_classified_against_the_sdk_stamp() -> None:
+    # Drift guard. The SDK's fingerprint is deliberately looser than Harbor's
+    # comparison, but only in ways we have reasoned about. A Harbor upgrade that adds a
+    # compared field would silently widen that gap into unexplained full re-runs, so
+    # every field must land in exactly one bucket before it can ship.
+    job_config = pytest.importorskip("harbor.models.job.config", reason="harbor needs python >= 3.12")
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
+        _CACHE_IRRELEVANT_OPTIONS,
+        _HARBOR_EQ_IGNORED_FIELDS,
+    )
+
+    # Derived, not hardcoded: dropping a field into _CACHE_IRRELEVANT_OPTIONS re-checks
+    # here instead of quietly diverging from a copied list.
+    fingerprinted = set(HarborRuntimeConfig.model_fields) - set(_CACHE_IRRELEVANT_OPTIONS)
+    for harbor_field, sdk_fields in _STAMP_COVERED_HARBOR_FIELDS.items():
+        missing = sdk_fields - fingerprinted
+        assert not missing, (
+            f"Harbor compares {harbor_field!r}, but {sorted(missing)} left the cache fingerprint. "
+            "Either restore it, or move the field to _KNOWINGLY_LOOSER with a reason."
+        )
+
+    classified = (
+        set(_HARBOR_EQ_IGNORED_FIELDS) | _SDK_NEVER_SETS | set(_STAMP_COVERED_HARBOR_FIELDS) | set(_KNOWINGLY_LOOSER)
+    )
+    actual = set(job_config.JobConfig.model_fields)
+    assert not actual - classified, (
+        f"Harbor's JobConfig grew {sorted(actual - classified)}. Classify each one: covered by the cache stamp "
+        "(_STAMP_COVERED_HARBOR_FIELDS), never set by the SDK (_SDK_NEVER_SETS), or knowingly unkeyed "
+        "(_KNOWINGLY_LOOSER, with a reason)."
+    )
+    assert not classified - actual, (
+        f"{sorted(classified - actual)} no longer exist on Harbor's JobConfig; drop them from the classification."
+    )
