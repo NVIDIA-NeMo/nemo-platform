@@ -240,8 +240,15 @@ class TestTranslateAgentConfig:
 
         assert fabric_config.relay.observability.model_dump(exclude_none=True)["atof"]["sinks"] == [
             {
+                "type": "file",
+                "output_directory": "./artifacts/relay",
+                "mode": "append",
+            },
+            {
                 "type": "stream",
                 "url": "http://localhost:4318/v1/events",
+                "transport": "http_post",
                 "timeout_millis": 3000,
-            }
+                "field_name_policy": "preserve",
+            },
         ]

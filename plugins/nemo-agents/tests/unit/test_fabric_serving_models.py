@@ -30,8 +30,6 @@ def test_chat_completion_request_rejects_unsupported_inputs(payload: dict[str, A
 
 
 def test_chat_completion_request_accepts_streaming() -> None:
-    request = ChatCompletionRequest.model_validate(
-        {"messages": [{"role": "user", "content": "hello"}], "stream": True}
-    )
+    request = ChatCompletionRequest.model_validate({"messages": [{"role": "user", "content": "hello"}], "stream": True})
 
     assert request.stream is True

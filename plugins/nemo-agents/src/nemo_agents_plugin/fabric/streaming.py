@@ -203,11 +203,7 @@ def _text_from_content(content: Any) -> str | None:
     if isinstance(content, str):
         return content or None
     if isinstance(content, list):
-        parts = [
-            part["text"]
-            for part in content
-            if isinstance(part, Mapping) and isinstance(part.get("text"), str)
-        ]
+        parts = [part["text"] for part in content if isinstance(part, Mapping) and isinstance(part.get("text"), str)]
         return "".join(parts) or None
     return None
 
