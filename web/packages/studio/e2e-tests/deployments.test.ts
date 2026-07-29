@@ -63,6 +63,10 @@ test.describe('Model Deployments', () => {
     deploymentsPage,
     trackedDeployments,
   }) => {
+    test.skip(
+      !process.env.RECORD,
+      'Deployments feature-flagged off + needs NGC infra; run via pnpm test:e2e:record'
+    );
     test.slow();
 
     // Base name is what the user types in the wizard. The API resources become:

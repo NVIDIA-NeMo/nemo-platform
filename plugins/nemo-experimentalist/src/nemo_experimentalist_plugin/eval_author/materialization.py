@@ -10,21 +10,20 @@ import json
 import os
 import re
 import shutil
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 import tomlkit
 from harbor.models.task.task import Task as HarborTask
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
-    DatasetRef,
-    Task,
-    local_path_from_uri,
-)
-from nemo_platform import AsyncNeMoPlatform
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Task, local_path_from_uri
 
-_MANIFEST_SCHEMA_VERSION = 1
+_MANIFEST_SCHEMA_VERSION = 3
+_CONTENT_HASH_SCHEMA_VERSION = 1
+_METRIC_CONTRACT_VERSION = 1
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -35,6 +34,105 @@ def _slug(value: str, *, fallback: str, max_length: int = 48) -> str:
 
 def _digest(value: str, length: int = 10) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:length]
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _canonical_digest(value: object) -> str:
+    return _sha256_bytes(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+
+
+def _file_hashes(root: Path) -> dict[str, str]:
+    return {
+        path.relative_to(root).as_posix(): _sha256_bytes(path.read_bytes())
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _verifier_dir(task_dir: Path) -> Path:
+    config = tomllib.loads((task_dir / "task.toml").read_text(encoding="utf-8"))
+    verifier = config.get("verifier")
+    if isinstance(verifier, dict):
+        configured = verifier.get("directory")
+        if isinstance(configured, str) and configured.strip():
+            path = Path(configured)
+            return path if path.is_absolute() else task_dir / path
+    for name in ("tests", "test"):
+        path = task_dir / name
+        if path.is_dir():
+            return path
+    raise ValueError(f"Materialized task has no verifier directory: {task_dir}")
+
+
+def _content_provenance(suite_dir: Path, manifest: dict[str, object]) -> tuple[list[dict[str, object]], str, str]:
+    raw_tasks = manifest.get("tasks")
+    if not isinstance(raw_tasks, list):
+        raise ValueError(f"Insight suite manifest has invalid tasks: {suite_dir / 'manifest.json'}")
+
+    tasks: list[dict[str, object]] = []
+    scorer_inputs: list[dict[str, str]] = []
+    suite_inputs: list[dict[str, str]] = []
+    for raw_task in raw_tasks:
+        if not isinstance(raw_task, dict):
+            raise ValueError(f"Insight suite manifest has invalid task entry: {raw_task!r}")
+        if not all(isinstance(key, str) for key in raw_task):
+            raise ValueError(f"Insight suite manifest task has invalid keys: {raw_task!r}")
+        task_entry = cast(dict[str, object], raw_task)
+        relative_path = task_entry.get("path")
+        if not isinstance(relative_path, str) or not relative_path:
+            raise ValueError(f"Insight suite manifest task has invalid path: {relative_path!r}")
+        task_dir = (suite_dir / relative_path).resolve()
+        try:
+            task_dir.relative_to(suite_dir.resolve())
+        except ValueError as exc:
+            raise ValueError(f"Insight suite manifest task escapes the suite: {relative_path!r}") from exc
+        if not task_dir.is_dir():
+            raise ValueError(f"Insight suite manifest task path is missing: {task_dir}")
+
+        files = _file_hashes(task_dir)
+        verifier_dir = _verifier_dir(task_dir).resolve()
+        try:
+            verifier_path = verifier_dir.relative_to(task_dir).as_posix()
+        except ValueError as exc:
+            raise ValueError(f"Insight suite verifier must be contained in its task: {verifier_dir}") from exc
+        verifier_files = _file_hashes(verifier_dir)
+        content_hash = f"sha256:{_canonical_digest(files)}"
+        verifier_hash = f"sha256:{_canonical_digest(verifier_files)}"
+        task_metadata = {
+            key: value for key, value in task_entry.items() if key not in {"content_hash", "files", "verifier"}
+        }
+        tasks.append(
+            {
+                **task_metadata,
+                "content_hash": content_hash,
+                "verifier": {
+                    "path": verifier_path,
+                    "content_hash": verifier_hash,
+                },
+            }
+        )
+        scorer_inputs.append({"path": relative_path, "verifier_hash": verifier_hash})
+        suite_inputs.append(
+            {
+                "path": relative_path,
+                "task_hash": content_hash,
+                "verifier_hash": verifier_hash,
+            }
+        )
+
+    scorer_identity = f"sha256:{_canonical_digest(scorer_inputs)}"
+    suite_payload = {
+        "schema_version": _CONTENT_HASH_SCHEMA_VERSION,
+        "insight_id": manifest.get("insight_id"),
+        "metric_contract_version": _METRIC_CONTRACT_VERSION,
+        "scorer_identity": scorer_identity,
+        "tasks": suite_inputs,
+    }
+    suite_identity = f"sha256:{_canonical_digest(suite_payload)}"
+    return tasks, scorer_identity, suite_identity
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,8 +146,18 @@ class StagedInsightTask:
     task: Task
 
 
+@dataclass(frozen=True, slots=True)
+class FinalizedInsightSuite:
+    """Experiment-local Insight suite with deterministic content identities."""
+
+    identity: str
+    scorer_identity: str
+    path: Path
+    dataset: HarborDataset
+
+
 class InsightSuite:
-    """Build and publish one persisted Harbor dataset for an Insight."""
+    """Build one experiment-local persisted Harbor dataset for an Insight."""
 
     def __init__(self, *, experiment_dir: Path, insight_id: str, task_template: Task) -> None:
         """Initialize deterministic paths and template provenance for a suite."""
@@ -58,6 +166,7 @@ class InsightSuite:
         if not task_template.uri:
             raise ValueError("Task template URI is required to materialize an insight suite")
 
+        self.experiment_dir = experiment_dir.resolve()
         self.insight_id = insight_id
         self.template_dir = local_path_from_uri(
             task_template.uri,
@@ -67,7 +176,7 @@ class InsightSuite:
             raise ValueError(f"Eval Author task template is not a directory: {self.template_dir}")
         self.template_uri = self.template_dir.as_uri()
         insight_slug = f"{_slug(insight_id, fallback='insight')}-{_digest(insight_id)}"
-        self.root = experiment_dir.resolve() / "eval-and-optimize" / "eval_author" / insight_slug
+        self.root = self.experiment_dir / "eval-and-optimize" / "eval_author" / insight_slug
         self.suite_dir = self.root / "insight-suite"
         self._candidate_root: Path | None = None
         self._candidate_suite: Path | None = None
@@ -95,7 +204,7 @@ class InsightSuite:
         return staged
 
     def discard(self) -> None:
-        """Remove an unpublished candidate suite and reset its staging state."""
+        """Remove an unpromoted candidate suite and reset its staging state."""
         if self._candidate_root is not None and self._candidate_root.exists():
             shutil.rmtree(self._candidate_root)
         self._candidate_root = None
@@ -206,50 +315,60 @@ class InsightSuite:
         pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(pending_path, manifest_path)
 
-    async def publish_fileset(self, client: AsyncNeMoPlatform, workspace: str) -> DatasetRef:
-        """Upload the complete local suite to a fresh NeMo Platform Fileset."""
-        fileset_name = (
-            f"nemo-experimentalist-insight-{_slug(self.insight_id, fallback='insight', max_length=80)}-{uuid4().hex}"
-        )
-        fileset = await client.files.filesets.create(
-            workspace=workspace,
-            name=fileset_name,
-            description="Eval Author-built Harbor tasks materialized from Insight production traces.",
-            purpose="dataset",
-        )
-        try:
-            await client.files.upload(
-                local_path=f"{self.suite_dir}{os.sep}",
-                fileset=fileset.name,
-                workspace=workspace,
-            )
-            local_files = {
-                path.relative_to(self.suite_dir).as_posix(): path.stat().st_size
-                for path in self.suite_dir.rglob("*")
-                if path.is_file()
+    def finalize(self) -> FinalizedInsightSuite:
+        """Persist content identities on the experiment-local authored suite."""
+        manifest_path = self.suite_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        tasks, scorer_identity, suite_identity = _content_provenance(self.suite_dir, manifest)
+        digest = suite_identity.removeprefix("sha256:")
+        manifest.pop("artifact", None)
+        manifest.update(
+            {
+                "schema_version": _MANIFEST_SCHEMA_VERSION,
+                "content_hash_schema_version": _CONTENT_HASH_SCHEMA_VERSION,
+                "metric_contract_version": _METRIC_CONTRACT_VERSION,
+                "suite_identity": suite_identity,
+                "scorer": {
+                    "identity": scorer_identity,
+                    "metric_contract_version": _METRIC_CONTRACT_VERSION,
+                },
+                "tasks": tasks,
             }
-            uploaded = await client.files.list(fileset=fileset.name, workspace=workspace)
-            remote_files = {file.path: file.size for file in uploaded.data}
-            if remote_files != local_files:
-                raise RuntimeError(
-                    f"Uploaded Insight suite Fileset {fileset.name!r} does not match the validated local suite"
-                )
-        except BaseException as exc:
-            try:
-                await client.files.filesets.delete(fileset.name, workspace=workspace)
-            except BaseException as cleanup_exc:
-                cleanup_exc.add_note(f"Fileset publication also failed before cleanup: {exc!r}")
-                raise cleanup_exc from exc
-            raise
+        )
+        pending_path = manifest_path.with_suffix(".json.pending")
+        pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(pending_path, manifest_path)
 
-        return DatasetRef(
-            uri=f"fileset://{workspace}/{fileset.name}",
-            description="Eval Author-built Harbor tasks materialized from Insight production traces.",
-            metadata={
-                "id": f"insight-{_digest(self.insight_id, 12)}",
-                "insight_id": self.insight_id,
-                "fileset_id": fileset.id,
-                "fileset_name": fileset.name,
-                "workspace": workspace,
-            },
+        dataset = HarborDataset.from_path(
+            self.suite_dir,
+            dataset_id=f"insight-{digest[:12]}",
+        )
+        task_hashes: dict[str, dict[str, str]] = {}
+        for task in tasks:
+            task_path = task.get("path")
+            content_hash = task.get("content_hash")
+            verifier = task.get("verifier")
+            verifier_hash = verifier.get("content_hash") if isinstance(verifier, dict) else None
+            if (
+                not isinstance(task_path, str)
+                or not isinstance(content_hash, str)
+                or not isinstance(verifier_hash, str)
+            ):
+                raise ValueError(f"Finalized Insight suite has invalid task provenance: {task!r}")
+            task_hashes[task_path] = {
+                "content_hash": content_hash,
+                "verifier_hash": verifier_hash,
+            }
+        dataset.metadata.update(
+            {
+                "insight_suite_identity": suite_identity,
+                "insight_suite_scorer_identity": scorer_identity,
+                "insight_suite_task_hashes": task_hashes,
+            }
+        )
+        return FinalizedInsightSuite(
+            identity=suite_identity,
+            scorer_identity=scorer_identity,
+            path=self.suite_dir,
+            dataset=dataset,
         )

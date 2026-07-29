@@ -57,13 +57,6 @@ def create_chat_completions(
             help='Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)',
         ),
     ] = None,
-    experiment_context: Annotated[
-        str | None,
-        typer.Option(
-            "--experiment-context",
-            help="Deprecated alias for :class:`EvaluationContext`. Producers should send `evaluation_context`. (JSON string)",
-        ),
-    ] = None,
     provider: Annotated[str | None, typer.Option("--provider")] = None,
     session_id: Annotated[
         str | None,
@@ -121,8 +114,6 @@ def create_chat_completions(
         input_payload["cost_usd"] = cost_usd
     if evaluation_context is not None:
         input_payload["evaluation_context"] = read_payload("evaluation_context", evaluation_context)
-    if experiment_context is not None:
-        input_payload["experiment_context"] = read_payload("experiment_context", experiment_context)
     if provider is not None:
         input_payload["provider"] = provider
     if session_id is not None:

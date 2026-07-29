@@ -312,6 +312,85 @@ async def test_create_deployment_k8s_without_internal_url_fails() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_deployment_k8s_auth_on_requests_auth_proxy_sidecar() -> None:
+    # Agents layer only sets the DeploymentConfig flags + points the agent at the
+    # proxy port; the deployments plugin compiles the actual sidecar container.
+    backend = _backend(
+        default_image="nmp-api:latest",
+        default_executor="k8s",
+        k8s_internal_base_url="http://nmp-api:8080",
+    )
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "llms": {
+            "llm": {
+                "_type": "openai",
+                "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+            }
+        }
+    }
+    with (
+        patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"),
+        patch("nemo_agents_plugin.runner.deployments_backend.platform_auth_enabled", return_value=True),
+        patch("nemo_agents_plugin.runner.deployments_backend.auth_proxy_port", return_value=8090),
+    ):
+        info = await backend.create_deployment(
+            workspace="default", name="hello-dep", config=config, port=0, deployment_mode="k8s"
+        )
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+
+    # The DeploymentConfig requests the sidecar with the agents identity; the
+    # agents layer does not build the container itself.
+    assert created_config.auth_proxy_sidecar is True
+    assert created_config.auth_proxy_sidecar_identity == "agents"
+    assert [c.name for c in created_config.containers] == ["agent"]
+    assert [c.name for c in created_config.init_containers] == []
+
+    # Agent's inference base_url points at the loopback proxy port.
+    baked = yaml.safe_load(created_config.config_files[0].content)
+    assert baked["llms"]["llm"]["base_url"] == (
+        "http://127.0.0.1:8090/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_k8s_auth_off_no_sidecar() -> None:
+    backend = _backend(
+        default_image="nmp-api:latest",
+        default_executor="k8s",
+        k8s_internal_base_url="http://nmp-api:8080",
+    )
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "llms": {
+            "llm": {
+                "_type": "openai",
+                "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+            }
+        }
+    }
+    with (
+        patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"),
+        patch("nemo_agents_plugin.runner.deployments_backend.platform_auth_enabled", return_value=False),
+    ):
+        info = await backend.create_deployment(
+            workspace="default", name="hello-dep", config=config, port=0, deployment_mode="k8s"
+        )
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    assert created_config.auth_proxy_sidecar is False
+    assert created_config.auth_proxy_sidecar_identity is None
+    baked = yaml.safe_load(created_config.config_files[0].content)
+    # Auth off: agent talks directly to the internal Service DNS (PR #899 behavior).
+    assert baked["llms"]["llm"]["base_url"] == (
+        "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+
+
+@pytest.mark.asyncio
 async def test_create_deployment_missing_image_fails() -> None:
     backend = _backend(default_image="")
     info = await backend.create_deployment(

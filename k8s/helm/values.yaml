@@ -720,7 +720,7 @@ core:
     # -- size of the persistent volume claim used for persistent storage
     size: 200Gi
     # -- volumePermissionsImage is the image used to set permissions on the volume
-    volumePermissionsImage: "docker.io/library/busybox"
+    volumePermissionsImage: "docker.io/library/busybox:stable"
     # -- Annotations to add to the persistent volume claim
     annotations: {}
 

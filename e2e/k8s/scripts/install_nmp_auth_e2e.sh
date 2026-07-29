@@ -12,7 +12,7 @@ export HELM_VALUES="${HELM_VALUES:-${REPO_ROOT}/e2e/k8s/values/minikube-auth.yam
 export NMP_E2E_REGISTRY="${NMP_E2E_REGISTRY:-my-registry}"
 export NMP_E2E_TAG="${NMP_E2E_TAG:-local}"
 export POSTGRES_IMAGE="${POSTGRES_IMAGE:-docker.io/library/postgres}"
-export BUSYBOX_IMAGE="${BUSYBOX_IMAGE:-busybox}"
+export BUSYBOX_IMAGE="${BUSYBOX_IMAGE:-docker.io/library/busybox:stable}"
 
 export REQUIRE_NMP_E2E_IMAGES="${REQUIRE_NMP_E2E_IMAGES:-true}"
 

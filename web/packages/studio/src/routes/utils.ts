@@ -314,34 +314,34 @@ export const getExperimentRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.experiment, { workspace });
 };
 
-export const getExperimentGroupDetailRoute = (workspace: string, experimentGroupName: string) => {
-  return generatePath(ROUTES.workspace.experimentGroupDetail, {
+export const getExperimentDetailRoute = (workspace: string, experimentName: string) => {
+  return generatePath(ROUTES.workspace.experimentDetail, {
     workspace,
-    experimentGroupName: encodeURIComponent(experimentGroupName),
+    experimentName: encodeURIComponent(experimentName),
   });
 };
 
 export const getEvaluationDetailRoute = (
   workspace: string,
-  experimentGroupName: string,
+  experimentName: string,
   evaluationName: string
 ) => {
   return generatePath(ROUTES.workspace.evaluationDetail, {
     workspace,
-    experimentGroupName: encodeURIComponent(experimentGroupName),
+    experimentName: encodeURIComponent(experimentName),
     evaluationName: encodeURIComponent(evaluationName),
   });
 };
 
 export const getEvaluationSessionDetailRoute = (
   workspace: string,
-  experimentGroupName: string,
+  experimentName: string,
   evaluationName: string,
   sessionId: string
 ): string => {
   return generatePath(ROUTES.workspace.evaluationSessionDetail, {
     workspace,
-    experimentGroupName: encodeURIComponent(experimentGroupName),
+    experimentName: encodeURIComponent(experimentName),
     evaluationName: encodeURIComponent(evaluationName),
     sessionId: encodeURIComponent(sessionId),
   });
@@ -349,7 +349,7 @@ export const getEvaluationSessionDetailRoute = (
 
 export const getEvaluationSessionTraceDetailRoute = (
   workspace: string,
-  experimentGroupName: string,
+  experimentName: string,
   evaluationName: string,
   sessionId: string,
   traceId: string,
@@ -357,7 +357,7 @@ export const getEvaluationSessionTraceDetailRoute = (
 ): string => {
   const path = getEvaluationSessionDetailRoute(
     workspace,
-    experimentGroupName,
+    experimentName,
     evaluationName,
     sessionId
   );
@@ -404,6 +404,13 @@ export const getOptimizerInsightRoute = (workspace: string, insightId: string) =
 
 export const getGuardrailDetailRoute = (workspace: string, guardrailConfigName: string) => {
   return generatePath(ROUTES.workspace.guardrailDetail, {
+    workspace,
+    guardrailConfigName,
+  });
+};
+
+export const getGuardrailConfigRoute = (workspace: string, guardrailConfigName: string) => {
+  return generatePath(ROUTES.workspace.guardrailConfig, {
     workspace,
     guardrailConfigName,
   });

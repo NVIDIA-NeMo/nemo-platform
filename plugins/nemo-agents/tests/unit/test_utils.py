@@ -7,6 +7,8 @@ Covers:
 - inject_gateway_url: IGW URL construction, setdefault semantics, explicit
   base_url override, NEMO_BASE_URL env var, non-openai LLMs left unchanged,
   original config dict not mutated.
+- inject_fabric_gateway_url: shared and harness-specific Fabric models are
+  bound to the IGW without overriding explicit endpoints.
 - merge_agent_config: per-section merge semantics for component dicts vs.
   scalar/dict sections, workflow ownership, and input immutability.
 - temp_injected_config: temp file written to same directory as source,
@@ -30,6 +32,7 @@ from nemo_agents_plugin.refs import AgentRef
 from nemo_agents_plugin.utils import (
     get_internal_base_url,
     inject_default_model,
+    inject_fabric_gateway_url,
     inject_gateway_url,
     merge_agent_config,
     preflight_validate_llm_models,
@@ -138,6 +141,43 @@ class TestInjectGatewayUrl:
     def test_trailing_slash_stripped_from_base_url(self) -> None:
         result = inject_gateway_url(self._BASE_CONFIG, "default", base_url="http://platform:8080/")
         assert "//apis" not in result["llms"]["llm"]["base_url"]
+
+
+class TestInjectFabricGatewayUrl:
+    def test_injects_shared_and_harness_model_settings(self) -> None:
+        config = {
+            "models": {"default": {"provider": "openai", "model": "test-model"}},
+            "harnesses": {
+                "hermes": {
+                    "kind": "hermes",
+                    "model": {"provider": "nvidia", "model": "test-harness-model"},
+                }
+            },
+        }
+
+        result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
+        expected_url = "http://platform:8080/apis/inference-gateway/v2/workspaces/test-workspace/openai/-/v1"
+
+        assert result["models"]["default"]["settings"]["base_url"] == expected_url
+        assert result["harnesses"]["hermes"]["model"]["settings"]["base_url"] == expected_url
+        assert "settings" not in config["models"]["default"]
+        assert "settings" not in config["harnesses"]["hermes"]["model"]
+
+    def test_preserves_explicit_endpoint_and_input(self) -> None:
+        config = {
+            "models": {
+                "default": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "settings": {"base_url": "http://explicit:8080/v1"},
+                }
+            }
+        }
+
+        result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
+
+        assert result["models"]["default"]["settings"]["base_url"] == "http://explicit:8080/v1"
+        assert config["models"]["default"]["settings"]["base_url"] == "http://explicit:8080/v1"
 
 
 class TestGetInternalBaseUrl:

@@ -908,6 +908,20 @@ components:
           title: Labels
         backendConfig:
           $ref: '#/components/schemas/DeploymentBackendConfigOutput'
+        authProxySidecar:
+          type: boolean
+          title: Authproxysidecar
+          description: Inject a loopback auth-proxy sidecar that stamps a service-principal
+            identity header on the workload's platform calls. No-op when platform
+            auth is disabled. The workload must target the proxy on localhost (see
+            auth_proxy_sidecar_port).
+          default: false
+        authProxySidecarIdentity:
+          title: Authproxysidecaridentity
+          description: 'Service-principal name the auth-proxy sidecar stamps (interpolated
+            into ''X-NMP-Principal-Id: service:<identity>''). Required when auth_proxy_sidecar
+            is True.'
+          type: string
         id:
           type: string
           title: Id

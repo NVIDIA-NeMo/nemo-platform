@@ -72,6 +72,6 @@ from nemo_platform.types import (
 
 # [Intake](src/nemo_platform/resources/intake/api.md)
 
-# [ExperimentGroups](src/nemo_platform/resources/experiment_groups/api.md)
-
 # [Evaluations](src/nemo_platform/resources/evaluations/api.md)
+
+# [Experiments](src/nemo_platform/resources/experiments/api.md)
