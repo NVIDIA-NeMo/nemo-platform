@@ -24,8 +24,6 @@ plain Harbor evaluator keeps working.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import os
 from collections.abc import Callable, Sequence
@@ -67,16 +65,6 @@ _SDK_INSTALL_HINT = (
     "(nemo-evaluator-sdk). Install it, or set evaluator_type to 'harbor' to use "
     "the built-in Harbor evaluator instead."
 )
-
-
-_CACHE_KEY_FILENAME = ".experimentalist-cache-key"
-# Never part of the fingerprint: these change how a run is *presented* or where it
-# is stored, not what it produces. Including them would evict a usable cache for
-# nothing (e.g. flipping `quiet` in a config).
-_CACHE_IRRELEVANT_OPTIONS = frozenset({"force_rerun", "jobs_dir", "job_name", "quiet", "n_concurrent_trials"})
-# Skipped when digesting a directory: build/VCS noise, plus the experiment tree
-# itself, which is where results land and would otherwise make every run differ.
-_DIGEST_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules", ".uv", "eval-and-optimize"})
 
 
 class HarborTaskNameError(ValueError):
@@ -165,16 +153,6 @@ class HarborRunnerEvaluator(Evaluator):
         harbor_dataset = inputs.dataset
         sdk_tasks = _sdk_tasks_for(harbor_dataset)
 
-        # The SDK's cache keys off the job name and counts successful trials; it
-        # never looks at *what* was evaluated. The job name is only
-        # "<candidate>-<dataset>", so a rerun in the same experiment directory
-        # after editing the candidate, the tasks, or a result-affecting option
-        # would silently re-adapt stale trials. Plain Harbor fails loudly here
-        # (it compares its persisted JobConfig), so without this the SDK path
-        # would be the weaker of the two. Fingerprint the real inputs instead.
-        fingerprint = _cache_fingerprint(options, inputs.agent_path, harbor_dataset)
-        stale_cache = _cache_is_stale(inputs.job_dir, fingerprint)
-
         runtime_config = _import_harbor_runtime().runtime_config(
             jobs_dir=inputs.jobs_dir,
             job_name=inputs.job_name,
@@ -183,7 +161,7 @@ class HarborRunnerEvaluator(Evaluator):
             n_attempts=options.n_attempts,
             n_concurrent_trials=options.n_concurrent_trials,
             quiet=options.quiet,
-            force_rerun=options.force_rerun or stale_cache,
+            force_rerun=options.force_rerun,
             artifacts=list(options.artifacts),
             trace_dir=options.trace_dir,
             max_retries=options.max_retries,
@@ -209,7 +187,6 @@ class HarborRunnerEvaluator(Evaluator):
         # `harbor_reward.reward`, while the loop needs every verifier metric. The
         # job dir is the richer contract, so both evaluators read that instead.
         sdk_trials = await runner.run_tasks(list(sdk_tasks.values()))
-        _write_cache_fingerprint(inputs.job_dir, fingerprint)
         logger.debug("SDK Harbor runner returned %d trial(s) for job %s", len(sdk_trials), inputs.job_name)
 
         return trials_from_job_dir(inputs.job_dir, harbor_dataset.tasks)
@@ -228,9 +205,17 @@ def _import_harbor_runtime() -> _SdkRuntime:
 
     A missing name (older SDK) raises ``ImportError`` from the import statement
     just like a missing package does, so both failure modes carry the same hint.
+
+    ``CACHE_STAMP_VERSION`` is imported purely as a capability probe, and is public
+    SDK API precisely so this check does not depend on a private name. The SDK owns
+    cache staleness (AALGO-427); against an SDK predating that, this evaluator would
+    silently fall back to caching keyed on nothing but the job name and a count of
+    successful trials — returning stale results after a candidate edit. Failing
+    loudly is the only safe reading, since the plugin declares no version floor.
     """
     try:
         from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (  # noqa: PLC0415
+            CACHE_STAMP_VERSION,  # noqa: F401  — capability probe, see docstring
             HarborAgentTaskRunner,
             HarborRuntimeConfig,
             discover_harbor_tasks,
@@ -238,118 +223,6 @@ def _import_harbor_runtime() -> _SdkRuntime:
     except ImportError as exc:
         raise ImportError(f"{_SDK_INSTALL_HINT} (import failed: {exc})") from exc
     return _SdkRuntime(HarborRuntimeConfig, HarborAgentTaskRunner, discover_harbor_tasks)
-
-
-def _directory_digest(root: Path) -> str:
-    """Content-hash a directory tree, ignoring build/VCS noise.
-
-    Contents rather than mtimes: the loop materializes each candidate with
-    ``copytree``, which rewrites mtimes on every run and would defeat the cache
-    entirely. Agent and task directories are source-sized, so reading them is
-    cheap next to the Docker work the cache exists to skip.
-    """
-    digest = hashlib.sha256()
-    if not root.is_dir():
-        return digest.hexdigest()
-    for path in sorted(root.rglob("*")):
-        if any(part in _DIGEST_SKIP_DIRS for part in path.relative_to(root).parts):
-            continue
-        if not path.is_file() or path.is_symlink():
-            continue
-        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
-def _cache_fingerprint(options: HarborRunnerConfig, agent_path: Path, dataset: HarborDataset) -> str:
-    """Identify everything that can change a run's results.
-
-    Covers the three ways a job dir goes stale under an unchanged job name: the
-    candidate's code, the selected tasks' content, and any option that affects
-    what Harbor produces.
-
-    STOPGAP — superseded by AALGO-427 (close the HarborAgentTaskRunner cache gap).
-
-    The real gap that ticket closes: results *persist*, but nothing skips a task
-    that has already been run and scored. This is deliberately not that fix —
-    it is only an invalidation guard. ``HarborAgentTaskRunner`` caches
-    unconditionally today, keyed on nothing but the job name and a count of
-    successful trials, so without this a rerun in the same experiment directory
-    silently re-adapts stale results. It exists to make that inherited behaviour
-    no worse than plain Harbor's — which validates its persisted ``JobConfig``
-    and refuses a mismatched job dir outright.
-
-    Two consequences worth knowing before extending it:
-
-    * It is job-level and all-or-nothing, and it never skips scoring. AALGO-427
-      resumes per ``(agent, split, task)`` and belongs in the SDK, not here —
-      delete this when that lands rather than growing it.
-    * It assumes a **single writer per job directory on a local filesystem**.
-      Concurrent writers (multiple pods on a shared RWX volume) are not handled
-      by this or by Harbor: neither takes a lock on the job dir, so both would
-      see "not cached", both would run, and both would write trials into it.
-
-    Args:
-        options: Evaluator options for this run.
-        agent_path: Resolved candidate directory.
-        dataset: The (possibly subset) dataset being evaluated.
-
-    Returns:
-        str: Hex digest to compare against the one stored in the job directory.
-    """
-    payload = hashlib.sha256()
-    payload.update(
-        json.dumps(options.model_dump(exclude=set(_CACHE_IRRELEVANT_OPTIONS)), sort_keys=True, default=str).encode(
-            "utf-8"
-        )
-    )
-    payload.update(b"\0agent\0")
-    payload.update(_directory_digest(agent_path).encode("utf-8"))
-    for task in sorted(dataset.tasks, key=lambda task: task.id):
-        payload.update(f"\0task\0{task.id}\0".encode("utf-8"))
-        if task.uri:
-            task_dir = local_path_from_uri(task.uri, context="Harbor task reference")
-            payload.update(_directory_digest(task_dir).encode("utf-8"))
-    return payload.hexdigest()
-
-
-def _cache_is_stale(job_dir: Path, fingerprint: str) -> bool:
-    """Return True when an existing job dir was produced by different inputs.
-
-    A job dir with no stored fingerprint counts as stale: it predates this check
-    (or came from the plain evaluator), and re-running is the safe reading.
-    """
-    if not job_dir.is_dir():
-        return False
-    key_path = job_dir / _CACHE_KEY_FILENAME
-    try:
-        stored = key_path.read_text(encoding="utf-8").strip()
-    except OSError:
-        stored = ""
-    if stored == fingerprint:
-        return False
-    logger.info(
-        "Harbor job dir %s was produced by different inputs (agent, tasks, or options); re-running instead of "
-        "serving it from cache.",
-        job_dir,
-    )
-    return True
-
-
-def _write_cache_fingerprint(job_dir: Path, fingerprint: str) -> None:
-    """Stamp the job dir so a later run can tell whether it still matches.
-
-    Best-effort: a job dir that could not be stamped simply re-runs next time,
-    which is the safe direction. Harbor and the trial adapter both iterate
-    directories only, so this file is inert to them.
-    """
-    try:
-        job_dir.mkdir(parents=True, exist_ok=True)
-        (job_dir / _CACHE_KEY_FILENAME).write_text(fingerprint, encoding="utf-8")
-    except OSError as exc:
-        logger.warning("Could not stamp Harbor job dir %s with a cache key: %s", job_dir, exc)
 
 
 def _sdk_tasks_for(dataset: HarborDataset) -> dict[str, AgentEvalTask]:

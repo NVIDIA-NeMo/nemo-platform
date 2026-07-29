@@ -27,7 +27,6 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_age
     HarborRunnerConfig,
     HarborRunnerEvaluator,
     HarborTaskNameError,
-    _cache_fingerprint,
     harbor_task_names,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import local_path_from_uri
@@ -129,23 +128,38 @@ def dataset(tmp_path: Path) -> HarborDataset:
 
 
 @pytest.fixture
-def cached_job_dir(tmp_path: Path, dataset: HarborDataset, agent_dir: Path) -> Path:
-    """A complete, all-successful cached job dir under the loop's default job name."""
+async def cached_job_dir(
+    tmp_path: Path,
+    dataset: HarborDataset,
+    agent_dir: Path,
+    fake_job: type[_FakeJob],
+) -> Path:
+    """A complete, all-successful cached job dir left by a genuine prior run.
+
+    Driven through ``_run`` rather than hand-built so the SDK stamps its own cache
+    key exactly as it would in production. Hand-stamping here would couple the test
+    to the plugin-config → ``HarborRuntimeConfig`` mapping, and an *unstamped* dir is
+    correctly untrusted — which would make every test using this fixture pass for
+    the wrong reason.
+    """
     job_dir = tmp_path / "jobs" / f"{agent_dir.name}-{dataset.id}"
-    for task in dataset.tasks:
-        _write_trial(
-            job_dir,
-            trial_name=f"{task.id}__0",
-            task_name=f"hello/{task.id}",
-            task_dir=_dataset_root(dataset) / task.id,
-            rewards={"reward": 1.0},
-        )
-    # A real prior run stamps its inputs; without this the cache is (correctly)
-    # treated as untrustworthy and re-run.
-    (job_dir / ".experimentalist-cache-key").write_text(
-        _cache_fingerprint(HarborRunnerConfig(jobs_dir=Path("jobs")), agent_dir.resolve(), dataset),
-        encoding="utf-8",
+
+    def write_complete_results(config: Any) -> None:
+        for task in dataset.tasks:
+            _write_trial(
+                Path(config.jobs_dir) / config.job_name,
+                trial_name=f"{task.id}__0",
+                task_name=f"hello/{task.id}",
+                task_dir=_dataset_root(dataset) / task.id,
+                rewards={"reward": 1.0},
+            )
+
+    fake_job.on_run = write_complete_results
+    await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+        agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))
     )
+    fake_job.calls = []
+    fake_job.on_run = None
     return job_dir
 
 
@@ -548,125 +562,42 @@ async def test_failed_trials_keep_their_error_shape(
 
 
 # --------------------------------------------------------------------------
-# Cache identity — a job dir must only be reused for the inputs that made it
+# The SDK owns cache identity now — verify the plugin is actually covered by it
 # --------------------------------------------------------------------------
 
 
-async def _run_once(tmp_path: Path, dataset: HarborDataset, agent_dir: Path, **overrides: Any) -> None:
+async def test_editing_the_candidate_invalidates_the_cache_through_the_sdk(
+    tmp_path: Path,
+    dataset: HarborDataset,
+    agent_dir: Path,
+    cached_job_dir: Path,
+    fake_job: type[_FakeJob],
+) -> None:
+    """The staleness guard lives in the SDK; this asserts the plugin inherits it.
+
+    Without it, editing a candidate and re-running in the same experiment directory
+    silently returns the previous candidate's scores — which is the whole reason
+    AALGO-427 exists.
+    """
+    _write(agent_dir / "harbor_wrapper.py", "class WrappedAgent:\n    version = 2\n")
+
     await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
-        agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"), **overrides)
-    )
-
-
-async def test_unchanged_inputs_still_hit_the_cache(
-    tmp_path: Path,
-    dataset: HarborDataset,
-    agent_dir: Path,
-    cached_job_dir: Path,
-    fake_job: type[_FakeJob],
-) -> None:
-    """The fingerprint must not break the caching the SDK path exists to provide."""
-    await _run_once(tmp_path, dataset, agent_dir)
-
-    assert fake_job.calls == [], "matching inputs must still be served from cache"
-
-
-async def test_cache_without_a_fingerprint_is_rerun(
-    tmp_path: Path,
-    dataset: HarborDataset,
-    agent_dir: Path,
-    cached_job_dir: Path,
-    fake_job: type[_FakeJob],
-) -> None:
-    """A job dir from before this check (or from the plain evaluator) is not trusted."""
-    (cached_job_dir / ".experimentalist-cache-key").unlink()
-
-    await _run_once(tmp_path, dataset, agent_dir)
-
-    assert len(fake_job.calls) == 1
-
-
-@pytest.mark.parametrize(
-    ("mutation", "reason"),
-    [
-        ("agent", "candidate source changed"),
-        ("dataset", "task content changed"),
-        ("option", "a result-affecting option changed"),
-    ],
-)
-async def test_changed_inputs_invalidate_the_cache(
-    tmp_path: Path,
-    dataset: HarborDataset,
-    agent_dir: Path,
-    cached_job_dir: Path,
-    fake_job: type[_FakeJob],
-    mutation: str,
-    reason: str,
-) -> None:
-    """Stale trials must never be re-adapted after the evaluated inputs change."""
-    options: dict[str, Any] = {}
-    if mutation == "agent":
-        _write(agent_dir / "harbor_wrapper.py", "class WrappedAgent:\n    version = 2\n")
-    elif mutation == "dataset":
-        _write(_dataset_root(dataset) / "sum-two" / "tests" / "test.sh", "echo different reward")
-    else:
-        options["trace_dir"] = "/app/other-traces"
-
-    await _run_once(tmp_path, dataset, agent_dir, **options)
-
-    assert len(fake_job.calls) == 1, f"cache must be invalidated when {reason}"
-
-
-async def test_cosmetic_options_do_not_evict_the_cache(
-    tmp_path: Path,
-    dataset: HarborDataset,
-    agent_dir: Path,
-    cached_job_dir: Path,
-    fake_job: type[_FakeJob],
-) -> None:
-    """Presentation-only options must not force an expensive re-run."""
-    await _run_once(tmp_path, dataset, agent_dir, quiet=True, n_concurrent_trials=1)
-
-    assert fake_job.calls == []
-
-
-async def test_a_completed_run_stamps_its_fingerprint(
-    tmp_path: Path,
-    dataset: HarborDataset,
-    agent_dir: Path,
-    fake_job: type[_FakeJob],
-) -> None:
-    """Without the stamp the next run could not tell a fresh cache from a stale one."""
-    await _run_once(tmp_path, dataset, agent_dir)
-
-    key_path = tmp_path / "jobs" / f"{agent_dir.name}-{dataset.id}" / ".experimentalist-cache-key"
-    assert key_path.read_text(encoding="utf-8") == _cache_fingerprint(
-        HarborRunnerConfig(jobs_dir=Path("jobs")), agent_dir.resolve(), dataset
-    )
-
-
-async def test_the_cache_key_file_is_not_mistaken_for_a_trial(
-    tmp_path: Path,
-    dataset: HarborDataset,
-    agent_dir: Path,
-    fake_job: type[_FakeJob],
-) -> None:
-    """The stamp lives inside the job dir, which both Harbor and the adapter walk."""
-    dataset_dir = _dataset_root(dataset)
-
-    def write_results(config: Any) -> None:
-        job_dir = Path(config.jobs_dir) / config.job_name
-        _write_trial(
-            job_dir,
-            trial_name="sum-two__0",
-            task_name="hello/sum-two",
-            task_dir=dataset_dir / "sum-two",
-            rewards={"reward": 1.0},
-        )
-
-    fake_job.on_run = write_results
-    trials = await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))
     )
 
-    assert [trial.task_id for trial in trials] == ["sum-two"]
+    assert len(fake_job.calls) == 1, "a changed candidate must not be served from cache"
+
+
+async def test_unchanged_candidate_still_hits_the_cache(
+    tmp_path: Path,
+    dataset: HarborDataset,
+    agent_dir: Path,
+    cached_job_dir: Path,
+    fake_job: type[_FakeJob],
+) -> None:
+    """The guard must not be so strict that it defeats caching entirely."""
+    await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+        agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))
+    )
+
+    assert fake_job.calls == []

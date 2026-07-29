@@ -32,9 +32,11 @@ that half stays dependency-free regardless of how the job was produced.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.machinery
 import json
 import logging
+import os
 import re
 import shutil
 import sys
@@ -71,6 +73,18 @@ _TASK_TEMPLATE_DIRNAME = "task_template"
 _AGENT_IMPORT_ROOT = "_nemo_evaluator_harbor_agents"
 # Guards the sys.modules mutation while injecting/removing scoped agent packages.
 _IMPORT_LOCK = threading.Lock()
+# Records which inputs produced a job dir, so a rerun can tell a reusable cache from
+# a stale one. A file, not a directory: Harbor rmtree's stray directories in a job dir.
+CACHE_STAMP_FILENAME = ".nemo-eval-harbor-cache.json"
+# Public so downstreams can assert the SDK is new enough to own cache staleness.
+CACHE_STAMP_VERSION = 1
+# Excluded from the cache fingerprint — see :func:`_cache_stamp` for why each one.
+_CACHE_IRRELEVANT_OPTIONS = frozenset(
+    {"jobs_dir", "job_name", "force_rerun", "quiet", "n_concurrent_trials", "agent_dir", "reward_key"}
+)
+# Build/VCS noise skipped when digesting a directory.
+_DIGEST_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", ".uv", "node_modules", ".mypy_cache", ".pytest_cache"})
+_DIGEST_CHUNK_BYTES = 1 << 20
 
 RunJob = Callable[[], Awaitable[None]]
 
@@ -209,17 +223,73 @@ class HarborAgentTaskRunner:
         In native mode the dataset directory is recovered from the tasks (each
         carries ``metadata['harbor_dataset_path']`` from
         :func:`discover_harbor_tasks`) unless a ``dataset_path`` override was given,
-        so callers don't repeat it. ``job_dir`` doubles as a cache: the Harbor run
-        is skipped and results are simply re-adapted when every requested task
-        already has ``n_attempts`` completed, non-errored results there (unless
-        ``force_rerun`` is set). The cache only engages when the config pins a
-        stable ``job_name``; the default timestamped name never hits it.
+        so callers don't repeat it.
+
+        ``job_dir`` doubles as a cache, and it is reused only when **both** hold:
+        every requested task already has ``n_attempts`` completed, non-errored
+        results there, *and* the directory carries a cache stamp matching this run's
+        inputs (agent contents, task contents, result-affecting options). Anything
+        else re-runs from scratch — the directory is discarded rather than handed to
+        Harbor, because a surviving directory plus a changed agent is exactly the
+        case Harbor itself refuses.
+
+        The cache only engages when the config pins a stable ``job_name``; with the
+        default timestamped name no fingerprint is computed at all.
+
+        Assumes a **single writer per job directory**. Neither this runtime nor
+        Harbor locks it, so two processes sharing a pinned ``job_name`` on a shared
+        volume will race.
         """
         if self._config is not None:
             dataset_path = self._dataset_path or _dataset_path_from_tasks(tasks)
-            job_dir, run_job = _build_native_job(self._config, dataset_path, self._task_names)
-            if self._config.force_rerun or not _all_tasks_cached(job_dir, tasks, n_attempts=self._config.n_attempts):
+            job_name, job_dir = _resolve_job_dir(self._config)
+
+            # Only fingerprint when the answer can depend on it: an unpinned job name
+            # can never hit, and force_rerun/a missing dir already decided. This keeps
+            # the digest I/O off every run of callers that don't pin a job name.
+            stamp: dict[str, Any] | None = None
+            if self._config.job_name is None or self._config.force_rerun or not job_dir.is_dir():
+                stale = True
+            else:
+                stamp = _cache_stamp(self._config, dataset_path, tasks)
+                stale = _cache_is_stale(job_dir, stamp)
+
+            if stale or not _all_tasks_cached(job_dir, tasks, n_attempts=self._config.n_attempts):
+                job_dir, run_job = _build_native_job(
+                    self._config,
+                    dataset_path,
+                    self._task_names,
+                    job_name=job_name,
+                    # Discard when the inputs changed, and whenever `agent_dir` is
+                    # set: Harbor bakes a fresh uuid into the scoped agent import
+                    # path, so its own JobConfig never matches on a rerun and it
+                    # raises FileExistsError instead of resuming. With `agent_dir`
+                    # unset the AgentConfig is deterministic, so leaving force_rerun
+                    # off lets Harbor resume per trial and keep completed work.
+                    force_rerun=(self._config.force_rerun or stale or self._config.agent_dir is not None),
+                )
+                # Fingerprint the inputs *before* running and confirm they are
+                # unchanged afterwards. Stamping only the post-run state would label
+                # results produced from the old sources with the new fingerprint, so
+                # a later run would happily serve them. Covers what Harbor actually
+                # ran: with no task_names filter that is the whole dataset, and
+                # recording only the requested subset would make the next full-set
+                # run look stale and re-run a complete job dir.
+                coverage = _stamp_coverage(dataset_path, tasks, self._task_names)
+                before = _cache_stamp(self._config, dataset_path, coverage)
                 await run_job()
+                if self._config.job_name is not None:
+                    after = _cache_stamp(self._config, dataset_path, coverage)
+                    if after == before:
+                        _write_cache_stamp(job_dir, after)
+                    else:
+                        # Leaving it unstamped re-runs next time, which is the safe
+                        # direction: we cannot say which inputs produced these results.
+                        logger.warning(
+                            "Agent or task contents changed while Harbor job %s was running; leaving it unstamped "
+                            "so the next run re-executes rather than trusting these results.",
+                            job_dir,
+                        )
             return build_trials_from_job_dir(job_dir, tasks, reward_key=self._reward_key)
 
         if self._job_dir is None:  # unreachable: __init__ guarantees config or job_dir
@@ -268,10 +338,289 @@ def _all_tasks_cached(job_dir: Path, tasks: Sequence[AgentEvalTask], *, n_attemp
     return all(counts.get(task.id, 0) >= n_attempts for task in tasks)
 
 
+def _digest_directory(root: Path, *, exclude: frozenset[Path] = frozenset()) -> str:
+    """Content-hash a directory tree, skipping build/VCS noise and excluded roots.
+
+    Contents rather than mtimes: callers routinely materialize the directory with
+    ``copytree`` (the optimizer does, per candidate), which rewrites every mtime and
+    would defeat the cache entirely.
+
+    ``exclude`` takes *resolved* directories to skip wholesale. It exists because
+    ``jobs_dir`` is caller-chosen and may sit **under** the dataset or agent
+    directory; without excluding it the digest would hash the growing results tree
+    it is meant to validate, and would never stabilize.
+
+    Symlinks are **followed**, not skipped. Skipping them silently defeats the whole
+    guard: a directory assembled out of links to shared sources would hash to the
+    empty digest, so edits behind those links would never invalidate the cache. The
+    link target is folded in alongside the contents, so re-pointing a link is a
+    change even when both targets happen to hold identical bytes.
+
+    Unreadable or vanished files are folded in as a marker rather than raised: a
+    transient read failure must not kill a run that would otherwise have succeeded.
+    """
+    digest = hashlib.sha256()
+    if not root.is_dir():
+        return digest.hexdigest()
+    # Keep only exclusions strictly *inside* this tree. An excluded root that is an
+    # ancestor of (or equal to) `root` would otherwise match every entry and yield
+    # an empty digest — silently disabling invalidation for the whole directory,
+    # which is exactly the failure this function exists to prevent. jobs_dir being
+    # a parent of the agent/task dir is a legitimate layout, not a reason to stop
+    # hashing it.
+    root_resolved = root.resolve()
+    excluded = {
+        resolved
+        for resolved in (path.resolve() for path in exclude)
+        if resolved != root_resolved and resolved.is_relative_to(root_resolved)
+    }
+    # Resolved dirs already walked, so a symlink cycle terminates instead of hanging.
+    visited: set[Path] = set()
+
+    def walk(directory: Path) -> None:
+        resolved_dir = directory.resolve()
+        if resolved_dir in visited:
+            return
+        visited.add(resolved_dir)
+        try:
+            entries = sorted(directory.iterdir())
+        except OSError as exc:
+            logger.warning("Could not list %s while fingerprinting %s: %s", directory, root, exc)
+            digest.update(b"<unlistable>\0")
+            return
+        for path in entries:
+            if path.name in _DIGEST_SKIP_DIRS:
+                continue
+            resolved = path.resolve()
+            if any(resolved == item or item in resolved.parents for item in excluded):
+                continue
+
+            digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+            digest.update(b"\0")
+            if path.is_symlink():
+                # Record where the link points, so retargeting counts as a change.
+                digest.update(b"<symlink>")
+                digest.update(os.readlink(path).encode("utf-8"))
+                digest.update(b"\0")
+            if path.is_dir():
+                digest.update(b"<dir>\0")
+                walk(path)
+                continue
+            if not path.is_file():
+                # Broken link, socket, fifo: nothing to hash, but its presence counts.
+                digest.update(b"<not-a-file>\0")
+                continue
+            try:
+                with path.open("rb") as handle:
+                    # Streamed: Harbor datasets may ship large seeds or build contexts.
+                    for chunk in iter(lambda: handle.read(_DIGEST_CHUNK_BYTES), b""):
+                        digest.update(chunk)
+            except OSError as exc:
+                logger.warning("Could not read %s while fingerprinting %s: %s", path, root, exc)
+                digest.update(b"<unreadable>")
+            digest.update(b"\0")
+
+    walk(root)
+    return digest.hexdigest()
+
+
+def _task_dirs_for(dataset_path: Path, tasks: Sequence[AgentEvalTask]) -> dict[str, Path | None]:
+    """Resolve each task's on-disk directory, falling back to re-discovery.
+
+    :func:`discover_harbor_tasks` stamps ``metadata['harbor_task_dir']``, but callers
+    may build :class:`AgentEvalTask` objects by hand (the Evaluator plugin builds
+    them from a job spec), so the metadata is not guaranteed.
+
+    A task that cannot be resolved maps to ``None`` — the caller must treat that as
+    un-cacheable rather than silently omitting it from the fingerprint, which would
+    be a stale-cache hole.
+    """
+    dataset_root = dataset_path.resolve()
+    resolved: dict[str, Path | None] = {}
+    for task in tasks:
+        stamped = task.metadata.get("harbor_task_dir")
+        candidate = Path(stamped) if isinstance(stamped, str) and stamped else None
+        # The stamp records where a task was *discovered*, which is not necessarily
+        # where this run executes it: `dataset_path` can be overridden on the runner.
+        # Trusting a stale or foreign path would fingerprint one dataset while Harbor
+        # runs another, so anything missing or outside the active dataset is dropped
+        # and re-discovered below.
+        if candidate is not None:
+            candidate_resolved = candidate.resolve()
+            if not candidate.is_dir() or not candidate_resolved.is_relative_to(dataset_root):
+                logger.debug(
+                    "Ignoring stamped harbor_task_dir %s for task %r: not a directory under the active dataset %s",
+                    candidate,
+                    task.id,
+                    dataset_root,
+                )
+                candidate = None
+        resolved[task.id] = candidate
+    if all(path is not None for path in resolved.values()):
+        return resolved
+
+    try:
+        discovered = {
+            task.id: Path(str(task.metadata["harbor_task_dir"])) for task in discover_harbor_tasks(dataset_path)
+        }
+    except (OSError, ValueError) as exc:
+        # discover_harbor_tasks raises on ANY malformed task.toml in the dataset.
+        # Refusing the cache is the safe reading; failing the run is not, since this
+        # path previously never read those files.
+        logger.warning(
+            "Could not resolve Harbor task dirs under %s; treating the cache as stale: %s", dataset_path, exc
+        )
+        return dict.fromkeys(resolved, None)
+    return {task_id: path or discovered.get(task_id) for task_id, path in resolved.items()}
+
+
+def _stamp_coverage(
+    dataset_path: Path,
+    tasks: Sequence[AgentEvalTask],
+    task_names: Sequence[str] | None,
+) -> Sequence[AgentEvalTask]:
+    """Tasks a written stamp must cover: everything Harbor was asked to run.
+
+    ``task_names`` is the filter handed to Harbor's ``DatasetConfig``. When it is
+    ``None`` Harbor runs every task in the dataset, which can be a superset of the
+    tasks this call was asked to score — and a stamp that recorded only the smaller
+    set would report the larger one as stale on the next run.
+    """
+    if task_names is not None:
+        return tasks
+    try:
+        discovered = discover_harbor_tasks(dataset_path)
+    except (OSError, ValueError):
+        # Same reasoning as _task_dirs_for: a malformed sibling task must not fail a
+        # run. Recording only the requested tasks just costs a re-run later.
+        return tasks
+    covered = {task.id: task for task in discovered}
+    covered.update({task.id: task for task in tasks})
+    return list(covered.values())
+
+
+def _cache_stamp(
+    config: HarborRuntimeConfig,
+    dataset_path: Path,
+    tasks: Sequence[AgentEvalTask],
+) -> dict[str, Any]:
+    """Fingerprint the inputs that decide whether a job dir can be reused.
+
+    Covers the result-affecting options, the contents of ``agent_dir``, and the
+    contents of every task directory. Two gaps are deliberate and worth knowing
+    before trusting a hit: when ``agent_dir`` is ``None`` the agent is an already
+    importable module, so only its *import path* is fingerprinted and edits to that
+    installed package are invisible; and a task whose directory cannot be resolved
+    is recorded as ``<unresolved>``, which always forces a re-run.
+
+    Recorded per task rather than as one job-wide hash so that evaluating a
+    **subset** of a previously-cached job still hits: staleness is decided only over
+    the tasks actually requested.
+
+    Excluded from the option hash: presentation and placement knobs (``quiet``,
+    ``n_concurrent_trials``, ``jobs_dir``, ``job_name``, ``force_rerun``), which
+    change nothing about the results; ``agent_dir``, an absolute path whose
+    *content* is hashed separately, so a relocated but identical agent still hits;
+    and ``reward_key``, which only selects which reward
+    :func:`build_trials_from_job_dir` reads back and must not cost a Docker re-run.
+    """
+    options = config.model_dump(exclude=set(_CACHE_IRRELEVANT_OPTIONS), mode="json")
+    excluded_roots = frozenset({config.jobs_dir.expanduser().resolve()})
+
+    agent_digest = "<none>"
+    if config.agent_dir is not None:
+        agent_digest = _digest_directory(config.agent_dir.expanduser().resolve(), exclude=excluded_roots)
+
+    task_digests: dict[str, str] = {}
+    for task_id, task_dir in sorted(_task_dirs_for(dataset_path, tasks).items()):
+        task_digests[task_id] = (
+            "<unresolved>" if task_dir is None else _digest_directory(task_dir.resolve(), exclude=excluded_roots)
+        )
+
+    return {
+        "version": CACHE_STAMP_VERSION,
+        "options": hashlib.sha256(json.dumps(options, sort_keys=True, default=str).encode("utf-8")).hexdigest(),
+        "agent": agent_digest,
+        "tasks": task_digests,
+    }
+
+
+def _cache_is_stale(job_dir: Path, stamp: Mapping[str, Any]) -> bool:
+    """Return True when ``job_dir`` was not produced by the inputs in ``stamp``.
+
+    A directory with no stamp is stale: it predates this check, or was written by
+    plain Harbor, and re-running is the safe reading. An ``<unresolved>`` task
+    digest is likewise always stale — we could not prove the inputs match. A
+    directory that does not exist is stale too: there is nothing there to reuse, and
+    answering "not stale" would be an invitation to serve zero trials.
+    """
+    if not job_dir.is_dir():
+        return True
+    try:
+        stored = json.loads((job_dir / CACHE_STAMP_FILENAME).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        stored = None
+
+    reason: str | None = None
+    if not isinstance(stored, Mapping):
+        reason = "no usable cache stamp"
+    elif stored.get("version") != stamp["version"]:
+        reason = "cache stamp version changed"
+    elif stored.get("options") != stamp["options"]:
+        reason = "a result-affecting option changed"
+    elif stored.get("agent") != stamp["agent"]:
+        reason = "the agent directory changed"
+    else:
+        stored_tasks = stored.get("tasks")
+        stored_tasks = stored_tasks if isinstance(stored_tasks, Mapping) else {}
+        for task_id, digest in stamp["tasks"].items():
+            if digest == "<unresolved>":
+                reason = f"task {task_id!r} could not be resolved on disk"
+                break
+            if stored_tasks.get(task_id) != digest:
+                reason = f"task {task_id!r} changed or was not part of the cached run"
+                break
+
+    if reason is None:
+        return False
+    logger.info("Re-running Harbor job %s instead of serving it from cache: %s.", job_dir, reason)
+    return True
+
+
+def _write_cache_stamp(job_dir: Path, stamp: Mapping[str, Any]) -> None:
+    """Record the inputs a completed job dir was produced from.
+
+    Best-effort: a job dir that could not be stamped simply re-runs next time, which
+    is the safe direction. Written as a *file* deliberately — Harbor deletes any
+    stray *directory* in a job dir that lacks ``result.json``.
+    """
+    try:
+        (job_dir / CACHE_STAMP_FILENAME).write_text(
+            json.dumps(stamp, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    except OSError as exc:
+        logger.warning("Could not stamp Harbor job dir %s with its cache key: %s", job_dir, exc)
+
+
+def _resolve_job_dir(config: HarborRuntimeConfig) -> tuple[str, Path]:
+    """Resolve ``(job_name, job_dir)`` without importing Harbor.
+
+    Split out from :func:`_build_native_job` because the caller must know the job
+    directory *before* deciding whether to run: an unpinned ``job_name`` is a
+    timestamp with microsecond precision, so resolving it twice would yield two
+    different directories and the cache decision would be made about the wrong one.
+    """
+    job_name = config.job_name or datetime.now(timezone.utc).strftime("%Y-%m-%d__%H-%M-%S__%f")
+    return job_name, config.jobs_dir / job_name
+
+
 def _build_native_job(
     config: HarborRuntimeConfig,
     dataset_path: Path,
     task_names: Sequence[str] | None,
+    *,
+    job_name: str | None = None,
+    force_rerun: bool | None = None,
 ) -> tuple[Path, RunJob]:
     """Build a Harbor ``JobConfig`` from ``config`` and return ``(job_dir, run_job)``.
 
@@ -280,9 +629,18 @@ def _build_native_job(
     without importing Harbor. When ``agent_import_path`` is set, ``run_job``
     scopes the user's agent package into ``sys.modules`` for the run and removes
     it afterwards (see :func:`scoped_harbor_agent_import`).
+
+    Args:
+        job_name: Pre-resolved job name from :func:`_resolve_job_dir`. Pass it when
+            the caller already resolved the directory, so an unpinned name is not
+            re-generated into a different timestamp.
+        force_rerun: Overrides ``config.force_rerun`` for this build. Passed rather
+            than applied via ``model_copy`` so the caller's config is never mutated
+            and the job name stays fixed.
     """
-    job_name = config.job_name or datetime.now(timezone.utc).strftime("%Y-%m-%d__%H-%M-%S__%f")
-    job_dir = config.jobs_dir / job_name
+    resolved_name = job_name if job_name is not None else _resolve_job_dir(config)[0]
+    job_dir = config.jobs_dir / resolved_name
+    effective_force_rerun = config.force_rerun if force_rerun is None else force_rerun
 
     async def run_job() -> None:
         try:
@@ -295,7 +653,7 @@ def _build_native_job(
                 '(it requires Python >=3.12). Install it separately: uv pip install "harbor>=0.16.1"'
             ) from exc
 
-        if config.force_rerun and job_dir.exists():
+        if effective_force_rerun and job_dir.exists():
             shutil.rmtree(job_dir)
 
         artifacts: list[str | ArtifactConfig] = list(config.artifacts)
@@ -316,7 +674,7 @@ def _build_native_job(
 
         async def _create_and_run(agent: Any) -> None:
             job_config = JobConfig(
-                job_name=job_name,
+                job_name=resolved_name,
                 jobs_dir=config.jobs_dir,
                 n_attempts=config.n_attempts,
                 n_concurrent_trials=config.n_concurrent_trials,
@@ -731,6 +1089,8 @@ def reward_payload_from_result(
 
 
 __all__ = [
+    "CACHE_STAMP_FILENAME",
+    "CACHE_STAMP_VERSION",
     "DEFAULT_REWARD_KEY",
     "HarborAgentTaskRunner",
     "HarborRewardMetric",
