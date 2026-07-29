@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      # Keep automated action bumps limited to org-approved action owners/actions.
+      - dependency-name: "actions/*"
+      - dependency-name: "github/codeql-action*"
+      - dependency-name: "docker/*"
+      - dependency-name: "azure/setup-helm"
+      - dependency-name: "trufflesecurity/trufflehog"
+    groups:
+      approved-github-actions:
+        applies-to: "version-updates"
+        patterns:
+          - "actions/*"
+          - "github/codeql-action*"
+          - "docker/*"
+          - "azure/setup-helm"
+          - "trufflesecurity/trufflehog"

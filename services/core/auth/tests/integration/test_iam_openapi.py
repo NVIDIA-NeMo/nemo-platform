@@ -40,3 +40,21 @@ class TestIAMOpenAPI:
         # Verify role binding schemas are present
         assert "RoleBinding" in schemas
         assert "RoleBindingInput" in schemas
+
+    def test_authz_error_schema_models_only_structured_400_detail(self, http_client: TestClient):
+        headers = {"X-NMP-Principal-Id": SERVICE_PRINCIPAL}
+        response = http_client.get("/openapi.json", headers=headers)
+        assert response.status_code == 200
+
+        spec = response.json()
+        operation = spec["paths"]["/apis/auth/v2/authz/{entrypoint}"]["post"]
+        assert operation["responses"]["400"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/AuthzErrorResponse"
+        }
+        assert "content" not in operation["responses"]["500"]
+
+        schemas = spec["components"]["schemas"]
+        assert schemas["AuthzErrorResponse"]["properties"]["detail"] == {
+            "$ref": "#/components/schemas/AuthzErrorDetail"
+        }
+        assert set(schemas["AuthzErrorDetail"]["required"]) == {"error"}
