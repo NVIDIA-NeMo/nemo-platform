@@ -40,11 +40,11 @@ export const JobSummaryPanel: FC<JobSummaryPanelProps> = ({ job }) => {
           />
         </Grid>
         <KVPair label="Source" value={jobSource(job) ?? EMPTY_FIELD_VALUE} />
-        {errorMessage && (
+        {errorMessage ? (
           <Banner kind="inline" status="error">
             {errorMessage}
           </Banner>
-        )}
+        ) : null}
       </Stack>
     </Panel>
   );

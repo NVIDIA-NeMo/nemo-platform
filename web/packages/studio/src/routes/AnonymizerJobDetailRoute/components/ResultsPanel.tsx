@@ -44,11 +44,11 @@ export const ResultsPanel: FC<ResultsPanelProps> = ({
   return (
     <Panel slotHeading="Results" elevation="high" density="compact">
       <Stack gap="density-md">
-        {error && (
+        {error ? (
           <Banner kind="inline" status="error">
             {error}
           </Banner>
-        )}
+        ) : null}
         {loadError ? (
           <Banner kind="inline" status="error">
             Could not load results for this job.

@@ -9,57 +9,53 @@ import {
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Text } from '@nvidia/foundations-react-core';
 import type { DataFileRow } from '@studio/components/FileRowEditor/types';
-import { ExpandedCellModal } from '@studio/routes/AnonymizerJobDetailRoute/components/ExpandedCellModal';
 import { RESULT_PREVIEW_ROWS } from '@studio/routes/AnonymizerJobDetailRoute/util';
-import { useCallback, useMemo, useState, type ComponentProps, type FC } from 'react';
+import { memo, useCallback, useMemo, type ComponentProps, type FC } from 'react';
 
 interface ResultsPreviewTableProps {
   readonly rows: readonly DataFileRow[];
   readonly columns: readonly string[];
+  readonly onExpand: (cell: TableExpandableCellState) => void;
 }
 
 const cellText = (value: unknown): string =>
   typeof value === 'object' ? JSON.stringify(value) : String(value);
 
-export const ResultsPreviewTable: FC<ResultsPreviewTableProps> = ({ rows, columns }) => {
-  const [expandedCell, setExpandedCell] = useState<TableExpandableCellState | null>(null);
-  const dataViewState = useStudioDataViewState({ defaultPageSize: RESULT_PREVIEW_ROWS });
+/** Memoized so opening the expanded-cell modal does not re-render every cell. */
+export const ResultsPreviewTable: FC<ResultsPreviewTableProps> = memo(
+  ({ rows, columns, onExpand }) => {
+    const dataViewState = useStudioDataViewState({ defaultPageSize: RESULT_PREVIEW_ROWS });
 
-  const { pageIndex, pageSize } = dataViewState.pagination.state;
-  const pageRows = useMemo(
-    () => rows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
-    [rows, pageIndex, pageSize]
-  );
+    const { pageIndex, pageSize } = dataViewState.pagination.state;
+    const pageRows = useMemo(
+      () => rows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+      [rows, pageIndex, pageSize]
+    );
 
-  const makeColumns = useCallback<
-    ComponentProps<typeof StudioDataView<DataFileRow>>['makeColumns']
-  >(
-    (col) =>
-      columns.map((column) =>
-        col.display({
-          id: column,
-          header: column,
-          cell: ({ row }) => {
-            const value = row.original[column];
-            return value == null ? (
-              <Text kind="body/regular/sm" color="secondary">
-                —
-              </Text>
-            ) : (
-              <TableExpandableCell
-                content={cellText(value)}
-                title={column}
-                onExpand={setExpandedCell}
-              />
-            );
-          },
-        })
-      ),
-    [columns]
-  );
+    const makeColumns = useCallback<
+      ComponentProps<typeof StudioDataView<DataFileRow>>['makeColumns']
+    >(
+      (col) =>
+        columns.map((column) =>
+          col.display({
+            id: column,
+            header: column,
+            cell: ({ row }) => {
+              const value = row.original[column];
+              return value == null ? (
+                <Text kind="body/regular/sm" color="secondary">
+                  —
+                </Text>
+              ) : (
+                <TableExpandableCell content={cellText(value)} title={column} onExpand={onExpand} />
+              );
+            },
+          })
+        ),
+      [columns, onExpand]
+    );
 
-  return (
-    <>
+    return (
       <div className="flex flex-col min-h-[400px] max-h-[640px]">
         <StudioDataView<DataFileRow>
           dataViewState={dataViewState}
@@ -68,7 +64,8 @@ export const ResultsPreviewTable: FC<ResultsPreviewTableProps> = ({ rows, column
           attributes={{ DataViewRoot: { data: pageRows, totalCount: rows.length } }}
         />
       </div>
-      <ExpandedCellModal cell={expandedCell} onClose={() => setExpandedCell(null)} />
-    </>
-  );
-};
+    );
+  }
+);
+
+ResultsPreviewTable.displayName = 'ResultsPreviewTable';
