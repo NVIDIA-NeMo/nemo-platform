@@ -91,7 +91,9 @@ describe('AddToGroupModal', () => {
     const user = userEvent.setup();
     renderModal();
     await user.click(screen.getByRole('combobox', { name: /experiment/i }));
-    expect(await screen.findByRole('option', { name: /create new experiment/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('option', { name: /create new experiment/i })
+    ).toBeInTheDocument();
     // g1: both evals are members -> excluded. g2: only eval-2 is a member -> still offered. g3: none.
     expect(screen.getByRole('option', { name: 'Beta benchmarks' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Gamma benchmarks' })).toBeInTheDocument();
@@ -160,7 +162,9 @@ describe('AddToGroupModal', () => {
     const trigger = screen.getByRole('combobox', { name: /experiment/i });
     expect(trigger).toBeEnabled();
     await user.click(trigger);
-    expect(await screen.findByRole('option', { name: /create new experiment/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('option', { name: /create new experiment/i })
+    ).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Alpha benchmarks' })).not.toBeInTheDocument();
   });
 });
