@@ -57,6 +57,14 @@ describe('metadataTextColumn', () => {
     expect(metadataTextColumn(undefined)).toBeUndefined();
     expect(metadataTextColumn('not json')).toBeUndefined();
   });
+
+  it('ignores a non-string column and non-object metadata', () => {
+    expect(metadataTextColumn('{"original_text_column":42}')).toBeUndefined();
+    expect(metadataTextColumn('{"original_text_column":null}')).toBeUndefined();
+    expect(metadataTextColumn('{"original_text_column":["biography"]}')).toBeUndefined();
+    expect(metadataTextColumn('null')).toBeUndefined();
+    expect(metadataTextColumn('7')).toBeUndefined();
+  });
 });
 
 describe('orderResultColumns', () => {

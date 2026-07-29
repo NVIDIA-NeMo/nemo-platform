@@ -31,7 +31,9 @@ export const parseArtifactUrl = (artifactUrl: string | undefined): ArtifactLocat
 
 export const metadataTextColumn = (metadata: string | undefined): string | undefined => {
   try {
-    return (JSON.parse(metadata ?? '{}') as { original_text_column?: string }).original_text_column;
+    const parsed: unknown = JSON.parse(metadata ?? '{}');
+    const column = (parsed as { original_text_column?: unknown })?.original_text_column;
+    return typeof column === 'string' ? column : undefined;
   } catch {
     return undefined;
   }
