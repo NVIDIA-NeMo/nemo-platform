@@ -23,7 +23,7 @@ from nmp.intake.api.v2.experiments.endpoints import (
 from nmp.intake.api.v2.experiments.schemas import EvaluationResponse, EvaluatorAggregate, MetricStatFilters
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-GROUPS = "/apis/intake/v2/workspaces/default/experiments"
+EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _exp(
@@ -176,7 +176,7 @@ def test_matches_predicates_resolves_tokens_metric() -> None:
 
 
 def _make_evaluation(client: TestClient, name: str = "exp-1", group: str = "grp-1") -> None:
-    group_resp = client.post(GROUPS, json={"name": group})
+    group_resp = client.post(EXPERIMENTS, json={"name": group})
     assert group_resp.status_code == 201, group_resp.text
     exp_resp = client.post(
         EVALUATIONS,

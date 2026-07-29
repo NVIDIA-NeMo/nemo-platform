@@ -30,7 +30,6 @@ const mockEvaluation = (name: string): EvaluationResponse => ({
   workspace: WORKSPACE,
   experiment_ids: ['grp_my-group'],
   dataset_name: 'sample-dataset',
-  // Deprecated readonly alias the generated type still requires.
   experiment_group_id: 'grp_my-group',
 });
 

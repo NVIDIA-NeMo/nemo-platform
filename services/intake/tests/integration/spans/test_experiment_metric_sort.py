@@ -11,13 +11,13 @@ from fastapi.testclient import TestClient
 
 ATIF_INGEST = "/apis/intake/v2/workspaces/default/ingest/atif"
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-GROUPS = "/apis/intake/v2/workspaces/default/experiments"
+EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _ensure_group(client: TestClient, name: str) -> str:
-    response = client.post(GROUPS, json={"name": name})
+    response = client.post(EXPERIMENTS, json={"name": name})
     if response.status_code == 409:
-        response = client.get(f"{GROUPS}/{name}")
+        response = client.get(f"{EXPERIMENTS}/{name}")
     response.raise_for_status()
     return response.json()["id"]
 

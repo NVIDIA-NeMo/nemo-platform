@@ -11,11 +11,11 @@ computed without rollups, so it must fail loudly rather than silently degrade to
 from fastapi.testclient import TestClient
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-GROUPS = "/apis/intake/v2/workspaces/default/experiments"
+EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _make_evaluation(client: TestClient, name: str = "exp-1", group: str = "grp-1") -> None:
-    group_resp = client.post(GROUPS, json={"name": group})
+    group_resp = client.post(EXPERIMENTS, json={"name": group})
     assert group_resp.status_code == 201, group_resp.text
     exp_resp = client.post(
         EVALUATIONS,
@@ -79,7 +79,7 @@ def test_too_many_evaluations_to_sort_returns_413(client: TestClient, monkeypatc
     from nmp.intake.api.v2.experiments import endpoints
 
     monkeypatch.setattr(endpoints, "_MAX_GROUP_EVALUATIONS", 2)
-    group_resp = client.post(GROUPS, json={"name": "big-grp"})
+    group_resp = client.post(EXPERIMENTS, json={"name": "big-grp"})
     group_id = group_resp.json()["id"]
     for index in range(3):
         resp = client.post(

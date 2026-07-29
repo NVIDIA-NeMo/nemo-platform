@@ -19,12 +19,3 @@ class EvaluationContext(BaseModel):
     test_case_id: str | None = Field(default=None, description="Optional producer-supplied test case id.")
 
     model_config = ConfigDict(extra="ignore")
-
-
-class EvaluationContextIngestModel(BaseModel):
-    """Base model for ingest payloads that carry evaluation context."""
-
-    evaluation_context: EvaluationContext | None = None
-
-    def resolved_evaluation_context(self) -> EvaluationContext | None:
-        return self.evaluation_context
