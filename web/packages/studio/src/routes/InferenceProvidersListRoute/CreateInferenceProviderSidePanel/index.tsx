@@ -80,7 +80,7 @@ export const CreateInferenceProviderSidePanel: FC<CreateInferenceProviderSidePan
   const [preset, setPreset] = useState<InferenceProviderPresetId>(defaultPreset ?? 'custom');
   const [createSecretModalOpen, setCreateSecretModalOpen] = useState(false);
 
-  const { data: providersData } = useModelsListProviders(
+  const { data: providersData, isLoading: isProvidersLoading } = useModelsListProviders(
     workspace,
     { page_size: PROVIDERS_PAGE_SIZE },
     { query: { enabled: open && !!workspace } }
@@ -240,7 +240,11 @@ export const CreateInferenceProviderSidePanel: FC<CreateInferenceProviderSidePan
           >
             Cancel
           </Button>
-          <LoadingButton type="submit" loading={isPending} disabled={isPending}>
+          <LoadingButton
+            type="submit"
+            loading={isPending}
+            disabled={isPending || isProvidersLoading}
+          >
             Add Provider
           </LoadingButton>
         </Flex>

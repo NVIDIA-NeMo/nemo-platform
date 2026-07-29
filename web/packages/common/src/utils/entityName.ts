@@ -81,7 +81,7 @@ export function getEntityNameError(value: string, label = 'Name'): string | unde
 }
 
 /** Zod string schema enforcing `ENTITY_NAME_REGEXP` with per-rule error messages. */
-export function entityNameSchema(label = 'Name') {
+export function entityNameSchema(label = 'Name'): z.ZodEffects<z.ZodString, string, string> {
   return z.string().superRefine((value, ctx) => {
     const message = getEntityNameError(value, label);
     if (message) {
