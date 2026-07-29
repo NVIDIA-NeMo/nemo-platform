@@ -237,16 +237,6 @@
         },
         {
           "package": {
-            "name": "backports-tarfile",
-            "version": "1.2.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
             "name": "base58",
             "version": "2.1.1",
             "ecosystem": "PyPI"
@@ -666,6 +656,16 @@
         },
         {
           "package": {
+            "name": "deprecation",
+            "version": "2.1.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
             "name": "diff-cover",
             "version": "10.2.0",
             "ecosystem": "PyPI"
@@ -682,6 +682,16 @@
           },
           "licenses": [
             "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "dirhash",
+            "version": "0.5.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -912,6 +922,16 @@
           },
           "licenses": [
             "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "genai-prices",
+            "version": "0.0.62",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -2569,6 +2589,16 @@
         },
         {
           "package": {
+            "name": "griffelib",
+            "version": "2.0.2",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "ISC"
+          ]
+        },
+        {
+          "package": {
             "name": "grpcio",
             "version": "1.80.0",
             "ecosystem": "PyPI"
@@ -2599,6 +2629,26 @@
         },
         {
           "package": {
+            "name": "h2",
+            "version": "4.3.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "harbor",
+            "version": "0.18.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
             "name": "hf-xet",
             "version": "1.4.3",
             "ecosystem": "PyPI"
@@ -2609,8 +2659,28 @@
         },
         {
           "package": {
+            "name": "hpack",
+            "version": "4.2.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "httpcore",
             "version": "1.0.9",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "httpcore2",
+            "version": "2.6.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2659,6 +2729,16 @@
         },
         {
           "package": {
+            "name": "httpx2",
+            "version": "2.6.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
             "name": "huggingface-hub",
             "version": "1.15.0",
             "ecosystem": "PyPI"
@@ -2675,6 +2755,16 @@
           },
           "licenses": [
             "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "hyperframe",
+            "version": "6.1.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -3129,6 +3219,16 @@
         },
         {
           "package": {
+            "name": "logfire-api",
+            "version": "4.37.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "loguru",
             "version": "0.7.3",
             "ecosystem": "PyPI"
@@ -3535,6 +3635,26 @@
           },
           "licenses": [
             "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "openinference-instrumentation",
+            "version": "0.1.53",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "openinference-instrumentation-litellm",
+            "version": "0.1.34",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
           ]
         },
         {
@@ -4486,6 +4606,16 @@
         },
         {
           "package": {
+            "name": "postgrest",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "prettytable",
             "version": "3.17.0",
             "ecosystem": "PyPI"
@@ -5215,6 +5345,26 @@
         },
         {
           "package": {
+            "name": "pydantic-ai-harness",
+            "version": "0.3.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "pydantic-ai-slim",
+            "version": "1.105.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "pydantic-core",
             "version": "2.41.5",
             "ecosystem": "PyPI"
@@ -5227,6 +5377,26 @@
           "package": {
             "name": "pydantic-extra-types",
             "version": "2.11.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "pydantic-graph",
+            "version": "1.105.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "pydantic-monty",
+            "version": "0.0.18",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -5626,6 +5796,16 @@
         },
         {
           "package": {
+            "name": "realtime",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "referencing",
             "version": "0.36.2",
             "ecosystem": "PyPI"
@@ -5782,6 +5962,16 @@
           },
           "licenses": [
             "non-standard"
+          ]
+        },
+        {
+          "package": {
+            "name": "scantree",
+            "version": "0.0.4",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -7383,8 +7573,28 @@
         },
         {
           "package": {
+            "name": "storage3",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "streaming-form-data",
             "version": "2.0.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "strenum",
+            "version": "0.4.15",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -7399,6 +7609,36 @@
           },
           "licenses": [
             "Apache-2.0 OR MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "supabase",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "supabase-auth",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "supabase-functions",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -7463,6 +7703,16 @@
         },
         {
           "package": {
+            "name": "toml",
+            "version": "0.10.2",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "tomlkit",
             "version": "0.14.0",
             "ecosystem": "PyPI"
@@ -7499,6 +7749,16 @@
           },
           "licenses": [
             "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "truststore",
+            "version": "0.10.4",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -7977,23 +8237,23 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 128
+      "count": 145
     },
     {
       "name": "Apache-2.0",
-      "count": 81
+      "count": 85
     },
     {
       "name": "non-standard",
-      "count": 48
+      "count": 50
     },
     {
       "name": "BSD-3-Clause",
-      "count": 32
+      "count": 34
     },
     {
       "name": "ISC",
-      "count": 5
+      "count": 6
     },
     {
       "name": "Apache-2.0 OR MIT",

@@ -1,14 +1,14 @@
 # NeMo Insights
 
-Optional NeMo Platform plugin for analyzing agent telemetry and persisting actionable insights.
+NeMo Platform plugin for analyzing agent telemetry and persisting actionable insights.
 
 ## Install from the monorepo
 
 ```bash
-uv sync --group insights
+uv sync
 ```
 
-The plugin is intentionally not part of `enabled-plugins`.
+The plugin is installed by default through the root workspace's `enabled-plugins` group.
 
 ## CLI
 
@@ -86,7 +86,7 @@ export NEMO_INSIGHTS_ANALYST_TIMEZONE=America/Denver
 ## Development
 
 ```bash
-uv run --group insights pytest plugins/nemo-insights/tests
+uv run pytest plugins/nemo-insights/tests
 uv run ruff check plugins/nemo-insights
 ```
 

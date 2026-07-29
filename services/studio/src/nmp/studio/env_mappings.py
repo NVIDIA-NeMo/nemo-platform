@@ -130,7 +130,7 @@ ENV_MAPPINGS: list[EnvMapping] = [
         default="true",
     ),
     EnvMapping(
-        marker="STUDIO_UI_VITE_FF_INTAKE_ENABLED", config_path="studio.feature_flags.intake_enabled", default="false"
+        marker="STUDIO_UI_VITE_FF_INTAKE_ENABLED", config_path="studio.feature_flags.intake_enabled", default="true"
     ),
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_JOBS_ENABLED", config_path="studio.feature_flags.jobs_enabled", default="true"
@@ -146,7 +146,7 @@ ENV_MAPPINGS: list[EnvMapping] = [
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_OPTIMIZER_ENABLED",
         config_path="studio.feature_flags.optimizer_enabled",
-        default="false",
+        default="true",
     ),
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_SAFE_SYNTHESIZER_ENABLED",
