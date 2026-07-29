@@ -47,7 +47,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
 from typing import Any
-from uuid import uuid4
 
 from nemo_platform.beta.evaluator.agent_eval.results import AgentEvalResult
 from nemo_platform.beta.evaluator.agent_eval.scores import AgentEvalScoreStatus
@@ -73,6 +72,13 @@ _TASK_TEMPLATE_DIRNAME = "task_template"
 _AGENT_IMPORT_ROOT = "_nemo_evaluator_harbor_agents"
 # Guards the sys.modules mutation while injecting/removing scoped agent packages.
 _IMPORT_LOCK = threading.Lock()
+# Open scopes per content-addressed agent package. Identical agent contents share a
+# package name, so teardown must wait for the last scope rather than the first.
+_AGENT_PACKAGE_REFCOUNTS: dict[str, int] = {}
+# Characters of the agent-content digest used to disambiguate the package name. Long
+# enough that distinct agents don't collide; short enough to keep import paths (and
+# Harbor's persisted JobConfig) readable.
+_IMPORT_DIGEST_CHARS = 12
 # Records which inputs produced a job dir, so a rerun can tell a reusable cache from
 # a stale one. A file, not a directory: Harbor rmtree's stray directories in a job dir.
 CACHE_STAMP_FILENAME = ".nemo-eval-harbor-cache.json"
@@ -82,6 +88,20 @@ CACHE_STAMP_VERSION = 1
 _CACHE_IRRELEVANT_OPTIONS = frozenset(
     {"jobs_dir", "job_name", "force_rerun", "quiet", "n_concurrent_trials", "agent_dir", "reward_key"}
 )
+# Where Harbor persists the JobConfig it will compare a resume against.
+_HARBOR_JOB_CONFIG_FILENAME = "config.json"
+# Fields Harbor's own JobConfig equality ignores, so they can never be why it refused
+# to resume. Pinned against Harbor upstream by the drift-guard test.
+_HARBOR_EQ_IGNORED_FIELDS = frozenset({"job_name", "debug"})
+# How Harbor says "this job dir cannot be resumed": one from the JobConfig comparison
+# in `Job.create`, one from the lock.json check early in `Job.run`. Matching on the
+# message is deliberate coupling, and it fails in the safe direction — an
+# unrecognized FileExistsError propagates untouched rather than costing a job dir, so
+# a Harbor reword degrades to a loud crash, never to a silent deletion.
+_HARBOR_RESUME_REFUSALS = ("resumed with a different config", "does not match the resolved job lock")
+# Cap on each value rendered into the "what differed" log line: enough for a scalar
+# like `n_concurrent_trials`, bounded for a whole nested `agents` list.
+_DRIFT_VALUE_CHARS = 80
 # Derived/VCS noise skipped when digesting a directory. Deliberately NOT skipped:
 # `node_modules` and other vendored dependency trees, which ship with the agent and
 # change what it does. `.venv`/`.uv` stay skipped because they are environment, not
@@ -228,13 +248,19 @@ class HarborAgentTaskRunner:
         :func:`discover_harbor_tasks`) unless a ``dataset_path`` override was given,
         so callers don't repeat it.
 
-        ``job_dir`` doubles as a cache, and it is reused only when **both** hold:
-        every requested task already has ``n_attempts`` completed, non-errored
-        results there, *and* the directory carries a cache stamp matching this run's
-        inputs (agent contents, task contents, result-affecting options). Anything
-        else re-runs from scratch — the directory is discarded rather than handed to
-        Harbor, because a surviving directory plus a changed agent is exactly the
-        case Harbor itself refuses.
+        ``job_dir`` doubles as a cache. Results are served straight off it, without
+        importing Harbor at all, only when **both** hold: every requested task already
+        has ``n_attempts`` completed, non-errored results there, *and* the directory
+        carries a cache stamp matching this run's inputs (agent contents, task
+        contents, result-affecting options).
+
+        Otherwise Harbor runs, and what happens to the directory depends on *which*
+        check failed. A **stamp mismatch** discards it first: those results came from
+        different inputs, so there is nothing safe to resume onto. A directory that
+        merely lacks **coverage** — stamp matches, but not enough completed results —
+        is handed to Harbor intact so its per-trial resume keeps the finished trials
+        and runs only what is missing. Harbor may still refuse a directory on its own
+        (stricter) terms; :func:`_build_native_job` then discards it and re-runs.
 
         The cache only engages when the config pins a stable ``job_name``; with the
         default timestamped name no fingerprint is computed at all.
@@ -263,13 +289,12 @@ class HarborAgentTaskRunner:
                     dataset_path,
                     self._task_names,
                     job_name=job_name,
-                    # Discard when the inputs changed, and whenever `agent_dir` is
-                    # set: Harbor bakes a fresh uuid into the scoped agent import
-                    # path, so its own JobConfig never matches on a rerun and it
-                    # raises FileExistsError instead of resuming. With `agent_dir`
-                    # unset the AgentConfig is deterministic, so leaving force_rerun
-                    # off lets Harbor resume per trial and keep completed work.
-                    force_rerun=(self._config.force_rerun or stale or self._config.agent_dir is not None),
+                    # Discard only when the inputs changed. Otherwise leave it off so
+                    # Harbor resumes per trial and keeps completed work — including
+                    # with `agent_dir` set, now that the scoped import path is
+                    # content-addressed rather than a fresh uuid per run and Harbor's
+                    # JobConfig comparison can therefore match (AALGO-430).
+                    force_rerun=(self._config.force_rerun or stale),
                 )
                 # Fingerprint the inputs *before* running and confirm they are
                 # unchanged afterwards. Stamping only the post-run state would label
@@ -736,15 +761,52 @@ def _build_native_job(
                 datasets=[DatasetConfig(path=dataset_path, task_names=list(task_names) if task_names else None)],
                 **timeout_kwargs,
             )
-            job = await Job.create(job_config)
-            await job.run()
+
+            async def _attempt() -> None:
+                job = await Job.create(job_config)
+                await job.run()
+
+            try:
+                await _attempt()
+            except FileExistsError as exc:
+                # Harbor refuses to resume a job dir whose persisted `config.json` or
+                # `lock.json` differs from this run's — and it refuses by raising, not
+                # by re-running. Its comparison is deliberately stricter than the SDK
+                # cache stamp: `quiet`, `n_concurrent_trials` and the `task_names`
+                # filter all change the JobConfig without changing the results, so the
+                # stamp excludes them (a full cache hit must not pay for a concurrency
+                # tweak) while Harbor still rejects the directory. Honour the intent of
+                # the rerun rather than propagating a crash.
+                #
+                # Identify the refusal positively before deleting anything. Both of
+                # Harbor's refusals fire before any trial executes, so discarding costs
+                # only completed work — but that reasoning holds *only* for those two.
+                # An ordinary "file exists" raised from inside a trial, a hook, or an
+                # environment build must not be mistaken for drift and answered by
+                # destroying the directory.
+                if not (job_dir.exists() and _is_harbor_resume_refusal(exc, job_dir)):
+                    raise
+                drift = _describe_job_config_drift(job_dir, job_config)
+                logger.warning(
+                    "Harbor refused to resume job dir %s, so it is being discarded and re-run from scratch: %s%s",
+                    job_dir,
+                    exc,
+                    f" Differing config: {drift}." if drift else "",
+                )
+                shutil.rmtree(job_dir)
+                await _attempt()
 
         if config.agent_import_path is None:
             await _create_and_run(AgentConfig(name=config.agent_name or "oracle", model_name=config.agent_model_name))
         elif config.agent_dir is not None:
-            # Loose wrapper file: make its directory importable for the run.
+            # Loose wrapper file: make its directory importable for the run. The
+            # jobs_dir exclusion must match _cache_stamp's, or a jobs_dir nested under
+            # agent_dir would shift the package name as results accumulate.
             agent_dir = config.agent_dir.expanduser().resolve()
-            with scoped_harbor_agent_import(agent_dir, config.agent_import_path) as scoped_import:
+            excluded_roots = frozenset({config.jobs_dir.expanduser().resolve()})
+            with scoped_harbor_agent_import(
+                agent_dir, config.agent_import_path, exclude=excluded_roots
+            ) as scoped_import:
                 await _create_and_run(AgentConfig(import_path=scoped_import, model_name=config.agent_model_name))
         else:
             # Already-importable module (installed package): let Harbor import it directly.
@@ -753,13 +815,73 @@ def _build_native_job(
     return job_dir, run_job
 
 
+def _is_harbor_resume_refusal(exc: FileExistsError, job_dir: Path) -> bool:
+    """Return True when ``exc`` is Harbor declining to resume ``job_dir``.
+
+    Separates Harbor's refusal — the one case where deleting the directory is the
+    right answer — from an ordinary "file exists" surfacing from a trial, a hook or an
+    environment build, where deleting it would destroy completed work to no purpose.
+
+    Two signals, both required. Harbor constructs its refusals with a bare message, so
+    ``errno`` is unset, while an OS-level ``EEXIST`` always carries one; and both
+    refusals name the job directory and end in a known phrase.
+    """
+    if exc.errno is not None:
+        return False
+    message = str(exc)
+    return str(job_dir) in message and any(phrase in message for phrase in _HARBOR_RESUME_REFUSALS)
+
+
+def _describe_job_config_drift(job_dir: Path, job_config: Any) -> str:
+    """Name the fields that differ between ``job_dir``'s persisted JobConfig and this run's.
+
+    Harbor reports *that* an existing config differs, never *which* field, which
+    leaves the resulting discard looking arbitrary. This reproduces enough of its
+    comparison to say — turning "Harbor refused" into "n_concurrent_trials: 10 -> 4".
+
+    Best-effort by construction. Returns ``""`` when the difference cannot be
+    located: no ``config.json``, unparseable, or a refusal that came from
+    ``lock.json`` instead, which has no JobConfig difference to report. Diagnostics
+    must never mask the failure they explain, so every error here is swallowed.
+    """
+    try:
+        stored_text = (job_dir / _HARBOR_JOB_CONFIG_FILENAME).read_text(encoding="utf-8")
+        # Harbor persists with exclude_defaults=True, so the JSON omits every field
+        # left at its default and comparing it raw would report phantom differences.
+        # Round-tripping through the model refills them, which is what Harbor itself
+        # compares after re-validating the stored config.
+        stored = type(job_config).model_validate_json(stored_text).model_dump()
+        current = job_config.model_dump()
+        return ", ".join(
+            f"{field}: {_truncated_repr(stored.get(field))} -> {_truncated_repr(value)}"
+            for field, value in current.items()
+            if field not in _HARBOR_EQ_IGNORED_FIELDS and stored.get(field) != value
+        )
+    except Exception:
+        return ""
+
+
+def _truncated_repr(value: Any) -> str:
+    """Render ``value`` for a log line, bounded so a nested config can't flood it."""
+    text = repr(value)
+    return text if len(text) <= _DRIFT_VALUE_CHARS else f"{text[:_DRIFT_VALUE_CHARS]}..."
+
+
 @contextlib.contextmanager
-def scoped_harbor_agent_import(agent_dir: Path, import_path: str) -> Iterator[str]:
-    """Make ``agent_dir`` importable under a unique synthetic package for the block.
+def scoped_harbor_agent_import(
+    agent_dir: Path, import_path: str, *, exclude: frozenset[Path] = frozenset()
+) -> Iterator[str]:
+    """Make ``agent_dir`` importable under a content-addressed package for the block.
 
     Args:
         agent_dir: directory containing the module referenced by ``import_path``.
         import_path: Harbor agent path, ``"module"`` or ``"module:attribute"``.
+        exclude: resolved directories to leave out of the content digest. Pass the
+            same set :func:`_cache_stamp` uses — in practice ``jobs_dir``, which is
+            caller-chosen and may sit *under* ``agent_dir``. Omitting it lets the
+            growing results tree feed the package name, so the import path would
+            change on every run and the resume this function exists to enable would
+            never happen. See :func:`_digest_directory`.
 
     Yields:
         str: the rewritten import path Harbor should load (the module rooted under
@@ -768,9 +890,33 @@ def scoped_harbor_agent_import(agent_dir: Path, import_path: str) -> Iterator[st
     Raises:
         ValueError: if ``import_path`` has no module component.
 
-    On exit the injected ``sys.modules`` entries are removed. The mutation is
-    guarded by a process-wide lock so concurrent runs don't corrupt import state;
-    each run gets its own uniquely-named package so distinct agents never collide.
+    **The package name is derived from the directory's contents, not a random
+    UUID, and that is load-bearing.** This string becomes ``AgentConfig.import_path``
+    and therefore part of Harbor's ``JobConfig``, which Harbor compares field-by-field
+    when deciding whether an existing job directory may be resumed. A random suffix
+    made that comparison fail on every rerun, so Harbor raised ``FileExistsError``
+    instead of resuming and its per-trial resume was unreachable for any caller that
+    sets ``agent_dir`` (AALGO-430). Content-addressing keeps distinct agents isolated
+    while letting an unchanged agent resume — and makes an *edited* agent invalidate
+    the job dir on Harbor's own terms.
+
+    Identical contents therefore share a package name, so overlapping scopes are
+    refcounted: the injected ``sys.modules`` entries are removed when the last
+    scope exits, not the first (see :func:`_uninstall_agent_package`). The mutation
+    is guarded by a process-wide lock. ``sys.modules`` is per-process, so concurrent
+    *processes* were never at risk here.
+
+    The name is ``<dirname>_<digest>``, so it tracks the directory's *location* as
+    well as its contents — deliberately, because an opaque hash makes every traceback
+    and import error unreadable. That is a narrow, knowing divergence from the cache
+    stamp, which excludes ``agent_dir`` so a relocated but identical agent still hits
+    (see :func:`_cache_stamp`). Relocating an agent while pinning the same
+    ``job_name`` therefore leaves the stamp valid but changes this string, and Harbor
+    declines to resume; :func:`_build_native_job` absorbs that into a clean re-run.
+    The results stay correct — it costs one repeated job. Callers that rebuild agents
+    under changing directory names (the Experimentalist does) are unaffected, because
+    the agent name feeds their ``job_name`` too, so a rename lands in a different job
+    dir with nothing to resume.
 
     Only ``agent_dir`` (not ``sys.path``) is made importable, so a loose wrapper
     must be self-contained: a single module, or one that reaches siblings via
@@ -782,7 +928,10 @@ def scoped_harbor_agent_import(agent_dir: Path, import_path: str) -> Iterator[st
     module_name = module_name.strip().lstrip(".")
     if not module_name:
         raise ValueError("import_path must be 'module' or 'module:attribute'")
-    package = f"{_AGENT_IMPORT_ROOT}.{_safe_identifier(agent_dir.name)}_{uuid4().hex[:8]}"
+    # Hashed here rather than reused from the cache stamp: this must describe the tree
+    # as it is about to be imported, and the extra walk is noise next to Docker.
+    suffix = _digest_directory(agent_dir, exclude=exclude)[:_IMPORT_DIGEST_CHARS]
+    package = f"{_AGENT_IMPORT_ROOT}.{_safe_identifier(agent_dir.name)}_{suffix}"
     with _IMPORT_LOCK:
         _install_agent_package(package, agent_dir)
     try:
@@ -802,7 +951,11 @@ def _safe_identifier(value: str) -> str:
 
 
 def _install_agent_package(package: str, agent_dir: Path) -> None:
-    """Register ``package`` (and its parents) in ``sys.modules`` rooted at ``agent_dir``."""
+    """Register ``package`` (and its parents) in ``sys.modules`` rooted at ``agent_dir``.
+
+    Refcounted: package names are content-addressed, so two overlapping scopes on the
+    same agent directory legitimately share one. Callers must hold ``_IMPORT_LOCK``.
+    """
     parts = package.split(".")
     for idx in range(1, len(parts) + 1):
         name = ".".join(parts[:idx])
@@ -814,10 +967,26 @@ def _install_agent_package(package: str, agent_dir: Path) -> None:
             if idx > 1:
                 setattr(sys.modules[".".join(parts[: idx - 1])], parts[idx - 1], module)
     sys.modules[package].__path__ = [str(agent_dir)]
+    # Counted only once the injection it guards has succeeded. Incrementing first
+    # would strand the count above zero if any step above raised — the scope never
+    # opens, so nothing ever decrements it, and the package could never be torn down
+    # again for the life of the process.
+    _AGENT_PACKAGE_REFCOUNTS[package] = _AGENT_PACKAGE_REFCOUNTS.get(package, 0) + 1
 
 
 def _uninstall_agent_package(package: str) -> None:
-    """Remove ``package`` and any submodules imported through it from ``sys.modules``."""
+    """Remove ``package`` and its submodules from ``sys.modules`` on the last exit.
+
+    Tearing down on the *first* exit would break a still-open scope sharing the same
+    content-addressed name, so the removal waits for the refcount to reach zero.
+    Callers must hold ``_IMPORT_LOCK``.
+    """
+    remaining = _AGENT_PACKAGE_REFCOUNTS.get(package, 0) - 1
+    if remaining > 0:
+        _AGENT_PACKAGE_REFCOUNTS[package] = remaining
+        return
+    _AGENT_PACKAGE_REFCOUNTS.pop(package, None)
+
     for name in [n for n in sys.modules if n == package or n.startswith(f"{package}.")]:
         sys.modules.pop(name, None)
     parent, _, child = package.rpartition(".")
