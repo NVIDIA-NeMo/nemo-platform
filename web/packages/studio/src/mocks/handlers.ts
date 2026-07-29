@@ -24,7 +24,7 @@ import { workspacesHandlers } from '@studio/mocks/handlers/workspaces';
 import {
   mockEvaluationSessionsPage,
   mockEvaluationsPage,
-  mockExperimentGroup,
+  mockExperiment,
 } from '@studio/mocks/intake/experiments';
 import {
   createMockAnnotation,
@@ -485,8 +485,8 @@ export const handlers = [
     const session = mockSessionById(String(params['sessionId']));
     return session ? HttpResponse.json(session) : new HttpResponse(null, { status: 404 });
   }),
-  http.get('*/apis/intake/v2/workspaces/:workspace/experiment-groups/:name', ({ params }) =>
-    HttpResponse.json(mockExperimentGroup(String(params['name'])))
+  http.get('*/apis/intake/v2/workspaces/:workspace/experiments/:name', ({ params }) =>
+    HttpResponse.json(mockExperiment(String(params['name'])))
   ),
   http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', () =>
     HttpResponse.json(mockEvaluationsPage())

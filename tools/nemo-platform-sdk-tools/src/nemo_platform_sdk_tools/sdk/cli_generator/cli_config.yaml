@@ -286,7 +286,7 @@ config:
 - resource: [evaluations]
   skip: true
 
-- resource: [experiment_groups]
+- resource: [experiments]
   skip: true
 
 - resource: [secrets]

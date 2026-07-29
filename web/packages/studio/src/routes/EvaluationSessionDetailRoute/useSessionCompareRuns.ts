@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useGetExperimentGroup, useListEvaluations } from '@nemo/sdk/generated/platform/api';
+import { useGetExperiment, useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import { useSessionTrajectories } from '@studio/components/IntakeDetail/useSessionTrajectories';
 import { useTestCaseRuns } from '@studio/routes/EvaluationSessionDetailRoute/useTestCaseRuns';
 import { useMemo } from 'react';
@@ -16,7 +16,7 @@ import { useMemo } from 'react';
  */
 export function useSessionCompareRuns(
   workspace: string,
-  experimentGroupName: string,
+  experimentName: string,
   sessionId: string
 ): {
   testCaseId: string | undefined;
@@ -26,7 +26,7 @@ export function useSessionCompareRuns(
   // The session's traces supply the test_case_id every run is matched on.
   const { testCaseId } = useSessionTrajectories(workspace, sessionId);
 
-  const { data: group } = useGetExperimentGroup(workspace, experimentGroupName);
+  const { data: group } = useGetExperiment(workspace, experimentName);
   const { data: evaluationsPage } = useListEvaluations(
     workspace,
     { filter: { experiment_id: group?.id }, page_size: 1000 },

@@ -38,7 +38,7 @@ export const ROUTE_PARAMS = {
   jobName: 'jobName',
   /** Benchmark entity name segment under evaluation/benchmarks/:name */
   benchmarkName: 'benchmarkName',
-  experimentGroupName: 'experimentGroupName',
+  experimentName: 'experimentName',
   insightId: 'insightId',
   evaluationName: 'evaluationName',
   guardrailConfigName: 'guardrailConfigName',
@@ -75,9 +75,9 @@ export const ROUTES = {
     evaluationResultDetails: `/workspaces/:${P.workspace}/evaluation/results/:${P.evaluationJobId}`,
     /** Empty landing page for the EXPERIMENT feature (gated by VITE_FF_EXPERIMENT). */
     experiment: `/workspaces/:${P.workspace}/experiment`,
-    experimentGroupDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}`,
-    evaluationDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.evaluationName}`,
-    evaluationSessionDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.evaluationName}/sessions/:${P.sessionId}`,
+    experimentDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentName}`,
+    evaluationDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentName}/:${P.evaluationName}`,
+    evaluationSessionDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentName}/:${P.evaluationName}/sessions/:${P.sessionId}`,
     customizationJobList: `/workspaces/:${P.workspace}/customizations`,
     customizationJobDetails: `/workspaces/:${P.workspace}/customizations/:${P.customizationJobName}`,
     filesets: `/workspaces/:${P.workspace}/filesets`,

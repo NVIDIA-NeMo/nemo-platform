@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""CRUD tests for the Evaluations and ExperimentGroups endpoints."""
+"""CRUD tests for the Evaluations and Experiments endpoints."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nmp.intake.api.v2.experiments.dependencies import get_evaluation_rollup_repository
 
-GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
+# The deprecated pre-rename path; kept as a hidden alias for backwards compatibility.
+LEGACY_GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
 
 
@@ -30,15 +32,29 @@ def _evaluation_body(*, experiment_group_id: str, **overrides: Any) -> dict:
 
 def _create_group(client: TestClient, name: str = "default-test-group") -> dict:
     """Create or fetch an experiment group; returns the JSON body."""
-    response = client.post(GROUPS, json={"name": name})
+    response = client.post(EXPERIMENTS, json={"name": name})
     if response.status_code == 409:
-        response = client.get(f"{GROUPS}/{name}")
+        response = client.get(f"{EXPERIMENTS}/{name}")
     response.raise_for_status()
     return response.json()
 
 
+def test_legacy_experiment_groups_alias_is_backwards_compatible(client: TestClient) -> None:
+    """The pre-rename `/experiment-groups` path still works and shares the `/experiments` handlers."""
+    # Create via the legacy path; read it back via the canonical path.
+    created = client.post(LEGACY_GROUPS, json={"name": "legacy-alias-exp"})
+    assert created.status_code == 201, created.text
+    assert client.get(f"{EXPERIMENTS}/legacy-alias-exp").status_code == 200
+
+    # Create via the canonical path; read it back via the legacy path.
+    assert client.post(EXPERIMENTS, json={"name": "canonical-exp"}).status_code == 201
+    legacy_get = client.get(f"{LEGACY_GROUPS}/canonical-exp")
+    assert legacy_get.status_code == 200, legacy_get.text
+    assert legacy_get.json()["name"] == "canonical-exp"
+
+
 def test_experiment_group_crud(client: TestClient) -> None:
-    created = client.post(GROUPS, json={"name": "tb2-routing-research", "description": "routing sweep"})
+    created = client.post(EXPERIMENTS, json={"name": "tb2-routing-research", "description": "routing sweep"})
     assert created.status_code == 201, created.text
     group = created.json()
     assert group["name"] == "tb2-routing-research"
@@ -46,68 +62,68 @@ def test_experiment_group_crud(client: TestClient) -> None:
     assert group["id"]
 
     # Duplicate name conflicts.
-    duplicate = client.post(GROUPS, json={"name": "tb2-routing-research"})
+    duplicate = client.post(EXPERIMENTS, json={"name": "tb2-routing-research"})
     assert duplicate.status_code == 409
 
-    fetched = client.get(f"{GROUPS}/tb2-routing-research")
+    fetched = client.get(f"{EXPERIMENTS}/tb2-routing-research")
     assert fetched.status_code == 200
     assert fetched.json()["id"] == group["id"]
 
-    listed = client.get(GROUPS)
+    listed = client.get(EXPERIMENTS)
     assert listed.status_code == 200
     assert any(g["name"] == "tb2-routing-research" for g in listed.json()["data"])
 
-    deleted = client.delete(f"{GROUPS}/tb2-routing-research")
+    deleted = client.delete(f"{EXPERIMENTS}/tb2-routing-research")
     assert deleted.status_code == 204
-    missing = client.get(f"{GROUPS}/tb2-routing-research")
+    missing = client.get(f"{EXPERIMENTS}/tb2-routing-research")
     assert missing.status_code == 404
 
 
 def test_filter_groups_by_insight_id(client: TestClient) -> None:
     """The groups list can be filtered server-side by the seeding insight id."""
-    seeded = client.post(GROUPS, json={"name": "seeded-group", "insight_id": "insight-abc"})
+    seeded = client.post(EXPERIMENTS, json={"name": "seeded-group", "insight_id": "insight-abc"})
     assert seeded.status_code == 201, seeded.text
-    other = client.post(GROUPS, json={"name": "unseeded-group"})
+    other = client.post(EXPERIMENTS, json={"name": "unseeded-group"})
     assert other.status_code == 201, other.text
 
-    listed = client.get(GROUPS, params={"filter[insight_id]": "insight-abc"})
+    listed = client.get(EXPERIMENTS, params={"filter[insight_id]": "insight-abc"})
     assert listed.status_code == 200, listed.text
     names = {g["name"] for g in listed.json()["data"]}
     assert names == {"seeded-group"}
 
 
 def test_experiment_group_update_description(client: TestClient) -> None:
-    client.post(GROUPS, json={"name": "grp", "description": "old"})
-    updated = client.put(f"{GROUPS}/grp", json={"name": "grp", "description": "new"})
+    client.post(EXPERIMENTS, json={"name": "grp", "description": "old"})
+    updated = client.put(f"{EXPERIMENTS}/grp", json={"name": "grp", "description": "new"})
     assert updated.status_code == 200, updated.text
     assert updated.json()["description"] == "new"
     # Renaming via PUT is rejected.
-    renamed = client.put(f"{GROUPS}/grp", json={"name": "renamed"})
+    renamed = client.put(f"{EXPERIMENTS}/grp", json={"name": "renamed"})
     assert renamed.status_code == 409
-    missing = client.put(f"{GROUPS}/missing", json={"name": "missing"})
+    missing = client.put(f"{EXPERIMENTS}/missing", json={"name": "missing"})
     assert missing.status_code == 404
 
 
 def test_experiment_group_pareto_defaults_and_round_trips(client: TestClient) -> None:
     # Omitting pareto defaults to cost (x) vs latency (y), so the chart always has something to render.
-    created = client.post(GROUPS, json={"name": "pareto-cfg"})
+    created = client.post(EXPERIMENTS, json={"name": "pareto-cfg"})
     assert created.status_code == 201, created.text
     assert created.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "latency_ms"}
-    assert client.get(f"{GROUPS}/pareto-cfg").json()["pareto"] == {
+    assert client.get(f"{EXPERIMENTS}/pareto-cfg").json()["pareto"] == {
         "x_metric": "cost_usd",
         "y_metric": "latency_ms",
     }
 
     # A custom selection round-trips through PUT.
     updated = client.put(
-        f"{GROUPS}/pareto-cfg",
+        f"{EXPERIMENTS}/pareto-cfg",
         json={"name": "pareto-cfg", "pareto": {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}},
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}
 
     # An update that omits pareto preserves the saved axes rather than resetting them to the default.
-    preserved = client.put(f"{GROUPS}/pareto-cfg", json={"name": "pareto-cfg", "summary": "unrelated edit"})
+    preserved = client.put(f"{EXPERIMENTS}/pareto-cfg", json={"name": "pareto-cfg", "summary": "unrelated edit"})
     assert preserved.status_code == 200, preserved.text
     assert preserved.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}
 
@@ -116,19 +132,19 @@ def test_experiment_group_pareto_rejects_unknown_metric(client: TestClient) -> N
     # Studio can only plot cost_usd, latency_ms, or evaluators.<name>; anything else is rejected so it
     # can't be persisted as an unusable chart default.
     rejected = client.post(
-        GROUPS, json={"name": "bad-pareto", "pareto": {"x_metric": "made_up", "y_metric": "latency_ms"}}
+        EXPERIMENTS, json={"name": "bad-pareto", "pareto": {"x_metric": "made_up", "y_metric": "latency_ms"}}
     )
     assert rejected.status_code == 422, rejected.text
     # A dynamic evaluator metric is allowed.
     ok = client.post(
-        GROUPS, json={"name": "ok-pareto", "pareto": {"x_metric": "evaluators.safety", "y_metric": "cost_usd"}}
+        EXPERIMENTS, json={"name": "ok-pareto", "pareto": {"x_metric": "evaluators.safety", "y_metric": "cost_usd"}}
     )
     assert ok.status_code == 201, ok.text
 
 
 def test_evaluation_update_moves_between_groups_and_edits(client: TestClient) -> None:
-    group_a = client.post(GROUPS, json={"name": "grp-a"}).json()
-    group_b = client.post(GROUPS, json={"name": "grp-b"}).json()
+    group_a = client.post(EXPERIMENTS, json={"name": "grp-a"}).json()
+    group_b = client.post(EXPERIMENTS, json={"name": "grp-b"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="exp-a", experiment_group_id=group_a["id"]))
 
     # Move the evaluation from group_a to group_b and edit its description.
@@ -157,7 +173,7 @@ def test_evaluation_update_rejects_immutable_change(client: TestClient) -> None:
 
 
 def test_evaluation_crud_and_empty_rollups(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "grp"}).json()
+    group = client.post(EXPERIMENTS, json={"name": "grp"}).json()
 
     created = client.post(EVALUATIONS, json=_evaluation_body(experiment_group_id=group["id"]))
     assert created.status_code == 201, created.text
@@ -218,37 +234,17 @@ def test_evaluation_create_rejects_unknown_group_id(client: TestClient) -> None:
 
 
 def test_delete_group_cascades_to_evaluations(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "doomed-group"}).json()
+    group = client.post(EXPERIMENTS, json={"name": "doomed-group"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="exp-doomed-1", experiment_group_id=group["id"]))
     client.post(EVALUATIONS, json=_evaluation_body(name="exp-doomed-2", experiment_group_id=group["id"]))
 
-    deleted = client.delete(f"{GROUPS}/doomed-group")
+    deleted = client.delete(f"{EXPERIMENTS}/doomed-group")
     assert deleted.status_code == 204, deleted.text
 
     # Both child evaluations are gone with the group.
     for child_name in ("exp-doomed-1", "exp-doomed-2"):
         missing = client.get(f"{EVALUATIONS}/{child_name}")
         assert missing.status_code == 404
-
-
-def test_deprecated_field_aliases_are_backwards_compatible(client: TestClient) -> None:
-    """Renamed fields keep deprecated aliases: requests accept the old name, responses return both."""
-    group = _create_group(client, name="alias-compat-group")
-    # Group response carries both the canonical count and the deprecated experiment_count alias.
-    assert group["experiment_count"] == group["evaluation_count"]
-
-    parent = client.post(EVALUATIONS, json=_evaluation_body(name="parent-eval", experiment_group_id=group["id"])).json()
-
-    # Create a child referencing the parent via the DEPRECATED parent_experiment_id request field.
-    body = _evaluation_body(name="child-eval", experiment_group_id=group["id"])
-    body["parent_experiment_id"] = parent["id"]
-    created = client.post(EVALUATIONS, json=body)
-    assert created.status_code == 201, created.text
-
-    payload = created.json()
-    # The response echoes both the canonical and deprecated parent field, coalesced from the old input.
-    assert payload["parent_evaluation_id"] == parent["id"]
-    assert payload["parent_experiment_id"] == parent["id"]
 
 
 def test_evaluation_conflict_and_not_found(client: TestClient) -> None:
@@ -264,8 +260,8 @@ def test_evaluation_conflict_and_not_found(client: TestClient) -> None:
 
 
 def test_evaluation_list_and_scope_to_group(client: TestClient) -> None:
-    group_a = client.post(GROUPS, json={"name": "grp-a"}).json()
-    group_b = client.post(GROUPS, json={"name": "grp-b"}).json()
+    group_a = client.post(EXPERIMENTS, json={"name": "grp-a"}).json()
+    group_b = client.post(EXPERIMENTS, json={"name": "grp-b"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="exp-a", experiment_group_id=group_a["id"]))
     client.post(EVALUATIONS, json=_evaluation_body(name="exp-b", experiment_group_id=group_b["id"]))
 
@@ -287,8 +283,8 @@ def test_evaluation_list_and_scope_to_group(client: TestClient) -> None:
 def test_evaluation_filter_experiment_id_matches_deprecated_alias(client: TestClient) -> None:
     """The canonical `experiment_id` filter returns the same set as the deprecated `experiment_group_id`,
     both resolving membership over the evaluation's `experiment_ids` list."""
-    group = client.post(GROUPS, json={"name": "grp-canon"}).json()
-    other = client.post(GROUPS, json={"name": "grp-other"}).json()
+    group = client.post(EXPERIMENTS, json={"name": "grp-canon"}).json()
+    other = client.post(EXPERIMENTS, json={"name": "grp-other"}).json()
     # Membership is set via the canonical `experiment_ids` write field (no legacy scalar).
     client.post(EVALUATIONS, json={"name": "in-group", "experiment_ids": [group["id"]], "dataset_name": "ds"})
     client.post(EVALUATIONS, json={"name": "in-other", "experiment_ids": [other["id"]], "dataset_name": "ds"})
@@ -412,20 +408,20 @@ def test_filter_is_deleted_true_returns_only_deleted(client: TestClient) -> None
 
 
 def test_group_soft_delete_cascades_and_frees_names(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "doomed-group-v2"}).json()
+    group = client.post(EXPERIMENTS, json={"name": "doomed-group-v2"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="child-1", experiment_group_id=group["id"]))
     client.post(EVALUATIONS, json=_evaluation_body(name="child-2", experiment_group_id=group["id"]))
 
-    deleted = client.delete(f"{GROUPS}/doomed-group-v2")
+    deleted = client.delete(f"{EXPERIMENTS}/doomed-group-v2")
     assert deleted.status_code == 204, deleted.text
 
     # Group and children all read as 404 (live view).
-    assert client.get(f"{GROUPS}/doomed-group-v2").status_code == 404
+    assert client.get(f"{EXPERIMENTS}/doomed-group-v2").status_code == 404
     for child_name in ("child-1", "child-2"):
         assert client.get(f"{EVALUATIONS}/{child_name}").status_code == 404
 
     # Names are reusable in a fresh group.
-    fresh_group = client.post(GROUPS, json={"name": "doomed-group-v2"})
+    fresh_group = client.post(EXPERIMENTS, json={"name": "doomed-group-v2"})
     assert fresh_group.status_code == 201, fresh_group.text
     revived = client.post(
         EVALUATIONS, json=_evaluation_body(name="child-1", experiment_group_id=fresh_group.json()["id"])
@@ -433,7 +429,7 @@ def test_group_soft_delete_cascades_and_frees_names(client: TestClient) -> None:
     assert revived.status_code == 201, revived.text
 
     # Trash view still surfaces the cascaded rows.
-    deleted_groups = client.get(GROUPS, params={"filter[is_deleted]": "true"})
+    deleted_groups = client.get(EXPERIMENTS, params={"filter[is_deleted]": "true"})
     assert any(g["name"].startswith("doomed-group-v2-deleted-") for g in deleted_groups.json()["data"])
     deleted_exps = client.get(EVALUATIONS, params={"filter[is_deleted]": "true"})
     deleted_names = {e["name"] for e in deleted_exps.json()["data"]}
@@ -442,8 +438,8 @@ def test_group_soft_delete_cascades_and_frees_names(client: TestClient) -> None:
 
 
 def test_create_evaluation_in_deleted_group_rejected(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "ephemeral-group"}).json()
-    client.delete(f"{GROUPS}/ephemeral-group")
+    group = client.post(EXPERIMENTS, json={"name": "ephemeral-group"}).json()
+    client.delete(f"{EXPERIMENTS}/ephemeral-group")
 
     response = client.post(
         EVALUATIONS,
@@ -559,8 +555,8 @@ def test_sort_by_pinned_at_most_recent_first(client: TestClient) -> None:
 
 def test_evaluation_belongs_to_multiple_groups(client: TestClient) -> None:
     """An evaluation created with multiple experiment_ids appears in each group's leaderboard."""
-    group_a = client.post(GROUPS, json={"name": "multi-a"}).json()
-    group_b = client.post(GROUPS, json={"name": "multi-b"}).json()
+    group_a = client.post(EXPERIMENTS, json={"name": "multi-a"}).json()
+    group_b = client.post(EXPERIMENTS, json={"name": "multi-b"}).json()
     body = _evaluation_body(name="multi-member", experiment_group_id="placeholder")
     body.pop("experiment_group_id")
     body["experiment_ids"] = [group_a["id"], group_b["id"]]
@@ -588,8 +584,8 @@ def test_evaluation_create_rejects_empty_experiment_ids(client: TestClient) -> N
 
 def test_delete_group_reference_counted_cascade(client: TestClient) -> None:
     """Deleting a group deletes only its sole-membership members; shared members survive elsewhere."""
-    group_a = client.post(GROUPS, json={"name": "rc-a"}).json()
-    group_b = client.post(GROUPS, json={"name": "rc-b"}).json()
+    group_a = client.post(EXPERIMENTS, json={"name": "rc-a"}).json()
+    group_b = client.post(EXPERIMENTS, json={"name": "rc-b"}).json()
 
     shared = _evaluation_body(name="rc-shared", experiment_group_id="placeholder")
     shared.pop("experiment_group_id")
@@ -597,7 +593,7 @@ def test_delete_group_reference_counted_cascade(client: TestClient) -> None:
     client.post(EVALUATIONS, json=shared)
     client.post(EVALUATIONS, json=_evaluation_body(name="rc-sole", experiment_group_id=group_a["id"]))
 
-    assert client.delete(f"{GROUPS}/rc-a").status_code == 204
+    assert client.delete(f"{EXPERIMENTS}/rc-a").status_code == 204
 
     # Sole member gone; shared member survives, now only in group b.
     assert client.get(f"{EVALUATIONS}/rc-sole").status_code == 404
@@ -611,8 +607,8 @@ def test_delete_group_reference_counted_cascade(client: TestClient) -> None:
 
 def test_patch_evaluation_adds_to_group(client: TestClient) -> None:
     """PATCH .../evaluations/{name} with a merged experiment_ids adds a membership; the run shows on the board."""
-    group_a = client.post(GROUPS, json={"name": "add-a"}).json()
-    group_b = client.post(GROUPS, json={"name": "add-b"}).json()
+    group_a = client.post(EXPERIMENTS, json={"name": "add-a"}).json()
+    group_b = client.post(EXPERIMENTS, json={"name": "add-b"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="add-eval", experiment_group_id=group_a["id"]))
 
     added = client.patch(f"{EVALUATIONS}/add-eval", json={"experiment_ids": [group_a["id"], group_b["id"]]})
@@ -624,14 +620,14 @@ def test_patch_evaluation_adds_to_group(client: TestClient) -> None:
 
 
 def test_patch_evaluation_unknown_group_rejected(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "add-known"}).json()
+    group = client.post(EXPERIMENTS, json={"name": "add-known"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="add-eval-2", experiment_group_id=group["id"]))
     resp = client.patch(f"{EVALUATIONS}/add-eval-2", json={"experiment_ids": [group["id"], "experiment_group-nope"]})
     assert resp.status_code == 400, resp.text
 
 
 def test_patch_evaluation_rejects_empty_experiment_ids(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "empty-ids"}).json()
+    group = client.post(EXPERIMENTS, json={"name": "empty-ids"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="empty-ids-eval", experiment_group_id=group["id"]))
     resp = client.patch(f"{EVALUATIONS}/empty-ids-eval", json={"experiment_ids": []})
     assert resp.status_code == 400, resp.text
@@ -641,8 +637,8 @@ def test_patch_evaluation_rejects_empty_experiment_ids(client: TestClient) -> No
 
 def test_patch_evaluation_leaves_omitted_fields_unchanged(client: TestClient) -> None:
     """Partial semantics: PATCHing experiment_ids alone must not clobber omitted fields (e.g. description)."""
-    group_a = client.post(GROUPS, json={"name": "patch-a"}).json()
-    group_b = client.post(GROUPS, json={"name": "patch-b"}).json()
+    group_a = client.post(EXPERIMENTS, json={"name": "patch-a"}).json()
+    group_b = client.post(EXPERIMENTS, json={"name": "patch-b"}).json()
     body = _evaluation_body(name="patch-eval", experiment_group_id=group_a["id"])
     body["description"] = "keep me"
     body["metadata"] = {"team": "switchyard"}
@@ -658,7 +654,7 @@ def test_patch_evaluation_leaves_omitted_fields_unchanged(client: TestClient) ->
 
 def test_patch_evaluation_dedupes_experiment_ids(client: TestClient) -> None:
     """Membership is a set: duplicate ids are stored once, so a group can't double-count an evaluation."""
-    group = client.post(GROUPS, json={"name": "dedupe-grp"}).json()
+    group = client.post(EXPERIMENTS, json={"name": "dedupe-grp"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="dedupe-eval", experiment_group_id=group["id"]))
 
     patched = client.patch(f"{EVALUATIONS}/dedupe-eval", json={"experiment_ids": [group["id"], group["id"]]})
@@ -666,6 +662,6 @@ def test_patch_evaluation_dedupes_experiment_ids(client: TestClient) -> None:
     assert patched.json()["experiment_ids"] == [group["id"]]
 
     # The group counts the evaluation once, not twice.
-    listed = client.get(GROUPS)
+    listed = client.get(EXPERIMENTS)
     grp = next(g for g in listed.json()["data"] if g["id"] == group["id"])
     assert grp["evaluation_count"] == 1

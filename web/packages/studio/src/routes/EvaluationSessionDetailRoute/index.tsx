@@ -13,7 +13,7 @@ import { SessionDetailContent } from '@studio/routes/IntakeSessionDetailRoute';
 import {
   getEvaluationDetailRoute,
   getEvaluationSessionDetailRoute,
-  getExperimentGroupDetailRoute,
+  getExperimentDetailRoute,
   getExperimentRoute,
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
@@ -26,22 +26,15 @@ import { useSearchParams } from 'react-router-dom';
  */
 const EvaluationSessionCompare: FC<{
   workspace: string;
-  experimentGroupName: string;
+  experimentName: string;
   sessionId: string;
   compareWith: string;
   onSelectCompare: (sessionId: string) => void;
   onClearCompare: () => void;
-}> = ({
-  workspace,
-  experimentGroupName,
-  sessionId,
-  compareWith,
-  onSelectCompare,
-  onClearCompare,
-}) => {
+}> = ({ workspace, experimentName, sessionId, compareWith, onSelectCompare, onClearCompare }) => {
   const { testCaseId, runs, isRunsLoading } = useSessionCompareRuns(
     workspace,
-    experimentGroupName,
+    experimentName,
     sessionId
   );
   const primaryRun = runs.find((run) => run.session_id === sessionId);
@@ -50,7 +43,7 @@ const EvaluationSessionCompare: FC<{
   return (
     <TestCaseCompare
       workspace={workspace}
-      experimentGroupName={experimentGroupName}
+      experimentName={experimentName}
       testCaseId={testCaseId}
       primarySessionId={sessionId}
       primaryRun={primaryRun}
@@ -85,12 +78,12 @@ const EvaluationSessionCompare: FC<{
  */
 const EvaluationSessionDetail: FC<{
   workspace: string;
-  experimentGroupName: string;
+  experimentName: string;
   sessionId: string;
   routeContext: SessionDetailRouteContext;
   onSelectCompare: (sessionId: string) => void;
-}> = ({ workspace, experimentGroupName, sessionId, routeContext, onSelectCompare }) => {
-  const { runs, isRunsLoading } = useSessionCompareRuns(workspace, experimentGroupName, sessionId);
+}> = ({ workspace, experimentName, sessionId, routeContext, onSelectCompare }) => {
+  const { runs, isRunsLoading } = useSessionCompareRuns(workspace, experimentName, sessionId);
 
   const contextWithCompare = useMemo<SessionDetailRouteContext>(
     () =>
@@ -120,9 +113,9 @@ export const EvaluationSessionDetailRoute: FC = () => {
   // compareWith carries the session_id of the run to show in the right column.
   const compareWith = searchParams.get(QUERY_PARAMETERS.compareWith);
 
-  const { sessionId, experimentGroupName, evaluationName } = useRequiredPathParams([
+  const { sessionId, experimentName, evaluationName } = useRequiredPathParams([
     ROUTE_PARAMS.sessionId,
-    ROUTE_PARAMS.experimentGroupName,
+    ROUTE_PARAMS.experimentName,
     ROUTE_PARAMS.evaluationName,
   ]);
 
@@ -149,32 +142,27 @@ export const EvaluationSessionDetailRoute: FC = () => {
     () => ({
       kind: 'evaluation',
       parentBreadcrumbs: [
-        { slotLabel: 'Experiment Groups', href: getExperimentRoute(workspace) },
+        { slotLabel: 'Experiments', href: getExperimentRoute(workspace) },
         {
-          slotLabel: experimentGroupName,
-          href: getExperimentGroupDetailRoute(workspace, experimentGroupName),
+          slotLabel: experimentName,
+          href: getExperimentDetailRoute(workspace, experimentName),
         },
         {
           slotLabel: evaluationName,
-          href: getEvaluationDetailRoute(workspace, experimentGroupName, evaluationName),
+          href: getEvaluationDetailRoute(workspace, experimentName, evaluationName),
         },
       ],
       getSessionHref: (targetSessionId) =>
-        getEvaluationSessionDetailRoute(
-          workspace,
-          experimentGroupName,
-          evaluationName,
-          targetSessionId
-        ),
+        getEvaluationSessionDetailRoute(workspace, experimentName, evaluationName, targetSessionId),
     }),
-    [workspace, experimentGroupName, evaluationName]
+    [workspace, experimentName, evaluationName]
   );
 
   if (compareWith) {
     return (
       <EvaluationSessionCompare
         workspace={workspace}
-        experimentGroupName={experimentGroupName}
+        experimentName={experimentName}
         sessionId={sessionId}
         compareWith={compareWith}
         onSelectCompare={onSelectCompare}
@@ -186,7 +174,7 @@ export const EvaluationSessionDetailRoute: FC = () => {
   return (
     <EvaluationSessionDetail
       workspace={workspace}
-      experimentGroupName={experimentGroupName}
+      experimentName={experimentName}
       sessionId={sessionId}
       routeContext={routeContext}
       onSelectCompare={onSelectCompare}

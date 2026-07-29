@@ -10,13 +10,13 @@ import {
   useBreadcrumbs,
 } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { SessionCompareColumn } from '@studio/routes/EvaluationSessionDetailRoute/SessionCompareColumn';
-import { getExperimentGroupDetailRoute, getExperimentRoute } from '@studio/routes/utils';
+import { getExperimentDetailRoute, getExperimentRoute } from '@studio/routes/utils';
 import { CircleAlert } from 'lucide-react';
 import { type FC, type ReactNode, useEffect } from 'react';
 
 interface TestCaseCompareProps {
   workspace: string;
-  experimentGroupName: string;
+  experimentName: string;
   testCaseId: string | null | undefined;
   /** The run shown in the left column (the session the route is on). */
   primarySessionId: string;
@@ -40,7 +40,7 @@ const CompareEmpty: FC<{ heading: string; message: string }> = ({ heading, messa
 
 export const TestCaseCompare: FC<TestCaseCompareProps> = ({
   workspace,
-  experimentGroupName,
+  experimentName,
   testCaseId,
   primarySessionId,
   primaryRun,
@@ -53,15 +53,15 @@ export const TestCaseCompare: FC<TestCaseCompareProps> = ({
 
   useEffect(() => {
     const breadcrumbs: BreadcrumbsItemProps[] = [
-      { slotLabel: 'Experiment Groups', href: getExperimentRoute(workspace) },
+      { slotLabel: 'Experiments', href: getExperimentRoute(workspace) },
       {
-        slotLabel: experimentGroupName,
-        href: getExperimentGroupDetailRoute(workspace, experimentGroupName),
+        slotLabel: experimentName,
+        href: getExperimentDetailRoute(workspace, experimentName),
       },
       { slotLabel: 'Test case comparison' },
     ];
     setBreadcrumbs(breadcrumbs);
-  }, [setBreadcrumbs, workspace, experimentGroupName]);
+  }, [setBreadcrumbs, workspace, experimentName]);
 
   const heading = testCaseId
     ? `Test case comparison — Test case ${testCaseId}`

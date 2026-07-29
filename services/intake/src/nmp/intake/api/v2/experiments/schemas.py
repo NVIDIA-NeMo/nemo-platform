@@ -26,22 +26,24 @@ from pydantic import AnyUrl, BaseModel, ConfigDict, Field, computed_field, model
 EvaluationSessionMode = IntakeResponseMode
 
 
-class ExperimentGroupRequest(BaseModel):
-    """Request body for creating an ExperimentGroup."""
+class ExperimentRequest(BaseModel):
+    """Request body for creating an Experiment."""
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(description="Workspace-unique group name.")
-    description: str | None = Field(default=None, description="Human-readable purpose of the group.")
+    name: str = Field(description="Workspace-unique experiment name.")
+    description: str | None = Field(default=None, description="Human-readable purpose of the experiment.")
     insight_id: str | None = Field(
-        default=None, description="Reference to an external insight that seeded this group, if any."
+        default=None, description="Reference to an external insight that seeded this experiment, if any."
     )
-    summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
-    metadata: dict[str, str] | None = Field(default=None, description="Free-form producer metadata for the group.")
+    summary: str | None = Field(
+        default=None, description="Human- or agent-authored summary of the experiment's findings."
+    )
+    metadata: dict[str, str] | None = Field(default=None, description="Free-form producer metadata for the experiment.")
     default_sort: str = Field(
         default="-created_at",
         description=(
-            "Default sort for this group's evaluations list, as a `sort`-param string: a comma-separated, "
+            "Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, "
             "ordered list of fields where the first is the primary sort and the rest break ties (leading "
             "'-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to "
             "'-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as "
@@ -51,7 +53,7 @@ class ExperimentGroupRequest(BaseModel):
     pareto: ParetoConfig | None = Field(
         default=None,
         description=(
-            "Default X/Y metrics for the group's Pareto view. Omit to preserve the existing value on "
+            "Default X/Y metrics for the experiment's Pareto view. Omit to preserve the existing value on "
             "update; on create, defaults to cost vs. latency."
         ),
     )
@@ -66,7 +68,7 @@ class EvaluationRequest(BaseModel):
     experiment_ids: list[str] = Field(
         default_factory=list,
         description=(
-            "Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred; each group "
+            "Entity ids of the Experiments this Evaluation belongs to (>=1). Preferred; each experiment "
             "must already exist. When omitted, the deprecated experiment_group_id is used instead."
         ),
     )
@@ -74,7 +76,7 @@ class EvaluationRequest(BaseModel):
         default=None,
         deprecated=True,
         description=(
-            "Deprecated single-group field; provide experiment_ids instead. Coalesced into experiment_ids "
+            "Deprecated single-experiment field; provide experiment_ids instead. Coalesced into experiment_ids "
             "when experiment_ids is omitted."
         ),
     )
@@ -87,11 +89,6 @@ class EvaluationRequest(BaseModel):
         default=None,
         description="Entity id of the evaluation this one was derived from (e.g. a variant of a baseline), if any.",
     )
-    parent_experiment_id: str | None = Field(
-        default=None,
-        deprecated=True,
-        description="Deprecated alias for parent_evaluation_id.",
-    )
     status: str | None = Field(default=None, description="Producer-defined lifecycle status of the evaluation.")
     root_cause: str | None = Field(
         default=None,
@@ -100,7 +97,7 @@ class EvaluationRequest(BaseModel):
 
     @model_validator(mode="after")
     def _resolve_group_membership(self) -> Self:
-        """Require >=1 group. Coalesce the deprecated ``experiment_group_id`` into ``experiment_ids``
+        """Require >=1 experiment. Coalesce the deprecated ``experiment_group_id`` into ``experiment_ids``
         when the latter is omitted; reject a request that supplies neither.
 
         Read the deprecated value via ``__dict__`` to avoid tripping its deprecation warning per request.
@@ -111,22 +108,10 @@ class EvaluationRequest(BaseModel):
                 self.experiment_ids = [group_id]
         if not self.experiment_ids:
             raise ValueError(
-                "An evaluation must belong to at least one group: provide experiment_ids or experiment_group_id."
+                "An evaluation must belong to at least one experiment: provide experiment_ids or experiment_group_id."
             )
-        # Membership is a set — drop duplicate group ids (order-preserving) so counts aren't inflated.
+        # Membership is a set — drop duplicate experiment ids (order-preserving) so counts aren't inflated.
         self.experiment_ids = list(dict.fromkeys(self.experiment_ids))
-        return self
-
-    @model_validator(mode="after")
-    def _coalesce_deprecated_parent(self) -> Self:
-        """Accept the deprecated ``parent_experiment_id`` alias; the canonical field wins if both are set.
-
-        Read the raw value via ``__dict__`` to avoid tripping the field's deprecation warning on
-        every request.
-        """
-        deprecated_parent = self.__dict__.get("parent_experiment_id")
-        if self.parent_evaluation_id is None and deprecated_parent is not None:
-            self.parent_evaluation_id = deprecated_parent
         return self
 
 
@@ -135,7 +120,7 @@ class EvaluationPatchRequest(BaseModel):
 
     Unset fields are left unchanged (PATCH semantics — same pattern as the models service's PATCH).
     Immutable fields (name, dataset_name, dataset_version) aren't accepted here. ``experiment_ids``,
-    when provided, must be non-empty: an evaluation must always belong to at least one group.
+    when provided, must be non-empty: an evaluation must always belong to at least one experiment.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -143,8 +128,8 @@ class EvaluationPatchRequest(BaseModel):
     experiment_ids: list[str] | None = Field(
         default=None,
         description=(
-            "Replace the ExperimentGroups this Evaluation belongs to. Must be non-empty when provided; "
-            "each group must already exist. Omit to leave membership unchanged."
+            "Replace the Experiments this Evaluation belongs to. Must be non-empty when provided; "
+            "each experiment must already exist. Omit to leave membership unchanged."
         ),
     )
     source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source evaluation.")
@@ -161,8 +146,8 @@ class EvaluationPatchRequest(BaseModel):
     )
 
 
-class ExperimentGroupResponse(BaseModel):
-    """ExperimentGroup as served by the API."""
+class ExperimentResponse(BaseModel):
+    """Experiment as served by the API."""
 
     id: str
     name: str
@@ -177,16 +162,11 @@ class ExperimentGroupResponse(BaseModel):
     updated_at: datetime | None = None
     evaluation_count: int = Field(
         default=0,
-        description="Number of live (non-soft-deleted) evaluations in this group.",
+        description="Number of live (non-soft-deleted) evaluations in this experiment.",
     )
 
-    @computed_field(deprecated=True, description="Deprecated alias for evaluation_count.")  # type: ignore[prop-decorator]
-    @property
-    def experiment_count(self) -> int:
-        return self.evaluation_count
-
     @classmethod
-    def from_entity(cls, entity: ExperimentGroup) -> ExperimentGroupResponse:
+    def from_entity(cls, entity: ExperimentGroup) -> ExperimentResponse:
         return cls(
             id=entity.id,
             name=entity.name,
@@ -221,7 +201,7 @@ class EvaluationResponse(BaseModel):
     name: str
     workspace: str
     experiment_ids: list[str] = Field(
-        description="Entity ids of the ExperimentGroups this Evaluation belongs to (>=1).",
+        description="Entity ids of the Experiments this Evaluation belongs to (>=1).",
     )
     dataset_name: str
     dataset_version: str | None = None
@@ -278,14 +258,9 @@ class EvaluationResponse(BaseModel):
         description="Average total tokens (input + output) per test case, aggregated across the evaluation.",
     )
 
-    @computed_field(deprecated=True, description="Deprecated alias for parent_evaluation_id.")  # type: ignore[prop-decorator]
-    @property
-    def parent_experiment_id(self) -> str | None:
-        return self.parent_evaluation_id
-
     @computed_field(  # type: ignore[prop-decorator]
         deprecated=True,
-        description="Deprecated single-group alias; the first of experiment_ids. Use experiment_ids.",
+        description="Deprecated single-experiment alias; the first of experiment_ids. Use experiment_ids.",
     )
     @property
     def experiment_group_id(self) -> str:
@@ -332,17 +307,17 @@ class MetricStatFilters(BaseModel):
     count: NumberFilter | None = None
 
 
-class ExperimentGroupFilter(Filter):
-    """Filter for listing ExperimentGroups."""
+class ExperimentFilter(Filter):
+    """Filter for listing Experiments."""
 
-    name: str | None = Field(default=None, description="Filter groups by name.")
+    name: str | None = Field(default=None, description="Filter experiments by name.")
     insight_id: str | None = Field(
         default=None,
-        description="Filter groups by the id of the insight that seeded them.",
+        description="Filter experiments by the id of the insight that seeded them.",
     )
     is_deleted: bool | None = Field(
         default=None,
-        description="When true, returns only soft-deleted groups. Omit (or false) to see only live groups.",
+        description="When true, returns only soft-deleted experiments. Omit (or false) to see only live experiments.",
     )
     metadata: Annotated[dict[str, str] | None, map_entity_field("data.metadata", namespace=True)] = Field(
         default=None,
@@ -433,12 +408,6 @@ class EvaluationSessionResponse(BaseModel):
 
     workspace: str
     evaluation_name: str
-
-    @computed_field(deprecated=True, description="Deprecated alias for evaluation_name.")  # type: ignore[prop-decorator]
-    @property
-    def experiment_name(self) -> str:
-        return self.evaluation_name
-
     session_id: str
     test_case_id: str | None = Field(
         default=None,
