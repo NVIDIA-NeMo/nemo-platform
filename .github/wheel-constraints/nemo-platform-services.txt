@@ -1,7 +1,6 @@
 # Partial dependency constraints for the CI wheel install-smoke-test.
 # Pins the DIRECT external deps of the built nemo-platform[services] wheel to vetted versions for
-# reproducibility; deep transitives resolve normally (so they stay py3.14-compatible and
-# cannot self-conflict). litellm is capped <1.92 — its 1.92.0 native build has no py3.14 wheel.
+# reproducibility; deep transitives resolve normally and cannot self-conflict.
 # Regenerate with: script/compile-wheel-constraints.sh <dir-with-built-wheels>
 #
 aioboto3==15.5.0
@@ -97,4 +96,3 @@ uvicorn==0.51.0
 wasmtime==47.0.1
 xdg-base-dirs==6.0.2
 yara-python==4.5.1
-litellm<1.92  # 1.92.0 native build has no py3.14 wheel

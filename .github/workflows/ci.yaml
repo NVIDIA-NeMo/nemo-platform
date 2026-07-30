@@ -1182,10 +1182,7 @@ jobs:
       fail-fast: false
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
-        exclude:
-          - package: nemo-platform
-            python-version: "3.11"
+        python-version: ["3.12", "3.13"]
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -1229,10 +1226,7 @@ jobs:
       fail-fast: false
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
-        exclude:
-          - package: nemo-platform
-            python-version: "3.11"
+        python-version: ["3.12", "3.13"]
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -1266,17 +1260,9 @@ jobs:
             echo "::error::Expected exactly one wheel, found ${#wheels[@]}"
             exit 1
           fi
-          if [[ "${PYTHON_VERSION}" == "3.14" ]]; then
-            # litellm 1.92.0 builds its Rust bridge from source on Python 3.14.
-            # Its pinned PyO3 supports the stable ABI, but rejects 3.14 unless
-            # this forward-compatibility opt-in is present.
-            export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
-          fi
           WHEEL="${wheels[0]}"
           # Supply-chain: partial-pin the wheel's direct external deps to a committed constraints
-          # file (deep transitives resolve normally, so they stay py3.14-compatible and can't
-          # self-conflict), and cap the litellm transitive whose 1.92.0 native build has no py3.14
-          # wheel. Regenerate with script/compile-wheel-constraints.sh.
+          # file. Regenerate with script/compile-wheel-constraints.sh.
           VENV="${RUNNER_TEMP}/wheelcheck/.venv"
           uv venv "${VENV}" --python "${PYTHON_VERSION}"
           uv pip install --python "${VENV}/bin/python" \
