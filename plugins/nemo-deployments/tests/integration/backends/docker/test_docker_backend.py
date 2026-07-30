@@ -93,7 +93,14 @@ def _docker_backend_with_observe_timeout(
     *,
     oneshot_observe_timeout_seconds: int,
 ) -> DockerDeploymentBackend:
-    return _build_docker_backend(oneshot_observe_timeout_seconds=oneshot_observe_timeout_seconds)
+    # `pull_images` is off so the caller can pre-pull and keep the registry
+    # round-trip out of any window it times. `create_deployment` pulls
+    # unconditionally, not just when the image is missing locally, so leaving
+    # this on would put ~2s of Docker Hub latency inside the measurement.
+    return _build_docker_backend(
+        oneshot_observe_timeout_seconds=oneshot_observe_timeout_seconds,
+        pull_images=False,
+    )
 
 
 def _always_http_config() -> DeploymentConfig:
@@ -169,8 +176,9 @@ async def test_never_deployment_outlives_observe_wait_then_succeeds() -> None:
     client = docker.from_env()
 
     try:
-        # Warm the image cache so the timed window below measures the observe wait
-        # rather than an uncached image pull.
+        # The backend is built with `pull_images=False`, so this pull is what puts
+        # the image on the host. Doing it here keeps it out of the timed window
+        # below, which is measuring the observe wait.
         await asyncio.to_thread(client.images.pull, ALPINE_IMAGE)
 
         started = time.monotonic()
