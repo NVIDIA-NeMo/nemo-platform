@@ -61,6 +61,20 @@ class RunReporter:
         except Exception:  # noqa: BLE001 - narration must never break the run
             pass
 
+    def seed_baseline(self, reward: float) -> None:
+        """Set the validation delta reference without emitting a line.
+
+        Used on resume, where agent-0 is not re-evaluated: without this, the
+        first newly evaluated candidate would become the baseline and later
+        deltas would be measured against the wrong candidate. No-op once a
+        baseline is already set.
+        """
+        try:
+            if self._baseline_val is None:
+                self._baseline_val = reward
+        except Exception:  # noqa: BLE001
+            pass
+
     def run_started(self, *, run_dir: Path, agent: str, insight: str | None, strategy: str) -> None:
         try:
             self._emit(_RULE)

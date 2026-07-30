@@ -503,6 +503,15 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             self._delete_all_artifacts(from_round=round_num)
             evolution_tree = EvolutionTree.from_dir(agents_dir)
             candidates: list[Candidate] = list(evolution_tree.survivors(round_num))
+            if reporter:
+                # agent-0 is not re-evaluated on resume; seed the delta baseline
+                # from its cached validation reward so later deltas are correct.
+                baseline_node = next(
+                    (n for n in evolution_tree.nodes.values() if n.label == _BASELINE_AGENT_LABEL),
+                    None,
+                )
+                if baseline_node is not None and baseline_node.val_reward:
+                    reporter.seed_baseline(reward_scalar(baseline_node.val_reward))
             run_entity = self._load_run_entity() or await self._create_experiment_run(
                 workspace=workspace,
                 backend=backend,
@@ -756,6 +765,15 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                         completed=round_num,
                         total=config.max_rounds,
                     )
+                    # Announce candidates before the (batched) validation eval,
+                    # so the narration reports work beginning, not completed.
+                    for i, candidate in enumerate(candidates, start=1):
+                        reporter.candidate_started(
+                            label=candidate.label,
+                            optimization=candidate.optimization,
+                            i=i,
+                            n=len(candidates),
+                        )
 
                 validation_candidate_results = await self._evaluate_validation_candidates(
                     dataset=validation_eval_dataset,
@@ -781,12 +799,6 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                             },
                         )
                         if reporter:
-                            reporter.candidate_started(
-                                label=candidate.label,
-                                optimization=candidate.optimization,
-                                i=None,
-                                n=None,
-                            )
                             reporter.candidate_evaluated(
                                 label=candidate.label,
                                 split="validation",

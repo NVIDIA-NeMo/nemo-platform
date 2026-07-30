@@ -61,6 +61,33 @@ def test_candidate_evaluated_sets_baseline_then_shows_delta() -> None:
     assert "+0.140" in lines[1]  # delta vs baseline
 
 
+def test_seed_baseline_sets_delta_reference_silently_for_resume() -> None:
+    # On resume agent-0 is not re-evaluated; seed_baseline sets the delta
+    # reference from its cached reward without emitting a line, so the first
+    # newly evaluated candidate is measured against agent-0, not itself.
+    r, sink = _reporter()
+    r.seed_baseline(0.05)
+    assert sink.getvalue() == ""  # silent: no line emitted
+    r.candidate_evaluated(
+        label="agent-1", split="validation", reward=0.19, artifacts=Path("/exp/results/agent-1-validation")
+    )
+    out = sink.getvalue()
+    assert "reward 0.190" in out
+    assert "+0.140" in out  # delta measured against the seeded 0.05 baseline
+
+
+def test_seed_baseline_is_noop_once_baseline_set() -> None:
+    r, sink = _reporter()
+    r.candidate_evaluated(
+        label="agent-0", split="validation", reward=0.05, artifacts=Path("/exp/results/agent-0-validation")
+    )
+    r.seed_baseline(0.99)  # must not clobber the real baseline
+    r.candidate_evaluated(
+        label="agent-1", split="validation", reward=0.19, artifacts=Path("/exp/results/agent-1-validation")
+    )
+    assert "+0.140" in sink.getvalue()  # still measured against 0.05, not 0.99
+
+
 def test_train_split_shows_no_delta() -> None:
     r, sink = _reporter()
     r.candidate_evaluated(label="agent-0", split="train", reward=0.23, artifacts=Path("/exp/results/agent-0-train"))
@@ -148,6 +175,8 @@ def test_full_run_transcript_is_the_loop_emission_contract() -> None:
     out = sink.getvalue()
     # ordering sanity: baseline before round-1 before finish
     assert out.index("baseline") < out.index("evaluating candidates") < out.index("Finished")
+    # candidate_started narrates work beginning, so it precedes its evaluation line
+    assert out.index("ground tool signatures") < out.index("agent-1 · validation")
     assert "agent-1 · validation" in out
     assert "+0.140" in out
 
