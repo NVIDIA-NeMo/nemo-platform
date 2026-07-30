@@ -626,6 +626,7 @@ jobs:
           WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
           CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
           INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
+          HELM_VERSION: ${{ needs.plan-release.outputs.helm_version }}
         with:
           github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
           script: |
@@ -643,6 +644,9 @@ jobs:
                 container_ids: JSON.parse(process.env.CONTAINER_IDS),
                 helm_id: process.env.INCLUDE_HELM === "true"
                   ? process.env.RELEASE_HELM_ID
+                  : null,
+                helm_version: process.env.INCLUDE_HELM === "true"
+                  ? process.env.HELM_VERSION
                   : null,
               },
             });
