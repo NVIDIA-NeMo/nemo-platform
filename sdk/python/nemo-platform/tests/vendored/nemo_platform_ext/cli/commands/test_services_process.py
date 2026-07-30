@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import subprocess
@@ -840,6 +841,49 @@ class TestSweepOrphans:
             assert proc.pid in killed
             proc.wait(timeout=5)
             assert proc.poll() is not None
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+
+    def test_warns_when_child_survives_sigkill(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A child that outlives SIGKILL is reported rather than silently dropped.
+
+        Nothing survives SIGKILL on demand — the real trigger is a process wedged
+        in uninterruptible sleep, which a test cannot arrange — so `wait_procs` is
+        stubbed to keep reporting the child as alive. The terminate/kill calls are
+        still real; only the observation is simulated.
+        """
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            time.sleep(0.3)
+            ps_child = psutil.Process(proc.pid)
+            # The first wait drives the SIGTERM -> SIGKILL escalation; the second
+            # is the one whose non-empty result trips the warning.
+            with (
+                patch.object(
+                    process_module.psutil,
+                    "wait_procs",
+                    side_effect=[([], [ps_child]), ([], [ps_child])],
+                ) as wait_procs,
+                caplog.at_level(logging.WARNING, logger=process_module.logger.name),
+            ):
+                killed = _sweep_orphans([ps_child], timeout=0.1)
+
+            # Two waits, not one. The second is the post-SIGKILL wait this PR adds,
+            # so a single-wait implementation must not be able to satisfy this test.
+            assert wait_procs.call_count == 2
+            assert proc.pid in killed
+            assert f"Orphaned child [{proc.pid}] still alive after SIGKILL" in caplog.text
+            proc.wait(timeout=5)
         finally:
             if proc.poll() is None:
                 proc.kill()

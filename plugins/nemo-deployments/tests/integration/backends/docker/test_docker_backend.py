@@ -93,7 +93,14 @@ def _docker_backend_with_observe_timeout(
     *,
     oneshot_observe_timeout_seconds: int,
 ) -> DockerDeploymentBackend:
-    return _build_docker_backend(oneshot_observe_timeout_seconds=oneshot_observe_timeout_seconds)
+    # `pull_images` is off so the caller can pre-pull and keep the registry
+    # round-trip out of any window it times. `create_deployment` pulls
+    # unconditionally, not just when the image is missing locally, so leaving
+    # this on would put ~2s of Docker Hub latency inside the measurement.
+    return _build_docker_backend(
+        oneshot_observe_timeout_seconds=oneshot_observe_timeout_seconds,
+        pull_images=False,
+    )
 
 
 def _always_http_config() -> DeploymentConfig:
@@ -158,7 +165,13 @@ async def test_never_deployment_succeeds(docker_backend: DockerDeploymentBackend
 @pytest.mark.asyncio
 async def test_never_deployment_outlives_observe_wait_then_succeeds() -> None:
     """Long Never jobs return STARTING on create and finish via read_status polling."""
-    job_sleep_seconds = 5
+    # The job has to outlive the observe wait by a wide enough margin that a
+    # create_deployment which blocked until exit is unmistakable. The margin is
+    # what makes the timing assertion below meaningful, and it has to clear the
+    # cost of container create/start on a contended CI docker daemon (~3s
+    # observed) -- this test shares an xdist loadgroup with the heavier
+    # test_reconcile_docker cases, all hitting the same daemon.
+    job_sleep_seconds = 20
     observe_timeout_seconds = 1
     docker_backend = _docker_backend_with_observe_timeout(
         oneshot_observe_timeout_seconds=observe_timeout_seconds,
@@ -169,8 +182,9 @@ async def test_never_deployment_outlives_observe_wait_then_succeeds() -> None:
     client = docker.from_env()
 
     try:
-        # Warm the image cache so the timed window below measures the observe wait
-        # rather than an uncached image pull.
+        # The backend is built with `pull_images=False`, so this pull is what puts
+        # the image on the host. Doing it here keeps it out of the timed window
+        # below, which is measuring the observe wait.
         await asyncio.to_thread(client.images.pull, ALPINE_IMAGE)
 
         started = time.monotonic()
@@ -185,9 +199,13 @@ async def test_never_deployment_outlives_observe_wait_then_succeeds() -> None:
 
         assert created.status == "STARTING"
         assert "after observe wait" in (created.status_message or "")
-        assert create_elapsed < observe_timeout_seconds + 2.0
+        # Deliberately loose. The STARTING assertions above are what pin "returned
+        # during the observe wait"; this one only has to catch the gross regression
+        # of blocking for the whole job, which would land at ~job_sleep_seconds.
+        # Keeping it well clear of CI jitter is worth more than a tight bound.
+        assert create_elapsed < observe_timeout_seconds + 8.0
 
-        deadline = time.monotonic() + 15.0
+        deadline = time.monotonic() + 45.0
         status = created
         while time.monotonic() < deadline:
             status = await docker_backend.read_status(workspace="itest", name="sleep-job")
