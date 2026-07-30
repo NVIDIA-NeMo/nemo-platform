@@ -3,6 +3,7 @@
 
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -10,6 +11,10 @@ import pytest
 import typer
 from nemo_insights_plugin import cli
 from nemo_insights_plugin.contracts.profile import DEFAULT_BASE_URL
+from nemo_insights_plugin.contracts.workflow_context import (
+    WorkflowContext,
+    write_workflow_context,
+)
 from nemo_insights_plugin.preflight import AnalysisProbes
 from nemo_platform import NeMoPlatformError
 from pydantic_ai import AgentRunError
@@ -103,6 +108,35 @@ def test_analyze_flags_override_profile(app: typer.Typer, profile_tree: Path, mo
     assert recorder.kwargs is not None
     assert recorder.kwargs["agent"] == "other"
     assert recorder.kwargs["workspace"] == "other-ws"
+
+
+def test_analyze_uses_imported_trace_context(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.delenv("NMP_BASE_URL", raising=False)
+    write_workflow_context(
+        profile_tree,
+        WorkflowContext(
+            agent="flight-planner",
+            workspace="imported-flight-traces",
+            base_url="http://import-platform.test",
+            trace_source="state-v9",
+            trace_since=datetime(2026, 7, 9, 12, tzinfo=UTC),
+        ),
+    )
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["analyze"])
+
+    assert result.exit_code == 0, result.output
+    assert recorder.kwargs is not None
+    assert recorder.kwargs["workspace"] == "imported-flight-traces"
+    assert recorder.kwargs["base_url"] == "http://import-platform.test"
+    assert recorder.kwargs["since"] == datetime(2026, 7, 9, 12, tzinfo=UTC)
 
 
 def test_profile_env_is_loaded_before_base_url_resolution(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:

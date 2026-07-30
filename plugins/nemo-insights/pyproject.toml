@@ -10,6 +10,7 @@ dependencies = [
   "nemo-platform",
   "nemo-platform-plugin",
   "opentelemetry-exporter-otlp>=1.42.1",
+  "opentelemetry-proto>=1.42.1",
   "opentelemetry-sdk>=1.42.1",
   "pydantic>=2.10.6",
   "pydantic-ai-harness[code-mode]==0.3.0",
@@ -21,6 +22,7 @@ dependencies = [
 
 [project.entry-points."nemo.cli"]
 insights = "nemo_insights_plugin.cli:InsightsCLI"
+traces = "nemo_insights_plugin.traces_cli:TracesCLI"
 
 [project.entry-points."nemo.services"]
 insights = "nemo_insights_plugin.service:InsightsService"
@@ -40,6 +42,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nemo_insights_plugin"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"testbed/export.py" = "testbed/export.py"
+"testbed/ingest.py" = "testbed/ingest.py"
+"testbed/otlp_ingest.py" = "testbed/otlp_ingest.py"
+"testbed/reingest.py" = "testbed/reingest.py"
+"testbed/release.py" = "testbed/release.py"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

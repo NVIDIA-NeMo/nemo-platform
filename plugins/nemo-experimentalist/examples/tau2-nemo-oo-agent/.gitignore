@@ -1,0 +1,5 @@
+.env
+.venv/
+.nemo-optimizer/
+tmp/
+uv.lock

@@ -34,7 +34,13 @@ def test_openshell_policy_fails_closed_without_docker_access() -> None:
     assert set(policy["network_policies"]) == {"nemo_platform"}
     endpoint = policy["network_policies"]["nemo_platform"]["endpoints"][0]
     assert "access" not in endpoint
-    assert endpoint["rules"] == [{"allow": {"method": "GET", "path": "/health/ready"}}]
+    assert endpoint["rules"] == [
+        {"allow": {"method": "GET", "path": "/health/ready"}},
+        {"allow": {"method": "GET", "path": "/apis/intake/v2/workspaces/**"}},
+        {"allow": {"method": "POST", "path": "/apis/intake/v2/workspaces/**"}},
+        {"allow": {"method": "PUT", "path": "/apis/intake/v2/workspaces/**"}},
+        {"allow": {"method": "GET", "path": "/apis/insights/v2/workspaces/**"}},
+    ]
     binaries = {item["path"] for item in policy["network_policies"]["nemo_platform"]["binaries"]}
     assert "/usr/local/bin/python3.13" in binaries
 

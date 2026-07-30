@@ -22,6 +22,19 @@ uv run nemo insights doctor
 uv run nemo insights analyze
 ```
 
+For a reusable trace bundle, import it from the agent directory first:
+
+```bash
+uv run nemo traces import state-v9
+uv run nemo insights analyze
+```
+
+The import targets the workspace in `optimizer.yaml`, is idempotent, and writes
+`.nemo-optimizer/context.yaml` with the Platform URL and bundle time range.
+Analysis consumes that context automatically, so restored spans outside
+Intake's default lookback window remain visible without a manual `--since`,
+`--workspace`, or `--base-url`.
+
 The profile contract consumed by Insights is deliberately small:
 
 ```yaml

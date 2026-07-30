@@ -5,6 +5,7 @@
 
 import asyncio
 import os
+import sys
 import uuid
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
@@ -30,9 +31,11 @@ from nemo_experimentalist_plugin.profile import AgentProfile, load_profile
 from nemo_experimentalist_plugin.resolve import (
     ResolveError,
     build_effective_experiment_plan,
+    parse_local_insights,
     resolve_effective_insight,
     resolve_experiment_config,
     resolve_experiment_inputs,
+    select_local_insight,
 )
 from nemo_insights_plugin.contracts.checks import (
     CheckResult,
@@ -46,6 +49,10 @@ from nemo_insights_plugin.contracts.profile import (
     discover_profile,
     load_env_file,
     resolve_base_url,
+)
+from nemo_insights_plugin.contracts.workflow_context import (
+    load_workflow_context,
+    resolve_context_base_url,
 )
 from nemo_platform_plugin.cli import NemoCLI
 
@@ -192,6 +199,52 @@ def _default_experiment_dir(profile: AgentProfile | None) -> Path:
         return candidate
 
 
+def _select_host_insight(
+    profile: AgentProfile | None,
+    *,
+    insight: str | None,
+    insight_id: str | None,
+    no_insight: bool,
+) -> str | None:
+    """Prompt for one profile-local Insight before creating the sandbox."""
+    if no_insight:
+        return insight_id
+    effective = resolve_effective_insight(
+        profile=profile,
+        insight=insight,
+        insight_id=insight_id,
+        disabled=False,
+    )
+    if effective.ref is None or effective.selector is not None:
+        return effective.selector
+    items = parse_local_insights(effective.ref)
+    if items is None or len(items) <= 1:
+        return effective.selector
+    if not sys.stdin.isatty():
+        raise OpenShellLaunchError(
+            f"{effective.ref} contains {len(items)} insights. "
+            "Run from an interactive terminal to choose one, or pass --insight-id."
+        )
+    typer.echo("Choose an Insight to optimize:", err=True)
+    for index, item in enumerate(items):
+        typer.echo(f"  [{index}] {item.get('title', item.get('id', 'untitled'))}", err=True)
+    selector = typer.prompt("Insight", default="0")
+    selected = select_local_insight(items, selector, effective.ref)
+    return str(selected.get("id") or selector)
+
+
+def _apply_profile_runtime_defaults(profile: AgentProfile | None) -> None:
+    """Select the narrow source provider needed by a profile's dataset registry."""
+    if profile is None or not profile.datasets.registry_url:
+        return
+    host = (urlsplit(profile.datasets.registry_url).hostname or "").lower()
+    if "gitlab" in host:
+        os.environ.setdefault("NEMO_EXPERIMENTALIST_SOURCE_CONTROL", "gitlab-read")
+        os.environ.setdefault("NEMO_EXPERIMENTALIST_GITLAB_HOST", host)
+    elif host in {"github.com", "raw.githubusercontent.com"}:
+        os.environ.setdefault("NEMO_EXPERIMENTALIST_SOURCE_CONTROL", "github-read")
+
+
 class ExperimentalistCLI(NemoCLI):
     """``nemo experimentalist ...`` subcommands."""
 
@@ -331,19 +384,47 @@ class ExperimentalistCLI(NemoCLI):
                 raise typer.Exit(code=1)
             if not _inside_experimentalist_container():
                 try:
+                    host_profile, host_profile_error = _load_profile_or_error(profile_path)
+                    if host_profile_error is not None:
+                        raise ProfileError(host_profile_error)
+                    context = (
+                        load_workflow_context(
+                            host_profile.profile_dir,
+                            agent=host_profile.agent,
+                        )
+                        if host_profile is not None
+                        else None
+                    )
+                    resolved_platform_url = resolve_context_base_url(base_url, context)
+                    resolved_workspace = (
+                        workspace
+                        if workspace is not None
+                        else (
+                            context.workspace
+                            if context is not None
+                            else (host_profile.workspace if host_profile is not None else None)
+                        )
+                    )
+                    selected_insight_id = _select_host_insight(
+                        host_profile,
+                        insight=insight,
+                        insight_id=insight_id,
+                        no_insight=no_insight,
+                    )
+                    _apply_profile_runtime_defaults(host_profile)
                     forwarded_args = _openshell_run_args(
                         workspace_dir=Path.cwd(),
                         agent=agent,
                         agent_spec=agent_spec,
                         insight=insight,
-                        insight_id=insight_id,
+                        insight_id=selected_insight_id,
                         no_insight=no_insight,
                         profile_path=profile_path,
                         train_dataset=train_dataset,
                         validation_dataset=validation_dataset,
                         task_template=task_template,
                         mode=mode,
-                        workspace=workspace,
+                        workspace=resolved_workspace,
                         config=config,
                         framework_skills=framework_skills,
                     )
@@ -351,9 +432,9 @@ class ExperimentalistCLI(NemoCLI):
                         "run",
                         forwarded_args,
                         output_dir=experiment_dir,
-                        platform_url=base_url,
+                        platform_url=resolved_platform_url,
                     )
-                except (OpenShellLaunchError, OSError) as exc:
+                except (OpenShellLaunchError, ProfileError, ResolveError, OSError) as exc:
                     typer.echo(str(exc), err=True)
                     raise typer.Exit(code=1) from None
                 return
@@ -502,18 +583,36 @@ class ExperimentalistCLI(NemoCLI):
             """Diagnose Experimentalist setup: profile, artifacts, credentials, platform, runtime."""
             if not _inside_experimentalist_container():
                 try:
+                    host_profile, host_profile_error = _load_profile_or_error(profile_path)
+                    if host_profile_error is not None:
+                        raise ProfileError(host_profile_error)
+                    context = (
+                        load_workflow_context(
+                            host_profile.profile_dir,
+                            agent=host_profile.agent,
+                        )
+                        if host_profile is not None
+                        else None
+                    )
+                    selected_insight_id = _select_host_insight(
+                        host_profile,
+                        insight=insight,
+                        insight_id=insight_id,
+                        no_insight=False,
+                    )
+                    _apply_profile_runtime_defaults(host_profile)
                     _run_in_openshell(
                         "doctor",
                         _openshell_doctor_args(
                             workspace_dir=Path.cwd(),
                             insight=insight,
-                            insight_id=insight_id,
+                            insight_id=selected_insight_id,
                             profile_path=profile_path,
                         ),
                         output_dir=None,
-                        platform_url=base_url,
+                        platform_url=resolve_context_base_url(base_url, context),
                     )
-                except (OpenShellLaunchError, OSError) as exc:
+                except (OpenShellLaunchError, ProfileError, ResolveError, OSError) as exc:
                     typer.echo(str(exc), err=True)
                     raise typer.Exit(code=1) from None
                 return

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
@@ -11,6 +12,7 @@ from nemo_experimentalist_plugin import cli
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.preflight import Probes
+from nemo_experimentalist_plugin.profile import AgentProfile, DatasetsSpec
 from nemo_platform import AsyncNeMoPlatform
 from typer.testing import CliRunner
 
@@ -158,6 +160,64 @@ def _run_experiment(args: list[str]) -> Result:
 
 async def _fail_if_runner_starts(**_: object) -> str:
     raise AssertionError("invalid CLI input must not start the experimentalist runner")
+
+
+def test_host_prompts_for_profile_multi_insight(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile = AgentProfile(
+        agent="nemo-oo-airline",
+        task_template="./template",
+        datasets=DatasetsSpec(train="train", validation="validation"),
+        profile_dir=tmp_path,
+    )
+    insight_dir = tmp_path / ".nemo-optimizer"
+    insight_dir.mkdir()
+    (insight_dir / "insights.yaml").write_text(
+        "insights:\n  - id: insight-one\n    title: First problem\n  - id: insight-two\n    title: Second problem\n",
+        encoding="utf-8",
+    )
+
+    class InteractiveInput:
+        @staticmethod
+        def isatty() -> bool:
+            return True
+
+    monkeypatch.setattr(cli.sys, "stdin", InteractiveInput())
+    monkeypatch.setattr(cli.typer, "prompt", lambda *args, **kwargs: "1")
+
+    selected = cli._select_host_insight(
+        profile,
+        insight=None,
+        insight_id=None,
+        no_insight=False,
+    )
+
+    assert selected == "insight-two"
+
+
+def test_profile_registry_selects_gitlab_read_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile = AgentProfile(
+        agent="nemo-oo-airline",
+        task_template="./template",
+        datasets=DatasetsSpec(
+            train="train",
+            validation="validation",
+            registry_url="https://gitlab.example/group/registry.json",
+        ),
+        profile_dir=tmp_path,
+    )
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_SOURCE_CONTROL", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_GITLAB_HOST", raising=False)
+
+    cli._apply_profile_runtime_defaults(profile)
+
+    assert os.environ["NEMO_EXPERIMENTALIST_SOURCE_CONTROL"] == "gitlab-read"
+    assert os.environ["NEMO_EXPERIMENTALIST_GITLAB_HOST"] == "gitlab.example"
 
 
 def test_cli_help_exposes_only_run_and_doctor() -> None:
@@ -341,6 +401,7 @@ def test_experiment_cli_passes_dataset_driven_contract_to_runner(
     # reads insight files with json.loads, so YAML-authored files must not
     # reach it raw); platform ids still pass through verbatim.
     assert runner.captured.insight == str(paths.experiment / "resolved" / "insight.json")
+    assert isinstance(runner.captured.insight, str | Path)
     assert Path(runner.captured.insight).read_text(encoding="utf-8").strip() == "{}"
     # Datasets and the task template are forwarded as DatasetRef URI handles,
     # tagged with a stable id the evaluator adapter uses when building datasets.

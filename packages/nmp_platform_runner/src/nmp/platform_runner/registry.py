@@ -38,6 +38,7 @@ AVAILABLE_CONTROLLERS: dict[str, str] = {
 AVAILABLE_SIDECARS: dict[str, str] = {
     "adapters": "nmp.core.models.sidecars.adapters.main:run",
     "auth-proxy": "nmp.common.auth.workload_proxy.main:run",
+    "clickhouse": "nmp.intake.sidecars.clickhouse:run",
 }
 
 SERVICE_SIDECAR_DEPENDENCIES: dict[str, set[str]] = {

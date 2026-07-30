@@ -44,6 +44,18 @@ network_policies:
           - allow:
               method: GET
               path: /health/ready
+          - allow:
+              method: GET
+              path: /apis/intake/v2/workspaces/**
+          - allow:
+              method: POST
+              path: /apis/intake/v2/workspaces/**
+          - allow:
+              method: PUT
+              path: /apis/intake/v2/workspaces/**
+          - allow:
+              method: GET
+              path: /apis/insights/v2/workspaces/**
     binaries:
       - path: /app/.venv/bin/python
       - path: /app/.venv/bin/python3.13

@@ -1,0 +1,42 @@
+{
+  "domain": "airline",
+  "source_task_id": "{{source_task_id}}",
+  "retrieval_variant": null,
+  "task": {
+    "id": "{{task_id}}",
+    "description": {
+      "purpose": "{{purpose}}",
+      "relevant_policies": null,
+      "notes": null
+    },
+    "user_scenario": {
+      "persona": null,
+      "instructions": {
+        "task_instructions": "{{task_instructions}}",
+        "domain": "airline",
+        "reason_for_call": "{{reason_for_call}}",
+        "known_info": "You are {{name}}.\nYour user id is {{user_id}}.",
+        "unknown_info": null
+      }
+    },
+    "initial_state": null,
+    "evaluation_criteria": {
+      "actions": [],
+      "communicate_info": [],
+      "nl_assertions": [
+        "{{nl_assertions}}"
+      ],
+      "reward_basis": [
+        "DB",
+        "COMMUNICATE"
+      ]
+    },
+    "annotations": null
+  },
+  "expected_actions": [],
+  "expected_communicate_info": [],
+  "reward_basis": [
+    "DB",
+    "COMMUNICATE"
+  ]
+}

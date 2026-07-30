@@ -3,13 +3,29 @@
 
 import subprocess
 from pathlib import Path
+from typing import cast
 
 import pytest
 from nemo_experimentalist_plugin.openshell import launcher
 
+_APPLY_RUNTIME_DEFAULTS = launcher._apply_runtime_defaults
+_START_BRIDGE = launcher._start_bridge
+
+
+@pytest.fixture(autouse=True)
+def isolate_runtime_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Launcher command tests own subprocess wiring, not bridge/provider internals."""
+    monkeypatch.setattr(launcher, "_apply_runtime_defaults", lambda env: None)
+    monkeypatch.setattr(
+        launcher,
+        "_start_bridge",
+        lambda *, workspace, runtime_env: None,
+    )
+    monkeypatch.setattr(launcher, "_configure_providers", lambda env: None)
+
 
 def _completed(
-    argv: object,
+    argv: list[str],
     returncode: int = 0,
     stdout: str = "",
 ) -> subprocess.CompletedProcess:
@@ -119,7 +135,8 @@ def test_missing_default_image_builds_for_selected_host_platform(
         "BAKE_TAG": "local",
         "BUILD_ARCH": "linux/arm64",
     }
-    assert calls[2][1]["env"][launcher.OUTPUT_DIR_ENV] == str((workspace / "output").resolve())
+    run_env = cast(dict[str, str], calls[2][1]["env"])
+    assert run_env[launcher.OUTPUT_DIR_ENV] == str((workspace / "output").resolve())
 
 
 def test_compatible_default_image_is_reused(
@@ -180,3 +197,46 @@ def test_container_platform_url_rewrites_only_loopback(host_url: str, container_
 def test_container_platform_url_rejects_invalid_port() -> None:
     with pytest.raises(launcher.OpenShellLaunchError, match="Invalid NeMo Platform URL"):
         launcher._container_platform_url("http://localhost:not-a-port")
+
+
+def test_runtime_defaults_connect_profile_key_and_select_docker_desktop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_env = {"INFERENCE_API_KEY": "sk-test"}
+    monkeypatch.setattr(launcher.platform, "system", lambda: "Darwin")
+
+    _APPLY_RUNTIME_DEFAULTS(runtime_env)
+
+    assert runtime_env["NVIDIA_API_KEY"] == "sk-test"
+    assert runtime_env["EXPERIMENTALIST_SMART_MODEL_NAME"] == launcher.DEFAULT_SMART_MODEL
+    assert runtime_env["NEMO_EXPERIMENTALIST_POLICY_MODE"] == "docker-desktop"
+
+
+def test_explicit_ready_bridge_is_reused(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(launcher, "_bridge_ready", lambda url: url == "http://127.0.0.1:8765")
+    runtime_env = {
+        launcher.BRIDGE_URL_ENV: "http://host.docker.internal:8765",
+        launcher.BRIDGE_TOKEN_ENV: "secret",
+    }
+
+    managed = _START_BRIDGE(workspace=tmp_path, runtime_env=runtime_env)
+
+    assert managed is None
+
+
+def test_explicit_bridge_requires_token(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(launcher, "_bridge_ready", lambda url: True)
+
+    with pytest.raises(launcher.OpenShellLaunchError, match=launcher.BRIDGE_TOKEN_ENV):
+        _START_BRIDGE(
+            workspace=tmp_path,
+            runtime_env={
+                launcher.BRIDGE_URL_ENV: "http://host.docker.internal:8765",
+            },
+        )

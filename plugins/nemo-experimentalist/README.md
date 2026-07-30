@@ -33,19 +33,21 @@ commit, currently one past `v0.0.6` that carries an MCP transport-timeout fix.
 
 ## Insight-to-experiment flow
 
-The supported handoff is:
+The Tau2 dogfood fixture exercises the supported handoff with three commands
+after the Platform is running:
 
-```text
-nemo insights analyze → .nemo-optimizer/insights.yaml or Platform Insight ID
-                    → nemo experimentalist doctor
-                    → nemo experimentalist run
+```bash
+cd examples/tau2-nemo-oo-agent
+nemo traces import state-v9
+nemo insights analyze
+nemo experimentalist run
 ```
 
-Run `nemo insights analyze` using the Platform Insights plugin and its
-documented trace, workspace, and output options. The producer may write the
-local profile default, `.nemo-optimizer/insights.yaml`, or persist an Insight
-on Platform and report its ID. The Experimentalist does not analyze traces,
-schedule analysis, or host an Insight API.
+See the fixture's [four-command playbook](examples/tau2-nemo-oo-agent/README.md)
+for the required Platform services and credential file. The trace import writes
+the selected workspace and corpus time range into profile-local workflow
+context. Insights writes `.nemo-optimizer/insights.yaml`; Experimentalist reads
+both files without workspace, base-URL, or Insight flags.
 
 From an agent directory with an `optimizer.yaml` profile, validate the
 effective inputs:
@@ -68,8 +70,9 @@ From a source checkout, the CLI reuses a compatible
 `local/nmp-experimentalist:local` image and otherwise builds that image for the
 host architecture. Set `NEMO_EXPERIMENTALIST_IMAGE` to use a different image.
 
-Configure the OpenShell inference and bridge providers before running an
-experiment. Model names remain ordinary environment settings:
+The CLI starts an ephemeral Harbor bridge and configures the dedicated
+OpenShell bridge, inference, and source-control providers for each run. Model
+names remain ordinary environment settings:
 
 ```bash
 export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5.5

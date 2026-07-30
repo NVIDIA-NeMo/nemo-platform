@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import ClassVar
@@ -24,6 +25,11 @@ from nemo_insights_plugin.contracts.profile import (
     discover_profile,
     load_env_file,
     resolve_base_url,
+)
+from nemo_insights_plugin.contracts.workflow_context import (
+    WorkflowContext,
+    load_workflow_context,
+    resolve_context_base_url,
 )
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
@@ -50,6 +56,7 @@ class _ResolvedAnalysis:
     insights_output: Path | None
     profile_output: Path | None
     profile_dir: Path | None
+    since: datetime | None
     spec_checks: tuple[CheckResult, ...]
 
 
@@ -110,8 +117,14 @@ def _resolve_analysis(
         raise ProfileError(
             "No --agent given and no optimizer.yaml profile found. Pass --agent or run from a directory with a profile."
         )
+    context: WorkflowContext | None = None
+    if profile is not None:
+        context = load_workflow_context(profile.profile_dir, agent=profile.agent)
+
     if workspace is not None:
         resolved_workspace = workspace
+    elif context is not None:
+        resolved_workspace = context.workspace
     else:
         resolved_workspace = profile.workspace if profile is not None else DEFAULT_WORKSPACE
 
@@ -124,7 +137,7 @@ def _resolve_analysis(
             spec_error = str(exc)
     spec_content, spec_checks = read_agent_spec(spec_path, spec_error)
 
-    resolved_base_url = resolve_base_url(base_url)
+    resolved_base_url = resolve_context_base_url(base_url, context)
     profile_output = None
     if insights_output is None and profile is not None:
         profile_output = profile.profile_dir / ".nemo-optimizer" / "insights.yaml"
@@ -139,6 +152,7 @@ def _resolve_analysis(
         insights_output=resolved_output,
         profile_output=profile_output,
         profile_dir=profile.profile_dir if profile is not None else None,
+        since=(context.trace_since if context is not None and context.workspace == resolved_workspace else None),
         spec_checks=tuple(spec_checks),
     )
 
@@ -164,6 +178,7 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             client=client,
             insights_output=analysis.insights_output,
             verbose=verbose,
+            since=analysis.since,
         )
     except AgentRunError as exc:
         detail = _one_line_error(exc).rstrip(".")

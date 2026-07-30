@@ -33,9 +33,10 @@ process:
   run_as_group: sandbox
 
 # Model calls use the gateway-managed inference.local route. Direct Platform
-# access is limited to the readiness probe. Provider profiles add the selected
-# Harbor bridge and source-control endpoints; the sandbox never receives
-# Docker API access.
+# access is limited to readiness plus the Intake/Insights APIs used to load the
+# selected traces and mirror optimization results. Provider profiles add the
+# selected Harbor bridge and source-control endpoints; the sandbox never
+# receives Docker API access.
 network_policies:
   nemo_platform:
     name: nemo-platform
@@ -48,6 +49,18 @@ network_policies:
           - allow:
               method: GET
               path: /health/ready
+          - allow:
+              method: GET
+              path: /apis/intake/v2/workspaces/**
+          - allow:
+              method: POST
+              path: /apis/intake/v2/workspaces/**
+          - allow:
+              method: PUT
+              path: /apis/intake/v2/workspaces/**
+          - allow:
+              method: GET
+              path: /apis/insights/v2/workspaces/**
     binaries:
       - path: /app/.venv/bin/python
       - path: /app/.venv/bin/python3.13
