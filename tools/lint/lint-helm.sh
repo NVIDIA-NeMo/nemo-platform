@@ -54,6 +54,16 @@ external_clickhouse_secret_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM
 grep -Fq "externalClickhouse.existingSecret is required when clickhouse.enabled=false" \
   <<<"${external_clickhouse_secret_output}"
 
+external_clickhouse_password_key_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set clickhouse.enabled=false \
+  --set externalClickhouse.host=clickhouse.example.internal \
+  --set externalClickhouse.existingSecret=clickhouse-credentials 2>&1) && {
+  echo "External ClickHouse accepted a missing password key" >&2
+  exit 1
+}
+grep -Fq "externalClickhouse.existingSecretPasswordKey is required when clickhouse.enabled=false" \
+  <<<"${external_clickhouse_password_key_output}"
+
 # Generated embedded credentials must never use the shipped username as a known
 # password, and all consumers must reference the generated `password` key.
 generated_clickhouse_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
