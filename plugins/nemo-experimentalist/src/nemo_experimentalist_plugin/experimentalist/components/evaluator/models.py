@@ -17,7 +17,7 @@ from types import TracebackType
 from typing import Any, Literal, TypeAlias
 from urllib.parse import unquote, urlparse
 
-from pydantic import BaseModel, Field, SerializeAsAny
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
 DataValue: TypeAlias = str | int | float | bool | dict[str, Any] | list[Any] | None
 MetricValue: TypeAlias = float | int
@@ -301,7 +301,28 @@ class Dataset(ABC):
 
 
 class TrialResult(BaseModel):
-    """One task execution by one agent attempt."""
+    """Deprecated compatibility contract for one task execution by one agent attempt.
+
+    Experimentalist still requires this shape for both Harbor evaluator paths,
+    optimizer analysis, and persisted candidate details. Coordinate any contract
+    change with the Evaluator SDK team and update the locked
+    compatibility tests deliberately.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "deprecated": True,
+            "x-nemo-contract-status": "legacy",
+            "x-nemo-coordination-required": True,
+            "x-nemo-migration-target": "nemo_evaluator_sdk.agent_eval.trials.AgentEvalTrial",
+            "x-nemo-migration-kind": "adapter",
+            "x-nemo-migration-blockers": [
+                "Retire the harbor_native evaluator.",
+                "Preserve full Harbor exception_info in AgentEvalTrial metadata.",
+                "Replace the shared job-directory adapter without changing trial semantics.",
+            ],
+        }
+    )
 
     id: str = Field(description="Stable trial identifier within the evaluation run.")
     task_id: str = Field(description="Stable task identifier within the dataset.")
@@ -322,7 +343,29 @@ class TrialResult(BaseModel):
 
 
 class EvaluationResult(BaseModel):
-    """Evaluator run output consumed by optimizer and downstream analyzers."""
+    """Deprecated compatibility contract consumed by optimizer and analyzers.
+
+    ``AgentEvalResult`` is an end-to-end convergence target, not a drop-in
+    replacement. Experimentalist retains this model until evaluation, aggregation,
+    analysis, ranking, and persistence adopt the SDK result contract together.
+    Coordinate any contract change and update the locked compatibility tests
+    deliberately.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "deprecated": True,
+            "x-nemo-contract-status": "legacy",
+            "x-nemo-coordination-required": True,
+            "x-nemo-migration-target": "nemo_evaluator_sdk.agent_eval.results.AgentEvalResult",
+            "x-nemo-migration-kind": "end-to-end",
+            "x-nemo-migration-blockers": [
+                "Complete the TrialResult migration.",
+                "Migrate Evaluator.run(), aggregation, analyzers, ranking, and persisted candidate details.",
+                "Define adoption of SDK scoring and summary semantics.",
+            ],
+        }
+    )
 
     id: str = Field(description="Stable identifier for one evaluator run.")
     aggregate_metrics: dict[str, float | int] = Field(

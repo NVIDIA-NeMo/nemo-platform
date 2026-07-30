@@ -163,9 +163,9 @@ long docstrings in `loop.py` (`select_diverse_survivors`, `merge_analysis`,
 
 ---
 
-## 4. The evaluator seam
+## 4. The evaluator interface
 
-This is the part you are extending. The loop never mentions Harbor: it asks a
+The loop never mentions Harbor: it asks a
 `DatasetFactory` and an `EvaluatorFactory` for objects keyed by
 `deps.evaluator_type`, then talks to abstract types only.
 
@@ -264,6 +264,30 @@ never by name similarity.
 `Evaluator.run()` is a **template method** in the base class: it normalizes
 options, calls the abstract `_run`, aggregates metrics, and wraps everything in
 an `EvaluationResult`. A subclass only implements `_run`.
+
+### Result compatibility boundary
+
+`TrialResult` and `EvaluationResult` are deprecated **compatibility contracts**:
+their JSON Schemas carry a static legacy marker so a shape or semantic change
+requires an intentional test update and reviewer-visible coordination. They do
+not emit runtime warnings, and both remain supported and required today.
+
+| Contract | Why it remains | SDK migration target | Migration boundary |
+|---|---|---|---|
+| `TrialResult` | Both Harbor evaluator types read one shared job-directory adapter; analyzers and persisted candidates consume its short task ids, metrics, traces, attempts, and error shape | `AgentEvalTrial` | Adapter migration after `harbor_native` is retired, the SDK preserves full Harbor `exception_info`, and consuming SDK trials retains the current semantics |
+| `EvaluationResult` | `Evaluator.run()` owns Experimentalist aggregation, and the optimizer consumes its aggregate metrics and trials directly | `AgentEvalResult` | End-to-end convergence—not a drop-in replacement—after trial migration plus coordinated changes to scoring, summaries, analyzers, ranking, and persistence |
+
+The deferred rationale comes from the
+[PR #955 `AgentEvaluator` design discussion](https://github.com/NVIDIA-NeMo/nemo-platform/pull/955#discussion_r3677462046);
+the concrete trial-adapter follow-up is tracked in
+[AALGO-442](https://linear.app/nvidia/issue/AALGO-442/experimentalist-consume-agentevaltrial-instead-of-re-parsing-the).
+
+The input and authoring side is not deprecated. `Dataset` and `DatasetRef`,
+`Task`, `ResourceRef`, metric models, dependency models, and
+`HarborDependencyRuntime` retain Experimentalist-specific validation,
+subsetting, resources, and lifecycle responsibilities without one-to-one SDK
+replacements. `Dataset` is an abstract Python class rather than a Pydantic model,
+so it has no JSON Schema metadata.
 
 ### Adding another evaluator
 
