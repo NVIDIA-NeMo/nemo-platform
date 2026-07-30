@@ -20,10 +20,11 @@ spec:
       {{- include "nemo-platform.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.clickhouse.podAnnotations }}
       annotations:
+        checksum/clickhouse-credentials: {{ include "nemo-common.clickhouse.credentialsChecksum" . }}
+        {{- with .Values.clickhouse.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         app.kubernetes.io/component: clickhouse
         {{- include "nemo-platform.labels" . | nindent 8 }}

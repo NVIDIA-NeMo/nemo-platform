@@ -27,6 +27,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
         {{- include "nemo-platform.podAnnotations" . | nindent 8 }}
+        checksum/clickhouse-credentials: {{ include "nemo-common.clickhouse.credentialsChecksum" . }}
       labels:
         app.kubernetes.io/component: nmp-api
         {{- include "nemo-platform.labels" . | nindent 8 }}
