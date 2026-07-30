@@ -139,7 +139,7 @@ def test_rewrite_fabric_config_base_urls_rebases_igw_host() -> None:
                         "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
                     },
                 }
-            }
+            },
         },
     }
     result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
