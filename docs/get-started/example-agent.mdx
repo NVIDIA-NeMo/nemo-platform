@@ -1,0 +1,80 @@
+---
+title: "Get started with an example agent"
+description: ""
+---
+
+This provides a guide for how you can quickly load agent traces into your NeMo Platform, run the analyst agent to discover issues with that agent, and launch an experimentalist to fix those issues. This is meant as an example to show how the whole platform works. You can also jump straight to setting up your agent with NeMo Platform.
+
+## Prerequisites
+
+- Git, GNU Make, uv, pnpm, Docker
+- An NVIDIA Inference Gateway virtual key (`sk-...`) from `inference.nvidia.com`.
+
+## 1. Clone and bootstrap NeMo Platform
+
+This step will walk you through setting up NeMo Platform on your local computer. It will install the platform and its dependencies.
+
+```bash
+git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
+cd nemo-platform
+make bootstrap
+```
+
+## 2. Start NeMo Platform
+
+Once you have the platform installed and configured, you can start it. Run this block from the repository root. This will start the platform in a background process:
+
+```bash
+set -a
+source packages/nmp_platform/config/local.env
+set +a
+services/intake/scripts/spans/run_clickhouse.sh
+uv run nemo services start --config packages/nmp_platform/config/local.yaml
+```
+
+You should now be able to navigate to `http://localhost:8080` and see the NeMo Platform web UI.
+
+## 3. Prepare Tau2 and run the airline agent
+
+Now that we have a running NeMo Platform, it's time to load up some data! This example uses the τ-Bench from Sierra. It's a great representation of a simplified agent that performs a business-critical task. Our first step will be to download the tau2 repository and install the dependencies to run it.
+
+Then, we'll run a script to go through 30 of the tasks from the Tau 2 Airline dataset. In order to make our example more realistic and representative of the kind of agent data we typically see in production, we won't record whether the tasks passed verification – we want to see if we can gain useful insights even without ground truth data. This could take up to 20 minutes, and will cost about a dollar.
+
+```bash
+git init tmp/tau2-bench
+git -C tmp/tau2-bench remote add origin https://github.com/sierra-research/tau2-bench.git
+git -C tmp/tau2-bench fetch --depth 1 origin 8ebb7499622fc2be9b9d510d6f7a7653461f4f29
+git -C tmp/tau2-bench checkout --detach FETCH_HEAD
+uv --directory tmp/tau2-bench sync --frozen
+uv --directory tmp/tau2-bench run --frozen tau2 check-data
+
+export NMP_BASE_URL=http://localhost:8080
+export INFERENCE_API_KEY=sk-...
+export OPENAI_API_KEY="$INFERENCE_API_KEY"
+export OPENAI_API_BASE=https://inference-api.nvidia.com/v1
+
+uv run --directory plugins/nemo-insights --frozen \
+  python -m testbed run tau2-airline \
+  --base "$NMP_BASE_URL" \
+  --set include_rewards=false \
+  --set tau2_repo="$PWD/tmp/tau2-bench"
+```
+
+The testbed runs the 30-task airline train split and ingests realistic traces into the `tau2-airline` workspace. At this point you can navigate to the traces view and see the traces from the agent.
+
+## 4. Run the Analyst
+
+Now that we have data in our system, we can run the analyst agent to understand the ways that our agent is performing well, and where it is falling down. The goal of the analyst agent is to crawl production data, and determine where your agent is falling down or disappointing your customers.
+
+If the analyst discovers issues in your application, it will create what we call an 'insight'. An insight is a human-readable description of a problem in your agentic system. The closest analogy is a bug report. They don't try to describe why an issue happened or the code you should change to fix it, and they should be understandable to a user of your agent.
+
+Let's run it:
+
+```bash
+uv run --frozen nemo insights analyze \
+  --agent tau2-airline \
+  --workspace tau2-airline \
+  --base-url "$NMP_BASE_URL"
+```
+
+This will take a few minutes to run. Once it's done, you can navigate to the insights page to see the issues the analyst discovered in the τ-Bench Airline Agent.

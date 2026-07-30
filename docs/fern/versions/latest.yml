@@ -23,6 +23,9 @@ navigation:
                 path: ../../get-started/concepts/projects.mdx
               - page: Workspaces
                 path: ../../get-started/concepts/workspaces.mdx
+          - page: Example Agent
+            hidden: true
+            path: ../../get-started/example-agent.mdx
       - section: Self-Managed Deployment
         slug: self-managed-deployment
         contents:
