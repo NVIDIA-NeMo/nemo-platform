@@ -457,15 +457,38 @@ def test_merge_executor_profiles_skips_container_backends_for_none_runtime(caplo
     ]
 
     caplog.set_level(logging.WARNING)
-    merged = merge_executor_profiles(custom, defaults, runtime=Runtime.NONE)
+    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=False) as validate:
+        merged = merge_executor_profiles(custom, defaults, runtime=Runtime.NONE)
 
     assert [(p.provider, p.profile, p.backend) for p in merged] == [
         ("subprocess", "default", "subprocess"),
         ("subprocess", "custom-subprocess", "subprocess"),
     ]
+    validate.assert_called_once()
     assert "Skipping executor profile cpu/custom-docker" in caplog.text
     assert "Skipping executor profile gpu/custom-k8s" in caplog.text
     assert "Skipping executor profile gpu_distributed/custom-volcano" in caplog.text
+
+
+def test_merge_executor_profiles_keeps_docker_executor_for_none_runtime_when_docker_is_available():
+    defaults = get_default_executor_profiles_for_runtime(Runtime.NONE, DefaultExecutionProfileConfig())
+    custom = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="workload",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        )
+    ]
+
+    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=True) as validate:
+        merged = merge_executor_profiles(custom, defaults, runtime=Runtime.NONE)
+
+    assert [(p.provider, p.profile, p.backend) for p in merged] == [
+        ("subprocess", "default", "subprocess"),
+        ("cpu", "workload", "docker"),
+    ]
+    validate.assert_called_once()
 
 
 def test_backend_registry_supports_gpu_distributed_kubernetes_job_override():
@@ -628,7 +651,8 @@ def test_merge_executor_profiles_keeps_subprocess_override_for_none_runtime(capl
         ),
     ]
 
-    merged = merge_executor_profiles(custom_executors, default_executors, runtime=Runtime.NONE)
+    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=False):
+        merged = merge_executor_profiles(custom_executors, default_executors, runtime=Runtime.NONE)
 
     assert [(p.provider, p.profile, p.backend) for p in merged] == [("subprocess", "default", "subprocess")]
     assert type(merged[0].config) is SubprocessJobExecutionProfileConfig

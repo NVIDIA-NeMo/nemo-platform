@@ -3,6 +3,7 @@
 
 import logging
 
+from nemo_platform_plugin.config import validate_docker_available
 from nmp.common.config import Runtime
 from nmp.core.jobs.app.profiles import ExecutionProfileT
 from nmp.core.jobs.controllers.backends.docker import DockerJobExecutionProfile, DockerJobExecutionProfileConfig
@@ -20,7 +21,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-_RUNTIME_NONE_UNSUPPORTED_BACKENDS = frozenset({"docker", "kubernetes_job", "volcano_job"})
+_RUNTIME_NONE_UNSUPPORTED_BACKENDS = frozenset({"kubernetes_job", "volcano_job"})
 
 
 class DefaultExecutionProfileConfig(BaseModel):
@@ -136,10 +137,12 @@ def merge_executor_profiles(
 
     If a custom profile has the same provider and profile as a default profile, the custom profile will override the default.
     If the custom profile matching a default profile has custom config values, those should override the default config values.
-    When runtime is NONE, custom container-backed profiles are skipped so local startup does not initialize unavailable runtimes.
+    When runtime is NONE, Kubernetes-backed custom profiles are skipped. Docker custom profiles are skipped only when
+    Docker is unavailable, so explicit Docker executors can still run in compose/test harnesses with a mounted socket.
     """
 
     merged_executors: dict[tuple[str, str], ExecutionProfileT] = {}
+    docker_available: bool | None = None
 
     # Add default profiles first
     for executor in default_executors:
@@ -155,6 +158,17 @@ def merge_executor_profiles(
                 custom_executor.backend,
             )
             continue
+        if runtime == Runtime.NONE and custom_executor.backend == "docker":
+            if docker_available is None:
+                docker_available = validate_docker_available()
+            if not docker_available:
+                logger.warning(
+                    "Skipping executor profile %s/%s using backend '%s' because platform runtime is NONE and Docker is unavailable.",
+                    custom_executor.provider,
+                    custom_executor.profile,
+                    custom_executor.backend,
+                )
+                continue
 
         key = (custom_executor.provider, custom_executor.profile)
 
