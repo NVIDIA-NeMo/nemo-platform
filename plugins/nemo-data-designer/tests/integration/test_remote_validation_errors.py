@@ -118,6 +118,27 @@ def test_mcp_tools_not_allowed() -> None:
         _assert_error(dd_client, builder, ["Tool configs are not supported"])
 
 
+def test_custom_columns_not_supported() -> None:
+    @dd.custom_column_generator(required_columns=["school_subject"])
+    def append_custom_value(row: dict) -> dict:
+        row["custom_value"] = f"{row['school_subject']} custom"
+        return row
+
+    builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
+    builder.add_column(
+        column_config=dd.SamplerColumnConfig(
+            name="school_subject",
+            sampler_type=dd.SamplerType.CATEGORY,
+            params=dd.CategorySamplerParams(values=["math", "science", "history"]),
+        )
+    )
+    builder.add_column(column_config=dd.CustomColumnConfig(name="custom_value", generator_function=append_custom_value))
+
+    with u.make_mock_client_context() as client_context:
+        dd_client = u.make_dd_client(client_context)
+        _assert_error(dd_client, builder, ["Custom columns are not supported"])
+
+
 def test_seed_dataset_bad_token() -> None:
     bad_token_secret = "unrecognized-secret-ref"
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
