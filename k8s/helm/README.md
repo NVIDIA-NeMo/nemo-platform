@@ -40,6 +40,17 @@ non-critical single-node installations. It does not provide replication or
 automatic backups. For a production deployment that requires high availability,
 set `clickhouse.enabled` to `false` and provide a separately managed ClickHouse:
 
+First, create the credentials Secret in the Helm release namespace. The Secret
+key must match `externalClickhouse.existingSecretPasswordKey`:
+
+```shell
+kubectl create secret generic clickhouse-credentials \
+  --namespace <release-namespace> \
+  --from-literal=password='<clickhouse-password>'
+```
+
+Then configure the external connection:
+
 ```yaml
 clickhouse:
   enabled: false
@@ -179,7 +190,7 @@ and
 | clickhouse.auth.database | string | `"intake"` | ClickHouse database used by Intake. |
 | clickhouse.auth.existingSecret | string | `""` | Name of an existing Secret containing the ClickHouse password. If empty, the chart creates one. |
 | clickhouse.auth.existingSecretPasswordKey | string | `"password"` | Key in auth.existingSecret containing the ClickHouse password. |
-| clickhouse.auth.password | string | `"nemo"` | ClickHouse password used when auth.existingSecret is empty. |
+| clickhouse.auth.password | string | `""` | ClickHouse password used when auth.existingSecret is empty. If empty, the chart generates a random password. |
 | clickhouse.auth.username | string | `"nemo"` | ClickHouse username used by Intake. |
 | clickhouse.enabled | bool | `true` | Whether to deploy the embedded ClickHouse. Set to false to use `externalClickhouse`. |
 | clickhouse.image.pullPolicy | string | `"IfNotPresent"` | ClickHouse image pull policy. |

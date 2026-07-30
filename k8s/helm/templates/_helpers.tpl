@@ -420,7 +420,11 @@ Key containing the ClickHouse password used by Intake.
 */}}
 {{- define "nemo-common.clickhouse.passwordKey" -}}
 {{- if .Values.clickhouse.enabled -}}
+{{- if .Values.clickhouse.auth.existingSecret -}}
 {{- .Values.clickhouse.auth.existingSecretPasswordKey | default "password" -}}
+{{- else -}}
+password
+{{- end -}}
 {{- else -}}
 {{- required "externalClickhouse.existingSecretPasswordKey is required when clickhouse.enabled=false" .Values.externalClickhouse.existingSecretPasswordKey -}}
 {{- end -}}

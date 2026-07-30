@@ -54,6 +54,19 @@ external_clickhouse_secret_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM
 grep -Fq "externalClickhouse.existingSecret is required when clickhouse.enabled=false" \
   <<<"${external_clickhouse_secret_output}"
 
+# Generated embedded credentials must never use the shipped username as a known
+# password, and all consumers must reference the generated `password` key.
+generated_clickhouse_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set clickhouse.auth.existingSecretPasswordKey=not-the-generated-key)
+if grep -Fq "bmVtbw==" <<<"${generated_clickhouse_output}"; then
+  echo "Embedded ClickHouse rendered the known 'nemo' password" >&2
+  exit 1
+fi
+if grep -Fq "not-the-generated-key" <<<"${generated_clickhouse_output}"; then
+  echo "Embedded ClickHouse referenced a key not created by its generated Secret" >&2
+  exit 1
+fi
+
 # Validate the Helm chart by rendering templates with all values files in ci/ directory
 shopt -s nullglob
 for value_file in "${HELM_FOLDER}"/ci/*.yaml; do

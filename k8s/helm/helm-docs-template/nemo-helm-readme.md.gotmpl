@@ -40,6 +40,17 @@ non-critical single-node installations. It does not provide replication or
 automatic backups. For a production deployment that requires high availability,
 set `clickhouse.enabled` to `false` and provide a separately managed ClickHouse:
 
+First, create the credentials Secret in the Helm release namespace. The Secret
+key must match `externalClickhouse.existingSecretPasswordKey`:
+
+```shell
+kubectl create secret generic clickhouse-credentials \
+  --namespace <release-namespace> \
+  --from-literal=password='<clickhouse-password>'
+```
+
+Then configure the external connection:
+
 ```yaml
 clickhouse:
   enabled: false
