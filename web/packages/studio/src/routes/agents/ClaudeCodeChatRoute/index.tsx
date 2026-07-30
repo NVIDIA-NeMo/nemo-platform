@@ -44,7 +44,7 @@ const ClaudeCodeChatErrorState = ({ selectedSessionId }: { selectedSessionId?: s
     <Stack className="h-full w-full" padding="density-2xl">
       <Stack className="mx-auto min-h-0 w-full max-w-180 flex-1" align="center" justify="center">
         <Banner kind="inline" status="error">
-          Could not load Claude Code session.
+          Could not load NeMo Agent session.
         </Banner>
       </Stack>
     </Stack>
@@ -68,7 +68,7 @@ export const ClaudeCodeChatRoute: FC = () => {
   useBreadcrumbs({
     items: [
       { slotLabel: 'Dashboard', href: getWorkspaceDashboardRoute(workspace) },
-      { slotLabel: 'Code Agent' },
+      { slotLabel: 'NeMo Agent' },
     ],
   });
 
@@ -131,7 +131,7 @@ export const ClaudeCodeChatRoute: FC = () => {
       artifacts={artifacts}
       onNewChat={startNewChat}
     >
-      <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
+      <AccessibleTitle title={`NeMo Agent chat for ${workspace}`}>
         <Stack className="h-full w-full py-density-lg">
           <Stack className="min-h-0 w-full flex-1">
             <ClaudeCodeChatThread chat={chat} onReset={handleChatReset} />

@@ -206,7 +206,7 @@ describe('Claude Code API helpers', () => {
 
     expect(onPermissionRequest).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Claude Code permission request was malformed' })
+      expect.objectContaining({ message: 'NeMo Agent permission request was malformed' })
     );
   });
 
@@ -243,7 +243,7 @@ describe('Claude Code API helpers', () => {
 
     expect(onPermissionRequest).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Claude Code permission request was malformed' })
+      expect.objectContaining({ message: 'NeMo Agent permission request was malformed' })
     );
   });
 

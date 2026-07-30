@@ -35,7 +35,7 @@ SELECT_AGENT_TOOL: dict[str, Any] = {
         "Ask the Studio user to choose an agent from a visual dropdown. "
         "This is the required way to get an agent name in Studio: call it whenever a workflow needs the "
         "user to name, pick, confirm, or disambiguate an agent (including choosing among deployed agents). "
-        "Always prefer this over plain-text prompting and over Claude Code's AskUserQuestion tool for agent choices. "
+        "Always prefer this over asking the user to type an agent name. "
         "Returns the chosen agent name, or status=skipped / status=error if the user dismisses the dropdown."
     ),
     "inputSchema": {
@@ -82,7 +82,7 @@ SELECT_DATASET_FILE_TOOL: dict[str, Any] = {
         "in Studio (for example an anonymizer or evaluation input, or a CSV/Parquet file). Call it whenever "
         "a workflow needs the user to pick a fileset or a file inside one, instead of asking for a fileset "
         "reference, path, or '<workspace>/<fileset>#<file>' string in plain text. "
-        "Always prefer this over plain-text prompting and over AskUserQuestion for file/fileset choices. "
+        "Always prefer this over asking the user to type a file or fileset reference. "
         "Pass accepted_file_types (for example ['.csv', '.parquet']) to constrain the picker. "
         "Returns dataset_fileset and dataset_path, which you can combine as '<fileset>#<path>' when a tool "
         "needs a fileset reference. Returns status=skipped / status=error if the user dismisses the picker."
@@ -179,7 +179,7 @@ STUDIO_UI_TOOL_NAMES = (
 
 STUDIO_CODING_AGENT_CONTEXT = "\n".join(
     [
-        "You are running inside NeMo Studio's Code Agent chat.",
+        "You are NeMo Agent, running inside NeMo Studio.",
         (
             "NeMo Studio and the NeMo Platform API are already installed, set up, and running for this "
             "workspace. Treat the platform as healthy and available."
@@ -210,7 +210,7 @@ STUDIO_CODING_AGENT_CONTEXT = "\n".join(
             "plain-text question whenever a suitable tool exists."
         ),
         (
-            "These needs are mandatory tool calls, not plain-text questions and not AskUserQuestion: "
+            "These needs are mandatory tool calls, not plain-text questions: "
             "use mcp__nemo_studio__select_agent whenever you need the user to name, pick, confirm, or "
             "disambiguate an agent (including among deployed agents); "
             "mcp__nemo_studio__select_model for model names; "
@@ -220,14 +220,13 @@ STUDIO_CODING_AGENT_CONTEXT = "\n".join(
             "and mcp__nemo_studio__select_eval_config for evaluation config files."
         ),
         (
-            "Never use AskUserQuestion or a plain-text question to choose an agent, model, fileset, "
+            "Never use a plain-text question to choose an agent, model, fileset, "
             "dataset or input file, or eval config; those each have a dedicated select_* tool you must "
             "call instead."
         ),
         (
             "For clarification, multiple-choice, yes/no, or freeform questions that do NOT map to one of "
-            "the select_* tools, use Claude Code's AskUserQuestion tool rather than a questionnaire "
-            "in markdown."
+            "the select_* tools, ask one concise plain-text question."
         ),
         (
             "Only fall back to plain chat questions when no suitable UI tool exists, the user already "

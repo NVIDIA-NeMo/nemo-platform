@@ -556,6 +556,9 @@ extra-paths = [
   # nemo-agents plugin is not a workspace member; add its src so ty can
   # resolve nemo_agents_plugin imports when checking plugin test files.
   "plugins/nemo-agents/src",
+  # The built-in NeMo Agent is a standalone deployable with its own lockfile;
+  # add its src so ty can resolve nemo_agent imports from its tests.
+  "agents/nemo-agent-local/src",
   # example-plugin is not a workspace member; add its src so ty can
   # resolve nmp.example_plugin imports when checking plugin test files.
   "plugins/example-plugin/src",

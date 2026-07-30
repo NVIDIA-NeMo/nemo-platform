@@ -277,7 +277,7 @@ describe('ClaudeCodeHistoryPanel', () => {
     expect(screen.getByText('No artifacts yet')).toBeInTheDocument();
   });
 
-  it('lists Claude Code skills in the expanded skills block', async () => {
+  it('lists NeMo Agent skills in the expanded skills block', async () => {
     const user = userEvent.setup();
     render(
       <ClaudeCodeHistoryPanel

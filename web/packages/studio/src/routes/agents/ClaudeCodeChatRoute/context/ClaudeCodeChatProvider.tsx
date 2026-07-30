@@ -74,7 +74,7 @@ export const ClaudeCodeChatProvider: FC<ClaudeCodeChatProviderProps> = ({
       } catch (error: unknown) {
         if (requestedSessionIdRef.current !== trimmedSessionId) return;
         setLoadStatus('error');
-        toast.error(error instanceof Error ? error.message : 'Could not load Claude Code session.');
+        toast.error(error instanceof Error ? error.message : 'Could not load NeMo Agent session.');
       }
     },
     [applySession, sessionId, toast]

@@ -120,7 +120,7 @@ export const SkillActionSection: FC<SkillActionSectionProps> = ({
       <div className="w-full" data-testid="skill-actions-empty">
         <Empty
           title="No skills found"
-          description="Claude Code skills will appear here once they are available in this workspace."
+          description="NeMo Agent skills will appear here once they are available in this workspace."
         />
       </div>
     );

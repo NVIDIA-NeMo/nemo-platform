@@ -121,7 +121,7 @@ export const parseJsonObject = (value: string): unknown => {
   try {
     return JSON.parse(value) as unknown;
   } catch (error) {
-    logger.error('Failed to parse Claude Code stream JSON', error);
+    logger.error('Failed to parse NeMo Agent stream JSON', error);
     return undefined;
   }
 };

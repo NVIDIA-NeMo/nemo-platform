@@ -61,7 +61,7 @@ export const HistoryPanelContents = ({
       {error && (
         <div className="px-density-md py-density-sm">
           <Banner kind="inline" status="error">
-            Could not load Claude history.
+            Could not load NeMo Agent history.
           </Banner>
         </div>
       )}
@@ -80,7 +80,7 @@ export const HistoryPanelContents = ({
         </div>
       ) : !error ? (
         <Flex className="min-h-0 flex-1" align="center" justify="center">
-          <Empty title="No chats yet" description="Claude Code sessions will appear here." />
+          <Empty title="No chats yet" description="NeMo Agent sessions will appear here." />
         </Flex>
       ) : null}
     </>

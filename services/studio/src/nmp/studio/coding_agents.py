@@ -9,16 +9,19 @@ import logging
 import os
 import re
 import shutil
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Mapping
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse
 
+import httpx
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from nmp.common.entities.constants import NAME_PATTERN
 from nmp.studio import studio_links
 from nmp.studio.coding_agent_artifacts import (
     ChatArtifactsResponse,
@@ -48,7 +51,7 @@ from nmp.studio.coding_agent_mcp_tools import (
     permission_prompt_tool,
 )
 from nmp.studio.coding_agent_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import NoMatchFound
 
 logger = logging.getLogger(__name__)
@@ -61,6 +64,11 @@ PUBLIC_MCP_UNSUPPORTED_METHOD_ROUTE_NAME = "studio_coding_agent_public_mcp_unsup
 PUBLIC_MCP_PATH = "/studio/api/coding-agents/mcp/{session_id}"
 CLAUDE_MCP_TOOL_TIMEOUT_MS = 2_147_483_647
 MCP_KEEPALIVE_INTERVAL_SECONDS = 15
+DEFAULT_STUDIO_CODING_AGENT_NAME = "nemo-agent-local-poc"
+DEFAULT_STUDIO_CODING_AGENT_BASE_URL = "http://127.0.0.1:8080"
+STUDIO_CODING_AGENT_TIMEOUT_SECONDS = 600.0
+MAX_RETAINED_SESSIONS = 100
+MAX_RETAINED_TURNS_PER_SESSION = 50
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SERVER_CWD = Path(os.getcwd()).resolve()
@@ -69,6 +77,7 @@ STUDIO_CONTEXT_END = "</nemo_studio_context>"
 STUDIO_CONTEXT_USER_REQUEST_PREFIX = "User request:"
 STUDIO_MESSAGE_SUMMARY_START = "<<<NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
 STUDIO_MESSAGE_SUMMARY_END = "<<<END_NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
+WORKSPACE_NAME_RE = re.compile(NAME_PATTERN)
 
 
 class NewSessionResponse(BaseModel):
@@ -83,7 +92,9 @@ class MessageRequest(BaseModel):
     message: str = Field(min_length=1)
     studio_base_url: str | None = Field(default=None, min_length=1)
     studio_pathname: str | None = Field(default=None, min_length=1)
-    workspace: str | None = Field(default=None, min_length=1)
+    workspace: str | None = Field(default=None, min_length=1, pattern=NAME_PATTERN)
+
+    model_config = ConfigDict(regex_engine="python-re")
 
 
 class PermissionDecision(BaseModel):
@@ -127,7 +138,35 @@ _initialized_sessions: set[str] = set()
 _session_streams: dict[str, asyncio.Queue[tuple[str, Any]]] = {}
 _pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _pending_agent_inputs: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
+_session_conversations: dict[str, list[dict[str, str]]] = {}
+_session_mtimes: dict[str, float] = {}
 _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
+
+
+def _evict_oldest_sessions(*, protected_session_ids: set[str] | None = None) -> None:
+    """Evict least-recently-updated inactive sessions from in-memory history."""
+    protected = (protected_session_ids or set()) | set(_session_streams)
+    while len(_session_conversations) > MAX_RETAINED_SESSIONS:
+        candidates = set(_session_conversations) - protected
+        if not candidates:
+            break
+        oldest_session_id = min(
+            candidates,
+            key=lambda session_id: (_session_mtimes.get(session_id, 0), session_id),
+        )
+        _session_conversations.pop(oldest_session_id, None)
+        _session_mtimes.pop(oldest_session_id, None)
+        _initialized_sessions.discard(oldest_session_id)
+
+    for session_id in set(_session_mtimes) - set(_session_conversations):
+        _session_mtimes.pop(session_id, None)
+
+
+def _retain_recent_turns(conversation: list[dict[str, str]]) -> None:
+    """Keep only the most recent complete user/assistant turns."""
+    max_messages = MAX_RETAINED_TURNS_PER_SESSION * 2
+    if len(conversation) > max_messages:
+        del conversation[:-max_messages]
 
 
 @dataclass
@@ -293,7 +332,7 @@ def _build_studio_system_prompt(
     current_studio_route = _trimmed_string(studio_pathname) or "unknown"
     destinations = studio_links.STUDIO_LINK_DESTINATIONS if enabled_destinations is None else enabled_destinations
     lines = [
-        "You are being invoked from inside NeMo Studio's Code Agent chat.",
+        "You are NeMo Agent, running inside NeMo Studio.",
         f"Current Studio workspace: {workspace or 'unknown'}",
         f"Studio UI base URL: {normalized_base_url or 'unknown'}",
         f"Current Studio route path: {current_studio_route}",
@@ -309,9 +348,9 @@ def _build_studio_system_prompt(
         "If studio_link is unavailable and you must construct a Studio UI link manually, use only a known enabled Studio route and prefer a relative Markdown link that starts with /workspaces/ or /models/.",
         "Evaluation pages use /workspaces/{workspace}/evaluation/... with singular evaluation; never nest evaluation links under /dashboard/evaluations/.",
         "Interactive Studio choice behavior:",
-        "Studio ships dedicated visual picker tools. When a picker fits, you MUST use it instead of plain text and instead of AskUserQuestion.",
-        "Whenever you need the user to name, pick, confirm, or disambiguate an agent (including choosing among deployed agents), you MUST call mcp__nemo_studio__select_agent to render the agent dropdown. Never ask for an agent in plain text and never use AskUserQuestion for an agent choice.",
-        "Whenever you need the user to choose a model, you MUST call mcp__nemo_studio__select_model. Never use AskUserQuestion or plain text for a model choice.",
+        "Studio ships dedicated visual picker tools. When a picker fits, you MUST use it instead of plain text.",
+        "Whenever you need the user to name, pick, confirm, or disambiguate an agent (including choosing among deployed agents), you MUST call mcp__nemo_studio__select_agent to render the agent dropdown. Never ask for an agent in plain text.",
+        "Whenever you need the user to choose a model, you MUST call mcp__nemo_studio__select_model. Never ask for a model in plain text.",
         "Whenever you need a fileset, fileset reference, dataset, or input/source data file (including an anonymizer or evaluation input, or a CSV/Parquet file), you MUST call mcp__nemo_studio__select_dataset_file instead of asking for a fileset reference or '<workspace>/<fileset>#<file>' path in plain text; for an evaluation config file, you MUST call mcp__nemo_studio__select_eval_config.",
         "Treat 'which agent', 'pick an agent', 'choose a model', 'which fileset', and 'what is your fileset reference' as mandatory tool-use requests for the matching select_* tool, exactly like Studio link requests are mandatory studio_link requests.",
         "Set the picker title and description to match the current workflow, for example title='Select agent to audit'.",
@@ -319,11 +358,12 @@ def _build_studio_system_prompt(
         "A timeout, disconnect, or other interactive-tool error is not permission to continue or repeat the question in plain text. Leave the input unresolved and tell the user the interactive request must be retried.",
         "A message that needs user input is not complete until you call the matching Studio input tool. Never end a message with only a plain-text question when an interactive tool applies.",
         "In particular, if you need an agent, model, dataset file, or evaluation config, call the matching select_* tool before completing the message; mentioning the needed selection in prose is not a substitute for the tool call.",
-        "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, use Claude Code's AskUserQuestion tool so Studio can render clickable options instead of asking the user to type.",
-        "For AskUserQuestion, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
-        "If you need both a finite choice and free-form text, ask multiple AskUserQuestion questions: first the finite options, then a text question without options.",
-        "Required message-summary behavior:",
-        "At the end of every assistant message to the user, include a short Studio summary block after your normal detailed work.",
+        "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, ask one concise plain-text question.",
+        "Conditional message-summary behavior:",
+        "Use a Studio summary block only after substantive work that benefits from collapsing details.",
+        "A summary block is required when you called one or more tools, ran commands, changed files or platform state, performed a multi-step investigation, or produced a long detailed response.",
+        "For a short informational answer, definition, confirmation, greeting, or simple clarification completed without tool calls, omit the summary block entirely and return the normal answer so Studio shows it in full.",
+        "Do not emit the summary markers with a shortened duplicate of an already concise answer.",
         f"Start the summary block on its own line with {STUDIO_MESSAGE_SUMMARY_START} and end it on its own line with {STUDIO_MESSAGE_SUMMARY_END}.",
         "Inside the summary block, use exactly these fields on separate lines:",
         f"{STUDIO_MESSAGE_SUMMARY_START}",
@@ -338,9 +378,9 @@ def _build_studio_system_prompt(
         "If the detailed message body contains any Markdown links, repeat those links at the bottom of the summary so they remain visible when the details are collapsed.",
         "Put repeated links on separate lines without a heading and without formatting them as a bulleted or numbered list.",
         "Studio will use this block to collapse everything before it behind a 'worked for <time>' accordion and show only the short summary by default.",
-        "When you are interrupted by a permission request, input request, or need to ask the user something, still include the summary block describing what happened so far and what you need next.",
+        "When you are interrupted by a permission request or input request after substantive work, include the summary block describing what happened so far and what you need next.",
+        "When you only need to ask one simple clarification and have not performed substantive work or called a tool, ask it normally without a summary block.",
         "When user input is still required, the summary's final sentence MUST state the exact unresolved selection or action, for example 'Select an agent to continue.' Never show only the investigation result while hiding the request for input in the collapsed details.",
-        "Do not omit the summary block because the message is short.",
         "Prefer NeMo Studio MCP tools and Studio views over CLI commands for user-facing follow-up actions, navigation, inspection, and status/result review.",
         "Do not tell the user to run nemo CLI commands, shell commands, curl commands, or status commands to inspect agents, jobs, evaluations, filesets, models, traces, logs, or results when a Studio view, Studio link, or Studio progress card is available for the same purpose.",
         "Use CLI commands only to perform work that has no Studio UI equivalent, when the user explicitly asks for CLI/debugging, or when you must gather data that Studio tools cannot provide.",
@@ -392,6 +432,53 @@ def _build_studio_system_prompt(
             "The model_chat destination is not enabled in this Studio instance; do not link to the Studio Chat page."
         )
     return "\n".join(lines)
+
+
+def _build_nemo_agent_system_prompt(
+    session_id: str,
+    workspace: str | None,
+    studio_base_url: str | None,
+    studio_pathname: str | None,
+    enabled_destinations: Mapping[str, studio_links.StudioLinkDestination] | None = None,
+) -> str:
+    """Adapt the existing Studio coding-agent rules to the deployed NeMo agent tools."""
+    context = STUDIO_CODING_AGENT_CONTEXT
+    prompt = _build_studio_system_prompt(
+        workspace,
+        studio_base_url,
+        studio_pathname,
+        enabled_destinations,
+    )
+    tool_names = (
+        APPROVAL_TOOL_NAME,
+        SELECT_AGENT_TOOL_NAME,
+        SELECT_EVAL_CONFIG_TOOL_NAME,
+        SELECT_DATASET_FILE_TOOL_NAME,
+        SELECT_MODEL_TOOL_NAME,
+        JOB_PROGRESS_TOOL_NAME,
+        STUDIO_LINK_TOOL_NAME,
+    )
+    for tool_name in tool_names:
+        context = context.replace(f"mcp__{CLAUDE_MCP_SERVER_NAME}__{tool_name}", tool_name)
+        prompt = prompt.replace(f"mcp__{CLAUDE_MCP_SERVER_NAME}__{tool_name}", tool_name)
+    return "\n".join(
+        [
+            context,
+            prompt,
+            "Your identity in this interface is NeMo Agent.",
+            "Do not describe yourself as a different assistant or provider.",
+            "Deployed NeMo agent callback behavior:",
+            (
+                f"For every select_agent, select_model, select_dataset_file, select_eval_config, "
+                f"job_progress, and studio_link call, pass studio_session_id='{session_id}'."
+            ),
+            "Do not reveal the Studio session id to the user.",
+            (
+                "The approval context for nemo_api is injected by Studio and is not a tool argument. "
+                "Read-only calls run immediately; mutating calls will automatically pause for the user's approval."
+            ),
+        ]
+    )
 
 
 def _project_history_dir() -> Path:
@@ -594,43 +681,34 @@ def _extract_assistant_parts(content: Any) -> list[dict[str, Any]]:
 @router.post("/sessions", response_model=NewSessionResponse)
 def create_session() -> NewSessionResponse:
     """Create a new local coding-agent session."""
-    return NewSessionResponse(session_id=str(uuid.uuid4()))
+    session_id = str(uuid.uuid4())
+    _session_conversations[session_id] = []
+    _session_mtimes[session_id] = time.time()
+    _evict_oldest_sessions(protected_session_ids={session_id})
+    return NewSessionResponse(session_id=session_id)
 
 
 @router.get("/history/sessions", response_model=list[HistorySessionResponse])
 def list_history_sessions() -> list[HistorySessionResponse]:
-    """List Claude session histories for the Studio service working directory."""
-    project_dir = _project_history_dir()
-    if not project_dir.is_dir():
-        return []
-
+    """List active retained NeMo Agent sessions."""
+    _evict_oldest_sessions()
     sessions: list[HistorySessionResponse] = []
-    for history_file in project_dir.glob("*.jsonl"):
-        try:
-            uuid.UUID(history_file.stem)
-        except ValueError:
+    for session_id, messages in _session_conversations.items():
+        user_messages = [item["content"] for item in messages if item.get("role") == "user"]
+        if not user_messages:
             continue
-
-        summary = _summarize_history_session(history_file)
-        if summary.message_count == 0:
-            continue
-
-        try:
-            mtime = history_file.stat().st_mtime
-        except OSError:
-            continue
-
+        first_prompt = user_messages[0]
         sessions.append(
             HistorySessionResponse(
-                session_id=history_file.stem,
-                mtime=mtime,
-                title=summary.title,
-                first_prompt=summary.first_prompt or "",
-                message_count=summary.message_count,
-                token_count=summary.token_count,
-                tool_call_count=summary.tool_call_count,
-                tool_calls=summary.tool_calls,
-                chat_artifacts=summary.chat_artifacts,
+                session_id=session_id,
+                mtime=_session_mtimes.get(session_id, 0),
+                title=first_prompt.splitlines()[0][:80],
+                first_prompt=first_prompt,
+                message_count=len(user_messages),
+                token_count=0,
+                tool_call_count=0,
+                tool_calls=[],
+                chat_artifacts=ChatArtifactsResponse(),
             )
         )
     sessions.sort(key=lambda session: session.mtime, reverse=True)
@@ -713,13 +791,33 @@ def _history_user_interaction_texts(
 
 @router.get("/history/sessions/{session_id}", response_model=SessionHistoryResponse)
 def get_session_history(session_id: str) -> SessionHistoryResponse:
-    """Load Claude session history for chat replay."""
+    """Load a NeMo Agent session or legacy Claude history for replay."""
     sid = _validate_session_id(session_id)
+    conversation = _session_conversations.get(sid)
+    if conversation is not None:
+        items: list[dict[str, Any]] = []
+        for message in conversation:
+            if message.get("role") == "user":
+                items.append({"kind": "user", "text": message["content"]})
+            elif message.get("role") == "assistant":
+                items.append(
+                    {
+                        "kind": "assistant",
+                        "parts": [{"type": "text", "text": message["content"]}],
+                    }
+                )
+        _initialized_sessions.add(sid)
+        return SessionHistoryResponse(
+            session_id=sid,
+            items=items,
+            chat_artifacts=ChatArtifactsResponse(),
+        )
+
     path = _project_history_dir() / f"{sid}.jsonl"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="no such session history")
 
-    items: list[dict[str, Any]] = []
+    items = []
     summary = _summarize_history_session(path)
     tool_uses: dict[str, HistoryToolUse] = {}
     try:
@@ -1110,18 +1208,247 @@ async def _stream_claude(
                 task.cancel()
 
 
+def _studio_coding_agent_name() -> str:
+    return _trimmed_string(os.environ.get("STUDIO_CODING_AGENT_NAME")) or DEFAULT_STUDIO_CODING_AGENT_NAME
+
+
+def _studio_coding_agent_base_url() -> str:
+    base_url = (
+        _trimmed_string(os.environ.get("STUDIO_CODING_AGENT_BASE_URL"))
+        or _trimmed_string(os.environ.get("NMP_BASE_URL"))
+        or DEFAULT_STUDIO_CODING_AGENT_BASE_URL
+    )
+    parsed = urlparse(base_url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("The configured coding-agent base URL is invalid")
+    return base_url.rstrip("/")
+
+
+def _validated_workspace_or_default(value: str | None) -> str:
+    workspace = _trimmed_string(value)
+    if not workspace:
+        return "default"
+    if WORKSPACE_NAME_RE.fullmatch(workspace) is None:
+        raise HTTPException(status_code=400, detail="workspace must match the expected entity-name pattern")
+    return workspace
+
+
+def _workspace_path_segment(workspace: str) -> str:
+    if WORKSPACE_NAME_RE.fullmatch(workspace) is None:
+        raise ValueError("Invalid workspace name")
+    return quote(workspace, safe="")
+
+
+def _studio_coding_agent_url(workspace: str) -> str:
+    # MessageRequest validates workspace against the platform's restricted entity-name
+    # pattern before it can become part of this internal request path.
+    return (
+        f"{_studio_coding_agent_base_url()}/apis/agents/v2/workspaces/{_workspace_path_segment(workspace)}"
+        f"/agents/{quote(_studio_coding_agent_name(), safe='')}/-/v1/chat/completions"
+    )
+
+
+def _coding_agent_request_headers(request: Request) -> dict[str, str]:
+    """Forward end-user auth context when the Studio service invokes the agent gateway."""
+    forwarded = {}
+    for name in ("authorization", "cookie"):
+        value = request.headers.get(name)
+        if value:
+            forwarded[name] = value
+    return forwarded
+
+
+def _nemo_agent_response(body: Any) -> tuple[str, str]:
+    if not isinstance(body, dict):
+        raise RuntimeError("NeMo Agent returned a non-object response")
+    choices = body.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise RuntimeError("NeMo Agent response did not include a choice")
+    message = choices[0].get("message")
+    if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+        raise RuntimeError("NeMo Agent response did not include assistant text")
+    model = _trimmed_string(body.get("model")) or _studio_coding_agent_name()
+    return message["content"], model
+
+
+def _nemo_agent_error_detail(exc: httpx.HTTPError | RuntimeError | ValueError) -> str:
+    """Return a safe client-facing error without leaking exception or upstream response details."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"The deployed NeMo Agent returned HTTP {exc.response.status_code}."
+    if isinstance(exc, httpx.HTTPError):
+        return "The deployed NeMo Agent could not be reached."
+    return "The deployed NeMo Agent returned an invalid response."
+
+
+def _nemo_agent_request_payload(
+    messages: list[dict[str, str]],
+    studio_session_id: str,
+) -> dict[str, Any]:
+    return {
+        "messages": messages,
+        "stream": False,
+        "studio_session_id": studio_session_id,
+    }
+
+
+async def _invoke_nemo_agent(
+    agent_url: str,
+    headers: Mapping[str, str],
+    messages: list[dict[str, str]],
+    studio_session_id: str,
+) -> tuple[str, str]:
+    timeout = httpx.Timeout(
+        connect=10.0,
+        read=STUDIO_CODING_AGENT_TIMEOUT_SECONDS,
+        write=60.0,
+        pool=10.0,
+    )
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        # The origin and agent name are server-configured. The only request-derived URL
+        # component is a NAME_PATTERN-validated, percent-encoded workspace path segment.
+        # codeql[py/partial-ssrf]
+        response = await client.post(
+            agent_url,
+            headers=dict(headers),
+            json=_nemo_agent_request_payload(messages, studio_session_id),
+        )
+        response.raise_for_status()
+        return _nemo_agent_response(response.json())
+
+
+async def _stream_nemo_agent(
+    session_id: str,
+    message: str,
+    agent_url: str,
+    headers: Mapping[str, str],
+    studio_system_prompt: str,
+) -> AsyncIterator[str]:
+    """Invoke the deployed NeMo agent while preserving Studio's blocking UI event protocol."""
+    if session_id in _session_streams:
+        yield _sse(
+            json.dumps({"message": "session already has an active stream"}),
+            event="error",
+        )
+        return
+
+    queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+    _session_streams[session_id] = queue
+    conversation = _session_conversations.setdefault(session_id, [])
+    contextual_message = "\n\n".join(
+        [
+            "<nemo_studio_context>",
+            studio_system_prompt,
+            "</nemo_studio_context>",
+            "User request:",
+            message,
+        ]
+    )
+    request_messages = [*conversation, {"role": "user", "content": contextual_message}]
+    invocation = asyncio.create_task(
+        _invoke_nemo_agent(
+            agent_url,
+            headers,
+            request_messages,
+            studio_session_id=session_id,
+        )
+    )
+    queued_event = asyncio.create_task(queue.get())
+
+    try:
+        while not invocation.done():
+            done, _ = await asyncio.wait(
+                {invocation, queued_event},
+                timeout=MCP_KEEPALIVE_INTERVAL_SECONDS,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not done:
+                yield ":\n\n"
+                continue
+            if queued_event in done:
+                event_type, payload = queued_event.result()
+                if event_type == "permission_request":
+                    yield _sse(payload, event="permission_request")
+                elif event_type == "input_request":
+                    yield _sse(payload, event="input_request")
+                elif event_type == "permission_expired":
+                    yield _sse(payload, event="permission_expired")
+                elif event_type == "input_expired":
+                    yield _sse(payload, event="input_expired")
+                elif event_type == "agent":
+                    yield _sse(payload)
+                queued_event = asyncio.create_task(queue.get())
+
+        assistant_text, model = await invocation
+        conversation.extend(
+            [
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": assistant_text},
+            ]
+        )
+        _retain_recent_turns(conversation)
+        _session_mtimes[session_id] = time.time()
+        _initialized_sessions.add(session_id)
+        yield _sse(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "id": f"nemo-agent-{uuid.uuid4()}",
+                        "model": model,
+                        "content": [{"type": "text", "text": assistant_text}],
+                    },
+                }
+            )
+        )
+        yield _sse("", event="done")
+    except asyncio.CancelledError:
+        invocation.cancel()
+        raise
+    except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+        logger.exception("NeMo Agent invocation failed for session %s", session_id)
+        yield _sse(
+            json.dumps({"message": _nemo_agent_error_detail(exc)}),
+            event="error",
+        )
+    finally:
+        _session_streams.pop(session_id, None)
+        if not invocation.done():
+            invocation.cancel()
+        if not queued_event.done():
+            queued_event.cancel()
+        _evict_oldest_sessions()
+
+
 @router.post("/sessions/{session_id}/messages")
 async def send_message(session_id: str, body: MessageRequest, request: Request) -> StreamingResponse:
-    """Send a message to Claude and stream JSON events back to Studio."""
+    """Send a message to the deployed NeMo Agent and stream Studio events."""
     sid = _validate_session_id(session_id)
-    workspace = _trimmed_string(body.workspace)
+    workspace = _validated_workspace_or_default(body.workspace)
     studio_base_url = _studio_base_url_from_request(body, request)
     studio_pathname = _studio_pathname_from_request(body, request)
     enabled_destinations = studio_links.enabled_destinations_from_request(request)
-    system_prompt = _build_studio_system_prompt(workspace, studio_base_url, studio_pathname, enabled_destinations)
-    message = _build_claude_prompt(body.message, workspace, studio_base_url, studio_pathname, enabled_destinations)
+    system_prompt = _build_nemo_agent_system_prompt(
+        sid,
+        workspace,
+        studio_base_url,
+        studio_pathname,
+        enabled_destinations,
+    )
     return StreamingResponse(
-        _stream_claude(sid, message, _mcp_url(request, sid, workspace, studio_base_url), system_prompt),
+        _stream_nemo_agent(
+            sid,
+            body.message,
+            _studio_coding_agent_url(workspace),
+            _coding_agent_request_headers(request),
+            system_prompt,
+        ),
         media_type="text/event-stream",
     )
 
@@ -1235,6 +1562,30 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
             )
 
         if name == JOB_PROGRESS_TOOL_NAME:
+            queue = _session_streams.get(sid)
+            if queue is not None:
+                await queue.put(
+                    (
+                        "agent",
+                        json.dumps(
+                            {
+                                "type": "assistant",
+                                "message": {
+                                    "id": f"nemo-agent-tool-{uuid.uuid4()}",
+                                    "model": _studio_coding_agent_name(),
+                                    "content": [
+                                        {
+                                            "type": "tool_use",
+                                            "id": f"tool-{uuid.uuid4()}",
+                                            "name": (f"mcp__{CLAUDE_MCP_SERVER_NAME}__{JOB_PROGRESS_TOOL_NAME}"),
+                                            "input": args,
+                                        }
+                                    ],
+                                },
+                            }
+                        ),
+                    )
+                )
             return JSONResponse(
                 {
                     "jsonrpc": "2.0",
