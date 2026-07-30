@@ -35,8 +35,9 @@ class ProviderCreateParams(TypedDict, total=False):
     name: Required[str]
     """Name of the model provider.
 
-    Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and
-    dots.
+    Name must start with a lowercase letter, be 2-63 characters, and contain only
+    lowercase letters, digits, hyphens, and @ . + \\__ (no consecutive hyphens, cannot
+    end with a hyphen).
     """
 
     api_key_secret_name: str

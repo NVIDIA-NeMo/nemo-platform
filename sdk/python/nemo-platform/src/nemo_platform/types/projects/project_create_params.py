@@ -29,8 +29,8 @@ class ProjectCreateParams(TypedDict, total=False):
     """Project name (unique within workspace).
 
     Name must start with a lowercase letter, be 2-63 characters, and contain only
-    lowercase letters, digits, and hyphens (no consecutive hyphens, cannot end with
-    a hyphen).
+    lowercase letters, digits, hyphens, and @ . + \\__ (no consecutive hyphens, cannot
+    end with a hyphen).
     """
 
     description: str

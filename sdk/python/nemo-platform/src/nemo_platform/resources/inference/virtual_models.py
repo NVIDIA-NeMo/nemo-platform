@@ -32,7 +32,6 @@ from ..._response import (
     async_to_streamed_response_wrapper,
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
-from ..._exceptions import ConflictError
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.inference import (
     virtual_model_list_params,
@@ -44,6 +43,7 @@ from ...types.inference.virtual_model import VirtualModel
 from ...types.inference.middleware_call_param import MiddlewareCallParam
 from ...types.inference.virtual_model_filter_param import VirtualModelFilterParam
 from ...types.inference.virtual_model_inference_config_param import VirtualModelInferenceConfigParam
+from ..._exceptions import ConflictError
 
 __all__ = ["VirtualModelsResource", "AsyncVirtualModelsResource"]
 
@@ -166,7 +166,7 @@ class VirtualModelsResource(SyncAPIResource):
         except ConflictError:
             if not exist_ok:
                 raise
-            return self.retrieve(name=name, workspace=workspace)
+            return self.retrieve(name = name, workspace = workspace)
 
     def retrieve(
         self,
@@ -546,7 +546,7 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
         except ConflictError:
             if not exist_ok:
                 raise
-            return await self.retrieve(name=name, workspace=workspace)
+            return await self.retrieve(name = name, workspace = workspace)
 
     async def retrieve(
         self,
