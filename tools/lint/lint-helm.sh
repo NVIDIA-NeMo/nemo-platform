@@ -18,6 +18,24 @@ helm dependency update "${HELM_FOLDER}"
 # Lint the Helm chart
 helm lint --strict "${HELM_FOLDER}"
 
+# StatefulSet volumeClaimTemplates are immutable, so chart metadata must not change them.
+postgres_claim_tmp=$(mktemp -d)
+trap 'rm -rf "${postgres_claim_tmp}"' EXIT
+
+for version in 1 2; do
+  helm package "${HELM_FOLDER}" \
+    --version "0.0.0-claim-test.${version}" \
+    --app-version "claim-test-${version}" \
+    --destination "${postgres_claim_tmp}" >/dev/null
+  helm template "${HELM_RELEASE_NAME}" \
+    "${postgres_claim_tmp}/nemo-platform-0.0.0-claim-test.${version}.tgz" \
+    --show-only templates/postgres/postgres-statefulset.yaml \
+    | sed -n '/^  volumeClaimTemplates:/,$p' > "${postgres_claim_tmp}/claim-${version}.yaml"
+  test -s "${postgres_claim_tmp}/claim-${version}.yaml"
+done
+
+diff -u "${postgres_claim_tmp}/claim-1.yaml" "${postgres_claim_tmp}/claim-2.yaml"
+
 # Utilization-based autoscaling must reject missing CPU requests.
 api_autoscaling_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
   --set api.autoscaling.enabled=true 2>&1) && {
