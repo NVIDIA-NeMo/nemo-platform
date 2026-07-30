@@ -147,7 +147,7 @@
 {"name": "langchain-text-splitters", "license": "MIT", "compatible": true}
 {"name": "langgraph", "license": "MIT", "compatible": true}
 {"name": "langgraph-checkpoint", "license": "MIT", "compatible": true}
-{"name": "langgraph-checkpoint-sqlite", "license": "UNKNOWN", "compatible": false}
+{"name": "langgraph-checkpoint-sqlite", "license": "MIT", "compatible": true}
 {"name": "langgraph-prebuilt", "license": "MIT", "compatible": true}
 {"name": "langgraph-sdk", "license": "MIT", "compatible": true}
 {"name": "langsmith", "license": "MIT", "compatible": true}
@@ -311,7 +311,7 @@
 {"name": "soupsieve", "license": "MIT", "compatible": true}
 {"name": "sqlalchemy", "license": "MIT", "compatible": true}
 {"name": "sqlfluff", "license": "MIT", "compatible": true}
-{"name": "sqlite-vec", "license": "NON-STANDARD", "compatible": false}
+{"name": "sqlite-vec", "license": "MIT", "compatible": true}
 {"name": "sqlmodel", "license": "MIT", "compatible": true}
 {"name": "sqlparse", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sse-starlette", "license": "BSD-3-CLAUSE", "compatible": true}

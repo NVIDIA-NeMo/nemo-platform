@@ -246,6 +246,7 @@ overrides:
   dspy: MIT
   narwhals: MIT
   rpds-py: MIT
+  sqlite-vec: MIT # https://pypi.org/project/sqlite-vec/
   uuid-utils: BSD-3-Clause
 
   # Auth service

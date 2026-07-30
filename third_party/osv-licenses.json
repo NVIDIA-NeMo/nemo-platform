@@ -3254,7 +3254,7 @@
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "UNKNOWN"
+            "MIT"
           ]
         },
         {
@@ -8447,7 +8447,7 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 154
+      "count": 155
     },
     {
       "name": "Apache-2.0",
@@ -8535,7 +8535,7 @@
     },
     {
       "name": "UNKNOWN",
-      "count": 5
+      "count": 4
     }
   ]
 }
