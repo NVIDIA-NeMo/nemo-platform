@@ -79,12 +79,21 @@ def test_forward_strips_inbound_on_behalf_of_to_prevent_spoofing() -> None:
         headers={
             "x-nmp-principal-id": "service:platform",
             "x-nmp-principal-on-behalf-of": "user:attacker",
+            # Companion metadata must not be smuggled onto our stamped OBO id:
+            # the platform derives effective groups/email from these and feeds
+            # them to the PDP, so attacker-chosen values would escalate.
+            "x-nmp-principal-on-behalf-of-email": "attacker@evil.test",
+            "x-nmp-principal-on-behalf-of-groups": "platform-admins",
         },
     )
 
     sent = route.calls.last.request
+    sent_keys = {k.lower() for k in sent.headers}
     assert sent.headers["x-nmp-principal-id"] == "service:agents"
     assert sent.headers["x-nmp-principal-on-behalf-of"] == "user:alice"
+    # The inbound companion headers are dropped (we stamp only the OBO id).
+    assert "x-nmp-principal-on-behalf-of-email" not in sent_keys
+    assert "x-nmp-principal-on-behalf-of-groups" not in sent_keys
 
 
 @respx.mock
@@ -96,11 +105,18 @@ def test_forward_strips_inbound_on_behalf_of_when_none_configured() -> None:
 
     client.get(
         "/apis/entities/v2/workspaces",
-        headers={"x-nmp-principal-on-behalf-of": "user:attacker"},
+        headers={
+            "x-nmp-principal-on-behalf-of": "user:attacker",
+            "x-nmp-principal-on-behalf-of-email": "attacker@evil.test",
+            "x-nmp-principal-on-behalf-of-groups": "platform-admins",
+        },
     )
 
     sent = route.calls.last.request
-    assert "x-nmp-principal-on-behalf-of" not in {k.lower() for k in sent.headers}
+    sent_keys = {k.lower() for k in sent.headers}
+    assert "x-nmp-principal-on-behalf-of" not in sent_keys
+    assert "x-nmp-principal-on-behalf-of-email" not in sent_keys
+    assert "x-nmp-principal-on-behalf-of-groups" not in sent_keys
 
 
 @respx.mock

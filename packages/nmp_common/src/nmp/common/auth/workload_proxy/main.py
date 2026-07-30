@@ -55,6 +55,14 @@ DEFAULT_AUTH_PROXY_PORT = 8090
 _READ_TIMEOUT_ENVVAR = "NMP_AUTH_PROXY_READ_TIMEOUT"
 _PRINCIPAL_ID_HEADER = "x-nmp-principal-id"
 _ON_BEHALF_OF_HEADER = "x-nmp-principal-on-behalf-of"
+# Companion metadata for the on-behalf-of principal. The platform derives the
+# delegated user's groups/email from these (Principal.from_headers -> effective_*),
+# and effective_groups/effective_email feed the PDP authorization input. We stamp
+# only the OBO id here, so any inbound companion headers are untrusted and must be
+# dropped — otherwise a colocated workload could pair our stamped OBO id with
+# attacker-chosen groups/email and be evaluated with those, defeating the scoping.
+_ON_BEHALF_OF_EMAIL_HEADER = "x-nmp-principal-on-behalf-of-email"
+_ON_BEHALF_OF_GROUPS_HEADER = "x-nmp-principal-on-behalf-of-groups"
 
 # Minimal request-header sanitization. We only drop what would be actively wrong:
 # - the workload's own credential / principal / on-behalf-of headers (we set the
@@ -68,6 +76,8 @@ _STRIP_REQUEST_HEADERS = frozenset(
         "authorization",
         _PRINCIPAL_ID_HEADER,
         _ON_BEHALF_OF_HEADER,
+        _ON_BEHALF_OF_EMAIL_HEADER,
+        _ON_BEHALF_OF_GROUPS_HEADER,
     }
 )
 # We stream the response, so the upstream's framing headers no longer apply.
@@ -163,12 +173,12 @@ def run(parent_stop_signal: threading.Event | None = None) -> None:
     server = uvicorn.Server(config)
 
     logger.info(
-        "Starting auth-proxy sidecar on %s:%s -> %s (principal=service:%s, on_behalf_of=%s)",
+        "Starting auth-proxy sidecar on %s:%s -> %s (principal=service:%s, delegated=%s)",
         host,
         port,
         base_url,
         principal,
-        on_behalf_of or "<none>",
+        on_behalf_of is not None,
     )
     if parent_stop_signal is None:
         server.run()
