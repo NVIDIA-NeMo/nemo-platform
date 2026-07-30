@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -26,6 +27,8 @@ from nmp.intake.spans.storage import (
     text_query_parameters,
     text_select_for_mode,
 )
+
+logger = logging.getLogger(__name__)
 
 TRACE_SORT_COLUMNS = {
     "started_at": "started_at",
@@ -163,6 +166,17 @@ class ClickHouseTraceRepository(TraceRepository):
                     },
                 )
             )
+            rows, dropped_refs = _reconcile_hydrated_page(page_refs, rows)
+            if dropped_refs:
+                logger.warning(
+                    "Trace page hydration omitted refs returned by the page query",
+                    extra={
+                        "workspace": filters.workspace,
+                        "page": page,
+                        "dropped_trace_refs": [ref.trace_key for ref in dropped_refs],
+                    },
+                )
+                total_results = max(offset + len(rows), total_results - len(dropped_refs))
         traces = [_row_to_trace(row) for row in rows]
         return PaginatedResult(
             data=traces,
@@ -240,6 +254,8 @@ class ClickHouseTraceRepository(TraceRepository):
 
 
 def _trace_page_sql(*, trace_index_sql: str, sort: str) -> str:
+    """Build the first-phase query that selects lightweight trace roots for one page."""
+
     return f"""
         SELECT
             {_trace_select_columns(include_aggregates=False)}
@@ -250,23 +266,14 @@ def _trace_page_sql(*, trace_index_sql: str, sort: str) -> str:
 
 
 def _trace_hydration_sql(*, trace_index_table: str, spans_table: str, mode: TraceMode) -> tuple[str, dict[str, Any]]:
-    trace_columns, trace_parameters = _trace_index_select_columns(mode=mode)
+    """Build the second-phase query that hydrates page roots and span aggregates."""
+
+    trace_roots_sql, trace_parameters = _page_trace_roots_sql(trace_index_table=trace_index_table, mode=mode)
     aggregates_sql, aggregate_parameters = _trace_aggregates_sql(spans_table)
     query = f"""
         WITH
         traces AS (
-            SELECT
-                {trace_columns}
-            FROM {trace_index_table} AS trace_roots FINAL
-            WHERE trace_roots.workspace = %(workspace)s
-                AND trace_roots.is_deleted = 0
-                AND trace_roots.trace_id IN %(page_trace_ids)s
-                AND (
-                    trace_roots.source_format,
-                    trace_roots.trace_id
-                ) IN %(page_trace_keys)s
-            ORDER BY trace_roots.root_started_at ASC, trace_roots.root_span_id ASC
-            LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id
+            {trace_roots_sql}
         ),
         rollups AS (
             {aggregates_sql}
@@ -278,9 +285,27 @@ def _trace_hydration_sql(*, trace_index_table: str, spans_table: str, mode: Trac
             ON traces.workspace = rollups.workspace
             AND traces.source_format = rollups.source_format
             AND traces.id = rollups.trace_id
-        ORDER BY indexOf(%(page_trace_keys)s, (traces.source_format, traces.id)) ASC
     """
     return query, {**trace_parameters, **aggregate_parameters}
+
+
+def _page_trace_roots_sql(*, trace_index_table: str, mode: TraceMode) -> tuple[str, dict[str, Any]]:
+    trace_columns, parameters = _trace_index_select_columns(mode=mode)
+    query = f"""
+        SELECT
+            {trace_columns}
+        FROM {trace_index_table} AS trace_roots FINAL
+        WHERE trace_roots.workspace = %(workspace)s
+            AND trace_roots.is_deleted = 0
+            AND trace_roots.trace_id IN %(page_trace_ids)s
+            AND (
+                trace_roots.source_format,
+                trace_roots.trace_id
+            ) IN %(page_trace_keys)s
+        ORDER BY trace_roots.root_started_at ASC, trace_roots.root_span_id ASC
+        LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id
+    """
+    return query, parameters
 
 
 def _trace_select_columns(*, include_aggregates: bool) -> str:
@@ -361,13 +386,7 @@ def _trace_index_select_columns(*, mode: TraceMode) -> tuple[str, dict[str, Any]
 
 def _trace_aggregates_sql(table: str) -> tuple[str, dict[str, Any]]:
     source_alias = "trace_spans"
-    metric_columns, parameters = metric_aggregate_columns(source_alias)
-
-    model_spec = spec_for_field(SpanAttributeField.MODEL)
-    provider_spec = spec_for_field(SpanAttributeField.PROVIDER)
-    parameters["model_key"] = model_spec.bag_key
-    parameters["provider_key"] = provider_spec.bag_key
-
+    select_columns, parameters = _trace_aggregate_select_columns(source_alias)
     current_spans = current_spans_sql(
         table,
         extra_where_sql=(
@@ -378,22 +397,7 @@ def _trace_aggregates_sql(table: str) -> tuple[str, dict[str, Any]]:
     )
     query = f"""
         SELECT
-            {source_alias}.workspace AS workspace,
-            {source_alias}.source_format AS source_format,
-            {source_alias}.trace_id AS trace_id,
-            {metric_columns},
-            arraySort(groupUniqArrayIf(
-                {source_alias}.attributes_string[%(model_key)s],
-                has(mapKeys({source_alias}.attributes_string), %(model_key)s)
-                    AND {source_alias}.attributes_string[%(model_key)s] != ''
-            )) AS models,
-            arraySort(groupUniqArrayIf(
-                {source_alias}.attributes_string[%(provider_key)s],
-                has(mapKeys({source_alias}.attributes_string), %(provider_key)s)
-                    AND {source_alias}.attributes_string[%(provider_key)s] != ''
-            )) AS providers,
-            count() AS span_count,
-            countIf({source_alias}.status = 'error') AS error_count
+            {select_columns}
         FROM {current_spans} AS {source_alias}
         WHERE {source_alias}.is_deleted = 0
         GROUP BY {source_alias}.workspace, {source_alias}.source_format, {source_alias}.trace_id
@@ -401,11 +405,49 @@ def _trace_aggregates_sql(table: str) -> tuple[str, dict[str, Any]]:
     return query, parameters
 
 
+def _trace_aggregate_select_columns(source_alias: str) -> tuple[str, dict[str, Any]]:
+    metric_columns, parameters = metric_aggregate_columns(source_alias)
+    parameters.update(
+        model_key=spec_for_field(SpanAttributeField.MODEL).bag_key,
+        provider_key=spec_for_field(SpanAttributeField.PROVIDER).bag_key,
+    )
+    columns = (
+        f"{source_alias}.workspace AS workspace",
+        f"{source_alias}.source_format AS source_format",
+        f"{source_alias}.trace_id AS trace_id",
+        metric_columns,
+        _unique_string_attribute_aggregate(source_alias, parameter="model_key", alias="models"),
+        _unique_string_attribute_aggregate(source_alias, parameter="provider_key", alias="providers"),
+        "count() AS span_count",
+        f"countIf({source_alias}.status = 'error') AS error_count",
+    )
+    return ",\n            ".join(columns), parameters
+
+
+def _unique_string_attribute_aggregate(source_alias: str, *, parameter: str, alias: str) -> str:
+    attribute = f"{source_alias}.attributes_string[%({parameter})s]"
+    return f"""arraySort(groupUniqArrayIf(
+                {attribute},
+                has(mapKeys({source_alias}.attributes_string), %({parameter})s)
+                    AND {attribute} != ''
+            )) AS {alias}"""
+
+
 def _trace_page_parameters(refs: Sequence[_TracePageRef]) -> dict[str, object]:
     return {
         "page_trace_ids": [ref.trace_id for ref in refs],
         "page_trace_keys": [ref.trace_key for ref in refs],
     }
+
+
+def _reconcile_hydrated_page(
+    page_refs: Sequence[_TracePageRef],
+    hydrated_rows: Sequence[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[_TracePageRef]]:
+    rows_by_ref = {_TracePageRef.from_row(row): row for row in hydrated_rows}
+    rows = [rows_by_ref[ref] for ref in page_refs if ref in rows_by_ref]
+    dropped_refs = [ref for ref in page_refs if ref not in rows_by_ref]
+    return rows, dropped_refs
 
 
 # Maps API/filter field names to their physical trace_index columns.

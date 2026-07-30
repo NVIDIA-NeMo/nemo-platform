@@ -4,6 +4,7 @@
 """Trace repository tests."""
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -154,7 +155,7 @@ async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
     assert "IN %(page_trace_keys)s" in client.queries[2]
     assert "trace_id IN %(page_trace_ids)s" in client.queries[2]
     assert "LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id" in client.queries[2]
-    assert "ORDER BY indexOf(%(page_trace_keys)s" in client.queries[2]
+    assert "indexOf(%(page_trace_keys)s" not in client.queries[2]
     assert client.external_data[2] is None
     assert client.parameters[2]["page_trace_ids"] == ["trace-a"]
     assert client.parameters[2]["page_trace_keys"] == [("otel", "trace-a")]
@@ -268,6 +269,50 @@ async def test_non_summary_empty_page_skips_hydration_query():
 
 
 @pytest.mark.asyncio
+async def test_non_summary_reconciles_hydration_misses_and_restores_page_order(caplog: pytest.LogCaptureFixture):
+    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    page_rows = [
+        _trace_row(
+            trace_id=trace_id,
+            started_at=started_at,
+            ended_at=None,
+            ingested_at=started_at,
+            detailed=False,
+        )
+        for trace_id in ("trace-a", "trace-b", "trace-c")
+    ]
+    hydrated_rows = [
+        _trace_row(trace_id=trace_id, started_at=started_at, ended_at=None, ingested_at=started_at)
+        for trace_id in ("trace-c", "trace-a")
+    ]
+    client = _Client(
+        query_results=[
+            _QueryResult([(3,)]),
+            _QueryResult(page_rows, TRACE_COLUMNS),
+            _QueryResult(hydrated_rows, TRACE_COLUMNS),
+        ]
+    )
+    repository = _repository(client)
+
+    with caplog.at_level(logging.WARNING):
+        result = await repository.list_traces(
+            filters=TraceListFilter(workspace="workspace-a"),
+            page=1,
+            page_size=10,
+            sort="-started_at",
+            mode="preview",
+        )
+
+    assert [trace.id for trace in result.data] == ["trace-a", "trace-c"]
+    assert result.pagination.current_page_size == 2
+    assert result.pagination.total_results == 2
+    assert result.pagination.total_pages == 1
+    record = caplog.records[-1]
+    assert record.message == "Trace page hydration omitted refs returned by the page query"
+    assert getattr(record, "dropped_trace_refs") == [("otel", "trace-b")]
+
+
+@pytest.mark.asyncio
 async def test_summary_mode_maps_no_aggregate_fields():
     started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     row = _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False)
@@ -336,13 +381,14 @@ async def test_root_filters_use_trace_index_columns():
 
 def _trace_row(
     *,
+    trace_id: str = "trace-a",
     started_at: datetime,
     ended_at: datetime | None,
     ingested_at: datetime,
     detailed: bool = True,
 ) -> tuple[object, ...]:
     values: dict[str, object | None] = {
-        "id": "trace-a",
+        "id": trace_id,
         "workspace": "workspace-a",
         "session_id": "session-a",
         "source_format": "otel",
