@@ -6,13 +6,17 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
+import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { utcToLocalDate } from '@nemo/common/src/utils/date';
+import { evaluatorCancelAgentEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,
   Button,
   Flex,
   Grid,
+  Modal,
   PageHeader,
   Panel,
   Spinner,
@@ -44,8 +48,8 @@ import {
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, FlaskConical, ScrollText } from 'lucide-react';
-import { type FC } from 'react';
+import { CircleX, ClipboardList, FlaskConical, ScrollText } from 'lucide-react';
+import { type FC, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const TERMINAL_STATUSES = new Set([
@@ -85,6 +89,26 @@ export const AgentEvaluationDetailRoute: FC = () => {
   });
 
   const isJobTerminal = isTerminal(job?.status);
+  const canCancelJob = !!job?.status && !isJobTerminal;
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const liveSeconds = useLiveSeconds({
+    startDate: !isJobTerminal ? utcToLocalDate(job?.created_at) : undefined,
+  });
+
+  const handleCancelJob = async () => {
+    if (!jobName) return;
+    setIsCancelling(true);
+    try {
+      await evaluatorCancelAgentEvaluateJob(workspace, jobName);
+      toast.success('Job cancelled');
+      setCancelModalOpen(false);
+    } catch {
+      toast.error('Failed to cancel job. Please try again.');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   // Aggregate scores (mean/min/max per metric) from the queryable result record.
   // Only meaningful once the job is terminal. The record is persisted best-effort and
@@ -169,16 +193,39 @@ export const AgentEvaluationDetailRoute: FC = () => {
 
         <Grid cols={{ base: 1, xl: 2 }} gap="density-2xl">
           <Panel
-            slotHeading="Job Details"
-            slotIcon={<ClipboardList />}
             elevation="high"
             density="compact"
+            slotHeading={
+              <Flex align="center" justify="between" className="w-full">
+                <Flex align="center" gap="2">
+                  <ClipboardList />
+                  Details
+                </Flex>
+                {canCancelJob && (
+                  <Button
+                    kind="tertiary"
+                    color="danger"
+                    size="small"
+                    onClick={() => setCancelModalOpen(true)}
+                  >
+                    <CircleX /> Cancel Job
+                  </Button>
+                )}
+              </Flex>
+            }
           >
             <Stack gap="density-xl">
               <KVPair label="Name" value={job.name} loading={isLoadingJob} />
               <KVPair
                 label="Status"
-                value={<StatusBadge status={job.status} />}
+                value={
+                  <Flex align="center" gap="density-md">
+                    <StatusBadge status={job.status} />
+                    {!isJobTerminal && liveSeconds !== undefined && (
+                      <Text kind="body/regular/sm">{liveSeconds}s</Text>
+                    )}
+                  </Flex>
+                }
                 loading={isLoadingJob}
               />
               <KVPair label="Agent" value={agentNameForJob(job) ?? '-'} loading={isLoadingJob} />
@@ -274,6 +321,36 @@ export const AgentEvaluationDetailRoute: FC = () => {
           />
         </AccordionPanel>
       </Stack>
+
+      <Modal
+        open={cancelModalOpen}
+        onOpenChange={(open) => !isCancelling && setCancelModalOpen(open)}
+        slotHeading={
+          <Flex align="center" gap="density-sm">
+            <CircleX />
+            Cancel Evaluation Job
+          </Flex>
+        }
+        slotFooter={
+          <Flex justify="end" gap="density-xs" align="center" className="w-full">
+            <Button
+              onClick={() => setCancelModalOpen(false)}
+              kind="tertiary"
+              color="neutral"
+              disabled={isCancelling}
+            >
+              Go Back
+            </Button>
+            <Button color="danger" onClick={handleCancelJob} disabled={isCancelling}>
+              {isCancelling ? 'Cancelling...' : 'Cancel Job'}
+            </Button>
+          </Flex>
+        }
+      >
+        <Stack gap="density-md">
+          <Text>Cancelling stops this evaluation. Partial results are not retained.</Text>
+        </Stack>
+      </Modal>
     </AccessibleTitle>
   );
 };

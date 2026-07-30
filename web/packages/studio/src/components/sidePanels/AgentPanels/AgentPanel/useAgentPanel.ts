@@ -9,7 +9,7 @@ import {
   useAgentsListAgents,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
-import { agentNameForJob, fetchAgentEvalJobs } from '@studio/api/evaluation/agent-evaluations';
+import { fetchEvaluatorJobs, toEvalJobRow } from '@studio/api/evaluation/evalJobs';
 import { RECENT_EVAL_LIMIT } from '@studio/components/sidePanels/AgentPanels/AgentPanel/constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -62,8 +62,8 @@ export const useAgentPanel = ({
   // workspace's eval jobs and filter client-side. Capped at the most recent
   // N to keep the panel scannable; the full list is on the evaluations route.
   const { data: agentEvalsData } = useQuery({
-    queryKey: ['agent-eval-jobs', workspace, 'panel', agentName] as const,
-    queryFn: ({ signal }) => fetchAgentEvalJobs(workspace, signal),
+    queryKey: ['evaluator-jobs', workspace, 'panel', agentName] as const,
+    queryFn: ({ signal }) => fetchEvaluatorJobs(workspace, signal),
     enabled: !!agentName && !!workspace,
   });
 
@@ -88,9 +88,9 @@ export const useAgentPanel = ({
 
   const agentEvals = useMemo(() => {
     if (!agentName) return [];
-    const all = agentEvalsData ?? [];
+    const all = (agentEvalsData ?? []).map(toEvalJobRow);
     // Match either the bare agent name or a workspace-prefixed ref.
-    const matches = all.filter((job) => agentNameForJob(job) === agentName);
+    const matches = all.filter((job) => job.agentName === agentName);
     return matches.slice(0, RECENT_EVAL_LIMIT);
   }, [agentEvalsData, agentName]);
 

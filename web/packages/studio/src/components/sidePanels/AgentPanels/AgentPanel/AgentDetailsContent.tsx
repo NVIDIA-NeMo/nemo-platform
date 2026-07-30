@@ -7,9 +7,9 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { isDefined } from '@nemo/common/src/utils/list';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
-import type { AgentEvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Accordion,
+  Badge,
   Block,
   Button,
   Flex,
@@ -17,12 +17,18 @@ import {
   StatusIndicator,
   Text,
 } from '@nvidia/foundations-react-core';
+import {
+  EVAL_JOB_KIND_LABEL,
+  evalJobDetailRoute,
+  type EvalJobRow,
+  hasMixedEvalKinds,
+} from '@studio/api/evaluation/evalJobs';
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { deploymentStatusColor } from '@studio/components/sidePanels/AgentPanels/AgentPanel/helpers';
 import { NoHealthyDeploymentsBanner } from '@studio/components/sidePanels/AgentPanels/AgentPanel/NoHealthyDeploymentsBanner';
 import type { WalkthroughStep } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
-import { getAgentEvaluationDetailRoute, getAgentEvaluationsListRoute } from '@studio/routes/utils';
+import { getAgentEvaluationsListRoute } from '@studio/routes/utils';
 import type { FC, RefObject } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -31,7 +37,7 @@ interface AgentDetailsContentProps {
   agentName?: string;
   agent?: Agent;
   agentDeployments: AgentDeployment[];
-  agentEvals: AgentEvaluateJob[];
+  agentEvals: EvalJobRow[];
   isDeploymentsLoading: boolean;
   isDeploying: boolean;
   walkthroughStep: WalkthroughStep | null;
@@ -196,7 +202,7 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
                 {agentEvals.map((job) => (
                   <Link
                     key={job.name}
-                    to={getAgentEvaluationDetailRoute(workspace, job.name)}
+                    to={evalJobDetailRoute(workspace, job)}
                     className="no-underline text-inherit"
                   >
                     <Flex
@@ -204,13 +210,21 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
                       gap="2"
                       className="px-4 py-3 border-b border-base last:border-b-0 hover:bg-surface-hover"
                     >
-                      <Stack gap="0" className="flex-1 min-w-0">
-                        <Text kind="body/semibold/sm" className="truncate">
+                      <Stack gap="1" className="flex-1 min-w-0">
+                        <Text kind="body/semibold/md" className="truncate">
                           {job.name}
                         </Text>
-                        <Text kind="body/regular/xs" color="secondary">
-                          <RelativeTime datetime={job.created_at ?? ''} />
-                        </Text>
+                        <Flex align="center" gap="2" className="min-w-0">
+                          {hasMixedEvalKinds(agentEvals) && (
+                            <Badge kind="outline" color="gray">
+                              {EVAL_JOB_KIND_LABEL[job.kind]}
+                            </Badge>
+                          )}
+                          <Text kind="body/regular/sm" color="secondary" className="truncate">
+                            {job.configLabel ? `${job.configLabel} · ` : ''}
+                            <RelativeTime datetime={job.created_at ?? ''} />
+                          </Text>
+                        </Flex>
                       </Stack>
                       <StatusBadge status={job.status} />
                     </Flex>

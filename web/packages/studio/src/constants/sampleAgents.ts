@@ -14,11 +14,15 @@ import { z } from 'zod';
 // fails at startup. Current mappings:
 //   _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
 //   _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
+//   _type: analyze_email           -> plugins/nemo-agents/examples/email-security-analyst
+//   _type: extract_iocs            -> plugins/nemo-agents/examples/email-security-analyst
 export interface SampleAgent {
   /** Stable key; also the dropdown value and label. */
   key: string;
   label: string;
+  displayName: string;
   description: string;
+  evalSummary: string;
   /** Prefix for generated agent names; drives onboarding detection. */
   namePrefix: string;
   /** Public path to the NAT workflow config (parsed + model-injected at create). */
@@ -26,24 +30,36 @@ export interface SampleAgent {
   /** Public path to a reusable nemo-evaluator eval-config.json. Samples without
    *  one remain available for agent creation but not evaluation seeding. */
   evalConfigPath?: string;
+  /** Public path to the dataset a dataset-driven eval-config scores over. Seeded
+   *  into the run's fileset alongside the config so the sample is self-contained. */
+  datasetPath?: string;
 }
 
 export const SAMPLE_AGENTS: SampleAgent[] = [
   {
-    key: 'calculator',
-    label: 'calculator',
-    description: 'A ReAct agent with a calculator and datetime tool.',
-    namePrefix: 'calculator-demo-agent',
-    agentConfigPath: 'sample-agents/calculator/agent.yml',
-    evalConfigPath: 'sample-agents/calculator/eval-config.json',
-  },
-  {
     key: 'email_phishing_analyzer',
     label: 'email_phishing_analyzer',
-    description: 'A ReAct agent that inspects an email body for phishing signals.',
-    namePrefix: 'email-phishing-demo-agent',
+    displayName: 'Email Phishing Analyzer',
+    description:
+      'A phishing classifier scored dataset-driven: one metric set over every row of a labeled email dataset.',
+    evalSummary:
+      'Dataset-driven: the agent produces an output for every row of a fixed dataset, and one metric set scores each output against its expected answer.',
+    namePrefix: 'email-phishing',
     agentConfigPath: 'sample-agents/email-phishing-analyzer/agent.yml',
     evalConfigPath: 'sample-agents/email-phishing-analyzer/eval-config.json',
+    datasetPath: 'sample-agents/email-phishing-analyzer/dataset.jsonl',
+  },
+  {
+    key: 'email_security_analyst',
+    label: 'email_security_analyst',
+    displayName: 'Email Security Analyst',
+    description:
+      'A security analyst scored task-driven: varied input shapes — single messages, inbox batches, threads, headers, URLs — each with the metrics that fit it.',
+    evalSummary:
+      'Task-driven: the agent performs a set of distinct tasks, and each task carries its own metrics, so one suite can grade heterogeneous work.',
+    namePrefix: 'email-security-analyst',
+    agentConfigPath: 'sample-agents/email-security-analyst/agent.yml',
+    evalConfigPath: 'sample-agents/email-security-analyst/eval-config.json',
   },
 ];
 

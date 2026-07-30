@@ -7,13 +7,18 @@ import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSel
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
+import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getEntityNameError } from '@nemo/common/src/utils/entityName';
 import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
-import type { AgentEvaluateJobRequest } from '@nemo/sdk/generated/evaluator/schema';
+import { evaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import type {
+  AgentEvaluateJobRequest,
+  EvaluateJobRequest,
+} from '@nemo/sdk/generated/evaluator/schema';
 import { filesDownloadFile, filesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
-import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
+import { RadioGroupRoot, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import {
@@ -30,13 +35,15 @@ import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import {
   bareName,
   buildAgentEvalRequestBody,
+  buildDatasetEvalRequestBody,
   buildPersistedSpec,
+  type EvalSpec,
+  type InlineMetricBundle,
+  isDatasetEvalSpec,
   generateEvalConfigName,
   MODE_DEFAULT,
   MODE_FILESET,
   parseEvalConfig,
-  parsePersistedSpec,
-  type PersistedEvalSpec,
 } from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
@@ -50,6 +57,7 @@ const EVAL_CONFIG_MODE_ITEMS = [
 
 /** Flat filename the reusable config is stored as inside its fileset. */
 const EVAL_CONFIG_FILENAME = 'eval-config.json';
+const DATASET_FILENAME = 'dataset.jsonl';
 
 const submitEvaluationBaseSchema = z.object({
   agent: z.string().min(1, 'Agent is required'),
@@ -133,7 +141,7 @@ const evalConfigFilesetExists = async (
 const loadPersistedSpec = async (
   workspace: string,
   formData: SubmitEvaluationFormData
-): Promise<PersistedEvalSpec> => {
+): Promise<EvalSpec> => {
   if (formData.mode === MODE_DEFAULT) {
     const signal = new AbortController().signal;
     const name = formData.newName.trim();
@@ -142,14 +150,31 @@ const loadPersistedSpec = async (
     }
     const example = getEvaluationSampleAgent(formData.exampleKey);
     const template = parseEvalConfig(await fetchSampleText(example.evalConfigPath));
-    const spec = buildPersistedSpec(template, formData.judgeModel || null);
-    const files: EvalSeedFile[] = [
-      {
-        path: EVAL_CONFIG_FILENAME,
-        content: JSON.stringify(spec, null, 2),
-        type: 'application/json',
-      },
-    ];
+    const files: EvalSeedFile[] = [];
+    let spec: EvalSpec;
+
+    if (isDatasetEvalSpec(template)) {
+      // Seed the dataset beside the config and repoint the spec at it, so the run
+      // owns its data instead of referencing a fileset the workspace may not have.
+      spec = template;
+      if (example.datasetPath) {
+        const datasetFile = example.datasetPath.split('/').pop() ?? DATASET_FILENAME;
+        files.push({
+          path: datasetFile,
+          content: await fetchSampleText(example.datasetPath),
+          type: 'application/jsonl',
+        });
+        spec = { ...template, dataset: `${workspace}/${name}#${datasetFile}` };
+      }
+    } else {
+      spec = buildPersistedSpec(template, formData.judgeModel || null);
+    }
+
+    files.push({
+      path: EVAL_CONFIG_FILENAME,
+      content: JSON.stringify(spec, null, 2),
+      type: 'application/json',
+    });
     await ensureEvalConfigFileset(workspace, name, signal, files, 'Agent Evaluation Config');
     return spec;
   }
@@ -163,7 +188,7 @@ const loadPersistedSpec = async (
     new AbortController().signal
   );
   if (!blob) throw new Error('Failed to read the selected eval config');
-  return parsePersistedSpec(await blob.text());
+  return parseEvalConfig(await blob.text());
 };
 
 export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
@@ -225,12 +250,20 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     placeholderData: keepPreviousData,
   });
 
-  const isLlmJudge = mode === MODE_DEFAULT && exampleConfig?.metric.metric_type === 'llm-judge';
+  const configMetrics: InlineMetricBundle[] = !exampleConfig
+    ? []
+    : isDatasetEvalSpec(exampleConfig)
+      ? exampleConfig.metrics
+      : exampleConfig.tasks.flatMap((task) => task.metrics);
+
+  const judgeMetric = configMetrics.find((metric) => metric.metric_type === 'llm-judge');
+
+  const isLlmJudge = mode === MODE_DEFAULT && !!judgeMetric;
   isLlmJudgeRef.current = isLlmJudge;
 
   const defaultModelRef =
-    isLlmJudge && typeof exampleConfig?.metric.payload.metric.model === 'string'
-      ? exampleConfig.metric.payload.metric.model
+    isLlmJudge && typeof judgeMetric?.payload.metric.model === 'string'
+      ? judgeMetric.payload.metric.model
       : undefined;
 
   // Fetch judge models eagerly so they're ready when isLlmJudge resolves.
@@ -261,12 +294,20 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
         formData.mode === MODE_DEFAULT
           ? formData.newName.trim()
           : (parseFilesetLocation(formData.configFile ?? '')?.name ?? undefined);
-      const body = buildAgentEvalRequestBody(spec, {
-        workspace,
-        agent: formData.agent,
-        filesetName,
-      });
-      const created = await submitAgentEvalJob(workspace, body as AgentEvaluateJobRequest);
+      const selections = { workspace, agent: formData.agent, filesetName };
+      const created = isDatasetEvalSpec(spec)
+        ? await evaluatorCreateEvaluateJob(
+            workspace,
+            buildDatasetEvalRequestBody(
+              spec,
+              selections,
+              formData.judgeModel || null
+            ) as EvaluateJobRequest
+          )
+        : await submitAgentEvalJob(
+            workspace,
+            buildAgentEvalRequestBody(spec, selections) as AgentEvaluateJobRequest
+          );
       if (!created?.name) throw new Error('Submission did not return a job name');
       return created.name;
     },
@@ -357,14 +398,35 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
               {mode === MODE_DEFAULT ? (
                 <>
-                  <ControlledSelect
-                    useControllerProps={{ control, name: 'exampleKey' }}
-                    items={EVALUATION_SAMPLE_AGENTS.map((example) => ({
-                      value: example.key,
-                      children: example.label,
-                    }))}
-                    formFieldProps={{ slotLabel: 'Example', slotError: errors.exampleKey?.message }}
-                  />
+                  <Stack gap="density-sm">
+                    <Text kind="label/bold/sm" color="secondary">
+                      Example
+                    </Text>
+                    <RadioGroupRoot
+                      name="eval-example"
+                      value={exampleKey}
+                      onValueChange={(v) => setValue('exampleKey', v, { shouldValidate: true })}
+                      orientation="horizontal"
+                    >
+                      <div className="grid grid-cols-2 gap-3">
+                        {EVALUATION_SAMPLE_AGENTS.map((example) => (
+                          <RadioCard
+                            key={example.key}
+                            value={example.key}
+                            label={example.displayName}
+                            description={example.evalSummary}
+                            labelSide="left"
+                            checked={example.key === exampleKey}
+                          />
+                        ))}
+                      </div>
+                    </RadioGroupRoot>
+                    {errors.exampleKey?.message ? (
+                      <Text kind="body/regular/sm" color="danger">
+                        {errors.exampleKey.message}
+                      </Text>
+                    ) : null}
+                  </Stack>
                   {isLlmJudge && (
                     <JudgeModelSelect<SubmitEvaluationFormData>
                       formFieldName="judgeModel"

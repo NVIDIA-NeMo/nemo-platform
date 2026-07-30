@@ -14,7 +14,9 @@ describe('sampleAgentKeyForAgentName', () => {
     expect(sampleAgentKeyForAgentName('email-phishing-demo-agent-9lhh53')).toBe(
       'email_phishing_analyzer'
     );
-    expect(sampleAgentKeyForAgentName('calculator-demo-agent-abc123')).toBe('calculator');
+    expect(sampleAgentKeyForAgentName('email-security-analyst-demo-agent-abc123')).toBe(
+      'email_security_analyst'
+    );
   });
 
   it('returns undefined for non-example agents and empty input', () => {
@@ -24,8 +26,7 @@ describe('sampleAgentKeyForAgentName', () => {
   });
 
   it('requires the prefix separator (no partial-token match)', () => {
-    // 'calculator-demo-agentx-...' is not a real 'calculator-demo-agent-' name.
-    expect(sampleAgentKeyForAgentName('calculator-demo-agentxyz')).toBeUndefined();
+    expect(sampleAgentKeyForAgentName('email-phishingxyz')).toBeUndefined();
   });
 
   it('picks the longest matching prefix when one is a substring of another', () => {
@@ -52,8 +53,8 @@ describe('isSampleAgentName', () => {
   it('agrees with sampleAgentKeyForAgentName (same boundary rule)', () => {
     const names = [
       'email-phishing-demo-agent-9lhh53',
-      'calculator-demo-agent-abc123',
-      'calculator-demo-agentxyz', // partial token — no separator
+      'email-security-analyst-demo-agent-abc123',
+      'email-phishingxyz',
       'my-custom-agent',
       '',
     ];
@@ -63,19 +64,21 @@ describe('isSampleAgentName', () => {
   });
 
   it('requires the prefix separator', () => {
-    expect(isSampleAgentName('calculator-demo-agent-abc123')).toBe(true);
-    expect(isSampleAgentName('calculator-demo-agentxyz')).toBe(false);
+    expect(isSampleAgentName('email-security-analyst-demo-agent-abc123')).toBe(true);
+    expect(isSampleAgentName('email-phishingxyz')).toBe(false);
   });
 });
 
 describe('evaluation samples', () => {
   it('keeps creation-only samples out of the evaluation picker', () => {
-    expect(SAMPLE_AGENTS.some((agent) => agent.key === 'calculator')).toBe(true);
+    expect(SAMPLE_AGENTS.some((agent) => agent.key === 'email_security_analyst')).toBe(true);
     expect(EVALUATION_SAMPLE_AGENTS.map((agent) => agent.key)).toEqual([
-      'calculator',
       'email_phishing_analyzer',
+      'email_security_analyst',
     ]);
-    expect(evaluationSampleAgentKeyForAgentName('calculator-demo-agent-abc123')).toBe('calculator');
+    expect(evaluationSampleAgentKeyForAgentName('email-security-analyst-demo-agent-abc123')).toBe(
+      'email_security_analyst'
+    );
     expect(evaluationSampleAgentKeyForAgentName('email-phishing-demo-agent-abc123')).toBe(
       'email_phishing_analyzer'
     );

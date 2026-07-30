@@ -8,6 +8,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import { loadSampleAgentConfig } from '@studio/api/agents/loadSampleAgentConfig';
+import { loadSampleAgentModelName } from '@studio/api/agents/loadSampleAgentModelName';
 import { getErrorMessage } from '@studio/api/common/utils';
 import {
   hasShownExampleAgentIntro,
@@ -30,12 +31,12 @@ import type {
 import { getAgentDetailRoute, getAgentsListRoute } from '@studio/routes/utils';
 import {
   buildSuggestedModelOptions,
-  pickDefaultModelName,
+  pickModelNameForExample,
   SUGGESTED_MODEL_GROUP_LABELS,
 } from '@studio/util/buildSuggestedModelOptions';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
-import { type SubmitHandler, useForm } from 'react-hook-form';
+import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 
 export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
@@ -92,6 +93,7 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
   const {
     control,
     reset: resetForm,
+    setValue,
     handleSubmit,
     formState: { errors },
   } = useForm({
@@ -99,6 +101,15 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
     defaultValues: { exampleKey: DEFAULT_SAMPLE_AGENT_KEY, modelName: '' },
     disabled: isPending,
     mode: 'onChange',
+  });
+
+  const exampleKey = useWatch({ control, name: 'exampleKey' });
+
+  const { data: preferredModel } = useQuery({
+    queryKey: ['sample-agent-model', exampleKey],
+    queryFn: () => loadSampleAgentModelName(getSampleAgent(exampleKey).agentConfigPath),
+    enabled: open && !!exampleKey,
+    staleTime: Infinity,
   });
 
   const seededRef = useRef(false);
@@ -109,13 +120,20 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
       return;
     }
     if (seededRef.current) return;
-    const defaultModel = pickDefaultModelName(models);
+    const defaultModel = pickModelNameForExample(models, preferredModel);
     if (defaultModel) {
       resetForm({ exampleKey: DEFAULT_SAMPLE_AGENT_KEY, modelName: defaultModel });
       seededRef.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, modelsPage, resetForm]);
+  }, [open, modelsPage, preferredModel, resetForm]);
+
+  useEffect(() => {
+    if (!open || !seededRef.current) return;
+    const nextModel = pickModelNameForExample(models, preferredModel);
+    if (nextModel) setValue('modelName', nextModel, { shouldValidate: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exampleKey, preferredModel]);
 
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
 

@@ -1,0 +1,105 @@
+# Studio sample agent: email security analyst tool-calling agent.
+# Served as a static asset and fetched by Studio's Create Example Agent flow.
+# The `_type` values below require the installed nemo-agents-example-email-security
+# plugin. model_name is overwritten with the user's selected model at create time
+# (parse-then-set), so the value here is only a default.
+#
+# This agent is the TASK-DRIVEN evaluation example. It models an analyst-facing
+# assistant inside a mail client: the operator selects one or more messages and
+# optionally types a question. The eval's heterogeneity comes from how the human
+# engages -- one message or six, question or none, "is this safe?" vs "write a
+# warning for the team" -- not from artificially varied material. The
+# email-phishing sample is the dataset-driven counterpart.
+#
+# `return_direct` lists every tool, which ends the graph on the tool result rather
+# than running a second generation over it. That is what makes each tool's
+# first-line output contract a guarantee; without it the model rewrites the answer
+# and every deterministic metric breaks.
+#
+# Requires a model that supports native tool calls. Probed 2026-07-29: every model
+# reachable through the gateway emitted tool_calls (nemotron nano/super/ultra/mini,
+# nano-9b-v2, azure gpt-4.1-mini). Unreachable models fail loudly with a 404 at
+# invoke time rather than degrading silently.
+
+functions:
+  review_messages:
+    _type: review_messages
+    llm: llm
+  triage_message:
+    _type: triage_message
+    llm: llm
+  attribute_attack:
+    _type: attribute_attack
+    llm: llm
+  trace_thread:
+    _type: trace_thread
+    llm: llm
+  analyze_headers:
+    _type: analyze_headers
+    llm: llm
+  check_url_brand:
+    _type: check_url_brand
+    llm: llm
+  incident_response:
+    _type: incident_response
+    llm: llm
+  draft_warning:
+    _type: draft_warning
+    llm: llm
+  extract_iocs:
+    _type: extract_iocs
+llms:
+  llm:
+    _type: openai
+    api_key: not-used
+    model_name: default/nvidia-nemotron-3-nano-30b-a3b
+    temperature: 0.0
+    max_tokens: 4096
+workflow:
+  _type: tool_calling_agent
+  tool_names:
+    [
+      review_messages,
+      triage_message,
+      attribute_attack,
+      trace_thread,
+      analyze_headers,
+      check_url_brand,
+      incident_response,
+      draft_warning,
+      extract_iocs,
+    ]
+  return_direct:
+    [
+      review_messages,
+      triage_message,
+      attribute_attack,
+      trace_thread,
+      analyze_headers,
+      check_url_brand,
+      incident_response,
+      draft_warning,
+      extract_iocs,
+    ]
+  llm_name: llm
+  additional_instructions: >-
+    You are an email security analyst assistant inside a mail client.
+
+    Your input is a JSON object with exactly two keys. `user_message` is what the
+    analyst typed, and is an empty string when they typed nothing. `emails` is a
+    list of the messages they selected, and is empty when they selected none.
+
+    Pick exactly one tool. When `user_message` is empty, use review_messages --
+    the analyst wants a general review of what they selected. Otherwise choose the
+    tool whose description matches what they are asking for, and pass it the
+    material it needs: the selected messages, the question, or both.
+
+    Refer to messages by their 1-based position in `emails`: the first is 1, the
+    second is 2, and so on.
+general:
+  telemetry:
+    tracing:
+      nemo_trace:
+        _type: nemo_files
+        # workspace and agent_name are injected at deploy time
+        batch_size: 128

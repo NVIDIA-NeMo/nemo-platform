@@ -1,3 +1,127 @@
+# Agent Routes
+
+Everything under `src/routes/agents/` — the agents list, detail, deployments, monitor,
+suggestions, and evaluations routes — plus the sample-agent registry those routes read from.
+
+Contents:
+
+- [Adding a New Example Agent](#adding-a-new-example-agent) — end-to-end checklist
+- [Agent Evaluation](#agent-evaluation) — how Studio runs evaluations
+
+---
+
+# Adding a New Example Agent
+
+Example agent = entry in `src/constants/sampleAgents.ts`. Create-Example modal deploys it; Run-Evaluation modal seeds a config from it.
+
+Touches: Python package, 2 ymls, 1 constants file, 1 Studio rebuild.
+
+## Checklist
+
+1. Plugin package `plugins/nemo-agents/examples/<name>/` — mirror `email-phishing-analyzer/`. `pyproject.toml` with `[project.entry-points."nat.components"] <x> = "<module>.register"`; `src/<module>/register.py` = one `FunctionBaseConfig` + `@register_function` per tool; `tests/`.
+2. Register in 4 places (below).
+3. `uv sync`, then **restart services**. `nat start fastapi` discovers `_type`s only at process start.
+4. Studio asset `public/sample-agents/<name>/agent.yml` — second independent copy, hand-synced.
+5. `SAMPLE_AGENTS` entry. `evalConfigPath` optional; omit → absent from Run Evaluation.
+6. `pnpm --filter nemo-studio-ui build:fastapi`.
+7. Verify (below).
+
+## Registration: 4 places
+
+`{ workspace = true }` is a pointer into root `members`, not standalone. Missing root member → `references a workspace in tool.uv.sources, but is not a workspace member`.
+
+| File                                 | Section                       | Entry                                            |
+| ------------------------------------ | ----------------------------- | ------------------------------------------------ |
+| root `pyproject.toml`                | `[tool.uv.sources]`           | `nemo-agents-example-<x> = { workspace = true }` |
+| root `pyproject.toml`                | `[tool.uv.workspace] members` | `"plugins/nemo-agents/examples/<name>"`          |
+| `plugins/nemo-agents/pyproject.toml` | `[project] dependencies`      | `"nemo-agents-example-<x>"`                      |
+| `plugins/nemo-agents/pyproject.toml` | `[tool.uv.sources]`           | `nemo-agents-example-<x> = { workspace = true }` |
+
+Tried, rejected:
+
+- members glob `examples/*` — only 3 of 11 subdirs are packages; uv errors on first without `pyproject.toml`.
+- path source `{ path = "...", editable = true }` in plugin only — resolves without root membership, still rewrites `uv.lock`.
+- `uv pip install -e <dir>`, no toml entries — zero repo diff, but `uv sync` **prunes it**; `_type`s vanish, deploy fails at startup.
+
+Wheel bundle (`packages/nemo_platform/pyproject.toml` `[tool.bundle-package.*]`) lists only `calculator`. Others resolve under workspace `uv sync`, **not** from a wheel.
+
+**Re-lock needs `uv lock --python 3.12`.** `nooa` (git dep of `nemo-experimentalist-plugin`) requires py `>=3.12,<3.14`; uv builds git-dep metadata with the active interpreter (venv is 3.11). Committed lock caches that metadata, so plain `uv sync` works and this only bites on a real re-resolve. Resulting diff is large but purely additive (0 deletions).
+
+## Two agent ymls, on purpose
+
+| Copy                                    | Workflow             | Consumer  |
+| --------------------------------------- | -------------------- | --------- |
+| `plugins/.../<name>-agent.yml`          | `react_agent`        | CLI / NAT |
+| `public/sample-agents/<name>/agent.yml` | `tool_calling_agent` | Studio    |
+
+Independent files, hand-synced. Studio serves only `public/`; it cannot read `plugins/`.
+
+Studio copy constraints:
+
+- LLM key must be literally `llm` — `loadSampleAgentConfig.ts` hardcodes `config.llms.llm`, throws otherwise.
+- `model_name: ${NEMO_DEFAULT_MODEL}` inert — Studio overwrites with dropdown pick before POST.
+- Prefer `tool_calling_agent`; ReAct text prompt makes small models mis-parse a scratchpad and run away.
+
+## max_tokens
+
+Phishing's `1024` truncates any agent emitting a JSON report or batch triage. Reasoning tokens exhaust the budget:
+
+```
+LLM output truncated (finish_reason='length'). output_tokens=1024, ...
+Truncated output: 'We need to list<unk><unk><unk>...'
+```
+
+`4096` sufficed for ~6-item batch + 5-field JSON report. Model-size independent — same truncation on 30B and 120B.
+
+Capping reasoning tokens instead is unavailable: NAT's knob is `thinking: bool`, gated in `nat/data_models/thinking_mixin.py` by regex `^nvidia/(llama|nvidia).*nemotron`. Platform names are workspace-qualified (`default/...`) → never match → deploy fails `thinking is not supported for model_name`. (`max_thinking_tokens` in phishing's eval config is on the llm-judge metric, different layer.)
+
+## Rebuild
+
+`public/` copies into `dist/` at build; platform serves **built** `dist/`. Stale `dist/` → new asset 404s at runtime though the file exists and tests pass.
+
+```bash
+pnpm --filter nemo-studio-ui build:fastapi
+curl -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/studio/sample-agents/<name>/agent.yml
+```
+
+`404` — including for existing samples — means `dist/` predates `public/sample-agents/`.
+
+## Verify
+
+Green tests are insufficient; they mock the asset fetch.
+
+```bash
+# 1. _types registered
+uv run python -c "
+import <module>.register
+from nat.cli.type_registry import GlobalTypeRegistry
+r = GlobalTypeRegistry.get()
+print(sorted(c.local_name for c in r.get_registered_functions() if c.module_name=='<module>'))"
+
+# 2. asset served, not just on disk
+curl -sf http://127.0.0.1:8080/studio/sample-agents/<name>/agent.yml >/dev/null && echo served
+
+# 3. real Create-Example path: fetch served yml -> inject model ->
+#    POST /apis/agents/v2/workspaces/default/agents -> deploy -> invoke /-/generate
+```
+
+**Read `nemo agents logs --agent <name>` first.** Workflow error messages mislead: `ReActAgentParsingFailedError ... LLM output: ''` and `No response received from agent` were the same root cause, visible only in logs as `502 Bad Gateway - Backend returned 404: {"error":{"message":"Model not found"}}`.
+
+Confirm the model is served before blaming the agent. Names differing by transposition (`nemotron-nano-3-30b` vs `nemotron-3-nano-30b`) can both exist as entities with only one reachable:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  http://127.0.0.1:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"<name>","messages":[{"role":"user","content":"say ok"}],"max_tokens":16}'
+```
+
+## Naming
+
+`namePrefix` drives `sampleAgentKeyForAgentName` (matches `${namePrefix}-`, longest wins). Changing an existing `namePrefix` is breaking: deployed agents stop matching, silently fall back to `EVALUATION_SAMPLE_AGENTS[0]` — wrong eval config, no error.
+
+---
+
 # Agent Evaluation
 
 How Studio runs agent evaluations.
@@ -282,14 +406,36 @@ per-task bundle (trials, evidence, traces) lives in the fileset referenced by `b
 
 ---
 
-## Legacy: `evaluate/jobs` (row-based, not for agent eval)
+## `evaluate/jobs` (row-based, dataset-driven)
 
-nemo-evaluator also exposes a row-based `evaluate/jobs` endpoint (`EvaluateJob`). It predates
-the agent path and serves **prompt/completion-style datasets**. It _can_ take an agent target
-and a `dataset` that is a **`FilesetRef`** (a CSV/JSONL file in a Fileset, no row inlining) —
-attractive for large datasets — but its agent-eval functionality is limited compared to
-`agent-evaluate` (no per-task structure, traces, or artifact aggregation). **Do not use it for
-Studio agent evaluation.** Recorded here only so the two endpoints are not confused.
+Both endpoints are live and Studio submits to either. The modal picks by CONFIG SHAPE
+(`isDatasetEvalSpec`, submitEvaluationSpec.ts) — no registry metadata:
+
+| Config keys                                 | Endpoint              | Sample                  |
+| ------------------------------------------- | --------------------- | ----------------------- |
+| `tasks[]`, each with its own `metrics[]`    | `agent-evaluate/jobs` | email-security-analyst  |
+| `dataset` + `metrics[]` + `prompt_template` | `evaluate/jobs`       | email-phishing-analyzer |
+
+Dataset-driven applies ONE metric set to every row of a dataset; task-driven attaches metrics
+per task. Use dataset-driven for a uniform classifier over a labeled corpus, task-driven when
+tasks differ in shape and need different scorers.
+
+Differences that bite:
+
+- `target` is the BARE agent object, NOT `{kind, agent}` — `EvaluateInputSpec` is `extra="forbid"`.
+- `body` renders `{{ prompt }}` (row-based), not `{{ instruction }}` (task-based).
+- `prompt_template` is REQUIRED, and `params` must be exactly `RunConfigOnline`; the job 500s
+  otherwise. A bare `{parallelism: N}` parses as plain `RunConfig` and fails.
+- The dataset is a `FilesetRef` (`workspace/fileset#file.jsonl`) or inline rows. FilesetRef gives
+  users dataset/config separation, which is what most expect.
+- Results come from `eval-results/{name}` (not `agent-eval-results`) and the aggregate-scores
+  artifact writes `scores` as a LIST of score objects, each containing `percentiles` and
+  `histogram` OBJECTS. Rendering those as React children throws — see ResultsPanel's
+  `toScoreEntries`.
+- Dataset-driven jobs do NOT appear in the Studio agent-evaluations list, which reads
+  `agent-evaluate/jobs` only.
+- `nemo evaluator evaluate run --spec-file` crashes on a FilesetRef dataset (Event loop is
+  closed); `submit` is unaffected. Inline rows work locally.
 
 Shape (reference only):
 

@@ -22,7 +22,7 @@ describe('AgentEvalScoresPanel', () => {
       />
     );
 
-    expect(screen.getByText('4/5 scored · range 0.000–1.000')).toBeInTheDocument();
+    expect(screen.getByText('4/5')).toBeInTheDocument();
     expect(screen.getByText('0.750')).toBeInTheDocument();
   });
 

@@ -101,19 +101,16 @@ describe('AgentsListRoute', () => {
 
     expect(await screen.findByText('Agent detail page')).toBeInTheDocument();
 
-    expect(captured.name).toMatch(/^calculator-demo-agent-[a-z0-9]{6}$/);
+    expect(captured.name).toMatch(/^email-phishing-[a-z0-9]{6}$/);
     expect(captured.description).toBeTruthy();
     const config = captured.config as {
-      workflow: { _type: string; tool_names: string[]; use_native_tool_calling: boolean };
-      function_groups: Record<string, { _type: string }>;
+      workflow: { _type: string; tool_names: string[] };
       functions: Record<string, { _type: string }>;
       llms: { llm: { model_name: string } };
     };
-    expect(config.workflow._type).toBe('react_agent');
-    expect(config.workflow.tool_names).toEqual(['calculator', 'current_datetime']);
-    expect(config.workflow.use_native_tool_calling).toBe(true);
-    expect(config.function_groups.calculator._type).toBe('calculator');
-    expect(config.functions.current_datetime._type).toBe('current_datetime');
+    expect(config.workflow._type).toBe('tool_calling_agent');
+    expect(config.workflow.tool_names).toEqual(['email_phishing_analyzer']);
+    expect(config.functions.email_phishing_analyzer._type).toBe('email_phishing_analyzer');
     expect(config.llms.llm.model_name).toBe('nvidia-nemotron-super-49b');
   });
 
@@ -129,7 +126,7 @@ describe('AgentsListRoute', () => {
         };
         modelName = body.config.llms.llm.model_name;
         return HttpResponse.json({
-          name: 'calculator-demo-agent-abc123',
+          name: 'email-phishing-demo-agent-abc123',
           workspace: params['workspace'],
         });
       })
@@ -150,7 +147,7 @@ describe('AgentsListRoute', () => {
     await waitFor(() => expect(modelName).toBe('meta-llama-3-1-70b-instruct'));
   });
 
-  it('creates the email phishing example when that example is selected', async () => {
+  it('creates the email security example when that example is selected', async () => {
     const user = userEvent.setup();
     mockModels(['nvidia-nemotron-super-49b']);
 
@@ -171,18 +168,57 @@ describe('AgentsListRoute', () => {
     );
 
     await user.click(within(dialog).getByRole('combobox', { name: 'Example' }));
-    await user.click(await screen.findByRole('option', { name: 'email_phishing_analyzer' }));
+    await user.click(await screen.findByRole('option', { name: 'email_security_analyst' }));
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-    await waitFor(() => expect(captured.name).toMatch(/^email-phishing-demo-agent-[a-z0-9]{6}$/));
+    await waitFor(() => expect(captured.name).toMatch(/^email-security-analyst-[a-z0-9]{6}$/));
     const config = captured.config as {
       workflow: { tool_names: string[] };
       functions: Record<string, { _type: string }>;
       llms: { llm: { model_name: string } };
     };
-    expect(config.workflow.tool_names).toEqual(['email_phishing_analyzer']);
-    expect(config.functions.email_phishing_analyzer._type).toBe('email_phishing_analyzer');
+    expect(config.workflow.tool_names).toEqual(['analyze_email', 'extract_iocs']);
+    expect(config.functions.analyze_email._type).toBe('analyze_email');
+    expect(config.functions.extract_iocs._type).toBe('extract_iocs');
     expect(config.llms.llm.model_name).toBe('nvidia-nemotron-super-49b');
+  });
+
+  it('pre-selects the model named in the example config when the workspace offers it', async () => {
+    const user = userEvent.setup();
+    mockModels(['nvidia-nemotron-super-49b', 'nvidia-nemotron-3-nano-30b-a3b']);
+
+    renderList();
+    const dialog = await openModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-super-49b'
+      )
+    );
+
+    await user.click(within(dialog).getByRole('combobox', { name: 'Example' }));
+    await user.click(await screen.findByRole('option', { name: 'email_security_analyst' }));
+
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-3-nano-30b-a3b'
+      )
+    );
+  });
+
+  it('falls back to the suggested model when the example config names an unavailable one', async () => {
+    const user = userEvent.setup();
+    mockModels(['nvidia-nemotron-super-49b']);
+
+    renderList();
+    const dialog = await openModal(user);
+    await user.click(within(dialog).getByRole('combobox', { name: 'Example' }));
+    await user.click(await screen.findByRole('option', { name: 'email_security_analyst' }));
+
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-super-49b'
+      )
+    );
   });
 
   it('excludes non-chat models from the picker', async () => {
@@ -285,7 +321,7 @@ describe('AgentsListRoute', () => {
     server.use(
       http.get(CREATE_AGENT_URL, () =>
         HttpResponse.json({
-          data: [{ name: 'calculator-demo-agent-abc123', workspace }],
+          data: [{ name: 'email-phishing-demo-agent-abc123', workspace }],
           pagination: {
             page: 1,
             page_size: 50,
@@ -309,7 +345,7 @@ describe('AgentsListRoute', () => {
     );
 
     renderList();
-    await screen.findByText('calculator-demo-agent-abc123');
+    await screen.findByText('email-phishing-demo-agent-abc123');
     const dialog = await openModal(user);
     await waitFor(() =>
       expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(

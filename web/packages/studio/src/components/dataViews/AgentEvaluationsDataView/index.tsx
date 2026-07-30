@@ -23,21 +23,15 @@ import {
   type AgentEvaluateJobsListFilter,
   AgentEvaluateJobsSortField,
 } from '@nemo/sdk/generated/evaluator/schema';
-import { Button, Stack, Text } from '@nvidia/foundations-react-core';
-import {
-  aggregateScoresOf,
-  agentNameForJob,
-  evalConfigName,
-  fetchAgentEvalResultsForJobs,
-} from '@studio/api/evaluation/agent-evaluations';
+import { Button } from '@nvidia/foundations-react-core';
+import { agentNameForJob, evalConfigName } from '@studio/api/evaluation/agent-evaluations';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
 import { getAgentEvaluationDetailRoute, getFilesetDetailRoute } from '@studio/routes/utils';
 import { getTextWithCount } from '@studio/util/strings';
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { Trash } from 'lucide-react';
 import { ComponentProps, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -125,16 +119,6 @@ export const AgentEvaluationsDataView = () => {
     [jobsData?.data]
   );
 
-  const jobNames = useMemo(() => jobs.map((job) => job.name).filter(Boolean), [jobs]);
-
-  const { data: resultsByName } = useQuery({
-    queryKey: ['agent-eval-results-for-jobs', workspace, jobNames] as const,
-    queryFn: ({ signal }) => fetchAgentEvalResultsForJobs(workspace, jobNames, signal),
-    enabled: jobNames.length > 0,
-    placeholderData: keepPreviousData,
-    refetchInterval: JOB_POLLING_INTERVAL_MS,
-  });
-
   const makeColumns: ComponentProps<typeof StudioDataView<AgentEvalJobRow>>['makeColumns'] = (
     { accessor },
     { rowSelectionColumn, rowActionsColumn }
@@ -180,25 +164,6 @@ export const AgentEvaluationsDataView = () => {
         },
       },
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
-    }),
-    accessor(() => '', {
-      id: 'score',
-      header: 'Score',
-      size: 220,
-      enableSorting: false,
-      cell: ({ row }) => {
-        const scores = aggregateScoresOf(resultsByName?.get(row.original.name) ?? null);
-        if (scores.length === 0) return null;
-        return (
-          <Stack gap="density-xs">
-            {scores.map((s) => (
-              <Text key={s.name} kind="body/semibold/md" className="whitespace-nowrap">
-                {s.name}: {formatScore(s.mean)}
-              </Text>
-            ))}
-          </Stack>
-        );
-      },
     }),
     accessor((original) => original?.created_at || '', {
       id: 'created_at',

@@ -1,17 +1,30 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccordionPanel } from '@nemo/common/src/components/AccordionPanel';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { useEvaluatorGetEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
-import { Flex, PageHeader, Stack } from '@nvidia/foundations-react-core';
+import {
+  Block,
+  Flex,
+  Grid,
+  PageHeader,
+  Panel,
+  Spinner,
+  Stack,
+} from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { DatasetEvalRowResultsPanel } from '@studio/components/evaluation/Jobs/datasetEval/DatasetEvalRowResultsPanel';
+import { DatasetEvalScoresPanel } from '@studio/components/evaluation/Jobs/datasetEval/DatasetEvalScoresPanel';
+import { useDatasetEvalResults } from '@studio/components/evaluation/Jobs/datasetEval/useDatasetEvalResults';
 import { DetailsPanel } from '@studio/components/evaluation/Jobs/DetailsPanel';
-import { ResultsPanel } from '@studio/components/evaluation/Jobs/ResultsPanel';
+import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getEvaluationResultsRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
+import { FlaskConical, ScrollText } from 'lucide-react';
 import { FC } from 'react';
 
 const isTerminal = (status?: string) =>
@@ -31,6 +44,12 @@ export const EvaluationResultDetailsRoute: FC = () => {
     },
   });
 
+  const { scores, rows, isPending, isLoadingScores, isLoadingRows } = useDatasetEvalResults(
+    workspace,
+    id,
+    job?.status
+  );
+
   useBreadcrumbs({
     items: [
       {
@@ -49,8 +68,39 @@ export const EvaluationResultDetailsRoute: FC = () => {
         <Flex align="center" justify="center" className="w-full">
           <Stack className="w-full max-w-[1200px]" gap="density-2xl">
             <PageHeader className="p-0" slotHeading={job?.name ?? id} />
-            <DetailsPanel evaluationJob={job} error={!!error} />
-            <ResultsPanel workspace={workspace} jobName={id} status={job?.status} />
+
+            <Grid cols={{ base: 1, xl: 2 }} gap="density-2xl">
+              <DetailsPanel evaluationJob={job} error={!!error} />
+              <Panel
+                slotHeading="Scores"
+                slotIcon={<FlaskConical />}
+                elevation="high"
+                density="compact"
+              >
+                {isPending && (
+                  <Block className="text-subtle">
+                    Scores are computed once the job reaches a terminal state.
+                  </Block>
+                )}
+                {!isPending && isLoadingScores && (
+                  <Flex justify="center" align="center" className="min-h-[120px] w-full">
+                    <Spinner size="small" aria-label="Loading scores..." />
+                  </Flex>
+                )}
+                {!isPending && !isLoadingScores && <DatasetEvalScoresPanel scores={scores} />}
+              </Panel>
+            </Grid>
+
+            {!isPending && isLoadingRows && (
+              <Flex justify="center" align="center" className="min-h-[120px] w-full">
+                <Spinner size="small" aria-label="Loading row results..." />
+              </Flex>
+            )}
+            {!isPending && !isLoadingRows && <DatasetEvalRowResultsPanel rows={rows} />}
+
+            <AccordionPanel slotHeading="Logs" slotIcon={<ScrollText />}>
+              <StatusLogsContent workspace={workspace} jobName={id} />
+            </AccordionPanel>
           </Stack>
         </Flex>
       </Stack>

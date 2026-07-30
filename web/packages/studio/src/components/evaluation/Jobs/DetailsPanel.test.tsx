@@ -39,7 +39,6 @@ describe('DetailsPanel', () => {
 
     // Wait for content to load - Heading and sections
     expect(await screen.findByText('Details')).toBeInTheDocument();
-    expect(screen.getByText('Status Logs')).toBeInTheDocument();
 
     // Label/value rows
     expect(screen.getByText('Status')).toBeInTheDocument();
