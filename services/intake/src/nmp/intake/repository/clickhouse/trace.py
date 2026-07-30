@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -77,6 +79,23 @@ _CURRENT_SPAN_VALUE_COLUMNS = (
 _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
 
 
+@dataclass(frozen=True)
+class _TracePageRef:
+    source_format: str
+    trace_id: str
+
+    @classmethod
+    def from_row(cls, row: Mapping[str, Any]) -> _TracePageRef:
+        return cls(
+            source_format=str(row["source_format"]),
+            trace_id=str(row["id"]),
+        )
+
+    @property
+    def trace_key(self) -> tuple[str, str]:
+        return self.source_format, self.trace_id
+
+
 class ClickHouseTraceRepository(TraceRepository):
     def __init__(self, executor: ClickHouseExecutor) -> None:
         self._executor = executor
@@ -113,29 +132,37 @@ class ClickHouseTraceRepository(TraceRepository):
         )
 
         offset = (page - 1) * page_size
-        trace_index_sql, row_parameters = _trace_index_sql(
-            trace_index_table,
-            filters,
-            mode=mode,
-        )
-        rows_sql, rows_parameters = _trace_rows_sql(
-            trace_index_sql=trace_index_sql,
-            spans_table=spans_table,
-            mode=mode,
-            sort=sort,
-        )
-        rows = await self._executor.fetch_all(
+        page_sql = _trace_page_sql(trace_index_sql=count_trace_index_sql, sort=sort)
+        page_rows = await self._executor.fetch_all(
             ClickHouseQuery(
-                name="traces.list.rows",
-                statement=rows_sql,
+                name="traces.list.page",
+                statement=page_sql,
                 parameters={
-                    **row_parameters,
-                    **rows_parameters,
+                    **parameters,
                     "limit": page_size,
                     "offset": offset,
                 },
             )
         )
+        rows = page_rows
+        if mode != "summary" and page_rows:
+            page_refs = [_TracePageRef.from_row(row) for row in page_rows]
+            hydration_sql, hydration_parameters = _trace_hydration_sql(
+                trace_index_table=trace_index_table,
+                spans_table=spans_table,
+                mode=mode,
+            )
+            rows = await self._executor.fetch_all(
+                ClickHouseQuery(
+                    name="traces.list.hydrate",
+                    statement=hydration_sql,
+                    parameters={
+                        "workspace": filters.workspace,
+                        **hydration_parameters,
+                        **_trace_page_parameters(page_refs),
+                    },
+                )
+            )
         traces = [_row_to_trace(row) for row in rows]
         return PaginatedResult(
             data=traces,
@@ -212,47 +239,48 @@ class ClickHouseTraceRepository(TraceRepository):
         return {str(row["group_id"]): row["started_at"] for row in rows}
 
 
-def _trace_rows_sql(
-    *, trace_index_sql: str, spans_table: str, mode: TraceMode, sort: str
-) -> tuple[str, dict[str, Any]]:
-    if mode == "summary":
-        query = f"""
-            WITH page_traces AS (
-                SELECT *
-                FROM ({trace_index_sql}) AS traces
-                ORDER BY {_order_by(sort)}
-                LIMIT %(limit)s OFFSET %(offset)s
-            )
+def _trace_page_sql(*, trace_index_sql: str, sort: str) -> str:
+    return f"""
+        SELECT
+            {_trace_select_columns(include_aggregates=False)}
+        FROM ({trace_index_sql}) AS traces
+        ORDER BY {_order_by(sort, table_alias="traces")}
+        LIMIT %(limit)s OFFSET %(offset)s
+    """
+
+
+def _trace_hydration_sql(*, trace_index_table: str, spans_table: str, mode: TraceMode) -> tuple[str, dict[str, Any]]:
+    trace_columns, trace_parameters = _trace_index_select_columns(mode=mode)
+    aggregates_sql, aggregate_parameters = _trace_aggregates_sql(spans_table)
+    query = f"""
+        WITH
+        traces AS (
             SELECT
-                {_trace_select_columns(include_aggregates=False)}
-            FROM page_traces AS traces
-            ORDER BY {_order_by(sort, table_alias="traces")}
-        """
-        return query, {}
-    if mode in {"preview", "detailed"}:
-        aggregates_sql, parameters = _trace_aggregates_sql(spans_table)
-        query = f"""
-            WITH
-            page_traces AS (
-                SELECT *
-                FROM ({trace_index_sql}) AS traces
-                ORDER BY {_order_by(sort)}
-                LIMIT %(limit)s OFFSET %(offset)s
-            ),
-            rollups AS (
-                {aggregates_sql}
-            )
-            SELECT
-                {_trace_select_columns(include_aggregates=True)}
-            FROM page_traces AS traces
-            LEFT JOIN rollups
-                ON traces.workspace = rollups.workspace
-                AND traces.source_format = rollups.source_format
-                AND traces.id = rollups.trace_id
-            ORDER BY {_order_by(sort, table_alias="traces")}
-        """
-        return query, parameters
-    raise ValueError(f"Unsupported trace mode: {mode}")
+                {trace_columns}
+            FROM {trace_index_table} AS trace_roots FINAL
+            WHERE trace_roots.workspace = %(workspace)s
+                AND trace_roots.is_deleted = 0
+                AND trace_roots.trace_id IN %(page_trace_ids)s
+                AND (
+                    trace_roots.source_format,
+                    trace_roots.trace_id
+                ) IN %(page_trace_keys)s
+            ORDER BY trace_roots.root_started_at ASC, trace_roots.root_span_id ASC
+            LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id
+        ),
+        rollups AS (
+            {aggregates_sql}
+        )
+        SELECT
+            {_trace_select_columns(include_aggregates=True)}
+        FROM traces
+        LEFT JOIN rollups
+            ON traces.workspace = rollups.workspace
+            AND traces.source_format = rollups.source_format
+            AND traces.id = rollups.trace_id
+        ORDER BY indexOf(%(page_trace_keys)s, (traces.source_format, traces.id)) ASC
+    """
+    return query, {**trace_parameters, **aggregate_parameters}
 
 
 def _trace_select_columns(*, include_aggregates: bool) -> str:
@@ -294,35 +322,41 @@ def _trace_index_sql(
     mode: TraceMode,
 ) -> tuple[str, dict[str, Any]]:
     where_sql, parameters = _trace_index_where(filters, qualifier="trace_roots")
-    parameters.update(text_query_parameters(mode))
-    payload_columns = ",\n            ".join(
-        (
-            text_select_for_mode("trace_roots.root_input", alias="input", mode=mode),
-            text_select_for_mode("trace_roots.root_output", alias="output", mode=mode),
-        )
-    )
+    select_columns, select_parameters = _trace_index_select_columns(mode=mode)
+    parameters.update(select_parameters)
     query = f"""
         SELECT
-            trace_roots.trace_id AS id,
-            trace_roots.workspace AS workspace,
-            trace_roots.session_id AS session_id,
-            trace_roots.source_format AS source_format,
-            nullIf(trace_roots.root_span_id, '') AS root_span_id,
-            nullIf(trace_roots.root_name, '') AS name,
-            {payload_columns},
-            nullIf(trace_roots.project, '') AS project,
-            nullIf(trace_roots.evaluation_id, '') AS evaluation_id,
-            nullIf(trace_roots.test_case_id, '') AS test_case_id,
-            trace_roots.root_started_at AS started_at,
-            trace_roots.root_ended_at AS ended_at,
-            trace_roots.root_status AS status,
-            trace_roots.event_ts AS ingested_at
+            {select_columns}
         FROM {table} AS trace_roots FINAL
         WHERE {where_sql}
         ORDER BY trace_roots.root_started_at ASC, trace_roots.root_span_id ASC
         LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id
     """
     return query, parameters
+
+
+def _trace_index_select_columns(*, mode: TraceMode) -> tuple[str, dict[str, Any]]:
+    payload_columns = (
+        text_select_for_mode("trace_roots.root_input", alias="input", mode=mode),
+        text_select_for_mode("trace_roots.root_output", alias="output", mode=mode),
+    )
+    columns = (
+        "trace_roots.trace_id AS id",
+        "trace_roots.workspace AS workspace",
+        "trace_roots.session_id AS session_id",
+        "trace_roots.source_format AS source_format",
+        "nullIf(trace_roots.root_span_id, '') AS root_span_id",
+        "nullIf(trace_roots.root_name, '') AS name",
+        *payload_columns,
+        "nullIf(trace_roots.project, '') AS project",
+        "nullIf(trace_roots.evaluation_id, '') AS evaluation_id",
+        "nullIf(trace_roots.test_case_id, '') AS test_case_id",
+        "trace_roots.root_started_at AS started_at",
+        "trace_roots.root_ended_at AS ended_at",
+        "trace_roots.root_status AS status",
+        "trace_roots.event_ts AS ingested_at",
+    )
+    return ",\n            ".join(columns), text_query_parameters(mode)
 
 
 def _trace_aggregates_sql(table: str) -> tuple[str, dict[str, Any]]:
@@ -334,6 +368,14 @@ def _trace_aggregates_sql(table: str) -> tuple[str, dict[str, Any]]:
     parameters["model_key"] = model_spec.bag_key
     parameters["provider_key"] = provider_spec.bag_key
 
+    current_spans = current_spans_sql(
+        table,
+        extra_where_sql=(
+            "span_versions.trace_id IN %(page_trace_ids)s\n"
+            "                AND (span_versions.source_format, span_versions.trace_id) "
+            "IN %(page_trace_keys)s"
+        ),
+    )
     query = f"""
         SELECT
             {source_alias}.workspace AS workspace,
@@ -352,19 +394,18 @@ def _trace_aggregates_sql(table: str) -> tuple[str, dict[str, Any]]:
             )) AS providers,
             count() AS span_count,
             countIf({source_alias}.status = 'error') AS error_count
-        FROM {
-        current_spans_sql(
-            table,
-            extra_where_sql=(
-                "(span_versions.workspace, span_versions.source_format, span_versions.trace_id) IN "
-                "(SELECT workspace, source_format, id FROM page_traces)"
-            ),
-        )
-    } AS {source_alias}
+        FROM {current_spans} AS {source_alias}
         WHERE {source_alias}.is_deleted = 0
         GROUP BY {source_alias}.workspace, {source_alias}.source_format, {source_alias}.trace_id
     """
     return query, parameters
+
+
+def _trace_page_parameters(refs: Sequence[_TracePageRef]) -> dict[str, object]:
+    return {
+        "page_trace_ids": [ref.trace_id for ref in refs],
+        "page_trace_keys": [ref.trace_key for ref in refs],
+    }
 
 
 # Maps API/filter field names to their physical trace_index columns.

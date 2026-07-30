@@ -122,7 +122,14 @@ async def test_latest_trace_started_at_by_group_aggregates_all_references_in_one
 
 @pytest.mark.asyncio
 async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
-    client = _Client()
+    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    page_row = _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False)
+    client = _Client(
+        query_results=[
+            _QueryResult([(1,)]),
+            _QueryResult([page_row], TRACE_COLUMNS),
+        ]
+    )
     repository = _repository(client)
 
     await repository.list_traces(
@@ -133,16 +140,37 @@ async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
         mode="preview",
     )
 
-    assert "substringUTF8(trace_roots.root_input, 1, %(payload_char_limit)s)" in client.queries[1]
-    assert "substringUTF8(trace_roots.root_output, 1, %(payload_char_limit)s)" in client.queries[1]
-    assert client.parameters[1]["payload_char_limit"] == 300
-    assert "sumIf" in client.queries[1]
-    assert "count() AS span_count" in client.queries[1]
+    assert len(client.queries) == 3
+    assert "trace_roots.root_input" not in client.queries[1]
+    assert "trace_roots.root_output" not in client.queries[1]
+    assert "LIMIT %(limit)s OFFSET %(offset)s" in client.queries[1]
+    assert "substringUTF8(trace_roots.root_input, 1, %(payload_char_limit)s)" in client.queries[2]
+    assert "substringUTF8(trace_roots.root_output, 1, %(payload_char_limit)s)" in client.queries[2]
+    assert client.parameters[2]["payload_char_limit"] == 300
+    assert "sumIf" in client.queries[2]
+    assert "count() AS span_count" in client.queries[2]
+    assert "page_traces" not in client.queries[2]
+    assert "trace_page_refs" not in client.queries[2]
+    assert "IN %(page_trace_keys)s" in client.queries[2]
+    assert "trace_id IN %(page_trace_ids)s" in client.queries[2]
+    assert "LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id" in client.queries[2]
+    assert "ORDER BY indexOf(%(page_trace_keys)s" in client.queries[2]
+    assert client.external_data[2] is None
+    assert client.parameters[2]["page_trace_ids"] == ["trace-a"]
+    assert client.parameters[2]["page_trace_keys"] == [("otel", "trace-a")]
+    assert "page_root_keys" not in client.parameters[2]
 
 
 @pytest.mark.asyncio
 async def test_detailed_mode_adds_trace_aggregate_block():
-    client = _Client()
+    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    page_row = _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False)
+    client = _Client(
+        query_results=[
+            _QueryResult([(1,)]),
+            _QueryResult([page_row], TRACE_COLUMNS),
+        ]
+    )
     repository = _repository(client)
 
     await repository.list_traces(
@@ -155,21 +183,22 @@ async def test_detailed_mode_adds_trace_aggregate_block():
 
     assert "FROM trace_index AS trace_roots FINAL" in client.queries[0]
     assert "span_versions" not in client.queries[0]
-    assert "page_traces AS" in client.queries[1]
-    assert "AS trace_spans" in client.queries[1]
-    assert "(span_versions.workspace, span_versions.source_format, span_versions.trace_id) IN" in client.queries[1]
-    assert "SELECT workspace, source_format, id FROM page_traces" in client.queries[1]
-    assert "argMax(span_versions.input," not in client.queries[1]
-    assert "argMax(span_versions.output," not in client.queries[1]
-    assert "argMax(span_versions.attributes_string," in client.queries[1]
-    assert "argMax(span_versions.attributes_number," in client.queries[1]
-    assert "sumIf" in client.queries[1]
-    assert "groupUniqArrayIf" in client.queries[1]
-    assert "count() AS span_count" in client.queries[1]
-    assert "trace_roots.root_input AS input" in client.queries[1]
-    assert "trace_roots.root_output AS output" in client.queries[1]
-    assert "substringUTF8(trace_roots.root_input" not in client.queries[1]
-    assert "payload_char_limit" not in client.parameters[1]
+    assert "trace_roots.root_input" not in client.queries[1]
+    assert "trace_roots.root_output" not in client.queries[1]
+    assert "AS trace_spans" in client.queries[2]
+    assert "span_versions.trace_id IN %(page_trace_ids)s" in client.queries[2]
+    assert "(span_versions.source_format, span_versions.trace_id) IN %(page_trace_keys)s" in client.queries[2]
+    assert "argMax(span_versions.input," not in client.queries[2]
+    assert "argMax(span_versions.output," not in client.queries[2]
+    assert "argMax(span_versions.attributes_string," in client.queries[2]
+    assert "argMax(span_versions.attributes_number," in client.queries[2]
+    assert "sumIf" in client.queries[2]
+    assert "groupUniqArrayIf" in client.queries[2]
+    assert "count() AS span_count" in client.queries[2]
+    assert "trace_roots.root_input AS input" in client.queries[2]
+    assert "trace_roots.root_output AS output" in client.queries[2]
+    assert "substringUTF8(trace_roots.root_input" not in client.queries[2]
+    assert "payload_char_limit" not in client.parameters[2]
 
 
 @pytest.mark.asyncio
@@ -178,7 +207,14 @@ async def test_list_traces_maps_detailed_row():
     ended_at = started_at + timedelta(milliseconds=2500)
     ingested_at = started_at + timedelta(seconds=3)
     row = _trace_row(started_at=started_at, ended_at=ended_at, ingested_at=ingested_at)
-    client = _Client(query_results=[_QueryResult([(1,)]), _QueryResult([row], TRACE_COLUMNS)])
+    page_row = _trace_row(started_at=started_at, ended_at=ended_at, ingested_at=ingested_at, detailed=False)
+    client = _Client(
+        query_results=[
+            _QueryResult([(1,)]),
+            _QueryResult([page_row], TRACE_COLUMNS),
+            _QueryResult([row], TRACE_COLUMNS),
+        ]
+    )
     repository = _repository(client)
 
     result = await repository.list_traces(
@@ -211,6 +247,24 @@ async def test_list_traces_maps_detailed_row():
     assert trace.providers == ["openai"]
     assert trace.span_count == 3
     assert trace.error_count == 1
+
+
+@pytest.mark.asyncio
+async def test_non_summary_empty_page_skips_hydration_query():
+    client = _Client(query_results=[_QueryResult([(0,)])])
+    repository = _repository(client)
+
+    result = await repository.list_traces(
+        filters=TraceListFilter(workspace="workspace-a"),
+        page=1,
+        page_size=10,
+        sort="-started_at",
+        mode="preview",
+    )
+
+    assert result.data == []
+    assert len(client.queries) == 2
+    assert all(external_data is None for external_data in client.external_data)
 
 
 @pytest.mark.asyncio
