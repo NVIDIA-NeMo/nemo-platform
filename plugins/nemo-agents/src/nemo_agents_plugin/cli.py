@@ -119,7 +119,12 @@ class AgentsCLI(NemoCLI):
         register_leaderboard_commands(app)
         register_usage_commands(app)
         for name, cli_cls in discover_agent_cli().items():
-            app.add_typer(cli_cls().get_cli(), name=name, rich_help_panel="Platform agents")
+            try:
+                cli = cli_cls().get_cli()
+            except Exception:
+                logger.warning("Failed to load agent CLI extension %r; skipping", name, exc_info=True)
+                continue
+            app.add_typer(cli, name=name, rich_help_panel="Platform agents")
         return app
 
 
