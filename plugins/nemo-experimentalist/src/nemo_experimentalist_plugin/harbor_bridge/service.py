@@ -1,0 +1,418 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Ephemeral, authenticated, job-shaped Harbor bridge."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import hmac
+import logging
+import os
+import shutil
+from collections.abc import Iterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Annotated, Literal, Protocol
+from urllib.parse import urlparse
+from uuid import uuid4
+
+import uvicorn
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+    DataValue,
+    EvaluationResult,
+    ResourceRef,
+)
+from nemo_experimentalist_plugin.harbor_bridge.archives import (
+    DEFAULT_MAX_ARCHIVE_BYTES,
+    DEFAULT_MAX_ARCHIVE_FILES,
+    extract_directory_archive,
+)
+from nemo_experimentalist_plugin.harbor_bridge.contracts import (
+    EvaluationAccepted,
+    EvaluationState,
+    EvaluationStatus,
+    EvaluationSubmission,
+)
+from nemo_experimentalist_plugin.harbor_bridge.envelopes import (
+    TrustedEnvelopeCatalog,
+    transport_tree_digest,
+)
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from starlette.datastructures import FormData, UploadFile
+
+logger = logging.getLogger(__name__)
+
+
+class RunProfile(BaseModel):
+    """Host-owned Harbor resource and timeout policy."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    attempts: int
+    concurrency: int
+    retries: int
+    agent_timeout_multiplier: float
+    verifier_timeout_multiplier: float
+    setup_timeout_multiplier: float
+    build_timeout_multiplier: float
+
+
+RUN_PROFILES: dict[Literal["smoke", "standard"], RunProfile] = {
+    "smoke": RunProfile(
+        attempts=1,
+        concurrency=1,
+        retries=0,
+        agent_timeout_multiplier=0.25,
+        verifier_timeout_multiplier=0.25,
+        setup_timeout_multiplier=0.5,
+        build_timeout_multiplier=0.5,
+    ),
+    "standard": RunProfile(
+        attempts=3,
+        concurrency=4,
+        retries=1,
+        agent_timeout_multiplier=1.0,
+        verifier_timeout_multiplier=1.0,
+        setup_timeout_multiplier=1.0,
+        build_timeout_multiplier=1.0,
+    ),
+}
+
+
+class HarborBridgeSettings(BaseModel):
+    """Trusted bridge startup settings unavailable to OpenShell."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    storage_root: Path
+    catalog_root: Path
+    token: str = Field(min_length=16)
+    max_archive_bytes: int = Field(default=DEFAULT_MAX_ARCHIVE_BYTES, ge=1, le=2 * 1024 * 1024 * 1024)
+    max_archive_files: int = Field(default=DEFAULT_MAX_ARCHIVE_FILES, ge=1, le=100_000)
+    max_concurrent_evaluations: int = Field(default=1, ge=1, le=8)
+    sensitive_values: tuple[str, ...] = ()
+
+
+class EvaluationRunner(Protocol):
+    """Trusted adapter from validated bridge state to Harbor."""
+
+    async def run(
+        self,
+        *,
+        submission: EvaluationSubmission,
+        profile: RunProfile,
+        candidate_dir: Path,
+        dataset_dir: Path,
+        work_dir: Path,
+    ) -> EvaluationResult:
+        """Execute a fully server-constructed Harbor job."""
+        ...
+
+
+class UnconfiguredRunner:
+    """Fail loudly until the trusted Harbor runner is wired."""
+
+    async def run(
+        self,
+        *,
+        submission: EvaluationSubmission,
+        profile: RunProfile,
+        candidate_dir: Path,
+        dataset_dir: Path,
+        work_dir: Path,
+    ) -> EvaluationResult:
+        del submission, profile, candidate_dir, dataset_dir, work_dir
+        raise RuntimeError("Trusted Harbor runner is not configured")
+
+
+@dataclass
+class _Job:
+    job_id: str
+    work_dir: Path
+    state: EvaluationState = EvaluationState.PENDING
+    result: EvaluationResult | None = None
+    error: str | None = None
+    task: asyncio.Task[None] | None = None
+
+    def status(self) -> EvaluationStatus:
+        return EvaluationStatus(
+            job_id=self.job_id,
+            state=self.state,
+            result=self.result,
+            error=self.error,
+        )
+
+
+async def _require_form_parts(
+    request: Request,
+    *,
+    required: set[str],
+    optional: set[str],
+) -> FormData:
+    form = await request.form()
+    keys = [key for key, _value in form.multi_items()]
+    allowed = required | optional
+    unexpected = sorted(set(keys) - allowed)
+    missing = sorted(required - set(keys))
+    duplicated = sorted(key for key in allowed if keys.count(key) > 1)
+    if unexpected or missing or duplicated:
+        raise HTTPException(status_code=422, detail="Invalid multipart evaluation request")
+    return form
+
+
+async def _save_upload(upload: UploadFile, destination: Path, *, max_bytes: int) -> None:
+    total = 0
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with destination.open("xb") as output:
+            while chunk := await upload.read(1024 * 1024):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError("Compressed archive exceeds bridge limit")
+                output.write(chunk)
+    finally:
+        await upload.close()
+
+
+def _resource_refs(result: EvaluationResult) -> Iterator[ResourceRef]:
+    for trial in result.trials:
+        if trial.trace is not None:
+            yield trial.trace
+        yield from trial.resources.values()
+        for output in trial.outputs.values():
+            if isinstance(output, ResourceRef):
+                yield output
+        for metric in trial.metrics.values():
+            if metric.spec is not None and metric.spec.ref is not None:
+                yield metric.spec.ref
+
+
+def _redact_value(value: DataValue, sensitive: tuple[str, ...]) -> DataValue:
+    if isinstance(value, str):
+        redacted = value
+        for secret in sensitive:
+            if secret:
+                redacted = redacted.replace(secret, "[REDACTED]")
+        if redacted.startswith("/"):
+            return "[HOST_PATH_REDACTED]"
+        return redacted
+    if isinstance(value, list):
+        return [_redact_value(item, sensitive) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_value(item, sensitive) for key, item in value.items()}
+    return value
+
+
+def _sanitize_result(result: EvaluationResult, *, job_id: str, sensitive: tuple[str, ...]) -> EvaluationResult:
+    sanitized = EvaluationResult.model_validate_json(result.model_dump_json())
+    sanitized.metadata = {key: _redact_value(value, sensitive) for key, value in sanitized.metadata.items()}
+    for index, resource in enumerate(_resource_refs(sanitized)):
+        parsed = urlparse(resource.uri)
+        if parsed.scheme in ("", "file"):
+            resource.uri = f"nemo-harbor-bridge:///evaluations/{job_id}/artifacts/{index}"
+        resource.metadata = {key: _redact_value(value, sensitive) for key, value in resource.metadata.items()}
+    for trial in sanitized.trials:
+        trial.metadata = {key: _redact_value(value, sensitive) for key, value in trial.metadata.items()}
+        if trial.error is not None:
+            trial.error = {"type": "trial_failed", "message": "See retained Harbor trial logs"}
+        for metric in trial.metrics.values():
+            metric.metadata = {key: _redact_value(value, sensitive) for key, value in metric.metadata.items()}
+    return sanitized
+
+
+def _validation_detail(exc: ValidationError) -> str:
+    locations = sorted({".".join(str(part) for part in error["loc"]) for error in exc.errors(include_input=False)})
+    return f"Invalid evaluation metadata at: {', '.join(locations[:12])}"
+
+
+def create_app(
+    *,
+    settings: HarborBridgeSettings,
+    runner: EvaluationRunner | None = None,
+    catalog: TrustedEnvelopeCatalog | None = None,
+) -> FastAPI:
+    """Create one run-scoped bridge application."""
+    service_runner = runner or UnconfiguredRunner()
+    trusted_catalog = catalog or TrustedEnvelopeCatalog(settings.catalog_root)
+    storage_root = settings.storage_root.expanduser().resolve()
+    storage_root.mkdir(parents=True, exist_ok=True)
+    jobs: dict[str, _Job] = {}
+    semaphore = asyncio.Semaphore(settings.max_concurrent_evaluations)
+
+    async def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
+        expected = f"Bearer {settings.token}"
+        if authorization is None or not hmac.compare_digest(authorization, expected):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    async def execute(job: _Job, submission: EvaluationSubmission) -> None:
+        try:
+            async with semaphore:
+                if job.state == EvaluationState.CANCELLED:
+                    return
+                job.state = EvaluationState.RUNNING
+                result = await service_runner.run(
+                    submission=submission,
+                    profile=RUN_PROFILES[submission.run_profile],
+                    candidate_dir=job.work_dir / "candidate",
+                    dataset_dir=job.work_dir / "dataset",
+                    work_dir=job.work_dir,
+                )
+                job.result = _sanitize_result(
+                    result,
+                    job_id=job.job_id,
+                    sensitive=settings.sensitive_values,
+                )
+                job.state = EvaluationState.COMPLETED
+        except asyncio.CancelledError:
+            job.state = EvaluationState.CANCELLED
+            raise
+        except BaseException as exc:
+            logger.exception("Harbor bridge job %s failed", job.job_id)
+            job.error = f"{type(exc).__name__}: evaluation failed"
+            job.state = EvaluationState.FAILED
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        try:
+            yield
+        finally:
+            running = [job.task for job in jobs.values() if job.task is not None and not job.task.done()]
+            for task in running:
+                task.cancel()
+            if running:
+                await asyncio.gather(*running, return_exceptions=True)
+
+    app = FastAPI(
+        title="NeMo Experimentalist Harbor Bridge",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=lifespan,
+    )
+
+    @app.post(
+        "/v1/evaluations",
+        response_model=EvaluationAccepted,
+        status_code=202,
+        dependencies=[Depends(require_auth)],
+    )
+    async def submit_evaluation(request: Request) -> EvaluationAccepted:
+        form = await _require_form_parts(
+            request,
+            required={"metadata", "candidate"},
+            optional={"overlay"},
+        )
+        raw_metadata = form["metadata"]
+        candidate_upload = form["candidate"]
+        overlay_upload = form.get("overlay")
+        if not isinstance(raw_metadata, str) or not isinstance(candidate_upload, UploadFile):
+            raise HTTPException(status_code=422, detail="Invalid multipart evaluation request")
+        if overlay_upload is not None and not isinstance(overlay_upload, UploadFile):
+            raise HTTPException(status_code=422, detail="Invalid multipart evaluation request")
+        try:
+            submission = EvaluationSubmission.model_validate_json(raw_metadata)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=_validation_detail(exc)) from None
+        if (submission.overlay is None) != (overlay_upload is None):
+            raise HTTPException(status_code=422, detail="Overlay metadata and archive must be provided together")
+
+        job_id = f"eval-{uuid4().hex}"
+        work_dir = storage_root / job_id
+        try:
+            work_dir.mkdir(exist_ok=False)
+            candidate_archive = work_dir / "candidate.tar.gz"
+            await _save_upload(candidate_upload, candidate_archive, max_bytes=settings.max_archive_bytes)
+            candidate_dir = work_dir / "candidate"
+            extract_directory_archive(
+                candidate_archive,
+                candidate_dir,
+                max_bytes=settings.max_archive_bytes,
+                max_files=settings.max_archive_files,
+            )
+            if transport_tree_digest(candidate_dir) != submission.candidate.digest:
+                raise ValueError("Candidate archive digest mismatch")
+
+            overlay_dir = None
+            if overlay_upload is not None and submission.overlay is not None:
+                overlay_archive = work_dir / "overlay.tar.gz"
+                await _save_upload(overlay_upload, overlay_archive, max_bytes=settings.max_archive_bytes)
+                overlay_dir = work_dir / "overlay"
+                extract_directory_archive(
+                    overlay_archive,
+                    overlay_dir,
+                    max_bytes=settings.max_archive_bytes,
+                    max_files=settings.max_archive_files,
+                )
+                if transport_tree_digest(overlay_dir) != submission.overlay.digest:
+                    raise ValueError("Overlay archive digest mismatch")
+
+            trusted_catalog.materialize(
+                envelope_id=submission.envelope.id,
+                envelope_digest=submission.envelope.digest,
+                selections=submission.envelope.tasks,
+                destination=work_dir / "dataset",
+                overlay_dir=overlay_dir,
+            )
+        except (OSError, KeyError, ValueError):
+            logger.exception("Rejected Harbor bridge submission %s", job_id)
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise HTTPException(status_code=422, detail="Evaluation request failed trusted validation") from None
+
+        job = _Job(job_id=job_id, work_dir=work_dir)
+        jobs[job_id] = job
+        job.task = asyncio.create_task(execute(job, submission), name=f"harbor-bridge-{job_id}")
+        return EvaluationAccepted(job_id=job_id)
+
+    @app.get(
+        "/v1/evaluations/{job_id}",
+        response_model=EvaluationStatus,
+        dependencies=[Depends(require_auth)],
+    )
+    async def get_evaluation(job_id: str) -> EvaluationStatus:
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+        return job.status()
+
+    @app.delete(
+        "/v1/evaluations/{job_id}",
+        status_code=204,
+        dependencies=[Depends(require_auth)],
+    )
+    async def cancel_evaluation(job_id: str) -> Response:
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+        if job.task is not None and not job.task.done():
+            job.task.cancel()
+            await asyncio.gather(job.task, return_exceptions=True)
+        if job.state in (EvaluationState.PENDING, EvaluationState.RUNNING):
+            job.state = EvaluationState.CANCELLED
+        return Response(status_code=204)
+
+    return app
+
+
+def main() -> None:
+    """Run a bridge from host-provided environment settings."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--storage-root", type=Path, required=True)
+    parser.add_argument("--catalog-root", type=Path, required=True)
+    args = parser.parse_args()
+    token = os.environ.get("NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN")
+    if token is None:
+        raise SystemExit("NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN is required")
+    app = create_app(
+        settings=HarborBridgeSettings(
+            storage_root=args.storage_root,
+            catalog_root=args.catalog_root,
+            token=token,
+        )
+    )
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
