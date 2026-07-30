@@ -17,32 +17,13 @@
 
 from __future__ import annotations
 
-from typing import Dict
-from typing_extensions import Required, TypedDict
+from typing_extensions import TypedDict
 
-from .platform_job_spec_param import PlatformJobSpecParam
-
-__all__ = ["JobCreateParams"]
+__all__ = ["LogCreateParams"]
 
 
-class JobCreateParams(TypedDict, total=False):
+class LogCreateParams(TypedDict, total=False):
     workspace: str
 
-    platform_spec: Required[PlatformJobSpecParam]
-    """Specification for a platform job, containing steps and secrets."""
-
-    source: Required[str]
-
-    spec: Required[Dict[str, object]]
-
-    custom_fields: Dict[str, object]
-
-    description: str
-
-    name: str
-
-    output_location: str
-
-    ownership: Dict[str, object]
-
-    project: str
+    artifact_base_path: str
+    """Folder inside the fileset to nest logs under"""

@@ -108,6 +108,7 @@ class TestJobLogsAPI:
             filters={"job": job.name, "job_attempt": job.attempt_id},
             page_size=100,
             page_cursor=None,
+            artifact_base_path=None,
         )
 
     async def test_get_job_logs_with_pagination_params(
@@ -141,7 +142,24 @@ class TestJobLogsAPI:
             filters={"job": job.name, "job_attempt": job.attempt_id},
             page_size=2,
             page_cursor="some_cursor",
+            artifact_base_path=None,
         )
+
+    async def test_get_job_logs_scopes_to_artifact_base_path_when_output_location_set(
+        self, test_client, dispatcher, mock_logs_client, sample_logs, sample_platform_job_request
+    ):
+        """A job created with output_location scopes its log query to the per-job artifact base path."""
+        request = sample_platform_job_request.model_copy(update={"output_location": "shared-fs"})
+        job = await dispatcher.create_job(request, DEFAULT_WORKSPACE)
+
+        mock_logs_client.query_logs.return_value = PlatformJobLogPage(
+            data=sample_logs, total=3, next_page=None, prev_page=None
+        )
+
+        response = test_client.get(f"/v2/workspaces/{DEFAULT_WORKSPACE}/jobs/{job.name}/logs")
+
+        assert response.status_code == 200
+        assert mock_logs_client.query_logs.call_args.kwargs["artifact_base_path"] == f"jobs/{job.name}"
 
     async def test_get_job_logs_job_not_found(self, test_client, dispatcher, mock_logs_client):
         """Test job logs retrieval when job doesn't exist."""

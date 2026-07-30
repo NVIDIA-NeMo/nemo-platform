@@ -31,6 +31,7 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
 from nmp.core.jobs.app.dispatcher import (
     JobAlreadyExistsError,
     JobDispatcher,
+    JobOutputLocationError,
     JobSecretValidationError,
     StateTransitionConflictError,
 )
@@ -48,12 +49,18 @@ def to_sdk_create_params(request: CreatePlatformJobRequest) -> Dict[str, Any]:
     """
     Convert CreatePlatformJobRequest to SDK-compatible params.
 
-    TODO: Once SDK is regenerated, remove this helper and pass project= directly.
+    TODO: Once SDK is regenerated, remove this helper and pass project=/output_location= directly.
     """
     data = request.model_dump(mode="json")  # JSON mode serializes nested objects properly
+    extra_body: Dict[str, Any] = {}
     project = data.pop("project", None)
     if project:
-        data["extra_body"] = {"project": project}
+        extra_body["project"] = project
+    output_location = data.pop("output_location", None)
+    if output_location:
+        extra_body["output_location"] = output_location
+    if extra_body:
+        data["extra_body"] = extra_body
     return data
 
 
@@ -313,6 +320,41 @@ async def test_create_job_conflict_hides_raw_exception_message(
     assert "Job 'dup-job' already exists in workspace 'default'" in detail
     assert "ValueError" not in detail
     assert "db_version" not in detail
+
+
+@pytest.mark.asyncio
+async def test_create_job_missing_output_location_returns_422(
+    test_client: AsyncClient,
+    mock_dispatcher: JobDispatcher,
+):
+    """A JobOutputLocationError maps to 422, not the 409 that other ValueErrors get.
+
+    Locks the except-clause ordering: JobOutputLocationError subclasses ValueError, so if its
+    handler stopped preceding ``except ValueError`` the status would silently regress to 409.
+    """
+    err = JobOutputLocationError("fileset 'ghost' not found in workspace 'default'")
+    with patch.object(mock_dispatcher, "create_job", new=AsyncMock(side_effect=err)):
+        response = await test_client.post(
+            "/apis/jobs/v2/workspaces/default/jobs",
+            json={
+                "name": "eval-job",
+                "source": "test-source",
+                "spec": {},
+                "output_location": "ghost",
+                "platform_spec": {
+                    "steps": [
+                        {
+                            "name": "valid-step",
+                            "executor": TestConstants.TEST_EXECUTOR.model_dump(mode="json"),
+                            "config": {},
+                        }
+                    ]
+                },
+            },
+        )
+
+    assert response.status_code == 422
+    assert "ghost" in response.json()["detail"]
 
 
 def test_create_job_conflict_does_not_classify_generic_message():

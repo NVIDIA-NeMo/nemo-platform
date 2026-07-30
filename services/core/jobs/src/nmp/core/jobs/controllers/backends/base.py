@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 from typing import Generic, Literal, Optional, TypeVar
-from urllib.parse import SplitResult, urlsplit
+from urllib.parse import SplitResult, quote, urlsplit
 
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -563,7 +563,11 @@ def get_logs_endpoint_from_fileset(
 
 
 def get_logs_endpoint_config_from_fileset(
-    platform_config: PlatformConfig, workspace: str, fileset_id: str, loopback_address: str | None = None
+    platform_config: PlatformConfig,
+    workspace: str,
+    fileset_id: str,
+    loopback_address: str | None = None,
+    artifact_base_path: str | None = None,
 ) -> OtlpLogsEndpointConfig:
     """Get OTLP logs endpoint config, preserving transport metadata for local UDS runtimes.
 
@@ -587,8 +591,12 @@ def get_logs_endpoint_config_from_fileset(
     effective_override = loopback_address or platform_config.loopback_address or determine_loopback_override()
     base_url = _replace_loopback_address(base_url, effective_override)
 
+    endpoint = f"{base_url}/apis/files/v2/workspaces/{workspace}/filesets/{fileset_id}/otlp/v1/logs"
+    if artifact_base_path:
+        endpoint = f"{endpoint}?artifact_base_path={quote(artifact_base_path, safe='')}"
+
     return OtlpLogsEndpointConfig(
-        endpoint=f"{base_url}/apis/files/v2/workspaces/{workspace}/filesets/{fileset_id}/otlp/v1/logs",
+        endpoint=endpoint,
         transport=platform_endpoint.transport,
         socket_path=str(platform_endpoint.socket_path) if platform_endpoint.socket_path is not None else None,
     )

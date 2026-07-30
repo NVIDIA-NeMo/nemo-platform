@@ -118,6 +118,7 @@ class JobsResource(SyncAPIResource):
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
         name: str | Omit = omit,
+        output_location: str | Omit = omit,
         ownership: Dict[str, object] | Omit = omit,
         project: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -155,6 +156,7 @@ class JobsResource(SyncAPIResource):
                     "custom_fields": custom_fields,
                     "description": description,
                     "name": name,
+                    "output_location": output_location,
                     "ownership": ownership,
                     "project": project,
                 },
@@ -628,6 +630,7 @@ class AsyncJobsResource(AsyncAPIResource):
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
         name: str | Omit = omit,
+        output_location: str | Omit = omit,
         ownership: Dict[str, object] | Omit = omit,
         project: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -665,6 +668,7 @@ class AsyncJobsResource(AsyncAPIResource):
                     "custom_fields": custom_fields,
                     "description": description,
                     "name": name,
+                    "output_location": output_location,
                     "ownership": ownership,
                     "project": project,
                 },

@@ -74,13 +74,17 @@ FilesetPage = Page[FilesetOutput]
 # Request types
 # ---------------------------------------------------------------------------
 
+# Mirrors ``nmp.common.entities.constants.REGEX_WORD_CHARACTER_DOT_DASH`` (and its
+# description / MAX_LENGTH_255) — inlined so this module stays a dependency-free leaf
+# node. Reuse these constants for any fileset-name check rather than restating them.
 NAME_PATTERN = r"^[\w\-.]+$"
+NAME_PATTERN_DESCRIPTION = "Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots."
 MAX_LENGTH = 255
 
 
 class CreateFilesetRequest(BaseModel):
     name: str = Field(
-        description="The name of the fileset. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.",
+        description=f"The name of the fileset. {NAME_PATTERN_DESCRIPTION}",
         max_length=MAX_LENGTH,
         pattern=NAME_PATTERN,
         examples=["training-data-v1", "llama-checkpoint"],
@@ -166,6 +170,7 @@ class OtlpLogQueryRequest(BaseModel):
     filters: dict[str, str] = Field(default_factory=dict)
     limit: int | None = None
     page_cursor: str | None = None
+    artifact_base_path: str | None = None
 
 
 class OtlpExportLogsPartialSuccess(BaseModel):
