@@ -8,7 +8,7 @@ Harbor accepted. A later agent is told to run whatever it finds there, so a conf
 alongside a failing report would be an instruction to run something broken.
 """
 
-from discovery_fixtures import StubClient, StubFiles
+from harbor_fixtures import StubClient, StubFiles
 from nemo_eval_author_plugin.discovery import memory, report
 
 

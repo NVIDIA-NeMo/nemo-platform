@@ -12,8 +12,8 @@ the artifact wrong somewhere other than where it was produced.
 from datetime import UTC, datetime
 
 import yaml
-from discovery_fixtures import write_dataset
 from harbor.models.job.config import JobConfig
+from harbor_fixtures import write_dataset
 from nemo_eval_author_plugin.discovery import memory, report
 from nemo_eval_author_plugin.discovery.models import (
     CandidateConfig,

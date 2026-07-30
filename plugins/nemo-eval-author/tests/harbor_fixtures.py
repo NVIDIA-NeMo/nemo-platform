@@ -12,6 +12,17 @@ and the interesting cases are departures from it.
 Imported as a module rather than declared as fixtures in ``conftest.py`` because the
 builders take arguments; a test that needs a Windows task with no reward script should say
 so at the call site instead of composing four fixtures to get there.
+
+Lives here rather than beside its tests in ``discover/`` because the repo-root
+``conftest.py`` forces ``importmode = "importlib"``, under which pytest puts no test
+directory on ``sys.path``. Only ``tests/`` ends up there, and only because pytest loads that
+directory's ``conftest.py`` during startup while prepend mode is still in effect. A helper
+one level down imports fine from within the plugin and fails the moment CI runs from the
+repo root.
+
+Nor is it named ``fixtures.py``, tempting as that is: every plugin's ``tests/`` is on
+``sys.path`` in that same root-config run, so a bare ``fixtures`` would bind to whichever
+plugin's copy imported first, silently and with no collision error.
 """
 
 import json

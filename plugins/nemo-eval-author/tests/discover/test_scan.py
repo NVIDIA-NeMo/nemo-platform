@@ -10,7 +10,7 @@ be reported as unrunnable. Only the validation ladder is allowed to fail a repor
 
 from pathlib import Path
 
-from discovery_fixtures import StubClient
+from harbor_fixtures import StubClient
 from nemo_eval_author_plugin.discovery import scan
 
 

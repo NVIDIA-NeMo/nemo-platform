@@ -17,7 +17,7 @@ Tests that care about the backend assert on that finding directly.
 
 import sys
 
-from discovery_fixtures import (
+from harbor_fixtures import (
     MENTIONS_REWARD_IN_COMMENT,
     WRITES_REWARD,
     write_dataset,

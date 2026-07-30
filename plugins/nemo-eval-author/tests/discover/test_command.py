@@ -9,11 +9,16 @@ happens to have running, which is how a unit test quietly becomes a network call
 
 The exit code is the contract these pin down: this command is meant to be usable as a gate,
 so exit 0 has to mean a config was validated *and* recorded, and nothing else.
+
+Named for the command rather than ``test_cli.py`` because ``tests/test_cli.py`` already
+covers the plugin's command surface. Running the plugin's suite on its own picks up the
+plugin's pytest config, which leaves the default prepend import mode in place, and two test
+files sharing a basename abort collection there.
 """
 
 import pytest
 import typer
-from discovery_fixtures import (
+from harbor_fixtures import (
     MENTIONS_REWARD_IN_COMMENT,
     StubClient,
     StubFiles,

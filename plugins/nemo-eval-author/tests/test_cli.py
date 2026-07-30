@@ -7,8 +7,8 @@ The entry-point cases cover the ``pyproject.toml`` wiring that nothing else exer
 typo in the key or the import path does not fail an import; it just makes ``nemo
 eval-author`` quietly missing from the CLI, which no unit test of this module would catch.
 
-``discover`` has shipped, so it is asserted on in ``test_discovery_cli.py`` instead. It is
-listed in ``_IMPLEMENTED_VERBS`` here only so ``--help`` still has to show it.
+``discover`` has shipped, so it is asserted on in ``discover/test_command.py`` instead. It
+is listed in ``_IMPLEMENTED_VERBS`` here only so ``--help`` still has to show it.
 """
 
 from importlib.metadata import EntryPoint, entry_points

@@ -11,7 +11,7 @@ former, and the report must say which it used.
 import json
 
 import yaml
-from discovery_fixtures import write_dataset, write_job_dir, write_task, write_wrapper
+from harbor_fixtures import write_dataset, write_job_dir, write_task, write_wrapper
 from nemo_eval_author_plugin.discovery import sources
 
 

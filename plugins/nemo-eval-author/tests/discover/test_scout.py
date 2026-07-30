@@ -14,7 +14,7 @@ these tests pass a fixed one. A test that reached a real model would need creden
 would assert on something nondeterministic.
 """
 
-from discovery_fixtures import MENTIONS_REWARD_IN_COMMENT, write_dataset
+from harbor_fixtures import MENTIONS_REWARD_IN_COMMENT, write_dataset
 from nemo_eval_author_plugin.discovery import validate
 from nemo_eval_author_plugin.discovery.agent import ProposeFn, ScoutProposal, attempt_repair, is_scoutable
 from nemo_eval_author_plugin.discovery.models import CandidateConfig, ConfigSource, Finding
