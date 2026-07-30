@@ -39,6 +39,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
         models={
             "default": fabric.ModelConfig(**_model_payload(model)),
         },
+        instructions=_instructions_config(config),
         environment=fabric.EnvironmentConfig(
             provider=config.environment.provider,
             workspace=config.environment.workspace,
@@ -98,6 +99,17 @@ def _validate_untranslated_shared_fields(config: AgentConfig) -> None:
         raise FabricTranslationError(
             "Top-level prompts are not translated yet. Configure prompt settings under the selected harness instead."
         )
+
+
+def _instructions_config(config: AgentConfig) -> Any:
+    if config.instructions is None or config.instructions.system is None:
+        return None
+    return fabric.InstructionsConfig(
+        system=fabric.InstructionConfig(
+            content=config.instructions.system.content,
+            mode=config.instructions.system.mode,
+        )
+    )
 
 
 def _skills_config(config: AgentConfig) -> Any:

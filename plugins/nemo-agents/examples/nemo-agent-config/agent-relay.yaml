@@ -2,9 +2,20 @@ config_format: nemo-agents-spec-v1
 name: test-agent
 description: Test agent config
 
+instructions:
+  system:
+    content: You are a concise test assistant.
+
 default_harness: codex
 
 harnesses:
+  claude:
+    kind: claude
+    model:
+      provider: anthropic
+      model: anthropic/claude-sonnet-4-5
+    settings:
+      permission_mode: dontAsk
   hermes:
     kind: hermes
     model:
@@ -20,12 +31,14 @@ harnesses:
       reasoning_config:
         effort: none
       enabled_toolsets: []
-      system_prompt: You are a concise test assistant.
+  deepagents:
+    kind: deepagents
+    settings:
+      deepagents: {}
   codex:
     kind: codex
     settings:
       sandbox: workspace-write
-      developer_instructions: You are a concise test assistant.
       reasoning_effort: high
 
 models:

@@ -63,6 +63,19 @@ class TelemetryConfig(BaseModel):
     atof: dict[str, Any] | None = None
 
 
+class InstructionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, pattern=r"\S")
+    mode: Literal["replace"] = "replace"
+
+
+class InstructionsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    system: InstructionConfig | None = None
+
+
 class SkillsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -101,6 +114,7 @@ class AgentConfig(BaseModel):
     harnesses: dict[str, HarnessConfig]
     models: dict[str, ModelConfig] = Field(default_factory=dict)
     prompts: dict[str, str] = Field(default_factory=dict)
+    instructions: InstructionsConfig | None = None
     skills: SkillsConfig | None = None
     mcp: McpConfig | None = None
     tools: ToolsConfig | None = None

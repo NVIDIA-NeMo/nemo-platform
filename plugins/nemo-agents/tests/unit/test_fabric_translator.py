@@ -32,7 +32,6 @@ def _example_yaml_config() -> dict[str, Any]:
                 "settings": {
                     "python_env": "HERMES_ADAPTER_PYTHON",
                     "base_url": "https://integrate.api.nvidia.com/v1",
-                    "system_prompt": "You are a concise assistant.",
                 },
             },
             "codex": {
@@ -52,6 +51,11 @@ def _example_yaml_config() -> dict[str, Any]:
         "environment": {
             "workspace": "./workspace",
             "artifacts": "./artifacts",
+        },
+        "instructions": {
+            "system": {
+                "content": "You are a concise assistant.",
+            },
         },
         "telemetry": {
             "enabled": False,
@@ -78,12 +82,15 @@ class TestTranslateAgentConfig:
 
         codex_config = translate_agent_config(config, harness_name="codex")
         claude_config = translate_agent_config(config, harness_name="claude")
+        deepagents_config = translate_agent_config(config, harness_name="deepagents")
         hermes_config = translate_agent_config(config, harness_name="hermes")
 
         assert codex_config.harness.adapter_id == "nvidia.fabric.codex"
         assert "skip_git_repo_check" not in codex_config.harness.settings
         assert claude_config.harness.adapter_id == "nvidia.fabric.claude"
         assert claude_config.harness.settings["permission_mode"] == "dontAsk"
+        assert deepagents_config.harness.adapter_id == "nvidia.fabric.langchain.deepagents"
+        assert deepagents_config.harness.settings["deepagents"] == {}
         assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert hermes_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
 
@@ -97,7 +104,8 @@ class TestTranslateAgentConfig:
         assert fabric_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert fabric_config.harness.resolution == "preinstalled"
         assert fabric_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
-        assert fabric_config.harness.settings["system_prompt"] == "You are a concise assistant."
+        assert fabric_config.instructions.system.content == "You are a concise assistant."
+        assert fabric_config.instructions.system.mode == "replace"
         assert fabric_config.models["default"].provider == "nvidia"
         assert fabric_config.models["default"].model == "nvidia/nemotron-3-nano-30b-a3b"
         assert fabric_config.environment.provider == "local"
