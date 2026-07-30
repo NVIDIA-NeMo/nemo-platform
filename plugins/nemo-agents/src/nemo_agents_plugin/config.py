@@ -72,7 +72,7 @@ class DeploymentsRunnerConfig(BaseModel):
     )
     container_port: int = Field(
         default=8000,
-        description="Container port the NAT server listens on (and readiness probe target).",
+        description="Container port the agent server listens on (and readiness probe target).",
     )
     gateway_url_override: str | None = Field(
         default=None,
@@ -100,10 +100,11 @@ class DeploymentsRunnerConfig(BaseModel):
     config_mount_path: str = Field(
         default="/workspace/config.yaml",
         description=(
-            "Path inside the container where the NAT workflow config is placed. Must sit under "
+            "Path inside the container where the NAT workflow config is placed for nat-workflow-v1 "
+            "deployments. Fabric deployments use agent.yaml in the same directory. Must sit under "
             "the image's writable WORKDIR (/workspace) so docker mode, which materializes the "
             "config as the non-root container user, can write it; k8s mounts it read-only there "
-            "via a ConfigMap subPath. Matches the image's NAT_CONFIG_FILE convention."
+            "via a ConfigMap subPath."
         ),
     )
 

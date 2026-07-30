@@ -16,14 +16,18 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import shlex
 import time
+from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, DeploymentsRunnerConfig
 from nemo_agents_plugin.entities import (
+    AGENT_CONFIG_FILENAME,
     CONTAINER_DEPLOYMENT_MODES,
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     DeploymentMode,
     DeploymentStatus,
     Endpoint,
@@ -56,6 +60,10 @@ _HTTP_PORT_NAME = "http"
 _PLUGIN_WHEELS_VOLUME = "plugin-wheels"
 _PLUGIN_WHEELS_MOUNT = "/opt/nemo/plugin-wheels"
 _NAT_CONFIG_ENV = "NAT_CONFIG_PATH"
+_NAT_CONFIG_YAML_ENV = "NAT_CONFIG_YAML"
+_AGENT_CONFIG_YAML_ENV = "AGENT_CONFIG_YAML"
+_AGENT_CONFIG_PATH_ENV = "AGENT_CONFIG_PATH"
+_FABRIC_SERVER_MODULE = "nemo_agents_plugin.fabric.server"
 _AUTH_PROXY_IDENTITY = "agents"
 
 
@@ -159,6 +167,76 @@ def rewrite_config_base_urls(nat_config: dict[str, Any], gateway_url: str) -> di
     return config
 
 
+def rewrite_fabric_config_base_urls(agent_config: dict[str, Any], gateway_url: str) -> dict[str, Any]:
+    """Return a copy of *agent_config* with Fabric model IGW base_urls rebased onto *gateway_url*.
+
+    Rewrites ``models.*.settings.base_url`` and harness ``model.settings.base_url`` when the
+    URL points at the Inference Gateway. Third-party base URLs are left unchanged.
+    """
+    reachable = urlsplit(gateway_url.rstrip("/"))
+    reachable_origin = f"{reachable.scheme}://{reachable.netloc}"
+    config = copy.deepcopy(agent_config)
+    model_configs: list[Any] = []
+
+    models = config.get("models")
+    if isinstance(models, dict):
+        model_configs.extend(models.values())
+
+    harnesses = config.get("harnesses")
+    if isinstance(harnesses, dict):
+        for harness in harnesses.values():
+            if isinstance(harness, dict) and "model" in harness:
+                model_configs.append(harness["model"])
+
+    for model_config in model_configs:
+        if not isinstance(model_config, dict):
+            continue
+        settings = model_config.get("settings")
+        if not isinstance(settings, dict):
+            continue
+        current = settings.get("base_url")
+        if not isinstance(current, str) or "/apis/inference-gateway/" not in current:
+            continue
+        parts = urlsplit(current)
+        settings["base_url"] = f"{reachable_origin}{parts.path}"
+    return config
+
+
+def _is_fabric_agent_config(agent_config: dict[str, Any]) -> bool:
+    return agent_config.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT
+
+
+def _fabric_config_mount_path(config_mount_path: str) -> str:
+    parent = str(PurePosixPath(config_mount_path).parent)
+    if parent in ("", "."):
+        return f"/{AGENT_CONFIG_FILENAME}"
+    return f"{parent}/{AGENT_CONFIG_FILENAME}"
+
+
+def _fabric_server_cli_args(*, config_path: str, port: int) -> list[str]:
+    return [
+        "-m",
+        _FABRIC_SERVER_MODULE,
+        "--agent-config",
+        config_path,
+        "--host",
+        "0.0.0.0",
+        "--port",
+        str(port),
+    ]
+
+
+def _materialize_config_and_exec(*, config_path: str, yaml_env: str, argv: list[str]) -> list[str]:
+    """Return ``sh -c`` args that write the config from *yaml_env*, then exec *argv*.
+
+    Docker mode needs this because the docker backend does not mount ``config_files``.
+    Paths and argv are shell-escaped so spaces/metacharacters cannot break the script.
+    """
+    quoted_path = shlex.quote(config_path)
+    quoted_argv = " ".join(shlex.quote(arg) for arg in argv)
+    return [f'mkdir -p "$(dirname {quoted_path})" && printf "%s" "${yaml_env}" > {quoted_path} && exec {quoted_argv}']
+
+
 def executor_for_mode(config: DeploymentsRunnerConfig, mode: DeploymentMode) -> str | None:
     """Resolve the named deployments-plugin executor for *mode*."""
     if mode == "docker":
@@ -199,7 +277,7 @@ def build_deployment_config(
     workspace: str,
     image: str,
     port: int,
-    nat_config: dict[str, Any],
+    agent_config: dict[str, Any],
     platform_base_url: str,
     config_mount_path: str,
     mode: DeploymentMode,
@@ -209,24 +287,35 @@ def build_deployment_config(
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
-    NAT workflow YAML is always embedded in ``config_files`` (k8s mounts them).
-    Docker v1 ignores ``config_files``, so docker mode also injects the YAML via
-    ``NAT_CONFIG_YAML`` and a shell preamble that writes the file before ``nat``
-    starts. The main container binds ``0.0.0.0`` and exposes a readiness probe on
-    ``/health``.
+    *agent_config* is either a NAT workflow config or a Platform-owned Fabric spec.
+    NAT workflow configs start ``nat start fastapi`` with workflow YAML at
+    *config_mount_path*. Fabric configs start
+    ``python -m nemo_agents_plugin.fabric.server`` with ``agent.yaml`` beside the
+    NAT config directory. Docker mode materializes config from env because the
+    docker backend ignores ``config_files``; k8s mounts ``config_files`` via
+    ConfigMap subPath. The main container binds ``0.0.0.0`` and exposes a
+    readiness probe on ``/health``.
+
+    The caller is responsible for rebasing inference ``base_url`` values in
+    *agent_config* to a container-reachable gateway before calling this helper.
 
     ``platform_base_url`` is the container-reachable platform origin used to
     build the Inference Gateway URL. It is also exported as ``NMP_BASE_URL`` so
     SDK calls from inside the agent use the same platform instead of falling
     back to a baked or host CLI context.
     """
-    nat_yaml = yaml.safe_dump(nat_config, sort_keys=False)
+    is_fabric = _is_fabric_agent_config(agent_config)
+    config_yaml = yaml.safe_dump(agent_config, sort_keys=False)
+    config_path = _fabric_config_mount_path(config_mount_path) if is_fabric else config_mount_path
     env = [
         EnvVar(name="NMP_WORKSPACE", value=workspace),
         EnvVar(name="NMP_AGENT_NAME", value=name),
         EnvVar(name="NMP_BASE_URL", value=platform_base_url.rstrip("/")),
-        EnvVar(name=_NAT_CONFIG_ENV, value=config_mount_path),
     ]
+    if is_fabric:
+        env.append(EnvVar(name=_AGENT_CONFIG_PATH_ENV, value=config_path))
+    else:
+        env.append(EnvVar(name=_NAT_CONFIG_ENV, value=config_mount_path))
     volume_mounts: list[VolumeMount] = []
     init_containers: list[Container] = []
 
@@ -254,36 +343,34 @@ def build_deployment_config(
         )
         env.append(EnvVar(name="PYTHONPATH", value=_PLUGIN_WHEELS_MOUNT))
 
-    nat_args = [
-        "nat",
-        "start",
-        "fastapi",
-        "--config_file",
-        config_mount_path,
-        "--host",
-        "0.0.0.0",
-        "--port",
-        str(port),
-    ]
-    if mode == "docker":
-        # Docker backend does not mount config_files; materialize the YAML from env.
-        env.append(EnvVar(name="NAT_CONFIG_YAML", value=nat_yaml))
-        command = ["sh", "-c"]
-        args = [
-            f'mkdir -p "$(dirname "{config_mount_path}")" '
-            f'&& printf "%s" "$NAT_CONFIG_YAML" > "{config_mount_path}" '
-            f"&& exec {' '.join(nat_args)}"
-        ]
+    if is_fabric:
+        config_yaml_env = _AGENT_CONFIG_YAML_ENV
+        server_command = ["python"]
+        server_args = _fabric_server_cli_args(config_path=config_path, port=port)
     else:
-        command = ["nat", "start", "fastapi"]
-        args = [
+        config_yaml_env = _NAT_CONFIG_YAML_ENV
+        server_command = ["nat", "start", "fastapi"]
+        server_args = [
             "--config_file",
-            config_mount_path,
+            config_path,
             "--host",
             "0.0.0.0",
             "--port",
             str(port),
         ]
+
+    if mode == "docker":
+        # Docker backend does not mount config_files; materialize the YAML from env.
+        env.append(EnvVar(name=config_yaml_env, value=config_yaml))
+        command = ["sh", "-c"]
+        args = _materialize_config_and_exec(
+            config_path=config_path,
+            yaml_env=config_yaml_env,
+            argv=[*server_command, *server_args],
+        )
+    else:
+        command = server_command
+        args = server_args
 
     container = Container(
         name=_CONTAINER_NAME,
@@ -315,7 +402,7 @@ def build_deployment_config(
         update={
             "init_containers": init_containers,
             "config_files": [
-                ConfigFile(path=config_mount_path, content=nat_yaml),
+                ConfigFile(path=config_path, content=config_yaml),
             ],
             "restart_policy": "Always",
             "auth_proxy_sidecar": auth_proxy_identity is not None,
@@ -386,26 +473,36 @@ class DeploymentsRunnerBackend(RunnerBackend):
         # agent targets the sidecar on localhost; the sidecar forwards to the
         # platform with a service-principal identity header.
         auth_proxy_identity: str | None = None
+        is_fabric = _is_fabric_agent_config(config)
         if platform_auth_enabled():
             auth_proxy_identity = _AUTH_PROXY_IDENTITY
-            config = rewrite_config_base_urls(config, f"http://127.0.0.1:{auth_proxy_port()}")
+            rewrite_target = f"http://127.0.0.1:{auth_proxy_port()}"
         else:
-            config = rewrite_config_base_urls(config, gateway)
+            rewrite_target = gateway
+
+        if is_fabric:
+            config = rewrite_fabric_config_base_urls(config, rewrite_target)
+        else:
+            config = rewrite_config_base_urls(config, rewrite_target)
+
+        deployment_labels = {
+            "nemo.agents/deployment": name,
+            "nemo.agents/mode": deployment_mode,
+        }
+        if is_fabric:
+            deployment_labels["nemo.agents/runtime"] = "fabric"
 
         deployment_config = build_deployment_config(
             name=name,
             workspace=workspace,
             image=resolved_image,
             port=self._config.container_port,
-            nat_config=config,
+            agent_config=config,
             platform_base_url=gateway,
             config_mount_path=self._config.config_mount_path,
             mode=deployment_mode,
             plugin_wheels_init_image=self._config.plugin_wheels_init_image,
-            labels={
-                "nemo.agents/deployment": name,
-                "nemo.agents/mode": deployment_mode,
-            },
+            labels=deployment_labels,
             auth_proxy_identity=auth_proxy_identity,
         )
         await entities.create(deployment_config)

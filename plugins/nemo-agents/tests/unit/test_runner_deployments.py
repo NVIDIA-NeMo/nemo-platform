@@ -20,6 +20,7 @@ from nemo_agents_plugin.runner.deployments_backend import (
     map_status,
     resolve_agent_gateway_url,
     rewrite_config_base_urls,
+    rewrite_fabric_config_base_urls,
 )
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
 from nemo_deployments_plugin.types import Endpoint as PluginEndpoint
@@ -112,6 +113,51 @@ def test_rewrite_config_base_urls_leaves_third_party_base_url() -> None:
     assert result["llms"]["llm"]["base_url"] == "https://api.openai.com/v1"
 
 
+def test_rewrite_fabric_config_base_urls_rebases_igw_host() -> None:
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "models": {
+            "default": {
+                "provider": "openai",
+                "model": "test-model",
+                "settings": {
+                    "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                },
+            }
+        },
+        "harnesses": {
+            "main": {
+                "model": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "settings": {
+                        "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                    },
+                }
+            }
+        },
+    }
+    result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
+    expected = "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    assert result["models"]["default"]["settings"]["base_url"] == expected
+    assert result["harnesses"]["main"]["model"]["settings"]["base_url"] == expected
+    assert "localhost" in config["models"]["default"]["settings"]["base_url"]
+
+
+def test_rewrite_fabric_config_base_urls_leaves_third_party_base_url() -> None:
+    config = {
+        "models": {
+            "default": {
+                "provider": "openai",
+                "model": "test-model",
+                "settings": {"base_url": "https://api.openai.com/v1"},
+            }
+        }
+    }
+    result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
+    assert result["models"]["default"]["settings"]["base_url"] == "https://api.openai.com/v1"
+
+
 def test_executor_for_mode_prefers_mode_specific() -> None:
     cfg = DeploymentsRunnerConfig(
         default_executor="default-exec",
@@ -135,7 +181,7 @@ def test_build_deployment_config_always_single_container() -> None:
         workspace="default",
         image="nat-runtime:latest",
         port=8000,
-        nat_config={"llms": {"nim": {"_type": "nim"}}},
+        agent_config={"llms": {"nim": {"_type": "nim"}}},
         platform_base_url="http://host.docker.internal:8080",
         config_mount_path="/workspace/config.yaml",
         mode="docker",
@@ -162,7 +208,7 @@ def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:
         workspace="default",
         image="nat-runtime:latest",
         port=8000,
-        nat_config={},
+        agent_config={},
         platform_base_url="http://nmp-api:8080",
         config_mount_path="/workspace/config.yaml",
         mode="k8s",
@@ -178,7 +224,7 @@ def test_build_deployment_config_k8s_option_b_when_image_set() -> None:
         workspace="default",
         image="nat-runtime:latest",
         port=8000,
-        nat_config={},
+        agent_config={},
         platform_base_url="http://nmp-api:8080",
         config_mount_path="/workspace/config.yaml",
         mode="k8s",
@@ -195,13 +241,88 @@ def test_build_deployment_config_docker_never_emits_init_containers() -> None:
         workspace="default",
         image="nat-runtime:latest",
         port=8000,
-        nat_config={},
+        agent_config={},
         platform_base_url="http://host.docker.internal:8080",
         config_mount_path="/workspace/config.yaml",
         mode="docker",
         plugin_wheels_init_image="busybox:1.36",
     )
     assert cfg.init_containers == []
+
+
+_FABRIC_AGENT_CONFIG = {
+    "config_format": "nemo-agents-spec-v1",
+    "name": "fabric-agent",
+    "default_harness": "main",
+    "harnesses": {
+        "main": {
+            "provider": "codex",
+            "model": {"provider": "openai", "model": "test-model", "settings": {}},
+        }
+    },
+}
+
+
+def test_build_deployment_config_docker_shell_escapes_config_path() -> None:
+    cfg = build_deployment_config(
+        name="spaced-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={"llms": {"nim": {"_type": "nim"}}},
+        platform_base_url="http://host.docker.internal:8080",
+        config_mount_path="/workspace/my config/config.yaml",
+        mode="docker",
+    )
+    script = cfg.containers[0].args[0]
+    assert "'/workspace/my config/config.yaml'" in script
+    assert 'printf "%s" "$NAT_CONFIG_YAML"' in script
+
+
+def test_build_deployment_config_fabric_docker_uses_fabric_server() -> None:
+    cfg = build_deployment_config(
+        name="fabric-dep",
+        workspace="default",
+        image="fabric-runtime:latest",
+        port=8000,
+        agent_config=_FABRIC_AGENT_CONFIG,
+        platform_base_url="http://host.docker.internal:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="docker",
+    )
+    container = cfg.containers[0]
+    assert container.command == ["sh", "-c"]
+    assert any(e.name == "AGENT_CONFIG_YAML" for e in container.env)
+    assert not any(e.name == "NAT_CONFIG_YAML" for e in container.env)
+    assert any(e.name == "AGENT_CONFIG_PATH" and e.value == "/workspace/agent.yaml" for e in container.env)
+    assert next(e.value for e in container.env if e.name == "NMP_BASE_URL") == "http://host.docker.internal:8080"
+    assert "nemo_agents_plugin.fabric.server" in container.args[0]
+    assert container.readiness_probe is not None
+    assert container.readiness_probe.http_get is not None
+    assert container.readiness_probe.http_get.path == "/health"
+    assert cfg.config_files[0].path == "/workspace/agent.yaml"
+
+
+def test_build_deployment_config_fabric_k8s_uses_fabric_entrypoint() -> None:
+    cfg = build_deployment_config(
+        name="fabric-dep",
+        workspace="default",
+        image="fabric-runtime:latest",
+        port=8000,
+        agent_config=_FABRIC_AGENT_CONFIG,
+        platform_base_url="http://host.docker.internal:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="k8s",
+    )
+    container = cfg.containers[0]
+    assert container.command == ["python"]
+    assert container.args[0] == "-m"
+    assert container.args[1] == "nemo_agents_plugin.fabric.server"
+    assert "--agent-config" in container.args
+    assert "/workspace/agent.yaml" in container.args
+    assert "--host" in container.args and "0.0.0.0" in container.args
+    assert not any(e.name == "NAT_CONFIG_YAML" for e in container.env)
+    assert cfg.config_files[0].path == "/workspace/agent.yaml"
 
 
 def _backend(**deployments_kwargs: Any) -> DeploymentsRunnerBackend:
@@ -415,6 +536,124 @@ async def test_create_deployment_k8s_auth_off_no_sidecar() -> None:
     # Auth off: agent talks directly to the internal Service DNS (PR #899 behavior).
     assert baked["llms"]["llm"]["base_url"] == (
         "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_fabric_docker_rewrites_model_base_url() -> None:
+    backend = _backend(default_image="fabric:latest", default_executor="local-docker")
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "main",
+        "harnesses": {
+            "main": {
+                "provider": "codex",
+                "model": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "settings": {
+                        "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                    },
+                },
+            }
+        },
+    }
+    with patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"):
+        info = await backend.create_deployment(
+            workspace="default", name="fabric-dep", config=config, port=0, deployment_mode="docker"
+        )
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    baked = yaml.safe_load(created_config.config_files[0].content)
+    assert baked["harnesses"]["main"]["model"]["settings"]["base_url"] == (
+        "http://host.docker.internal:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+    assert created_config.labels["nemo.agents/runtime"] == "fabric"
+    assert "nemo_agents_plugin.fabric.server" in created_config.containers[0].args[0]
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_fabric_k8s_rewrites_model_base_url() -> None:
+    backend = _backend(
+        default_image="fabric:latest",
+        default_executor="k8s",
+        k8s_internal_base_url="http://nmp-api:8080",
+    )
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "main",
+        "harnesses": {
+            "main": {
+                "provider": "codex",
+                "model": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "settings": {
+                        "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                    },
+                },
+            }
+        },
+    }
+    with patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"):
+        info = await backend.create_deployment(
+            workspace="default", name="fabric-dep", config=config, port=0, deployment_mode="k8s"
+        )
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    baked = yaml.safe_load(created_config.config_files[0].content)
+    assert baked["harnesses"]["main"]["model"]["settings"]["base_url"] == (
+        "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+    assert created_config.containers[0].command == ["python"]
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_fabric_k8s_auth_on_rewrites_to_auth_proxy() -> None:
+    backend = _backend(
+        default_image="fabric:latest",
+        default_executor="k8s",
+        k8s_internal_base_url="http://nmp-api:8080",
+    )
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "main",
+        "harnesses": {
+            "main": {
+                "provider": "codex",
+                "model": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "settings": {
+                        "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                    },
+                },
+            }
+        },
+    }
+    with (
+        patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"),
+        patch("nemo_agents_plugin.runner.deployments_backend.platform_auth_enabled", return_value=True),
+        patch("nemo_agents_plugin.runner.deployments_backend.auth_proxy_port", return_value=8090),
+    ):
+        info = await backend.create_deployment(
+            workspace="default", name="fabric-dep", config=config, port=0, deployment_mode="k8s"
+        )
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    assert created_config.auth_proxy_sidecar is True
+    baked = yaml.safe_load(created_config.config_files[0].content)
+    assert baked["harnesses"]["main"]["model"]["settings"]["base_url"] == (
+        "http://127.0.0.1:8090/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
     )
 
 
