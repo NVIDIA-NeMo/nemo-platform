@@ -569,6 +569,23 @@ class TestAskUserQuestion:
         assert result.startswith("Error: `questions` must be a JSON array string")
         studio_tool.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "questions",
+        [
+            '{"question": "one?"}',  # object, not a list
+            '"just a string"',  # scalar
+            "5",  # scalar
+            "[]",  # empty array
+            "[1, 2]",  # list of non-objects
+            '["a", {"question": "ok"}]',  # mixed / invalid element
+        ],
+    )
+    def test_non_question_array_is_rejected_without_calling_studio(self, questions):
+        with patch("nemo_agent.register._call_studio_tool") as studio_tool:
+            result = _ask_user_question(studio_session_id=TRUSTED_SESSION_ID, questions=questions)
+        assert result == "Error: `questions` must be a non-empty JSON array of question objects."
+        studio_tool.assert_not_called()
+
     def test_tool_schema_hides_approval_context(self):
         # The picker takes only session id + questions; no config/approval leakage.
         assert set(ask_user_question.args_schema.model_fields) == {"studio_session_id", "questions"}

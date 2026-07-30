@@ -598,6 +598,8 @@ def ask_user_question(studio_session_id: str, questions: str) -> str:
         parsed = json.loads(questions)
     except (json.JSONDecodeError, TypeError) as exc:
         return f"Error: `questions` must be a JSON array string: {exc}"
+    if not isinstance(parsed, list) or not parsed or not all(isinstance(q, dict) for q in parsed):
+        return "Error: `questions` must be a non-empty JSON array of question objects."
     approval = _call_studio_tool(
         studio_session_id,
         "approval_prompt",
