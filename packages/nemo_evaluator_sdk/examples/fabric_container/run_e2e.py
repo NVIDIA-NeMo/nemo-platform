@@ -46,9 +46,11 @@ async def main() -> int:
         # chosen by harness.adapter_id, never inferred from the model.
         FabricConfig(
             metadata=MetadataConfig(name="hermes-eval"),
-            harness=HarnessConfig(adapter_id="nvidia.fabric.hermes.sdk", resolution="preinstalled"),
+            harness=HarnessConfig(adapter_id="nvidia.fabric.hermes", resolution="preinstalled"),
             models={"default": {"provider": "nvidia", "model": model}},
-            runtime=RuntimeConfig(mode="oneshot", transport="library", input_schema="chat", output_schema="message"),
+            runtime=RuntimeConfig.from_mapping(
+                {"mode": "oneshot", "transport": "library", "input_schema": "chat", "output_schema": "message"}
+            ),
         ),
         provider=DockerSandboxProvider(),
         secrets={"NVIDIA_API_KEY": SecretRef(root="NVIDIA_API_KEY")},

@@ -25,7 +25,7 @@ the source, so Fabric must be able to resolve built-in adapters *from the instal
 That only works on NeMo-Fabric's ``installed-adapter-discovery`` branch (which bundles the adapters
 under ``python/src/nemo_fabric/adapters`` and adds ``AdapterDescriptorSource::Installed``). On today's
 ``main`` the wheel ships no adapter descriptors, so a wheel-only image cannot resolve e.g.
-``nvidia.fabric.hermes.sdk``. Once that lands on ``main``, switch to installing the top-level
+``nvidia.fabric.hermes``. Once that lands on ``main``, switch to installing the top-level
 ``adapters/*`` packages explicitly here instead of relying on the branch's packaging.
 """
 

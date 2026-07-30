@@ -13,6 +13,9 @@ outputs:
   deps:
     description: "'true' if any dependency-related files changed"
     value: ${{ steps.filter.outputs.deps }}
+  fabric:
+    description: "'true' if the Fabric agent-eval runtime, its tests, or its dependency extra changed"
+    value: ${{ steps.filter.outputs.fabric }}
   e2e:
     description: "'true' if any e2e test files changed"
     value: ${{ steps.filter.outputs.e2e }}
@@ -74,6 +77,12 @@ runs:
             - 'pyproject.toml'
             - 'uv.lock'
             - '.pre-commit-config.yaml'
+          fabric:
+            - 'packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk/agent_eval/runtimes/fabric/**'
+            - 'packages/nemo_evaluator_sdk/tests/agent_eval/test_fabric_*.py'
+            - 'packages/nemo_evaluator_sdk/pyproject.toml'
+            - '.github/workflows/ci.yaml'
+            - '.github/actions/changes/action.yaml'
           e2e:
             - 'e2e/**'
           docs:
