@@ -104,8 +104,8 @@ class ProvidersResource(SyncAPIResource):
           host_url: The network endpoint URL for the model provider
 
           name: Name of the model provider. Name must start with a lowercase letter, be 2-63
-              characters, and contain only lowercase letters, digits, hyphens, and @ . + \\__
-              (no consecutive hyphens, cannot end with a hyphen).
+              characters, and use lowercase letters, digits, hyphens, and dots (no consecutive
+              hyphens, cannot end with a hyphen).
 
           api_key_secret_name: Reference to an API key secret stored in the Secrets service. Create the secret
               first via secrets API, then pass the secret name here.
@@ -556,8 +556,8 @@ class AsyncProvidersResource(AsyncAPIResource):
           host_url: The network endpoint URL for the model provider
 
           name: Name of the model provider. Name must start with a lowercase letter, be 2-63
-              characters, and contain only lowercase letters, digits, hyphens, and @ . + \\__
-              (no consecutive hyphens, cannot end with a hyphen).
+              characters, and use lowercase letters, digits, hyphens, and dots (no consecutive
+              hyphens, cannot end with a hyphen).
 
           api_key_secret_name: Reference to an API key secret stored in the Secrets service. Create the secret
               first via secrets API, then pass the secret name here.

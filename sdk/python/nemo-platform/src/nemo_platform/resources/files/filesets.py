@@ -97,8 +97,8 @@ class FilesetsResource(SyncAPIResource):
 
         Args:
           name: The name of the fileset. Name must start with a lowercase letter, be 2-63
-              characters, and contain only lowercase letters, digits, hyphens, and @ . + \\__
-              (no consecutive hyphens, cannot end with a hyphen).
+              characters, and use lowercase letters, digits, hyphens, and dots (no consecutive
+              hyphens, cannot end with a hyphen).
 
           cache: Cache all files after creation. Only applies to external storage.
 
@@ -423,8 +423,8 @@ class AsyncFilesetsResource(AsyncAPIResource):
 
         Args:
           name: The name of the fileset. Name must start with a lowercase letter, be 2-63
-              characters, and contain only lowercase letters, digits, hyphens, and @ . + \\__
-              (no consecutive hyphens, cannot end with a hyphen).
+              characters, and use lowercase letters, digits, hyphens, and dots (no consecutive
+              hyphens, cannot end with a hyphen).
 
           cache: Cache all files after creation. Only applies to external storage.
 

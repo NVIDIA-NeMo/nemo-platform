@@ -102,8 +102,8 @@ class WorkspacesResource(SyncAPIResource):
 
         Args:
           name: Workspace name (unique identifier). Name must start with a lowercase letter, be
-              2-63 characters, and contain only lowercase letters, digits, hyphens, and @ . +
-              \\__ (no consecutive hyphens, cannot end with a hyphen).
+              2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
+              consecutive hyphens, cannot end with a hyphen).
 
           wait_role_propagation: If true, wait for Admin role to propagate before returning (default: true). Set
               to false for bulk operations.
@@ -410,8 +410,8 @@ class AsyncWorkspacesResource(AsyncAPIResource):
 
         Args:
           name: Workspace name (unique identifier). Name must start with a lowercase letter, be
-              2-63 characters, and contain only lowercase letters, digits, hyphens, and @ . +
-              \\__ (no consecutive hyphens, cannot end with a hyphen).
+              2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
+              consecutive hyphens, cannot end with a hyphen).
 
           wait_role_propagation: If true, wait for Admin role to propagate before returning (default: true). Set
               to false for bulk operations.

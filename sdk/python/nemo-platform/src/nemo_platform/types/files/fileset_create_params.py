@@ -36,9 +36,9 @@ class FilesetCreateParams(TypedDict, total=False):
     name: Required[str]
     """The name of the fileset.
 
-    Name must start with a lowercase letter, be 2-63 characters, and contain only
-    lowercase letters, digits, hyphens, and @ . + \\__ (no consecutive hyphens, cannot
-    end with a hyphen).
+    Name must start with a lowercase letter, be 2-63 characters, and use lowercase
+    letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a
+    hyphen).
     """
 
     cache: bool

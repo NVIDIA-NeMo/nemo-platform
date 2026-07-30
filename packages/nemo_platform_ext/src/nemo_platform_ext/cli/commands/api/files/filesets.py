@@ -34,7 +34,7 @@ def create_filesets(
     name: Annotated[
         str | None,
         typer.Argument(
-            help="The name of the fileset. Name must start with a lowercase letter, be 2-63 characters, and contain only lowercase letters, digits, hyphens, and @ . + \\__ (no consecutive hyphens, cannot end with a hyphen). (required)"
+            help="The name of the fileset. Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen). (required)"
         ),
     ] = None,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
@@ -127,7 +127,7 @@ def create_filesets(
         ["name"],
         "files filesets create",
         {
-            "name": "The name of the fileset. Name must start with a lowercase letter, be 2-63 characters, and contain only lowercase letters, digits, hyphens, and @ . + \__ (no consecutive hyphens, cannot end with a hyphen). (required)",
+            "name": "The name of the fileset. Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen). (required)",
         },
     )
 

@@ -90,8 +90,8 @@ class SecretsResource(SyncAPIResource):
           name: The name of the secret to create.
 
         Name must start with a lowercase letter, be
-              2-63 characters, and contain only lowercase letters, digits, hyphens, and @ . +
-              \\__ (no consecutive hyphens, cannot end with a hyphen).
+              2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
+              consecutive hyphens, cannot end with a hyphen).
 
           value: The payload of the secret
 
@@ -390,8 +390,8 @@ class AsyncSecretsResource(AsyncAPIResource):
           name: The name of the secret to create.
 
         Name must start with a lowercase letter, be
-              2-63 characters, and contain only lowercase letters, digits, hyphens, and @ . +
-              \\__ (no consecutive hyphens, cannot end with a hyphen).
+              2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
+              consecutive hyphens, cannot end with a hyphen).
 
           value: The payload of the secret
 
