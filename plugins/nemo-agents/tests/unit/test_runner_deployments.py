@@ -181,7 +181,7 @@ def test_build_deployment_config_always_single_container() -> None:
         workspace="default",
         image="nat-runtime:latest",
         port=8000,
-        nat_config={"llms": {"nim": {"_type": "nim"}}},
+        agent_config={"llms": {"nim": {"_type": "nim"}}},
         platform_base_url="http://host.docker.internal:8080",
         config_mount_path="/workspace/config.yaml",
         mode="docker",
@@ -208,7 +208,7 @@ def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:
         workspace="default",
         image="nat-runtime:latest",
         port=8000,
-        nat_config={},
+        agent_config={},
         platform_base_url="http://nmp-api:8080",
         config_mount_path="/workspace/config.yaml",
         mode="k8s",
@@ -224,7 +224,7 @@ def test_build_deployment_config_k8s_option_b_when_image_set() -> None:
         workspace="default",
         image="nat-runtime:latest",
         port=8000,
-        nat_config={},
+        agent_config={},
         platform_base_url="http://nmp-api:8080",
         config_mount_path="/workspace/config.yaml",
         mode="k8s",
@@ -241,7 +241,7 @@ def test_build_deployment_config_docker_never_emits_init_containers() -> None:
         workspace="default",
         image="nat-runtime:latest",
         port=8000,
-        nat_config={},
+        agent_config={},
         platform_base_url="http://host.docker.internal:8080",
         config_mount_path="/workspace/config.yaml",
         mode="docker",
@@ -263,13 +263,29 @@ _FABRIC_AGENT_CONFIG = {
 }
 
 
+def test_build_deployment_config_docker_shell_escapes_config_path() -> None:
+    cfg = build_deployment_config(
+        name="spaced-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={"llms": {"nim": {"_type": "nim"}}},
+        platform_base_url="http://host.docker.internal:8080",
+        config_mount_path="/workspace/my config/config.yaml",
+        mode="docker",
+    )
+    script = cfg.containers[0].args[0]
+    assert "'/workspace/my config/config.yaml'" in script
+    assert 'printf "%s" "$NAT_CONFIG_YAML"' in script
+
+
 def test_build_deployment_config_fabric_docker_uses_fabric_server() -> None:
     cfg = build_deployment_config(
         name="fabric-dep",
         workspace="default",
         image="fabric-runtime:latest",
         port=8000,
-        nat_config=_FABRIC_AGENT_CONFIG,
+        agent_config=_FABRIC_AGENT_CONFIG,
         platform_base_url="http://host.docker.internal:8080",
         config_mount_path="/workspace/config.yaml",
         mode="docker",
@@ -279,6 +295,7 @@ def test_build_deployment_config_fabric_docker_uses_fabric_server() -> None:
     assert any(e.name == "AGENT_CONFIG_YAML" for e in container.env)
     assert not any(e.name == "NAT_CONFIG_YAML" for e in container.env)
     assert any(e.name == "AGENT_CONFIG_PATH" and e.value == "/workspace/agent.yaml" for e in container.env)
+    assert next(e.value for e in container.env if e.name == "NMP_BASE_URL") == "http://host.docker.internal:8080"
     assert "nemo_agents_plugin.fabric.server" in container.args[0]
     assert container.readiness_probe is not None
     assert container.readiness_probe.http_get is not None
@@ -292,7 +309,7 @@ def test_build_deployment_config_fabric_k8s_uses_fabric_entrypoint() -> None:
         workspace="default",
         image="fabric-runtime:latest",
         port=8000,
-        nat_config=_FABRIC_AGENT_CONFIG,
+        agent_config=_FABRIC_AGENT_CONFIG,
         platform_base_url="http://host.docker.internal:8080",
         config_mount_path="/workspace/config.yaml",
         mode="k8s",

@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import shlex
 import time
 from pathlib import PurePosixPath
 from typing import Any
@@ -59,6 +60,7 @@ _HTTP_PORT_NAME = "http"
 _PLUGIN_WHEELS_VOLUME = "plugin-wheels"
 _PLUGIN_WHEELS_MOUNT = "/opt/nemo/plugin-wheels"
 _NAT_CONFIG_ENV = "NAT_CONFIG_PATH"
+_NAT_CONFIG_YAML_ENV = "NAT_CONFIG_YAML"
 _AGENT_CONFIG_YAML_ENV = "AGENT_CONFIG_YAML"
 _AGENT_CONFIG_PATH_ENV = "AGENT_CONFIG_PATH"
 _FABRIC_SERVER_MODULE = "nemo_agents_plugin.fabric.server"
@@ -224,6 +226,17 @@ def _fabric_server_cli_args(*, config_path: str, port: int) -> list[str]:
     ]
 
 
+def _materialize_config_and_exec(*, config_path: str, yaml_env: str, argv: list[str]) -> list[str]:
+    """Return ``sh -c`` args that write the config from *yaml_env*, then exec *argv*.
+
+    Docker mode needs this because the docker backend does not mount ``config_files``.
+    Paths and argv are shell-escaped so spaces/metacharacters cannot break the script.
+    """
+    quoted_path = shlex.quote(config_path)
+    quoted_argv = " ".join(shlex.quote(arg) for arg in argv)
+    return [f'mkdir -p "$(dirname {quoted_path})" && printf "%s" "${yaml_env}" > {quoted_path} && exec {quoted_argv}']
+
+
 def executor_for_mode(config: DeploymentsRunnerConfig, mode: DeploymentMode) -> str | None:
     """Resolve the named deployments-plugin executor for *mode*."""
     if mode == "docker":
@@ -264,7 +277,7 @@ def build_deployment_config(
     workspace: str,
     image: str,
     port: int,
-    nat_config: dict[str, Any],
+    agent_config: dict[str, Any],
     platform_base_url: str,
     config_mount_path: str,
     mode: DeploymentMode,
@@ -274,8 +287,9 @@ def build_deployment_config(
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
+    *agent_config* is either a NAT workflow config or a Platform-owned Fabric spec.
     NAT workflow configs start ``nat start fastapi`` with workflow YAML at
-    *config_mount_path*. Platform-owned Fabric configs start
+    *config_mount_path*. Fabric configs start
     ``python -m nemo_agents_plugin.fabric.server`` with ``agent.yaml`` beside the
     NAT config directory. Docker mode materializes config from env because the
     docker backend ignores ``config_files``; k8s mounts ``config_files`` via
@@ -283,15 +297,15 @@ def build_deployment_config(
     readiness probe on ``/health``.
 
     The caller is responsible for rebasing inference ``base_url`` values in
-    *nat_config* to a container-reachable gateway before calling this helper.
+    *agent_config* to a container-reachable gateway before calling this helper.
 
     ``platform_base_url`` is the container-reachable platform origin used to
     build the Inference Gateway URL. It is also exported as ``NMP_BASE_URL`` so
     SDK calls from inside the agent use the same platform instead of falling
     back to a baked or host CLI context.
     """
-    is_fabric = _is_fabric_agent_config(nat_config)
-    config_yaml = yaml.safe_dump(nat_config, sort_keys=False)
+    is_fabric = _is_fabric_agent_config(agent_config)
+    config_yaml = yaml.safe_dump(agent_config, sort_keys=False)
     config_path = _fabric_config_mount_path(config_mount_path) if is_fabric else config_mount_path
     env = [
         EnvVar(name="NMP_WORKSPACE", value=workspace),
@@ -330,49 +344,33 @@ def build_deployment_config(
         env.append(EnvVar(name="PYTHONPATH", value=_PLUGIN_WHEELS_MOUNT))
 
     if is_fabric:
-        fabric_args = ["python", *_fabric_server_cli_args(config_path=config_path, port=port)]
-        if mode == "docker":
-            env.append(EnvVar(name=_AGENT_CONFIG_YAML_ENV, value=config_yaml))
-            command = ["sh", "-c"]
-            args = [
-                f'mkdir -p "$(dirname "{config_path}")" '
-                f'&& printf "%s" "$AGENT_CONFIG_YAML" > "{config_path}" '
-                f"&& exec {' '.join(fabric_args)}"
-            ]
-        else:
-            command = ["python"]
-            args = _fabric_server_cli_args(config_path=config_path, port=port)
+        config_yaml_env = _AGENT_CONFIG_YAML_ENV
+        server_command = ["python"]
+        server_args = _fabric_server_cli_args(config_path=config_path, port=port)
     else:
-        nat_args = [
-            "nat",
-            "start",
-            "fastapi",
+        config_yaml_env = _NAT_CONFIG_YAML_ENV
+        server_command = ["nat", "start", "fastapi"]
+        server_args = [
             "--config_file",
-            config_mount_path,
+            config_path,
             "--host",
             "0.0.0.0",
             "--port",
             str(port),
         ]
-        if mode == "docker":
-            # Docker backend does not mount config_files; materialize the YAML from env.
-            env.append(EnvVar(name="NAT_CONFIG_YAML", value=config_yaml))
-            command = ["sh", "-c"]
-            args = [
-                f'mkdir -p "$(dirname "{config_mount_path}")" '
-                f'&& printf "%s" "$NAT_CONFIG_YAML" > "{config_mount_path}" '
-                f"&& exec {' '.join(nat_args)}"
-            ]
-        else:
-            command = ["nat", "start", "fastapi"]
-            args = [
-                "--config_file",
-                config_mount_path,
-                "--host",
-                "0.0.0.0",
-                "--port",
-                str(port),
-            ]
+
+    if mode == "docker":
+        # Docker backend does not mount config_files; materialize the YAML from env.
+        env.append(EnvVar(name=config_yaml_env, value=config_yaml))
+        command = ["sh", "-c"]
+        args = _materialize_config_and_exec(
+            config_path=config_path,
+            yaml_env=config_yaml_env,
+            argv=[*server_command, *server_args],
+        )
+    else:
+        command = server_command
+        args = server_args
 
     container = Container(
         name=_CONTAINER_NAME,
@@ -499,7 +497,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             workspace=workspace,
             image=resolved_image,
             port=self._config.container_port,
-            nat_config=config,
+            agent_config=config,
             platform_base_url=gateway,
             config_mount_path=self._config.config_mount_path,
             mode=deployment_mode,
