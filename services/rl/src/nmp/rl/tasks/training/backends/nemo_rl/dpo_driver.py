@@ -16,7 +16,7 @@ Jobs service.
 
 import argparse
 import logging
-from typing import cast
+from typing import Any, cast
 
 from nemo_rl.algorithms.dpo import MasterConfig, dpo_train, setup
 from nemo_rl.algorithms.utils import get_tokenizer
@@ -56,23 +56,29 @@ def main():
         print(f"Overrides: {overrides}")
         cfg = parse_hydra_overrides(cfg, overrides)
 
-    config = cast(MasterConfig, OmegaConf.to_container(cfg, resolve=True))
+    # NeMo-RL's MasterConfig is a Pydantic BaseModel; setup()/dpo_train() read it
+    # by attribute (e.g. master_config.dpo.seed). OmegaConf.to_container() returns
+    # a plain dict, so build the model here — mirroring NeMo-RL's own run_dpo.py —
+    # which validates the config up front and matches how the algorithm consumes
+    # it. Only the top level is a model: the sub-configs (policy/logger/... ) stay
+    # TypedDict dicts, so they are still accessed by subscript (config.policy["x"]).
+    config = MasterConfig(**cast(dict[str, Any], OmegaConf.to_container(cfg, resolve=True)))
     print("Applied CLI overrides")
 
     # Log only the top-level config section names. The resolved config carries
     # integration secrets (W&B / MLflow tokens, tracking URIs), so never dump the
-    # full structure to stdout.
-    print(f"Config sections loaded: {sorted(config.keys())}")
+    # full structure to stdout. model_fields is names-only — no values materialized.
+    print(f"Config sections loaded: {sorted(type(config).model_fields)}")
 
-    config["logger"]["log_dir"] = get_next_experiment_dir(config["logger"]["log_dir"])
-    print(f"📊 Using log directory: {config['logger']['log_dir']}")
-    if config["checkpointing"]["enabled"]:
-        print(f"📊 Using checkpoint directory: {config['checkpointing']['checkpoint_dir']}")
+    config.logger["log_dir"] = get_next_experiment_dir(config.logger["log_dir"])
+    print(f"📊 Using log directory: {config.logger['log_dir']}")
+    if config.checkpointing["enabled"]:
+        print(f"📊 Using checkpoint directory: {config.checkpointing['checkpoint_dir']}")
 
     init_ray()
 
     # setup tokenizer
-    tokenizer = get_tokenizer(config["policy"]["tokenizer"])
+    tokenizer = get_tokenizer(config.policy["tokenizer"])
 
     # Register our local-file-capable HelpSteer3 / Tulu3 datasets into NeMo-RL's
     # DATASET_REGISTRY before building data. Without this, setup_preference_data
@@ -84,7 +90,7 @@ def main():
     # dataset specs). The compiler emits one of BinaryPreferenceDataset /
     # PreferenceDataset / HelpSteer3 / Tulu3Preference per detected schema, each
     # pointing at the prepared local training.jsonl / validation.jsonl.
-    dataset, val_dataset = setup_preference_data(tokenizer, config["data"])
+    dataset, val_dataset = setup_preference_data(tokenizer, config.data)
     (
         policy,
         cluster,
@@ -104,10 +110,10 @@ def main():
     print(f"Job context loaded (job_id={job_ctx.job_id})")
     if job_ctx.jobs_url:
         # Extract training parameters for progress reporting
-        max_steps = config["dpo"].get("max_num_steps", 0)
-        num_epochs = config["dpo"].get("max_num_epochs", 1)
-        steps_per_epoch = config["dpo"]["steps_per_epoch"]  # type: ignore - we need to pass this additional parameter to the logger
-        log_interval = (config["dpo"]["val_period"] // 10) + 1
+        max_steps = config.dpo.max_num_steps
+        num_epochs = config.dpo.max_num_epochs
+        steps_per_epoch = config.dpo.steps_per_epoch  # type: ignore[attr-defined] - extra (undeclared) DPOConfig field, allowed via extra="allow"
+        log_interval = (config.dpo.val_period // 10) + 1
 
         customizer_logger = NemoRLLogger(
             steps_per_epoch=steps_per_epoch,
@@ -123,7 +129,7 @@ def main():
         else:
             print("WARNING: logger has no `.loggers`; NeMo Platform progress reporting disabled.")
 
-    logger.log_hyperparams(config)
+    logger.log_hyperparams(config.model_dump())
 
     dpo_train(
         policy,
