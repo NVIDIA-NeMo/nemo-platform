@@ -20,6 +20,6 @@ NAME_MAX_LENGTH = 63
 
 NAME_PATTERN_DESCRIPTION = (
     "Name must start with a lowercase letter, be 2-63 characters, "
-    "and contain only lowercase letters, digits, hyphens, and @ . + _ "
+    "and use lowercase letters, digits, hyphens, and dots "
     "(no consecutive hyphens, cannot end with a hyphen)."
 )
