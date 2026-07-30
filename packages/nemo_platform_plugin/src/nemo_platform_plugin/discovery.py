@@ -21,6 +21,7 @@ Entry-point groups and their wrappers
 ``nemo.skills``                → :func:`discover_skills`                — ``() -> Path`` callable
 ``nemo.docs``                  → :func:`discover_docs`                  — ``() -> Path | dict`` callable
 ``nemo.executors``             → :func:`discover_executors`             — ``Executor`` class
+``nemo.sandbox_profiles``      → :func:`discover_sandbox_profiles`      — :class:`~nemo_platform_plugin.sandbox.SandboxImageProfile` instance
 ``nemo.inference_middleware``  → :func:`discover_inference_middleware`  — :class:`~nemo_platform_plugin.inference_middleware.NemoInferenceMiddleware` subclass  (typed, IGW instantiates)
 ``nemo.customization.contributors`` → :func:`discover_customization_contributors` — :class:`~nemo_platform_plugin.customization_contributor.CustomizationContributor` instance  (typed, customization router instantiates)
 ``nemo.seed``                  → :func:`discover_seed_jobs`             — :class:`~nemo_platform_plugin.seed.NemoSeedJob` subclass  (typed, platform instantiates)
@@ -61,6 +62,7 @@ from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
 from nemo_platform_plugin.interface import PluginManifest
 from nemo_platform_plugin.job import NemoJob
+from nemo_platform_plugin.sandbox import SandboxImageProfile
 from nemo_platform_plugin.seed import NemoSeedJob
 from nemo_platform_plugin.service import NemoService
 
@@ -478,6 +480,18 @@ def discover_executors() -> dict[str, Any]:
     ``"k8s"``), used by the platform's job scheduler to resolve the right backend.
     """
     return discover("nemo.executors")
+
+
+def discover_sandbox_profiles() -> dict[str, SandboxImageProfile]:
+    """Wrapper: discover ``nemo.sandbox_profiles`` → :class:`SandboxImageProfile`.
+
+    Each entry-point value is a
+    :class:`~nemo_platform_plugin.sandbox.SandboxImageProfile` describing what an
+    image needs to run under a sandbox runtime. The entry-point name is the
+    runtime name (e.g. ``"openshell"``), used by ``nemo agents package
+    --sandbox-runtime <name>`` to resolve the right profile.
+    """
+    return cast(dict[str, SandboxImageProfile], discover("nemo.sandbox_profiles"))
 
 
 def _instantiate_customization_contributor(loaded: object) -> CustomizationContributor:
