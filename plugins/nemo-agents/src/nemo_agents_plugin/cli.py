@@ -71,6 +71,7 @@ from nemo_platform.cli.core.formatters import Column, format_output
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
+from nemo_platform_plugin.discovery import discover_agent_cli
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,13 @@ class AgentsCLI(NemoCLI):
         _register_platform_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
+        for name, cli_cls in discover_agent_cli().items():
+            try:
+                cli = cli_cls().get_cli()
+            except Exception:
+                logger.warning("Failed to load agent CLI extension %r; skipping", name, exc_info=True)
+                continue
+            app.add_typer(cli, name=name, rich_help_panel="Platform agents")
         return app
 
 

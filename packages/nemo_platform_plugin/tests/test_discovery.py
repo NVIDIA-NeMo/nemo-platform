@@ -13,8 +13,10 @@ from fastapi import APIRouter
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.discovery import (
     _ALL_SURFACE_GROUPS,
+    AGENT_CLI_GROUP,
     CUSTOMIZATION_CONTRIBUTORS_GROUP,
     discover,
+    discover_agent_cli,
     discover_cli,
     discover_customization_contributors,
     discover_entry_points,
@@ -353,6 +355,29 @@ class TestDiscoverCLI:
             result = discover_cli()
         assert "bad" not in result
         assert "good" in result
+
+
+# ---------------------------------------------------------------------------
+# discover_agent_cli
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverAgentCLI:
+    def test_uses_agent_cli_group(self) -> None:
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[]) as mock_eps:
+            discover_agent_cli()
+        mock_eps.assert_called_once_with(group=AGENT_CLI_GROUP)
+
+    def test_loads_cli_class_under_agent_name(self) -> None:
+        class _AnalystCLI(_MinimalPluginCLI):
+            name = "analyst"
+
+        ep = _make_ep("analyst", _AnalystCLI)
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
+            result = discover_agent_cli()
+
+        assert result["analyst"] is _AnalystCLI
+        assert isinstance(result["analyst"]().get_cli(), typer.Typer)
 
 
 # ---------------------------------------------------------------------------

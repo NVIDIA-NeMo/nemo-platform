@@ -12,6 +12,7 @@ Entry-point groups and their wrappers
 
 ``nemo.services``              → :func:`discover_services`              — :class:`~nemo_platform_plugin.service.NemoService` subclass  (typed, platform instantiates)
 ``nemo.cli``                   → :func:`discover_cli`                   — :class:`~nemo_platform_plugin.cli.NemoCLI` subclass  (typed, platform instantiates)
+``nemo.cli.agents``            → :func:`discover_agent_cli`             — :class:`~nemo_platform_plugin.cli.NemoCLI` subclass mounted at ``nemo agents <agent>``
 ``nemo.jobs``                  → :func:`discover_jobs`                  — :class:`~nemo_platform_plugin.job.NemoJob` subclass  (typed, platform instantiates)
 ``nemo.functions``             → :func:`discover_functions`             — :class:`~nemo_platform_plugin.function.NemoFunction` subclass  (typed, platform instantiates)
 ``nemo.controllers``           → :func:`discover_controllers`           — :class:`~nemo_platform_plugin.controller.NemoController` subclass  (typed, platform instantiates)
@@ -67,6 +68,8 @@ from nemo_platform_plugin.seed import NemoSeedJob
 from nemo_platform_plugin.service import NemoService
 
 logger = logging.getLogger(__name__)
+
+AGENT_CLI_GROUP = "nemo.cli.agents"
 
 # All surface groups the platform recognises.  Scanning these is sufficient to
 # know whether a plugin is installed — no separate ``nemo.plugins`` group needed.
@@ -293,6 +296,11 @@ def discover_cli() -> dict[str, type[NemoCLI]]:
             )
         result[key] = cast(type[NemoCLI], cls)
     return result
+
+
+def discover_agent_cli() -> dict[str, type[NemoCLI]]:
+    """Discover ``NemoCLI`` subclasses contributed beneath ``nemo agents``."""
+    return {key: cast(type[NemoCLI], cls) for key, cls in discover(AGENT_CLI_GROUP).items()}
 
 
 def discover_jobs() -> dict[str, type[NemoJob]]:
