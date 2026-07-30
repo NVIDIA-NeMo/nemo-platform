@@ -38,6 +38,72 @@ def test_forward_stamps_service_principal_and_preserves_path() -> None:
 
 
 @respx.mock
+def test_forward_stamps_on_behalf_of_when_configured() -> None:
+    upstream = "http://nemo-platform-api:8080"
+    route = respx.get(f"{upstream}/apis/entities/v2/workspaces").mock(return_value=httpx.Response(200, json={}))
+    app = build_app(base_url=upstream, principal="agents", on_behalf_of="user:alice")
+    client = TestClient(app)
+
+    client.get("/apis/entities/v2/workspaces")
+
+    sent = route.calls.last.request
+    # Service principal clears the route gate; on-behalf-of narrows access to the creator.
+    assert sent.headers["x-nmp-principal-id"] == "service:agents"
+    assert sent.headers["x-nmp-principal-on-behalf-of"] == "user:alice"
+
+
+@respx.mock
+def test_forward_omits_on_behalf_of_when_not_configured() -> None:
+    upstream = "http://nemo-platform-api:8080"
+    route = respx.get(f"{upstream}/apis/entities/v2/workspaces").mock(return_value=httpx.Response(200, json={}))
+    app = build_app(base_url=upstream, principal="agents")
+    client = TestClient(app)
+
+    client.get("/apis/entities/v2/workspaces")
+
+    sent = route.calls.last.request
+    assert "x-nmp-principal-on-behalf-of" not in {k.lower() for k in sent.headers}
+
+
+@respx.mock
+def test_forward_strips_inbound_on_behalf_of_to_prevent_spoofing() -> None:
+    upstream = "http://nemo-platform-api:8080"
+    route = respx.get(f"{upstream}/apis/entities/v2/workspaces").mock(return_value=httpx.Response(200, json={}))
+    # The delegated identity is baked in at deploy time; a co-located workload must
+    # not be able to override it (or inject one when none is configured) via headers.
+    app = build_app(base_url=upstream, principal="agents", on_behalf_of="user:alice")
+    client = TestClient(app)
+
+    client.get(
+        "/apis/entities/v2/workspaces",
+        headers={
+            "x-nmp-principal-id": "service:platform",
+            "x-nmp-principal-on-behalf-of": "user:attacker",
+        },
+    )
+
+    sent = route.calls.last.request
+    assert sent.headers["x-nmp-principal-id"] == "service:agents"
+    assert sent.headers["x-nmp-principal-on-behalf-of"] == "user:alice"
+
+
+@respx.mock
+def test_forward_strips_inbound_on_behalf_of_when_none_configured() -> None:
+    upstream = "http://nemo-platform-api:8080"
+    route = respx.get(f"{upstream}/apis/entities/v2/workspaces").mock(return_value=httpx.Response(200, json={}))
+    app = build_app(base_url=upstream, principal="agents")
+    client = TestClient(app)
+
+    client.get(
+        "/apis/entities/v2/workspaces",
+        headers={"x-nmp-principal-on-behalf-of": "user:attacker"},
+    )
+
+    sent = route.calls.last.request
+    assert "x-nmp-principal-on-behalf-of" not in {k.lower() for k in sent.headers}
+
+
+@respx.mock
 def test_forward_normalizes_bare_principal_name() -> None:
     upstream = "http://nemo-platform-api:8080"
     route = respx.get(f"{upstream}/apis/entities/v2/workspaces").mock(return_value=httpx.Response(200, json={}))

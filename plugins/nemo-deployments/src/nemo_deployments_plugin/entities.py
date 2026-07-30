@@ -292,6 +292,17 @@ class DeploymentConfig(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT_CONFIG):
             "'X-NMP-Principal-Id: service:<identity>'). Required when auth_proxy_sidecar is True."
         ),
     )
+    auth_proxy_sidecar_on_behalf_of: str | None = Field(
+        default=None,
+        alias="authProxySidecarOnBehalfOf",
+        description=(
+            "Optional principal id the auth-proxy sidecar delegates to via "
+            "'X-NMP-Principal-On-Behalf-Of'. When set, the service principal acts on behalf of this "
+            "identity so the platform scopes the workload's access to what that principal can reach "
+            "(e.g. the deployment's creator) rather than the service principal's full reach. "
+            "Only meaningful when auth_proxy_sidecar is True."
+        ),
+    )
 
     model_config = {"populate_by_name": True}
 

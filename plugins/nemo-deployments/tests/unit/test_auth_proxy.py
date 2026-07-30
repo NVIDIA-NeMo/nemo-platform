@@ -53,6 +53,37 @@ def test_builds_sidecar_when_requested_and_auth_on() -> None:
     assert "127.0.0.1" in " ".join(container.readiness_probe.exec_action.command)
 
 
+def test_sidecar_stamps_on_behalf_of_when_set() -> None:
+    with (
+        patch(f"{_MOD}.platform_auth_enabled", return_value=True),
+        patch(f"{_MOD}.get_qualified_image", return_value="my-registry/nmp-api:local"),
+        patch(f"{_MOD}._upstream_base_url", return_value="http://nemo-platform-api:8080"),
+    ):
+        container = build_auth_proxy_container(
+            _config(
+                auth_proxy_sidecar=True,
+                auth_proxy_sidecar_identity="agents",
+                auth_proxy_sidecar_on_behalf_of="user:alice",
+            )
+        )
+    assert container is not None
+    env = {e.name: e.value for e in container.env}
+    assert env["NMP_AUTH_PROXY_PRINCIPAL"] == "agents"
+    assert env["NMP_AUTH_PROXY_ON_BEHALF_OF"] == "user:alice"
+
+
+def test_sidecar_omits_on_behalf_of_when_unset() -> None:
+    with (
+        patch(f"{_MOD}.platform_auth_enabled", return_value=True),
+        patch(f"{_MOD}.get_qualified_image", return_value="my-registry/nmp-api:local"),
+        patch(f"{_MOD}._upstream_base_url", return_value="http://nemo-platform-api:8080"),
+    ):
+        container = build_auth_proxy_container(_config(auth_proxy_sidecar=True, auth_proxy_sidecar_identity="agents"))
+    assert container is not None
+    env = {e.name: e.value for e in container.env}
+    assert "NMP_AUTH_PROXY_ON_BEHALF_OF" not in env
+
+
 def test_sidecar_without_identity_is_rejected() -> None:
     # No default identity: a config requesting the sidecar without an identity
     # is invalid and fails validation (surfaced as a 4xx at the create endpoint).

@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 AUTH_PROXY_CONTAINER_NAME = "auth-proxy"
 _NATIVE_SIDECAR_RESTART_POLICY: RestartPolicy = "Always"
 _AUTH_PROXY_PRINCIPAL_ENVVAR = "NMP_AUTH_PROXY_PRINCIPAL"
+_AUTH_PROXY_ON_BEHALF_OF_ENVVAR = "NMP_AUTH_PROXY_ON_BEHALF_OF"
 _AUTH_PROXY_HOST_ENVVAR = "NMP_AUTH_PROXY_HOST"
 _AUTH_PROXY_PORT_ENVVAR = "NMP_AUTH_PROXY_PORT"
 
@@ -84,19 +85,24 @@ def build_auth_proxy_container(config: DeploymentConfig, *, docker: bool = False
     deployments_config = get_nemo_config(DeploymentsConfig)
     # Guaranteed present: DeploymentConfig validates identity when the sidecar is enabled.
     identity = config.auth_proxy_sidecar_identity
+    on_behalf_of = config.auth_proxy_sidecar_on_behalf_of
     port = deployments_config.auth_proxy_port
     image = deployments_config.auth_proxy_image or get_qualified_image(deployments_config.auth_proxy_image_name)
+
+    env = [
+        EnvVar(name="NMP_BASE_URL", value=_upstream_base_url(docker=docker)),
+        EnvVar(name=_AUTH_PROXY_PRINCIPAL_ENVVAR, value=identity),
+        EnvVar(name=_AUTH_PROXY_HOST_ENVVAR, value="127.0.0.1"),
+        EnvVar(name=_AUTH_PROXY_PORT_ENVVAR, value=str(port)),
+    ]
+    if on_behalf_of:
+        env.append(EnvVar(name=_AUTH_PROXY_ON_BEHALF_OF_ENVVAR, value=on_behalf_of))
 
     return Container(
         name=AUTH_PROXY_CONTAINER_NAME,
         image=image,
         command=["nemo", "services", "run", "--sidecars", "auth-proxy"],
-        env=[
-            EnvVar(name="NMP_BASE_URL", value=_upstream_base_url(docker=docker)),
-            EnvVar(name=_AUTH_PROXY_PRINCIPAL_ENVVAR, value=identity),
-            EnvVar(name=_AUTH_PROXY_HOST_ENVVAR, value="127.0.0.1"),
-            EnvVar(name=_AUTH_PROXY_PORT_ENVVAR, value=str(port)),
-        ],
+        env=env,
     ).model_copy(
         update={
             "restart_policy": _NATIVE_SIDECAR_RESTART_POLICY,

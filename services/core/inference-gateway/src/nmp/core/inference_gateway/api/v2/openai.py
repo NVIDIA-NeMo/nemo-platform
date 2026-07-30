@@ -7,6 +7,10 @@ from typing import Annotated
 
 from aiohttp import ClientSession
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from nmp.core.inference_gateway.api.authz import (
+    OPENAI_EXEC_PERMISSION,
+    enforce_delegated_workspace_access,
+)
 from nmp.core.inference_gateway.api.dependencies import (
     global_http_client,
     global_middleware_registry,
@@ -114,6 +118,7 @@ async def openai_get_models(
     VirtualModels scoped to the request workspace.
     """
     validate_entity_name(workspace, field_name="workspace")
+    await enforce_delegated_workspace_access(workspace, OPENAI_EXEC_PERMISSION)
 
     all_oai_models: list[OpenAIModelResp] = []
 
@@ -148,6 +153,7 @@ async def openai_get_model(
 
     validate_entity_name(workspace, field_name="workspace")
     validate_model_entity_name(model_name, field_name="model")
+    await enforce_delegated_workspace_access(workspace, OPENAI_EXEC_PERMISSION)
     if virtual_model_cache.get(workspace, model_name) is None:
         raise_virtual_model_not_found(workspace, model_name)
 
@@ -216,6 +222,12 @@ async def openai_proxy(
     LoRA escape-hatches, etc. Requests for which no VirtualModel can be found
     return `404`.
     """
+    # Scope delegated (on-behalf-of) service-principal calls to the target
+    # workspace before any routing — including the mock short-circuit — so a
+    # delegated workload cannot reach a workspace its creator cannot.
+    validate_entity_name(workspace, field_name="workspace")
+    await enforce_delegated_workspace_access(workspace, OPENAI_EXEC_PERMISSION)
+
     # If mock mode enabled and request has explicit mock response, skip model lookup
     if is_mock_request(request):
         return await handle_mock_request(request=request, trailing_uri=trailing_uri)
@@ -235,7 +247,6 @@ async def openai_proxy(
     # If body contains "workspace/model", use only the model name part.
     model_name = body_model.removeprefix(f"{workspace}/")
 
-    validate_entity_name(workspace, field_name="workspace")
     validate_model_entity_name(model_name, field_name="model")
 
     virtual_model = virtual_model_cache.get(workspace, model_name)

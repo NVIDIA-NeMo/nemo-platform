@@ -284,6 +284,7 @@ def build_deployment_config(
     plugin_wheels_init_image: str | None = None,
     labels: dict[str, str] | None = None,
     auth_proxy_identity: str | None = None,
+    auth_proxy_on_behalf_of: str | None = None,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -407,6 +408,7 @@ def build_deployment_config(
             "restart_policy": "Always",
             "auth_proxy_sidecar": auth_proxy_identity is not None,
             "auth_proxy_sidecar_identity": auth_proxy_identity,
+            "auth_proxy_sidecar_on_behalf_of": auth_proxy_on_behalf_of,
         }
     )
 
@@ -433,6 +435,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
         *,
         image: str | None = None,
         deployment_mode: DeploymentMode = "docker",
+        created_by: str | None = None,
     ) -> DeploymentInfo:
         """Create DeploymentConfig + Deployment entities for the agent container."""
         del port  # Host port is allocated by the deployments executor, not agents.
@@ -472,10 +475,24 @@ class DeploymentsRunnerBackend(RunnerBackend):
         # deployments plugin compiles the sidecar from the auth_proxy flags). The
         # agent targets the sidecar on localhost; the sidecar forwards to the
         # platform with a service-principal identity header.
+        #
+        # The sidecar also delegates to the deployment's creator via on-behalf-of
+        # (when known) so the running agent's platform access is scoped to what the
+        # creator can reach — the workspace(s) they have access to — rather than the
+        # agents service principal's full (ServiceSystem) reach.
         auth_proxy_identity: str | None = None
+        auth_proxy_on_behalf_of: str | None = None
         is_fabric = _is_fabric_agent_config(config)
         if platform_auth_enabled():
             auth_proxy_identity = _AUTH_PROXY_IDENTITY
+            auth_proxy_on_behalf_of = created_by or None
+            if not auth_proxy_on_behalf_of:
+                logger.warning(
+                    "Deployment %r has no creator principal; the agent will run as the "
+                    "unscoped %s service principal without on-behalf-of delegation.",
+                    name,
+                    _AUTH_PROXY_IDENTITY,
+                )
             rewrite_target = f"http://127.0.0.1:{auth_proxy_port()}"
         else:
             rewrite_target = gateway
@@ -504,6 +521,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             plugin_wheels_init_image=self._config.plugin_wheels_init_image,
             labels=deployment_labels,
             auth_proxy_identity=auth_proxy_identity,
+            auth_proxy_on_behalf_of=auth_proxy_on_behalf_of,
         )
         await entities.create(deployment_config)
         try:
