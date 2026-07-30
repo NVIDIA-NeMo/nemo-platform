@@ -23,13 +23,16 @@ from typing import Any
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalTask
 from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus
 from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
-from nemo_relay.observability import AtifConfig, AtofConfig, ComponentSpec, ObservabilityConfig
 
 # Trajectory profile identity + the file-exporter output names we choose (Relay accepts these as
 # inputs). Shared so both runtimes select/emit the trajectory under identical names.
 TRAJECTORY_PROFILE_NAME = "eval_trajectory"
 ATIF_FILENAME_TEMPLATE = "trajectory-{session_id}.atif.json"
 ATOF_FILENAME = "events.atof.jsonl"
+#: ATIF ``agent.version``. Both runtimes report the agent *framework* here so a consumer can group
+#: host and container traces together; ``agent.name`` is what distinguishes them. Not a real version
+#: yet — reporting the resolved nemo-fabric version would be the better answer.
+FABRIC_AGENT_VERSION = "fabric"
 # Fabric telemetry-profile selectors (Relay file exporter, no OTLP endpoint).
 TELEMETRY_PROVIDER = "relay"
 TELEMETRY_MODE = "sdk"
@@ -112,7 +115,19 @@ def trajectory_telemetry(*, relay_dir: str, agent_name: str, agent_version: str)
     Built from ``nemo_relay``'s own typed config so Relay owns its schema — no hand-maintained dict to
     silently drift when Relay changes it. Callers wrap this in a profile with their own name +
     ``runtime``/``environment`` blocks; ``relay_dir`` is where the ``trajectory-*.atif.json`` lands.
+
+    ``nemo_relay`` is imported here rather than at module scope: it is a native extension costing
+    ~120ms to load, and this module is reachable from the evaluator plugin's job imports, so an
+    eager import would charge every consumer for trajectory capture they may never use.
     """
+    from nemo_relay.observability import (
+        AtifConfig,
+        AtofConfig,
+        AtofFileSinkConfig,
+        ComponentSpec,
+        ObservabilityConfig,
+    )
+
     observability = ComponentSpec(
         config=ObservabilityConfig(
             atif=AtifConfig(
@@ -124,9 +139,13 @@ def trajectory_telemetry(*, relay_dir: str, agent_name: str, agent_version: str)
             ),
             atof=AtofConfig(
                 enabled=True,
-                output_directory=relay_dir,
-                filename=ATOF_FILENAME,
-                mode="overwrite",
+                sinks=[
+                    AtofFileSinkConfig(
+                        output_directory=relay_dir,
+                        filename=ATOF_FILENAME,
+                        mode="overwrite",
+                    )
+                ],
             ),
         )
     )

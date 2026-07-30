@@ -37,19 +37,19 @@ export const IntakeLayout: FC = () => {
   useBreadcrumbs({
     items: [
       {
-        slotLabel: 'Intake',
+        slotLabel: 'Traces',
       },
     ],
   });
 
   return (
-    <AccessibleTitle title="Intake">
+    <AccessibleTitle title="Traces">
       <Stack gap="density-2xl" padding="density-2xl" className="h-full">
         <PageHeader
           className="p-0"
           slotHeading={
             <>
-              Intake
+              Traces
               <FeatureFlagBadge flag="intakeEnabled" />
             </>
           }

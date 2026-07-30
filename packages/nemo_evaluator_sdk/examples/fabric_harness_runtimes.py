@@ -8,9 +8,9 @@ different agent harnesses purely via the Fabric config — the harness is select
 ``harness.adapter_id``, never inferred from a model. Across harnesses the shape differs mainly in that
 ``adapter_id``, ``runtime.transport``, and any harness-specific ``harness.settings``:
 
-* **Codex CLI** (``nvidia.fabric.codex.cli``) runs the agent as a subprocess — ``transport="cli"`` —
+* **Codex CLI** (``nvidia.fabric.codex``) runs the agent as a subprocess — ``transport="cli"`` —
   and takes codex-specific ``harness.settings`` (sandbox mode, git-repo check, ...).
-* **Hermes SDK** (``nvidia.fabric.hermes.sdk``) runs in-library — ``transport="library"`` — and
+* **Hermes SDK** (``nvidia.fabric.hermes``) runs in-library — ``transport="library"`` — and
   declares its ``input``/``output`` schemas instead.
 
 An optional ``model=`` slug (e.g. ``"openai/gpt-5.4"``) can be passed to ``FabricAgentRuntime`` to
@@ -39,19 +39,21 @@ from nemo_fabric import (  # ty: ignore[unresolved-import]
 CODEX_CLI_CONFIG = FabricConfig(
     metadata=MetadataConfig(name="codex-eval"),
     harness=HarnessConfig(
-        adapter_id="nvidia.fabric.codex.cli",
+        adapter_id="nvidia.fabric.codex",
         settings={"sandbox": "read-only", "skip_git_repo_check": True},
     ),
     models={"default": {"provider": "openai", "model": "gpt-5.4"}},
-    runtime=RuntimeConfig(mode="oneshot", transport="cli"),
+    runtime=RuntimeConfig.from_mapping({"mode": "oneshot", "transport": "cli"}),
 )
 
 #: Hermes SDK harness — in-library transport, explicit chat/message schemas.
 HERMES_SDK_CONFIG = FabricConfig(
     metadata=MetadataConfig(name="hermes-eval"),
-    harness=HarnessConfig(adapter_id="nvidia.fabric.hermes.sdk", resolution="preinstalled"),
+    harness=HarnessConfig(adapter_id="nvidia.fabric.hermes", resolution="preinstalled"),
     models={"default": {"provider": "nvidia", "model": "qwen2.5-coder-32b"}},
-    runtime=RuntimeConfig(mode="oneshot", transport="library", input_schema="chat", output_schema="message"),
+    runtime=RuntimeConfig.from_mapping(
+        {"mode": "oneshot", "transport": "library", "input_schema": "chat", "output_schema": "message"}
+    ),
 )
 
 #: Named Fabric configs, one per harness, keyed by a short label.

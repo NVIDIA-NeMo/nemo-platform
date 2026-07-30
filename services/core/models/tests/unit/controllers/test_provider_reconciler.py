@@ -1988,6 +1988,9 @@ async def test_reconcile_creates_passthrough_virtual_models_for_all_served_model
 # ============================================================================
 
 
+_TIMESTAMP_UNSET = object()
+
+
 def _virtual_model(
     name: str,
     *,
@@ -1995,12 +1998,18 @@ def _virtual_model(
     default_model_entity: str | None = None,
     autoprovisioned: bool = True,
     db_version: int | None = 1,
+    created_at: datetime | None = None,
+    updated_at=_TIMESTAMP_UNSET,
 ):
+    now = datetime.now(timezone.utc)
+    created_at = created_at or now
     vm = MagicMock()
     vm.name = name
     vm.workspace = workspace
     vm.default_model_entity = default_model_entity
     vm.autoprovisioned = autoprovisioned
+    vm.created_at = created_at
+    vm.updated_at = created_at if updated_at is _TIMESTAMP_UNSET else updated_at
     if db_version is not None:
         vm.db_version = db_version
     return vm
@@ -2100,6 +2109,59 @@ async def test_cleanup_keeps_autoprovisioned_virtual_model_without_default_model
     await reconciler._cleanup_orphaned_virtual_models([], vm_snapshot)
 
     mock_models_sdk.inference.virtual_models.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("created_at", "updated_at", "should_delete"),
+    [
+        pytest.param(
+            datetime(2026, 1, 1, 11, 55, tzinfo=timezone.utc),
+            datetime(2026, 1, 1, 12, 5, tzinfo=timezone.utc),
+            False,
+            id="updated-at-after-snapshot-wins",
+        ),
+        pytest.param(
+            datetime(2026, 1, 1, 11, 55, tzinfo=timezone.utc),
+            None,
+            True,
+            id="explicit-none-updated-at-falls-back-to-created-at-before-snapshot",
+        ),
+        pytest.param(
+            datetime(2026, 1, 1, 12, 5, tzinfo=timezone.utc),
+            None,
+            False,
+            id="explicit-none-updated-at-falls-back-to-created-at-after-snapshot",
+        ),
+    ],
+)
+async def test_cleanup_uses_virtual_model_updated_at_then_created_at_for_snapshot_guard(
+    reconciler,
+    mock_models_sdk,
+    created_at,
+    updated_at,
+    should_delete,
+):
+    """The snapshot guard uses updated_at first, then explicit-None updated_at falls back to created_at."""
+    snapshot_taken_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    virtual_model = _virtual_model(
+        "model-a",
+        default_model_entity="ws/model-a",
+        created_at=created_at,
+        updated_at=updated_at,
+    )
+    assert virtual_model.updated_at is updated_at
+
+    await reconciler._cleanup_orphaned_virtual_models([], [virtual_model], snapshot_taken_at=snapshot_taken_at)
+
+    if should_delete:
+        mock_models_sdk.inference.virtual_models.delete.assert_awaited_once_with(
+            name="model-a",
+            workspace="ws",
+            expected_db_version=1,
+        )
+    else:
+        mock_models_sdk.inference.virtual_models.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio

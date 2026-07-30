@@ -28,7 +28,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTas
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus
 from nemo_evaluator_sdk.values.common import SecretRef
 
-_CONFIG = {"metadata": {"name": "eval"}, "harness": {"adapter_id": "nvidia.fabric.hermes.sdk"}}
+_CONFIG = {"metadata": {"name": "eval"}, "harness": {"adapter_id": "nvidia.fabric.hermes"}}
 
 
 @pytest.fixture(autouse=True)
@@ -192,20 +192,24 @@ async def test_failed_trial_stamps_agent_ok_false(tmp_path: Path) -> None:
     assert trial.metadata["agent_ok"] is False
 
 
-async def test_seeds_agent_config_profiles_and_execs_cli(tmp_path: Path) -> None:
+async def test_seeds_composed_agent_config_and_execs_cli(tmp_path: Path) -> None:
     provider = _FakeProvider()
     await _run(_runtime(provider), [_task()], tmp_path)
     assert "/in/agent.yaml" in provider.seeded and "/in/input.txt" in provider.seeded
-    # base profiles (none here) + the per-task workspace overlay + the trajectory profile.
-    profile_files = sorted(key for key in provider.seeded if key.startswith("/in/profile-"))
-    names = {json.loads(provider.seeded[path])["name"] for path in profile_files}
-    assert names == {"eval_workspace", "eval_trajectory"}
+    # Fabric dropped profile overlays, so everything rides in the single agent config: the caller's
+    # harness plus the runtime's workspace, artifact roots, and trajectory telemetry.
+    assert not [key for key in provider.seeded if key.startswith("/in/profile-")]
+    agent = json.loads(provider.seeded["/in/agent.yaml"])
+    assert agent["harness"]["adapter_id"] == _CONFIG["harness"]["adapter_id"]  # caller keys survive
+    assert agent["environment"] == {"provider": "local", "workspace": "/out/workspace", "artifacts": "/out/artifacts"}
+    assert agent["runtime"]["artifacts"] == "/out/artifacts"
+    assert agent["telemetry"]["provider"] == "relay"
     # Workspace seed files were staged and uploaded across the boundary.
     assert provider.uploaded_dirs and provider.uploaded_dirs[0][1] == "/out/workspace"
     # Execs Fabric's own CLI (not an in-image Python driver), redirecting the RunResult to /out.
     (cmd,) = provider.execs
     assert "fabric run /in/agent.yaml" in cmd
-    assert "--profile /in/profile-0.yaml" in cmd and "--input-file /in/input.txt" in cmd
+    assert "--profile" not in cmd and "--input-file /in/input.txt" in cmd
     assert "> /out/fabric_result.json" in cmd
 
 
@@ -315,17 +319,22 @@ def test_empty_instruction_is_rejected() -> None:
         AgentEvalTask(id="x", intent="ignored", inputs={"instruction": ""}).agent_prompt()
 
 
-def test_trajectory_profile_built_from_relay_types() -> None:
+def test_trajectory_telemetry_built_from_relay_types() -> None:
     # The trajectory telemetry is built from nemo_relay's own typed config (a hard dependency), so drift
     # in relay's schema fails construction here rather than silently emitting a malformed profile. Runs
     # in CI now that nemo-relay is declared — no importorskip. Asserts the shape metrics rely on.
-    component = FabricContainerRuntime._trajectory_profile()["telemetry"]["config"]["components"][0]
+    telemetry = FabricContainerRuntime({**_CONFIG}, provider=_FakeProvider())._composed_config()["telemetry"]
+    component = telemetry["config"]["components"][0]
     assert component["kind"] == "observability" and component["enabled"] is True
     cfg = component["config"]
-    # The ATIF/ATOF file exporter is configured with the names both runtimes agree on.
+    # The ATIF/ATOF file exporter is configured with the names both runtimes agree on. Since
+    # nemo-relay 0.6 the ATOF destination lives in a typed sink list rather than flat on the config.
     assert cfg["atif"]["enabled"] is True
     assert cfg["atif"]["filename_template"] == crt._common.ATIF_FILENAME_TEMPLATE
-    assert cfg["atof"]["filename"] == crt._common.ATOF_FILENAME
+    assert cfg["atof"]["enabled"] is True
+    (atof_sink,) = cfg["atof"]["sinks"]
+    assert atof_sink["type"] == "file"
+    assert atof_sink["filename"] == crt._common.ATOF_FILENAME
 
 
 # --------------------------------------------------------------------------------------------------
@@ -335,9 +344,9 @@ def test_trajectory_profile_built_from_relay_types() -> None:
 # Adapters the fake planner reports as accepting the native Fabric ``skills`` config. ``acme.custom.native``
 # stands in for an END-USER adapter the platform doesn't ship — the runtime learns it accepts skills purely
 # from the plan, with no hardcoded list.
-_NATIVE_SKILL_ADAPTERS = {"nvidia.fabric.hermes.sdk", "acme.custom.native"}
+_NATIVE_SKILL_ADAPTERS = {"nvidia.fabric.hermes", "acme.custom.native"}
 _KNOWN_HARNESSES = ("hermes", "codex", "claude")
-_CODEX_CONFIG = {"metadata": {"name": "eval"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}}
+_CODEX_CONFIG = {"metadata": {"name": "eval"}, "harness": {"adapter_id": "nvidia.fabric.codex"}}
 
 
 def _harness_name(adapter_id: str) -> str:
@@ -395,10 +404,10 @@ class _FakePlan:
 class _FakeFabric:
     planned: list[dict[str, object]] = []
 
-    def plan(self, agent: object, *, profiles: object = None, base_dir: object = None) -> _FakePlan:
+    def plan(self, agent: object, *, base_dir: object = None) -> _FakePlan:
         # Mirror Fabric's planner: a ``skills`` route appears only when a skill path is attached, and it
         # routes ``harness_native`` iff the selected adapter accepts native skills.
-        _FakeFabric.planned.append({"agent": agent, "profiles": profiles})
+        _FakeFabric.planned.append({"agent": agent})
         adapter_id = agent.harness.adapter_id
         has_skill_path = bool(getattr(agent, "skill_paths", None))
         native = has_skill_path and adapter_id in _NATIVE_SKILL_ADAPTERS
@@ -412,7 +421,6 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch) -> type[_FakeFabric]:
     module = types.ModuleType("nemo_fabric")
     module.Fabric = _FakeFabric  # type: ignore[attr-defined]
     module.FabricConfig = _FakeConfig  # type: ignore[attr-defined]
-    module.FabricProfileConfig = _FakeProfile  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nemo_fabric", module)
     return _FakeFabric
 
@@ -429,17 +437,13 @@ def _skill_bundle(base: Path, *, name: str = "code-review", extra: dict[str, str
     return root
 
 
-def _seeded_profiles(provider: _FakeProvider) -> dict[str, dict[str, object]]:
-    """The profile overlays the runtime seeded into /in, keyed by their ``name``."""
-    profiles: dict[str, dict[str, object]] = {}
-    for key, value in provider.seeded.items():
-        if key.startswith("/in/profile-"):
-            profile = json.loads(value)
-            profiles[profile["name"]] = profile
-    return profiles
+def _seeded_skill_paths(provider: _FakeProvider) -> list[str]:
+    """``skills.paths`` on the composed agent config the runtime seeded into /in."""
+    agent = json.loads(provider.seeded["/in/agent.yaml"])
+    return list(agent.get("skills", {}).get("paths", []))
 
 
-async def test_native_skill_seeds_bundle_into_seed_set_with_overlay(
+async def test_native_skill_seeds_bundle_into_seed_set_and_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
@@ -456,9 +460,8 @@ async def test_native_skill_seeds_bundle_into_seed_set_with_overlay(
     # never lands in the downloaded workspace evidence).
     assert provider.seeded["/in/skills/code-review/SKILL.md"].startswith("---")
     assert provider.seeded["/in/skills/code-review/references/r.md"] == "material"
-    # A native `skills` overlay points at the staged bundle dir; the eval workspace/trajectory overlays trail.
-    overlay = _seeded_profiles(provider)["eval_skill"]
-    assert overlay["skills"]["paths"][-1] == "/in/skills/code-review"
+    # The composed agent config's skills.paths points at the staged bundle dir.
+    assert _seeded_skill_paths(provider)[-1] == "/in/skills/code-review"
     # Provenance is stamped into trial metadata for the A/B diff.
     prov = trial.metadata["skill"]
     assert prov["name"] == "code-review" and prov["mode"] == "native" and prov["hash"]
@@ -468,23 +471,18 @@ async def test_native_skill_seeds_bundle_into_seed_set_with_overlay(
 async def test_native_skill_preserves_preconfigured_skill_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Fabric applies profile skills.paths last-wins, so the overlay must re-list config- and profile-declared
-    # skills (order-preserved) ahead of the evaluated skill, or the treated arm would drop them.
+    # Injected paths are APPENDED to the config's own skills.paths (order-preserved), so preconfigured
+    # skills survive injection and the treated arm differs by exactly the injected skill.
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
 
     _install_fake_fabric(monkeypatch)
-    config = {**_CONFIG, "skills": {"paths": ["/pre/existing-a"]}}
+    config = {**_CONFIG, "skills": {"paths": ["/pre/existing-a", "/pre/existing-b"]}}
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path / "src"))
     provider = _FakeProvider()
-    runtime = FabricContainerRuntime(
-        config,  # type: ignore[arg-type]
-        provider=provider,
-        profiles=[{"name": "caller", "skills": {"paths": ["/pre/existing-b"]}}],
-        skills=[skill],
-    )
+    runtime = FabricContainerRuntime(config, provider=provider, skills=[skill])  # type: ignore[arg-type]
     await runtime.run_tasks([_task()], AgentEvalRunConfig(output_dir=tmp_path))
 
-    paths = _seeded_profiles(provider)["eval_skill"]["skills"]["paths"]
+    paths = _seeded_skill_paths(provider)
     assert paths[:2] == ["/pre/existing-a", "/pre/existing-b"]
     assert paths[-1] == "/in/skills/code-review"
 
@@ -501,7 +499,7 @@ async def test_native_skill_on_runtime_discovered_adapter(tmp_path: Path, monkey
     runtime = FabricContainerRuntime(custom, provider=provider, skills=[skill])  # type: ignore[arg-type]
     (trial,) = await runtime.run_tasks([_task()], AgentEvalRunConfig(output_dir=tmp_path))
 
-    assert "eval_skill" in _seeded_profiles(provider)
+    assert "/in/skills/code-review" in _seeded_skill_paths(provider)
     assert trial.metadata["skill"]["mode"] == "native"
 
 
@@ -527,8 +525,8 @@ async def test_codex_skill_seeds_workspace_and_is_excluded_from_evidence(
     # Codex discovers agentskills from .agents/skills/ in its working dir, so the bundle is seeded there in
     # the workspace (not /in), for the harness to self-discover during the run.
     assert provider.seeded["/out/workspace/.agents/skills/code-review/SKILL.md"].startswith("---")
-    # No native overlay: placement in the workspace is the delivery mechanism.
-    assert "eval_skill" not in _seeded_profiles(provider)
+    # No skills path added: placement in the workspace is the delivery mechanism.
+    assert _seeded_skill_paths(provider) == []
     prov = trial.metadata["skill"]
     assert prov["mode"] == "codex_skills_dir"
     assert prov["location"] == ".agents/skills/code-review"
@@ -562,11 +560,11 @@ async def test_no_skill_leaves_metadata_none_and_skips_planner(tmp_path: Path, m
     assert not any("/skills/" in key or "/.agents/" in key for key in provider.seeded)
 
 
-async def test_multiple_native_skills_each_staged_with_one_merged_overlay(
+async def test_multiple_native_skills_each_staged_and_all_in_the_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A set of skills: each bundle stages under its own /in/skills/<name>/, and all ride in ONE merged
-    # `eval_skill` overlay (Fabric applies skills.paths last-wins, so a per-skill overlay would drop all
+    # config's skills.paths (all of them must be listed, or the treated arm would drop all
     # but the last). Trial metadata carries one provenance per skill; the lone `skill` field is None.
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
 
@@ -580,9 +578,8 @@ async def test_multiple_native_skills_each_staged_with_one_merged_overlay(
 
     assert provider.seeded["/in/skills/docx/SKILL.md"].startswith("---")
     assert provider.seeded["/in/skills/pptx/SKILL.md"].startswith("---")
-    # Exactly one merged overlay listing both bundle roots, in order.
-    overlay = _seeded_profiles(provider)["eval_skill"]
-    assert overlay["skills"]["paths"] == ["/in/skills/docx", "/in/skills/pptx"]
+    # Both bundle roots land on the composed config's skills.paths, in order.
+    assert _seeded_skill_paths(provider) == ["/in/skills/docx", "/in/skills/pptx"]
     # One provenance per skill; the historical lone `skill` field is None for a multi-skill run.
     names = [prov["name"] for prov in trial.metadata["skills"]]
     assert names == ["docx", "pptx"]
@@ -610,10 +607,10 @@ async def test_multiple_codex_skills_all_removed_from_evidence(tmp_path: Path, m
     runtime = FabricContainerRuntime(_CODEX_CONFIG, provider=provider, skills=skills)  # type: ignore[arg-type]
     (trial,) = await runtime.run_tasks([_task()], AgentEvalRunConfig(output_dir=tmp_path))
 
-    # Both bundles seeded under the codex discovery dir, no overlay, and every one scrubbed from evidence.
+    # Both bundles seeded under the codex discovery dir, no skills path, all scrubbed from evidence.
     assert provider.seeded["/out/workspace/.agents/skills/docx/SKILL.md"].startswith("---")
     assert provider.seeded["/out/workspace/.agents/skills/pptx/SKILL.md"].startswith("---")
-    assert "eval_skill" not in _seeded_profiles(provider)
+    assert _seeded_skill_paths(provider) == []
     assert [prov["name"] for prov in trial.metadata["skills"]] == ["docx", "pptx"]
     workspace = Path(trial.evidence.require("workspace").ref)  # type: ignore[arg-type]
     assert not (workspace / ".agents").exists()

@@ -186,6 +186,69 @@ class TestRenderDockerfile:
         assert "USER agent" not in result
         assert "groupadd" not in result
 
+    @staticmethod
+    def _fake_profile():
+        from nemo_platform_plugin.sandbox import SandboxImageProfile, SandboxUser
+
+        return SandboxImageProfile(
+            name="openshell",
+            apt_packages=("iproute2", "nftables"),
+            users=(
+                SandboxUser(name="sandbox", system=True, create_home=True, home="/home/sandbox", shell="/bin/bash"),
+            ),
+        )
+
+    def test_sandbox_runtime_off_by_default(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_dockerfile
+
+        result = render_dockerfile(agent_config, None, nat_version="1.4.0")
+
+        # Vanilla images must not carry any sandbox-runtime extras.
+        assert "iproute2" not in result
+        assert "nftables" not in result
+        assert "sandbox" not in result
+
+    def test_sandbox_runtime_renders_discovered_profile(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_dockerfile
+
+        # The packager discovers profiles by name; it never imports a provider.
+        with patch(
+            "nemo_agents_plugin.container.sandbox.discover_sandbox_profiles",
+            return_value={"openshell": self._fake_profile()},
+        ):
+            result = render_dockerfile(agent_config, None, nat_version="1.4.0", sandbox_runtime="openshell")
+
+        assert "iproute2 nftables" in result
+        assert "groupadd --system sandbox" in result
+        assert (
+            "useradd --system --gid sandbox --create-home --home-dir /home/sandbox --shell /bin/bash sandbox" in result
+        )
+        # Normal-container hardening + entrypoint are untouched.
+        assert "USER agent" in result
+        assert "exec nat serve" in result
+
+    def test_sandbox_runtime_unknown_raises(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_dockerfile
+
+        with patch("nemo_agents_plugin.container.sandbox.discover_sandbox_profiles", return_value={}):
+            with pytest.raises(ValueError, match="unknown sandbox runtime"):
+                render_dockerfile(agent_config, None, nat_version="1.4.0", sandbox_runtime="nope")
+
+    def test_sandbox_runtime_independent_of_allow_root(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_dockerfile
+
+        with patch(
+            "nemo_agents_plugin.container.sandbox.discover_sandbox_profiles",
+            return_value={"openshell": self._fake_profile()},
+        ):
+            result = render_dockerfile(
+                agent_config, None, nat_version="1.4.0", sandbox_runtime="openshell", allow_root=True
+            )
+
+        # The sandbox user is required whether or not the agent user is created.
+        assert "groupadd --system sandbox" in result
+        assert "USER agent" not in result
+
     def test_oci_labels_present(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.template import render_dockerfile
 

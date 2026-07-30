@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -23,6 +23,7 @@ from nemo_agents_plugin.runner.deployments_backend import (
 )
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
 from nemo_deployments_plugin.types import Endpoint as PluginEndpoint
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 
@@ -204,8 +205,35 @@ def test_build_deployment_config_docker_never_emits_init_containers() -> None:
 
 
 def _backend(**deployments_kwargs: Any) -> DeploymentsRunnerBackend:
-    agents = AgentsConfig(deployments=DeploymentsRunnerConfig(**deployments_kwargs))
+    agents = AgentsConfig.model_validate({"deployments": DeploymentsRunnerConfig(**deployments_kwargs)})
     return DeploymentsRunnerBackend(agents)
+
+
+def test_entity_client_adapts_sdk_to_typed_entities_client() -> None:
+    backend = _backend()
+    sdk = MagicMock()
+    typed_client = MagicMock()
+    entity_client = MagicMock()
+
+    with (
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.get_async_platform_sdk",
+            return_value=sdk,
+        ),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.client_from_platform",
+            return_value=typed_client,
+        ) as mock_adapter,
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.NemoEntitiesClient",
+            return_value=entity_client,
+        ) as mock_entity_client,
+    ):
+        result = backend._entity_client()
+
+    mock_adapter.assert_called_once_with(sdk, AsyncEntitiesClient)
+    mock_entity_client.assert_called_once_with(typed_client)
+    assert result is entity_client
 
 
 @pytest.mark.asyncio
@@ -474,7 +502,7 @@ async def test_delete_waits_for_deployment_gone_before_config_delete() -> None:
     with patch("nemo_agents_plugin.runner.deployments_backend.asyncio.sleep", new_callable=AsyncMock):
         cleaned = await backend.delete_deployment("default", "hello-dep")
 
-    assert cleaned is True
+    assert cleaned
     entities.update.assert_awaited_once()
     assert deployment.status == "DELETING"
     entities.delete.assert_awaited_once()
@@ -503,7 +531,7 @@ async def test_delete_returns_false_when_deployment_still_present() -> None:
         with patch("nemo_agents_plugin.runner.deployments_backend.time.monotonic", side_effect=[0.0, 0.0, 6.0]):
             cleaned = await backend.delete_deployment("default", "hello-dep")
 
-    assert cleaned is False
+    assert not cleaned
     entities.delete.assert_not_called()
 
 

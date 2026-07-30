@@ -59,8 +59,9 @@ from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
@@ -107,7 +108,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._docker = docker
         self._docker_errors = docker_errors
         self._executor_config = DockerExecutorConfig.model_validate(self._config)
-        self._entities = NemoEntitiesClient(AsyncEntitiesResource(self._sdk))
+        self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         self._gpu_pool = get_shared_gpu_pool()
         self._client = self._create_client()
 
@@ -189,8 +190,8 @@ class DockerDeploymentBackend(DeploymentBackend):
             docker_cfg = config.backend_config.docker
 
         dep_key = deployment_key(workspace, name)
-        gpu_ids: list[int] = []
         gpu_pool = self._gpu_pool
+        gpu_ids: list[int] = []
         gpu_count = gpu_count_from_container(container_spec)
         if gpu_count > 0:
             if gpu_pool is None:

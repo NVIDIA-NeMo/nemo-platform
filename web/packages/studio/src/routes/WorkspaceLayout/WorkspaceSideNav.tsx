@@ -116,7 +116,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           {
             id: 'annotation',
             slotIcon: <UserPen className={iconColorClass} />,
-            slotLabel: 'Annotation',
+            slotLabel: 'Traces',
             href: getIntakeRoute(workspace),
           },
         ]

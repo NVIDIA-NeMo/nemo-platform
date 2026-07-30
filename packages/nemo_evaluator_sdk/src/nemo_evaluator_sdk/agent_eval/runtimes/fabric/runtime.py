@@ -11,7 +11,10 @@ is applied as the config's default model, mirroring Fabric's own Harbor integrat
 
 Per-task settings (workspace, model, trajectory capture) are composed directly onto
 a copy of the supplied config via the SDK's config helpers (``model_copy`` +
-``enable_relay`` + ``environment``), rather than layered as profile overlays.
+``enable_relay`` + ``environment``). Fabric removed profile overlays in 0.1.0rc2 —
+``FabricConfig`` rejects a ``profiles`` key and ``Fabric.run`` takes no ``profiles``
+argument — so a run is described by exactly one complete typed config, and the
+evaluator-owned per-task settings are authoritative simply by being applied last.
 
 Every task runs in its own fresh workspace: the runtime seeds it from
 ``inputs['files']`` (a no-op when there are none), runs the harness in it (via
@@ -37,6 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric import _common
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     SKILL_MODE_CODEX_SKILLS_DIR,
     AgentSkill,
@@ -65,7 +69,7 @@ if TYPE_CHECKING:
     from nemo_fabric import (  # ty: ignore[unresolved-import]
         Fabric,
         FabricConfig,
-        FabricProfileConfig,
+        RelayObservabilityConfig,
         RunOutput,
         RunResult,
     )
@@ -85,9 +89,9 @@ _ARTIFACTS_SUBDIR = "artifacts"
 # Per-task workspace: where seed files are staged and where the harness reads/writes. We
 # create it, point Fabric's ``environment.workspace`` at it, and expose it as ``workspace`` evidence.
 _WORKSPACE_SUBDIR = "workspace"
-# Per-task skill staging dir (native injection): the skill's files are resolved here and a per-task
-# ``skills`` profile overlay points Fabric at it. For codex self-injection the skill lands in the
-# workspace instead (no overlay).
+# Per-task skill staging dir (native injection): the skill's files are resolved here and the staged
+# root is added to the task config's ``skills.paths``. For codex self-injection the skill lands in the
+# workspace instead (no path added).
 _SKILL_SUBDIR = "skill"
 # Sentinel skill path attached only to probe Fabric's capability planner for the selected adapter's
 # skills routing (see ``_resolve_skill_mode``). Never staged and need not exist on disk — the planner
@@ -102,11 +106,6 @@ _ATIF_FILENAME_TEMPLATE = "trajectory-{session_id}.atif.json"
 _ATOF_FILENAME = "events.atof.jsonl"
 # ``kind`` Fabric stamps on the promoted Relay ATIF artifact; used to surface it as trace evidence.
 _ATIF_ARTIFACT_KIND = "atif"
-# Names for the trailing overlays that re-assert the evaluator-owned per-task settings (see
-# ``_eval_lock_profiles``): Fabric applies caller profiles over the config, so these must trail them.
-_WORKSPACE_PROFILE_NAME = "eval_workspace"
-_MODEL_PROFILE_NAME = "eval_model"
-_ARTIFACTS_PROFILE_NAME = "eval_artifacts"
 
 
 class FabricAgentRuntime:
@@ -123,7 +122,6 @@ class FabricAgentRuntime:
         self,
         *,
         config: Mapping[str, Any],
-        profiles: Sequence[Mapping[str, Any]] | None = None,
         model: str | None = None,
         base_dir: str | Path | None = None,
         work_root: str | Path | None = None,
@@ -133,7 +131,6 @@ class FabricAgentRuntime:
         skills: Sequence[AgentSkill] | None = None,
     ) -> None:
         self._config = config
-        self._profiles = list(profiles or [])
         self._model = model
         self._base_dir = Path(base_dir).expanduser() if base_dir is not None else None
         self._work_root = Path(work_root).expanduser() if work_root is not None else None
@@ -171,7 +168,7 @@ class FabricAgentRuntime:
         try:
             # nemo_fabric ships a native (pyo3) core and is an optional dependency, so it is imported
             # lazily here rather than at module load.
-            from nemo_fabric import Fabric, FabricConfig, FabricProfileConfig  # ty: ignore[unresolved-import]
+            from nemo_fabric import Fabric, FabricConfig  # ty: ignore[unresolved-import]
         except ImportError as exc:
             raise RuntimeError(_MISSING_FABRIC_MSG) from exc
 
@@ -189,11 +186,6 @@ class FabricAgentRuntime:
                 import nemo_relay.observability  # noqa: F401  # ty: ignore[unresolved-import]
             except ImportError as exc:
                 raise RuntimeError(_MISSING_RELAY_MSG) from exc
-        # Caller-supplied profile overlays pass through as-is; this runtime's per-task workspace, model,
-        # and trajectory settings are composed directly onto a copy of the config (config-first), not
-        # layered as profiles.
-        base_profiles = [FabricProfileConfig.from_mapping(profile) for profile in self._profiles]
-
         # ``Fabric`` (formerly ``FabricClient``) is a lightweight, reusable facade — not a lifecycle
         # context manager — so it is created once and reused across tasks with no cleanup.
         client = Fabric()
@@ -205,7 +197,7 @@ class FabricAgentRuntime:
         # A/B comparison. Only touched when a skill is set, so the no-skill path is unaffected.
         skill_mode: SkillMode | None = None
         if self._skill_set.skills:
-            skill_mode = self._resolve_skill_mode(client, agent_config, base_profiles)
+            skill_mode = self._resolve_skill_mode(client, agent_config)
             if skill_mode is None:
                 adapter_id = agent_config.harness.adapter_id
                 raise RuntimeError(
@@ -218,18 +210,11 @@ class FabricAgentRuntime:
 
         async def run_one(index: int, task: AgentEvalTask) -> AgentEvalTrial:
             async with semaphore:
-                return await self._run_task(
-                    client, agent_config, base_profiles, index, task, resolved_config, skill_mode
-                )
+                return await self._run_task(client, agent_config, index, task, resolved_config, skill_mode)
 
         return await asyncio.gather(*(run_one(index, task) for index, task in enumerate(tasks)))
 
-    def _resolve_skill_mode(
-        self,
-        client: Fabric,
-        agent_config: FabricConfig,
-        base_profiles: list[FabricProfileConfig],
-    ) -> SkillMode | None:
+    def _resolve_skill_mode(self, client: Fabric, agent_config: FabricConfig) -> SkillMode | None:
         """Ask Fabric how a skill would reach the selected harness, or ``None`` if it can't.
 
         Probes Fabric's capability planner: plan a copy of the config with a sentinel skill path attached
@@ -239,31 +224,13 @@ class FabricAgentRuntime:
         """
         probe_config = agent_config.model_copy(deep=True)
         probe_config.add_skill_path(_SKILL_PROBE_PATH)
-        plan = client.plan(probe_config, profiles=base_profiles, base_dir=self._base_dir)
+        plan = client.plan(probe_config, base_dir=self._base_dir)
         return resolve_skill_mode(capability_plan=plan.capability_plan, harness=plan.adapter.harness)
-
-    def _existing_skill_paths(self) -> list[str]:
-        """Skill paths the base config/profiles already declare (union, order-preserved).
-
-        Fabric applies profile ``skills.paths`` last-wins, so the native skill overlay has to re-list
-        these alongside the evaluated skill or the treated arm would silently drop them (see
-        ``install_skill``). Read from the raw config/profile mappings the runtime was given, so it covers
-        both config- and profile-declared skills without a Fabric round-trip.
-        """
-        paths: list[str] = []
-        for section in (self._config, *self._profiles):
-            skills = section.get("skills") if isinstance(section, Mapping) else None
-            declared = skills.get("paths") if isinstance(skills, Mapping) else None
-            for path in declared or []:
-                if isinstance(path, str) and path not in paths:
-                    paths.append(path)
-        return paths
 
     async def _run_task(
         self,
         client: Fabric,
         agent_config: FabricConfig,
-        base_profiles: list[FabricProfileConfig],
         index: int,
         task: AgentEvalTask,
         config: AgentEvalRunConfig,
@@ -271,7 +238,7 @@ class FabricAgentRuntime:
     ) -> AgentEvalTrial:
         # nemo_fabric is already imported+validated in ``run_tasks``; this is a cached sys.modules
         # lookup, not a re-load, so the types are used where they're constructed instead of threaded down.
-        from nemo_fabric import FabricProfileConfig, RunRequest  # ty: ignore[unresolved-import]
+        from nemo_fabric import RunRequest  # ty: ignore[unresolved-import]
 
         evidence_dir = self._evidence_dir(index, task, config)
         evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -290,11 +257,11 @@ class FabricAgentRuntime:
             # instruction only, so the returned paths are unused.
             await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
 
-            # Inject the skill set (if any) for this task. A native harness gets ONE ``skills`` profile
-            # overlay listing every staged bundle; codex self-injection stages each bundle into the
-            # workspace and emits no overlay. One provenance per skill is stamped on the trial for the A/B
+            # Inject the skill set (if any) for this task. A native harness gets each staged bundle added
+            # to the config's ``skills.paths``; codex self-injection stages each bundle into the
+            # workspace and adds no path. One provenance per skill is stamped on the trial for the A/B
             # diff. Blocking file I/O, off the event loop.
-            skill_profiles: list[FabricProfileConfig] = []
+            skill_paths: list[str] = []
             if self._skill_set.skills and skill_mode is not None:
                 installation = await asyncio.to_thread(
                     install_skills,
@@ -303,25 +270,21 @@ class FabricAgentRuntime:
                     mode=skill_mode,
                     workspace_dir=workspace_dir,
                     skill_stage_dir=(evidence_dir / _SKILL_SUBDIR).resolve(),
-                    existing_skill_paths=self._existing_skill_paths(),
                 )
                 skill_provenances = installation.provenances
-                skill_profiles = [FabricProfileConfig.from_mapping(p) for p in installation.profiles]
+                skill_paths = installation.skill_paths
 
+            # Everything the run needs lives in one typed config: Fabric no longer layers profile
+            # overlays, so the per-task workspace/model/trajectory settings are composed on last and are
+            # authoritative by construction. ``add_skill_path`` appends, so config-declared skills survive.
             task_config = self._compose_config(agent_config, evidence_dir, workspace_dir)
-            # Caller ``base_profiles`` are applied by Fabric over the config; the evaluator-owned
-            # settings are re-asserted as trailing overlays so they win over any caller profile.
-            lock_profiles = self._eval_lock_profiles(
-                FabricProfileConfig, workspace_dir=workspace_dir, evidence_dir=evidence_dir
-            )
+            for skill_path in skill_paths:
+                task_config.add_skill_path(skill_path)
 
             result = await asyncio.wait_for(
                 # ``Fabric.run`` folds the per-invocation input + request id into a ``RunRequest``.
                 client.run(
                     task_config,
-                    # Caller profiles, then the native skill overlay, then the evaluator lock overlays;
-                    # the lock overlays trail so the per-task workspace/model/artifacts stay authoritative.
-                    profiles=[*base_profiles, *skill_profiles, *lock_profiles],
                     base_dir=self._base_dir,
                     request=RunRequest(input=task.agent_prompt(), request_id=task.id),
                 ),
@@ -477,11 +440,10 @@ class FabricAgentRuntime:
     ) -> FabricConfig:
         # nemo_fabric is already imported+validated in ``run_tasks``; this is a cached sys.modules
         # lookup, not a re-load, so the type is used where it's constructed instead of threaded down.
-        from nemo_fabric import EnvironmentConfig  # ty: ignore[unresolved-import]
+        from nemo_fabric import EnvironmentConfig, ModelConfig  # ty: ignore[unresolved-import]
 
-        # Config-first composition (the SDK's recommended in-memory pattern): copy the base config and
-        # apply this task's workspace, model, and trajectory settings directly onto it, rather than
-        # layering FabricProfileConfig overlays.
+        # Copy the base config and apply this task's workspace, model, and trajectory settings directly
+        # onto it. These land last, so they override anything the supplied config declared.
         cfg = agent_config.model_copy(deep=True)
 
         # Point the harness at this task's staged workspace (the codex-cli adapter resolves its cwd from
@@ -495,7 +457,7 @@ class FabricAgentRuntime:
         # Apply the model as the config's default (mirrors nemo_fabric.integrations.harbor).
         if self._model:
             provider = self._model.split("/", maxsplit=1)[0] if "/" in self._model else "openai"
-            cfg.models["default"] = {"provider": provider, "model": self._model}
+            cfg.models["default"] = ModelConfig(provider=provider, model=self._model)
 
         if self._capture_trajectory:
             # Enable Relay's ATIF/ATOF file exporter under this task's durable evidence dir, and pin the
@@ -505,83 +467,46 @@ class FabricAgentRuntime:
             artifacts_dir = evidence_dir / _ARTIFACTS_SUBDIR
             relay_dir.mkdir(parents=True, exist_ok=True)
             artifacts_dir.mkdir(parents=True, exist_ok=True)
-            cfg.enable_relay(output_dir=str(relay_dir), config=self._relay_config(relay_dir))
+            cfg.enable_relay(output_dir=str(relay_dir), observability=self._relay_config(relay_dir))
             cfg.runtime.artifacts = str(artifacts_dir)
             cfg.environment.artifacts = str(artifacts_dir)
 
         return cfg
 
-    def _eval_lock_profiles(
-        self,
-        profile_cls: type[FabricProfileConfig],
-        *,
-        workspace_dir: Path,
-        evidence_dir: Path,
-    ) -> list[FabricProfileConfig]:
-        # ``_compose_config`` composes the evaluator's per-task settings onto the config, but Fabric
-        # applies caller-supplied profiles OVER the config (last-wins), so a caller profile could
-        # otherwise override them. Re-assert the evaluator-owned settings here as trailing overlays —
-        # applied after the caller profiles — so the per-task workspace (isolation + ``workspace``
-        # evidence integrity), the model under evaluation, and the trajectory artifact location stay
-        # authoritative and non-overridable.
-        overlays = [
-            profile_cls.from_mapping(
-                {"name": _WORKSPACE_PROFILE_NAME, "environment": {"workspace": str(workspace_dir)}}
-            )
-        ]
-        if self._model:
-            provider = self._model.split("/", maxsplit=1)[0] if "/" in self._model else "openai"
-            overlays.append(
-                profile_cls.from_mapping(
-                    {"name": _MODEL_PROFILE_NAME, "models": {"default": {"provider": provider, "model": self._model}}}
-                )
-            )
-        if self._capture_trajectory:
-            artifacts_dir = str(evidence_dir / _ARTIFACTS_SUBDIR)
-            overlays.append(
-                profile_cls.from_mapping(
-                    {
-                        "name": _ARTIFACTS_PROFILE_NAME,
-                        "runtime": {"artifacts": artifacts_dir},
-                        "environment": {"artifacts": artifacts_dir},
-                    }
-                )
-            )
-        return overlays
-
-    def _relay_config(self, relay_dir: Path) -> dict[str, Any]:
-        # The observability component is built from nemo_relay's own typed config objects so Relay owns
-        # its schema (no hand-maintained dict that silently drifts when Relay changes it); imported
-        # lazily since nemo-relay, like nemo-fabric, is an optional native dependency.
-        try:
-            from nemo_relay.observability import (  # ty: ignore[unresolved-import]
-                AtifConfig,
-                AtofConfig,
-                ComponentSpec,
-                ObservabilityConfig,
-            )
-        except ImportError as exc:
-            raise RuntimeError(_MISSING_RELAY_MSG) from exc
+    def _relay_config(self, relay_dir: Path) -> RelayObservabilityConfig:
+        # The ATIF/ATOF observability config is built from Fabric's own typed relay-config objects so
+        # Fabric owns the schema (no hand-maintained dict that silently drifts when Fabric changes it),
+        # mirroring nemo_fabric's own Harbor integration. It is handed straight to ``enable_relay`` via
+        # its ``observability=`` parameter — the SDK only configures ATIF/ATOF observability, so it needs
+        # neither a generic ``components`` list nor the legacy component-wrapped shape. nemo_fabric is
+        # already imported+validated in ``run_tasks``, so this is a cached sys.modules lookup.
+        from nemo_fabric import (  # ty: ignore[unresolved-import]
+            RelayAtifConfig,
+            RelayAtofConfig,
+            RelayAtofFileSinkConfig,
+            RelayObservabilityConfig,
+        )
 
         relay_dir_str = str(relay_dir)
-        observability = ComponentSpec(
-            config=ObservabilityConfig(
-                atif=AtifConfig(
-                    enabled=True,
-                    output_directory=relay_dir_str,
-                    filename_template=_ATIF_FILENAME_TEMPLATE,
-                    agent_name=self._runtime_name,
-                    agent_version="fabric",
-                ),
-                atof=AtofConfig(
-                    enabled=True,
-                    output_directory=relay_dir_str,
-                    filename=_ATOF_FILENAME,
-                    mode="overwrite",
-                ),
-            )
+        return RelayObservabilityConfig(
+            atif=RelayAtifConfig(
+                enabled=True,
+                output_directory=relay_dir_str,
+                filename_template=_ATIF_FILENAME_TEMPLATE,
+                agent_name=self._runtime_name,
+                agent_version=_common.FABRIC_AGENT_VERSION,
+            ),
+            atof=RelayAtofConfig(
+                enabled=True,
+                sinks=[
+                    RelayAtofFileSinkConfig(
+                        output_directory=relay_dir_str,
+                        filename=_ATOF_FILENAME,
+                        mode="overwrite",
+                    )
+                ],
+            ),
         )
-        return {"version": 1, "components": [observability.to_dict()]}
 
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
         root = self._work_root

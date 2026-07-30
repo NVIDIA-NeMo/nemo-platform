@@ -106,8 +106,9 @@ class AgentDeploymentController(NemoController):
         # even when the agents controller is never started.  Do not hoist.
         from nemo_agents_plugin.config import AgentsConfig
         from nemo_agents_plugin.runner.registry import set_runner_registry
-        from nemo_platform.resources.entities import AsyncEntitiesResource
+        from nemo_platform_plugin.client.adapter import client_from_platform
         from nemo_platform_plugin.entities import EntityClient as _EntityClient
+        from nemo_platform_plugin.entities.client import AsyncEntitiesClient
         from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
         config = AgentsConfig.get()
@@ -123,7 +124,7 @@ class AgentDeploymentController(NemoController):
         # MARK_INTERNAL_REQUEST_HEADERS.  It also wires the shared HTTP client and URL router,
         # which as_service() would inherit from an existing client but we must set up from scratch.
         sdk = get_async_platform_sdk(as_service="agents", internal=True)
-        entities_api = AsyncEntitiesResource(sdk)
+        entities_api = client_from_platform(sdk, AsyncEntitiesClient)
         self._entities = _EntityClient(entities_api)
 
         registry = RunnerBackendRegistry(config)

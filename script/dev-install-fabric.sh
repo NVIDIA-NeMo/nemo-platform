@@ -2,22 +2,28 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Dev-only: set up the local dependencies the Fabric eval runner needs so the type checker and a
-# live FabricAgentRuntime run work end-to-end:
-#   1. the native `nemo-fabric` SDK (with the codex + relay extras) into the project venv, and
-#   2. the `nemo-relay` gateway binary (required for ATIF trajectory capture on the codex harness).
-# This is an imperative install — it does NOT touch uv.lock, and CI intentionally runs without it
-# (the `# ty: ignore[unresolved-import]` in agent_eval/runtimes/fabric/runtime.py covers the CI case).
+# Dev-only: install the `nemo-relay` GATEWAY BINARY, the one Fabric eval dependency that cannot come
+# from a wheel. It is required for live ATIF trajectory capture on out-of-process harnesses (codex).
 #
-# nemo-fabric and the nemo-relay gateway are private/native builds with no published wheel/binary in
-# our index, so they can't be locked dependencies yet (see
-# plugins/nemo-evaluator/docs/design/fabric-runner-integration.md, Tier 3). A live codex run also
-# needs the `codex` CLI + `codex login` auth.
+# Everything else is in the lock — `uv sync --extra fabric` installs the nemo-fabric SDK, the
+# codex/claude/deepagents adapters, and the nemo-relay Python bindings. The pip `nemo-relay` package
+# is bindings-only (its wheel declares no console script and contains no executable), so the daemon is
+# published solely as a GitHub release asset.
+#
+# The version defaults to the `nemo-relay` bindings installed in the venv, so the daemon and the
+# bindings cannot drift apart when the lock moves.
+#
+# To run against an unreleased Fabric instead of the locked wheels, install the checkout directly:
+#   uv pip install --python .venv/bin/python "/path/to/NeMo-Fabric[codex,relay,runtime]"
+# and `uv sync --extra fabric` to get back to the locked state. (That needs cargo — Fabric builds a
+# Rust/pyo3 extension from source.)
+#
+# A live codex run additionally needs the `codex` CLI + `codex login` auth.
+# See plugins/nemo-evaluator/docs/design/fabric-runner-integration.md.
 #
 # Usage:
-#   script/dev-install-fabric.sh                 # NeMo-Fabric+NeMo-Relay under $HOME/workspace
-#   NEMO_FABRIC_REPO=... NEMO_RELAY_REPO=... script/dev-install-fabric.sh
-#   script/dev-install-fabric.sh --uninstall     # restore the CI-equivalent (no nemo-fabric) state
+#   script/dev-install-fabric.sh                                # version matching the installed bindings
+#   NEMO_RELAY_VERSION=0.6.0-rc.4 script/dev-install-fabric.sh   # pin a specific gateway release
 set -euo pipefail
 
 VENV_PY=".venv/bin/python"
@@ -26,58 +32,71 @@ if [ ! -x "$VENV_PY" ]; then
   exit 1
 fi
 
-if [ "${1:-}" = "--uninstall" ]; then
-  uv pip uninstall --python "$VENV_PY" nemo-fabric
-  echo "Removed nemo-fabric; venv is back to the lock-consistent / CI-equivalent state."
-  echo "(The nemo-relay gateway binary, if installed, is left in place — remove it from ~/.cargo/bin manually if desired.)"
-  exit 0
-fi
-
-# nemo-fabric builds a Rust/pyo3 extension via maturin and the relay gateway is a Rust CLI, so cargo
-# must be on PATH.
-if ! command -v cargo >/dev/null 2>&1 && [ -f "$HOME/.cargo/env" ]; then
-  # shellcheck disable=SC1091
-  . "$HOME/.cargo/env"
-fi
-if ! command -v cargo >/dev/null 2>&1; then
-  echo "cargo (Rust toolchain) not found; install it to build the native components: https://rustup.rs" >&2
-  exit 1
-fi
-
-# 1. nemo-fabric SDK (+ codex and relay extras) into the project venv.
-FABRIC_REPO="${NEMO_FABRIC_REPO:-$HOME/workspace/NeMo-Fabric}"
-if [ ! -d "$FABRIC_REPO" ]; then
-  echo "NeMo-Fabric checkout not found at: $FABRIC_REPO" >&2
-  echo "Clone it (gh repo clone NVIDIA/NeMo-Fabric) or set NEMO_FABRIC_REPO=/path/to/NeMo-Fabric." >&2
-  exit 1
-fi
-echo "Building + installing nemo-fabric[codex,relay] from $FABRIC_REPO into $VENV_PY ..."
-uv pip install --python "$VENV_PY" "${FABRIC_REPO}[codex,relay]"
-"$VENV_PY" -c "import nemo_fabric; from nemo_fabric import Fabric, RunResult; print('nemo_fabric OK:', nemo_fabric.__file__)"
-
-# 2. nemo-relay gateway binary (codex -> OTLP -> gateway -> trajectory-*.atif.json). Required for
-#    trajectory capture; the pip `nemo-relay` package does NOT ship this executable.
-if command -v nemo-relay >/dev/null 2>&1; then
-  echo "nemo-relay gateway already on PATH: $(command -v nemo-relay) ($(nemo-relay --version 2>/dev/null || echo '?'))"
-else
-  RELAY_REPO="${NEMO_RELAY_REPO:-$HOME/workspace/NeMo-Relay}"
-  if [ ! -d "$RELAY_REPO" ]; then
-    echo "nemo-relay gateway not on PATH and NeMo-Relay checkout not found at: $RELAY_REPO" >&2
-    echo "Clone it (gh repo clone NVIDIA/NeMo-Relay) or set NEMO_RELAY_REPO=/path/to/NeMo-Relay." >&2
-    echo "Trajectory (ATIF) capture will fail without the nemo-relay gateway." >&2
+# NeMo-Relay tags releases with the version PyPI publishes, but PyPI normalizes prereleases
+# (0.6.0rc4) while the git tag is semver (0.6.0-rc.4), so convert.
+if [ -z "${NEMO_RELAY_VERSION:-}" ]; then
+  bindings_version="$("$VENV_PY" -c 'import importlib.metadata as m; print(m.version("nemo-relay"))' 2>/dev/null || true)"
+  if [ -z "$bindings_version" ]; then
+    echo "nemo-relay is not installed in $VENV_PY, so the gateway version cannot be derived." >&2
+    echo "Run 'uv sync --extra fabric' first, or pass NEMO_RELAY_VERSION=<release> explicitly." >&2
     exit 1
   fi
-  echo "Building + installing the nemo-relay gateway from $RELAY_REPO (cargo install) ..."
-  cargo install --path "$RELAY_REPO/crates/cli" --locked
-  echo "nemo-relay gateway installed: $(command -v nemo-relay) ($(nemo-relay --version 2>/dev/null || echo '?'))"
+  NEMO_RELAY_VERSION="$(printf '%s' "$bindings_version" | sed -E 's/([0-9])(a|b|rc)\.?([0-9]+)$/\1-\2.\3/')"
+  echo "Using nemo-relay gateway ${NEMO_RELAY_VERSION} to match the installed bindings (${bindings_version})."
 fi
 
-cat <<'EOF'
+# Skip only when an existing nemo-relay already matches, so an explicit version request is honored
+# rather than silently short-circuited by any PATH match.
+if command -v nemo-relay >/dev/null 2>&1; then
+  # `|| true`: a broken nemo-relay on PATH exits non-zero, and under `set -e -o pipefail` that would
+  # abort here — in the very branch that exists to replace it. An empty version just means "reinstall".
+  installed_relay_ver="$(nemo-relay --version 2>/dev/null | awk '{print $NF}' || true)"
+  if [ "$installed_relay_ver" = "$NEMO_RELAY_VERSION" ]; then
+    echo "nemo-relay gateway already on PATH at ${installed_relay_ver}: $(command -v nemo-relay)"
+    exit 0
+  fi
+  echo "nemo-relay ${installed_relay_ver:-?} on PATH differs from requested ${NEMO_RELAY_VERSION}; (re)installing ..."
+fi
 
-Done. Fabric's real types now resolve (ty enforces them; you'll see 2 harmless "unused ty: ignore"
-warnings while nemo-fabric is installed), and live FabricAgentRuntime runs can capture ATIF
-trajectories (needs the `codex` CLI + `codex login` for a codex-harness run).
+# Host platform -> NeMo-Relay release target triple. Every platform in the workspace's
+# [tool.uv] environments has a published asset.
+case "$(uname -s):$(uname -m)" in
+  Darwin:arm64) relay_target="aarch64-apple-darwin" ;;
+  Linux:x86_64) relay_target="x86_64-unknown-linux-musl" ;;
+  Linux:aarch64 | Linux:arm64) relay_target="aarch64-unknown-linux-musl" ;;
+  *)
+    echo "No published nemo-relay gateway for $(uname -s):$(uname -m)." >&2
+    echo "See https://github.com/NVIDIA/NeMo-Relay/releases for available targets." >&2
+    exit 1
+    ;;
+esac
 
-Restore the CI-equivalent state with:
-  script/dev-install-fabric.sh --uninstall
-EOF
+RELAY_BIN_DIR="${CARGO_HOME:-$HOME/.cargo}/bin"
+asset="nemo-relay-cli-${relay_target}-${NEMO_RELAY_VERSION}"
+base="https://github.com/NVIDIA/NeMo-Relay/releases/download/${NEMO_RELAY_VERSION}"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+echo "Downloading nemo-relay gateway ${NEMO_RELAY_VERSION} (${relay_target}) from GitHub releases ..."
+curl -fsSL -o "${tmp}/nemo-relay" "${base}/${asset}"
+curl -fsSL -o "${tmp}/nemo-relay.sha256" "${base}/${asset}.sha256"
+want="$(awk '{print $1}' "${tmp}/nemo-relay.sha256")"
+if command -v sha256sum >/dev/null 2>&1; then
+  got="$(sha256sum "${tmp}/nemo-relay" | awk '{print $1}')"
+else
+  got="$(shasum -a 256 "${tmp}/nemo-relay" | awk '{print $1}')"
+fi
+if [ "$want" != "$got" ]; then
+  echo "Checksum mismatch for ${asset}: expected ${want}, got ${got}" >&2
+  exit 1
+fi
+
+mkdir -p "$RELAY_BIN_DIR"
+install -m 0755 "${tmp}/nemo-relay" "${RELAY_BIN_DIR}/nemo-relay"
+echo "nemo-relay gateway installed: ${RELAY_BIN_DIR}/nemo-relay ($("${RELAY_BIN_DIR}/nemo-relay" --version 2>/dev/null || echo '?'))"
+
+# Warn if the install dir isn't on PATH — live tests resolve the gateway via shutil.which().
+case ":${PATH}:" in
+  *":${RELAY_BIN_DIR}:"*) : ;;
+  *) echo "NOTE: ${RELAY_BIN_DIR} is not on PATH — add it so 'nemo-relay' is found: export PATH=\"${RELAY_BIN_DIR}:\$PATH\"" >&2 ;;
+esac

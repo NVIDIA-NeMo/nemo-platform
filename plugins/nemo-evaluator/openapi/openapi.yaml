@@ -2982,20 +2982,12 @@ components:
           type: object
           title: Config
           description: Inline NeMo Fabric agent config (an ``agent.yaml`` as a JSON-shaped
-            mapping). Its ``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex.cli``
+            mapping). Its ``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex``
             for Codex.
-        profiles:
-          items:
-            additionalProperties: true
-            type: object
-          type: array
-          title: Profiles
-          description: Ordered Fabric profile overlays applied after the base config,
-            before ``model``.
         model:
           title: Model
-          description: Optional ``provider/model`` slug applied as a final profile
-            overlay; the harness default is used when omitted.
+          description: Optional ``provider/model`` slug applied as the config's default
+            model; the harness default is used when omitted.
           type: string
         timeout_s:
           type: integer
@@ -3014,17 +3006,13 @@ components:
       required:
       - config
       title: FabricRunnerTarget
-      description: 'Generate trials by driving an agent harness through the NeMo Fabric
-        runtime.
-
-
-        Fabric is harness-agnostic: the harness (Codex, Hermes, ...) is selected by
-        the supplied
-
-        config''s ``harness.adapter_id`` and is never inferred from ``model``. ``model``
-        is applied as a
-
-        final profile overlay when given.'
+      description: "Generate trials by driving an agent harness through the NeMo Fabric\
+        \ runtime.\n\nFabric is harness-agnostic: the harness (Codex, Hermes, ...)\
+        \ is selected by the supplied\nconfig's ``harness.adapter_id`` and is never\
+        \ inferred from ``model``. ``model`` is applied as the\nconfig's default model\
+        \ when given.\n\nA run is described by exactly one complete ``config``. Fabric\
+        \ 0.1.0rc2 removed profile overlays,\nso the former ``profiles`` field is\
+        \ gone \u2014 fold any overlay you were passing into ``config``."
     FieldMapping:
       properties:
         input:

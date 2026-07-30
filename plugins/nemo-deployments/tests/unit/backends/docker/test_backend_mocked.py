@@ -289,7 +289,7 @@ async def test_create_falls_back_to_local_image_when_pull_fails(
     from unittest.mock import patch
 
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=mock_docker_client),
@@ -327,7 +327,7 @@ async def test_create_fails_when_pull_fails_and_no_local_image(
     from unittest.mock import patch
 
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=mock_docker_client),
@@ -391,7 +391,7 @@ async def test_delete_scoped_deployment_does_not_remove_foreign_primary(
     mock_docker_client: MagicMock,
 ) -> None:
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=mock_docker_client),
@@ -449,7 +449,7 @@ async def test_create_lora_group_does_not_remove_foreign_stale_init_container(
     mock_docker_client: MagicMock,
 ) -> None:
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=mock_docker_client),
@@ -745,7 +745,7 @@ async def test_read_status_treats_foreign_container_as_missing(
     mock_docker_client: MagicMock,
 ) -> None:
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=mock_docker_client),
@@ -880,7 +880,7 @@ async def test_create_never_job_uses_configured_oneshot_observe_timeout(
     mock_docker_client: MagicMock,
 ) -> None:
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=mock_docker_client),
@@ -1147,7 +1147,7 @@ async def test_list_managed_deployment_names_scopes_docker_query(
     mock_docker_client: MagicMock,
 ) -> None:
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=mock_docker_client),
@@ -1187,7 +1187,7 @@ async def test_get_logs_treats_foreign_container_as_missing(
     mock_docker_client: MagicMock,
 ) -> None:
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=mock_docker_client),

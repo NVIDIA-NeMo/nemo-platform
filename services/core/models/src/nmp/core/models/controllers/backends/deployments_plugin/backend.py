@@ -8,7 +8,8 @@ from typing import Any
 
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Prerequisite, Volume
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nmp.common.config import Runtime
@@ -52,7 +53,7 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
     def _entity_client(self) -> NemoEntitiesClient:
         if self._entities is None:
             sdk = get_async_platform_sdk(as_service="models", internal=True)
-            self._entities = NemoEntitiesClient(AsyncEntitiesResource(sdk))
+            self._entities = NemoEntitiesClient(client_from_platform(sdk, AsyncEntitiesClient))
         return self._entities
 
     @property

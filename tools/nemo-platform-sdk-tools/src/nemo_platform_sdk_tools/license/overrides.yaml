@@ -83,6 +83,11 @@ overrides:
   nvidia-cudnn-frontend: NVIDIA Proprietary Software
   nvidia-nvshmem-cu12: NVIDIA Proprietary Software
   triton: MIT
+  # NeMo Fabric — Apache-2.0 per PyPI (`license_expression`) and deps.dev, but osv-scanner reports
+  # UNKNOWN for the 0.1.x rc series, the same way it does for safetensors 0.8.0rc1 above. Revisit
+  # once Fabric cuts a non-prerelease 0.1.0.
+  nemo-fabric: Apache-2.0 # https://pypi.org/project/nemo-fabric/
+  nemo-fabric-runtime: Apache-2.0 # https://pypi.org/project/nemo-fabric-runtime/
 
   # ONNX Runtime
   onnxruntime: MIT # https://github.com/microsoft/onnxruntime

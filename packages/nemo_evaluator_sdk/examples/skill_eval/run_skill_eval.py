@@ -242,7 +242,7 @@ async def _main() -> int:
     fabric_config = {
         "metadata": {"name": "skill-eval-hermes"},
         "harness": {
-            "adapter_id": "nvidia.fabric.hermes.sdk",
+            "adapter_id": "nvidia.fabric.hermes",
             "resolution": "preinstalled",
             "settings": {"max_iterations": 50},
         },

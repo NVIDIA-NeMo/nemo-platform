@@ -113,7 +113,7 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \\
     UV_LINK_MODE=copy
 
 RUN apt-get update && \\
-    apt-get install -y --no-install-recommends g++ gcc ca-certificates curl && \\
+    apt-get install -y --no-install-recommends g++ gcc ca-certificates curl{% if sandbox_apt_packages %} {{ sandbox_apt_packages }}{% endif %} && \\
     update-ca-certificates && \\
     rm -rf /var/lib/apt/lists/*
 
@@ -161,6 +161,14 @@ LABEL org.opencontainers.image.title="{{ agent_name | dockerfile_escape }}" \\
 ENV NAT_CONFIG_FILE={{ config_file_path }}
 
 ENV PATH="/workspace/.venv/bin:$PATH"
+{% if sandbox_user_setup %}
+# Sandbox-runtime compatibility ({{ sandbox_runtime }}). The supervisor resolves
+# this user by name, so the uid is not load-bearing; --system keeps it out of the
+# 1000/1001 range the agent user reclaims below. /opt and /workspace/.venv are
+# already world r-x (chmod a+rX above), so this user can read the venv and exec
+# the interpreter; its home dir gives NAT a writable cache/config location.
+RUN {{ sandbox_user_setup }}
+{% endif %}
 {% if not allow_root %}
 # Some modern base images (notably Ubuntu 24.04 "noble" and the NVIDIA base
 # images derived from it) ship with a default unprivileged user at
@@ -215,6 +223,9 @@ class RenderParams:
     has_pyproject: bool = False
     config_file_path: str = "/workspace/config.yaml"
     allow_root: bool = False
+    sandbox_runtime: str = ""
+    sandbox_apt_packages: str = ""
+    sandbox_user_setup: str = ""
     agent_id: str = ""
     agent_name: str = ""
     agent_version: str = ""
@@ -313,6 +324,7 @@ def render_dockerfile(
     nat_version: str | None = None,
     uv_version: str | None = None,
     allow_root: bool = False,
+    sandbox_runtime: str | None = None,
     agent_version: str | None = None,
     agent_author: str | None = None,
     template_path: str | None = None,
@@ -329,6 +341,10 @@ def render_dockerfile(
         nat_version: NAT version (required).
         uv_version: Override ``uv`` version.
         allow_root: When True, skip non-root USER creation.
+        sandbox_runtime: Name of a registered sandbox runtime (e.g.
+            ``"openshell"``). When set, the runtime's image profile is
+            discovered via the ``nemo.sandbox_profiles`` entry-point group and
+            its required apt packages + users are baked into the image.
         agent_version: Override agent version label.
         agent_author: Override agent author label.
         template_path: Path to an external Jinja2 template file.
@@ -373,6 +389,21 @@ def render_dockerfile(
     resolved_nat = resolve_value("nat_version", nat_version)
     contract_version = _get_contract_version()
 
+    sandbox_runtime_name = ""
+    sandbox_apt_packages = ""
+    sandbox_user_setup = ""
+    if sandbox_runtime:
+        from nemo_agents_plugin.container.sandbox import (
+            render_apt_packages,
+            render_user_setup,
+            resolve_sandbox_profile,
+        )
+
+        profile = resolve_sandbox_profile(sandbox_runtime)
+        sandbox_runtime_name = profile.name
+        sandbox_apt_packages = render_apt_packages(profile)
+        sandbox_user_setup = render_user_setup(profile)
+
     if metadata is None:
         metadata = extract_agent_metadata(
             agent_config,
@@ -390,6 +421,9 @@ def render_dockerfile(
         has_pyproject=has_pyproject,
         config_file_path=config_file_path,
         allow_root=allow_root,
+        sandbox_runtime=sandbox_runtime_name,
+        sandbox_apt_packages=sandbox_apt_packages,
+        sandbox_user_setup=sandbox_user_setup,
         contract_version=contract_version,
         agent_id=metadata["agent_id"],
         agent_name=metadata["agent_name"],

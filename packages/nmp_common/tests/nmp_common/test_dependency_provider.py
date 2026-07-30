@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nmp.common.service import DependencyProvider
 from nmp.common.service.dependencies import get_entity_client, get_platform_config, get_sdk_client
 
@@ -76,17 +77,20 @@ async def test_close_closes_managed_clients_and_clears_references() -> None:
 def test_get_entity_client_as_service_uses_fresh_service_sdk() -> None:
     provider = DependencyProvider()
     sdk = MagicMock(name="service_sdk")
-    entities_api = MagicMock(name="entities_api")
+    entities_client = MagicMock(name="entities_client")
     entity_client = MagicMock(name="entity_client")
 
     with (
         patch.object(provider, "get_sdk_client", return_value=sdk) as get_sdk,
-        patch("nemo_platform.resources.entities.AsyncEntitiesResource", return_value=entities_api) as resource,
+        patch(
+            "nemo_platform_plugin.client.adapter.client_from_platform",
+            return_value=entities_client,
+        ) as adapter,
         patch("nmp.common.entities.client.EntityClient", return_value=entity_client) as client_factory,
     ):
         result = provider.get_entity_client(as_service="models")
 
     assert result is entity_client
     get_sdk.assert_called_once_with(as_service="models")
-    resource.assert_called_once_with(sdk)
-    client_factory.assert_called_once_with(entities_api)
+    adapter.assert_called_once_with(sdk, AsyncEntitiesClient)
+    client_factory.assert_called_once_with(entities_client)

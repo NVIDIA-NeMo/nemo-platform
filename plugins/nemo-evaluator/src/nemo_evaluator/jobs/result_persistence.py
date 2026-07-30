@@ -34,8 +34,9 @@ from nemo_evaluator_sdk.values import Agent, AgentBase, Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities import EntityBase, EntityClient
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.job_context import JobContext
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ def _entity_client(async_sdk: AsyncNeMoPlatform | None) -> EntityClient | None:
     """
     if async_sdk is None:
         return None
-    return EntityClient(AsyncEntitiesResource(async_sdk))
+    return EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))
 
 
 #: Query-parameter keys whose values are redacted before a target URL is persisted/returned.

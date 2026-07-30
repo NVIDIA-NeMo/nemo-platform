@@ -231,6 +231,8 @@ def run_container_agent_deploy_and_invoke(
         endpoints = deployment.get("endpoints") or []
         assert endpoints and endpoints[0]["url"], deployment
 
+        sdk.models.wait_for_openai_model(model_name, workspace=workspace)
+
         response = sdk.agents.invoke(
             workspace=workspace,
             agent=agent_name,

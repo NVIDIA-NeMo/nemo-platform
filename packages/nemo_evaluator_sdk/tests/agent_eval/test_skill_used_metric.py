@@ -17,7 +17,7 @@ _PROV = {
     "name": "code-review",
     "hash": "deadbeef",
     "mode": "codex_skills_dir",
-    "adapter_id": "nvidia.fabric.codex.cli",
+    "adapter_id": "nvidia.fabric.codex",
     "location": _LOCATION,
 }
 
@@ -26,7 +26,7 @@ _PROV_B = {
     "name": "summarize",
     "hash": "cafebabe",
     "mode": "codex_skills_dir",
-    "adapter_id": "nvidia.fabric.codex.cli",
+    "adapter_id": "nvidia.fabric.codex",
     "location": _LOCATION_B,
 }
 

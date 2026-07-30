@@ -17,7 +17,8 @@ from typing import Callable, Generator, Mapping, Protocol, TypeVar
 import httpx
 from fastapi.testclient import TestClient
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, NotGiven, not_given
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nmp.common.config.base import AuthConfig, Configuration, DatabaseConfig, PlatformConfig, ServiceConfig
 from nmp.common.entities.client import EntityClient
 from nmp.common.service import Service
@@ -486,7 +487,7 @@ def create_test_client(
         async_sdk = AsyncNeMoPlatform(base_url="http://testserver", http_client=async_http_client, workspace=workspace)
 
         # Create the EntityClient (used for DI and optionally yielded)
-        entity_client = EntityClient(AsyncEntitiesResource(async_sdk))
+        entity_client = EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))
 
         # Inject ASGI-transport clients into each service's DependencyProvider.
         # This is critical for services that call dependency_provider.get_sdk_client()
@@ -526,7 +527,7 @@ def create_test_client(
                 service_name = app_ctx.service_name if app_ctx is not None and app_ctx.service_name else "platform"
                 headers = build_downstream_service_headers(service_name)
                 sdk = async_sdk.with_options(set_default_headers=headers)
-                return EntityClient(AsyncEntitiesResource(sdk))
+                return EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
             all_overrides[get_entity_client] = _get_entity_client_on_behalf_of
 
@@ -589,7 +590,7 @@ def create_test_client(
                     }
                     headers["X-NMP-Principal-Id"] = "service:auth"
                     seeding_sdk = async_sdk.with_options(set_default_headers=headers)
-                    seeding_entity_client = EntityClient(AsyncEntitiesResource(seeding_sdk))
+                    seeding_entity_client = EntityClient(client_from_platform(seeding_sdk, AsyncEntitiesClient))
 
                     async def _run() -> None:
                         success = await run_seeding(seeding_entity_client)

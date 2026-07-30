@@ -18,17 +18,41 @@ from __future__ import annotations
 
 import time
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nemo_agents_plugin.config import ControllerConfig
+from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
 from nemo_agents_plugin.entities import AgentDeployment
 from nemo_agents_plugin.runner.backend import DeploymentInfo
 from nemo_agents_plugin.runner.controller import AgentDeploymentController
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 
 
 def test_agent_deployment_controller_declares_entities_dependency() -> None:
     assert AgentDeploymentController.dependencies == ["entities"]
+
+
+@pytest.mark.asyncio
+async def test_controller_startup_adapts_sdk_to_typed_entities_client() -> None:
+    sdk = MagicMock()
+    typed_client = MagicMock()
+    entity_client = MagicMock()
+
+    with (
+        patch("nemo_agents_plugin.config.AgentsConfig.get", return_value=AgentsConfig()),
+        patch("nemo_platform_plugin.sdk_provider.get_async_platform_sdk", return_value=sdk),
+        patch(
+            "nemo_platform_plugin.client.adapter.client_from_platform",
+            return_value=typed_client,
+        ) as mock_adapter,
+        patch("nemo_platform_plugin.entities.EntityClient", return_value=entity_client) as mock_entity_client,
+    ):
+        controller = AgentDeploymentController()
+        await controller.on_startup()
+
+    mock_adapter.assert_called_once_with(sdk, AsyncEntitiesClient)
+    mock_entity_client.assert_called_once_with(typed_client)
+    assert controller._entities is entity_client
 
 
 def _make_controller() -> tuple[AgentDeploymentController, Any]:
@@ -92,7 +116,8 @@ async def test_start_deployment_writes_runtime_fields_to_entity() -> None:
     # Startup timer is keyed by ``(workspace, name)``; ``_check_health``
     # reads from the same tuple. Asserting the key shape here catches the
     # silent string-vs-tuple drift that the prior pass surfaced.
-    assert ("default", "dep-1") in ctrl._starting_since
+    starting_key = ("default", "dep-1")
+    assert starting_key in ctrl._starting_since
 
 
 # ---------------------------------------------------------------------------

@@ -3409,8 +3409,28 @@
         },
         {
           "package": {
+            "name": "nemo-fabric",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "UNKNOWN"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-runtime",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "UNKNOWN"
+          ]
+        },
+        {
+          "package": {
             "name": "nemo-relay",
-            "version": "0.4.0",
+            "version": "0.6.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8325,7 +8345,7 @@
     },
     {
       "name": "UNKNOWN",
-      "count": 4
+      "count": 6
     }
   ]
 }

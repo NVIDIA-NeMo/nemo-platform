@@ -11,7 +11,7 @@ Kubernetes/agent-sandbox later) through the provider-neutral
 
 Per task it:
 
-1. seeds ``/in`` with the Fabric agent config, profiles, and framed input, plus the task's workspace
+1. seeds ``/in`` with the composed Fabric agent config and framed input, plus the task's workspace
    seed files;
 2. execs Fabric's own CLI (``fabric run``), which writes a normalized ``RunResult`` to stdout and the
    workspace + Relay ATIF trajectory under a fixed ``/out`` layout;
@@ -74,7 +74,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     # nemo_fabric is an optional native dep (see FabricAgentRuntime); imported for typing only. Configs
     # are consumed structurally via ``to_mapping()`` at runtime, so this module stays importable without it.
-    from nemo_fabric import FabricConfig, FabricProfileConfig  # ty: ignore[unresolved-import]
+    from nemo_fabric import FabricConfig  # ty: ignore[unresolved-import]
 
 # Default per-task exec budget. Timeout is really task-specific (see AALGO-323 to move it onto
 # AgentEvalTask); until then it is an internal default rather than a runtime-construction knob.
@@ -86,7 +86,7 @@ _MISSING_FABRIC_MSG = (
     "only inside the sandbox."
 )
 
-# Fixed in-container layout. The runtime seeds ``/in`` (agent config, profiles, input), execs Fabric's
+# Fixed in-container layout. The runtime seeds ``/in`` (agent config, input), execs Fabric's
 # CLI, and reads the produced ``/out`` subtree back across the boundary.
 _IN_DIR = "/in"
 _OUT_DIR = "/out"
@@ -98,7 +98,6 @@ _RESULT_PATH = f"{_OUT_DIR}/fabric_result.json"
 _FABRIC_STDERR = f"{_LOGS_DIR}/fabric-stderr.txt"
 _AGENT_PATH = f"{_IN_DIR}/agent.yaml"
 _INPUT_PATH = f"{_IN_DIR}/input.txt"
-_WORKSPACE_PROFILE_NAME = "eval_workspace"
 # In-sandbox root for a natively-injected skill bundle. It lives under ``/in`` (not ``/out``), so it is
 # never part of the downloaded ``/out`` evidence — only codex-mode skills, which must sit in the workspace
 # for the harness to self-discover them, need post-download cleanup.
@@ -116,7 +115,6 @@ class FabricContainerRuntime:
         config: FabricConfig | Mapping[str, Any],
         *,
         provider: SandboxProvider,
-        profiles: Sequence[FabricProfileConfig | Mapping[str, Any]] = (),
         secrets: Mapping[str, SecretRef] = {},
         image: str | None = None,
         skills: Sequence[AgentSkill] | None = None,
@@ -124,7 +122,6 @@ class FabricContainerRuntime:
         # The Fabric agent is fully described by its ``FabricConfig`` (harness + model + runtime); it is
         # consumed structurally as a mapping to cross the sandbox boundary as JSON.
         self._config = _to_mapping(config)
-        self._profiles = [_to_mapping(profile) for profile in profiles]
         self._provider = provider
         # ``secrets`` maps the env-var name a Fabric harness reads its credential from (declared by the
         # adapter's ``requirements.env``) to a SecretRef. The runner only *declares* them; the resolver
@@ -233,14 +230,14 @@ class FabricContainerRuntime:
         # trial rather than aborting the gathered batch.
         skill_provenances: list[SkillProvenance] = []
         try:
-            seed_files, profile_paths, skill_provenances = self._seed_files(task, skill_mode)
+            seed_files, skill_provenances = self._seed_files(task, skill_mode)
             spec = SandboxSpec(
                 image=self._image, workdir=_WORKSPACE_DIR, env=dict(self._resolved_env), files=seed_files
             )
             async with AsyncSandbox(self._provider, spec) as sandbox:
                 await sandbox.start()
                 await self._seed_workspace(sandbox, task)
-                result = await sandbox.exec(self._fabric_command(profile_paths), timeout_s=DEFAULT_FABRIC_TIMEOUT_S)
+                result = await sandbox.exec(self._fabric_command(), timeout_s=DEFAULT_FABRIC_TIMEOUT_S)
                 await sandbox.download_dir(_OUT_DIR, out_dir)
             # Codex self-injection seeds each bundle inside the workspace so the harness discovers it during
             # the run; drop them from the downloaded evidence before the workspace is exposed (else the
@@ -266,14 +263,12 @@ class FabricContainerRuntime:
         is imported lazily on the host (only when a skill is set), so the no-skill path never needs it.
         """
         try:
-            from nemo_fabric import Fabric, FabricConfig, FabricProfileConfig  # ty: ignore[unresolved-import]
+            from nemo_fabric import Fabric, FabricConfig  # ty: ignore[unresolved-import]
         except ImportError as exc:
             raise RuntimeError(_MISSING_FABRIC_MSG) from exc
-        agent_config = FabricConfig.from_mapping(self._config)
-        base_profiles = [FabricProfileConfig.from_mapping(profile) for profile in self._profiles]
-        probe_config = agent_config.model_copy(deep=True)
+        probe_config = FabricConfig.from_mapping(self._config)
         probe_config.add_skill_path(_SKILL_PROBE_PATH)
-        plan = Fabric().plan(probe_config, profiles=base_profiles)
+        plan = Fabric().plan(probe_config)
         return resolve_skill_mode(capability_plan=plan.capability_plan, harness=plan.adapter.harness)
 
     def _adapter_id(self) -> str:
@@ -282,26 +277,9 @@ class FabricContainerRuntime:
         adapter_id = harness.get("adapter_id") if isinstance(harness, Mapping) else None
         return str(adapter_id) if adapter_id is not None else ""
 
-    def _existing_skill_paths(self) -> list[str]:
-        """Skill paths the base config/profiles already declare (union, order-preserved).
-
-        Fabric applies profile ``skills.paths`` last-wins, so the native overlay has to re-list these
-        alongside the evaluated skill or the treated arm would silently drop preconfigured skills (see
-        ``stage_skills_seed``). Read from the raw config/profile mappings the runtime was given.
-        """
-        paths: list[str] = []
-        for section in (self._config, *self._profiles):
-            skills = section.get("skills") if isinstance(section, Mapping) else None
-            declared = skills.get("paths") if isinstance(skills, Mapping) else None
-            for path in declared or []:
-                if isinstance(path, str) and path not in paths:
-                    paths.append(path)
-        return paths
-
-    def _fabric_command(self, profile_paths: Sequence[str]) -> str:
+    def _fabric_command(self) -> str:
         """The ``fabric run`` invocation: pre-create the /out dirs Fabric chdirs into, run, capture stdout."""
-        profiles = " ".join(f"--profile {shlex.quote(path)}" for path in profile_paths)
-        run = f"fabric run {shlex.quote(_AGENT_PATH)} {profiles} --input-file {shlex.quote(_INPUT_PATH)}"
+        run = f"fabric run {shlex.quote(_AGENT_PATH)} --input-file {shlex.quote(_INPUT_PATH)}"
         return (
             f"mkdir -p {_WORKSPACE_DIR} {_RELAY_DIR} {_ARTIFACTS_DIR} {_LOGS_DIR} && "
             f"{run} > {shlex.quote(_RESULT_PATH)} 2> {shlex.quote(_FABRIC_STDERR)}"
@@ -309,22 +287,19 @@ class FabricContainerRuntime:
 
     def _seed_files(
         self, task: AgentEvalTask, skill_mode: SkillMode | None
-    ) -> tuple[dict[str, str], list[str], list[SkillProvenance]]:
-        """Return (files to seed into the sandbox, profile paths for --profile, skill provenances).
+    ) -> tuple[dict[str, str], list[SkillProvenance]]:
+        """Return (files to seed into the sandbox, skill provenances).
 
-        Configs are written as JSON, which the Fabric CLI parses as YAML. When skills are injected each
-        bundle is rendered into the seed set at the harness's in-sandbox discovery path (native:
-        ``/in/skills/<name>``; codex: ``<workspace>/.agents/skills/<name>``), with at most ONE merged native
-        overlay listing every bundle. Profiles are ordered caller-first, then the native skill overlay (if
-        any), then the per-task workspace + trajectory overlays — which trail so the evaluator-owned
-        workspace/artifacts stay authoritative (mirroring the host runtime's overlay ordering).
+        The agent config is written as JSON, which the Fabric CLI parses as YAML. Fabric 0.1.0rc2 removed
+        profile overlays (``--profile`` and the ``profiles`` config key are both gone), so everything —
+        the runtime's in-container settings and any natively-injected skill paths — is composed into the
+        single agent config here. When skills are injected each bundle is also rendered into the seed set
+        at the harness's in-sandbox discovery path (native: ``/in/skills/<name>``; codex:
+        ``<workspace>/.agents/skills/<name>``).
         """
-        files: dict[str, str] = {
-            _AGENT_PATH: json.dumps(self._config),
-            _INPUT_PATH: task.agent_prompt(),
-        }
-        skill_profiles: list[dict[str, Any]] = []
+        skill_paths: list[str] = []
         provenances: list[SkillProvenance] = []
+        files: dict[str, str] = {_INPUT_PATH: task.agent_prompt()}
         if self._skill_set.skills and skill_mode is not None:
             if skill_mode == SKILL_MODE_CODEX_SKILLS_DIR:
                 _check_codex_skill_collision(self._skill_set.skills, task.inputs.get(SEED_FILES_INPUT_KEY) or {})
@@ -334,38 +309,53 @@ class FabricContainerRuntime:
                 mode=skill_mode,
                 workspace_dir=_WORKSPACE_DIR,
                 skills_dir=_SKILLS_DIR,
-                existing_skill_paths=self._existing_skill_paths(),
             )
             files.update(seed.files)
-            skill_profiles = seed.profiles
+            skill_paths = seed.skill_paths
             provenances = seed.provenances
-        profile_paths: list[str] = []
-        profiles = [*self._profiles, *skill_profiles, self._workspace_profile(), self._trajectory_profile()]
-        for index, profile in enumerate(profiles):
-            path = f"{_IN_DIR}/profile-{index}.yaml"
-            files[path] = json.dumps(profile)
-            profile_paths.append(path)
-        return files, profile_paths, provenances
+        files[_AGENT_PATH] = json.dumps(self._composed_config(skill_paths))
+        return files, provenances
 
-    @staticmethod
-    def _workspace_profile() -> dict[str, Any]:
-        # Pin the harness working directory to the retrievable workspace; ``provider`` is required by the
-        # native planner (it does not inject the Python default into a raw overlay).
-        return {"name": _WORKSPACE_PROFILE_NAME, "environment": {"provider": "local", "workspace": _WORKSPACE_DIR}}
+    def _composed_config(self, skill_paths: Sequence[str] = ()) -> dict[str, Any]:
+        """The supplied agent config with the runtime's in-container settings merged on last.
 
-    @staticmethod
-    def _trajectory_profile() -> dict[str, Any]:
-        # Relay ATIF/ATOF file exporter (sdk mode). The telemetry block is built from nemo_relay's typed
-        # config via the shared helper (single source of truth with the host runtime); ``provider:local``
-        # is required by the native planner in the container (it does not inject the Python default).
-        return {
-            "name": _common.TRAJECTORY_PROFILE_NAME,
-            "runtime": {"artifacts": _ARTIFACTS_DIR},
-            "environment": {"provider": "local", "artifacts": _ARTIFACTS_DIR},
-            "telemetry": _common.trajectory_telemetry(
-                relay_dir=_RELAY_DIR, agent_name=_RUNTIME_NAME, agent_version=_RUNTIME_NAME
-            ),
+        Mirrors the host runtime's ``_compose_config``: the workspace, artifact roots, trajectory
+        telemetry, and any natively-injected skill paths are evaluator-owned, so they are applied over
+        whatever the caller's config declared. Stays plain dicts rather than round-tripping through the
+        host's ``FabricConfig`` — the sandbox may run a different Fabric build, so the config is only
+        required to survive JSON transport, not to validate against the host's schema.
+
+        Injected skill paths are APPENDED to the config's own ``skills.paths`` — mirroring
+        ``FabricConfig.add_skill_path`` — so skills the caller preconfigured survive injection and the
+        treated A/B arm differs from the baseline by exactly the injected skills.
+        """
+        config = dict(self._config)
+
+        # Each section is spread over the caller's, so sibling keys survive — pinning
+        # ``runtime.artifacts`` must not drop a configured ``runtime.transport``.
+        config["runtime"] = {**_section(config, "runtime"), "artifacts": _ARTIFACTS_DIR}
+        # ``provider: local`` is required by the native planner in the container (it does not inject the
+        # Python default), and the workspace pins the harness cwd to the retrievable /out subtree.
+        config["environment"] = {
+            **_section(config, "environment"),
+            "provider": "local",
+            "workspace": _WORKSPACE_DIR,
+            "artifacts": _ARTIFACTS_DIR,
         }
+        # Relay ATIF/ATOF file exporter (sdk mode), built from nemo_relay's typed config via the shared
+        # helper so it stays a single source of truth with the host runtime. Replaced wholesale.
+        # ``agent_name`` distinguishes this runtime from the host one; ``agent_version`` records the
+        # agent framework and so matches the host's value, letting an ATIF consumer group both
+        # runtimes' traces. (Neither is a real version yet — see _common.trajectory_telemetry.)
+        config["telemetry"] = _common.trajectory_telemetry(
+            relay_dir=_RELAY_DIR, agent_name=_RUNTIME_NAME, agent_version=_common.FABRIC_AGENT_VERSION
+        )
+
+        declared_paths = _section(config, "skills").get("paths") or []
+        merged_paths = list(dict.fromkeys([*(str(path) for path in declared_paths), *skill_paths]))
+        if merged_paths:
+            config["skills"] = {**_section(config, "skills"), "paths": merged_paths}
+        return config
 
     async def _seed_workspace(self, sandbox: AsyncSandbox, task: AgentEvalTask) -> None:
         seeds = task.inputs.get(SEED_FILES_INPUT_KEY)
@@ -484,8 +474,8 @@ class FabricContainerRuntime:
 
 
 def _to_mapping(config: FabricConfig | Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize a typed Fabric config/profile or a plain mapping to a plain dict for JSON transport."""
-    # A typed Fabric config/profile exposes ``to_mapping()``; a plain mapping is used as-is. Both are
+    """Normalize a typed Fabric config or a plain mapping to a plain dict for JSON transport."""
+    # A typed Fabric config exposes ``to_mapping()``; a plain mapping is used as-is. Both are
     # str-keyed at runtime, but the getattr + optional (unresolved) ``FabricConfig`` type defeat static
     # narrowing, so cast the known-good source before building the dict.
     to_mapping = getattr(config, "to_mapping", None)
@@ -552,6 +542,12 @@ def _remove_injected_bundle(workspace_dir: Path, location: str) -> None:
         except OSError:
             break
         parent = parent.parent
+
+
+def _section(config: Mapping[str, Any], name: str) -> dict[str, Any]:
+    """A top-level config section as a plain dict — ``{}`` when absent or not a mapping."""
+    value = config.get(name)
+    return dict(value) if isinstance(value, Mapping) else {}
 
 
 def _find_atif(relay_dir: Path) -> Path | None:

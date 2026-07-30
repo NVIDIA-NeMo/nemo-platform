@@ -123,22 +123,21 @@ class DependencyProvider:
             for request handling, or new instance with explicit service credentials
             if as_service is provided.
         """
-        from nemo_platform.resources.entities import AsyncEntitiesResource
+        from nemo_platform_plugin.client.adapter import client_from_platform
+        from nemo_platform_plugin.entities.client import AsyncEntitiesClient
         from nmp.common.entities.client import EntityClient
 
         # When as_service is specified, return a fresh EntityClient with service credentials.
         if as_service is not None:
             sdk = self.get_sdk_client(as_service=as_service)
-            entities_api = AsyncEntitiesResource(sdk)
-            return EntityClient(entities_api)
+            return EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
         # For request handling, authenticate as the service principal with
         # X-NMP-Principal-On-Behalf-Of set to the current user. This ensures
         # the entity store authorizes the request via service principal bypass
         # while preserving the user's identity for audit/attribution.
         sdk = self._get_entity_sdk_on_behalf_of()
-        entities_api = AsyncEntitiesResource(sdk)
-        return EntityClient(entities_api)
+        return EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
     def _get_entity_sdk_on_behalf_of(self) -> AsyncNeMoPlatform:
         """Create a per-request SDK for entity operations using service principal + on-behalf-of.

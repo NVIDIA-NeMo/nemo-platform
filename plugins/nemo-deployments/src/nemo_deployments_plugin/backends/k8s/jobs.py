@@ -241,14 +241,15 @@ async def create_job(
                         namespace=namespace,
                         _request_timeout=timeout,
                     )
-                    if not resource_labels_match(job, identity_labels) and configmap_written:
-                        delete_configmap_best_effort(
-                            core_v1,
-                            namespace=namespace,
-                            name=compiled.configmap_name,
-                            expected_labels=identity_labels,
-                            timeout=timeout,
-                        )
+                    if not resource_labels_match(job, identity_labels):
+                        if configmap_written:
+                            delete_configmap_best_effort(
+                                core_v1,
+                                namespace=namespace,
+                                name=compiled.configmap_name,
+                                expected_labels=identity_labels,
+                                timeout=timeout,
+                            )
                     return job
                 if configmap_written:
                     delete_configmap_best_effort(

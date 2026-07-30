@@ -76,11 +76,13 @@ Without `internal=True`, controller polling floods the entity store's access log
 ```python
 async def on_startup(self) -> None:
     from nmp.common.sdk_factory import get_async_platform_sdk
-    from nemo_platform.resources.entities import AsyncEntitiesResource
+    from nemo_platform_plugin.client.adapter import client_from_platform
+    from nemo_platform_plugin.entities.client import AsyncEntitiesClient
     from nemo_platform_plugin.entity_client import NemoEntitiesClient
 
     sdk = get_async_platform_sdk(as_service="my-controller", internal=True)
-    self._entities = NemoEntitiesClient(AsyncEntitiesResource(sdk))
+    typed_client = client_from_platform(sdk, AsyncEntitiesClient)
+    self._entities = NemoEntitiesClient(typed_client)
 ```
 
 `as_service="my-controller"` sets `X-NMP-Principal-Id: service:my-controller`, granting the service principal access needed to list entities across all workspaces.

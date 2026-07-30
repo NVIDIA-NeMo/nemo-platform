@@ -408,6 +408,14 @@ endif
 	@echo "Running tests for package: $(PACKAGE)..."
 	uv run --frozen pytest -v packages/$(PACKAGE)/tests/
 
+.PHONY: test-deployments-openshell
+test-deployments-openshell: ## Run OpenShell deployment backend unit tests with the platform-restricted [openshell] extra installed
+	# The openshell extra is not part of the default sync (platform-restricted
+	# wheel), so the shared unit-test job skips these. Install it just here and
+	# run the backend's tests for real (mirrors the nemo-guardrails --extra bench job).
+	uv run --frozen --package nemo-deployments-plugin --extra openshell \
+		pytest -v plugins/nemo-deployments/tests/unit/backends/openshell/
+
 .PHONY: test-service
 test-service: ## Run tests for a specific service (usage: make test-service SERVICE=evaluator)
 ifndef SERVICE

@@ -20,6 +20,7 @@ from data_designer.engine.secret_resolver import (
     PlaintextResolver,
     SecretResolver,
 )
+from data_designer_nemo.columns import validate_config_has_no_custom_columns
 from data_designer_nemo.errors import NDDError
 from data_designer_nemo.fileset_file_seed_reader import FilesetFileSeedReader
 from data_designer_nemo.fileset_filesystem_provider import (
@@ -78,6 +79,11 @@ class LocalDataDesignerContext:
     async def validate(self, config: dd.DataDesignerConfig) -> list[NDDError]:
         async_sdk = self._async_sdk()
         errors: list[NDDError] = []
+
+        try:
+            validate_config_has_no_custom_columns(config)
+        except NDDError as e:
+            errors.append(e)
 
         try:
             if validated_root := await validate_seed(config, self._workspace, async_sdk, is_local=True):
@@ -140,6 +146,11 @@ class RemoteDataDesignerContext:
     async def validate(self, config: dd.DataDesignerConfig) -> list[NDDError]:
         async_sdk = self._async_sdk()
         errors: list[NDDError] = []
+
+        try:
+            validate_config_has_no_custom_columns(config)
+        except NDDError as e:
+            errors.append(e)
 
         try:
             validate_no_tool_configs(config)

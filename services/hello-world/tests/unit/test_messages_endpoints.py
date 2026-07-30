@@ -5,7 +5,7 @@
 
 import pytest
 from fastapi import HTTPException
-from nemo_platform.types import DeleteResponse
+from nemo_platform_plugin.entities.types import DeleteResponse
 from nmp.common.entities.client import EntityClient, EntityNotFoundError
 from nmp.hello_world.api.v1.messages.endpoints import delete_message
 

@@ -38,7 +38,7 @@ def docker_backend(
     mock_sdk: MagicMock, mock_entities: AsyncMock, mock_docker_client: MagicMock
 ) -> Iterator[DockerDeploymentBackend]:
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=mock_docker_client),

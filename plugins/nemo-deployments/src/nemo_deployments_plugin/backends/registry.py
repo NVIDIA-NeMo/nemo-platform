@@ -9,9 +9,10 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Self
 
-from nemo_deployments_plugin.backends.base import DeploymentBackend
+from nemo_deployments_plugin.backends.base import DeploymentBackend, MissingBackendDependencyError
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.k8s.backend import K8sDeploymentBackend
+from nemo_deployments_plugin.backends.openshell.backend import OpenShellDeploymentBackend
 from nemo_platform import AsyncNeMoPlatform
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 BACKEND_CLASSES: dict[str, type[DeploymentBackend]] = {
     "docker": DockerDeploymentBackend,
     "k8s": K8sDeploymentBackend,
+    "openshell": OpenShellDeploymentBackend,
 }
 
 
@@ -61,7 +63,20 @@ class ExecutorRegistry:
             for spec in specs:
                 if spec.backend not in classes:
                     raise UnknownBackendTypeError(f"Unknown backend type '{spec.backend}' for executor '{spec.name}'.")
-                executors[spec.name] = classes[spec.backend](sdk, spec.config)
+                try:
+                    executors[spec.name] = classes[spec.backend](sdk, spec.config)
+                except MissingBackendDependencyError as exc:
+                    # An opt-in backend whose optional extra isn't installed (e.g.
+                    # 'openshell') must not take down the whole deployments service:
+                    # skip just that executor. Resolving it later raises
+                    # ExecutorNotFoundError, and a `default_executor` that can't be
+                    # built still fails fast via the check below.
+                    logger.warning(
+                        "Skipping executor '%s': backend '%s' is unavailable (%s)",
+                        spec.name,
+                        spec.backend,
+                        exc,
+                    )
             if default_executor and default_executor not in executors:
                 raise ExecutorNotFoundError(f"default_executor '{default_executor}' is not registered.")
         except Exception:

@@ -1,0 +1,44 @@
+# NAT ReAct agent for the OpenShell sandbox demo (see ../DEMO.ipynb).
+#
+# This file is the source of truth for the demo agent. `nemo agents package`
+# uses this folder as the Docker build context (it holds only this file, so the
+# context stays clean) and bakes it to /workspace/config.yaml, which the serve
+# command loads.
+#
+# Deploy-time params are `${VAR}` refs. NAT expands them from env at config load
+# (nat/utils/io/yaml_tools.py -> expandvars, surrounded_vars_only=True). An unset
+# `${VAR}` expands to empty -> YAML null -> a loud validation error, which is the
+# desired fail-fast. The demo notebook injects the model via
+# `nat serve --override llms.llm.model_name <id>` (robust; no env dependency),
+# and you can alternatively set NEMO_DEFAULT_MODEL on the container env.
+#
+# NOTE: no `general.telemetry` block. The stock react-agent example enables the
+# `nemo_files` tracing plugin, which is NOT installed in the packaged sandbox
+# image, so `nat serve` would reject the config.
+
+functions:
+  wiki:
+    _type: wiki_search
+  clock:
+    _type: current_datetime
+
+llms:
+  llm:
+    _type: openai
+    # OpenShell gateway-managed inference: the gateway routes https://inference.local to a
+    # registered provider (the platform Inference Gateway) and injects the real credential.
+    # The sandbox needs no direct egress and no proxy handling. Operator wiring (once per gateway):
+    #   openshell provider create --name nemo-igw --type openai --credential OPENAI_API_KEY=empty \
+    #     --config OPENAI_BASE_URL=http://host.openshell.internal:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1
+    #   openshell inference set --provider nemo-igw --model <model-id>
+    base_url: https://inference.local/v1
+    api_key: not-used                  # MUST be non-empty; the gateway injects the real credential
+    model_name: ${NEMO_DEFAULT_MODEL}  # deploy-time model id; notebook overrides via `nat serve --override`
+    temperature: 0.0
+
+workflow:
+  _type: react_agent
+  tool_names: [wiki, clock]
+  llm_name: llm
+  verbose: false
+  parse_agent_response_max_retries: 3

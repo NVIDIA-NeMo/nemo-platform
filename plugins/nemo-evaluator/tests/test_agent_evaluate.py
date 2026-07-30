@@ -222,7 +222,7 @@ def test_resolve_target_builds_codex_runtime_from_runner_target(tmp_path: Path) 
 def test_resolve_target_builds_fabric_runtime_from_runner_target(tmp_path: Path) -> None:
     ctx = _job_context(tmp_path)
     fabric_target = FabricRunnerTarget(
-        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}},
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}},
         model="openai/gpt-5.4",
     )
     target, prompt_template, params = AgentEvalJob._resolve_target(fabric_target, ctx)
@@ -441,9 +441,7 @@ def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec) -> None:
     [
         (CodexRunnerTarget(model="gpt-5.5"), "codex", None),
         (
-            FabricRunnerTarget(
-                config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}}
-            ),
+            FabricRunnerTarget(config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}}),
             "fabric",
             None,
         ),
