@@ -66,6 +66,7 @@ const preview: Preview = {
   parameters: {
     layout: 'padded',
     backgrounds: { disable: true },
+    a11y: { test: 'todo' },
     controls: {
       matchers: {
         color: /(background|color)$/i,

@@ -92,10 +92,10 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@huggingface/hub": "^1.0.0",
     "@nemo/testing": "workspace:*",
     "@nvidia/foundations-tailwind-plugin": "catalog:",
-    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.57.0",
     "@storybook/react": "catalog:",
     "@tailwindcss/postcss": "catalog:",
