@@ -127,6 +127,7 @@ env:
   RELEASE_HELM_ID: nemo-platform
   RELEASE_HELM_PATH: k8s/helm
   RELEASE_HELM_REGISTRY: nvcr.io/0921617854601259/nemo-platform
+  STABLE_IMAGE_REGISTRY: nvcr.io/nvidia/nemo-platform
   RELEASE_PUBLISH_NIGHTLY_WHEELS: "false"
   RELEASE_NIGHTLY_WHEEL_INDEX: https://pypi.nvidia.com
   RELEASE_STABLE_WHEEL_INDEX: https://pypi.org/simple
@@ -756,7 +757,7 @@ jobs:
         env:
           HELM_CHART: ${{ env.RELEASE_HELM_PATH }}
           NIGHTLY_IMAGE_REGISTRY: ${{ env.RELEASE_NIGHTLY_CONTAINER_REGISTRY }}
-          STABLE_IMAGE_REGISTRY: ${{ env.RELEASE_HELM_REGISTRY }}
+          STABLE_IMAGE_REGISTRY: ${{ env.STABLE_IMAGE_REGISTRY }}
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
           HELM_VERSION: ${{ needs.plan-release.outputs.helm_version }}
