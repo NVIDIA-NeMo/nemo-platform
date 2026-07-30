@@ -50,13 +50,12 @@ and select **Run workflow**. The form shows the allowed custom artifact IDs.
 
 | Input | Use |
 | --- | --- |
-| `release-type` | `nightly` by default. Select `stable` for a full release. |
+| `release-type` | `nightly` by default. Select `stable` for a versioned release. Every successful non-dry-run stable release creates or confirms its Git tag and GitHub Release. |
 | `source-sha` | Required for stable releases. Optional for nightlies; a normal nightly with no SHA uses the current default-branch head. A dry-run nightly with no SHA uses the workflow commit so a branch can be validated. |
 | `version` | Required for stable releases. Enter the `MAJOR.MINOR.PATCH` release version. |
-| `release-scope` | `all` by default. Select `wheels`, `containers`, `helm`, or `custom` for a subset. |
+| `release-scope` | `all` by default. Select `wheels`, `containers`, `helm`, or `custom` for a subset. Scope controls which artifacts are released, not whether a stable tag and GitHub Release are created. |
 | `wheel-ids`, `container-ids` | Comma-separated IDs used only with `release-scope: custom`. Each ID must be in the catalog above; duplicates and empty entries fail validation. |
 | `include-helm` | Includes the Helm chart in a custom release. |
-| `create-github-release` | Creates the Git tag and GitHub Release after a custom stable release succeeds. Stable releases with `release-scope: all` do this automatically. |
 | `helm-version` | Optional exact SemVer Helm chart version for stable Helm-only releases. The stable release label still comes from `version`. |
 | `update-ngc-metadata` | Also runs the reusable NGC metadata workflow for `nemo-platform` and `nemo-platform-dev`. It checks out the workflow ref, normally `main`. |
 | `send-notifications` | Sends Slack start and final-status notifications. Defaults to `true`. |
@@ -68,8 +67,8 @@ Examples:
 | --- | --- |
 | Scheduled-style nightly | Leave `release-type` as `nightly` and use the default `all` scope. |
 | Stable full release | `release-type: stable`, `source-sha: <40-character SHA>`, `version: <MAJOR.MINOR.PATCH>`, `release-scope: all`. |
-| Stable custom release with tag | Select the custom artifacts, then set `release-type: stable` and `create-github-release: true`. |
-| One container | `release-scope: custom`, `container-ids: nmp-customizer-tasks`. |
+| Stable one-container release or retry | `release-type: stable`, `source-sha: <40-character SHA>`, `version: <MAJOR.MINOR.PATCH>`, `release-scope: custom`, `container-ids: nmp-customizer-tasks`. |
+| Stable one-wheel release or retry | `release-type: stable`, `source-sha: <40-character SHA>`, `version: <MAJOR.MINOR.PATCH>`, `release-scope: custom`, `wheel-ids: nemo-platform`. |
 | Helm-only validation | `release-scope: helm`, `dry-run: true`. |
 | Stable Helm-only chart override | `release-type: stable`, `source-sha: <40-character SHA>`, `version: 0.1.0`, `release-scope: helm`, `helm-version: 0.1.0+helmfix1`. |
 
@@ -97,11 +96,13 @@ America/Los_Angeles.
    available before continuing. Nightly wheels are staged but not published, so
    they are not polled. The polling job times out after four hours and sends
    a Slack alert after two hours if it is still waiting.
-7. For a non-dry-run stable release with `release-scope: all`, or a custom
-   stable release with `create-github-release: true`, creates the GitHub release
-   and tag at the selected SHA. GitHub generates the release notes from the
-   previous numeric SemVer tag. Other subset releases do not create a GitHub
-   release or tag.
+7. For every non-dry-run stable release, creates the GitHub release and tag at
+   the selected SHA after the selected artifacts become available. This is
+   independent of release scope, so stable subset and custom runs can release or
+   retry individual artifacts. A rerun reuses a matching tag and release,
+   creates a missing release for an existing matching tag, and fails if the
+   version tag points to a different SHA. GitHub generates the release notes
+   from the previous numeric SemVer tag.
 8. After polling succeeds, releases that include the Helm chart dispatch a
    deployment signal to the configured internal release repository. The
    downstream workflow creates a pending GitHub Deployment, and the deployment

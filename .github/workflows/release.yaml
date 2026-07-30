@@ -60,11 +60,6 @@ on:
         required: false
         type: boolean
         default: false
-      create-github-release:
-        description: "Create the Git tag and GitHub Release for a custom stable release. Stable all releases do this automatically."
-        required: false
-        type: boolean
-        default: false
       helm-version:
         description: "Optional exact Helm chart version override for stable Helm-only releases."
         required: false
@@ -164,7 +159,6 @@ jobs:
       helm_version_override: ${{ steps.plan.outputs.helm_version_override }}
       update_ngc_metadata: ${{ steps.plan.outputs.update_ngc_metadata }}
       send_notifications: ${{ steps.plan.outputs.send_notifications }}
-      create_github_release: ${{ steps.plan.outputs.create_github_release }}
       dry_run: ${{ steps.plan.outputs.dry_run }}
     steps:
       # This job is intentionally the first gate. It resolves the user's
@@ -195,9 +189,6 @@ jobs:
             const releaseScope = isManual ? (inputs["release-scope"] || "all") : "all";
             const updateNgcMetadata = isManual && inputs["update-ngc-metadata"] === "true";
             const sendNotifications = inputs["send-notifications"] !== "false";
-            const createGitHubReleaseRequested = (
-              isManual && inputs["create-github-release"] === "true"
-            );
             const dryRun = isManual && inputs["dry-run"] === "true";
             const helmVersionOverride = isManual ? (inputs["helm-version"] ?? "").trim() : "";
 
@@ -226,14 +217,6 @@ jobs:
                 sourceSha = commit.sha;
               }
             }
-
-            const createGitHubRelease = (
-              releaseType === "stable"
-              && (
-                releaseScope === "all"
-                || (releaseScope === "custom" && createGitHubReleaseRequested)
-              )
-            );
 
             sourceSha = sourceSha.toLowerCase();
 
@@ -343,7 +326,6 @@ jobs:
             core.setOutput("helm_version_override", helmVersionOverride);
             core.setOutput("update_ngc_metadata", String(updateNgcMetadata));
             core.setOutput("send_notifications", String(sendNotifications));
-            core.setOutput("create_github_release", String(createGitHubRelease));
             core.setOutput("dry_run", String(dryRun));
 
             core.info(
@@ -1118,7 +1100,6 @@ jobs:
     needs: [plan-release, poll-final-release]
     if: >-
       needs.plan-release.outputs.release_type == 'stable' &&
-      needs.plan-release.outputs.create_github_release == 'true' &&
       needs.plan-release.outputs.dry_run != 'true' &&
       needs.poll-final-release.result == 'success'
     runs-on: ubuntu-latest
@@ -1141,6 +1122,17 @@ jobs:
           SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
         run: |
           set -euo pipefail
+
+          tag_sha="$(git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}^{commit}" || true)"
+          if [[ -n "${tag_sha}" && "${tag_sha}" != "${SOURCE_SHA}" ]]; then
+            echo "Tag ${RELEASE_TAG} already points to ${tag_sha}, not requested ${SOURCE_SHA}." >&2
+            exit 1
+          fi
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "GitHub Release ${RELEASE_TAG} already exists; nothing to do."
+            exit 0
+          fi
 
           notes_start_tag="$(
             {
