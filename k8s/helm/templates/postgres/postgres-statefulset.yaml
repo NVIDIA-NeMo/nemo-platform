@@ -113,7 +113,6 @@ spec:
         name: data
         labels:
           app.kubernetes.io/component: postgres
-          {{- include "nemo-platform.labels" . | nindent 10 }}
       spec:
         accessModes:
           - ReadWriteOnce
