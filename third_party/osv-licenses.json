@@ -367,6 +367,16 @@
         },
         {
           "package": {
+            "name": "claude-agent-sdk",
+            "version": "0.2.120",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "click",
             "version": "8.3.1",
             "ecosystem": "PyPI"
@@ -3414,7 +3424,47 @@
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "UNKNOWN"
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-adapters-claude",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-adapters-codex",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-adapters-common",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-adapters-hermes",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
           ]
         },
         {
@@ -3424,7 +3474,7 @@
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "UNKNOWN"
+            "Apache-2.0"
           ]
         },
         {
@@ -3631,6 +3681,26 @@
           "package": {
             "name": "openai",
             "version": "2.35.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "openai-codex",
+            "version": "0.144.4",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "openai-codex-cli-bin",
+            "version": "0.144.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -7733,6 +7803,16 @@
         },
         {
           "package": {
+            "name": "tomli-w",
+            "version": "1.2.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "tomlkit",
             "version": "0.14.0",
             "ecosystem": "PyPI"
@@ -8257,11 +8337,11 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 145
+      "count": 147
     },
     {
       "name": "Apache-2.0",
-      "count": 85
+      "count": 93
     },
     {
       "name": "non-standard",
@@ -8345,7 +8425,7 @@
     },
     {
       "name": "UNKNOWN",
-      "count": 6
+      "count": 4
     }
   ]
 }
