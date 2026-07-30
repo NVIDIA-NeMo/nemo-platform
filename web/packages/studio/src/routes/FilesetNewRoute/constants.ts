@@ -3,11 +3,6 @@
 
 import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 
-export const DATASET_NAME_REQUIRED_MESSAGE = 'Name is required.';
-
-export const DATASET_NAME_PATTERN_MESSAGE =
-  'Name must start with a lowercase letter, be 2–63 characters, and contain only lowercase letters, digits, hyphens, dots, underscores, plus, and @ (no consecutive hyphens, cannot end with a hyphen).';
-
 /** Per-purpose copy shown in the purpose selector. Kept adjacent to the enum so each value has user-facing explanation. */
 export const PURPOSE_OPTIONS: {
   value: FilesetPurpose;

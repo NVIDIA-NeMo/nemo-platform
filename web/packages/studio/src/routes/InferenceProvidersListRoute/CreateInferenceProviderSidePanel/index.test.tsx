@@ -16,7 +16,7 @@ import { CreateInferenceProviderSidePanel } from '@studio/routes/InferenceProvid
 import { render } from '@studio/tests/util/render';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 
 const mockOnClose = vi.fn();
 
@@ -115,18 +115,92 @@ describe('CreateInferenceProviderSidePanel', () => {
   });
 
   describe('Form validation', () => {
-    it('shows validation error for invalid name characters', async () => {
+    async function typeName(value: string) {
       const user = userEvent.setup();
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
       const dialog = await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       await user.click(screen.getByRole('option', { name: /openai compatible endpoint/i }));
       const nameInput = within(dialog).getByRole('textbox', { name: 'Name' });
-      fireEvent.change(nameInput, { target: { value: 'invalid name!' } });
+      fireEvent.change(nameInput, { target: { value } });
       fireEvent.blur(nameInput);
+    }
+
+    it('shows validation error for invalid name characters', async () => {
+      await typeName('invalid name!');
+      expect(await screen.findByText(/cannot contain spaces, "!"/)).toBeInTheDocument();
+    });
+
+    it('shows a lowercase error with a suggestion for a capitalized name', async () => {
+      await typeName('Sparl');
+      expect(await screen.findByText(/Name must be lowercase\. Try "sparl"\./)).toBeInTheDocument();
+    });
+
+    it('shows a specific error for a name that does not start with a letter', async () => {
+      await typeName('1provider');
+      expect(await screen.findByText(/must start with a lowercase letter/)).toBeInTheDocument();
+    });
+
+    it('shows a specific error for consecutive hyphens', async () => {
+      await typeName('my--provider');
+      expect(await screen.findByText(/cannot contain consecutive hyphens/)).toBeInTheDocument();
+    });
+
+    it('shows a specific error for a trailing hyphen', async () => {
+      await typeName('myprovider-');
+      expect(await screen.findByText(/cannot end with a hyphen/)).toBeInTheDocument();
+    });
+
+    it('shows a specific error for a name that is too long', async () => {
+      await typeName('a'.repeat(64));
+      expect(await screen.findByText(/must be 63 characters or fewer/)).toBeInTheDocument();
+    });
+
+    it('shows an error when the name is already taken', async () => {
+      server.use(
+        http.get(`${PLATFORM_BASE_URL}/apis/models/v2/workspaces/:workspace/providers`, () =>
+          HttpResponse.json({
+            data: [{ name: 'taken', host_url: 'https://api.example.com/v1' }],
+            pagination: {
+              page: 1,
+              page_size: 100,
+              current_page_size: 1,
+              total_pages: 1,
+              total_results: 1,
+            },
+          })
+        )
+      );
+      await typeName('taken');
       expect(
-        await screen.findByText(/Use only letters, numbers, hyphens, underscores, or dots/)
+        await screen.findByText(/A provider with this name already exists/)
       ).toBeInTheDocument();
+    });
+
+    it('blocks submit until the existing providers have loaded', async () => {
+      server.use(
+        http.get(
+          `${PLATFORM_BASE_URL}/apis/models/v2/workspaces/:workspace/providers`,
+          async () => {
+            await delay(200);
+            return HttpResponse.json({
+              data: [{ name: 'taken', host_url: 'https://api.example.com/v1' }],
+              pagination: {
+                page: 1,
+                page_size: 100,
+                current_page_size: 1,
+                total_pages: 1,
+                total_results: 1,
+              },
+            });
+          }
+        )
+      );
+      render(<CreateInferenceProviderSidePanel {...defaultProps} />);
+      const dialog = await screen.findByTestId('nv-side-panel-content');
+      const submit = within(dialog).getByRole('button', { name: 'Add Provider' });
+      expect(submit).toBeDisabled();
+      await waitFor(() => expect(submit).toBeEnabled());
     });
 
     it('shows validation error for invalid URL', async () => {

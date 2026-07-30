@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  FILESET_NAME_MAX_LENGTH,
-  FILESET_NAME_REGEXP,
-  toValidFilesetName,
-} from '@nemo/common/src/utils/filesetName';
+import { ENTITY_NAME_REGEXP } from '@nemo/common/src/utils/entityName';
+import { FILESET_NAME_MAX_LENGTH, toValidFilesetName } from '@nemo/common/src/utils/filesetName';
 
 describe('toValidFilesetName', () => {
-  describe('produces output that satisfies FILESET_NAME_REGEXP', () => {
+  describe('produces output that satisfies ENTITY_NAME_REGEXP', () => {
     const inputs = [
       'Qwen3.6-35B-A3B-MTP-GGUF', // HF slug with uppercase
       'mistralai/Mistral-7B-Instruct-v0.3',
@@ -25,7 +22,7 @@ describe('toValidFilesetName', () => {
     ];
     it.each(inputs)('%s -> matches regex', (input) => {
       const out = toValidFilesetName(input);
-      expect(out).toMatch(FILESET_NAME_REGEXP);
+      expect(out).toMatch(ENTITY_NAME_REGEXP);
     });
   });
 
