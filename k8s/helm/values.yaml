@@ -260,8 +260,8 @@ clickhouse:
   auth:
     # -- ClickHouse username used by Intake.
     username: nemo
-    # -- ClickHouse password used when auth.existingSecret is empty. If empty, the chart generates a random password.
-    password: ""
+    # -- ClickHouse password used when auth.existingSecret is empty. If unset, the chart generates a random password.
+    password: null
     # -- ClickHouse database used by Intake.
     database: intake
     # -- Name of an existing Secret containing the ClickHouse password. If empty, the chart creates one.
