@@ -72,6 +72,7 @@ from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
+from nemo_experimentalist_plugin.experimentalist.reporting import reward_scalar
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 from nemo_platform import AsyncNeMoPlatform
@@ -392,6 +393,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         backend = deps.backend
         workspace = deps.workspace
         config = deps.config if deps.config is not None else self.config
+        reporter = getattr(deps, "reporter", None)
 
         # ---- Preflight: fail fast when persistence is enabled but git is missing.
         if (config.storage.archive_candidates or config.storage.publish_winner) and shutil.which("git") is None:
@@ -501,6 +503,15 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             self._delete_all_artifacts(from_round=round_num)
             evolution_tree = EvolutionTree.from_dir(agents_dir)
             candidates: list[Candidate] = list(evolution_tree.survivors(round_num))
+            if reporter:
+                # agent-0 is not re-evaluated on resume; seed the delta baseline
+                # from its cached validation reward so later deltas are correct.
+                baseline_node = next(
+                    (n for n in evolution_tree.nodes.values() if n.label == _BASELINE_AGENT_LABEL),
+                    None,
+                )
+                if baseline_node is not None and baseline_node.val_reward:
+                    reporter.seed_baseline(reward_scalar(baseline_node.val_reward))
             run_entity = self._load_run_entity() or await self._create_experiment_run(
                 workspace=workspace,
                 backend=backend,
@@ -512,6 +523,8 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         else:
             round_num = 0
             logger.info("phase=baseline round=0")
+            if reporter:
+                reporter.progress(phase="baseline", completed=0, total=config.max_rounds)
             run_entity = await self._create_experiment_run(
                 workspace=workspace,
                 backend=backend,
@@ -564,6 +577,13 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                     backend=backend,
                     run_id=run_entity.id or "",
                 )
+                if reporter:
+                    reporter.candidate_evaluated(
+                        label=candidates[0].label,
+                        split="validation",
+                        reward=reward_scalar(validation_result.aggregate_metrics),
+                        artifacts=self._results_dir(validation_result.id),
+                    )
             except Exception:
                 run_entity.status = "failed"
                 await backend.update_run(workspace=workspace, run=run_entity)
@@ -656,6 +676,13 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                                 "train_reward_details": train_candidate_results[survivor.label].trials,
                             },
                         )
+                        if reporter:
+                            reporter.candidate_evaluated(
+                                label=survivor.label,
+                                split="train",
+                                reward=reward_scalar(train_candidate_results[survivor.label].aggregate_metrics),
+                                artifacts=self._results_dir(train_candidate_results[survivor.label].id),
+                            )
                 analysis = await self._analyze_round(
                     analysis_dir=analysis_dir,
                     dataset=train_eval_dataset,
@@ -732,6 +759,25 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                 candidates = survivors + new_candidates
                 round_num += 1
                 phase = "exploration" if round_num % 2 == 0 else "exploitation"
+                if reporter:
+                    reporter.progress(
+                        phase="evaluating candidates",
+                        completed=round_num,
+                        total=config.max_rounds,
+                    )
+                    # Announce candidates before the (batched) validation eval,
+                    # so the narration reports work beginning, not completed.
+                    # Mirror _evaluate_validation_candidates' own filter so we
+                    # only announce candidates that will actually be evaluated
+                    # (cached survivors already carry a validation_reward).
+                    pending_validation = [c for c in candidates if c.validation_reward is None]
+                    for i, candidate in enumerate(pending_validation, start=1):
+                        reporter.candidate_started(
+                            label=candidate.label,
+                            optimization=candidate.optimization,
+                            i=i,
+                            n=len(pending_validation),
+                        )
 
                 validation_candidate_results = await self._evaluate_validation_candidates(
                     dataset=validation_eval_dataset,
@@ -756,6 +802,13 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                                 "validation_reward_details": validation_candidate_results[candidate.label].trials,
                             },
                         )
+                        if reporter:
+                            reporter.candidate_evaluated(
+                                label=candidate.label,
+                                split="validation",
+                                reward=reward_scalar(validation_candidate_results[candidate.label].aggregate_metrics),
+                                artifacts=self._results_dir(validation_candidate_results[candidate.label].id),
+                            )
                 if not config.disable_trajectory_scoring:
                     trajectory_results = await self._reward_trajectories(
                         workspace=workspace,
@@ -1201,6 +1254,9 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             if best is None or n > best[0]:
                 best = (n, p)
         return best[1] if best else None
+
+    def _results_dir(self, result_id: str) -> Path:
+        return self.working_dir / "eval-and-optimize" / "results" / result_id
 
     def _load_goal_tree(
         self,
