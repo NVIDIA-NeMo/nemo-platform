@@ -31,15 +31,12 @@ def _example_yaml_config() -> dict:
                     "provider": "nvidia",
                     "model": "nvidia/nemotron-3-nano-30b-a3b",
                     "api_key_env": "NVIDIA_API_KEY",
+                    "base_url": "https://integrate.api.nvidia.com/v1",
                     "temperature": 0.0,
                 },
                 "settings": {
-                    "python_env": "HERMES_ADAPTER_PYTHON",
-                    "base_url": "https://integrate.api.nvidia.com/v1",
-                    "max_iterations": 1,
                     "max_tokens": 512,
                     "reasoning_config": {"effort": "none"},
-                    "enabled_toolsets": [],
                 },
             },
             "codex": {
@@ -96,7 +93,8 @@ class TestAgentConfig:
         assert config.default_harness == "hermes"
         assert config.harnesses["hermes"].model is not None
         assert config.harnesses["hermes"].model.provider == "nvidia"
-        assert config.harnesses["hermes"].settings["python_env"] == "HERMES_ADAPTER_PYTHON"
+        assert config.harnesses["hermes"].model.base_url == "https://integrate.api.nvidia.com/v1"
+        assert config.harnesses["hermes"].settings["max_tokens"] == 512
         assert config.harnesses["codex"].settings["sandbox"] == "workspace-write"
         assert config.models["default"].model == "openai/gpt-5.4"
         assert config.instructions is not None

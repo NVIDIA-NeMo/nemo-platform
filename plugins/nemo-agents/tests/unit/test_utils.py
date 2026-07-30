@@ -151,7 +151,11 @@ class TestInjectFabricGatewayUrl:
                 "hermes": {
                     "kind": "hermes",
                     "model": {"provider": "nvidia", "model": "test-harness-model"},
-                }
+                },
+                "claude": {
+                    "kind": "claude",
+                    "model": {"provider": "anthropic", "model": "anthropic/claude-sonnet-4-5"},
+                },
             },
         }
 
@@ -160,6 +164,7 @@ class TestInjectFabricGatewayUrl:
 
         assert result["models"]["default"]["base_url"] == expected_url
         assert result["harnesses"]["hermes"]["model"]["base_url"] == expected_url
+        assert "base_url" not in result["harnesses"]["claude"]["model"]
         assert "settings" not in result["models"]["default"]
         assert "settings" not in result["harnesses"]["hermes"]["model"]
         assert "settings" not in config["models"]["default"]

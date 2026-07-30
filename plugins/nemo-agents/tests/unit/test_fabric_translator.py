@@ -27,12 +27,10 @@ def _example_yaml_config() -> dict[str, Any]:
                     "provider": "nvidia",
                     "model": "nvidia/nemotron-3-nano-30b-a3b",
                     "api_key_env": "NVIDIA_API_KEY",
+                    "base_url": "https://integrate.api.nvidia.com/v1",
                     "temperature": 0.0,
                 },
-                "settings": {
-                    "python_env": "HERMES_ADAPTER_PYTHON",
-                    "base_url": "https://integrate.api.nvidia.com/v1",
-                },
+                "settings": {"max_tokens": 512},
             },
             "codex": {
                 "kind": "codex",
@@ -92,7 +90,7 @@ class TestTranslateAgentConfig:
         assert deepagents_config.harness.adapter_id == "nvidia.fabric.langchain.deepagents"
         assert deepagents_config.harness.settings["deepagents"] == {}
         assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
-        assert hermes_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
+        assert hermes_config.harness.settings["max_tokens"] == 512
 
     def test_translates_default_harness(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
@@ -103,11 +101,12 @@ class TestTranslateAgentConfig:
         assert fabric_config.metadata.description == "Example Agent"
         assert fabric_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert fabric_config.harness.resolution == "preinstalled"
-        assert fabric_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
+        assert fabric_config.harness.settings["max_tokens"] == 512
         assert fabric_config.instructions.system.content == "You are a concise assistant."
         assert fabric_config.instructions.system.mode == "replace"
         assert fabric_config.models["default"].provider == "nvidia"
         assert fabric_config.models["default"].model == "nvidia/nemotron-3-nano-30b-a3b"
+        assert fabric_config.models["default"].base_url == "https://integrate.api.nvidia.com/v1"
         assert fabric_config.environment.provider == "local"
         assert fabric_config.environment.workspace == "./workspace"
         assert fabric_config.environment.artifacts == "./artifacts"

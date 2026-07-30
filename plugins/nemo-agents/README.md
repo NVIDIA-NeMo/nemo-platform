@@ -89,7 +89,7 @@ the platform seed job. For local development, create it manually:
 ```bash
 # Store the API key as a secret
 nemo secrets create ngc-api-key \
-    --data "$NVIDIA_API_KEY"
+    --value "$NVIDIA_API_KEY"
 
 # Create the model provider
 nemo inference providers create nvidia-build \
