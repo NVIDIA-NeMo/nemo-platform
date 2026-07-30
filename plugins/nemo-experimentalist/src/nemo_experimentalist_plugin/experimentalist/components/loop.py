@@ -767,12 +767,16 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                     )
                     # Announce candidates before the (batched) validation eval,
                     # so the narration reports work beginning, not completed.
-                    for i, candidate in enumerate(candidates, start=1):
+                    # Mirror _evaluate_validation_candidates' own filter so we
+                    # only announce candidates that will actually be evaluated
+                    # (cached survivors already carry a validation_reward).
+                    pending_validation = [c for c in candidates if c.validation_reward is None]
+                    for i, candidate in enumerate(pending_validation, start=1):
                         reporter.candidate_started(
                             label=candidate.label,
                             optimization=candidate.optimization,
                             i=i,
-                            n=len(candidates),
+                            n=len(pending_validation),
                         )
 
                 validation_candidate_results = await self._evaluate_validation_candidates(
