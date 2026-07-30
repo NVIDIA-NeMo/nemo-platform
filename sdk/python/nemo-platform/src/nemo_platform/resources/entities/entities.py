@@ -98,8 +98,8 @@ class EntitiesResource(SyncAPIResource):
           data: Entity-specific data (schema is opaque to entity store, validated by client SDK)
 
           name: Entity name (optional - auto-generated if not provided). Name must start with a
-              lowercase letter, be 2-63 characters, and contain only lowercase letters,
-              digits, and hyphens (no consecutive hyphens, cannot end with a hyphen).
+              lowercase letter, be 2-63 characters, and use lowercase letters, digits,
+              hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
 
           parent: Parent entity ID for nested entities
 
@@ -443,8 +443,8 @@ class EntitiesResource(SyncAPIResource):
               current version matches.
 
           new_name: Updated entity name (optional). Name must start with a lowercase letter, be 2-63
-              characters, and contain only lowercase letters, digits, and hyphens (no
-              consecutive hyphens, cannot end with a hyphen).
+              characters, and use lowercase letters, digits, hyphens, and dots (no consecutive
+              hyphens, cannot end with a hyphen).
 
           project: The name of the project associated with this entity
 
@@ -545,8 +545,8 @@ class AsyncEntitiesResource(AsyncAPIResource):
           data: Entity-specific data (schema is opaque to entity store, validated by client SDK)
 
           name: Entity name (optional - auto-generated if not provided). Name must start with a
-              lowercase letter, be 2-63 characters, and contain only lowercase letters,
-              digits, and hyphens (no consecutive hyphens, cannot end with a hyphen).
+              lowercase letter, be 2-63 characters, and use lowercase letters, digits,
+              hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
 
           parent: Parent entity ID for nested entities
 
@@ -892,8 +892,8 @@ class AsyncEntitiesResource(AsyncAPIResource):
               current version matches.
 
           new_name: Updated entity name (optional). Name must start with a lowercase letter, be 2-63
-              characters, and contain only lowercase letters, digits, and hyphens (no
-              consecutive hyphens, cannot end with a hyphen).
+              characters, and use lowercase letters, digits, hyphens, and dots (no consecutive
+              hyphens, cannot end with a hyphen).
 
           project: The name of the project associated with this entity
 

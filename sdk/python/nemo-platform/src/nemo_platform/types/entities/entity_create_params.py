@@ -34,9 +34,9 @@ class EntityCreateParams(TypedDict, total=False):
     name: str
     """Entity name (optional - auto-generated if not provided).
 
-    Name must start with a lowercase letter, be 2-63 characters, and contain only
-    lowercase letters, digits, and hyphens (no consecutive hyphens, cannot end with
-    a hyphen).
+    Name must start with a lowercase letter, be 2-63 characters, and use lowercase
+    letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a
+    hyphen).
     """
 
     parent: str

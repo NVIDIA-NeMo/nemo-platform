@@ -34,7 +34,7 @@ def create_projects(
     name: Annotated[
         str | None,
         typer.Argument(
-            help="Project name (unique within workspace). Name must start with a lowercase letter, be 2-63 characters, and contain only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot end with a hyphen). (required)"
+            help="Project name (unique within workspace). Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen). (required)"
         ),
     ] = None,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
@@ -95,7 +95,7 @@ def create_projects(
         ["name"],
         "projects create",
         {
-            "name": "Project name (unique within workspace). Name must start with a lowercase letter, be 2-63 characters, and contain only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot end with a hyphen). (required)",
+            "name": "Project name (unique within workspace). Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen). (required)",
         },
     )
 

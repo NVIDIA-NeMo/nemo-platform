@@ -13,10 +13,11 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, NotRequired, TypedDict
 
+from nemo_platform_plugin.entity_naming import NAME_MAX_LENGTH, NAME_PATTERN, NAME_PATTERN_DESCRIPTION
 from nemo_platform_plugin.files.metadata import FilesetMetadata
 from nemo_platform_plugin.files.storage_config import StorageConfig
 from nemo_platform_plugin.schema import Page
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FilesetPurpose(StrEnum):
@@ -74,18 +75,15 @@ FilesetPage = Page[FilesetOutput]
 # Request types
 # ---------------------------------------------------------------------------
 
-# Mirrors ``nmp.common.entities.constants.REGEX_WORD_CHARACTER_DOT_DASH`` (and its
-# description / MAX_LENGTH_255) — inlined so this module stays a dependency-free leaf
-# node. Reuse these constants for any fileset-name check rather than restating them.
-NAME_PATTERN = r"^[\w\-.]+$"
-NAME_PATTERN_DESCRIPTION = "Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots."
 MAX_LENGTH = 255
 
 
 class CreateFilesetRequest(BaseModel):
+    model_config = ConfigDict(regex_engine="python-re")
+
     name: str = Field(
         description=f"The name of the fileset. {NAME_PATTERN_DESCRIPTION}",
-        max_length=MAX_LENGTH,
+        max_length=NAME_MAX_LENGTH,
         pattern=NAME_PATTERN,
         examples=["training-data-v1", "llama-checkpoint"],
     )

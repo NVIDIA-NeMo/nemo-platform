@@ -41,7 +41,7 @@ def create_workspaces(
     name: Annotated[
         str | None,
         typer.Argument(
-            help="Workspace name (unique identifier). Name must start with a lowercase letter, be 2-63 characters, and contain only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot end with a hyphen). (required)"
+            help="Workspace name (unique identifier). Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen). (required)"
         ),
     ] = None,
     wait_role_propagation: Annotated[
@@ -112,7 +112,7 @@ def create_workspaces(
         ["name"],
         "workspaces create",
         {
-            "name": "Workspace name (unique identifier). Name must start with a lowercase letter, be 2-63 characters, and contain only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot end with a hyphen). (required)",
+            "name": "Workspace name (unique identifier). Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen). (required)",
         },
     )
 

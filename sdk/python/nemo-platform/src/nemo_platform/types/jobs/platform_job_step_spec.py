@@ -45,7 +45,7 @@ class PlatformJobStepSpec(BaseModel):
     """The name of the step.
 
     Must be unique for all steps in a job. Name must start with a lowercase letter,
-    be 2-63 characters, and contain only lowercase letters, digits, and hyphens (no
+    be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
     consecutive hyphens, cannot end with a hyphen).
     """
 
