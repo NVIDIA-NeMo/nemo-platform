@@ -5,12 +5,17 @@ description = "Eval Author agent for NeMo Platform (hard-depends on Experimental
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "pydantic>=2",
-    "harbor>=0.16",
+    # Floor is 0.18 because discovery validates through Harbor's own APIs instead of
+    # reimplementing its rules: Task.is_valid_dir, get_required_host_vars, and the
+    # JobConfig schema are load-bearing, and an older Harbor fails at import rather
+    # than at the point of use.
+    "harbor>=0.18",
     "nooa",
     "nemo-experimentalist-plugin",
     "nemo-insights-plugin",
     "nemo-platform",
     "nemo-platform-plugin",
+    "pyyaml>=6.0.3",
     "tomlkit>=0.13.3",
 ]
 

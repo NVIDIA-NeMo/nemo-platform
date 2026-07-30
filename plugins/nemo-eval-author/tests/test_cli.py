@@ -1,11 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Scaffolding tests: the command tree exists, and every verb still refuses to run.
+"""Scaffolding tests: the command tree exists, and unimplemented verbs still refuse to run.
 
 The entry-point cases cover the ``pyproject.toml`` wiring that nothing else exercises. A
 typo in the key or the import path does not fail an import; it just makes ``nemo
 eval-author`` quietly missing from the CLI, which no unit test of this module would catch.
+
+``discover`` has shipped, so it is asserted on in ``test_discovery_cli.py`` instead. It is
+listed in ``_IMPLEMENTED_VERBS`` here only so ``--help`` still has to show it.
 """
 
 from importlib.metadata import EntryPoint, entry_points
@@ -19,12 +22,13 @@ runner = CliRunner()
 
 # Each verb is a placeholder owned by the child ticket named beside it.
 _PLACEHOLDER_VERBS = [
-    ("discover", "ASE-677"),
     ("audit", "ASE-676"),
     ("propose", "ASE-675"),
     ("run", "ASE-673"),
     ("doctor", "ASE-678"),
 ]
+
+_IMPLEMENTED_VERBS = ["discover"]
 
 
 @pytest.fixture
@@ -42,7 +46,7 @@ def test_help_lists_every_verb(app: typer.Typer) -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0, result.output
-    for command, _ in _PLACEHOLDER_VERBS:
+    for command in [*(name for name, _ in _PLACEHOLDER_VERBS), *_IMPLEMENTED_VERBS]:
         assert command in result.output
 
 
