@@ -76,26 +76,11 @@ spec:
               containerPort: 9000
               protocol: TCP
           startupProbe:
-            httpGet:
-              path: /ping
-              port: http
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 60
+            {{- toYaml .Values.clickhouse.startupProbe | nindent 12 }}
           livenessProbe:
-            httpGet:
-              path: /ping
-              port: http
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            {{- toYaml .Values.clickhouse.livenessProbe | nindent 12 }}
           readinessProbe:
-            httpGet:
-              path: /ping
-              port: http
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
+            {{- toYaml .Values.clickhouse.readinessProbe | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /var/lib/clickhouse
@@ -112,7 +97,7 @@ spec:
         name: data
         labels:
           app.kubernetes.io/component: clickhouse
-          {{- include "nemo-platform.labels" . | nindent 10 }}
+          {{- include "nemo-platform.selectorLabels" . | nindent 10 }}
       spec:
         accessModes:
           - ReadWriteOnce

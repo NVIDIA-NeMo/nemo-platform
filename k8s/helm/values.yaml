@@ -287,6 +287,33 @@ clickhouse:
     requests:
       cpu: "2"
       memory: 8Gi
+  # -- Startup probe configuration for the ClickHouse container.
+  # @default -- This object has the following default values for the startup probe configuration.
+  startupProbe:
+    httpGet:
+      path: /ping
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 60
+  # -- Liveness probe configuration for the ClickHouse container.
+  # @default -- This object has the following default values for the liveness probe configuration.
+  livenessProbe:
+    httpGet:
+      path: /ping
+      port: http
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe configuration for the ClickHouse container.
+  # @default -- This object has the following default values for the readiness probe configuration.
+  readinessProbe:
+    httpGet:
+      path: /ping
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
   # -- Optional pod security context for the ClickHouse pod.
   podSecurityContext: {}
   # -- Optional container security context for the ClickHouse container.

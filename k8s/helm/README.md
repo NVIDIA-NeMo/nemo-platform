@@ -196,6 +196,7 @@ and
 | clickhouse.image.pullPolicy | string | `"IfNotPresent"` | ClickHouse image pull policy. |
 | clickhouse.image.repository | string | `"docker.io/clickhouse/clickhouse-server"` | ClickHouse image repository. Intake is tested against the 26.3 LTS release line. |
 | clickhouse.image.tag | string | `"26.3"` | ClickHouse image tag. |
+| clickhouse.livenessProbe | object | This object has the following default values for the liveness probe configuration. | Liveness probe configuration for the ClickHouse container. |
 | clickhouse.nodeSelector | object | `{}` | Node selector for the ClickHouse pod. |
 | clickhouse.persistence.enabled | bool | `true` | Whether to persist embedded ClickHouse data. |
 | clickhouse.persistence.size | string | `"20Gi"` | PersistentVolumeClaim size. See the Intake and ClickHouse sizing guidance in the chart README. |
@@ -203,6 +204,7 @@ and
 | clickhouse.podAnnotations | object | `{}` | Annotations to add to the ClickHouse pod. |
 | clickhouse.podLabels | object | `{}` | Additional labels to add to the ClickHouse pod. |
 | clickhouse.podSecurityContext | object | `{}` | Optional pod security context for the ClickHouse pod. |
+| clickhouse.readinessProbe | object | This object has the following default values for the readiness probe configuration. | Readiness probe configuration for the ClickHouse container. |
 | clickhouse.resources | object | `{"requests":{"cpu":"2","memory":"8Gi"}}` | Resource requests and limits for the ClickHouse container. The defaults are the supported small-volume starting point. |
 | clickhouse.securityContext | object | `{}` | Optional container security context for the ClickHouse container. |
 | clickhouse.service.annotations | object | `{}` | Annotations to add to the ClickHouse Service. |
@@ -213,6 +215,7 @@ and
 | clickhouse.serviceAccount.automount | bool | `false` | Automatically mount the ServiceAccount's API credentials. |
 | clickhouse.serviceAccount.create | bool | `true` | Specifies whether a service account should be created for the ClickHouse pod. |
 | clickhouse.serviceAccount.name | string | `""` | The name of the service account to use. If not set and create is true, a name is generated from the release fullname. |
+| clickhouse.startupProbe | object | This object has the following default values for the startup probe configuration. | Startup probe configuration for the ClickHouse container. |
 | clickhouse.tolerations | list | `[]` | Tolerations for the ClickHouse pod. |
 | core | object | This object has the following default values for the core deployment configuration. | Core deployment configuration settings |
 | core.controller.affinity | object | `{}` | Affinity configuration for the controller service. |

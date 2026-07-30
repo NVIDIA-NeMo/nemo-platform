@@ -77,6 +77,21 @@ if grep -Fq "not-the-generated-key" <<<"${generated_clickhouse_output}"; then
   exit 1
 fi
 
+# ClickHouse probe overrides must render, and PVC template labels must remain
+# stable across chart and application version upgrades.
+clickhouse_statefulset_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --show-only templates/clickhouse/clickhouse-statefulset.yaml \
+  --set clickhouse.startupProbe.periodSeconds=17)
+grep -A6 -F "startupProbe:" <<<"${clickhouse_statefulset_output}" \
+  | grep -Fq "periodSeconds: 17"
+clickhouse_pvc_template=$(sed -n '/^  volumeClaimTemplates:/,$p' <<<"${clickhouse_statefulset_output}")
+if grep -Eq "helm.sh/chart|app.kubernetes.io/version" <<<"${clickhouse_pvc_template}"; then
+  echo "ClickHouse PVC template contains labels that change across chart upgrades" >&2
+  exit 1
+fi
+grep -Fq "app.kubernetes.io/component: clickhouse" <<<"${clickhouse_pvc_template}"
+grep -Fq "app.kubernetes.io/instance: ${HELM_RELEASE_NAME}" <<<"${clickhouse_pvc_template}"
+
 # Validate the Helm chart by rendering templates with all values files in ci/ directory
 shopt -s nullglob
 for value_file in "${HELM_FOLDER}"/ci/*.yaml; do
