@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Local-dev SandboxPolicy for OpenShell-backed NAT agent deployments.
+#
+# The backend GENERATES an equivalent default-deny policy from the executor's
+# `platform_egress` config + the sandbox filesystem defaults, so this
+# file is not required. It stays as (a) a readable reference for what the generator
+# emits, and (b) an OVERRIDE example: point the `openshell` executor's
+# `default_policy_path` at it in packages/nmp_platform/config/local.yaml to pin a
+# hand-written policy instead. The mandatory platform egress rule is injected either
+# way, so a policy here can never sever the sandbox's path back to the platform.
+#
+# What each block is for (all verified against a live gateway):
+#   filesystem_policy.read_only   /opt holds the uv-managed interpreter the venv
+#                                 nat launcher execs; /usr,/bin,/lib,/etc are the base.
+#   filesystem_policy.read_write  /home/sandbox is the serve workdir (NAT writes
+#                                 <cwd>/.tmp); /dev/shm is needed by nat[most]'s
+#                                 Dask cluster (POSIX semaphores).
+#   process.run_as_*              the workload runs as the image's 'sandbox' user.
+#   network_policies.igw          egress is restricted to the NeMo Inference
+#                                 Gateway ONLY (host.docker.internal:8080 on the
+#                                 docker driver); everything else is blocked. The
+#                                 connecting binary is the venv/uv python, so it
+#                                 must be listed here (not curl).
+
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only: [/usr, /bin, /lib, /etc, /opt, /proc, /dev/urandom, /var/log]
+  read_write: [/workspace, /home/sandbox, /sandbox, /tmp, /dev/null, /dev/shm]
+
+landlock:
+  compatibility: best_effort
+
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+
+network_policies:
+  igw:
+    name: nemo-inference-gateway
+    endpoints:
+      - { host: host.docker.internal, port: 8080, protocol: rest, enforcement: enforce, access: full }
+    binaries:
+      - { path: /usr/bin/curl }
+      - { path: /opt/uv/python/cpython-3.13.7-linux-aarch64-gnu/bin/python3.13 }
+      - { path: /workspace/.venv/bin/python3.13 }

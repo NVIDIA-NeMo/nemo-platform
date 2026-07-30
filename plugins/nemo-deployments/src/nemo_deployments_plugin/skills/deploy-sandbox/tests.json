@@ -1,0 +1,65 @@
+{
+  "skill": "deploy-sandbox",
+  "tests": [
+    {
+      "type": "explicit",
+      "prompt": "Use the deploy-sandbox skill to deploy my agent under an OpenShell sandbox.",
+      "expected_skill": "deploy-sandbox"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Run deploy-sandbox for nemo-agent-igw:test with the openshell-local executor.",
+      "expected_skill": "deploy-sandbox"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Deploy this built image as a sandbox and show me the openshell egress policy proof.",
+      "expected_skill": "deploy-sandbox"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Deploy this agent as a sandbox so its model traffic can only reach the platform gateway.",
+      "expected_skill": "deploy-sandbox"
+    },
+    {
+      "type": "implicit",
+      "prompt": "I want my agent to run under a Landlock and default-deny egress policy when deployed.",
+      "expected_skill": "deploy-sandbox"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Govern my agent's network egress at deploy time on the openshell-local executor.",
+      "expected_skill": "deploy-sandbox"
+    },
+    {
+      "type": "contextual",
+      "prompt": "Scaffold a new NAT agent from my spec and generate its workflow YAML.",
+      "expected_skill_not": "deploy-sandbox"
+    },
+    {
+      "type": "contextual",
+      "prompt": "The platform is up and my agent is deployed. Now just ask it a question about refund policy.",
+      "expected_skill_not": "deploy-sandbox"
+    },
+    {
+      "type": "contextual",
+      "prompt": "Install the platform and start the OpenShell gateway before I do anything else.",
+      "expected_skill_not": "deploy-sandbox"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Build me a new React component for the settings page.",
+      "expected_skill_not": "deploy-sandbox"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Write a SQL query to aggregate monthly revenue by region.",
+      "expected_skill_not": "deploy-sandbox"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Summarize this PDF and pull out the action items.",
+      "expected_skill_not": "deploy-sandbox"
+    }
+  ]
+}
