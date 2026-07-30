@@ -225,8 +225,11 @@ STUDIO_CODING_AGENT_CONTEXT = "\n".join(
             "call instead."
         ),
         (
-            "For clarification, multiple-choice, yes/no, or freeform questions that do NOT map to one of "
-            "the select_* tools, ask one concise plain-text question."
+            "For any question with a finite set of choices that does NOT map to a select_* tool — including "
+            "yes/no, multiple-choice, 'pick one of these', or whenever you would offer the user options to "
+            "choose from — you MUST call AskUserQuestion to render a selectable options picker instead of "
+            "listing the choices in plain text. Only ask a concise plain-text question for genuinely "
+            "open-ended, free-form input that has no discrete options."
         ),
         (
             "Only fall back to plain chat questions when no suitable UI tool exists, the user already "
