@@ -69,6 +69,17 @@ spec:
             {{- end }}
             - name: NMP_CONFIG_FILE_PATH
               value: /etc/nmp/config.yaml
+            - name: NMP_INTAKE_CLICKHOUSE_URL
+              value: {{ include "nemo-common.clickhouse.url" . | quote }}
+            - name: NMP_INTAKE_CLICKHOUSE_USER
+              value: {{ include "nemo-common.clickhouse.user" . | quote }}
+            - name: NMP_INTAKE_CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nemo-common.clickhouse.secretName" . | quote }}
+                  key: {{ include "nemo-common.clickhouse.passwordKey" . | quote }}
+            - name: NMP_INTAKE_CLICKHOUSE_DATABASE
+              value: {{ include "nemo-common.clickhouse.database" . | quote }}
             - name: NMP_BASE_URL
               {{- if include "nemo-platform.embeddedPdpEnabled" . }}
               value: {{ include "nemo-platform.apiLoopbackBaseUrl" . | quote }}

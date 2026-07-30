@@ -343,6 +343,90 @@ nemo-common.database.password generates a POSTGRES_DB_PASSWORD environment value
 {{- end -}}
 
 {{/*
+Embedded ClickHouse full name (service and generated secret name).
+*/}}
+{{- define "nemo-common.clickhouse.fullname" -}}
+{{- printf "%s-clickhouse" (include "nemo-platform.fullname" . | trunc 51 | trimSuffix "-") -}}
+{{- end -}}
+
+{{/*
+Name of the service account to use for the embedded ClickHouse pod.
+*/}}
+{{- define "nemo-common.clickhouse.serviceAccountName" -}}
+{{- if .Values.clickhouse.serviceAccount.create -}}
+{{- default (include "nemo-common.clickhouse.fullname" .) .Values.clickhouse.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.clickhouse.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Whether the embedded ClickHouse should be rendered.
+*/}}
+{{- define "nemo-common.clickhouse.enabled" -}}
+{{- if .Values.clickhouse.enabled -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+ClickHouse HTTP URL used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.url" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- printf "http://%s:%d" (include "nemo-common.clickhouse.fullname" .) (.Values.clickhouse.service.httpPort | int) -}}
+{{- else -}}
+{{- $host := required "externalClickhouse.host is required when clickhouse.enabled=false" .Values.externalClickhouse.host -}}
+{{- $scheme := ternary "https" "http" .Values.externalClickhouse.secure -}}
+{{- printf "%s://%s:%d" $scheme $host (.Values.externalClickhouse.port | int) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+ClickHouse username used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.user" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- .Values.clickhouse.auth.username -}}
+{{- else -}}
+{{- .Values.externalClickhouse.user -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+ClickHouse database used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.database" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- .Values.clickhouse.auth.database -}}
+{{- else -}}
+{{- .Values.externalClickhouse.database -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Secret containing the ClickHouse password used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.secretName" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- default (include "nemo-common.clickhouse.fullname" .) .Values.clickhouse.auth.existingSecret -}}
+{{- else -}}
+{{- required "externalClickhouse.existingSecret is required when clickhouse.enabled=false" .Values.externalClickhouse.existingSecret -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Key containing the ClickHouse password used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.passwordKey" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- .Values.clickhouse.auth.existingSecretPasswordKey | default "password" -}}
+{{- else -}}
+{{- required "externalClickhouse.existingSecretPasswordKey is required when clickhouse.enabled=false" .Values.externalClickhouse.existingSecretPasswordKey -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 nemo-common.otel-env generates an env var array from the top-level telemetry configuration.
 Follows the specification at https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
 

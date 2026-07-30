@@ -36,6 +36,24 @@ envoy_autoscaling_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}"
 grep -Fq "envoyProxy.resources.requests.cpu is required when Envoy CPU autoscaling is enabled" \
   <<<"${envoy_autoscaling_output}"
 
+# Intake must not render with an incomplete external ClickHouse connection.
+external_clickhouse_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set clickhouse.enabled=false 2>&1) && {
+  echo "Intake accepted a missing external ClickHouse host" >&2
+  exit 1
+}
+grep -Fq "externalClickhouse.host is required when clickhouse.enabled=false" \
+  <<<"${external_clickhouse_output}"
+
+external_clickhouse_secret_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set clickhouse.enabled=false \
+  --set externalClickhouse.host=clickhouse.example.internal 2>&1) && {
+  echo "External ClickHouse accepted a missing credentials Secret" >&2
+  exit 1
+}
+grep -Fq "externalClickhouse.existingSecret is required when clickhouse.enabled=false" \
+  <<<"${external_clickhouse_secret_output}"
+
 # Validate the Helm chart by rendering templates with all values files in ci/ directory
 shopt -s nullglob
 for value_file in "${HELM_FOLDER}"/ci/*.yaml; do

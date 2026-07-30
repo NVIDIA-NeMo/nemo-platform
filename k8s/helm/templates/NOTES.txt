@@ -95,6 +95,19 @@ Successfully installed {{ .Chart.Name }}-{{ .Chart.Version }}, named {{ .Release
 {{- end }}
 {{- end }}
 
+  Intake is enabled.
+{{- if .Values.clickhouse.enabled }}
+  The embedded single-node ClickHouse is intended for non-critical workloads.
+  Use an external replicated ClickHouse for production high availability.
+{{- if not .Values.clickhouse.persistence.enabled }}
+
+  CLICKHOUSE PERSISTENCE DISABLED. Intake telemetry will be lost if the pod restarts.
+{{- end }}
+{{- else }}
+  Intake is configured to use external ClickHouse at
+  {{ include "nemo-common.clickhouse.url" . }}.
+{{- end }}
+
 {{- if or .Values.multinodeNetworking.aws.enabled .Values.multinodeNetworking.azure.enabled .Values.multinodeNetworking.gcp.enabled .Values.multinodeNetworking.oci.enabled }}
 {{- $ncclFullname := include "nemo-platform.fullname" . }}
 {{- $ncclTestBase := printf "%s-nccl-test" ($ncclFullname | trunc 40 | trimSuffix "-") | trunc 42 }}
