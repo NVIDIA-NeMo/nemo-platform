@@ -120,13 +120,18 @@ def test_rewrite_fabric_config_base_urls_rebases_igw_host() -> None:
             "default": {
                 "provider": "openai",
                 "model": "test-model",
-                "settings": {
-                    "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
-                },
+                "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
             }
         },
         "harnesses": {
             "main": {
+                "model": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                }
+            },
+            "legacy": {
                 "model": {
                     "provider": "openai",
                     "model": "test-model",
@@ -139,9 +144,10 @@ def test_rewrite_fabric_config_base_urls_rebases_igw_host() -> None:
     }
     result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
     expected = "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-    assert result["models"]["default"]["settings"]["base_url"] == expected
-    assert result["harnesses"]["main"]["model"]["settings"]["base_url"] == expected
-    assert "localhost" in config["models"]["default"]["settings"]["base_url"]
+    assert result["models"]["default"]["base_url"] == expected
+    assert result["harnesses"]["main"]["model"]["base_url"] == expected
+    assert result["harnesses"]["legacy"]["model"]["settings"]["base_url"] == expected
+    assert "localhost" in config["models"]["default"]["base_url"]
 
 
 def test_rewrite_fabric_config_base_urls_leaves_third_party_base_url() -> None:
@@ -150,12 +156,12 @@ def test_rewrite_fabric_config_base_urls_leaves_third_party_base_url() -> None:
             "default": {
                 "provider": "openai",
                 "model": "test-model",
-                "settings": {"base_url": "https://api.openai.com/v1"},
+                "base_url": "https://api.openai.com/v1",
             }
         }
     }
     result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
-    assert result["models"]["default"]["settings"]["base_url"] == "https://api.openai.com/v1"
+    assert result["models"]["default"]["base_url"] == "https://api.openai.com/v1"
 
 
 def test_executor_for_mode_prefers_mode_specific() -> None:
@@ -554,9 +560,7 @@ async def test_create_deployment_fabric_docker_rewrites_model_base_url() -> None
                 "model": {
                     "provider": "openai",
                     "model": "test-model",
-                    "settings": {
-                        "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
-                    },
+                    "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
                 },
             }
         },
@@ -568,7 +572,7 @@ async def test_create_deployment_fabric_docker_rewrites_model_base_url() -> None
     assert info.status == "starting"
     created_config = entities.create.await_args_list[0].args[0]
     baked = yaml.safe_load(created_config.config_files[0].content)
-    assert baked["harnesses"]["main"]["model"]["settings"]["base_url"] == (
+    assert baked["harnesses"]["main"]["model"]["base_url"] == (
         "http://host.docker.internal:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
     )
     assert created_config.labels["nemo.agents/runtime"] == "fabric"
@@ -594,9 +598,7 @@ async def test_create_deployment_fabric_k8s_rewrites_model_base_url() -> None:
                 "model": {
                     "provider": "openai",
                     "model": "test-model",
-                    "settings": {
-                        "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
-                    },
+                    "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
                 },
             }
         },
@@ -608,7 +610,7 @@ async def test_create_deployment_fabric_k8s_rewrites_model_base_url() -> None:
     assert info.status == "starting"
     created_config = entities.create.await_args_list[0].args[0]
     baked = yaml.safe_load(created_config.config_files[0].content)
-    assert baked["harnesses"]["main"]["model"]["settings"]["base_url"] == (
+    assert baked["harnesses"]["main"]["model"]["base_url"] == (
         "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
     )
     assert created_config.containers[0].command == ["python"]
@@ -633,9 +635,7 @@ async def test_create_deployment_fabric_k8s_auth_on_rewrites_to_auth_proxy() -> 
                 "model": {
                     "provider": "openai",
                     "model": "test-model",
-                    "settings": {
-                        "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
-                    },
+                    "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
                 },
             }
         },
@@ -652,7 +652,7 @@ async def test_create_deployment_fabric_k8s_auth_on_rewrites_to_auth_proxy() -> 
     created_config = entities.create.await_args_list[0].args[0]
     assert created_config.auth_proxy_sidecar is True
     baked = yaml.safe_load(created_config.config_files[0].content)
-    assert baked["harnesses"]["main"]["model"]["settings"]["base_url"] == (
+    assert baked["harnesses"]["main"]["model"]["base_url"] == (
         "http://127.0.0.1:8090/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
     )
 
