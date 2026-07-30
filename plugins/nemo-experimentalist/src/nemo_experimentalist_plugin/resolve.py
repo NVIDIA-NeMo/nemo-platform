@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 import yaml
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorTypeField
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.repository import looks_like_git
 from nemo_experimentalist_plugin.profile import AgentProfile
@@ -162,6 +163,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
     coder: CoderConfig = Field(default_factory=CoderConfig)
     analyzer: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
     proposer: ProposerConfig = Field(default_factory=ProposerConfig)
+    evaluator_type: EvaluatorTypeField = "harbor_native"
     evaluator: dict[str, Any] = Field(default_factory=dict)
     eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)
 

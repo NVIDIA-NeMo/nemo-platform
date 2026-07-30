@@ -88,7 +88,7 @@ async def test_insight_run_stages_inputs_before_eval_author(
         backend=backend,
         workspace="default",
         config=config,
-        evaluator_type="harbor",
+        evaluator_type="harbor_native",
         train_dataset=DatasetRef(uri=str(train)),
         validation_dataset=DatasetRef(uri=str(validation)),
         task_template=DatasetRef(uri=str(template)),

@@ -187,10 +187,14 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
             dest=experiment_dir / "eval_author" / "source-agent",
         )
     ]
-    assert dataset_factory.dataset_refs == [("harbor", train_ref), ("harbor", validation_ref)]
+    # run_eval_author defaults evaluator_type to the SDK-backed runner.
+    assert dataset_factory.dataset_refs == [
+        ("harbor_evaluator", train_ref),
+        ("harbor_evaluator", validation_ref),
+    ]
     assert dataset_factory.template_refs == [
         (
-            "harbor",
+            "harbor_evaluator",
             template_ref.model_copy(update={"uri": str(experiment_dir / "dataset" / "task-template")}),
         )
     ]
@@ -253,7 +257,9 @@ async def test_run_eval_author_hydrates_fileset_task_template(
             "workspace": "workspace-a",
         }
     ]
-    assert dataset_factory.template_refs == [("harbor", template_ref.model_copy(update={"uri": str(staged_path)}))]
+    assert dataset_factory.template_refs == [
+        ("harbor_evaluator", template_ref.model_copy(update={"uri": str(staged_path)}))
+    ]
     assert client.closed
 
 

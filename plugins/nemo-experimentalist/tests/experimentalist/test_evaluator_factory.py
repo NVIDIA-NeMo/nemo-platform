@@ -118,7 +118,7 @@ def test_build_dataset_falsy_evaluator_type():
 
 def test_build_dataset_falsy_dataset_ref():
     with pytest.raises(ValueError, match="Evaluator type and dataset reference are required"):
-        DatasetFactory().build_dataset("harbor", None)
+        DatasetFactory().build_dataset("harbor_native", None)
 
 
 def test_build_task_template_zero_tasks(tmp_path):
@@ -126,7 +126,7 @@ def test_build_task_template_zero_tasks(tmp_path):
     empty_dir.mkdir()
     (empty_dir / "not-a-task").mkdir()
     with pytest.raises(ValueError, match="contains no Harbor task directories"):
-        DatasetFactory().build_task_template("harbor", DatasetRef(uri=str(empty_dir)))
+        DatasetFactory().build_task_template("harbor_native", DatasetRef(uri=str(empty_dir)))
 
 
 def test_build_task_template_multiple_tasks(tmp_path):
@@ -135,27 +135,27 @@ def test_build_task_template_multiple_tasks(tmp_path):
     (dataset_dir / "task-a" / "task.toml").write_text("")
     (dataset_dir / "task-b").mkdir()
     (dataset_dir / "task-b" / "task.toml").write_text("")
-    with pytest.raises(ValueError, match="exactly one harbor task"):
-        DatasetFactory().build_task_template("harbor", DatasetRef(uri=str(dataset_dir)))
+    with pytest.raises(ValueError, match="exactly one harbor_native task"):
+        DatasetFactory().build_task_template("harbor_native", DatasetRef(uri=str(dataset_dir)))
 
 
 def test_build_task_template_single_task(tmp_path):
     task_dir = tmp_path / "task-only"
     task_dir.mkdir()
     (task_dir / "task.toml").write_text("")
-    task = DatasetFactory().build_task_template("harbor", DatasetRef(uri=str(task_dir)))
+    task = DatasetFactory().build_task_template("harbor_native", DatasetRef(uri=str(task_dir)))
     assert task.id == "task-only"
 
 
 def test_evaluator_factory_build_evaluator_with_config():
     factory = EvaluatorFactory()
-    evaluator = factory.build_evaluator("harbor", HarborEvaluatorConfig())
+    evaluator = factory.build_evaluator("harbor_native", HarborEvaluatorConfig())
     assert isinstance(evaluator, HarborEvaluator)
 
 
 def test_evaluator_factory_build_evaluator_with_dict():
     factory = EvaluatorFactory()
-    evaluator = factory.build_evaluator("harbor", {"import_path": "x:Y"})
+    evaluator = factory.build_evaluator("harbor_native", {"import_path": "x:Y"})
     assert isinstance(evaluator, HarborEvaluator)
 
 
@@ -167,5 +167,5 @@ def test_evaluator_factory_build_evaluator_unsupported():
 
 def test_evaluator_factory_build_evaluator_wrong_config_type():
     factory = EvaluatorFactory()
-    with pytest.raises(TypeError, match="Harbor evaluator config must be an EvaluatorConfig or dict"):
-        factory.build_evaluator("harbor", 42)
+    with pytest.raises(TypeError, match="'harbor_native' evaluator config must be an EvaluatorConfig or dict"):
+        factory.build_evaluator("harbor_native", 42)

@@ -110,6 +110,7 @@ async def run_experimentalist(
         train_dataset=train_dataset,
         validation_dataset=validation_dataset,
         task_template=task_template,
+        evaluator_type=config.evaluator_type,
         backend=backend,
         reporter=reporter,
         config=config,
