@@ -29,6 +29,93 @@ On upgrade, the generated Secret must already exist and contain
 Secret instead of generating a replacement key; existing encrypted platform
 secrets will not decrypt with a new key.
 
+## Intake and ClickHouse
+
+Intake is included in the platform API service group. By default, the chart
+deploys a single-node embedded ClickHouse 26.3 LTS service, and Intake creates
+and migrates its own `intake` database on first use.
+
+The embedded ClickHouse is intended for development, evaluation, and
+non-critical single-node installations. It does not provide replication or
+automatic backups. For a production deployment that requires high availability,
+set `clickhouse.enabled` to `false` and provide a separately managed ClickHouse:
+
+First, create the credentials Secret in the Helm release namespace. The Secret
+key must match `externalClickhouse.existingSecretPasswordKey`:
+
+```shell
+kubectl create secret generic clickhouse-credentials \
+  --namespace <release-namespace> \
+  --from-literal=password='<clickhouse-password>'
+```
+
+Then configure the external connection:
+
+```yaml
+clickhouse:
+  enabled: false
+
+externalClickhouse:
+  host: clickhouse.example.internal
+  port: 8443
+  secure: true
+  user: nemo
+  database: intake
+  existingSecret: clickhouse-credentials
+  existingSecretPasswordKey: password
+```
+
+The external user must be allowed to create the configured database, tables,
+materialized views, and indexes because Intake owns its ClickHouse migrations.
+
+### ClickHouse sizing
+
+Use retained span count as an initial operational threshold, not as a disk-size
+estimate. Span `input`, `output`, and attribute payloads vary substantially.
+Measure `bytes_on_disk` from representative traffic before setting production
+storage:
+
+```sql
+SELECT
+    table,
+    sum(rows) AS physical_rows,
+    formatReadableSize(sum(bytes_on_disk)) AS disk
+FROM system.parts
+WHERE active AND database = 'intake'
+GROUP BY table
+ORDER BY table;
+```
+
+The following are starting points for the current Intake schema and interactive
+query workload:
+
+| Retained Intake spans | Topology | ClickHouse resources | Storage |
+| --- | --- | --- | --- |
+| Up to 1 million | Embedded single node for non-critical workloads | 2 vCPU, 8 GiB RAM | Fast SSD, at least 20 GiB and 2× measured active data |
+| 1–10 million | External preferred; embedded only when downtime and data loss are acceptable | 4–8 vCPU, 16–32 GiB RAM | Provisioned-IOPS SSD, at least 100 GiB and 2× measured active data |
+| More than 10 million, or any HA requirement | Managed ClickHouse or an operator-managed replicated cluster | Start at 8 vCPU and 32 GiB RAM per replica, then load-test the actual ingest/read mix | Size from measured compression, retention, replication, and merge headroom |
+
+Intake currently retains spans and its trace index for 90 days. Evaluator
+results and annotations do not have a time-based TTL, so include their continuing
+growth in capacity planning. ReplacingMergeTree retries also leave physical row
+versions until background merges complete.
+
+For large or frequently queried deployments, ClickHouse recommends:
+
+- At least 8 GiB RAM even at low data volumes.
+- A general-purpose starting ratio of 4 GiB RAM per CPU core.
+- Provisioned-IOPS SSDs for latency-sensitive workloads.
+- Roughly 1:30 to 1:50 RAM-to-storage for frequently accessed large datasets.
+- Replication for production durability; vertically scale replicas before
+  adding shards.
+
+Validate CPU, query peak memory, active parts, merge backlog, disk latency, and
+free space under representative batched OTLP ingestion before promoting a tier.
+See the upstream
+[ClickHouse sizing guide](https://clickhouse.com/docs/guides/oss/best-practices/sizing-and-hardware-recommendations)
+and
+[OSS operational recommendations](https://clickhouse.com/docs/guides/oss/best-practices/tips).
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -97,6 +184,39 @@ secrets will not decrypt with a new key.
 | api.tolerations | list | `[]` | Tolerations configuration for the API service. |
 | api.topologySpreadConstraints | list | `[]` | Topology spread constraints for the API service pods. See https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/ |
 | basePlatformConfig | string | This object has the following default values for the base platform configuration. | Base platform configuration settings |
+| clickhouse | object | This object has the following default values for the embedded ClickHouse configuration. | Embedded ClickHouse configuration for Intake. The embedded deployment is a single-node convenience topology. Use an external, replicated ClickHouse deployment for production environments that require high availability. These values are used only when `clickhouse.enabled` is true. |
+| clickhouse.affinity | object | `{}` | Affinity for the ClickHouse pod. |
+| clickhouse.annotations | object | `{}` | Annotations to add to the ClickHouse StatefulSet. |
+| clickhouse.auth.database | string | `"intake"` | ClickHouse database used by Intake. |
+| clickhouse.auth.existingSecret | string | `""` | Name of an existing Secret containing the ClickHouse password. If empty, the chart creates one. |
+| clickhouse.auth.existingSecretPasswordKey | string | `"password"` | Key in auth.existingSecret containing the ClickHouse password. |
+| clickhouse.auth.password | string | `nil` | ClickHouse password used when auth.existingSecret is empty. If unset, the chart generates a random password. |
+| clickhouse.auth.username | string | `"nemo"` | ClickHouse username used by Intake. |
+| clickhouse.enabled | bool | `true` | Whether to deploy the embedded ClickHouse. Set to false to use `externalClickhouse`. |
+| clickhouse.image.pullPolicy | string | `"IfNotPresent"` | ClickHouse image pull policy. |
+| clickhouse.image.repository | string | `"docker.io/clickhouse/clickhouse-server"` | ClickHouse image repository. Intake is tested against the 26.3 LTS release line. |
+| clickhouse.image.tag | string | `"26.3"` | ClickHouse image tag. |
+| clickhouse.livenessProbe | object | This object has the following default values for the liveness probe configuration. | Liveness probe configuration for the ClickHouse container. |
+| clickhouse.nodeSelector | object | `{}` | Node selector for the ClickHouse pod. |
+| clickhouse.persistence.enabled | bool | `true` | Whether to persist embedded ClickHouse data. |
+| clickhouse.persistence.size | string | `"20Gi"` | PersistentVolumeClaim size. See the Intake and ClickHouse sizing guidance in the chart README. |
+| clickhouse.persistence.storageClass | string | `""` | Storage class for the ClickHouse PVC. If unset, the cluster default is used. |
+| clickhouse.podAnnotations | object | `{}` | Annotations to add to the ClickHouse pod. |
+| clickhouse.podLabels | object | `{}` | Additional labels to add to the ClickHouse pod. |
+| clickhouse.podSecurityContext | object | `{}` | Optional pod security context for the ClickHouse pod. |
+| clickhouse.readinessProbe | object | This object has the following default values for the readiness probe configuration. | Readiness probe configuration for the ClickHouse container. |
+| clickhouse.resources | object | `{"requests":{"cpu":"2","memory":"8Gi"}}` | Resource requests and limits for the ClickHouse container. The defaults are the supported small-volume starting point. |
+| clickhouse.securityContext | object | `{}` | Optional container security context for the ClickHouse container. |
+| clickhouse.service.annotations | object | `{}` | Annotations to add to the ClickHouse Service. |
+| clickhouse.service.httpPort | int | `8123` | ClickHouse HTTP interface port used by Intake. |
+| clickhouse.service.nativePort | int | `9000` | ClickHouse native protocol port exposed inside the cluster for administration. |
+| clickhouse.serviceAccount | object | This object has the following default values for the service account configuration. | Service account for the ClickHouse pod. |
+| clickhouse.serviceAccount.annotations | object | `{}` | Annotations to add to the service account. |
+| clickhouse.serviceAccount.automount | bool | `false` | Automatically mount the ServiceAccount's API credentials. |
+| clickhouse.serviceAccount.create | bool | `true` | Specifies whether a service account should be created for the ClickHouse pod. |
+| clickhouse.serviceAccount.name | string | `""` | The name of the service account to use. If not set and create is true, a name is generated from the release fullname. |
+| clickhouse.startupProbe | object | This object has the following default values for the startup probe configuration. | Startup probe configuration for the ClickHouse container. |
+| clickhouse.tolerations | list | `[]` | Tolerations for the ClickHouse pod. |
 | core | object | This object has the following default values for the core deployment configuration. | Core deployment configuration settings |
 | core.controller.affinity | object | `{}` | Affinity configuration for the controller service. |
 | core.controller.annotations | object | `{}` | Annotations to add to the controller service deployment. |
@@ -214,6 +334,14 @@ secrets will not decrypt with a new key.
 | envoyProxy.tolerations | list | `[]` | Tolerations configuration for the Envoy pods. |
 | envoyProxy.topologySpreadConstraints | list | `[]` | Topology spread constraints for the Envoy pods. See https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/ |
 | existingSecret | string | `"ngc-api"` | You can use an existing Kubernetes secret for communicating with the NGC API for downloading models. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string. |
+| externalClickhouse | object | This object has the following default values for the external ClickHouse configuration. | External ClickHouse configuration. These values are used when `clickhouse.enabled` is false. |
+| externalClickhouse.database | string | `"intake"` | ClickHouse database used by Intake. |
+| externalClickhouse.existingSecret | string | `""` | Name of an existing Secret containing the ClickHouse password. Required when using external ClickHouse. |
+| externalClickhouse.existingSecretPasswordKey | string | `""` | Key in existingSecret containing the ClickHouse password. Required when using external ClickHouse. |
+| externalClickhouse.host | string | `""` | External ClickHouse host. Required when the embedded ClickHouse is disabled. |
+| externalClickhouse.port | int | `8123` | External ClickHouse HTTP interface port. |
+| externalClickhouse.secure | bool | `false` | Whether Intake should connect to ClickHouse over HTTPS. |
+| externalClickhouse.user | string | `"nemo"` | ClickHouse username used by Intake. |
 | externalDatabase | object | This object has the following default values for the external PostgreSQL configuration. | External PostgreSQL configuration settings. These values are only used when postgresql.enabled is set to false. |
 | externalDatabase.database | string | `"nemoplatform"` | Database name. |
 | externalDatabase.existingSecret | string | `""` | Name of an existing secret resource containing the database credentials. |

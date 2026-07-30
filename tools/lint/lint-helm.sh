@@ -36,6 +36,84 @@ envoy_autoscaling_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}"
 grep -Fq "envoyProxy.resources.requests.cpu is required when Envoy CPU autoscaling is enabled" \
   <<<"${envoy_autoscaling_output}"
 
+# Intake must not render with an incomplete external ClickHouse connection.
+external_clickhouse_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set clickhouse.enabled=false 2>&1) && {
+  echo "Intake accepted a missing external ClickHouse host" >&2
+  exit 1
+}
+grep -Fq "externalClickhouse.host is required when clickhouse.enabled=false" \
+  <<<"${external_clickhouse_output}"
+
+external_clickhouse_secret_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set clickhouse.enabled=false \
+  --set externalClickhouse.host=clickhouse.example.internal 2>&1) && {
+  echo "External ClickHouse accepted a missing credentials Secret" >&2
+  exit 1
+}
+grep -Fq "externalClickhouse.existingSecret is required when clickhouse.enabled=false" \
+  <<<"${external_clickhouse_secret_output}"
+
+external_clickhouse_password_key_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set clickhouse.enabled=false \
+  --set externalClickhouse.host=clickhouse.example.internal \
+  --set externalClickhouse.existingSecret=clickhouse-credentials 2>&1) && {
+  echo "External ClickHouse accepted a missing password key" >&2
+  exit 1
+}
+grep -Fq "externalClickhouse.existingSecretPasswordKey is required when clickhouse.enabled=false" \
+  <<<"${external_clickhouse_password_key_output}"
+
+# Generated embedded credentials must never use the shipped username as a known
+# password, and all consumers must reference the generated `password` key.
+generated_clickhouse_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --set clickhouse.auth.existingSecretPasswordKey=not-the-generated-key)
+if grep -Fq "bmVtbw==" <<<"${generated_clickhouse_output}"; then
+  echo "Embedded ClickHouse rendered the known 'nemo' password" >&2
+  exit 1
+fi
+if grep -Fq "not-the-generated-key" <<<"${generated_clickhouse_output}"; then
+  echo "Embedded ClickHouse referenced a key not created by its generated Secret" >&2
+  exit 1
+fi
+
+# ClickHouse probe overrides must render, and PVC template labels must remain
+# stable across chart and application version upgrades.
+clickhouse_statefulset_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --show-only templates/clickhouse/clickhouse-statefulset.yaml \
+  --set clickhouse.startupProbe.periodSeconds=17)
+api_deployment_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --show-only templates/api/api-deployment.yaml)
+rotated_api_deployment_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --show-only templates/api/api-deployment.yaml \
+  --set-string clickhouse.auth.password=rotated-test-password)
+grep -A6 -F "startupProbe:" <<<"${clickhouse_statefulset_output}" \
+  | grep -Fq "periodSeconds: 17"
+clickhouse_credentials_checksum=$(awk \
+  '$1 == "checksum/clickhouse-credentials:" { print $2; exit }' \
+  <<<"${clickhouse_statefulset_output}")
+api_credentials_checksum=$(awk \
+  '$1 == "checksum/clickhouse-credentials:" { print $2; exit }' \
+  <<<"${api_deployment_output}")
+rotated_credentials_checksum=$(awk \
+  '$1 == "checksum/clickhouse-credentials:" { print $2; exit }' \
+  <<<"${rotated_api_deployment_output}")
+if [[ -z "${clickhouse_credentials_checksum}" || "${clickhouse_credentials_checksum}" != "${api_credentials_checksum}" ]]; then
+  echo "API and ClickHouse workloads do not share the same credential checksum" >&2
+  exit 1
+fi
+if [[ -z "${rotated_credentials_checksum}" || "${rotated_credentials_checksum}" == "${api_credentials_checksum}" ]]; then
+  echo "ClickHouse credential checksum did not change with the configured password" >&2
+  exit 1
+fi
+clickhouse_pvc_template=$(sed -n '/^  volumeClaimTemplates:/,$p' <<<"${clickhouse_statefulset_output}")
+if grep -Eq "helm.sh/chart|app.kubernetes.io/version" <<<"${clickhouse_pvc_template}"; then
+  echo "ClickHouse PVC template contains labels that change across chart upgrades" >&2
+  exit 1
+fi
+grep -Fq "app.kubernetes.io/component: clickhouse" <<<"${clickhouse_pvc_template}"
+grep -Fq "app.kubernetes.io/instance: ${HELM_RELEASE_NAME}" <<<"${clickhouse_pvc_template}"
+
 # Validate the Helm chart by rendering templates with all values files in ci/ directory
 shopt -s nullglob
 for value_file in "${HELM_FOLDER}"/ci/*.yaml; do

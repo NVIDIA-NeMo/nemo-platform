@@ -242,6 +242,124 @@ externalDatabase:
     # -- Key in the URI secret containing the database URI.
     key: ""
 
+# -- Embedded ClickHouse configuration for Intake.
+# The embedded deployment is a single-node convenience topology. Use an external,
+# replicated ClickHouse deployment for production environments that require high availability.
+# These values are used only when `clickhouse.enabled` is true.
+# @default -- This object has the following default values for the embedded ClickHouse configuration.
+clickhouse:
+  # -- Whether to deploy the embedded ClickHouse. Set to false to use `externalClickhouse`.
+  enabled: true
+  image:
+    # -- ClickHouse image repository. Intake is tested against the 26.3 LTS release line.
+    repository: docker.io/clickhouse/clickhouse-server
+    # -- ClickHouse image tag.
+    tag: "26.3"
+    # -- ClickHouse image pull policy.
+    pullPolicy: IfNotPresent
+  auth:
+    # -- ClickHouse username used by Intake.
+    username: nemo
+    # -- ClickHouse password used when auth.existingSecret is empty. If unset, the chart generates a random password.
+    password: null
+    # -- ClickHouse database used by Intake.
+    database: intake
+    # -- Name of an existing Secret containing the ClickHouse password. If empty, the chart creates one.
+    existingSecret: ""
+    # -- Key in auth.existingSecret containing the ClickHouse password.
+    existingSecretPasswordKey: password
+  service:
+    # -- ClickHouse HTTP interface port used by Intake.
+    httpPort: 8123
+    # -- ClickHouse native protocol port exposed inside the cluster for administration.
+    nativePort: 9000
+    # -- Annotations to add to the ClickHouse Service.
+    annotations: {}
+  persistence:
+    # -- Whether to persist embedded ClickHouse data.
+    enabled: true
+    # -- PersistentVolumeClaim size. See the Intake and ClickHouse sizing guidance in the chart README.
+    size: 20Gi
+    # -- Storage class for the ClickHouse PVC. If unset, the cluster default is used.
+    storageClass: ""
+  # -- Resource requests and limits for the ClickHouse container. The defaults are the supported small-volume starting point.
+  resources:
+    requests:
+      cpu: "2"
+      memory: 8Gi
+  # -- Startup probe configuration for the ClickHouse container.
+  # @default -- This object has the following default values for the startup probe configuration.
+  startupProbe:
+    httpGet:
+      path: /ping
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 60
+  # -- Liveness probe configuration for the ClickHouse container.
+  # @default -- This object has the following default values for the liveness probe configuration.
+  livenessProbe:
+    httpGet:
+      path: /ping
+      port: http
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe configuration for the ClickHouse container.
+  # @default -- This object has the following default values for the readiness probe configuration.
+  readinessProbe:
+    httpGet:
+      path: /ping
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Optional pod security context for the ClickHouse pod.
+  podSecurityContext: {}
+  # -- Optional container security context for the ClickHouse container.
+  securityContext: {}
+  # -- Service account for the ClickHouse pod.
+  # @default -- This object has the following default values for the service account configuration.
+  serviceAccount:
+    # -- Specifies whether a service account should be created for the ClickHouse pod.
+    create: true
+    # -- Automatically mount the ServiceAccount's API credentials.
+    automount: false
+    # -- Annotations to add to the service account.
+    annotations: {}
+    # -- The name of the service account to use. If not set and create is true, a name is generated from the release fullname.
+    name: ""
+  # -- Annotations to add to the ClickHouse StatefulSet.
+  annotations: {}
+  # -- Annotations to add to the ClickHouse pod.
+  podAnnotations: {}
+  # -- Additional labels to add to the ClickHouse pod.
+  podLabels: {}
+  # -- Node selector for the ClickHouse pod.
+  nodeSelector: {}
+  # -- Affinity for the ClickHouse pod.
+  affinity: {}
+  # -- Tolerations for the ClickHouse pod.
+  tolerations: []
+
+# -- External ClickHouse configuration. These values are used when `clickhouse.enabled` is false.
+# @default -- This object has the following default values for the external ClickHouse configuration.
+externalClickhouse:
+  # -- External ClickHouse host. Required when the embedded ClickHouse is disabled.
+  host: ""
+  # -- External ClickHouse HTTP interface port.
+  port: 8123
+  # -- Whether Intake should connect to ClickHouse over HTTPS.
+  secure: false
+  # -- ClickHouse username used by Intake.
+  user: nemo
+  # -- ClickHouse database used by Intake.
+  database: intake
+  # -- Name of an existing Secret containing the ClickHouse password. Required when using external ClickHouse.
+  existingSecret: ""
+  # -- Key in existingSecret containing the ClickHouse password. Required when using external ClickHouse.
+  existingSecretPasswordKey: ""
+
 # -- Platform-wide configuration settings
 # Set configuration here to apply custom, structured configuration across all services.
 # Applied after the base platform config is evaluated for templates. Enables adding / overriding YAML-based elements in the evaluated platform config.
