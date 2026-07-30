@@ -176,9 +176,9 @@ The demo agent uses `${NEMO_DEFAULT_MODEL}` for both execution and the judge LLM
 
 Full documentation: [NeMo Platform docs](https://docs.nvidia.com/nemo-platform)
 
-- [Setup](docs/get-started/setup.md): installation, providers, SDK.
-- [CLI reference](docs/cli/index.md): all commands.
-- [API reference](docs/api/index.md): REST endpoints.
+- [Setup](https://docs.nvidia.com/nemo-platform/documentation/get-started): installation, providers, SDK.
+- [CLI reference](https://docs.nvidia.com/nemo-platform/documentation/reference/cli-reference): all commands.
+- [API reference](https://docs.nvidia.com/nemo-platform/documentation/reference/api-reference): REST endpoints.
 
 ## Development
 

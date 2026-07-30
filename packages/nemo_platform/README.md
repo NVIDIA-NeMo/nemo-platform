@@ -82,8 +82,8 @@ http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1/c
 - **Source:** https://github.com/NVIDIA-NeMo/nemo-platform
 - **Documentation:** https://docs.nvidia.com/nemo-platform/
 - **Setup playbook:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/SETUP.md
-- **CLI reference:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/cli/index.md
-- **API reference:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/api/index.md
+- **CLI reference:** https://docs.nvidia.com/nemo-platform/documentation/reference/cli-reference
+- **API reference:** https://docs.nvidia.com/nemo-platform/documentation/reference/api-reference
 - **Issue tracker:** https://github.com/NVIDIA-NeMo/nemo-platform/issues
 
 ## License
