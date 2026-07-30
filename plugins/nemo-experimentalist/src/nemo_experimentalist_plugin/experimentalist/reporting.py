@@ -24,16 +24,13 @@ _THIN = "─" * 62
 class Verbosity(str, Enum):
     """Reporter output level. Set once at construction from the run shell.
 
-    NOTE: VERBOSE is a forward-declared seam and currently renders EXACTLY the
-    same output as NORMAL — only QUIET changes behavior today. The richer
-    VERBOSE output (per-trial detail, per-split sub-metrics, timings) is
-    deferred; see the "Verbosity (future)" section of the design spec. Wire the
-    extra detail here when the ``--verbose`` CLI flag lands.
+    An enum (rather than a bool) so levels read clearly at call sites and a
+    richer level (e.g. VERBOSE with per-trial detail / sub-metrics / timings)
+    can be added when it earns its keep.
     """
 
     QUIET = "quiet"
     NORMAL = "normal"
-    VERBOSE = "verbose"  # == NORMAL for now; see class docstring
 
 
 def reward_scalar(aggregate_metrics: dict[str, float | int]) -> float:
