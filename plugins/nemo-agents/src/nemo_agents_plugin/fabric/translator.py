@@ -86,7 +86,11 @@ def _resolve_model(config: AgentConfig, harness_name: str, harness: HarnessConfi
 
 
 def _model_payload(model: ModelConfig) -> dict[str, Any]:
-    return model.model_dump(exclude_none=True)
+    payload = model.model_dump(exclude_none=True)
+    settings = payload.get("settings")
+    if "base_url" not in payload and isinstance(settings, dict) and isinstance(settings.get("base_url"), str):
+        payload["base_url"] = settings["base_url"]
+    return payload
 
 
 def _validate_untranslated_shared_fields(config: AgentConfig) -> None:

@@ -46,6 +46,7 @@ def _example_yaml_config() -> dict[str, Any]:
             "default": {
                 "provider": "openai",
                 "model": "openai/gpt-5.4",
+                "base_url": "http://platform:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
             },
         },
         "environment": {
@@ -113,6 +114,26 @@ class TestTranslateAgentConfig:
         assert fabric_config.harness.settings["sandbox"] == "workspace-write"
         assert fabric_config.models["default"].provider == "openai"
         assert fabric_config.models["default"].model == "openai/gpt-5.4"
+        assert (
+            fabric_config.models["default"].base_url
+            == "http://platform:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+        )
+
+    def test_promotes_legacy_model_settings_base_url(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "codex"
+        payload["models"]["default"]["base_url"] = None
+        payload["models"]["default"]["settings"] = {
+            "base_url": "http://legacy:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert (
+            fabric_config.models["default"].base_url
+            == "http://legacy:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+        )
 
     def test_translates_shared_capability_sections(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())

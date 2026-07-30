@@ -144,7 +144,7 @@ class TestInjectGatewayUrl:
 
 
 class TestInjectFabricGatewayUrl:
-    def test_injects_shared_and_harness_model_settings(self) -> None:
+    def test_injects_shared_and_harness_model_base_url(self) -> None:
         config = {
             "models": {"default": {"provider": "openai", "model": "test-model"}},
             "harnesses": {
@@ -158,26 +158,45 @@ class TestInjectFabricGatewayUrl:
         result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
         expected_url = "http://platform:8080/apis/inference-gateway/v2/workspaces/test-workspace/openai/-/v1"
 
-        assert result["models"]["default"]["settings"]["base_url"] == expected_url
-        assert result["harnesses"]["hermes"]["model"]["settings"]["base_url"] == expected_url
+        assert result["models"]["default"]["base_url"] == expected_url
+        assert result["harnesses"]["hermes"]["model"]["base_url"] == expected_url
+        assert "settings" not in result["models"]["default"]
+        assert "settings" not in result["harnesses"]["hermes"]["model"]
         assert "settings" not in config["models"]["default"]
         assert "settings" not in config["harnesses"]["hermes"]["model"]
 
-    def test_preserves_explicit_endpoint_and_input(self) -> None:
+    def test_preserves_explicit_top_level_endpoint_and_input(self) -> None:
         config = {
             "models": {
                 "default": {
                     "provider": "openai",
                     "model": "test-model",
-                    "settings": {"base_url": "http://explicit:8080/v1"},
+                    "base_url": "http://explicit:8080/v1",
                 }
             }
         }
 
         result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
 
-        assert result["models"]["default"]["settings"]["base_url"] == "http://explicit:8080/v1"
-        assert config["models"]["default"]["settings"]["base_url"] == "http://explicit:8080/v1"
+        assert result["models"]["default"]["base_url"] == "http://explicit:8080/v1"
+        assert config["models"]["default"]["base_url"] == "http://explicit:8080/v1"
+
+    def test_promotes_legacy_settings_endpoint(self) -> None:
+        config = {
+            "models": {
+                "default": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "settings": {"base_url": "http://legacy:8080/v1"},
+                }
+            }
+        }
+
+        result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
+
+        assert result["models"]["default"]["base_url"] == "http://legacy:8080/v1"
+        assert result["models"]["default"]["settings"]["base_url"] == "http://legacy:8080/v1"
+        assert "base_url" not in config["models"]["default"]
 
 
 class TestGetInternalBaseUrl:

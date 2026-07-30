@@ -260,9 +260,13 @@ def inject_fabric_gateway_url(
     for model_config in model_configs:
         if not isinstance(model_config, dict):
             continue
-        settings = model_config.setdefault("settings", {})
-        if isinstance(settings, dict):
-            settings.setdefault("base_url", gateway_url)
+        if model_config.get("base_url") is not None:
+            continue
+        settings = model_config.get("settings")
+        if isinstance(settings, dict) and isinstance(settings.get("base_url"), str):
+            model_config["base_url"] = settings["base_url"]
+            continue
+        model_config["base_url"] = gateway_url
 
     return resolved
 

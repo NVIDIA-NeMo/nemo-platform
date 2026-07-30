@@ -102,6 +102,9 @@ class TestCreateDeployment:
         created_deployment: AgentDeployment = mock_entity_client.create.call_args[0][0]
         assert created_deployment.config["config_format"] == NEMO_AGENTS_SPEC_CONFIG_FORMAT
         assert created_deployment.config["environment"]["provider"] == "local"
+        assert created_deployment.config["models"]["default"]["base_url"] == (
+            "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+        )
         assert "functions" not in created_deployment.config
         assert "workflow" not in created_deployment.config
 

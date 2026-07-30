@@ -30,6 +30,7 @@ class ModelConfig(BaseModel):
     provider: str
     model: str
     api_key_env: str | None = None
+    base_url: str | None = None
     temperature: float | None = None
     settings: dict[str, Any] = Field(default_factory=dict)
 

@@ -25,9 +25,8 @@ harnesses:
     kind: codex
     settings:
       sandbox: workspace-write
-      system_prompt: You are a concise test assistant.
-      config_overrides:
-        model_reasoning_effort: high
+      developer_instructions: You are a concise test assistant.
+      reasoning_effort: high
 
 models:
   default:
