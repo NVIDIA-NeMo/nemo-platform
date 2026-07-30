@@ -93,6 +93,7 @@ _DEPLOYMENT_LIST_COLUMNS = [
     Column("created_at"),
 ]
 
+
 class AgentsCLI(NemoCLI):
     """CLI commands for the Agents plugin."""
 
