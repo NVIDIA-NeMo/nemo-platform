@@ -70,8 +70,9 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncIterator, Protocol, TypeAlias, Union, runtime_checkable
+from typing import Any, AsyncIterator, Protocol, Self, TypeAlias, Union, runtime_checkable
 
 import anthropic.types as anthropic_types
 import anthropic.types.message_create_params as anthropic_params
@@ -79,7 +80,7 @@ import openai.types.chat as openai_chat_types
 import openai.types.chat.completion_create_params as openai_chat_params
 import openai.types.responses.response_create_params as openai_responses_params
 from nemo_platform_plugin.entity import NemoEntity
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ModelWrapValidatorHandler, TypeAdapter, model_validator
 
 TypedResponse: TypeAlias = Union[openai_chat_types.ChatCompletion, anthropic_types.Message]
 OpenAIResponseChunk: TypeAlias = openai_chat_types.ChatCompletionChunk
@@ -217,6 +218,35 @@ class VirtualModel(NemoEntity, entity_type="virtual_model"):
     """Optional. Names a plugin-provided proxy implementation IGW should use
     instead of its default ``aiohttp`` proxy. Format: ``"plugin-name.proxy-name"``.
     If unset, IGW performs the proxy itself."""
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _hydrate_wire_metadata(
+        cls,
+        value: object,
+        handler: ModelWrapValidatorHandler[Self],
+    ) -> Self:
+        """Retain entity metadata when validating a VirtualModel API response."""
+        model = handler(value)
+        if not isinstance(value, dict):
+            return model
+
+        wire_data = TypeAdapter(dict[str, object]).validate_python(value)
+        optional_string = TypeAdapter(str | None)
+        optional_datetime = TypeAdapter(datetime | None)
+        if "id" in wire_data:
+            model._id = optional_string.validate_python(wire_data["id"])
+        if "created_at" in wire_data:
+            model._created_at = optional_datetime.validate_python(wire_data["created_at"])
+        if "updated_at" in wire_data:
+            model._updated_at = optional_datetime.validate_python(wire_data["updated_at"])
+        if "created_by" in wire_data:
+            model._created_by = optional_string.validate_python(wire_data["created_by"])
+        if "updated_by" in wire_data:
+            model._updated_by = optional_string.validate_python(wire_data["updated_by"])
+        if "parent" in wire_data:
+            model._parent = optional_string.validate_python(wire_data["parent"])
+        return model
 
 
 # ---------------------------------------------------------------------------
