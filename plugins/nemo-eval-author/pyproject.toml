@@ -10,8 +10,12 @@ dependencies = [
     "nemo-experimentalist-plugin",
     "nemo-insights-plugin",
     "nemo-platform",
+    "nemo-platform-plugin",
     "tomlkit>=0.13.3",
 ]
+
+[project.entry-points."nemo.cli"]
+eval-author = "nemo_eval_author_plugin.cli:EvalAuthorCLI"
 
 [build-system]
 requires = ["hatchling"]
