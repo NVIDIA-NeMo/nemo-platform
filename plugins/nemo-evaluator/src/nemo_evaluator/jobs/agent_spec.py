@@ -80,8 +80,11 @@ class FabricRunnerTarget(BaseModel):
     """Generate trials by driving an agent harness through the NeMo Fabric runtime.
 
     Fabric is harness-agnostic: the harness (Codex, Hermes, ...) is selected by the supplied
-    config's ``harness.adapter_id`` and is never inferred from ``model``. ``model`` is applied as a
-    final profile overlay when given.
+    config's ``harness.adapter_id`` and is never inferred from ``model``. ``model`` is applied as the
+    config's default model when given.
+
+    A run is described by exactly one complete ``config``. Fabric 0.1.0rc2 removed profile overlays,
+    so the former ``profiles`` field is gone — fold any overlay you were passing into ``config``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -89,15 +92,11 @@ class FabricRunnerTarget(BaseModel):
     kind: Literal["fabric"] = "fabric"
     config: dict[str, Any] = Field(
         description="Inline NeMo Fabric agent config (an ``agent.yaml`` as a JSON-shaped mapping). Its "
-        "``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex.cli`` for Codex.",
-    )
-    profiles: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Ordered Fabric profile overlays applied after the base config, before ``model``.",
+        "``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex`` for Codex.",
     )
     model: str | None = Field(
         default=None,
-        description="Optional ``provider/model`` slug applied as a final profile overlay; the harness "
+        description="Optional ``provider/model`` slug applied as the config's default model; the harness "
         "default is used when omitted.",
     )
     timeout_s: int = Field(default=600, ge=1, description="Per-task timeout for the Fabric run, in seconds.")
