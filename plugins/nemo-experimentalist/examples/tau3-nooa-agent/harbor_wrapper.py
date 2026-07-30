@@ -137,8 +137,9 @@ class WrappedAgent(BaseAgent):
         context: AgentContext,
     ) -> None:
         env = {name: value for name in MODEL_CREDENTIAL_VARS if (value := os.environ.get(name))}
-        if self.model_name:
-            env["NEMO_AGENT_MODEL"] = self.model_name
+        model_name = self.model_name or os.environ.get("AUT_MODEL_NAME")
+        if model_name:
+            env["NEMO_AGENT_MODEL"] = model_name
         proc = await environment.exec(
             f"cd /app && uv run --frozen python main.py --prompt {shlex.quote(instruction.strip())}",
             env=env,
