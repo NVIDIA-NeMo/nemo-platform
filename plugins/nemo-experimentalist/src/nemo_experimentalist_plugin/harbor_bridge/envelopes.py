@@ -320,15 +320,33 @@ def register_dataset_envelope(
     return RegisteredEnvelope(manifest=manifest, dataset_path=dataset_path)
 
 
+def _descriptor_at(dataset_path: Path, task_path: Path) -> tuple[TrustedEnvelopeDescriptor, Path]:
+    """Find a descriptor on a dataset or a copied one-task template."""
+    for descriptor_path in (
+        task_path / ENVELOPE_DESCRIPTOR_FILENAME,
+        dataset_path / ENVELOPE_DESCRIPTOR_FILENAME,
+    ):
+        if not descriptor_path.is_file():
+            continue
+        try:
+            descriptor = TrustedEnvelopeDescriptor.model_validate_json(descriptor_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise ValueError(f"Invalid trusted envelope descriptor {descriptor_path}: {exc}") from exc
+        return descriptor, descriptor_path.parent
+    raise ValueError(
+        f"Harbor task is not bound to a trusted host envelope: {task_path}. "
+        "Run it through the Experimentalist host launcher."
+    )
+
+
 def resolve_envelope_task(dataset_path: Path, task_path: Path, *, task_id: str) -> ResolvedEnvelopeTask:
     """Bind a sandbox task to its host-generated descriptor."""
-    descriptor_path = dataset_path.resolve() / ENVELOPE_DESCRIPTOR_FILENAME
-    if not descriptor_path.is_file():
-        raise ValueError(f"Harbor task is not bound to a trusted host envelope: {task_path}")
-    descriptor = TrustedEnvelopeDescriptor.model_validate_json(descriptor_path.read_text(encoding="utf-8"))
-    relative = task_path.resolve().relative_to(dataset_path.resolve()).as_posix() or "."
+    descriptor, descriptor_root = _descriptor_at(dataset_path.resolve(), task_path.resolve())
+    relative = task_path.resolve().relative_to(descriptor_root.resolve()).as_posix() or "."
     matches = [task for task in descriptor.tasks if task.path == relative]
     if not matches and len(descriptor.tasks) == 1 and descriptor.tasks[0].path == ".":
+        # Eval Author copies one registered template into each generated task.
+        # The copied descriptor still binds the derivative to the same base.
         matches = descriptor.tasks
     if len(matches) != 1:
         raise ValueError(f"Trusted envelope descriptor does not bind task path {task_path}")

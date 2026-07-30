@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import sys
 import tempfile
@@ -42,6 +43,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
     DatasetRef,
     DatasetValidationError,
     DataValue,
+    DependencyCommandResult,
     DependencyRuntime,
     MetricResult,
     MetricSpec,
@@ -187,6 +189,12 @@ class HarborEvaluatorConfig(EvaluatorConfig):
     artifacts: list[str] = Field(default=[])
     retry: RetryConfig = Field(default=RetryConfig(exclude_exceptions=set()))
     import_path: str = Field(default="harbor_wrapper:WrappedAgent")
+    scope_import_path: bool = Field(
+        default=True,
+        description="Scope a candidate-owned import path under the candidate directory.",
+    )
+    agent_model_name: str | None = Field(default=None)
+    agent_env: dict[str, str] = Field(default_factory=dict)
     trace_dir: str = Field(default=_TRACE_ARTIFACT_SOURCE)
 
 
@@ -208,8 +216,9 @@ class HarborDependencyRuntime(DependencyRuntime):
 class HarborDependencyContext:
     """Async context manager that starts and stops Harbor task dependencies."""
 
-    def __init__(self, runtime: HarborDependencyRuntime) -> None:
+    def __init__(self, runtime: HarborDependencyRuntime, *, temp_root: Path | None = None) -> None:
         self._runtime = runtime
+        self._temp_root = temp_root
         self._environment: BaseEnvironment | None = None
         self._temp_dir: tempfile.TemporaryDirectory[str] | None = None
 
@@ -247,7 +256,9 @@ class HarborDependencyContext:
         harbor_task = HarborTaskModel(task_path)
         context_id = uuid4()
         session_id = f"{harbor_task.short_name}__{context_id.hex[:12]}__env"
-        temp_dir = tempfile.TemporaryDirectory(prefix="nemo-harbor-deps-")
+        if self._temp_root is not None:
+            self._temp_root.mkdir(parents=True, exist_ok=True)
+        temp_dir = tempfile.TemporaryDirectory(prefix="nemo-harbor-deps-", dir=self._temp_root)
         trial_paths = TrialPaths(Path(temp_dir.name))
         trial_paths.mkdir()
 
@@ -310,6 +321,27 @@ class HarborDependencyContext:
                 "harbor_trial_dir": str(trial_paths.trial_dir),
                 "harbor_environment_session_id": session_id,
             }
+        )
+
+    async def execute(
+        self,
+        command: str,
+        *,
+        stdin: str | None = None,
+        timeout: float = 30.0,
+        cwd: str = "/app",
+    ) -> DependencyCommandResult:
+        """Execute inside the active Harbor task environment."""
+        if self._environment is None:
+            raise RuntimeError("Harbor dependency environment is not running")
+        wrapped = command
+        if stdin is not None:
+            wrapped = f"printf %s {shlex.quote(stdin)} | (\n{command}\n)"
+        result = await self._environment.exec(wrapped, cwd=cwd, timeout_sec=max(1, int(timeout)))
+        return DependencyCommandResult(
+            stdout=result.stdout or "",
+            stderr=result.stderr or "",
+            returncode=result.return_code,
         )
 
     async def _stop_started_runtime(self) -> None:
@@ -1151,6 +1183,12 @@ class HarborDataset(Dataset):
 
     @staticmethod
     def _dependency_runtime(task_dir: Path, config: dict[str, Any]) -> DependencyRuntime:
+        if os.environ.get("NEMO_EXPERIMENTALIST_OPEN_SHELL_RUNTIME") == "1":
+            from nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_harbor import (  # noqa: PLC0415
+                remote_dependency_runtime_for_task,
+            )
+
+            return remote_dependency_runtime_for_task(task_dir, task_id=task_dir.name)
         environment_config = config.get("environment") if isinstance(config, dict) else None
         build_timeout = None
         if isinstance(environment_config, dict):
@@ -1247,7 +1285,9 @@ class HarborEvaluator(Evaluator):
     def __init__(self, options: HarborEvaluatorConfig | None = None, experiment_dir: Path | None = None) -> None:
         super().__init__(options or HarborEvaluatorConfig(), experiment_dir=experiment_dir)
 
-    async def _run(self, agent: Path, dataset: Dataset, options: HarborEvaluatorConfig) -> Sequence[TrialResult]:
+    async def _run(self, agent: Path, dataset: Dataset, options: EvaluatorConfig) -> Sequence[TrialResult]:
+        if not isinstance(options, HarborEvaluatorConfig):
+            raise TypeError("Harbor evaluator requires HarborEvaluatorConfig")
         if not isinstance(dataset, HarborDataset):
             raise ValueError("Dataset must be a Harbor dataset")
 
@@ -1260,6 +1300,9 @@ class HarborEvaluator(Evaluator):
         options_dict["jobs_dir"] = experiment_dir / options.jobs_dir
         options_dict["job_name"] = options.job_name or f"{agent.name}-{dataset.id}"
         import_path: str = options_dict.pop("import_path")
+        scope_import_path: bool = options_dict.pop("scope_import_path")
+        agent_model_name: str | None = options_dict.pop("agent_model_name")
+        agent_env: dict[str, str] = options_dict.pop("agent_env")
         trace_dir: str = options_dict.pop("trace_dir", _TRACE_ARTIFACT_SOURCE)
         options_dict["artifacts"] = _with_trace_artifact(options_dict.get("artifacts") or [], trace_dir)
         force_rerun: bool = options_dict.pop("force_rerun", False)
@@ -1271,8 +1314,17 @@ class HarborEvaluator(Evaluator):
 
         await dataset.validate()
 
-        scoped_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
-        agents_config = [AgentConfig(import_path=scoped_import_path)]
+        if scope_import_path:
+            resolved_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
+        else:
+            resolved_import_path, scoped_package = import_path, None
+        agents_config = [
+            AgentConfig(
+                import_path=resolved_import_path,
+                model_name=agent_model_name,
+                env=agent_env,
+            )
+        ]
         datasets_config = [DatasetConfig(path=dataset_path, task_names=[task.id for task in dataset.tasks])]
         job_config = JobConfig(**options_dict, agents=agents_config, datasets=datasets_config)
         if force_rerun:
@@ -1284,7 +1336,8 @@ class HarborEvaluator(Evaluator):
             job = await Job.create(job_config)
             await job.run()
         finally:
-            _cleanup_scoped_imports(scoped_package)
+            if scoped_package is not None:
+                _cleanup_scoped_imports(scoped_package)
 
         trials = await self._trials_from_dir(job.job_dir, dataset.tasks)
         return trials

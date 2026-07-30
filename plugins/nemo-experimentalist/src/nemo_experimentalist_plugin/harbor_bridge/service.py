@@ -32,11 +32,18 @@ from nemo_experimentalist_plugin.harbor_bridge.archives import (
     extract_directory_archive,
 )
 from nemo_experimentalist_plugin.harbor_bridge.contracts import (
+    DependencyExecRequest,
+    DependencyExecResponse,
+    DependencySession,
+    DependencyStartRequest,
+    EnvelopeTask,
     EvaluationAccepted,
     EvaluationState,
     EvaluationStatus,
     EvaluationSubmission,
+    RunProfile,
 )
+from nemo_experimentalist_plugin.harbor_bridge.dependencies import HarborDependencySessionManager
 from nemo_experimentalist_plugin.harbor_bridge.envelopes import (
     TrustedEnvelopeCatalog,
     transport_tree_digest,
@@ -45,20 +52,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.datastructures import FormData, UploadFile
 
 logger = logging.getLogger(__name__)
-
-
-class RunProfile(BaseModel):
-    """Host-owned Harbor resource and timeout policy."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    attempts: int
-    concurrency: int
-    retries: int
-    agent_timeout_multiplier: float
-    verifier_timeout_multiplier: float
-    setup_timeout_multiplier: float
-    build_timeout_multiplier: float
 
 
 RUN_PROFILES: dict[Literal["smoke", "standard"], RunProfile] = {
@@ -94,6 +87,7 @@ class HarborBridgeSettings(BaseModel):
     max_archive_bytes: int = Field(default=DEFAULT_MAX_ARCHIVE_BYTES, ge=1, le=2 * 1024 * 1024 * 1024)
     max_archive_files: int = Field(default=DEFAULT_MAX_ARCHIVE_FILES, ge=1, le=100_000)
     max_concurrent_evaluations: int = Field(default=1, ge=1, le=8)
+    max_concurrent_dependency_sessions: int = Field(default=2, ge=1, le=8)
     sensitive_values: tuple[str, ...] = ()
 
 
@@ -234,6 +228,7 @@ def create_app(
     settings: HarborBridgeSettings,
     runner: EvaluationRunner | None = None,
     catalog: TrustedEnvelopeCatalog | None = None,
+    dependency_sessions: HarborDependencySessionManager | None = None,
 ) -> FastAPI:
     """Create one run-scoped bridge application."""
     service_runner = runner or UnconfiguredRunner()
@@ -241,6 +236,11 @@ def create_app(
     storage_root = settings.storage_root.expanduser().resolve()
     storage_root.mkdir(parents=True, exist_ok=True)
     jobs: dict[str, _Job] = {}
+    session_manager = dependency_sessions or HarborDependencySessionManager(
+        max_concurrent_sessions=settings.max_concurrent_dependency_sessions
+    )
+    dependency_capabilities: dict[str, str] = {}
+    dependency_work_dirs: dict[str, Path] = {}
     semaphore = asyncio.Semaphore(settings.max_concurrent_evaluations)
 
     async def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
@@ -285,6 +285,9 @@ def create_app(
                 task.cancel()
             if running:
                 await asyncio.gather(*running, return_exceptions=True)
+            await session_manager.close()
+            for work_dir in dependency_work_dirs.values():
+                shutil.rmtree(work_dir, ignore_errors=True)
 
     app = FastAPI(
         title="NeMo Experimentalist Harbor Bridge",
@@ -394,6 +397,107 @@ def create_app(
             job.state = EvaluationState.CANCELLED
         return Response(status_code=204)
 
+    @app.post(
+        "/v1/dependencies",
+        response_model=DependencySession,
+        status_code=201,
+        dependencies=[Depends(require_auth)],
+    )
+    async def start_dependency(request: Request) -> DependencySession:
+        form = await _require_form_parts(request, required={"metadata"}, optional={"overlay"})
+        raw_metadata = form["metadata"]
+        overlay_upload = form.get("overlay")
+        if not isinstance(raw_metadata, str):
+            raise HTTPException(status_code=422, detail="Invalid dependency request")
+        if overlay_upload is not None and not isinstance(overlay_upload, UploadFile):
+            raise HTTPException(status_code=422, detail="Invalid dependency request")
+        try:
+            metadata = DependencyStartRequest.model_validate_json(raw_metadata)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=_validation_detail(exc)) from None
+        if (metadata.overlay_digest is None) != (overlay_upload is None):
+            raise HTTPException(status_code=422, detail="Overlay metadata and archive must be provided together")
+
+        work_dir = storage_root / f"dependency-{uuid4().hex}"
+        try:
+            work_dir.mkdir()
+            overlay_dir = None
+            if overlay_upload is not None and metadata.overlay_digest is not None:
+                archive = work_dir / "overlay.tar.gz"
+                await _save_upload(overlay_upload, archive, max_bytes=settings.max_archive_bytes)
+                overlay_dir = work_dir / "overlay"
+                extract_directory_archive(
+                    archive,
+                    overlay_dir,
+                    max_bytes=settings.max_archive_bytes,
+                    max_files=settings.max_archive_files,
+                )
+                if transport_tree_digest(overlay_dir) != metadata.overlay_digest:
+                    raise ValueError("Overlay digest mismatch")
+            dataset_dir = trusted_catalog.materialize(
+                envelope_id=metadata.envelope_id,
+                envelope_digest=metadata.envelope_digest,
+                selections=[EnvelopeTask(task_id=metadata.task_id, base_task_id=metadata.base_task_id)],
+                destination=work_dir / "dataset",
+                overlay_dir=overlay_dir,
+            )
+            session_id = await session_manager.start(
+                metadata,
+                task_dir=dataset_dir / metadata.task_id,
+                work_dir=work_dir,
+            )
+        except (OSError, KeyError, ValueError, RuntimeError):
+            logger.exception("Rejected dependency session request")
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise HTTPException(status_code=422, detail="Dependency request failed trusted validation") from None
+        capability = uuid4().hex + uuid4().hex
+        dependency_capabilities[session_id] = capability
+        dependency_work_dirs[session_id] = work_dir
+        return DependencySession(session_id=session_id, capability_token=capability)
+
+    def require_capability(session_id: str, capability: str | None) -> None:
+        expected = dependency_capabilities.get(session_id)
+        if expected is None:
+            raise HTTPException(status_code=404, detail="Dependency session not found")
+        if capability is None or not hmac.compare_digest(capability, expected):
+            raise HTTPException(status_code=403, detail="Invalid dependency capability")
+
+    @app.post(
+        "/v1/dependencies/{session_id}/exec",
+        response_model=DependencyExecResponse,
+        dependencies=[Depends(require_auth)],
+    )
+    async def execute_dependency(
+        session_id: str,
+        command: DependencyExecRequest,
+        capability: Annotated[str | None, Header(alias="X-Nemo-Dependency-Capability")] = None,
+    ) -> DependencyExecResponse:
+        require_capability(session_id, capability)
+        try:
+            return await session_manager.execute(session_id, command)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Dependency session not found") from None
+
+    @app.delete(
+        "/v1/dependencies/{session_id}",
+        status_code=204,
+        dependencies=[Depends(require_auth)],
+    )
+    async def stop_dependency(
+        session_id: str,
+        capability: Annotated[str | None, Header(alias="X-Nemo-Dependency-Capability")] = None,
+    ) -> Response:
+        require_capability(session_id, capability)
+        try:
+            await session_manager.stop(session_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Dependency session not found") from None
+        dependency_capabilities.pop(session_id, None)
+        work_dir = dependency_work_dirs.pop(session_id, None)
+        if work_dir is not None:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        return Response(status_code=204)
+
     return app
 
 
@@ -408,11 +512,42 @@ def main() -> None:
     token = os.environ.get("NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN")
     if token is None:
         raise SystemExit("NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN is required")
+    inference_api_key = os.environ.get("INFERENCE_API_KEY")
+    inference_api_base = os.environ.get("INFERENCE_API_BASE")
+    aut_model_name = os.environ.get("AUT_MODEL_NAME")
+    missing = [
+        name
+        for name, value in (
+            ("INFERENCE_API_KEY", inference_api_key),
+            ("INFERENCE_API_BASE", inference_api_base),
+            ("AUT_MODEL_NAME", aut_model_name),
+        )
+        if not value
+    ]
+    if missing:
+        raise SystemExit(f"Trusted bridge startup environment is missing: {', '.join(missing)}")
+    assert inference_api_key is not None
+    assert inference_api_base is not None
+    assert aut_model_name is not None
+    from nemo_experimentalist_plugin.harbor_bridge.runner import (  # noqa: PLC0415
+        HarborBridgeRunner,
+        TrustedInferenceConfig,
+    )
+
+    inference = TrustedInferenceConfig.model_validate(
+        {
+            "api_key": inference_api_key,
+            "api_base": inference_api_base,
+            "model_name": aut_model_name,
+        }
+    )
     app = create_app(
         settings=HarborBridgeSettings(
             storage_root=args.storage_root,
             catalog_root=args.catalog_root,
             token=token,
-        )
+            sensitive_values=(inference_api_key,),
+        ),
+        runner=HarborBridgeRunner(inference),
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

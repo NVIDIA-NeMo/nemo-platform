@@ -17,6 +17,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Task,
     TrialResult,
 )
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DependencyRuntimeError
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (  # noqa: F401
     Diagnostic,
     TraceAnalyzer,
@@ -638,6 +639,8 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         for task_id, result in zip(unique_tasks, rationales_list, strict=True):
             if isinstance(result, asyncio.CancelledError):
                 raise result
+            if isinstance(result, DependencyRuntimeError):
+                raise result
             if isinstance(result, BaseException):
                 logging.getLogger(__name__).warning(f"Rationalizer failed for {agent_id}/{task_id}: {result}")
                 continue
@@ -664,6 +667,8 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         diagnostics_by_trial_id = dict(missing_task_diagnostics)
         for (trial, _), result in zip(trial_tasks, diagnoses_list, strict=True):
             if isinstance(result, asyncio.CancelledError):
+                raise result
+            if isinstance(result, DependencyRuntimeError):
                 raise result
             if isinstance(result, BaseException):
                 logging.getLogger(__name__).warning(

@@ -3,6 +3,7 @@
 
 """Factories for evaluator-specific datasets and evaluators."""
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,12 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluatorConfig,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Dataset, DatasetRef, Task
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_harbor import (
+    BRIDGE_URL_ENV,
+    OPEN_SHELL_RUNTIME_ENV,
+    RemoteHarborEvaluator,
+    RemoteHarborEvaluatorConfig,
+)
 
 _SUPPORTED_EVALUATOR_TYPES = {
     "harbor": (HarborDataset, HarborEvaluator, HarborEvaluatorConfig),
@@ -99,6 +106,12 @@ class EvaluatorFactory:
                 config = config.model_dump()
             elif not isinstance(config, dict):
                 raise TypeError(f"{evaluator_type.capitalize()} evaluator config must be an EvaluatorConfig or dict")
+            if evaluator_type == "harbor" and os.environ.get(OPEN_SHELL_RUNTIME_ENV) == "1":
+                bridge_url = os.environ.get(BRIDGE_URL_ENV)
+                if not bridge_url:
+                    raise RuntimeError(f"{BRIDGE_URL_ENV} is required inside the OpenShell runtime")
+                evaluator_config = RemoteHarborEvaluatorConfig.model_validate({**config, "bridge_url": bridge_url})
+                return RemoteHarborEvaluator(options=evaluator_config, experiment_dir=experiment_dir)
             evaluator_config = _SUPPORTED_EVALUATOR_TYPES[evaluator_type][2].model_validate(config)
             return _SUPPORTED_EVALUATOR_TYPES[evaluator_type][1](
                 options=evaluator_config, experiment_dir=experiment_dir

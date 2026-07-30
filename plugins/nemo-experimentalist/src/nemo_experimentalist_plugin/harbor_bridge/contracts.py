@@ -21,6 +21,20 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RunProfile(StrictModel):
+    """Host-owned Harbor resource and timeout policy."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    attempts: int
+    concurrency: int
+    retries: int
+    agent_timeout_multiplier: float
+    verifier_timeout_multiplier: float
+    setup_timeout_multiplier: float
+    build_timeout_multiplier: float
+
+
 class EnvelopeTask(StrictModel):
     """One generated task mapped to a trusted host-owned base task."""
 
