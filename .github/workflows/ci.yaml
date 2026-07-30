@@ -37,6 +37,7 @@ jobs:
       openapi: ${{ steps.changes.outputs.openapi }}
       test: ${{ steps.changes.outputs.test }}
       deps: ${{ steps.changes.outputs.deps }}
+      fabric: ${{ steps.changes.outputs.fabric }}
       e2e: ${{ steps.changes.outputs.e2e }}
       docs: ${{ steps.changes.outputs.docs }}
       web-studio: ${{ steps.changes.outputs.web-studio }}
@@ -856,6 +857,96 @@ jobs:
             coverage.xml
             coverage.json
             coverage-html/
+
+  # WHY THIS JOB EXISTS (it looks redundant, it isn't): `--extra fabric` appears nowhere else in this
+  # file and there is no `--all-extras`, so no other job installs nemo-fabric. Every other Fabric test
+  # either fakes `nemo_fabric` or `importorskip`s it, which means the hermetic suite keeps passing when
+  # the real API moves — that is how the enable_relay keyword, the `.cli`/`.sdk` adapter ids, and the
+  # entire profile mechanism each drifted underneath us while the unit tests stayed green. Deleting
+  # this job takes real-Fabric coverage to zero. The bare import is also the ONLY check on runtime.py's
+  # TYPE_CHECKING import block (RunResult/RunOutput/...), which ty cannot verify because nemo-fabric is
+  # absent from the type-check environment.
+  fabric-wheel-smoke:
+    name: Fabric wheel install smoke (Linux, py${{ matrix.python-version }})
+    needs: [changes]
+    # A Fabric wheel bump lands in uv.lock (deps), and edits to the runtime's own Fabric call sites or
+    # its tests land under the fabric filter — either can surface API drift, so run on both.
+    if: >
+      !cancelled() &&
+      (needs.changes.outputs.deps == 'true' || needs.changes.outputs.fabric == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # One interpreter on purpose. nemo-fabric-runtime ships a single cp311-abi3 wheel and the
+        # adapters are pure Python, so extra legs mostly re-check the same dependency closure; the
+        # 3.12-3.13 range is already asserted by uv.lock resolving universally.
+        #
+        # It must satisfy uv.lock's `requires-python` (currently >=3.12,<3.14) because this job runs
+        # `uv sync` on the WORKSPACE. That ceiling is the intersection across workspace members —
+        # nemo-rl, automodel, unsloth, deployments and experimentalist still cap at <3.14 — so it is
+        # narrower than the root pyproject's <3.15, and a 3.14 leg would fail at `uv sync` before
+        # installing anything.
+        python-version: ["3.12"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # This job installs and imports third-party wheels; don't leave GITHUB_TOKEN in .git/config.
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          # Must satisfy the workspace floor in the root pyproject.toml (`requires-python`), or
+          # `uv sync` refuses the interpreter outright.
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      # Installs the published nemo-fabric wheels (+ codex/claude/deepagents adapters) from the lock.
+      # Linux is where jobs actually execute the runtime, and it validates that the manylinux
+      # nemo-fabric-runtime wheel installs on the runner's glibc.
+      - name: Install nemo-evaluator-sdk[fabric] from the lock
+        run: uv sync --frozen --package nemo-evaluator-sdk --extra fabric
+      # Import the Fabric SDK surface that agent_eval/runtimes/fabric/runtime.py depends on, so the
+      # published package is exercised for real instead of only via the hermetic fake-nemo_fabric tests.
+      - name: Import the Fabric SDK surface the runtime uses
+        run: |
+          uv run --frozen --no-sync python - <<'PY'
+          import nemo_fabric
+          from nemo_fabric import (
+              EnvironmentConfig,
+              Fabric,
+              FabricConfig,
+              RelayAtifConfig,
+              RelayAtofConfig,
+              RelayAtofFileSinkConfig,
+              RelayObservabilityConfig,
+              RunRequest,
+              RunResult,
+          )
+          print("nemo_fabric import OK:", nemo_fabric.__file__)
+          PY
+      # A bare import can't catch API drift in the runtime's *call sites* — the enable_relay keyword and
+      # the harness adapter ids both moved under us while the hermetic fakes kept passing. These contract
+      # tests exercise those call sites against the real wheels (importorskip elsewhere), so a future
+      # drift turns this job red instead of slipping through.
+      - name: Run Fabric runtime contract tests against the real wheels
+        # pytest lives in the root `dev` group, which the minimal `--package ... --extra fabric` sync
+        # above does not pull, so install it (and pytest-asyncio, for the SDK package's
+        # asyncio_mode=auto) into the synced venv rather than bloating the smoke env with the whole
+        # dev group.
+        #
+        # It must go INTO .venv — NOT via `uv run --with`, which layers an ephemeral overlay whose
+        # sys.prefix is a temp build dir. Fabric discovers adapter descriptors under
+        # `<sys.prefix>/share/nemo-fabric/adapters` (that is where the adapter wheels install their
+        # fabric-adapter.json data files), so under an overlay every adapter goes missing and any
+        # resolution fails with `unknown adapter ...; available adapters: []`.
+        run: |
+          uv pip install --python .venv/bin/python pytest pytest-asyncio
+          uv run --frozen --no-sync pytest \
+            packages/nemo_evaluator_sdk/tests/agent_eval/test_fabric_surface.py -v
 
   python-integration-test:
     name: Python integration tests
@@ -1820,6 +1911,7 @@ jobs:
       - policy-wasm
       - python-unit-test-tools
       - python-unit-test
+      - fabric-wheel-smoke
       # Enable if you want this required
       # - python-integration-test
       - require-nvskills

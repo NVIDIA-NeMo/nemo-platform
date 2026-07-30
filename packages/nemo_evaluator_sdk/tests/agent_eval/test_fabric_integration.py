@@ -8,8 +8,8 @@ captured trajectory evidence.
   in CI: it proves the runner -> evaluator -> metric -> evidence chain, i.e. the metric receives and
   reads the trajectory (ATIF) evidence for the task.
 - ``test_fabric_codex_live_eval_captures_atif_trajectory`` is the real fabric->codex->Relay run, gated
-  behind the required binaries/checkout so CI skips it; run it locally after
-  ``script/dev-install-fabric.sh``.
+  behind the required binaries so CI skips it; run it locally after ``uv sync --extra fabric``
+  plus ``script/dev-install-fabric.sh`` for the relay gateway.
 """
 
 from __future__ import annotations
@@ -103,19 +103,38 @@ class _FakeConfig:
         return clone
 
     def enable_relay(
-        self, *, project: str | None = None, output_dir: str | None = None, config: Any = None
+        self,
+        *,
+        project: str | None = None,
+        output_dir: str | None = None,
+        observability: Any = None,
+        components: Any = None,
+        policy: Any = None,
     ) -> _FakeConfig:
-        self.relay = {"project": project, "output_dir": output_dir, "config": config}
+        self.relay = {
+            "project": project,
+            "output_dir": output_dir,
+            "observability": observability,
+            "components": components,
+            "policy": policy,
+        }
         return self
 
 
-class _FakeProfile:
+class _FakeModelConfig:
+    """Stand-in for nemo_fabric.ModelConfig (FabricConfig.models is dict[str, ModelConfig])."""
+
+    def __init__(self, *, provider: str, model: str, **extra: Any) -> None:
+        self.provider = provider
+        self.model = model
+        self.extra = extra
+
+
+class _FakeRelayModel:
+    """Stand-in for nemo_fabric's RelayObservabilityConfig/RelayAtifConfig/RelayAtofConfig (kwargs bag)."""
+
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
-
-    @classmethod
-    def from_mapping(cls, mapping: dict[str, Any]) -> _FakeProfile:
-        return cls(**mapping)
 
 
 class _FakeArtifact:
@@ -139,7 +158,7 @@ class _FakeResult:
         self.output = {"adapter": "cli", "response": "DONE"}
         self.error = None
         self.harness = "codex"
-        self.adapter_id = "nvidia.fabric.codex.cli"
+        self.adapter_id = "nvidia.fabric.codex"
         self.adapter_kind = "process"
         self.invocation_id = "inv-1"
         self.artifacts = _FakeManifest(artifacts)
@@ -170,15 +189,21 @@ async def test_fabric_runner_eval_exposes_trajectory_to_metric(tmp_path: Path, m
     module = types.ModuleType("nemo_fabric")
     module.Fabric = _FakeClient  # type: ignore[attr-defined]
     module.FabricConfig = _FakeConfig  # type: ignore[attr-defined]
-    module.FabricProfileConfig = _FakeProfile  # type: ignore[attr-defined]
     module.EnvironmentConfig = _FakeEnvironment  # type: ignore[attr-defined]
+    module.ModelConfig = _FakeModelConfig  # type: ignore[attr-defined]
     module.RunRequest = _FakeRunRequest  # type: ignore[attr-defined]
+    # The runtime builds the relay observability config from Fabric's own typed models (lazy import).
+    module.RelayObservabilityConfig = _FakeRelayModel  # type: ignore[attr-defined]
+    module.RelayAtifConfig = _FakeRelayModel  # type: ignore[attr-defined]
+    module.RelayAtofConfig = _FakeRelayModel  # type: ignore[attr-defined]
+    module.RelayAtofFileSinkConfig = _FakeRelayModel  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nemo_fabric", module)
-    # nemo_relay is a hard dependency (the trajectory profile is built from its real typed config), so
-    # it is not stubbed — only the optional native nemo_fabric SDK is faked.
+    # nemo_relay stays a hard (installed) dependency here so ``run_tasks``'s capture-trajectory fail-fast
+    # (``import nemo_relay.observability``) resolves; only the optional native nemo_fabric SDK is faked.
+    # The observability config itself is built from nemo_fabric's typed models (faked above), not nemo_relay's.
 
     runtime = fabric_runtime.FabricAgentRuntime(
-        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}},
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}},
         work_root=tmp_path / "fabric",
     )
     result = AgentEvaluator().run_sync(
@@ -202,16 +227,30 @@ async def test_fabric_runner_eval_exposes_trajectory_to_metric(tmp_path: Path, m
 
 # --- gated live: real fabric -> codex -> Relay ATIF ------------------------------------------------
 
-_FABRIC_REPO = os.environ.get("NEMO_FABRIC_REPO", "")
-_LIVE_READY = bool(
-    _FABRIC_REPO
-    and shutil.which("codex")
-    and shutil.which("nemo-relay")
-    and importlib.util.find_spec("nemo_fabric") is not None
-)
+
+def _codex_adapter_installed() -> bool:
+    """Whether the codex harness adapter is installed (the ``fabric`` extra, not the base SDK).
+
+    ``nemo_fabric`` itself is a base dependency, so importing it proves nothing about harnesses:
+    without the adapters Fabric resolves none and fails with ``available adapters: []``. ``find_spec``
+    raises rather than returning None when the parent package is missing, hence the guard.
+    """
+    try:
+        return importlib.util.find_spec("nemo_fabric_adapters.codex") is not None
+    except ModuleNotFoundError:
+        return False
+
+
+# No NeMo-Fabric checkout in the gate: the adapter registry resolves from the installed wheels
+# (<sys.prefix>/share/nemo-fabric/adapters), so `uv sync --extra fabric` is enough.
+_LIVE_READY = bool(shutil.which("codex") and shutil.which("nemo-relay") and _codex_adapter_installed())
+_LIVE_MODEL = os.environ.get("NEMO_FABRIC_LIVE_MODEL", "gpt-5.6-terra")
 requires_live_fabric = pytest.mark.skipif(
     not _LIVE_READY,
-    reason="needs NEMO_FABRIC_REPO + codex + nemo-relay gateway + nemo_fabric (run script/dev-install-fabric.sh)",
+    reason=(
+        "needs the harness adapters (uv sync --extra fabric) + the nemo-relay gateway "
+        "(script/dev-install-fabric.sh) + codex on PATH"
+    ),
 )
 
 
@@ -222,18 +261,21 @@ def test_fabric_codex_live_eval_captures_atif_trajectory(tmp_path: Path) -> None
         "schema_version": "fabric.agent/v1alpha1",
         "metadata": {"name": "eval-fabric-live"},
         "harness": {
-            "adapter_id": "nvidia.fabric.codex.cli",
+            "adapter_id": "nvidia.fabric.codex",
             "resolution": "preinstalled",
             "settings": {"sandbox": "workspace-write", "skip_git_repo_check": True, "timeout_seconds": 180},
         },
         "runtime": {"mode": "oneshot", "transport": "cli", "input_schema": "text", "output_schema": "message"},
         "environment": {"provider": "local", "workspace": str(tmp_path / "ws")},
+        # Fabric's codex adapter requires an explicit model provider — it does not fall back to the
+        # Codex CLI's own configured default, and starting without one fails the adapter lifecycle
+        # with `codex_invalid_configuration`. Override for an account with different model access.
+        "models": {"default": {"provider": "openai", "model": _LIVE_MODEL}},
         "telemetry": {"enabled": False},
     }
     (tmp_path / "ws").mkdir(parents=True, exist_ok=True)
     runtime = fabric_runtime.FabricAgentRuntime(
         config=codex_config,
-        base_dir=Path(_FABRIC_REPO),  # so the adapter registry resolves adapters/codex-cli
         work_root=tmp_path / "fabric",
         capture_trajectory=True,
     )

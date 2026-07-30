@@ -267,7 +267,6 @@ class AgentEvalJob(NemoJob):
         if isinstance(target, FabricRunnerTarget):
             fabric_runtime = FabricAgentRuntime(
                 config=target.config,
-                profiles=target.profiles,
                 model=target.model,
                 timeout_s=target.timeout_s,
                 capture_trajectory=target.capture_trajectory,
