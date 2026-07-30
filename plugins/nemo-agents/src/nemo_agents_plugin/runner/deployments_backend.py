@@ -199,6 +199,7 @@ def build_deployment_config(
     image: str,
     port: int,
     nat_config: dict[str, Any],
+    platform_base_url: str,
     config_mount_path: str,
     mode: DeploymentMode,
     plugin_wheels_init_image: str | None = None,
@@ -213,14 +214,16 @@ def build_deployment_config(
     starts. The main container binds ``0.0.0.0`` and exposes a readiness probe on
     ``/health``.
 
-    The inference base URL the agent calls is read from ``nat_config``'s
-    ``llms.*.base_url``; the caller is responsible for setting it to a
-    container-reachable value.
+    ``platform_base_url`` is the container-reachable platform origin used to
+    build the Inference Gateway URL. It is also exported as ``NMP_BASE_URL`` so
+    SDK calls from inside the agent use the same platform instead of falling
+    back to a baked or host CLI context.
     """
     nat_yaml = yaml.safe_dump(nat_config, sort_keys=False)
     env = [
         EnvVar(name="NMP_WORKSPACE", value=workspace),
         EnvVar(name="NMP_AGENT_NAME", value=name),
+        EnvVar(name="NMP_BASE_URL", value=platform_base_url.rstrip("/")),
         EnvVar(name=_NAT_CONFIG_ENV, value=config_mount_path),
     ]
     volume_mounts: list[VolumeMount] = []
@@ -394,6 +397,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             image=resolved_image,
             port=self._config.container_port,
             nat_config=config,
+            platform_base_url=gateway,
             config_mount_path=self._config.config_mount_path,
             mode=deployment_mode,
             plugin_wheels_init_image=self._config.plugin_wheels_init_image,

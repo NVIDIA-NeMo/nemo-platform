@@ -78,8 +78,8 @@ deployments:
       backend: docker
       config:
         pull_images: false
-        port_range_start: 9000
-        port_range_end: 9100
+        port_range_start: 49152
+        port_range_end: 49251
   default_executor: local-docker
 
 inference_gateway: {}

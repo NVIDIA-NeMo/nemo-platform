@@ -84,6 +84,7 @@ def create_jobs(
     spec: Annotated[str | None, typer.Option("--spec", help="JSON string (required)")] = None,
     custom_fields: Annotated[str | None, typer.Option("--custom-fields", help="JSON string")] = None,
     description: Annotated[str | None, typer.Option("--description")] = None,
+    output_location: Annotated[str | None, typer.Option("--output-location")] = None,
     ownership: Annotated[str | None, typer.Option("--ownership", help="JSON string")] = None,
     project: Annotated[str | None, typer.Option("--project")] = None,
     input_file: Annotated[
@@ -127,6 +128,8 @@ def create_jobs(
         input_payload["description"] = description
     if name is not None:
         input_payload["name"] = name
+    if output_location is not None:
+        input_payload["output_location"] = output_location
     if ownership is not None:
         input_payload["ownership"] = read_payload("ownership", ownership)
     if project is not None:

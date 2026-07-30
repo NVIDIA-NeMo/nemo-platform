@@ -44,6 +44,16 @@ class TestLogs:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
+    def test_method_create_with_all_params(self, client: NeMoPlatform) -> None:
+        log = client.files.otlp.logs.create(
+            name="name",
+            workspace="workspace",
+            artifact_base_path="artifact_base_path",
+        )
+        assert_matches_type(OtelExportLogsServiceResponse, log, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
     def test_raw_response_create(self, client: NeMoPlatform) -> None:
         response = client.files.otlp.logs.with_raw_response.create(
             name="name",
@@ -100,6 +110,7 @@ class TestLogs:
         log = client.files.otlp.logs.query(
             name="name",
             workspace="workspace",
+            artifact_base_path="artifact_base_path",
             filters={"foo": "string"},
             limit=1,
             page_cursor="page_cursor",
@@ -166,6 +177,16 @@ class TestAsyncLogs:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
+    async def test_method_create_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
+        log = await async_client.files.otlp.logs.create(
+            name="name",
+            workspace="workspace",
+            artifact_base_path="artifact_base_path",
+        )
+        assert_matches_type(OtelExportLogsServiceResponse, log, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
     async def test_raw_response_create(self, async_client: AsyncNeMoPlatform) -> None:
         response = await async_client.files.otlp.logs.with_raw_response.create(
             name="name",
@@ -222,6 +243,7 @@ class TestAsyncLogs:
         log = await async_client.files.otlp.logs.query(
             name="name",
             workspace="workspace",
+            artifact_base_path="artifact_base_path",
             filters={"foo": "string"},
             limit=1,
             page_cursor="page_cursor",

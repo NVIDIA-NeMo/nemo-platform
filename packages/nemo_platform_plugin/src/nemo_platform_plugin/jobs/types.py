@@ -16,17 +16,61 @@ The deep spec types live in sibling modules:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, NotRequired, Optional, TypedDict
 
+from nemo_platform_plugin.files.types import MAX_LENGTH as FILESET_NAME_MAX_LENGTH
+from nemo_platform_plugin.files.types import NAME_PATTERN as FILESET_NAME_PATTERN
+from nemo_platform_plugin.files.types import NAME_PATTERN_DESCRIPTION as FILESET_NAME_DESCRIPTION
 from nemo_platform_plugin.jobs.schemas import (
     PlatformJobResultResponse,
     PlatformJobStatus,
 )
 from nemo_platform_plugin.jobs.spec import PlatformJobSpec, PlatformJobStepSpec
 from nemo_platform_plugin.schema import Value
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, Field, RootModel, field_validator
+
+_FILESET_NAME_RE = re.compile(FILESET_NAME_PATTERN)
+
+
+def validate_output_location(value: str | None) -> str | None:
+    """Syntactic check for the ``output_location`` job-request field.
+
+    Rejects anything that could not name an existing fileset, so a bad value fails
+    before the dispatcher spends a lookup on it.
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("output_location must not be empty")
+    if "#" in stripped:
+        raise ValueError("subpath in output_location is not yet supported")
+    if "/" in stripped:
+        raise ValueError("output_location must be a bare fileset name; the workspace is implied by the request")
+    if len(stripped) > FILESET_NAME_MAX_LENGTH:
+        raise ValueError(f"output_location must be at most {FILESET_NAME_MAX_LENGTH} characters")
+    if not _FILESET_NAME_RE.match(stripped):
+        raise ValueError(f"output_location is not a valid fileset name. {FILESET_NAME_DESCRIPTION}")
+    return stripped
+
+
+# Root folder for job artifacts inside a caller-supplied ``output_location`` fileset, so a
+# fileset the caller also uses for their own files keeps job output in one predictable place.
+JOB_ARTIFACT_ROOT = "jobs"
+
+
+def job_artifact_base_path(job_name: str, output_location: str | None) -> str | None:
+    """Folder inside the fileset that this job's artifacts (logs + results) nest under.
+
+    ``None`` for an auto-created ``job-fileset-<name>``: the job owns the whole fileset, so
+    its artifacts sit at the root. Writers and readers must both derive the value from here
+    or logs get written where the log query cannot find them.
+    """
+    return f"{JOB_ARTIFACT_ROOT}/{job_name}" if output_location else None
+
 
 # ---------------------------------------------------------------------------
 # Auth context (data-only mirror of nmp.common.auth.AuthContext)
@@ -135,6 +179,9 @@ class PlatformJobResponse(BaseModel):
     spec: dict[str, Any] = Field(default_factory=dict, description="Job Spec")
     platform_spec: PlatformJobSpec
     fileset: str = Field(..., description="Fileset ID for storing job artifacts")
+    output_location: Optional[str] = Field(
+        default=None, description="Caller-supplied artifact fileset; None when the fileset was auto-created"
+    )
     status: PlatformJobStatus
     status_details: dict[str, Any] = Field(default_factory=dict, description="Details about the job status")
     error_details: dict[str, Any] | None = None
@@ -171,6 +218,13 @@ class PlatformJobStepWithContext(BaseModel):
     job: str
     attempt_id: str
     fileset: str
+    artifact_base_path: str | None = Field(
+        default=None,
+        description=(
+            "Folder inside the fileset that this job's artifacts nest under; None when the job "
+            "owns the whole fileset and its artifacts sit at the root"
+        ),
+    )
     workspace: str
     name: str
     step_spec: PlatformJobStepSpec | None = None
@@ -230,6 +284,9 @@ class CreatePlatformJobRequest(BaseModel):
     source: str
     ownership: Optional[dict] = None
     custom_fields: Optional[dict] = None
+    output_location: Optional[str] = None
+
+    _validate_output_location = field_validator("output_location")(validate_output_location)
 
 
 class PlatformJobTaskUpdate(BaseModel):

@@ -78,7 +78,14 @@ async def test_create_exited_one_shot_container_is_removed_and_recreated(
     existing.attrs = container_attrs(status="exited", exit_code=0)
     mock_docker_client.containers.get.return_value = existing
     mock_entities.get.return_value = sample_config(restart_policy=restart_policy)
-    mock_docker_client.containers.run.return_value = MagicMock(id="fresh456")
+    fresh = MagicMock(id="fresh456")
+    fresh.labels = _matching_labels(name="srv-puller", restart_policy=restart_policy)
+    fresh.attrs = container_attrs(exit_code=0)
+    if restart_policy == "Never":
+        fresh.wait.return_value = {"StatusCode": 0}
+    else:
+        fresh.status = "running"
+    mock_docker_client.containers.run.return_value = fresh
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -88,7 +95,13 @@ async def test_create_exited_one_shot_container_is_removed_and_recreated(
         backend_config={},
     )
 
-    assert update.status == "STARTING"
+    if restart_policy == "Never":
+        assert update.status == "SUCCEEDED"
+        assert update.exit_code == 0
+        fresh.wait.assert_called_once()
+    else:
+        assert update.status == "STARTING"
+        fresh.wait.assert_not_called()
     existing.remove.assert_called_once_with(force=True)
     mock_docker_client.containers.run.assert_called_once()
 

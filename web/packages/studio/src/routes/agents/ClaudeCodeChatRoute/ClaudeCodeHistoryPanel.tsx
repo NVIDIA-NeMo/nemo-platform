@@ -25,7 +25,7 @@ export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = ({
   const [openFloatingPanel, setOpenFloatingPanel, clearOpenFloatingPanel] =
     useLocalStorage<OpenFloatingPanel>(CLAUDE_CODE_OPEN_FLOATING_PANEL_KEY);
   const isOpen = historyOpen !== 'false';
-  const toggleLabel = isOpen ? 'Collapse Claude history' : 'Expand Claude history';
+  const toggleLabel = isOpen ? 'Collapse NeMo Agent history' : 'Expand NeMo Agent history';
   const handleFloatingPanelOpenChange = (panel: OpenFloatingPanel, open: boolean) => {
     if (open) {
       setOpenFloatingPanel(panel);

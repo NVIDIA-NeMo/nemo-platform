@@ -1,5 +1,12 @@
 {{- if and (include "nemo-platform.authEnabled" .) .Values.envoyProxy.enabled }}
 {{- if .Values.envoyProxy.autoscaling.enabled }}
+{{- $requests := .Values.envoyProxy.resources.requests | default dict }}
+{{- if and .Values.envoyProxy.autoscaling.targetCPUUtilizationPercentage (not $requests.cpu) }}
+{{- fail "envoyProxy.resources.requests.cpu is required when Envoy CPU autoscaling is enabled" }}
+{{- end }}
+{{- if and .Values.envoyProxy.autoscaling.targetMemoryUtilizationPercentage (not $requests.memory) }}
+{{- fail "envoyProxy.resources.requests.memory is required when Envoy memory autoscaling is enabled" }}
+{{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

@@ -257,7 +257,6 @@ function updateDocsYml(releases, previousGeneratedVersionPaths) {
       "display-name": release.displayName,
       path: versionPath(release),
       slug: release.slug,
-      availability: "stable",
     }));
     const generatedNode = doc.createNode(generatedVersions);
     if (!isSeq(generatedNode)) {

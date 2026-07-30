@@ -180,7 +180,7 @@ describe('useClaudeCodeChatRuntime', () => {
     await waitFor(() => expect(result.current.artifacts.coding_agent_model).toBeUndefined());
   });
 
-  it('pauses for a matching Studio UI suggestion before creating a Claude Code session', async () => {
+  it('pauses for a matching Studio UI suggestion before creating a NeMo Agent session', async () => {
     let submitPromise!: Promise<void>;
     mockFeatureFlags({ guardrailsEnabled: true });
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');

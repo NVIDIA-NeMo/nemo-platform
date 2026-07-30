@@ -18,5 +18,6 @@
 from __future__ import annotations
 
 from .log_query_params import LogQueryParams as LogQueryParams
+from .log_create_params import LogCreateParams as LogCreateParams
 from .otel_export_logs_partial_success import OtelExportLogsPartialSuccess as OtelExportLogsPartialSuccess
 from .otel_export_logs_service_response import OtelExportLogsServiceResponse as OtelExportLogsServiceResponse

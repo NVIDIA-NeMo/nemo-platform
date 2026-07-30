@@ -42,6 +42,7 @@ PlatformJobSortField = _types.PlatformJobSortField
 PlatformJobStatusDetailsUpdateRequest = _types.PlatformJobStatusDetailsUpdateRequest
 PlatformJobStatusUpdateRequest = _types.PlatformJobStatusUpdateRequest
 PlatformJobTaskUpdate = _types.PlatformJobTaskUpdate
+job_artifact_base_path = _types.job_artifact_base_path
 
 # =============================================================================
 # Utilities

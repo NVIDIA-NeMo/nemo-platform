@@ -66,15 +66,14 @@ dependencies = [
 version = "0.0.0"
 
 [dependency-groups]
-# Optional Insights analyst plugin.
+# Insights analyst plugin convenience group.
 insights = ["nemo-insights-plugin"]
-# Optional Experimentalist agent-optimization plugin. Experimentalist depends on Eval Author
-# because insight mode imports it at module scope; Eval Author still depends back on
-# Experimentalist for evaluator/trace helpers, but that arrow is being removed (see
-# plugins/nemo-eval-author/README.md).
+# Experimentalist and Eval Author currently support Python 3.12 and 3.13. Both are listed
+# because insight mode imports Eval Author at module scope, while Eval Author still depends
+# back on Experimentalist for evaluator/trace helpers (see plugins/nemo-eval-author/README.md).
 experimentalist = [
-  "nemo-experimentalist-plugin",
-  "nemo-eval-author-plugin",
+  "nemo-experimentalist-plugin ; python_full_version < '3.14'",
+  "nemo-eval-author-plugin ; python_full_version < '3.14'",
 ]
 dev = [
   "pre-commit>=3.8.0",
@@ -176,6 +175,9 @@ enabled-plugins = [
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
   "nemo-evaluator-plugin",
+  "nemo-insights-plugin",
+  "nemo-experimentalist-plugin ; python_full_version < '3.14'",
+  "nemo-eval-author-plugin ; python_full_version < '3.14'",
   "nemo-guardrails-plugin",
   "nemo-auditor-plugin",
   "nemo-safe-synthesizer-plugin",
@@ -554,6 +556,9 @@ extra-paths = [
   # nemo-agents plugin is not a workspace member; add its src so ty can
   # resolve nemo_agents_plugin imports when checking plugin test files.
   "plugins/nemo-agents/src",
+  # The built-in NeMo Agent is a standalone deployable with its own lockfile;
+  # add its src so ty can resolve nemo_agent imports from its tests.
+  "agents/nemo-agent-local/src",
   # example-plugin is not a workspace member; add its src so ty can
   # resolve nmp.example_plugin imports when checking plugin test files.
   "plugins/example-plugin/src",
@@ -565,11 +570,11 @@ extra-paths = [
   # nemo-evaluator plugin is not a workspace member; add its src so ty can
   # resolve nemo_evaluator imports when checking plugin test files.
   "plugins/nemo-evaluator/src",
-  # The optional Insights analyst is not part of the default environment.
+  # Source path for the Insights analyst plugin.
   "plugins/nemo-insights/src",
-  # Same for the optional Eval Author plugin.
+  # Source path for the Eval Author plugin.
   "plugins/nemo-eval-author/src",
-  # Same for the optional Experimentalist; its tests also import the benchmark runner.
+  # Source path for Experimentalist; its tests also import the benchmark runner.
   "plugins/nemo-experimentalist/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
   # on sys.path in tests/conftest.py.

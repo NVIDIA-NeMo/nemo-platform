@@ -1,0 +1,81 @@
+# NeMo Platform Agent — NAT workflow configuration
+#
+# A LangChain Deep Agent that uses the NeMo SDK to perform platform tasks.
+# Deliberately configured as the "expensive baseline" for the optimization
+# pipeline to compress.
+#
+# Deploy:
+#   uv pip install -e plugins/nemo-agents
+#   uv pip install -e plugins/nemo-agents/builtin_agents/nemo-agent
+#   nemo agents create --name nemo-agent \
+#     --agent-config plugins/nemo-agents/builtin_agents/nemo-agent/src/nemo_agent/nemo-agent.yml
+#   nemo agents deploy --agent nemo-agent
+#
+# Invoke:
+#   nemo agents invoke --agent nemo-agent --input "Create a workspace called demo"
+
+llms:
+  agent:
+    _type: openai
+    # All AUT model traffic routes through the platform Inference Gateway
+    # (IGW). Both `nemo agents deploy` (production) and the agentic-use
+    # benchmark runner (tests/agentic-use/nat_runner.py via
+    # _prepare_aut_config_for_runtime → inject_gateway_url) inject the IGW
+    # base_url at runtime. Do NOT set `base_url` here — `inject_gateway_url`
+    # uses setdefault, so an explicit value would silently bypass IGW.
+    # `api_key: not-used` is a sentinel; IGW retrieves the real upstream
+    # credential from the platform secrets service.
+    api_key: not-used
+    # Model entity name. IGW resolves this to the upstream provider that
+    # owns it (each entity is owned by exactly one provider, so no provider
+    # field is needed in this yml). Use entity (dash) form — IGW handles
+    # the mapping to the served slash form internally.
+    #
+    # The dash-form name encodes the upstream catalog. nvidia-build serves
+    # NIM models as `nvidia/<model>` (single namespace), so its entities
+    # look like `nvidia-<model>`. nvidia-inference-api proxies LiteLLM,
+    # which serves the same NIM catalog as `nvidia/nvidia/<model>` and the
+    # bedrock catalog as `aws/anthropic/<model>`, so its entities look like
+    # `nvidia-nvidia-<model>` / `aws-anthropic-<model>`. The double prefix
+    # is therefore a reliable signal that an entity routes through
+    # nvidia-inference-api.
+    #
+    # Examples (each empirically validated end-to-end):
+    #   model_name: nvidia-nvidia-nemotron-3-super-v3   # via nvidia-inference-api
+    #   model_name: aws-anthropic-claude-opus-4-5       # via nvidia-inference-api
+    #   model_name: nvidia-llama-3-3-nemotron-super-49b-v1-5  # via nvidia-build
+    #
+    # For the full list of currently-discovered entities, hit
+    # ${NMP_BASE_URL}/v1/models on the running platform, or run the
+    # optional "list available models" cell in the playground notebook.
+    model_name: nvidia-nemotron-3-super-120b-a12b
+    # One total attempt: a retryable upstream decode timeout must not restart
+    # another long-running generation and keep Studio busy indefinitely.
+    do_auto_retry: false
+    num_retries: 1
+    # NAT 1.8 currently patches LangChain methods even when do_auto_retry is
+    # false. Some layers replace empty lists with their defaults, so use
+    # impossible sentinels to prevent nested wrappers from matching 429.
+    retry_on_status_codes: [599]
+    retry_on_errors: ["__never_retry__"]
+    # Disable the OpenAI client's independent retry loop. Without this, one
+    # model call can issue eleven requests before NAT sees the final error.
+    max_retries: 0
+    # Bound the HTTP model call below the Inference Gateway's 600-second
+    # decode wall-clock timeout so the agent can return a terminal error.
+    request_timeout: 120
+
+    # model_name: vm-opus-nemotron-random
+    # AWS-hosted Claude Opus 4.5 rejects Switchyard's Anthropic translation
+    # fallback of 128k output tokens. Keep this below the 64k AWS route limit
+    # while leaving room for prompt/tool tokens on longer benchmark tasks.
+    # Only necessary for Switchyard virtual models.
+    # max_tokens: 49152
+
+workflow:
+  # Custom workflow type registered by `nemo-agents-nemo-agent`. Wraps the same
+  # deep-agent graph as `langgraph_wrapper` would, but with input/output schemas
+  # that survive both the eval client's `{"input_message": ...}` payload and the
+  # deep-agent's wider state shape. See src/nemo_agent/wrapper.py.
+  _type: nemo_agent_wrapper
+  description: NeMo Platform assistant using LangChain Deep Agents

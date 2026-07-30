@@ -46,11 +46,13 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobStepsListFilter,
     PlatformJobStepWithContext,
     PlatformJobTaskUpdate,
+    job_artifact_base_path,
 )
 from nmp.core.jobs.app.ctx import JobContext
 from nmp.core.jobs.app.dispatcher import (
     JobAlreadyExistsError,
     JobDispatcher,
+    JobOutputLocationError,
     JobSecretValidationError,
     StateTransitionConflictError,
 )
@@ -268,6 +270,12 @@ async def create_job(
             auth_context=AuthContext.from_principal(auth_client.principal),
             sdk=sdk,
         )
+    except JobOutputLocationError as exc:
+        logger.info("Invalid output_location for workspace '%s'", sanitize_for_log(workspace), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         logger.info(
             "Failed to create job '%s' in workspace '%s'",
@@ -541,7 +549,12 @@ async def page_job_logs(
             if task_id:
                 filters["job_task"] = task_id
             return await logs_client.query_logs(
-                job.fileset, workspace=workspace, filters=filters, page_size=limit, page_cursor=page_cursor
+                job.fileset,
+                workspace=workspace,
+                filters=filters,
+                page_size=limit,
+                page_cursor=page_cursor,
+                artifact_base_path=job_artifact_base_path(name, job.output_location),
             )
         except InvalidPageCursorError as e:
             logger.error(f"Invalid page cursor: {str(e)}")

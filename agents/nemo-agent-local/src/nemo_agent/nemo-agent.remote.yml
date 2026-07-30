@@ -1,0 +1,22 @@
+# Remote NeMo Platform deployment configuration.
+#
+# Keep the model workspace-qualified: the agent is deployed in a personal
+# workspace while inference is served by the shared, platform-managed route.
+# The platform injects a pod-reachable Inference Gateway base URL at deploy
+# time; no upstream URL or credential belongs in this file.
+
+llms:
+  agent:
+    _type: openai
+    api_key: not-used
+    model_name: default/nvidia-nemotron-3-super-120b-a12b
+    do_auto_retry: false
+    num_retries: 1
+    retry_on_status_codes: [599]
+    retry_on_errors: ["__never_retry__"]
+    max_retries: 0
+    request_timeout: 120
+
+workflow:
+  _type: nemo_agent_wrapper
+  description: NeMo Platform assistant using LangChain Deep Agents

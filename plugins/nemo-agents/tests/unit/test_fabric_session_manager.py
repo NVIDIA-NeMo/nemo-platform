@@ -26,13 +26,27 @@ class _FakeRuntime:
         self.stop_calls += 1
 
 
+class _FakeFabricConfig:
+    def __init__(self, *, copied: bool = False) -> None:
+        self.copied = copied
+        self.relay_enabled = False
+
+    def model_copy(self, *, deep: bool) -> "_FakeFabricConfig":
+        assert deep is True
+        return _FakeFabricConfig(copied=True)
+
+    def enable_relay(self) -> "_FakeFabricConfig":
+        self.relay_enabled = True
+        return self
+
+
 class _FakeFabric:
     def __init__(self, runtime: _FakeRuntime) -> None:
         self.runtime = runtime
-        self.start_calls: list[tuple[Any, Path]] = []
+        self.start_calls: list[dict[str, Any]] = []
 
-    async def start_runtime(self, config: Any, *, base_dir: Path) -> _FakeRuntime:
-        self.start_calls.append((config, base_dir))
+    async def start_runtime(self, config: Any, *, base_dir: Path, streaming: bool = False) -> _FakeRuntime:
+        self.start_calls.append({"base_dir": base_dir, "config": config, "streaming": streaming})
         return self.runtime
 
 
@@ -60,7 +74,7 @@ async def test_open_session_materializes_config_and_starts_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fabric_config = object()
+    fabric_config = _FakeFabricConfig()
     translation_calls: list[AgentConfig] = []
 
     def translate(config: AgentConfig) -> Any:
@@ -86,7 +100,13 @@ async def test_open_session_materializes_config_and_starts_runtime(
 
     assert translation_calls == [agent_config]
     assert (tmp_path / "workspace").is_dir()
-    assert fabric.start_calls == [(fabric_config, tmp_path)]
+    assert len(fabric.start_calls) == 1
+    assert fabric.start_calls[0]["base_dir"] == tmp_path
+    assert fabric.start_calls[0]["streaming"] is True
+    started_config = fabric.start_calls[0]["config"]
+    assert started_config is not fabric_config
+    assert started_config.copied is True
+    assert started_config.relay_enabled is True
     assert session.runtime is runtime
     assert await registry.get(session.session_id) is session
 
@@ -96,7 +116,7 @@ async def test_open_session_stops_runtime_when_registration_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: object())
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
     runtime = _FakeRuntime()
     fabric = _FakeFabric(runtime)
     registry = FabricSessionRegistry()
@@ -124,7 +144,7 @@ async def test_resolve_session_opens_session_when_id_is_absent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: object())
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: _FakeFabricConfig())
     runtime = _FakeRuntime()
     fabric = _FakeFabric(runtime)
     registry = FabricSessionRegistry()
@@ -361,6 +381,36 @@ async def test_invoke_session_refreshes_activity(
 
 
 @pytest.mark.asyncio
+async def test_stream_session_refreshes_activity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = FabricSessionRegistry()
+    session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+    )
+    stream = object()
+    refresh_calls: list[Any] = []
+
+    def stream_fabric_runtime(runtime: Any, request: FabricInvocationRequest) -> object:
+        return stream
+
+    async def refresh_activity(resolved_session: Any) -> None:
+        refresh_calls.append(resolved_session)
+
+    monkeypatch.setattr(session_manager, "stream_fabric_runtime", stream_fabric_runtime)
+    monkeypatch.setattr(registry, "refresh_activity", refresh_activity)
+
+    async with manager.stream_session(session, FabricInvocationRequest(input="hello")) as resolved_stream:
+        assert resolved_stream is stream
+
+    assert refresh_calls == [session]
+
+
+@pytest.mark.asyncio
 async def test_invoke_session_serializes_turns_for_same_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -409,6 +459,51 @@ async def test_invoke_session_serializes_turns_for_same_runtime(
     assert invocation_order == ["first", "second"]
     assert max_active_invocations == 1
     assert [result.response for result in results] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_stream_session_serializes_turns_for_same_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = FabricSessionRegistry()
+    session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+        fabric=cast(Any, _FakeFabric(_FakeRuntime())),
+    )
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    invocation_order: list[str] = []
+
+    def stream_fabric_runtime(runtime: Any, request: FabricInvocationRequest) -> object:
+        invocation_order.append(request.input)
+        return object()
+
+    monkeypatch.setattr(session_manager, "stream_fabric_runtime", stream_fabric_runtime)
+
+    async def stream_first() -> None:
+        async with manager.stream_session(session, FabricInvocationRequest(input="first")):
+            first_started.set()
+            await release_first.wait()
+
+    async def stream_second() -> None:
+        async with manager.stream_session(session, FabricInvocationRequest(input="second")):
+            pass
+
+    first = asyncio.create_task(stream_first())
+    await first_started.wait()
+    second = asyncio.create_task(stream_second())
+    await asyncio.sleep(0)
+
+    assert invocation_order == ["first"]
+
+    release_first.set()
+    await asyncio.gather(first, second)
+
+    assert invocation_order == ["first", "second"]
 
 
 @pytest.mark.asyncio

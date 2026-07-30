@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -26,11 +27,15 @@ def reset_coding_agent_state():
     coding_agents._session_streams.clear()
     coding_agents._pending_permissions.clear()
     coding_agents._pending_agent_inputs.clear()
+    coding_agents._session_conversations.clear()
+    coding_agents._session_mtimes.clear()
     yield
     coding_agents._initialized_sessions.clear()
     coding_agents._session_streams.clear()
     coding_agents._pending_permissions.clear()
     coding_agents._pending_agent_inputs.clear()
+    coding_agents._session_conversations.clear()
+    coding_agents._session_mtimes.clear()
 
 
 @pytest.fixture
@@ -227,6 +232,73 @@ def test_create_session_returns_uuid(service_client: TestClient):
     uuid.UUID(response.json()["session_id"])
 
 
+def test_create_session_evicts_least_recently_updated_session(
+    service_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(coding_agents, "MAX_RETAINED_SESSIONS", 2)
+    first_session_id = service_client.post("/v2/coding-agents/sessions").json()["session_id"]
+    coding_agents._session_mtimes[first_session_id] = 1
+    second_session_id = service_client.post("/v2/coding-agents/sessions").json()["session_id"]
+    coding_agents._session_mtimes[second_session_id] = 2
+
+    third_session_id = service_client.post("/v2/coding-agents/sessions").json()["session_id"]
+
+    assert set(coding_agents._session_conversations) == {second_session_id, third_session_id}
+    assert set(coding_agents._session_mtimes) == {second_session_id, third_session_id}
+
+
+def test_retain_recent_turns_caps_complete_user_assistant_pairs(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(coding_agents, "MAX_RETAINED_TURNS_PER_SESSION", 2)
+    conversation = [{"role": role, "content": f"{role}-{turn}"} for turn in range(3) for role in ("user", "assistant")]
+
+    coding_agents._retain_recent_turns(conversation)
+
+    assert conversation == [
+        {"role": "user", "content": "user-1"},
+        {"role": "assistant", "content": "assistant-1"},
+        {"role": "user", "content": "user-2"},
+        {"role": "assistant", "content": "assistant-2"},
+    ]
+
+
+def test_list_history_sessions_includes_retained_conversation(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+    coding_agents._session_conversations[session_id] = [
+        {"role": "user", "content": "Help me build an agent"},
+        {"role": "assistant", "content": "What should it do?"},
+    ]
+    coding_agents._session_mtimes[session_id] = 42
+
+    response = service_client.get("/v2/coding-agents/history/sessions")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "session_id": session_id,
+            "mtime": 42,
+            "title": "Help me build an agent",
+            "first_prompt": "Help me build an agent",
+            "message_count": 1,
+            "token_count": 0,
+            "tool_call_count": 0,
+            "tool_calls": [],
+            "chat_artifacts": {
+                "agent": None,
+                "model": None,
+                "model_source": None,
+                "coding_agent_model": None,
+                "workspace": None,
+                "selections": [],
+                "files": [],
+                "links": [],
+                "jobs": [],
+                "tools": [],
+            },
+        }
+    ]
+
+
 def test_build_claude_argv_uses_new_session_then_resume_flag():
     session_id = str(uuid.uuid4())
 
@@ -265,7 +337,7 @@ def test_build_claude_argv_uses_new_session_then_resume_flag():
     assert "--append-system-prompt" in resumed_argv
 
 
-def test_list_and_get_history_sessions(
+def test_history_list_excludes_disk_only_sessions_but_direct_get_remains_available(
     service_client: TestClient,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -431,49 +503,7 @@ def test_list_and_get_history_sessions(
     list_response = service_client.get("/v2/coding-agents/history/sessions")
 
     assert list_response.status_code == 200
-    assert list_response.json() == [
-        {
-            "session_id": session_id,
-            "mtime": history.stat().st_mtime,
-            "title": None,
-            "first_prompt": "first prompt",
-            "message_count": 1,
-            "token_count": 30,
-            "tool_call_count": 5,
-            "tool_calls": [
-                "Bash",
-                "Write",
-                "mcp__nemo_studio__studio_link",
-                "mcp__nemo_studio__job_progress",
-                "AskUserQuestion",
-            ],
-            "chat_artifacts": {
-                "agent": "cat-identifier",
-                "model": "cloud, nvidia/llama-3.3-nemotron-super-49b-v1",
-                "model_source": "spec",
-                "coding_agent_model": "claude-sonnet-4-6",
-                "workspace": "default",
-                "selections": [{"label": "Agent", "value": "beach-finder"}],
-                "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
-                "links": [{"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}],
-                "jobs": [
-                    {
-                        "name": "agent-eval-1",
-                        "job_type": "agent_evaluation",
-                        "source": "evaluator",
-                        "href": None,
-                    }
-                ],
-                "tools": [
-                    "Bash",
-                    "Write",
-                    "mcp__nemo_studio__studio_link",
-                    "mcp__nemo_studio__job_progress",
-                    "AskUserQuestion",
-                ],
-            },
-        }
-    ]
+    assert list_response.json() == []
 
     history_response = service_client.get(f"/v2/coding-agents/history/sessions/{session_id}")
 
@@ -808,7 +838,7 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
         {},
     )
 
-    assert "Required message-summary behavior:" in prompt
+    assert "Conditional message-summary behavior:" in prompt
     assert coding_agents.STUDIO_MESSAGE_SUMMARY_START in prompt
     assert coding_agents.STUDIO_MESSAGE_SUMMARY_END in prompt
     assert "title: <meaningful 3-7 word title" in prompt
@@ -818,15 +848,34 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
     assert "behind a 'worked for <time>' accordion" in prompt
     assert "Never end a message with only a plain-text question" in prompt
     assert "call the matching select_* tool before completing the message" in prompt
-    assert "use Claude Code's AskUserQuestion tool" in prompt
-    assert "For AskUserQuestion, provide input shaped as" in prompt
+    assert "ask one concise plain-text question" in prompt
+    assert "AskUserQuestion" not in prompt
     assert "A timeout, disconnect, or other interactive-tool error is not permission to continue" in prompt
     assert "summary's final sentence MUST state the exact unresolved selection or action" in prompt
     assert "Never show only the investigation result" in prompt
     assert "use a numbered or bulleted list" in prompt
     assert "repeat those links at the bottom of the summary" in prompt
     assert "Put repeated links on separate lines without a heading" in prompt
-    assert "Do not omit the summary block because the message is short." in prompt
+    assert "A summary block is required when you called one or more tools" in prompt
+    assert "For a short informational answer" in prompt
+    assert "omit the summary block entirely" in prompt
+    assert "Do not emit the summary markers with a shortened duplicate" in prompt
+    assert "ask it normally without a summary block" in prompt
+    assert "Do not omit the summary block because the message is short." not in prompt
+
+
+def test_build_nemo_agent_system_prompt_uses_nemo_agent_identity():
+    prompt = coding_agents._build_nemo_agent_system_prompt(
+        str(uuid.uuid4()),
+        "default",
+        "https://studio.test",
+        "/workspaces/default/dashboard/code-agent",
+        {},
+    )
+
+    assert "Your identity in this interface is NeMo Agent." in prompt
+    assert "Claude" not in prompt
+    assert "Code Agent" not in prompt
 
 
 def test_history_summary_reads_model_generated_session_title(tmp_path: Path):
@@ -1631,7 +1680,7 @@ async def test_blocking_mcp_tool_response_streams_keepalives_until_user_responds
         await anext(iterator)
 
 
-def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.MonkeyPatch):
+def test_platform_route_stream_uses_deployed_nemo_agent(monkeypatch: pytest.MonkeyPatch):
     service = StudioService()
     app = FastAPI()
     app.include_router(service.app.router, prefix="/apis/studio")
@@ -1640,19 +1689,26 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
     session_id = str(uuid.uuid4())
     captured: dict[str, Any] = {}
 
-    async def fake_stream(session_id: str, message: str, mcp_url: str, studio_system_prompt: str | None = None):
+    async def fake_stream(
+        session_id: str,
+        message: str,
+        agent_url: str,
+        headers: dict[str, str],
+        studio_system_prompt: str,
+    ):
         captured.update(
             {
                 "session_id": session_id,
                 "message": message,
-                "mcp_url": mcp_url,
+                "agent_url": agent_url,
+                "headers": headers,
                 "studio_system_prompt": studio_system_prompt,
             }
         )
         yield coding_agents._sse(json.dumps({"type": "system", "subtype": "init"}))
         yield coding_agents._sse("", event="done")
 
-    monkeypatch.setattr(coding_agents, "_stream_claude", fake_stream)
+    monkeypatch.setattr(coding_agents, "_stream_nemo_agent", fake_stream)
 
     response = client.post(
         f"/apis/studio/v2/coding-agents/sessions/{session_id}/messages",
@@ -1668,22 +1724,16 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: done" in response.text
     assert captured["session_id"] == session_id
-    assert captured["mcp_url"] == (
-        f"http://testserver/studio/api/coding-agents/mcp/{session_id}"
-        "?workspace=default&studio_base_url=https%3A%2F%2Fstudio.test%2Fstudio"
+    assert captured["agent_url"] == (
+        "http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
     )
-    assert coding_agents._strip_studio_context_from_prompt(captured["message"]) == "hello"
-    assert "Current Studio workspace: default" in captured["message"]
-    assert "Studio UI base URL: https://studio.test/studio" in captured["message"]
-    assert "Never answer a Studio link request by saying you cannot generate URLs" in captured["message"]
+    assert captured["headers"] == {}
+    assert captured["message"] == "hello"
     assert "Current Studio workspace: default" in captured["studio_system_prompt"]
     assert "Studio UI base URL: https://studio.test/studio" in captured["studio_system_prompt"]
     assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
-    assert "use Claude Code's AskUserQuestion tool" in captured["studio_system_prompt"]
-    assert "you MUST call mcp__nemo_studio__select_agent" in captured["studio_system_prompt"]
-    assert "never use AskUserQuestion for an agent choice" in captured["studio_system_prompt"]
-    assert "you MUST call mcp__nemo_studio__select_model" in captured["studio_system_prompt"]
-    assert "ask multiple AskUserQuestion questions" in captured["studio_system_prompt"]
+    assert "you MUST call select_agent" in captured["studio_system_prompt"]
+    assert "you MUST call select_model" in captured["studio_system_prompt"]
     assert "no dedicated Studio picker" in captured["studio_system_prompt"]
     assert "Prefer NeMo Studio MCP tools and Studio views over CLI commands" in captured["studio_system_prompt"]
     assert "Do not tell the user to run nemo CLI commands" in captured["studio_system_prompt"]
@@ -1707,9 +1757,12 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
         in captured["studio_system_prompt"]
     )
     assert "Before your final response" in captured["studio_system_prompt"]
-    assert "mcp__nemo_studio__studio_link" in captured["studio_system_prompt"]
+    assert "studio_link" in captured["studio_system_prompt"]
     assert "Required job-progress behavior:" in captured["studio_system_prompt"]
-    assert "you MUST call mcp__nemo_studio__job_progress" in captured["studio_system_prompt"]
+    assert "you MUST call job_progress" in captured["studio_system_prompt"]
+    assert f"studio_session_id='{session_id}'" in captured["studio_system_prompt"]
+    assert "The approval context for nemo_api is injected by Studio" in captured["studio_system_prompt"]
+    assert "mutating calls will automatically pause for the user's approval" in captured["studio_system_prompt"]
     assert (
         "For a newly created agent, use studio_link with destination='agent_chat'" in captured["studio_system_prompt"]
     )
@@ -1725,19 +1778,26 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
     session_id = str(uuid.uuid4())
     captured: dict[str, Any] = {}
 
-    async def fake_stream(session_id: str, message: str, mcp_url: str, studio_system_prompt: str | None = None):
+    async def fake_stream(
+        session_id: str,
+        message: str,
+        agent_url: str,
+        headers: dict[str, str],
+        studio_system_prompt: str,
+    ):
         captured.update(
             {
                 "session_id": session_id,
                 "message": message,
-                "mcp_url": mcp_url,
+                "agent_url": agent_url,
+                "headers": headers,
                 "studio_system_prompt": studio_system_prompt,
             }
         )
         yield coding_agents._sse(json.dumps({"type": "system", "subtype": "init"}))
         yield coding_agents._sse("", event="done")
 
-    monkeypatch.setattr(coding_agents, "_stream_claude", fake_stream)
+    monkeypatch.setattr(coding_agents, "_stream_nemo_agent", fake_stream)
 
     response = client.post(
         f"/apis/studio/v2/coding-agents/sessions/{session_id}/messages",
@@ -1746,19 +1806,73 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
             "workspace": "default",
         },
         headers={
+            "host": "attacker.example",
             "origin": "http://ns.local.aire.nvidia.com:5173",
             "referer": "http://ns.local.aire.nvidia.com:5173/workspaces/default/dashboard/code-agent",
         },
     )
 
     assert response.status_code == 200
-    assert captured["mcp_url"] == (
-        f"http://testserver/studio/api/coding-agents/mcp/{session_id}"
-        "?workspace=default&studio_base_url=http%3A%2F%2Fns.local.aire.nvidia.com%3A5173"
+    assert captured["agent_url"] == (
+        "http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
     )
-    assert "Studio UI base URL: http://ns.local.aire.nvidia.com:5173" in captured["message"]
-    assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["message"]
+    assert captured["message"] == "can you give me a link to it?"
     assert "Studio UI base URL: http://ns.local.aire.nvidia.com:5173" in captured["studio_system_prompt"]
+    assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
+
+
+def test_coding_agent_url_uses_only_configured_base_url(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("NMP_BASE_URL", "https://nmp.dev.aire.nvidia.com")
+
+    assert coding_agents._studio_coding_agent_url("default") == (
+        "https://nmp.dev.aire.nvidia.com/apis/agents/v2/workspaces/default/"
+        "agents/nemo-agent-local-poc/-/v1/chat/completions"
+    )
+
+
+def test_validated_workspace_uses_default_and_rejects_path_injection():
+    assert coding_agents._validated_workspace_or_default(None) == "default"
+    assert coding_agents._validated_workspace_or_default(" default ") == "default"
+
+    with pytest.raises(HTTPException, match="workspace must match the expected entity-name pattern"):
+        coding_agents._validated_workspace_or_default("../internal?target=metadata")
+
+
+def test_platform_route_rejects_workspace_path_injection(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/sessions/{session_id}/messages",
+        json={"message": "hello", "workspace": "../internal?target=metadata"},
+        headers={"host": "attacker.example"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_nemo_agent_error_detail_does_not_expose_exception_text():
+    request = httpx.Request("POST", "https://platform.test/agent")
+    response = httpx.Response(502, request=request)
+    status_error = httpx.HTTPStatusError("private upstream detail", request=request, response=response)
+
+    assert coding_agents._nemo_agent_error_detail(status_error) == "The deployed NeMo Agent returned HTTP 502."
+    assert coding_agents._nemo_agent_error_detail(RuntimeError("private stack detail")) == (
+        "The deployed NeMo Agent returned an invalid response."
+    )
+
+
+def test_nemo_agent_request_payload_keeps_session_outside_model_messages():
+    messages = [{"role": "user", "content": "hello"}]
+    session_id = str(uuid.uuid4())
+
+    payload = coding_agents._nemo_agent_request_payload(messages, session_id)
+
+    assert payload == {
+        "messages": messages,
+        "stream": False,
+        "studio_session_id": session_id,
+    }
+    assert session_id not in json.dumps(payload["messages"])
 
 
 def test_public_mcp_route_is_mounted_before_static_fallback():

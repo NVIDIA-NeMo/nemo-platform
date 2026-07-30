@@ -1885,6 +1885,14 @@ paths:
         schema:
           type: string
           title: Name
+      - name: artifact_base_path
+        in: query
+        required: false
+        schema:
+          description: Folder inside the fileset to nest logs under
+          title: Artifact Base Path
+          type: string
+        description: Folder inside the fileset to nest logs under
       - name: content-type
         in: header
         required: false
@@ -9798,6 +9806,9 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        output_location:
+          title: Output Location
+          type: string
       type: object
       required:
       - spec
@@ -13642,6 +13653,11 @@ components:
           title: Page Cursor
           description: Cursor for pagination
           type: string
+        artifact_base_path:
+          title: Artifact Base Path
+          description: Folder inside the fileset the logs were nested under (must
+            match the value used on write)
+          type: string
       type: object
       title: LogQueryRequest
       description: Request body for querying logs from a fileset.
@@ -15636,6 +15652,11 @@ components:
           type: string
           title: Fileset
           description: Fileset ID for storing job artifacts
+        output_location:
+          title: Output Location
+          description: Caller-supplied artifact fileset; None when the fileset was
+            auto-created
+          type: string
         status:
           $ref: '#/components/schemas/PlatformJobStatus'
         status_details:
@@ -16131,6 +16152,12 @@ components:
         fileset:
           type: string
           title: Fileset
+        artifact_base_path:
+          title: Artifact Base Path
+          description: Folder inside the fileset that this job's artifacts nest under;
+            None when the job owns the whole fileset and its artifacts sit at the
+            root
+          type: string
         workspace:
           type: string
           title: Workspace

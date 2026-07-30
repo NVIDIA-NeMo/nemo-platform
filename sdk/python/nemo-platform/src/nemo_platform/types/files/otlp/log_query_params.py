@@ -26,6 +26,12 @@ __all__ = ["LogQueryParams"]
 class LogQueryParams(TypedDict, total=False):
     workspace: str
 
+    artifact_base_path: str
+    """
+    Folder inside the fileset the logs were nested under (must match the value used
+    on write)
+    """
+
     filters: Dict[str, str]
     """Key-value filters to apply to the query"""
 

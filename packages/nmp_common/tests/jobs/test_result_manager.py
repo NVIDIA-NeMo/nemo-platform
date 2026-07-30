@@ -93,6 +93,52 @@ async def test_download_from_result_info(mock_factory, tmp_path, mock_sdk):
     assert call_kwargs["files_sdk"] is mock_sdk
 
 
+def test_result_remote_path_nests_under_base(mock_sdk, mock_nmp_sdk):
+    """_result_remote_path prepends the per-job base only when one is supplied."""
+    mgr = rm.ResultManager(
+        job_name="my-job",
+        workspace="ws",
+        file_manager_cls=FilesetFileManager,
+        files_sdk=mock_sdk,
+        jobs_sdk=mock_nmp_sdk,
+    )
+    assert mgr._result_remote_path("att-1", "summary") == "results/att-1/summary"
+    assert mgr._result_remote_path("att-1", "summary", base="jobs/my-job") == "jobs/my-job/results/att-1/summary"
+
+
+def test_create_result_nests_under_job_when_output_location_set(
+    tmp_path, mock_sdk, mock_nmp_sdk, mock_sync_file_manager
+):
+    """When the job has an output_location, results nest under jobs/<job_name>/results/…; else flat."""
+    test_file = tmp_path / "artifact.bin"
+    test_file.write_bytes(b"x")
+
+    mock_jobs = MagicMock()
+    mock_jobs.create_job_result.return_value = _resp(MagicMock())
+
+    mgr = rm.ResultManager(
+        job_name="test-job",
+        workspace="test-ws",
+        file_manager_cls=FilesetFileManager,
+        files_sdk=mock_sdk,
+        jobs_sdk=mock_nmp_sdk,
+    )
+
+    for output_location, expected in [
+        ("shared-fs", "jobs/test-job/results/att-1/summary"),
+        (None, "results/att-1/summary"),
+    ]:
+        mock_jobs.get_job.return_value = _resp(
+            MagicMock(attempt_id="att-1", fileset="shared-fs", output_location=output_location)
+        )
+        with (
+            patch.object(mgr, "_create_file_manager", return_value=mock_sync_file_manager),
+            patch("nemo_platform_plugin.jobs.result_manager.client_from_platform", return_value=mock_jobs),
+        ):
+            mgr.create_result("summary", test_file)
+        assert mock_sync_file_manager.upload.call_args.kwargs["remote_path"] == expected
+
+
 def test_create_result_returns_existing_on_conflict_sync(tmp_path, mock_sdk, mock_nmp_sdk, mock_sync_file_manager):
     """Test that sync create_result returns existing result when ConflictError is raised."""
     test_file = tmp_path / "artifact.bin"

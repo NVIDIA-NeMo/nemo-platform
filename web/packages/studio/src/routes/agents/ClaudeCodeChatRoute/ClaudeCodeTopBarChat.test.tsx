@@ -77,12 +77,12 @@ describe('ClaudeCodeTopBarChat', () => {
   it('opens and closes the compact chat from the top bar icon', async () => {
     renderTopBarChat();
     const user = userEvent.setup();
-    const trigger = screen.getByRole('button', { name: 'Open Code Agent chat' });
+    const trigger = screen.getByRole('button', { name: 'Open NeMo Agent chat' });
 
     await user.click(trigger);
     expect(await screen.findByTestId('compact-chat-thread')).toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: 'Close Code Agent chat' }));
+    await user.click(screen.getByRole('button', { name: 'Close NeMo Agent chat' }));
     await waitFor(() => expect(screen.getByTestId('compact-chat-thread')).not.toBeVisible());
   });
 
@@ -90,7 +90,7 @@ describe('ClaudeCodeTopBarChat', () => {
     renderTopBarChat();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Open Code Agent chat' }));
+    await user.click(screen.getByRole('button', { name: 'Open NeMo Agent chat' }));
     const backdrop = await screen.findByTestId('code-agent-chat-backdrop');
     expect(backdrop).toBeVisible();
 
@@ -105,7 +105,7 @@ describe('ClaudeCodeTopBarChat', () => {
     renderTopBarChat();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Open Code Agent chat' }));
+    await user.click(screen.getByRole('button', { name: 'Open NeMo Agent chat' }));
     await user.click(await screen.findByRole('button', { name: 'Open in main chat' }));
 
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toContain('code-agent'));
@@ -115,7 +115,7 @@ describe('ClaudeCodeTopBarChat', () => {
     renderTopBarChat();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Open Code Agent chat' }));
+    await user.click(screen.getByRole('button', { name: 'Open NeMo Agent chat' }));
     await user.click(await screen.findByRole('button', { name: /New/i }));
 
     expect(mocks.startNewChat).toHaveBeenCalledOnce();
@@ -125,7 +125,7 @@ describe('ClaudeCodeTopBarChat', () => {
     renderTopBarChat();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Open Code Agent chat' }));
+    await user.click(screen.getByRole('button', { name: 'Open NeMo Agent chat' }));
     expect(await screen.findByTestId('compact-chat-thread')).toBeVisible();
 
     await user.click(screen.getByRole('link', { name: 'Job details' }));

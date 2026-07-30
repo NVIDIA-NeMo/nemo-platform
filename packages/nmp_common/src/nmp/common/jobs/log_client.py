@@ -45,6 +45,7 @@ class JobLogsClient:
         filters: dict[str, str] | None = None,
         page_size: int = 100,
         page_cursor: str | None = None,
+        artifact_base_path: str | None = None,
     ) -> PlatformJobLogPage:
         """Query job logs via Files service OTLP endpoint.
 
@@ -54,6 +55,7 @@ class JobLogsClient:
             filters: Dictionary of filters (job, job_attempt, job_step, job_task)
             page_size: Number of results per page
             page_cursor: Encoded cursor for pagination
+            artifact_base_path: Folder inside the fileset the logs were nested under
 
         Returns:
             PlatformJobLogPage with data, total count, and pagination cursors
@@ -63,6 +65,7 @@ class JobLogsClient:
                 filters=filters or {},
                 limit=page_size,
                 page_cursor=page_cursor,
+                artifact_base_path=artifact_base_path,
             )
             resp = await self._files_client.query_otlp_logs(
                 name=fileset,

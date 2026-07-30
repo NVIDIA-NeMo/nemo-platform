@@ -105,7 +105,7 @@ describe('ClaudeCodeChatThread Studio UI navigation', () => {
     vi.clearAllMocks();
   });
 
-  it('offers the matching Studio UI before continuing with Claude Code', () => {
+  it('offers the matching Studio UI before continuing with NeMo Agent', () => {
     renderThread();
 
     expect(screen.getByText('Studio UI available')).toBeInTheDocument();

@@ -19,8 +19,8 @@ import { useNavigate } from 'react-router-dom';
 const MESSAGE_CONTENT_PROPS = { markdownLinkComponent: ClaudeCodeStudioLink };
 
 const EMPTY_STATE = {
-  slotHeading: 'Start a Claude Code session',
-  slotSubheading: 'Ask Claude Code to work in this workspace.',
+  slotHeading: 'Start a NeMo Agent session',
+  slotSubheading: 'Ask NeMo Agent to work in this workspace.',
 };
 
 const CHAT_VIEWPORT_SCROLLBAR_CLASS = [
@@ -79,7 +79,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
             {
               id: 'continue-chat',
               label: 'Continue in chat',
-              description: 'Keep working with Claude Code in this conversation.',
+              description: 'Keep working with NeMo Agent in this conversation.',
             },
           ]
         : [],
@@ -163,7 +163,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
             ref: chatViewportRef,
           },
         }}
-        placeholder="Ask Claude Code to work in this workspace"
+        placeholder="Ask NeMo Agent to work in this workspace"
         minInputRows={3}
         onReset={handleChatReset}
         showRunningIndicator={!studioNavigationRequest && !decisionRequest && !inputRequest}
@@ -176,7 +176,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
               request={{
                 id: studioNavigationRequest.id,
                 title: 'Studio UI available',
-                description: `${studioNavigationRequest.suggestion.description} Open it now or continue with Claude Code.`,
+                description: `${studioNavigationRequest.suggestion.description} Open it now or continue with NeMo Agent.`,
               }}
               choices={studioNavigationChoices}
               defaultChoiceId="open-ui"

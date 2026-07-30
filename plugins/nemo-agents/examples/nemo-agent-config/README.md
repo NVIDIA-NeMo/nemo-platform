@@ -34,6 +34,15 @@ nemo agents invoke \
   --input "Reply with exactly: platform fabric works"
 ```
 
+To try Claude, authenticate Claude Code first:
+
+```bash
+claude
+```
+
+Temporarily set `default_harness: claude` in `agent.yaml`, then run the same
+`nemo agents invoke` command.
+
 ## Relay Local Files
 
 `agent-relay.yaml` enables Relay telemetry without Intake. It writes local ATIF
@@ -71,7 +80,8 @@ install it with the Fabric adapter in a separate Python 3.12 environment:
 uvx uv@0.9.14 venv --python 3.12 .venv-hermes
 uvx uv@0.9.14 --no-config pip install \
   --python .venv-hermes/bin/python \
-  "nemo-fabric-adapters-hermes>=0.1.0a20260724,<0.2.0" \
+  "nemo-fabric[relay]>=0.1.0rc4,<0.2.0" \
+  "nemo-fabric-adapters-hermes>=0.1.0rc4,<0.2.0" \
   "hermes-agent==0.19.0"
 
 export HERMES_ADAPTER_PYTHON="$PWD/.venv-hermes/bin/python"

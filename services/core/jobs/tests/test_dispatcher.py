@@ -8,7 +8,7 @@ These tests verify that the JobDispatcher correctly manages job lifecycle operat
 """
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation, parse_json_filter
@@ -47,7 +47,10 @@ async def create_job_with_attempt(
 
 
 async def create_test_job_data(
-    store: EntityClient, job_name: str = "test-job-123"
+    store: EntityClient,
+    job_name: str = "test-job-123",
+    fileset: str = "test-logs-fileset",
+    output_location: str | None = None,
 ) -> tuple[str, str, str, str, str, str]:
     """Create test data for a job with all related entities using EntityStore.
 
@@ -64,7 +67,8 @@ async def create_test_job_data(
         source="test",
         spec={},
         platform_spec=platform_spec,
-        fileset="test-logs-fileset",
+        fileset=fileset,
+        output_location=output_location,
     )
     saved_job = await store.add(job)
 
@@ -194,6 +198,7 @@ async def test_delete_job_missing_fileset_succeeds(mock_dispatcher: JobDispatche
 
     from nemo_platform_plugin.client.errors import NotFoundError
 
+    # output_location defaults to None -> job owns its fileset -> delete_fileset is attempted.
     job_id, job_name, _, _, _, _ = await create_test_job_data(mock_store, "delete-missing-fileset-job")
 
     # Simulate the fileset already being gone by making the mock files client raise NotFoundError
@@ -206,6 +211,164 @@ async def test_delete_job_missing_fileset_succeeds(mock_dispatcher: JobDispatche
 
     # The job entity itself should be gone
     await verify_job_data_exists(mock_store, job_id, should_exist=False)
+
+
+@pytest.mark.asyncio
+async def test_create_job_uses_existing_output_location(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+    _mock_files_client,
+    sample_platform_job_request: CreatePlatformJobRequest,
+):
+    """A supplied output_location becomes the fileset and is persisted as provenance; nothing created."""
+    request = sample_platform_job_request.model_copy(update={"output_location": "my-eval-fileset"})
+
+    job = await mock_dispatcher.create_job(request, DEFAULT_WORKSPACE)
+
+    assert job.fileset == "my-eval-fileset"
+    _mock_files_client.get_fileset.assert_awaited_once()
+    _mock_files_client.create_fileset.assert_not_called()
+
+    stored = await mock_store.get(PlatformJob, job.name, workspace=DEFAULT_WORKSPACE)
+    assert stored.output_location == "my-eval-fileset"
+
+
+@pytest.mark.asyncio
+async def test_create_job_output_location_not_found_raises(
+    mock_dispatcher: JobDispatcher,
+    _mock_files_client,
+    sample_platform_job_request: CreatePlatformJobRequest,
+):
+    """A supplied output_location that does not exist is rejected and never auto-created."""
+    from nemo_platform_plugin.client.errors import NotFoundError
+    from nmp.core.jobs.app.dispatcher import JobOutputLocationError
+
+    _mock_files_client.get_fileset.side_effect = NotFoundError.__new__(NotFoundError)
+    request = sample_platform_job_request.model_copy(update={"output_location": "ghost-fileset"})
+
+    with pytest.raises(JobOutputLocationError):
+        await mock_dispatcher.create_job(request, DEFAULT_WORKSPACE)
+
+    _mock_files_client.create_fileset.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_job_output_location_forbidden_raises(
+    mock_dispatcher: JobDispatcher,
+    _mock_files_client,
+    sample_platform_job_request: CreatePlatformJobRequest,
+):
+    """A supplied output_location the caller cannot access is rejected, never auto-created."""
+    from nemo_platform_plugin.client.errors import PermissionDeniedError
+    from nmp.core.jobs.app.dispatcher import JobOutputLocationError
+
+    _mock_files_client.get_fileset.side_effect = PermissionDeniedError.__new__(PermissionDeniedError)
+    request = sample_platform_job_request.model_copy(update={"output_location": "forbidden-fileset"})
+
+    with pytest.raises(JobOutputLocationError):
+        await mock_dispatcher.create_job(request, DEFAULT_WORKSPACE)
+
+    _mock_files_client.create_fileset.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_job_without_output_location_auto_creates_fileset(
+    mock_dispatcher: JobDispatcher,
+    _mock_files_client,
+    sample_platform_job_request: CreatePlatformJobRequest,
+):
+    """With no output_location, the dispatcher auto-creates a per-job fileset (unchanged behavior)."""
+    job = await mock_dispatcher.create_job(sample_platform_job_request, DEFAULT_WORKSPACE)
+
+    assert job.fileset == "test-fileset-id"
+    _mock_files_client.create_fileset.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_job_leaves_caller_supplied_fileset(
+    mock_dispatcher: JobDispatcher, mock_store: EntityClient, _mock_files_client
+):
+    """Deleting a job whose fileset was caller-supplied removes the job but leaves the fileset."""
+    job_id, job_name, _, _, _, _ = await create_test_job_data(
+        mock_store, "delete-shared-fs-job", fileset="shared-eval-fileset", output_location="shared-eval-fileset"
+    )
+
+    deleted = await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
+
+    assert deleted is True
+    _mock_files_client.delete_fileset.assert_not_called()
+    await verify_job_data_exists(mock_store, job_id, should_exist=False)
+
+
+@pytest.mark.asyncio
+async def test_delete_job_deletes_owned_fileset(
+    mock_dispatcher: JobDispatcher, mock_store: EntityClient, _mock_files_client
+):
+    """Deleting a job that owns its fileset (output_location unset) removes that fileset too."""
+    job_id, job_name, _, _, _, _ = await create_test_job_data(
+        mock_store, "delete-owned-job", fileset="job-fileset-delete-owned-job"
+    )
+
+    deleted = await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
+
+    assert deleted is True
+    _mock_files_client.delete_fileset.assert_awaited_once()
+    await verify_job_data_exists(mock_store, job_id, should_exist=False)
+
+
+@pytest.mark.asyncio
+async def test_delete_job_leaves_caller_fileset_named_like_owned(
+    mock_dispatcher: JobDispatcher, mock_store: EntityClient, _mock_files_client
+):
+    """A caller-supplied fileset named exactly like an auto-created one is still left intact.
+
+    Regression for the name-collision the old name-heuristic was vulnerable to: ownership comes
+    from the persisted output_location, not from matching ``job-fileset-<name>``.
+    """
+    job_id, job_name, _, _, _, _ = await create_test_job_data(
+        mock_store,
+        "collide-job",
+        fileset="job-fileset-collide-job",
+        output_location="job-fileset-collide-job",
+    )
+
+    deleted = await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
+
+    assert deleted is True
+    _mock_files_client.delete_fileset.assert_not_called()
+    await verify_job_data_exists(mock_store, job_id, should_exist=False)
+
+
+@pytest.mark.asyncio
+async def test_create_then_delete_auto_fileset_round_trip(
+    mock_dispatcher: JobDispatcher,
+    _mock_files_client,
+    sample_platform_job_request: CreatePlatformJobRequest,
+):
+    """The auto-created fileset the dispatcher makes is exactly the one delete removes.
+
+    Guards the load-bearing ``job.fileset == f"job-fileset-{job.name}"`` predicate: the real
+    files service echoes the requested fileset name, so the mock does too here.
+    """
+
+    def _echo_create(*, body, workspace):
+        fileset = MagicMock()
+        fileset.name = body.name
+        response = MagicMock()
+        response.data.return_value = fileset
+        return response
+
+    _mock_files_client.create_fileset.side_effect = _echo_create
+
+    job = await mock_dispatcher.create_job(sample_platform_job_request, DEFAULT_WORKSPACE)
+    assert job.fileset == f"job-fileset-{job.name}"
+
+    deleted = await mock_dispatcher.delete_job(job.name, DEFAULT_WORKSPACE)
+
+    assert deleted is True
+    _mock_files_client.delete_fileset.assert_awaited_once_with(
+        name=f"job-fileset-{job.name}", workspace=DEFAULT_WORKSPACE
+    )
 
 
 @pytest.mark.asyncio
