@@ -6,6 +6,10 @@ from typing import Annotated
 
 from aiohttp import ClientSession
 from fastapi import APIRouter, Depends, Request, Response, status
+from nmp.core.inference_gateway.api.authz import (
+    MODEL_EXEC_PERMISSION,
+    enforce_delegated_workspace_access,
+)
 from nmp.core.inference_gateway.api.dependencies import (
     global_http_client,
     global_middleware_registry,
@@ -91,6 +95,12 @@ async def model_entity_proxy(
     LoRA escape-hatches, etc. Requests for which no VirtualModel can be found
     return `404`.
     """
+    # Scope delegated (on-behalf-of) service-principal calls to the target
+    # workspace before any routing — including the mock short-circuit — so a
+    # delegated workload cannot reach a workspace its creator cannot.
+    validate_entity_name(workspace, field_name="workspace")
+    await enforce_delegated_workspace_access(workspace, MODEL_EXEC_PERMISSION)
+
     # If mock mode enabled and request has explicit mock response, skip model lookup
     if is_mock_request(request):
         return await handle_mock_request(request=request, trailing_uri=trailing_uri)
@@ -99,7 +109,6 @@ async def model_entity_proxy(
     # ``base&adapters/{adapter_ws}/{adapter_name}``; ``validate_model_entity_name``
     # accepts that shape (per-segment NAME_PATTERN) while still rejecting bare
     # invalid names.
-    validate_entity_name(workspace, field_name="workspace")
     validate_model_entity_name(name, field_name="name")
     logger.info(f"Model entity proxy request: {workspace}/{name}/-/{trailing_uri}")
 
