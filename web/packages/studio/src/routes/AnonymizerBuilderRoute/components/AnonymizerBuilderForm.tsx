@@ -14,7 +14,6 @@ import {
   Panel,
   SegmentedControl,
   Stack,
-  Text,
 } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -24,14 +23,18 @@ import { DataSourceSection } from '@studio/routes/AnonymizerBuilderRoute/compone
 import { EntitiesSection } from '@studio/routes/AnonymizerBuilderRoute/components/EntitiesSection';
 import { GenerationSection } from '@studio/routes/AnonymizerBuilderRoute/components/GenerationSection';
 import { ModelSettingsSection } from '@studio/routes/AnonymizerBuilderRoute/components/ModelSettingsSection';
+import { PreviewPanel } from '@studio/routes/AnonymizerBuilderRoute/components/PreviewPanel';
 import {
   buildAnonymizerJobRequest,
+  buildAnonymizerPreviewRequest,
   type AnonymizerFormData,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
+import { useAnonymizerPreview } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerPreview';
 import { useDefaultRoleModels } from '@studio/routes/AnonymizerBuilderRoute/useDefaultRoleModels';
 import { getWorkspaceAnonymizerRoute, getWorkspaceJobDetailRoute } from '@studio/routes/utils';
-import { useState, type FC } from 'react';
-import { useFormContext } from 'react-hook-form';
+import { useCallback, useState, type FC } from 'react';
+import { useFormContext, type FieldErrors } from 'react-hook-form';
+import { useAuth } from 'react-oidc-context';
 import { useNavigate } from 'react-router';
 
 const TAB_SOURCE = 'source';
@@ -42,9 +45,12 @@ const PANEL_TABS = [
   { value: TAB_MODEL_SETTINGS, children: 'Model Settings' },
 ];
 
+const INCOMPLETE_FORM_MESSAGE = 'Please complete the required fields highlighted below.';
+
 export const AnonymizerBuilderForm: FC = () => {
   const navigate = useNavigate();
   const workspace = useWorkspaceFromPath();
+  const { user } = useAuth();
   const form = useFormContext<AnonymizerFormData>();
   const [activeTab, setActiveTab] = useState<string>(TAB_SOURCE);
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
@@ -78,22 +84,38 @@ export const AnonymizerBuilderForm: FC = () => {
     },
   });
 
-  const onSubmit = form.handleSubmit(
-    (values) => {
-      setSubmitError(undefined);
-      createJob.mutate({
-        workspace,
-        data: buildAnonymizerJobRequest(values, defaultEntityLabels?.data ?? []),
-      });
-    },
-    (errors) => {
-      const onlyModelErrors = Object.keys(errors).every((key) => key === 'roleModels');
-      setActiveTab(onlyModelErrors ? TAB_MODEL_SETTINGS : TAB_SOURCE);
-      setSubmitError('Please complete the required fields highlighted below.');
+  const showValidationErrors = useCallback((errors: FieldErrors<AnonymizerFormData>) => {
+    const onlyModelErrors = Object.keys(errors).every((key) => key === 'roleModels');
+    setActiveTab(onlyModelErrors ? TAB_MODEL_SETTINGS : TAB_SOURCE);
+    setSubmitError(INCOMPLETE_FORM_MESSAGE);
+  }, []);
+
+  const getPreviewRequest = useCallback(async () => {
+    if (!(await form.trigger())) {
+      showValidationErrors(form.formState.errors);
+      return undefined;
     }
-  );
+    setSubmitError(undefined);
+    return buildAnonymizerPreviewRequest(form.getValues(), defaultEntityLabels?.data ?? []);
+  }, [form, defaultEntityLabels, showValidationErrors]);
+
+  const preview = useAnonymizerPreview({
+    workspace,
+    accessToken: user?.access_token ?? undefined,
+    getRequest: getPreviewRequest,
+  });
+
+  const onSubmit = form.handleSubmit((values) => {
+    setSubmitError(undefined);
+    createJob.mutate({
+      workspace,
+      data: buildAnonymizerJobRequest(values, defaultEntityLabels?.data ?? []),
+    });
+  }, showValidationErrors);
 
   const handleCancel = () => navigate(getWorkspaceAnonymizerRoute(workspace));
+
+  const isBusy = createJob.isPending || isLoadingModels || isLoadingEntityLabels;
 
   return (
     <form className="h-full" noValidate onSubmit={onSubmit}>
@@ -113,30 +135,33 @@ export const AnonymizerBuilderForm: FC = () => {
               >
                 Cancel
               </Button>
-              <Button
-                kind="primary"
-                color="brand"
-                type="submit"
-                disabled={createJob.isPending || isLoadingModels || isLoadingEntityLabels}
-              >
-                Full Run
-              </Button>
             </Flex>
           }
         >
           <Stack gap="density-2xl">
-            <SegmentedControl
-              className="w-full"
-              value={activeTab}
-              onValueChange={setActiveTab}
-              items={PANEL_TABS}
-            />
+            <Flex align="center" gap="density-md">
+              <SegmentedControl
+                className="flex-1"
+                value={activeTab}
+                onValueChange={setActiveTab}
+                items={PANEL_TABS}
+              />
+              <Button
+                color="brand"
+                disabled={isBusy || preview.isPreviewing}
+                kind="primary"
+                onClick={() => void preview.runPreview()}
+                type="button"
+              >
+                Preview
+              </Button>
+            </Flex>
 
-            {submitError && (
+            {submitError ? (
               <Banner kind="inline" status="error">
                 {submitError}
               </Banner>
-            )}
+            ) : null}
 
             <div className={activeTab === TAB_SOURCE ? undefined : 'hidden'}>
               <Stack gap="density-2xl">
@@ -155,9 +180,14 @@ export const AnonymizerBuilderForm: FC = () => {
           </Stack>
         </Panel>
 
-        <Flex className="flex-1 h-full" align="center" justify="center">
-          <Text kind="body/regular/md">Your records preview will appear here</Text>
-        </Flex>
+        <PreviewPanel
+          preview={preview}
+          slotActions={
+            <Button color="brand" disabled={isBusy} kind="primary" type="submit">
+              Full Run
+            </Button>
+          }
+        />
       </Flex>
     </form>
   );

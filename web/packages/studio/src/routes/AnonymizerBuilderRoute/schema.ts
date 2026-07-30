@@ -5,6 +5,7 @@ import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName'
 import type {
   AnonymizerConfigInput,
   ModelConfig,
+  PreviewRequest,
   Rewrite,
   RunJobRequest,
   SelectedModelsOverrides,
@@ -272,3 +273,12 @@ export const buildAnonymizerJobRequest = (
     },
   };
 };
+
+/** Preview takes the same spec as a full run, bounded to the Preview Rows count. */
+export const buildAnonymizerPreviewRequest = (
+  form: AnonymizerFormData,
+  defaultEntityLabels: string[] = []
+): PreviewRequest => ({
+  ...buildAnonymizerJobRequest(form, defaultEntityLabels).spec,
+  num_records: form.previewRows,
+});
