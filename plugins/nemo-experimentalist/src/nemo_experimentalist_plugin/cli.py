@@ -16,6 +16,11 @@ from urllib.parse import urlsplit
 import typer
 import yaml
 from nemo_experimentalist_plugin.client import make_client
+from nemo_experimentalist_plugin.harbor_bridge.envelopes import HARBOR_ENVELOPE_CATALOG_ENV
+from nemo_experimentalist_plugin.harbor_bridge.preparation import (
+    PreparedTrustedInputs,
+    prepare_trusted_inputs,
+)
 from nemo_experimentalist_plugin.openshell.launcher import (
     OpenShellLaunchError,
     launch_in_openshell,
@@ -61,6 +66,7 @@ _CONTAINER_MARKER = Path("/etc/nemo-experimentalist-container")
 
 _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
 _OPEN_SHELL_LAUNCHER = launch_in_openshell  # test seam
+_TRUSTED_INPUT_PREPARER = prepare_trusted_inputs  # test seam
 _CONTAINER_RUNTIME: bool | None = None  # test seam; None → inspect image marker
 
 # Lazily imported in the experiment command: importing experimentalist.run reaches model
@@ -412,6 +418,45 @@ class ExperimentalistCLI(NemoCLI):
                         no_insight=no_insight,
                     )
                     _apply_profile_runtime_defaults(host_profile)
+                    # Preserve the fail-fast OpenShell boundary check before
+                    # resolving any registry inputs or constructing the plan.
+                    for option, value in (
+                        ("--agent", agent),
+                        ("--agent-spec", agent_spec),
+                        ("--insight", insight),
+                        ("--profile", profile_path),
+                        ("--train-dataset", train_dataset),
+                        ("--validation-dataset", validation_dataset),
+                        ("--task-template", task_template),
+                        ("--config", config),
+                    ):
+                        if value is not None:
+                            _sandbox_path(value, workspace_dir=Path.cwd(), option=option)
+                    for skills_dir in framework_skills:
+                        _sandbox_path(
+                            skills_dir,
+                            workspace_dir=Path.cwd(),
+                            option="--framework-skills",
+                        )
+                    config_payload = _load_config_payload(config)
+                    host_plan = build_effective_experiment_plan(
+                        profile=host_profile,
+                        agent=agent,
+                        agent_spec=agent_spec,
+                        insight=insight,
+                        insight_id=selected_insight_id,
+                        no_insight=no_insight,
+                        train_dataset=train_dataset,
+                        validation_dataset=validation_dataset,
+                        task_template=task_template,
+                        workspace=resolved_workspace,
+                        config_payload=config_payload,
+                        framework_skills=framework_skills or None,
+                    )
+                    trusted_inputs: PreparedTrustedInputs = asyncio.run(
+                        _TRUSTED_INPUT_PREPARER(host_plan, workspace=Path.cwd())
+                    )
+                    os.environ[HARBOR_ENVELOPE_CATALOG_ENV] = str(trusted_inputs.catalog_root)
                     forwarded_args = _openshell_run_args(
                         workspace_dir=Path.cwd(),
                         agent=agent,
@@ -420,9 +465,11 @@ class ExperimentalistCLI(NemoCLI):
                         insight_id=selected_insight_id,
                         no_insight=no_insight,
                         profile_path=profile_path,
-                        train_dataset=train_dataset,
-                        validation_dataset=validation_dataset,
-                        task_template=task_template,
+                        train_dataset=str(trusted_inputs.train_dataset),
+                        validation_dataset=str(trusted_inputs.validation_dataset),
+                        task_template=(
+                            str(trusted_inputs.task_template) if trusted_inputs.task_template is not None else None
+                        ),
                         mode=mode,
                         workspace=resolved_workspace,
                         config=config,

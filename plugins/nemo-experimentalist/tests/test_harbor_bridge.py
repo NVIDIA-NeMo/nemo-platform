@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import importlib
 import io
+import json
 import sys
 import tarfile
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -48,13 +50,26 @@ from nemo_experimentalist_plugin.harbor_bridge.contracts import (
     HarborDependencyExecResponse,
     HarborDependencyRequest,
 )
+from nemo_experimentalist_plugin.harbor_bridge.envelopes import (
+    ENVELOPE_DESCRIPTOR_FILENAME,
+    EnvelopeTaskSelection,
+    TaskDataSlot,
+    TaskEnvelopePolicy,
+    TrustedEnvelopeCatalog,
+    register_dataset_envelope,
+    transport_tree_digest,
+)
+from nemo_experimentalist_plugin.harbor_bridge.preparation import prepare_trusted_inputs
 from nemo_experimentalist_plugin.harbor_bridge.runner import _harden_task
 from nemo_experimentalist_plugin.harbor_bridge.service import HarborBridgeSettings, create_app
 from nemo_experimentalist_plugin.harbor_bridge.trusted_agent import (
     TrustedCandidateAgent,
     candidate_agent_import,
 )
+from nemo_experimentalist_plugin.resolve import build_effective_experiment_plan
 from pydantic import ValidationError
+
+_DIGEST = "sha256:" + "a" * 64
 
 
 def _completed_result(trace_path: Path) -> EvaluationResult:
@@ -82,10 +97,41 @@ def _candidate(root: Path) -> Path:
 
 def _complete_task_files(task_dir: Path) -> None:
     (task_dir / "instruction.md").write_text("Do the task.\n", encoding="utf-8")
+    environment_dir = task_dir / "environment"
+    environment_dir.mkdir()
+    (environment_dir / "Dockerfile").write_text("FROM ubuntu:24.04\n", encoding="utf-8")
     tests_dir = task_dir / "tests"
     tests_dir.mkdir()
     (tests_dir / "Dockerfile").write_text("FROM ubuntu:24.04\n", encoding="utf-8")
     (tests_dir / "test.sh").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+
+
+def _registered_dataset(tmp_path: Path, *, mutable: bool = False):
+    source = tmp_path / "trusted-source"
+    task_dir = source / "task-1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text(
+        'schema_version = "1.1"\n[task]\nname = "example/task-1"\n',
+        encoding="utf-8",
+    )
+    _complete_task_files(task_dir)
+    if mutable:
+        (task_dir / "nemo-task-envelope.json").write_text(
+            TaskEnvelopePolicy(
+                task_data=[
+                    TaskDataSlot(
+                        path="instruction.md",
+                        media_type="text/plain",
+                        max_bytes=4096,
+                    )
+                ],
+                verifier_paths=["tests/test.sh", "tests/metrics"],
+            ).model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+    catalog_root = tmp_path / "catalog"
+    registered = register_dataset_envelope(source, catalog_root=catalog_root, name="test")
+    return registered, TrustedEnvelopeCatalog(catalog_root)
 
 
 def test_bridge_contract_rejects_execution_authority() -> None:
@@ -93,7 +139,10 @@ def test_bridge_contract_rejects_execution_authority() -> None:
         HarborBridgeRequest.model_validate(
             {
                 "request_id": "request-1",
-                "task_ids": ["task-1"],
+                "envelope_id": "envelope-1",
+                "envelope_digest": _DIGEST,
+                "tasks": [{"task_id": "task-1", "base_task_id": "task-1"}],
+                "candidate_digest": _DIGEST,
                 "import_path": "candidate:Agent",
             }
         )
@@ -104,16 +153,37 @@ def test_dependency_contract_rejects_docker_authority() -> None:
         HarborDependencyRequest.model_validate(
             {
                 "request_id": "dependency-task-1",
+                "envelope_id": "envelope-1",
+                "envelope_digest": _DIGEST,
                 "task_id": "task-1",
+                "base_task_id": "task-1",
                 "environment_type": "docker",
             }
         )
 
 
-@pytest.mark.parametrize("task_ids", [["task-a", "task-a"], ["../escape"], ["task/a"]])
-def test_bridge_contract_rejects_unsafe_task_ids(task_ids: list[str]) -> None:
-    with pytest.raises(ValidationError, match="task_ids"):
-        HarborBridgeRequest(request_id="request-1", task_ids=task_ids)
+@pytest.mark.parametrize(
+    "tasks",
+    [
+        [
+            {"task_id": "task-a", "base_task_id": "task-a"},
+            {"task_id": "task-a", "base_task_id": "task-a"},
+        ],
+        [{"task_id": "../escape", "base_task_id": "task-a"}],
+        [{"task_id": "task/a", "base_task_id": "task-a"}],
+    ],
+)
+def test_bridge_contract_rejects_unsafe_task_ids(tasks: list[dict[str, str]]) -> None:
+    with pytest.raises(ValidationError, match="tasks|task_id"):
+        HarborBridgeRequest.model_validate(
+            {
+                "request_id": "request-1",
+                "envelope_id": "envelope-1",
+                "envelope_digest": _DIGEST,
+                "tasks": tasks,
+                "candidate_digest": _DIGEST,
+            }
+        )
 
 
 def test_directory_archive_rejects_links_and_traversal(tmp_path: Path) -> None:
@@ -146,6 +216,140 @@ def test_directory_archive_rejects_duplicate_paths(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="duplicate member paths"):
         extract_directory_archive(archive_path, tmp_path / "extract")
+
+
+def test_trusted_envelope_materializes_only_declared_overlays(tmp_path: Path) -> None:
+    registered, catalog = _registered_dataset(tmp_path, mutable=True)
+    overlay = tmp_path / "overlay"
+    task_overlay = overlay / "derived-task"
+    (task_overlay / "tests").mkdir(parents=True)
+    (task_overlay / "instruction.md").write_text("Derived instruction.\n", encoding="utf-8")
+    (task_overlay / "tests" / "test.sh").write_text("#!/bin/sh\necho metric\n", encoding="utf-8")
+
+    output = catalog.materialize(
+        envelope_id=registered.manifest.envelope_id,
+        envelope_digest=registered.manifest.envelope_digest,
+        selections=[EnvelopeTaskSelection(task_id="derived-task", base_task_id="task-1")],
+        destination=tmp_path / "materialized",
+        overlay_dir=overlay,
+    )
+    task = output / "derived-task"
+
+    assert (task / "instruction.md").read_text(encoding="utf-8") == "Derived instruction.\n"
+    assert (task / "tests" / "test.sh").read_text(encoding="utf-8") == "#!/bin/sh\necho metric\n"
+    assert (task / "tests" / "Dockerfile").read_text(encoding="utf-8") == "FROM ubuntu:24.04\n"
+    assert not (task / ENVELOPE_DESCRIPTOR_FILENAME).exists()
+    task_config = HarborTask(task).config.task
+    assert task_config is not None
+    assert task_config.name == "example/task-1__derived-task"
+
+
+def test_trusted_envelope_detects_catalog_tampering(tmp_path: Path) -> None:
+    registered, catalog = _registered_dataset(tmp_path)
+    (registered.dataset_path / "task-1" / "environment" / "Dockerfile").write_text(
+        "FROM tampered\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="content changed after registration"):
+        catalog.materialize(
+            envelope_id=registered.manifest.envelope_id,
+            envelope_digest=registered.manifest.envelope_digest,
+            selections=[EnvelopeTaskSelection(task_id="task-1", base_task_id="task-1")],
+            destination=tmp_path / "materialized",
+        )
+
+
+def test_trusted_envelope_registration_rejects_symlinks(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "task.toml").write_text(
+        'schema_version = "1.1"\n[task]\nname = "example/task"\n',
+        encoding="utf-8",
+    )
+    _complete_task_files(source)
+    (source / "linked-Dockerfile").symlink_to(source / "environment" / "Dockerfile")
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        register_dataset_envelope(source, catalog_root=tmp_path / "catalog", name="unsafe")
+
+
+def test_tau_template_is_a_trusted_multi_container_envelope(tmp_path: Path) -> None:
+    template = Path(__file__).parents[1] / "examples" / "tau2-nemo-oo-agent" / "dataset" / "template" / "task_template"
+    registered = register_dataset_envelope(
+        template,
+        catalog_root=tmp_path / "catalog",
+        name="tau-template",
+    )
+    base_task_id = registered.manifest.tasks[0].task_id
+    task = (
+        TrustedEnvelopeCatalog(tmp_path / "catalog").materialize(
+            envelope_id=registered.manifest.envelope_id,
+            envelope_digest=registered.manifest.envelope_digest,
+            selections=[EnvelopeTaskSelection(task_id="tau-derived", base_task_id=base_task_id)],
+            destination=tmp_path / "materialized",
+        )
+        / "tau-derived"
+    )
+
+    _harden_task(task)
+
+    assert (task / "environment" / "docker-compose.yaml").is_file()
+    assert HarborTask(task).config.environment.mcp_servers[0].name == "tau3-runtime"
+    assert HarborTask(task).config.verifier.environment_mode == VerifierEnvironmentMode.SEPARATE
+
+
+def test_tau_envelope_rejects_invalid_typed_task_data(tmp_path: Path) -> None:
+    template = Path(__file__).parents[1] / "examples" / "tau2-nemo-oo-agent" / "dataset" / "template" / "task_template"
+    registered = register_dataset_envelope(
+        template,
+        catalog_root=tmp_path / "catalog",
+        name="tau-template",
+    )
+    base_task_id = registered.manifest.tasks[0].task_id
+    overlay = tmp_path / "overlay"
+    invalid = overlay / "tau-derived" / "environment" / "runtime-server" / "task_config.json"
+    invalid.parent.mkdir(parents=True)
+    invalid.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not valid JSON"):
+        TrustedEnvelopeCatalog(tmp_path / "catalog").materialize(
+            envelope_id=registered.manifest.envelope_id,
+            envelope_digest=registered.manifest.envelope_digest,
+            selections=[EnvelopeTaskSelection(task_id="tau-derived", base_task_id=base_task_id)],
+            destination=tmp_path / "materialized",
+            overlay_dir=overlay,
+        )
+
+
+@pytest.mark.asyncio
+async def test_host_prepares_trusted_inputs_without_a_sandbox_registration_api(tmp_path: Path) -> None:
+    agent = _candidate(tmp_path / "agent")
+    train_source = tmp_path / "train-source"
+    validation_source = tmp_path / "validation-source"
+    for source, task_name in ((train_source, "train-task"), (validation_source, "validation-task")):
+        task = source / task_name
+        task.mkdir(parents=True)
+        (task / "task.toml").write_text(
+            f'schema_version = "1.1"\n[task]\nname = "example/{task_name}"\n',
+            encoding="utf-8",
+        )
+        _complete_task_files(task)
+    plan = build_effective_experiment_plan(
+        profile=None,
+        agent=str(agent),
+        no_insight=True,
+        train_dataset=str(train_source),
+        validation_dataset=str(validation_source),
+    )
+
+    prepared = await prepare_trusted_inputs(plan, workspace=tmp_path)
+
+    assert prepared.catalog_root.is_dir()
+    assert (prepared.train_dataset / ENVELOPE_DESCRIPTOR_FILENAME).is_file()
+    assert (prepared.validation_dataset / ENVELOPE_DESCRIPTOR_FILENAME).is_file()
+    assert prepared.task_template is None
+    assert list((prepared.catalog_root / "envelopes").glob("*/manifest.json"))
 
 
 def test_result_archive_rewrites_artifacts_to_local_paths(tmp_path: Path) -> None:
@@ -240,14 +444,15 @@ def test_factory_selects_remote_harbor_evaluator_from_environment(
 
 
 def test_remote_evaluator_replaces_local_harbor_dependency_runtime(tmp_path: Path) -> None:
-    task_dir = tmp_path / "task-1"
-    task_dir.mkdir()
+    registered, _catalog = _registered_dataset(tmp_path)
+    task_dir = registered.dataset_path / "task-1"
     dataset = HarborDataset(
         id="dataset",
-        source=ResourceRef(uri=tmp_path.as_uri()),
+        source=ResourceRef(uri=registered.dataset_path.as_uri()),
         tasks=[
             Task(
                 id="task-1",
+                uri=task_dir.as_uri(),
                 dependencies=HarborDependencyRuntime(
                     task_path=ResourceRef(uri=task_dir.as_uri()),
                     force_build=False,
@@ -266,6 +471,9 @@ def test_remote_evaluator_replaces_local_harbor_dependency_runtime(tmp_path: Pat
     runtime = dataset.tasks[0].dependencies
     assert isinstance(runtime, RemoteHarborDependencyRuntime)
     assert runtime.task_path.uri == task_dir.as_uri()
+    assert runtime.envelope_id == registered.manifest.envelope_id
+    assert runtime.envelope_digest == registered.manifest.envelope_digest
+    assert runtime.base_task_id == "task-1"
     assert runtime.force_build is False
     assert runtime.run_healthcheck is False
     assert runtime.build_timeout_sec == 120
@@ -346,16 +554,28 @@ async def test_remote_dependency_runtime_starts_executes_and_stops(
         requests.append((request.method, request.url.path))
         assert request.headers["authorization"] == "Bearer dependency-token"
         if request.url.path == "/v1/dependencies":
-            assert b'"task_id":"task-1"' in body
+            payload = json.loads(parse_qs(body.decode())["request"][0])
+            assert payload["task_id"] == "task-1"
+            assert payload["base_task_id"] == "task-1"
+            assert payload["envelope_id"] == "envelope-1"
+            assert b'name="task"' not in body
             assert b"docker.sock" not in body
-            return httpx.Response(201, json={"session_id": "dependency-session-1"})
+            return httpx.Response(
+                201,
+                json={
+                    "session_id": "dependency-session-1",
+                    "capability_token": "session-capability-token",
+                },
+            )
         if request.url.path == "/v1/dependencies/dependency-session-1/exec":
+            assert request.headers["x-nemo-dependency-capability"] == "session-capability-token"
             assert b'"command":"pwd"' in body
             return httpx.Response(
                 200,
                 json={"stdout": "/app\n", "stderr": "", "returncode": 0},
             )
         if request.url.path == "/v1/dependencies/dependency-session-1":
+            assert request.headers["x-nemo-dependency-capability"] == "session-capability-token"
             return httpx.Response(204)
         raise AssertionError(f"unexpected request: {request.method} {request.url}")
 
@@ -363,6 +583,9 @@ async def test_remote_dependency_runtime_starts_executes_and_stops(
     monkeypatch.setenv("BRIDGE_TOKEN", "dependency-token")
     runtime = RemoteHarborDependencyRuntime(
         task_id="task-1",
+        base_task_id="task-1",
+        envelope_id="envelope-1",
+        envelope_digest=_DIGEST,
         task_path=ResourceRef(uri=task_dir.as_uri()),
         bridge_url="http://bridge.test:8765",
         bridge_token_env="BRIDGE_TOKEN",
@@ -432,7 +655,13 @@ async def test_dependency_session_manager_executes_inside_environment_and_tracks
     task_dir.mkdir()
     manager = dependency_module.HarborDependencySessionManager(max_concurrent_sessions=1)
     session_id = await manager.start(
-        HarborDependencyRequest(request_id="dependency-task-a", task_id="task-a"),
+        HarborDependencyRequest(
+            request_id="dependency-task-a",
+            envelope_id="envelope-1",
+            envelope_digest=_DIGEST,
+            task_id="task-a",
+            base_task_id="task-a",
+        ),
         task_dir=task_dir,
     )
 
@@ -469,13 +698,13 @@ async def test_remote_evaluator_submits_bundles_and_materializes_results(
     agent = tmp_path / "agent"
     agent.mkdir()
     (agent / "main.py").write_text("print('candidate')\n", encoding="utf-8")
-    dataset_path = tmp_path / "dataset"
-    dataset_path.mkdir()
-    (dataset_path / "task.toml").write_text("version = '1.0'\n", encoding="utf-8")
+    registered, _catalog = _registered_dataset(tmp_path)
+    dataset_path = registered.dataset_path
+    task_path = dataset_path / "task-1"
     dataset = HarborDataset(
         id="dataset",
         source=ResourceRef(uri=dataset_path.as_uri()),
-        tasks=[Task(id="task-1")],
+        tasks=[Task(id="task-1", uri=task_path.as_uri())],
     )
 
     async def validate() -> None:
@@ -494,7 +723,9 @@ async def test_remote_evaluator_submits_bundles_and_materializes_results(
         body = await request.aread()
         assert request.headers["authorization"] == "Bearer test-token"
         assert request.url == httpx.URL("http://bridge.test:8765/v1/evaluations")
-        assert b'"task_ids":["task-1"]' in body
+        assert b'"tasks":[{"task_id":"task-1","base_task_id":"task-1"}]' in body
+        assert b'"envelope_id":"' + registered.manifest.envelope_id.encode() + b'"' in body
+        assert b'name="dataset"' not in body
         assert b"import_path" not in body
         assert b"docker.sock" not in body
         return httpx.Response(
@@ -562,17 +793,16 @@ def test_harden_task_requires_separate_verifier_definition(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize(
-    ("relative_path", "content", "message"),
+    ("relative_path", "content"),
     [
-        ("environment/compose.yaml", "services: {}\n", "Docker Compose"),
-        ("task.toml", '[environment.env]\nSECRET = "${HOST_SECRET}"\n', "host environment variables"),
+        ("environment/compose.yaml", "services: {}\n"),
+        ("task.toml", '[environment.env]\nSECRET = "${HOST_SECRET}"\n'),
     ],
 )
-def test_harden_task_rejects_host_authority(
+def test_harden_task_accepts_host_registered_runtime_configuration(
     tmp_path: Path,
     relative_path: str,
     content: str,
-    message: str,
 ) -> None:
     task_dir = tmp_path / "task-a"
     task_dir.mkdir()
@@ -582,8 +812,24 @@ def test_harden_task_rejects_host_authority(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
 
-    with pytest.raises(ValueError, match=message):
-        _harden_task(task_dir)
+    _harden_task(task_dir)
+
+
+def test_trusted_envelope_rejects_runtime_overlay(tmp_path: Path) -> None:
+    registered, catalog = _registered_dataset(tmp_path, mutable=True)
+    overlay = tmp_path / "overlay"
+    malicious = overlay / "task-derived" / "environment" / "Dockerfile"
+    malicious.parent.mkdir(parents=True)
+    malicious.write_text("FROM malicious\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="runtime-control file"):
+        catalog.materialize(
+            envelope_id=registered.manifest.envelope_id,
+            envelope_digest=registered.manifest.envelope_digest,
+            selections=[EnvelopeTaskSelection(task_id="task-derived", base_task_id="task-1")],
+            destination=tmp_path / "materialized",
+            overlay_dir=overlay,
+        )
 
 
 @pytest.mark.asyncio
@@ -601,59 +847,87 @@ async def test_bridge_service_authenticates_and_returns_materialized_result(tmp_
         ) -> EvaluationResult:
             self.requests.append(request)
             assert (candidate_dir / "main.py").read_text(encoding="utf-8") == "print('candidate')\n"
-            assert (dataset_dir / "task-a" / "task.toml").is_file()
+            assert (dataset_dir / "task-1" / "task.toml").is_file()
             trace = work_dir / "results" / "trial-1" / "trace.jsonl"
             trace.parent.mkdir(parents=True)
             trace.write_text('{"span":"service"}\n', encoding="utf-8")
             return _completed_result(trace)
 
     candidate = _candidate(tmp_path / "candidate")
-    dataset = tmp_path / "dataset"
-    (dataset / "task-a").mkdir(parents=True)
-    (dataset / "task-a" / "task.toml").write_text("", encoding="utf-8")
+    registered, catalog = _registered_dataset(tmp_path)
     candidate_archive = tmp_path / "candidate.tar.gz"
-    dataset_archive = tmp_path / "dataset.tar.gz"
     create_directory_archive(candidate, candidate_archive)
-    create_directory_archive(dataset, dataset_archive)
 
     runner = RecordingRunner()
     storage_root = tmp_path / "bridge-work"
     app = create_app(
         settings=HarborBridgeSettings(
             storage_root=storage_root,
+            catalog_root=catalog.root,
             token="test-token-is-long-enough",
         ),
         runner=runner,
+        catalog=catalog,
     )
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://bridge.test") as client:
         unauthorized = await client.post("/v1/evaluations")
         assert unauthorized.status_code == 401
 
-        with candidate_archive.open("rb") as candidate_file, dataset_archive.open("rb") as dataset_file:
+        with candidate_archive.open("rb") as candidate_file:
             response = await client.post(
                 "/v1/evaluations",
                 headers={"authorization": "Bearer test-token-is-long-enough"},
                 data={
                     "request": HarborBridgeRequest(
                         request_id="request-1",
-                        task_ids=["task-a"],
+                        envelope_id=registered.manifest.envelope_id,
+                        envelope_digest=registered.manifest.envelope_digest,
+                        tasks=[EnvelopeTaskSelection(task_id="task-1", base_task_id="task-1")],
+                        candidate_digest=transport_tree_digest(candidate),
                     ).model_dump_json()
                 },
                 files={
                     "candidate": ("candidate.tar.gz", candidate_file, "application/gzip"),
-                    "dataset": ("dataset.tar.gz", dataset_file, "application/gzip"),
+                },
+            )
+        with candidate_archive.open("rb") as candidate_file, candidate_archive.open("rb") as legacy_dataset:
+            legacy = await client.post(
+                "/v1/evaluations",
+                headers={"authorization": "Bearer test-token-is-long-enough"},
+                data={
+                    "request": HarborBridgeRequest(
+                        request_id="request-legacy",
+                        envelope_id=registered.manifest.envelope_id,
+                        envelope_digest=registered.manifest.envelope_digest,
+                        tasks=[EnvelopeTaskSelection(task_id="task-1", base_task_id="task-1")],
+                        candidate_digest=transport_tree_digest(candidate),
+                    ).model_dump_json()
+                },
+                files={
+                    "candidate": ("candidate.tar.gz", candidate_file, "application/gzip"),
+                    "dataset": ("dataset.tar.gz", legacy_dataset, "application/gzip"),
                 },
             )
 
     assert response.status_code == 200
+    assert legacy.status_code == 422
+    assert "dataset" in legacy.text
     response_archive = tmp_path / "response.tar.gz"
     response_archive.write_bytes(response.content)
     result = materialize_result_archive(response_archive, tmp_path / "materialized")
     assert result.trials[0].trace is not None
     trace = Path(result.trials[0].trace.uri.removeprefix("file://"))
     assert trace.read_text(encoding="utf-8") == '{"span":"service"}\n'
-    assert runner.requests == [HarborBridgeRequest(request_id="request-1", task_ids=["task-a"])]
+    assert runner.requests == [
+        HarborBridgeRequest(
+            request_id="request-1",
+            envelope_id=registered.manifest.envelope_id,
+            envelope_digest=registered.manifest.envelope_digest,
+            tasks=[EnvelopeTaskSelection(task_id="task-1", base_task_id="task-1")],
+            candidate_digest=transport_tree_digest(candidate),
+        )
+    ]
     assert list(storage_root.iterdir()) == []
 
 
@@ -666,7 +940,7 @@ async def test_bridge_service_owns_dependency_session_lifecycle(tmp_path: Path) 
 
         async def start(self, request: HarborDependencyRequest, *, task_dir: Path) -> str:
             self.starts.append(request)
-            assert (task_dir / "task.toml").read_text(encoding="utf-8") == ""
+            assert (task_dir / "task.toml").is_file()
             return "dependency-session-1"
 
         async def execute(
@@ -683,55 +957,90 @@ async def test_bridge_service_owns_dependency_session_lifecycle(tmp_path: Path) 
         async def close(self) -> None:
             return None
 
-    task = tmp_path / "task-a"
-    task.mkdir()
-    (task / "task.toml").write_text("", encoding="utf-8")
-    task_archive = tmp_path / "task.tar.gz"
-    create_directory_archive(task, task_archive)
+    registered, catalog = _registered_dataset(tmp_path)
+    legacy_task_archive = tmp_path / "legacy-task.tar.gz"
+    create_directory_archive(registered.dataset_path / "task-1", legacy_task_archive)
 
     sessions = RecordingDependencySessions()
     storage_root = tmp_path / "bridge-work"
     app = create_app(
         settings=HarborBridgeSettings(
             storage_root=storage_root,
+            catalog_root=catalog.root,
             token="test-token-is-long-enough",
         ),
         dependency_sessions=sessions,
+        catalog=catalog,
     )
     transport = httpx.ASGITransport(app=app)
     headers = {"authorization": "Bearer test-token-is-long-enough"}
     async with httpx.AsyncClient(transport=transport, base_url="http://bridge.test") as client:
-        with task_archive.open("rb") as task_file:
-            started = await client.post(
+        started = await client.post(
+            "/v1/dependencies",
+            headers=headers,
+            data={
+                "request": HarborDependencyRequest(
+                    request_id="dependency-task-a",
+                    envelope_id=registered.manifest.envelope_id,
+                    envelope_digest=registered.manifest.envelope_digest,
+                    task_id="task-1",
+                    base_task_id="task-1",
+                ).model_dump_json()
+            },
+        )
+        with legacy_task_archive.open("rb") as legacy_task:
+            legacy = await client.post(
                 "/v1/dependencies",
                 headers=headers,
                 data={
                     "request": HarborDependencyRequest(
-                        request_id="dependency-task-a",
-                        task_id="task-a",
+                        request_id="dependency-legacy",
+                        envelope_id=registered.manifest.envelope_id,
+                        envelope_digest=registered.manifest.envelope_digest,
+                        task_id="task-1",
+                        base_task_id="task-1",
                     ).model_dump_json()
                 },
-                files={"task": ("task.tar.gz", task_file, "application/gzip")},
+                files={"task": ("task.tar.gz", legacy_task, "application/gzip")},
             )
-        executed = await client.post(
+        missing = await client.post(
             "/v1/dependencies/dependency-session-1/exec",
             headers=headers,
             json=HarborDependencyExecRequest(command="pwd").model_dump(),
         )
+        denied = await client.post(
+            "/v1/dependencies/dependency-session-1/exec",
+            headers={**headers, "X-Nemo-Dependency-Capability": "wrong-capability-token"},
+            json=HarborDependencyExecRequest(command="pwd").model_dump(),
+        )
+        capability = started.json()["capability_token"]
+        executed = await client.post(
+            "/v1/dependencies/dependency-session-1/exec",
+            headers={**headers, "X-Nemo-Dependency-Capability": capability},
+            json=HarborDependencyExecRequest(command="pwd").model_dump(),
+        )
         stopped = await client.delete(
             "/v1/dependencies/dependency-session-1",
-            headers=headers,
+            headers={**headers, "X-Nemo-Dependency-Capability": capability},
         )
 
     assert started.status_code == 201
-    assert started.json() == {"session_id": "dependency-session-1"}
+    assert legacy.status_code == 422
+    assert "task" in legacy.text
+    assert started.json()["session_id"] == "dependency-session-1"
+    assert len(started.json()["capability_token"]) >= 16
+    assert missing.status_code == 403
+    assert denied.status_code == 403
     assert executed.status_code == 200
     assert executed.json() == {"stdout": "/app\n", "stderr": "", "returncode": 0}
     assert stopped.status_code == 204
     assert sessions.starts == [
         HarborDependencyRequest(
             request_id="dependency-task-a",
-            task_id="task-a",
+            envelope_id=registered.manifest.envelope_id,
+            envelope_digest=registered.manifest.envelope_digest,
+            task_id="task-1",
+            base_task_id="task-1",
         )
     ]
     assert sessions.commands == [

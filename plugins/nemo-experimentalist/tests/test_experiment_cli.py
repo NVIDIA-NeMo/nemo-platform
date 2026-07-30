@@ -11,6 +11,7 @@ from click.testing import Result
 from nemo_experimentalist_plugin import cli
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.harbor_bridge.preparation import PreparedTrustedInputs
 from nemo_experimentalist_plugin.preflight import Probes
 from nemo_experimentalist_plugin.profile import AgentProfile, DatasetsSpec
 from nemo_platform import AsyncNeMoPlatform
@@ -34,6 +35,20 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
     monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", True)
+
+    async def prepare(plan, *, workspace: Path) -> PreparedTrustedInputs:
+        def local(value: str, anchor: Path) -> Path:
+            path = Path(value)
+            return path.resolve() if path.is_absolute() else (anchor / path).resolve()
+
+        return PreparedTrustedInputs(
+            catalog_root=workspace / "catalog",
+            train_dataset=local(plan.train_dataset, plan.train_anchor),
+            validation_dataset=local(plan.validation_dataset, plan.validation_anchor),
+            task_template=Path(plan.task_template) if plan.task_template is not None else None,
+        )
+
+    monkeypatch.setattr(cli, "_TRUSTED_INPUT_PREPARER", prepare)
 
 
 @pytest.fixture(autouse=True)

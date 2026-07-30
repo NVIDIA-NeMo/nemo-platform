@@ -203,7 +203,11 @@ class EvalAuthor(Agent, llm=get_smart_model()):
            The caller has already copied the template to its durable candidate path;
            edit this directory in place and do not copy or rename it.
         2. Fetch the trace via ``client`` and populate the template's placeholders
-           with values from the trace (instruction, environment config, etc.).
+           with values from the trace. A trusted task may contain
+           ``nemo-task-envelope.json``; in that case edit only its declared
+           ``task_data`` paths. Never edit Dockerfiles, Compose files, image
+           references, mounts, environment-variable bindings, network policy,
+           resource policy, or verifier files while filling a task.
            Leave unfillable placeholders as-is.
         3. Keep ``task.toml`` parseable and keep ``[task] name`` in ``org/name``
            format. The caller will deterministically finalize the name and provenance.
@@ -307,6 +311,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             staged_tasks = insight_suite.stage(refs)
             for staged in staged_tasks:
                 await self.fill_task_template(staged.trace_ref, staged.task, client, insight.workspace)
+                insight_suite.validate_fill_mutations(staged)
                 insight_suite.validate(staged)
             materialized_dataset = insight_suite.promote_local(refs, staged_tasks)
             if prepare_dataset is not None:
@@ -355,12 +360,14 @@ class EvalAuthor(Agent, llm=get_smart_model()):
 
         self.context["dataset_documentation"] = doc(type(materialized_dataset), inline_depth=1)
         runner_conventions = await self.discover_runner(materialized_dataset)
+        metric_mutation_snapshot = insight_suite.metric_mutation_snapshot()
         summary = await self.author_insight_metrics(
             insight,
             diagnostics,
             materialized_dataset,
             runner_conventions,
         )
+        insight_suite.validate_metric_mutations(metric_mutation_snapshot)
         for repair_attempt in range(self._config.max_validation_repair_attempts + 1):
             try:
                 await materialized_dataset.validate()
@@ -380,6 +387,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                     runner_conventions,
                     validation_feedback=str(exc),
                 )
+                insight_suite.validate_metric_mutations(metric_mutation_snapshot)
             else:
                 finalized_suite = insight_suite.finalize()
                 return EvalAuthorResult(

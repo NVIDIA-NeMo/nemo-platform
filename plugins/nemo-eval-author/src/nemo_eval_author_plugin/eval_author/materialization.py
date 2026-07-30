@@ -25,6 +25,8 @@ _MANIFEST_SCHEMA_VERSION = 3
 _CONTENT_HASH_SCHEMA_VERSION = 1
 _METRIC_CONTRACT_VERSION = 1
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+_ENVELOPE_DESCRIPTOR_FILENAME = ".nemo-trusted-harbor-envelope.json"
+_ENVELOPE_POLICY_FILENAME = "nemo-task-envelope.json"
 
 
 def _slug(value: str, *, fallback: str, max_length: int = 48) -> str:
@@ -50,6 +52,89 @@ def _file_hashes(root: Path) -> dict[str, str]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
+
+
+def _contains(parent: str, child: str) -> bool:
+    parent_path = Path(parent)
+    child_path = Path(child)
+    return child_path == parent_path or parent_path in child_path.parents
+
+
+@dataclass(frozen=True, slots=True)
+class _MutationPolicy:
+    task_data_paths: tuple[str, ...]
+    verifier_paths: tuple[str, ...]
+
+
+def _mutation_policy(task_dir: Path) -> _MutationPolicy | None:
+    """Load the trusted-envelope policy without importing Experimentalist helpers."""
+    descriptor = task_dir / _ENVELOPE_DESCRIPTOR_FILENAME
+    if not descriptor.is_file():
+        return None
+    policy_path = task_dir / _ENVELOPE_POLICY_FILENAME
+    if not policy_path.is_file():
+        raise ValueError(f"Trusted Eval Author task is missing {_ENVELOPE_POLICY_FILENAME}: {task_dir}")
+    try:
+        payload = json.loads(policy_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid trusted task mutation policy {policy_path}: {exc}") from exc
+    if payload.get("schema_version") != 1:
+        raise ValueError(f"Unsupported trusted task mutation policy version in {policy_path}")
+
+    def paths_from_values(raw: object, key: str) -> tuple[str, ...]:
+        if not isinstance(raw, list):
+            raise ValueError(f"Trusted task mutation policy {key} must be a list of paths: {policy_path}")
+        normalized: list[str] = []
+        for item in raw:
+            if not isinstance(item, str) or not item:
+                raise ValueError(f"Trusted task mutation policy {key} must be a list of paths: {policy_path}")
+            path = Path(item)
+            if path.is_absolute() or any(part in ("", ".", "..") for part in path.parts):
+                raise ValueError(f"Unsafe trusted task mutation path {item!r}: {policy_path}")
+            normalized.append(path.as_posix())
+        if len(set(normalized)) != len(normalized):
+            raise ValueError(f"Duplicate trusted task mutation paths in {policy_path}")
+        return tuple(normalized)
+
+    def paths(key: str) -> tuple[str, ...]:
+        return paths_from_values(payload.get(key, []), key)
+
+    raw_task_data = payload.get("task_data", [])
+    if not isinstance(raw_task_data, list):
+        raise ValueError(f"Trusted task mutation policy task_data must be a list: {policy_path}")
+    task_data_paths: list[str] = []
+    for slot in raw_task_data:
+        if not isinstance(slot, dict) or not isinstance(slot.get("path"), str):
+            raise ValueError(f"Trusted task mutation policy task_data contains an invalid slot: {policy_path}")
+        task_data_paths.extend(paths_from_values([slot["path"]], "task_data"))
+    return _MutationPolicy(
+        task_data_paths=tuple(task_data_paths),
+        verifier_paths=paths("verifier_paths"),
+    )
+
+
+def _immutable_snapshot(task_dir: Path, *, mutable_paths: tuple[str, ...]) -> dict[str, str]:
+    return {
+        relative: digest
+        for relative, digest in _file_hashes(task_dir).items()
+        if not any(_contains(mutable, relative) for mutable in mutable_paths)
+    }
+
+
+def _assert_snapshot(
+    task_dir: Path,
+    *,
+    mutable_paths: tuple[str, ...],
+    expected: dict[str, str],
+    phase: str,
+) -> None:
+    actual = _immutable_snapshot(task_dir, mutable_paths=mutable_paths)
+    if actual == expected:
+        return
+    changed = sorted(path for path in set(expected) | set(actual) if expected.get(path) != actual.get(path))
+    raise ValueError(
+        f"Eval Author {phase} modified trusted task paths outside its envelope slots: " + ", ".join(changed[:20])
+    )
 
 
 def _verifier_dir(task_dir: Path) -> Path:
@@ -144,6 +229,8 @@ class StagedInsightTask:
     slug: str
     path: Path
     task: Task
+    mutation_policy: _MutationPolicy | None
+    immutable_before_fill: dict[str, str] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,8 +287,60 @@ class InsightSuite:
             task_dir = self._candidate_suite / slug
             shutil.copytree(self.template_dir, task_dir)
             task = list(HarborDataset.from_path(task_dir).list_tasks())[0]
-            staged.append(StagedInsightTask(index=index, trace_ref=trace_ref, slug=slug, path=task_dir, task=task))
+            policy = _mutation_policy(task_dir)
+            staged.append(
+                StagedInsightTask(
+                    index=index,
+                    trace_ref=trace_ref,
+                    slug=slug,
+                    path=task_dir,
+                    task=task,
+                    mutation_policy=policy,
+                    immutable_before_fill=(
+                        _immutable_snapshot(task_dir, mutable_paths=policy.task_data_paths)
+                        if policy is not None
+                        else None
+                    ),
+                )
+            )
         return staged
+
+    def validate_fill_mutations(self, staged: StagedInsightTask) -> None:
+        """Reject coding-agent edits outside declared trace-data slots."""
+        if staged.mutation_policy is None or staged.immutable_before_fill is None:
+            return
+        _assert_snapshot(
+            staged.path,
+            mutable_paths=staged.mutation_policy.task_data_paths,
+            expected=staged.immutable_before_fill,
+            phase="template filling",
+        )
+
+    def metric_mutation_snapshot(self) -> dict[str, tuple[tuple[str, ...], dict[str, str]]]:
+        """Capture non-verifier content before metric authoring begins."""
+        snapshot: dict[str, tuple[tuple[str, ...], dict[str, str]]] = {}
+        for task_dir in sorted(path for path in self.suite_dir.iterdir() if path.is_dir()):
+            policy = _mutation_policy(task_dir)
+            if policy is None:
+                continue
+            snapshot[task_dir.name] = (
+                policy.verifier_paths,
+                _immutable_snapshot(task_dir, mutable_paths=policy.verifier_paths),
+            )
+        return snapshot
+
+    def validate_metric_mutations(
+        self,
+        snapshot: dict[str, tuple[tuple[str, ...], dict[str, str]]],
+    ) -> None:
+        """Reject metric-author edits outside declared verifier slots."""
+        for task_name, (mutable_paths, expected) in snapshot.items():
+            _assert_snapshot(
+                self.suite_dir / task_name,
+                mutable_paths=mutable_paths,
+                expected=expected,
+                phase="metric authoring",
+            )
 
     def discard(self) -> None:
         """Remove an unpromoted candidate suite and reset its staging state."""

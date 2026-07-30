@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import math
 import os
 import re
@@ -48,6 +49,14 @@ from nemo_experimentalist_plugin.harbor_bridge.contracts import (
     HarborDependencyRequest,
     HarborDependencySessionResponse,
 )
+from nemo_experimentalist_plugin.harbor_bridge.envelopes import (
+    EnvelopeTaskSelection,
+    ResolvedEnvelopeTask,
+    TaskEnvelopePolicy,
+    create_overlay_directory,
+    resolve_envelope_task,
+    transport_tree_digest,
+)
 from pydantic import AnyHttpUrl, ConfigDict, Field, PrivateAttr, model_validator
 
 BRIDGE_URL_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL"
@@ -86,7 +95,11 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
     model_config = ConfigDict(extra="forbid")
 
     task_id: str = Field(min_length=1, max_length=256, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    base_task_id: str = Field(min_length=1, max_length=256, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    envelope_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    envelope_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     task_path: ResourceRef
+    overlay_policy: TaskEnvelopePolicy = Field(default_factory=TaskEnvelopePolicy)
     bridge_url: AnyHttpUrl
     bridge_token_env: str = Field(
         default="NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN",
@@ -99,6 +112,7 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
     build_timeout_sec: int | None = Field(default=None, ge=1, le=3600)
 
     _session_id: str | None = PrivateAttr(default=None)
+    _session_capability: str | None = PrivateAttr(default=None)
     _client: httpx.AsyncClient | None = PrivateAttr(default=None)
 
     @model_validator(mode="after")
@@ -112,6 +126,7 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
         """Return the bridge-backed dependency context."""
         session_runtime = self.model_copy(deep=False)
         session_runtime._session_id = None
+        session_runtime._session_capability = None
         session_runtime._client = self._client
         return RemoteHarborDependencyContext(session_runtime)
 
@@ -125,6 +140,8 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
         """Execute an analyzer shell command in the active Harbor task environment."""
         if self._session_id is None:
             raise DependencyRuntimeError("Remote Harbor dependency session is not running")
+        if self._session_capability is None:
+            raise DependencyRuntimeError("Remote Harbor dependency session capability is missing")
         request = HarborDependencyExecRequest(
             command=command,
             stdin=stdin,
@@ -135,6 +152,7 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
             f"/v1/dependencies/{self._session_id}/exec",
             json=request.model_dump(),
             timeout_sec=max(self.request_timeout_sec, request.timeout_sec + 30),
+            capability_token=self._session_capability,
         )
         self._require_status(response, 200, context="command")
         try:
@@ -157,30 +175,57 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
 
         request = HarborDependencyRequest(
             request_id=_dependency_request_id(self.task_id, task_path),
+            envelope_id=self.envelope_id,
+            envelope_digest=self.envelope_digest,
             task_id=self.task_id,
+            base_task_id=self.base_task_id,
             force_build=self.force_build,
             run_healthcheck=self.run_healthcheck,
             build_timeout_sec=self.build_timeout_sec,
         )
         staging = Path.cwd().resolve() / "tmp" / "harbor-bridge" / f"{request.request_id}-{uuid4().hex[:8]}"
         staging.mkdir(parents=True, exist_ok=False)
-        task_archive = staging / "task.tar.gz"
+        overlay_dir = staging / "overlay"
+        overlay_archive = staging / "overlay.tar.gz"
         try:
-            create_directory_archive(task_path, task_archive, max_bytes=self.max_archive_bytes)
-            with task_archive.open("rb") as task:
+            overlay_digest = create_overlay_directory(
+                [
+                    ResolvedEnvelopeTask(
+                        envelope_id=self.envelope_id,
+                        envelope_digest=self.envelope_digest,
+                        task_id=self.task_id,
+                        base_task_id=self.base_task_id,
+                        task_path=task_path,
+                        policy=self.overlay_policy,
+                    )
+                ],
+                overlay_dir,
+            )
+            request = request.model_copy(update={"overlay_digest": overlay_digest})
+            files: dict[str, tuple[str, Any, str]] | None = None
+            overlay_handle = None
+            if overlay_digest is not None:
+                create_directory_archive(overlay_dir, overlay_archive, max_bytes=self.max_archive_bytes)
+                overlay_handle = overlay_archive.open("rb")
+                files = {"overlay": ("overlay.tar.gz", overlay_handle, "application/gzip")}
+            try:
                 response = await self._send(
                     "POST",
                     "/v1/dependencies",
                     data={"request": request.model_dump_json()},
-                    files={"task": ("task.tar.gz", task, "application/gzip")},
+                    files=files,
                     timeout_sec=self.request_timeout_sec,
                 )
+            finally:
+                if overlay_handle is not None:
+                    overlay_handle.close()
             self._require_status(response, 201, context="startup")
             try:
                 session = HarborDependencySessionResponse.model_validate_json(response.content)
             except ValueError as exc:
                 raise DependencyRuntimeError("Harbor bridge returned an invalid dependency startup response") from exc
             self._session_id = session.session_id
+            self._session_capability = session.capability_token
             self.metadata.update(
                 {
                     "execution_boundary": "remote-harbor-bridge",
@@ -198,9 +243,11 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
             "DELETE",
             f"/v1/dependencies/{session_id}",
             timeout_sec=self.request_timeout_sec,
+            capability_token=self._session_capability,
         )
         self._require_status(response, 204, context="shutdown")
         self._session_id = None
+        self._session_capability = None
         self.metadata.pop("harbor_dependency_session_id", None)
 
     async def _send(
@@ -209,6 +256,7 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
         path: str,
         *,
         timeout_sec: float,
+        capability_token: str | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
         token = os.environ.get(self.bridge_token_env)
@@ -218,6 +266,8 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
             )
         url = f"{str(self.bridge_url).rstrip('/')}{path}"
         headers = {"Authorization": f"Bearer {token}"}
+        if capability_token is not None:
+            headers["X-Nemo-Dependency-Capability"] = capability_token
         try:
             if self._client is not None:
                 return await self._client.request(method, url, headers=headers, **kwargs)
@@ -289,6 +339,23 @@ def _request_id(agent: Path, dataset: Dataset, configured: str | None) -> str:
     return f"{normalized[:60]}-{digest}"
 
 
+def _scorer_identity(dataset_path: Path) -> str | None:
+    """Read the sealed Eval Author scorer identity when this is an Insight suite."""
+    manifest_path = dataset_path / "manifest.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid Harbor dataset manifest {manifest_path}: {exc}") from exc
+    value = payload.get("scorer_identity")
+    if value is None:
+        return None
+    if not isinstance(value, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None:
+        raise ValueError(f"Invalid scorer_identity in {manifest_path}: {value!r}")
+    return value
+
+
 class RemoteHarborEvaluator(Evaluator):
     """Submit candidate and dataset bundles to the narrow Harbor bridge."""
 
@@ -314,7 +381,10 @@ class RemoteHarborEvaluator(Evaluator):
         """Replace Docker-backed Harbor task runtimes with bridge-backed runtimes."""
         if not isinstance(dataset, HarborDataset):
             raise ValueError("Dataset must be a Harbor dataset")
+        if dataset.source is None:
+            raise ValueError("Harbor dataset source is required")
         runtime_options = options or self.options
+        dataset_path = local_path_from_uri(dataset.source.uri, context="Harbor dataset reference").resolve()
         for task in dataset.tasks:
             dependencies = task.dependencies
             if dependencies is None:
@@ -335,9 +405,15 @@ class RemoteHarborEvaluator(Evaluator):
                 raise DependencyRuntimeError(
                     f"Remote Harbor dependencies do not support custom lifecycle commands: {task.id}"
                 )
+            task_path = local_path_from_uri(dependencies.task_path.uri, context="Harbor task reference").resolve()
+            binding = resolve_envelope_task(dataset_path, task_path, task_id=task.id)
             task.dependencies = RemoteHarborDependencyRuntime(
                 task_id=task.id,
+                base_task_id=binding.base_task_id,
+                envelope_id=binding.envelope_id,
+                envelope_digest=binding.envelope_digest,
                 task_path=dependencies.task_path,
+                overlay_policy=binding.policy,
                 bridge_url=runtime_options.bridge_url,
                 bridge_token_env=runtime_options.bridge_token_env,
                 request_timeout_sec=runtime_options.request_timeout_sec,
@@ -373,6 +449,18 @@ class RemoteHarborEvaluator(Evaluator):
         if not dataset_path.is_dir():
             raise FileNotFoundError(f"Harbor dataset path not found: {dataset_path}")
         await dataset.validate()
+        bindings = [
+            resolve_envelope_task(
+                dataset_path,
+                local_path_from_uri(task.uri, context="Harbor task reference").resolve(),
+                task_id=task.id,
+            )
+            for task in dataset.tasks
+        ]
+        envelope_keys = {(binding.envelope_id, binding.envelope_digest) for binding in bindings}
+        if len(envelope_keys) != 1:
+            raise ValueError("One Harbor evaluation may reference exactly one trusted task envelope")
+        envelope_id, envelope_digest = envelope_keys.pop()
 
         token = os.environ.get(options.bridge_token_env)
         if not token:
@@ -388,14 +476,25 @@ class RemoteHarborEvaluator(Evaluator):
         staging = experiment_dir / "tmp" / "harbor-bridge" / f"{request_id}-{uuid4().hex[:8]}"
         staging.mkdir(parents=True, exist_ok=False)
         candidate_archive = staging / "candidate.tar.gz"
-        dataset_archive = staging / "dataset.tar.gz"
+        overlay_dir = staging / "overlay"
+        overlay_archive = staging / "overlay.tar.gz"
         response_archive = staging / "response.tar.gz"
         try:
             create_directory_archive(agent_path, candidate_archive, max_bytes=options.max_archive_bytes)
-            create_directory_archive(dataset_path, dataset_archive, max_bytes=options.max_archive_bytes)
+            overlay_digest = create_overlay_directory(bindings, overlay_dir)
+            if overlay_digest is not None:
+                create_directory_archive(overlay_dir, overlay_archive, max_bytes=options.max_archive_bytes)
             request = HarborBridgeRequest(
                 request_id=request_id,
-                task_ids=[task.id for task in dataset.tasks],
+                envelope_id=envelope_id,
+                envelope_digest=envelope_digest,
+                tasks=[
+                    EnvelopeTaskSelection(task_id=binding.task_id, base_task_id=binding.base_task_id)
+                    for binding in bindings
+                ],
+                candidate_digest=transport_tree_digest(agent_path),
+                overlay_digest=overlay_digest,
+                scorer_identity=_scorer_identity(dataset_path),
                 n_attempts=options.n_attempts,
                 n_concurrent_trials=options.n_concurrent_trials,
                 agent_model_name=options.agent_model_name,
@@ -409,7 +508,7 @@ class RemoteHarborEvaluator(Evaluator):
                 token=token,
                 request=request,
                 candidate_archive=candidate_archive,
-                dataset_archive=dataset_archive,
+                overlay_archive=overlay_archive if overlay_digest is not None else None,
                 response_archive=response_archive,
             )
             if result_dir.exists():
@@ -427,23 +526,30 @@ class RemoteHarborEvaluator(Evaluator):
         token: str,
         request: HarborBridgeRequest,
         candidate_archive: Path,
-        dataset_archive: Path,
+        overlay_archive: Path | None,
         response_archive: Path,
     ) -> None:
         url = f"{str(options.bridge_url).rstrip('/')}/v1/evaluations"
-        with candidate_archive.open("rb") as candidate, dataset_archive.open("rb") as dataset:
+        with candidate_archive.open("rb") as candidate:
             files = {
                 "candidate": ("candidate.tar.gz", candidate, "application/gzip"),
-                "dataset": ("dataset.tar.gz", dataset, "application/gzip"),
             }
+            overlay_handle = None
+            if overlay_archive is not None:
+                overlay_handle = overlay_archive.open("rb")
+                files["overlay"] = ("overlay.tar.gz", overlay_handle, "application/gzip")
             data = {"request": request.model_dump_json()}
             headers = {"Authorization": f"Bearer {token}"}
-            if self._client is not None:
-                response = await self._client.post(url, data=data, files=files, headers=headers)
-            else:
-                timeout = httpx.Timeout(options.request_timeout_sec)
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    response = await client.post(url, data=data, files=files, headers=headers)
+            try:
+                if self._client is not None:
+                    response = await self._client.post(url, data=data, files=files, headers=headers)
+                else:
+                    timeout = httpx.Timeout(options.request_timeout_sec)
+                    async with httpx.AsyncClient(timeout=timeout) as client:
+                        response = await client.post(url, data=data, files=files, headers=headers)
+            finally:
+                if overlay_handle is not None:
+                    overlay_handle.close()
         if response.status_code != 200:
             detail = response.text[:4000]
             raise RuntimeError(f"Harbor bridge returned HTTP {response.status_code}: {detail}")

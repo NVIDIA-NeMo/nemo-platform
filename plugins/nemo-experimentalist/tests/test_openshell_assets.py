@@ -88,6 +88,9 @@ def test_openshell_launcher_uses_policy_and_inference_route() -> None:
     assert "github-read | github-publish | gitlab-read | gitlab-publish" in runner
     assert "NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER" not in runner
     assert "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL" in runner
+    assert "NEMO_EXPERIMENTALIST_HARBOR_ENVELOPE_CATALOG" in runner
+    assert 'create_args+=(--upload "$envelope_catalog:$remote_workspace/$catalog_relative")' in runner
+    assert "Trusted Harbor envelope catalog must be inside the uploaded workspace" in runner
     assert "GIT_ASKPASS=/usr/local/bin/nemo-experimentalist-git-askpass" in runner
     assert "GIT_TERMINAL_PROMPT=0" in runner
     assert "GH_PROMPT_DISABLED=1" in runner

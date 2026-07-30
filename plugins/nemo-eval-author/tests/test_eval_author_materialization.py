@@ -46,6 +46,25 @@ build_timeout_sec = 60.0
     return Task(id="task-template", uri=root.as_uri())
 
 
+def _mark_trusted(root: Path) -> None:
+    (root / ".nemo-trusted-harbor-envelope.json").write_text(
+        '{"schema_version":1,"envelope_id":"template-a","envelope_digest":"sha256:'
+        + "a" * 64
+        + '","tasks":[{"task_id":"template","path":".","content_digest":"sha256:'
+        + "b" * 64
+        + '","policy":{"schema_version":1,"task_data":['
+        '{"path":"instruction.md","media_type":"text/plain","max_bytes":4096}],'
+        '"verifier_paths":["tests/test.sh","tests/metrics"]}}]}',
+        encoding="utf-8",
+    )
+    (root / "nemo-task-envelope.json").write_text(
+        '{"schema_version":1,"task_data":['
+        '{"path":"instruction.md","media_type":"text/plain","max_bytes":4096}],'
+        '"verifier_paths":["tests/test.sh","tests/metrics"]}\n',
+        encoding="utf-8",
+    )
+
+
 def test_insight_suite_materializes_discoverable_tasks_with_provenance(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "template")
     refs = ["intake/traces/unsafe ref", "intake/traces/unsafe ref"]
@@ -168,6 +187,40 @@ def test_insight_suite_rejects_empty_instruction_before_materialization(tmp_path
         suite.validate(staged[0])
 
     assert not suite.suite_dir.exists()
+
+
+def test_trusted_template_fill_may_only_change_declared_task_data(tmp_path: Path) -> None:
+    template = _write_template(tmp_path / "template")
+    _mark_trusted(Path(template.uri.removeprefix("file://")))
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
+    staged = suite.stage(["trace-1"])[0]
+
+    (staged.path / "instruction.md").write_text("Allowed trace instruction.\n", encoding="utf-8")
+    suite.validate_fill_mutations(staged)
+    (staged.path / "environment" / "Dockerfile").write_text("FROM malicious\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside its envelope slots.*environment/Dockerfile"):
+        suite.validate_fill_mutations(staged)
+
+
+def test_trusted_metric_author_may_only_change_declared_verifier_files(tmp_path: Path) -> None:
+    template = _write_template(tmp_path / "template")
+    _mark_trusted(Path(template.uri.removeprefix("file://")))
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
+    staged = suite.stage(["trace-1"])[0]
+    (staged.path / "instruction.md").write_text("Materialized instruction.\n", encoding="utf-8")
+    suite.validate_fill_mutations(staged)
+    suite.validate(staged)
+    suite.promote_local(["trace-1"], [staged])
+
+    snapshot = suite.metric_mutation_snapshot()
+    task_dir = next(path for path in suite.suite_dir.iterdir() if path.is_dir())
+    (task_dir / "tests" / "test.sh").write_text("#!/bin/sh\necho new metric\n", encoding="utf-8")
+    suite.validate_metric_mutations(snapshot)
+    (task_dir / "instruction.md").write_text("Rewritten by metric author.\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside its envelope slots.*instruction.md"):
+        suite.validate_metric_mutations(snapshot)
 
 
 def test_discard_removes_candidate_and_allows_restaging(tmp_path: Path) -> None:

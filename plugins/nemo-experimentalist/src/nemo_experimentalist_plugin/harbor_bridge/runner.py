@@ -23,18 +23,10 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
 from nemo_experimentalist_plugin.harbor_bridge.contracts import HarborBridgeRequest
 from nemo_experimentalist_plugin.harbor_bridge.trusted_agent import candidate_agent_import
 
-_COMPOSE_FILENAMES = ("docker-compose.yaml", "docker-compose.yml", "compose.yaml", "compose.yml")
-
 
 def _validate_environment(environment: EnvironmentConfig, *, context: str) -> None:
     if environment.os != TaskOS.LINUX:
         raise ValueError(f"Harbor bridge accepts only Linux {context}")
-    if environment.env:
-        raise ValueError(f"Harbor bridge {context} may not import host environment variables")
-    if environment.mcp_servers:
-        raise ValueError(f"Harbor bridge {context} may not configure MCP servers")
-    if environment.gpus or environment.tpu is not None:
-        raise ValueError(f"Harbor bridge preview does not accept accelerators in {context}")
 
 
 def _require_verifier_definition(task: HarborTask, *, step_index: int | None = None) -> None:
@@ -59,21 +51,13 @@ def _require_verifier_definition(task: HarborTask, *, step_index: int | None = N
 
 
 def _harden_task(task_dir: Path) -> None:
-    if any(any(task_dir.rglob(name)) for name in _COMPOSE_FILENAMES):
-        raise ValueError(f"Harbor bridge does not accept Docker Compose tasks: {task_dir.name}")
-
+    """Apply bridge-owned runtime invariants to a catalog-verified task."""
     task = HarborTask(task_dir)
     config = task.config
     _validate_environment(config.environment, context=f"task environment {task_dir.name}")
     if config.verifier.environment is not None:
         _validate_environment(config.verifier.environment, context=f"verifier environment {task_dir.name}")
-    if config.verifier.env or config.solution.env:
-        raise ValueError(
-            f"Harbor bridge task may not import verifier or solution environment variables: {task_dir.name}"
-        )
     for index, step in enumerate(config.steps or []):
-        if step.verifier.env:
-            raise ValueError(f"Harbor bridge task step may not import verifier environment variables: {task_dir.name}")
         if step.verifier.environment is not None:
             _validate_environment(
                 step.verifier.environment,

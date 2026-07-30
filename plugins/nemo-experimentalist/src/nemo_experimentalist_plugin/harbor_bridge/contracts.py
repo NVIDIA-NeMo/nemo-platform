@@ -5,6 +5,11 @@
 
 from typing import Annotated
 
+from nemo_experimentalist_plugin.harbor_bridge.envelopes import (
+    EnvelopeId,
+    EnvelopeTaskSelection,
+    Sha256Digest,
+)
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 TaskId = Annotated[str, Field(min_length=1, max_length=256, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")]
@@ -17,7 +22,12 @@ class HarborBridgeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
-    task_ids: list[TaskId] = Field(min_length=1, max_length=1024)
+    envelope_id: EnvelopeId
+    envelope_digest: Sha256Digest
+    tasks: list[EnvelopeTaskSelection] = Field(min_length=1, max_length=1024)
+    candidate_digest: Sha256Digest
+    overlay_digest: Sha256Digest | None = None
+    scorer_identity: Sha256Digest | None = None
     n_attempts: int = Field(default=1, ge=1, le=8)
     n_concurrent_trials: int = Field(default=4, ge=1, le=16)
     agent_model_name: str | None = Field(default=None, min_length=1, max_length=256)
@@ -26,13 +36,19 @@ class HarborBridgeRequest(BaseModel):
     agent_setup_timeout_multiplier: float | None = Field(default=1.0, ge=0.1, le=10.0)
     environment_build_timeout_multiplier: float | None = Field(default=1.0, ge=0.1, le=10.0)
 
-    @field_validator("task_ids")
+    @field_validator("tasks")
     @classmethod
-    def validate_unique_task_ids(cls, value: list[str]) -> list[str]:
+    def validate_unique_task_ids(cls, value: list[EnvelopeTaskSelection]) -> list[EnvelopeTaskSelection]:
         """Reject ambiguous selections before they become filesystem inputs."""
-        if len(set(value)) != len(value):
-            raise ValueError("task_ids must not contain duplicates")
+        task_ids = [task.task_id for task in value]
+        if len(set(task_ids)) != len(task_ids):
+            raise ValueError("tasks must not contain duplicate task ids")
         return value
+
+    @property
+    def task_ids(self) -> list[str]:
+        """Return materialized task ids for evaluator compatibility."""
+        return [task.task_id for task in self.tasks]
 
 
 class HarborDependencyRequest(BaseModel):
@@ -41,7 +57,11 @@ class HarborDependencyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    envelope_id: EnvelopeId
+    envelope_digest: Sha256Digest
     task_id: TaskId
+    base_task_id: TaskId
+    overlay_digest: Sha256Digest | None = None
     force_build: bool = True
     run_healthcheck: bool = True
     build_timeout_sec: int | None = Field(default=None, ge=1, le=3600)
@@ -53,6 +73,7 @@ class HarborDependencySessionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    capability_token: str = Field(min_length=16, max_length=256)
 
 
 class HarborDependencyExecRequest(BaseModel):

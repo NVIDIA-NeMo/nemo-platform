@@ -185,6 +185,9 @@ def _install_pipeline(
         def validate(self, staged: Any) -> None:
             staged.result = calls.fill_task_template[-1].result
 
+        def validate_fill_mutations(self, staged: Any) -> None:
+            pass
+
         def promote_local(self, trace_refs: list[str], staged_tasks: list[Any]) -> Dataset:
             assert trace_refs == [staged.trace_ref for staged in staged_tasks]
             tasks = [staged.result for staged in staged_tasks]
@@ -199,6 +202,12 @@ def _install_pipeline(
             calls.suite_discards += 1
 
         def record_analysis(self, statuses: dict[str, tuple[str, str | None]]) -> None:
+            pass
+
+        def metric_mutation_snapshot(self) -> dict:
+            return {}
+
+        def validate_metric_mutations(self, snapshot: dict) -> None:
             pass
 
         def finalize(self) -> SimpleNamespace:

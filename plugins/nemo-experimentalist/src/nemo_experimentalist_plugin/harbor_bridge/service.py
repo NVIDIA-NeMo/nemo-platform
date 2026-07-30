@@ -17,7 +17,7 @@ from typing import Annotated, Protocol
 from uuid import uuid4
 
 import uvicorn
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import EvaluationResult
 from nemo_experimentalist_plugin.harbor_bridge.archives import (
@@ -36,9 +36,15 @@ from nemo_experimentalist_plugin.harbor_bridge.dependencies import (
     HarborDependencyCapacityError,
     HarborDependencySessionManager,
 )
+from nemo_experimentalist_plugin.harbor_bridge.envelopes import (
+    EnvelopeTaskSelection,
+    TrustedEnvelopeCatalog,
+    tree_digest,
+)
 from nemo_experimentalist_plugin.harbor_bridge.runner import HarborBridgeRunner
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.background import BackgroundTask
+from starlette.datastructures import FormData, UploadFile
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +84,7 @@ class HarborBridgeSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     storage_root: Path
+    catalog_root: Path
     token: str = Field(min_length=16)
     max_archive_bytes: int = Field(default=DEFAULT_MAX_ARCHIVE_BYTES, ge=1, le=2 * 1024 * 1024 * 1024)
     max_concurrent_requests: int = Field(default=1, ge=1, le=8)
@@ -100,11 +107,34 @@ async def _save_upload(upload: UploadFile, destination: Path, *, max_bytes: int)
         await upload.close()
 
 
+async def _require_form_parts(
+    request: Request,
+    *,
+    required: set[str],
+    optional: set[str],
+) -> FormData:
+    """Reject legacy or duplicate multipart authorities explicitly."""
+    form = await request.form()
+    keys = [key for key, _value in form.multi_items()]
+    allowed = required | optional
+    unexpected = sorted(set(keys) - allowed)
+    if unexpected:
+        raise HTTPException(status_code=422, detail=f"Unexpected multipart field(s): {', '.join(unexpected)}")
+    missing = sorted(required - set(keys))
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Missing multipart field(s): {', '.join(missing)}")
+    duplicated = sorted(key for key in allowed if keys.count(key) > 1)
+    if duplicated:
+        raise HTTPException(status_code=422, detail=f"Duplicate multipart field(s): {', '.join(duplicated)}")
+    return form
+
+
 def create_app(
     *,
     settings: HarborBridgeSettings,
     runner: EvaluationRunner | None = None,
     dependency_sessions: DependencySessionRunner | None = None,
+    catalog: TrustedEnvelopeCatalog | None = None,
 ) -> FastAPI:
     """Build the local-only bridge application."""
     service_runner = runner or HarborBridgeRunner()
@@ -112,6 +142,9 @@ def create_app(
         max_concurrent_sessions=settings.max_concurrent_dependency_sessions
     )
     dependency_work_dirs: dict[str, Path] = {}
+    dependency_capabilities: dict[str, str] = {}
+    trusted_catalog = catalog or TrustedEnvelopeCatalog(settings.catalog_root)
+    sealed_scorers: dict[tuple[str, tuple[tuple[str, str], ...]], tuple[str, str | None]] = {}
     storage_root = settings.storage_root.expanduser().resolve()
     storage_root.mkdir(parents=True, exist_ok=True)
 
@@ -126,6 +159,7 @@ def create_app(
                 for work_dir in dependency_work_dirs.values():
                     shutil.rmtree(work_dir, ignore_errors=True)
                 dependency_work_dirs.clear()
+                dependency_capabilities.clear()
 
     app = FastAPI(
         title="NeMo Experimentalist Harbor Bridge",
@@ -140,6 +174,13 @@ def create_app(
         if authorization is None or not secrets.compare_digest(authorization, expected):
             raise HTTPException(status_code=401, detail="Invalid Harbor bridge bearer token")
 
+    def authorize_dependency_session(session_id: str, capability: str | None) -> None:
+        expected = dependency_capabilities.get(session_id)
+        if expected is None:
+            raise HTTPException(status_code=404, detail="Harbor dependency session not found")
+        if capability is None or not secrets.compare_digest(capability, expected):
+            raise HTTPException(status_code=403, detail="Invalid Harbor dependency session capability")
+
     @app.get("/health/ready")
     async def ready() -> dict[str, str]:
         return {"status": "ready"}
@@ -149,11 +190,21 @@ def create_app(
         response_class=FileResponse,
         dependencies=[Depends(authorize)],
     )
-    async def evaluate(
-        request: Annotated[str, Form()],
-        candidate: Annotated[UploadFile, File()],
-        dataset: Annotated[UploadFile, File()],
-    ) -> FileResponse:
+    async def evaluate(raw_request: Request) -> FileResponse:
+        form = await _require_form_parts(
+            raw_request,
+            required={"request", "candidate"},
+            optional={"overlay"},
+        )
+        request = form["request"]
+        candidate = form["candidate"]
+        overlay = form.get("overlay")
+        if not isinstance(request, str):
+            raise HTTPException(status_code=422, detail="Multipart request field must be text")
+        if not isinstance(candidate, UploadFile):
+            raise HTTPException(status_code=422, detail="Multipart candidate field must be a file")
+        if overlay is not None and not isinstance(overlay, UploadFile):
+            raise HTTPException(status_code=422, detail="Multipart overlay field must be a file")
         try:
             bridge_request = HarborBridgeRequest.model_validate_json(request)
         except ValidationError as exc:
@@ -162,23 +213,53 @@ def create_app(
         work_dir = storage_root / f"{bridge_request.request_id}-{uuid4().hex[:8]}"
         work_dir.mkdir(parents=True, exist_ok=False)
         candidate_archive = work_dir / "candidate.tar.gz"
-        dataset_archive = work_dir / "dataset.tar.gz"
+        overlay_archive = work_dir / "overlay.tar.gz"
         candidate_dir = work_dir / "candidate"
+        overlay_dir = work_dir / "overlay"
         dataset_dir = work_dir / "dataset"
         response_archive = work_dir / "response.tar.gz"
         try:
             await _save_upload(candidate, candidate_archive, max_bytes=settings.max_archive_bytes)
-            await _save_upload(dataset, dataset_archive, max_bytes=settings.max_archive_bytes)
             extract_directory_archive(
                 candidate_archive,
                 candidate_dir,
                 max_bytes=settings.max_archive_bytes,
             )
-            extract_directory_archive(
-                dataset_archive,
-                dataset_dir,
-                max_bytes=settings.max_archive_bytes,
+            if tree_digest(candidate_dir) != bridge_request.candidate_digest:
+                raise HTTPException(status_code=422, detail="Candidate content digest does not match request")
+            if overlay is None and bridge_request.overlay_digest is not None:
+                raise HTTPException(status_code=422, detail="Task overlay archive is missing")
+            if overlay is not None and bridge_request.overlay_digest is None:
+                raise HTTPException(status_code=422, detail="Unexpected task overlay archive")
+            if overlay is not None:
+                await _save_upload(overlay, overlay_archive, max_bytes=settings.max_archive_bytes)
+                extract_directory_archive(
+                    overlay_archive,
+                    overlay_dir,
+                    max_bytes=settings.max_archive_bytes,
+                )
+                if tree_digest(overlay_dir) != bridge_request.overlay_digest:
+                    raise HTTPException(status_code=422, detail="Task overlay content digest does not match request")
+
+            trusted_catalog.materialize(
+                envelope_id=bridge_request.envelope_id,
+                envelope_digest=bridge_request.envelope_digest,
+                selections=bridge_request.tasks,
+                destination=dataset_dir,
+                overlay_dir=overlay_dir if overlay is not None else None,
             )
+            if bridge_request.scorer_identity is not None:
+                scorer_key = (
+                    bridge_request.envelope_id,
+                    tuple((task.task_id, task.base_task_id) for task in bridge_request.tasks),
+                )
+                scorer_value = (bridge_request.scorer_identity, bridge_request.overlay_digest)
+                sealed = sealed_scorers.setdefault(scorer_key, scorer_value)
+                if sealed != scorer_value:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Insight scorer is already sealed for this trusted task selection",
+                    )
             async with semaphore:
                 result = await service_runner.run(
                     bridge_request,
@@ -186,6 +267,15 @@ def create_app(
                     dataset_dir=dataset_dir,
                     work_dir=work_dir,
                 )
+            result.metadata.update(
+                {
+                    "trusted_envelope_id": bridge_request.envelope_id,
+                    "trusted_envelope_digest": bridge_request.envelope_digest,
+                    "candidate_digest": bridge_request.candidate_digest,
+                    "task_overlay_digest": bridge_request.overlay_digest or "",
+                    "scorer_identity": bridge_request.scorer_identity or "",
+                }
+            )
             create_result_archive(
                 result,
                 work_dir / "results",
@@ -207,6 +297,9 @@ def create_app(
         except HTTPException:
             shutil.rmtree(work_dir, ignore_errors=True)
             raise
+        except (KeyError, ValueError) as exc:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except asyncio.CancelledError:
             shutil.rmtree(work_dir, ignore_errors=True)
             raise
@@ -221,10 +314,18 @@ def create_app(
         status_code=201,
         dependencies=[Depends(authorize)],
     )
-    async def start_dependency(
-        request: Annotated[str, Form()],
-        task: Annotated[UploadFile, File()],
-    ) -> HarborDependencySessionResponse:
+    async def start_dependency(raw_request: Request) -> HarborDependencySessionResponse:
+        form = await _require_form_parts(
+            raw_request,
+            required={"request"},
+            optional={"overlay"},
+        )
+        request = form["request"]
+        overlay = form.get("overlay")
+        if not isinstance(request, str):
+            raise HTTPException(status_code=422, detail="Multipart request field must be text")
+        if overlay is not None and not isinstance(overlay, UploadFile):
+            raise HTTPException(status_code=422, detail="Multipart overlay field must be a file")
         try:
             dependency_request = HarborDependencyRequest.model_validate_json(request)
         except ValidationError as exc:
@@ -232,27 +333,56 @@ def create_app(
 
         work_dir = storage_root / f"dependency-{dependency_request.request_id}-{uuid4().hex[:8]}"
         work_dir.mkdir(parents=True, exist_ok=False)
-        task_archive = work_dir / "task.tar.gz"
+        overlay_archive = work_dir / "overlay.tar.gz"
+        overlay_dir = work_dir / "overlay"
         task_dir = work_dir / "task" / dependency_request.task_id
         try:
-            await _save_upload(task, task_archive, max_bytes=settings.max_archive_bytes)
-            extract_directory_archive(
-                task_archive,
-                task_dir,
-                max_bytes=settings.max_archive_bytes,
+            if overlay is None and dependency_request.overlay_digest is not None:
+                raise HTTPException(status_code=422, detail="Task overlay archive is missing")
+            if overlay is not None and dependency_request.overlay_digest is None:
+                raise HTTPException(status_code=422, detail="Unexpected task overlay archive")
+            if overlay is not None:
+                await _save_upload(overlay, overlay_archive, max_bytes=settings.max_archive_bytes)
+                extract_directory_archive(
+                    overlay_archive,
+                    overlay_dir,
+                    max_bytes=settings.max_archive_bytes,
+                )
+                if tree_digest(overlay_dir) != dependency_request.overlay_digest:
+                    raise HTTPException(status_code=422, detail="Task overlay content digest does not match request")
+            materialized_root = work_dir / "task"
+            trusted_catalog.materialize(
+                envelope_id=dependency_request.envelope_id,
+                envelope_digest=dependency_request.envelope_digest,
+                selections=[
+                    EnvelopeTaskSelection(
+                        task_id=dependency_request.task_id,
+                        base_task_id=dependency_request.base_task_id,
+                    )
+                ],
+                destination=materialized_root,
+                overlay_dir=overlay_dir if overlay is not None else None,
             )
             session_id = await session_runner.start(
                 dependency_request,
                 task_dir=task_dir,
             )
             dependency_work_dirs[session_id] = work_dir
-            return HarborDependencySessionResponse(session_id=session_id)
+            capability_token = secrets.token_urlsafe(32)
+            dependency_capabilities[session_id] = capability_token
+            return HarborDependencySessionResponse(
+                session_id=session_id,
+                capability_token=capability_token,
+            )
         except HarborDependencyCapacityError as exc:
             shutil.rmtree(work_dir, ignore_errors=True)
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         except HTTPException:
             shutil.rmtree(work_dir, ignore_errors=True)
             raise
+        except (KeyError, ValueError) as exc:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except asyncio.CancelledError:
             shutil.rmtree(work_dir, ignore_errors=True)
             raise
@@ -269,7 +399,9 @@ def create_app(
     async def execute_dependency(
         session_id: str,
         request: HarborDependencyExecRequest,
+        capability: Annotated[str | None, Header(alias="X-Nemo-Dependency-Capability")] = None,
     ) -> HarborDependencyExecResponse:
+        authorize_dependency_session(session_id, capability)
         try:
             return await session_runner.execute(session_id, request)
         except KeyError as exc:
@@ -285,8 +417,12 @@ def create_app(
         status_code=204,
         dependencies=[Depends(authorize)],
     )
-    async def stop_dependency(session_id: str) -> None:
-        work_dir = dependency_work_dirs.pop(session_id, None)
+    async def stop_dependency(
+        session_id: str,
+        capability: Annotated[str | None, Header(alias="X-Nemo-Dependency-Capability")] = None,
+    ) -> None:
+        authorize_dependency_session(session_id, capability)
+        work_dir = dependency_work_dirs.get(session_id)
         try:
             await session_runner.stop(session_id)
         except KeyError as exc:
@@ -297,6 +433,8 @@ def create_app(
             logger.exception("Harbor dependency shutdown failed")
             raise HTTPException(status_code=500, detail="Harbor dependency shutdown failed") from exc
         finally:
+            dependency_work_dirs.pop(session_id, None)
+            dependency_capabilities.pop(session_id, None)
             if work_dir is not None:
                 shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -309,6 +447,7 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--storage-root", type=Path, default=Path.cwd() / "tmp" / "experimentalist-harbor-bridge")
+    parser.add_argument("--catalog-root", type=Path, required=True)
     parser.add_argument("--token-env", default="NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN")
     parser.add_argument("--max-archive-bytes", type=int, default=DEFAULT_MAX_ARCHIVE_BYTES)
     parser.add_argument("--max-dependency-sessions", type=int, default=8)
@@ -319,6 +458,7 @@ def main() -> None:
         parser.error(f"Harbor bridge token environment variable is not set: {args.token_env}")
     settings = HarborBridgeSettings(
         storage_root=args.storage_root,
+        catalog_root=args.catalog_root,
         token=token,
         max_archive_bytes=args.max_archive_bytes,
         max_concurrent_dependency_sessions=args.max_dependency_sessions,

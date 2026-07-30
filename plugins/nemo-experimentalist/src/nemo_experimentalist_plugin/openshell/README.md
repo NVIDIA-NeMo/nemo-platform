@@ -22,7 +22,8 @@ OpenShell sandbox: nmp-experimentalist
       v
 local Harbor bridge
   - fixed trusted candidate adapter
-  - validates and hardens Harbor tasks
+  - host-owned, content-addressed task catalog
+  - materializes only declared task/verifier overlays
   - owns analyzer task environments
   - owns Harbor and the host Docker client
       |
@@ -30,11 +31,20 @@ local Harbor bridge
 Harbor task containers
 ```
 
-The OpenShell sandbox has no Docker CLI or socket. Candidate Python is archived
-as data, authenticated through a narrow bridge request, and uploaded by fixed
-bridge code into each Harbor task container. Rationalizer and TraceAnalyzer
-start task dependency sessions through the same bridge and route their shell
-commands into the bridge-owned task container. The Docker-owning bridge never
+The host CLI resolves each configured Harbor dataset and task template before
+OpenShell starts, copies it into a content-addressed run catalog, and gives the
+sandbox only its envelope ID and digest. The sandbox cannot register a task,
+upload a Dockerfile or Compose topology, or select a container image. Candidate
+Python is archived as data and uploaded by fixed bridge code into each
+catalog-materialized Harbor task container.
+
+Insight tasks carry an explicit `nemo-task-envelope.json`. Eval Author may
+populate only its typed `task_data` files and may add verifier code only at its
+declared `verifier_paths`. Runtime-control files such as Dockerfiles, Compose
+files, `.dockerignore`, and `task.toml` are always rejected from overlays.
+Rationalizer and TraceAnalyzer start task dependency sessions through the same
+bridge and route their shell commands into the bridge-owned task container.
+Each session has a separate capability token. The Docker-owning bridge never
 imports the candidate's `harbor_wrapper.py`, and analyzer commands never execute
 in the bridge host process.
 
@@ -62,15 +72,21 @@ bridge and provider setup:
 export NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN="$(openssl rand -hex 32)"
 ```
 
-Start the trusted bridge on the developer host:
+The normal CLI prepares the trusted catalog and starts the bridge automatically.
+For a bridge-only health check, point the lower-level service at an existing or
+empty host-owned catalog:
 
 ```bash
-uv run --frozen nemo-experimentalist-harbor-bridge --host 0.0.0.0
+mkdir -p tmp/experimentalist-harbor-catalog
+uv run --frozen nemo-experimentalist-harbor-bridge \
+  --host 0.0.0.0 \
+  --catalog-root tmp/experimentalist-harbor-catalog
 ```
 
 `0.0.0.0` is required for Docker Desktop sandboxes to reach the host through
 `host.docker.internal`. The bearer token is required on every evaluation
-request; use a host firewall on untrusted networks.
+request; use a host firewall on untrusted networks. There is intentionally no
+HTTP endpoint for registering catalog entries.
 
 In another shell with the same token, configure the provider profiles. The
 NVIDIA provider is explicitly configured with
@@ -186,23 +202,29 @@ because the Docker Desktop kernel does not expose Landlock.
 
 ## Boundary and remaining risk
 
-The bridge accepts bounded evaluator settings, candidate/dataset/task archives,
-task IDs, and authenticated analyzer commands scoped to an active task
-environment. Dependency sessions expose start, in-container exec, and stop;
-they do not expose Docker commands, image/runtime selection, host paths, service
-selection, or host command execution. The bridge rejects caller-selected import
-paths, Docker Compose, host-environment interpolation, MCP servers, and
-accelerators, and forces Harbor's verifier into a separate container.
+The bridge accepts bounded evaluator settings, an AUT candidate archive,
+declared task/verifier overlay files, trusted envelope/task IDs, and
+authenticated analyzer commands scoped to an active task environment. It
+explicitly rejects the former `dataset` and `task` archive fields. Dependency
+sessions expose start, capability-bound in-container exec, and stop; they do
+not expose Docker commands, image/runtime selection, host paths, service
+selection, or host command execution. Harbor's verifier is forced into a
+separate container.
 
-The bridge still owns a host-root-equivalent Docker socket. Uploaded Harbor
-tasks can contain arbitrary Dockerfiles, and the candidate receives its model
-credential inside the Harbor task container. This preview therefore reduces
-the Docker API surface and removes Docker authority from Experimentalist; it
-does not make untrusted Harbor tasks safe against Docker/Harbor escapes,
-resource exhaustion, or credential exfiltration from their own task
-container. Production follow-up should move the same API to a dedicated
-evaluator worker with resource quotas, approved task sources/images, scoped
-task-network policy, and short-lived inference credentials.
+Docker Compose, MCP servers, environment bindings, images, mounts, and
+accelerators are permitted only when they already exist in the host-registered
+envelope. This is what permits the trusted Tau main-container plus
+`tau3-runtime` sidecar without giving the sandbox topology authority.
+
+The bridge still owns a host-root-equivalent Docker socket. The host-selected
+datasets and templates may contain Dockerfiles, and the candidate receives its
+model credential inside the Harbor task container. The envelope prevents the
+OpenShell agent from changing those inputs; it does not make a malicious
+host-selected task or compromised dataset registry safe against Docker/Harbor
+escapes, resource exhaustion, or credential exfiltration from that task's own
+container. A production worker should additionally enforce organization-owned
+registries, digest-pinned images, resource quotas, scoped task networks, and
+short-lived inference credentials.
 
 OpenShell static provider placeholders are currently resolved from a
 sandbox-wide map rather than being cryptographically bound to one target

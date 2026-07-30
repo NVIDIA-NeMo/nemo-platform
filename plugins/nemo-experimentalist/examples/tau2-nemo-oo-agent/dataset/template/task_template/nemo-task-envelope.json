@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "task_data": [
+    {
+      "path": "instruction.md",
+      "media_type": "text/plain",
+      "max_bytes": 262144
+    },
+    {
+      "path": "environment/runtime-server/task_config.json",
+      "media_type": "application/json",
+      "max_bytes": 1048576
+    }
+  ],
+  "verifier_paths": [
+    "tests/test.sh",
+    "tests/insight_metrics"
+  ]
+}

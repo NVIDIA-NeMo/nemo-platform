@@ -19,6 +19,7 @@ from typing import BinaryIO, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
+from nemo_experimentalist_plugin.harbor_bridge.envelopes import HARBOR_ENVELOPE_CATALOG_ENV
 
 DEFAULT_IMAGE = "local/nmp-experimentalist:local"
 IMAGE_ENV = "NEMO_EXPERIMENTALIST_IMAGE"
@@ -198,6 +199,9 @@ def _start_bridge(
     runtime_root = workspace / "tmp" / "experimentalist-openshell"
     storage_root = runtime_root / "bridge"
     runtime_root.mkdir(parents=True, exist_ok=True)
+    catalog_value = runtime_env.get(HARBOR_ENVELOPE_CATALOG_ENV, "").strip()
+    catalog_root = Path(catalog_value).expanduser().resolve() if catalog_value else runtime_root / "empty-catalog"
+    catalog_root.mkdir(parents=True, exist_ok=True)
     log_path = runtime_root / "bridge.log"
     log_handle = log_path.open("ab")
     process = subprocess.Popen(  # noqa: S603
@@ -211,6 +215,8 @@ def _start_bridge(
             "8765",
             "--storage-root",
             str(storage_root),
+            "--catalog-root",
+            str(catalog_root),
         ],
         cwd=workspace,
         env=runtime_env,

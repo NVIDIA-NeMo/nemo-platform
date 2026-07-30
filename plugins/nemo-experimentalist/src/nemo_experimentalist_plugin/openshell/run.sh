@@ -34,6 +34,7 @@ sandbox_name="${NEMO_EXPERIMENTALIST_SANDBOX_NAME:-nemo-exp-$$}"
 platform_url="${NMP_BASE_URL:-http://host.docker.internal:8080}"
 bridge_url="${NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL:-http://host.docker.internal:8765}"
 bridge_provider="${NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_PROVIDER:-nemo-experimentalist-harbor-bridge}"
+envelope_catalog="${NEMO_EXPERIMENTALIST_HARBOR_ENVELOPE_CATALOG:-}"
 source_control="${NEMO_EXPERIMENTALIST_SOURCE_CONTROL:-none}"
 gitlab_host="${NEMO_EXPERIMENTALIST_GITLAB_HOST:-${GITLAB_HOST:-gitlab.com}}"
 output_dir="${NEMO_EXPERIMENTALIST_OUTPUT_DIR:-$workspace_dir/tmp/experimentalist-openshell}"
@@ -101,6 +102,20 @@ create_args=(
   --env "GIT_COMMITTER_NAME=$git_author_name"
   --env "GIT_COMMITTER_EMAIL=$git_author_email"
 )
+
+if [[ -n "$envelope_catalog" ]]; then
+  envelope_catalog="$(cd "$envelope_catalog" && pwd)"
+  case "$envelope_catalog" in
+    "$workspace_dir"/*)
+      catalog_relative="${envelope_catalog#"$workspace_dir"/}"
+      create_args+=(--upload "$envelope_catalog:$remote_workspace/$catalog_relative")
+      ;;
+    *)
+      echo "Trusted Harbor envelope catalog must be inside the uploaded workspace: $envelope_catalog" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 if [[ -n "$source_provider" ]]; then
   create_args+=(--provider "$source_provider")
