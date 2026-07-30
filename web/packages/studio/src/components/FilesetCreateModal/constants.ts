@@ -13,8 +13,7 @@ export enum StorageMode {
 
 export type SupportedPurpose = typeof FilesetPurpose.dataset | typeof FilesetPurpose.model;
 
-// Override the SDK-generated `name` validation, which uses a looser pattern than the
-// entity store enforces.
+// Same pattern as the generated zod, but reports which rule the value breaks.
 export const filesetCreateFormSchema = FilesCreateFilesetBody.pick({
   name: true,
   description: true,

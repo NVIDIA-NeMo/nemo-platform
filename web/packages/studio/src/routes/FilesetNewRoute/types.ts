@@ -7,8 +7,7 @@ import { FilesCreateFilesetBody } from '@nemo/sdk/generated/platform/zod/files';
 import { DATASET_TYPE_CUSTOM, DATASET_TYPE_SAMPLE } from '@studio/routes/FilesetNewRoute/constants';
 import { z } from 'zod';
 
-// Override the SDK-generated name validation, which uses a looser pattern than the
-// entity store enforces.
+// Same pattern as the generated zod, but reports which rule the value breaks.
 export const DatasetCreateFilesetFormSchema = FilesCreateFilesetBody.extend({
   name: z.string().trim().pipe(entityNameSchema('Name')),
   purpose: z.nativeEnum(FilesetPurpose),
