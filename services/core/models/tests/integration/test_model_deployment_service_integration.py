@@ -5,7 +5,7 @@
 
 import pytest
 import pytest_asyncio
-from nemo_platform import NotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError
 from nmp.common.api.common import Page
 from nmp.core.models.api.service.model_deployment_config_service import ModelDeploymentConfigService
 from nmp.core.models.api.service.model_deployment_service import ModelDeploymentService

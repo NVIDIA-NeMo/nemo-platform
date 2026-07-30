@@ -34,8 +34,9 @@ import garakapi
 import yaml
 from nemo_auditor.entities import AuditConfig, AuditTarget
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities import parse_qualified_name
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -157,6 +158,8 @@ async def _resolve_ref(
     """
     if isinstance(value, entity_class):
         return value
+    if not isinstance(value, str):
+        raise TypeError(f"Expected {kind} entity or name reference, got {type(value).__name__}")
     assert entity_client is not None, f"entity_client is required to resolve {kind} name ref {value!r}"
     # value is NonEmptyStr; parse "[ws/]name" via the platform helper.
     ws, name = parse_qualified_name(value, default_workspace=default_workspace)
@@ -215,14 +218,13 @@ def _rewrite_options_uris(
                 provider = sdk.inference.providers.retrieve(workspace=igw_ref["workspace"], name=igw_ref["provider"])
                 uri = sdk.models.get_provider_route_openai_url(provider)
             else:
+                assert async_sdk is not None
                 # async_sdk path: AuditJob.run() executes inside asyncio.to_thread(), so
                 # this worker thread has no running event loop — asyncio.run() is safe.
                 provider = asyncio.run(
-                    async_sdk.inference.providers.retrieve(  # type: ignore[union-attr]
-                        workspace=igw_ref["workspace"], name=igw_ref["provider"]
-                    )
+                    async_sdk.inference.providers.retrieve(workspace=igw_ref["workspace"], name=igw_ref["provider"])
                 )
-                uri = async_sdk.models.get_provider_route_openai_url(provider)  # type: ignore[union-attr]
+                uri = async_sdk.models.get_provider_route_openai_url(provider)
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to resolve inference gateway provider '{igw_ref['workspace']}/{igw_ref['provider']}': {exc}"
@@ -341,9 +343,8 @@ class AuditJob(NemoJob):
         Liskov-clean; we narrow types internally.
 
         Local-run mode: the platform scheduler passes ``entity_client=None``,
-        so we build one on demand from ``async_sdk.entities`` (an
-        ``AsyncEntitiesResource``). API-mode submissions go through the same
-        path with whatever client the platform already constructed.
+        so we build one on demand from ``async_sdk``. API-mode submissions go
+        through the same path with whatever client the platform already constructed.
 
         ``workspace`` is used as the fallback for unqualified name strings;
         a string like ``"prod/my-cfg"`` overrides it via ``parse_qualified_name``.
@@ -382,15 +383,16 @@ class AuditJob(NemoJob):
     ) -> NemoEntitiesClient:
         """Return a ``NemoEntitiesClient`` from whatever the scheduler handed us.
 
-        Order of preference: existing client → wrap ``async_sdk.entities``.
+        Order of preference: existing client → adapt ``async_sdk``.
         Raises ``RuntimeError`` if neither is available, which is the case
         when ``run`` is invoked locally with no SDK and the input spec
         contains a name reference (no way to resolve it).
         """
         if entity_client is not None:
             return cast(NemoEntitiesClient, entity_client)
-        if async_sdk is not None and hasattr(async_sdk, "entities"):
-            return NemoEntitiesClient(cast(AsyncEntitiesResource, async_sdk.entities))
+        if async_sdk is not None:
+            typed_client = client_from_platform(cast(AsyncNeMoPlatform, async_sdk), AsyncEntitiesClient)
+            return NemoEntitiesClient(typed_client)
         raise RuntimeError(
             "AuditInputSpec contained a name reference but no platform "
             "client was injected. Either inline the config/target payloads, "

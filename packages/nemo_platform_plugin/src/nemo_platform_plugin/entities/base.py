@@ -8,10 +8,22 @@ import re
 from datetime import datetime
 from typing import Any, ClassVar, Dict, Generic, List, Optional, Protocol, Set, Type, TypeVar, get_type_hints
 
-from nemo_platform import ConflictError, NotFoundError, UnprocessableEntityError, omit
-from nemo_platform.resources.entities import AsyncEntitiesResource
-from nemo_platform.types import DeleteResponse
-from nemo_platform.types.entities import Entity
+from nemo_platform_plugin.client.errors import (
+    ConflictError,
+    NotFoundError,
+    UnprocessableEntityError,
+    raise_for_status,
+)
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+from nemo_platform_plugin.entities.types import (
+    DeleteResponse,
+    Entity,
+    EntityByNameQueryParams,
+    EntityCreateInput,
+    EntityDeleteQueryParams,
+    EntityUpdate,
+    ListEntitiesQueryParams,
+)
 from nemo_platform_plugin.filter_ops import FilterOperation
 from pydantic import BaseModel, Field, PrivateAttr, TypeAdapter, computed_field
 
@@ -372,7 +384,7 @@ class EntityClient:
     Primary lookup is by name (Kubernetes-style), with ID lookup available for debugging.
 
     Example:
-        client = EntityClient(entities_api)
+        client = EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
         # Create
         msg = HelloWorldMessage(name="my-message", workspace="default", message="Hello")
@@ -395,21 +407,21 @@ class EntityClient:
         await client.delete(HelloWorldMessage, "my-message")
     """
 
-    def __init__(self, entities_api: AsyncEntitiesResource):
+    def __init__(self, client: AsyncEntitiesClient):
         """
         Initialize the EntityClient.
 
         Args:
-            entities_api: The async entities resource from the SDK
+            client: The NemoClient-based async entities client.
         """
-        self.entities_api = entities_api
+        self._client = client
 
     async def close(self) -> None:
-        """Close the underlying SDK client.
+        """Close the underlying HTTP client.
 
         This should be called during shutdown to properly close HTTP connections.
         """
-        await self.entities_api._client.close()
+        await self._client._http.aclose()
 
     def _convert_api_entity_to_model(self, entity: Entity, entity_type: EntityTypeLike) -> EntityT:
         """Convert an API entity to an EntityBase model."""
@@ -443,9 +455,11 @@ class EntityClient:
         # With on-behalf-of delegation the SDK authenticates as service:platform but
         # the real caller is in X-NMP-Principal-On-Behalf-Of.
         if hasattr(result, "_auth_context"):
-            sdk_headers = self.entities_api._client.default_headers
-            raw_effective = sdk_headers.get("X-NMP-Principal-On-Behalf-Of") or sdk_headers.get("X-NMP-Principal-Id", "")
-            effective = raw_effective if isinstance(raw_effective, str) else ""
+            # Merge construction-time httpx headers with the client's default headers,
+            # lower-casing keys so the principal lookup stays case-insensitive.
+            sdk_headers: dict[str, str] = {k.lower(): v for k, v in self._client._http.headers.items()}
+            sdk_headers.update({k.lower(): v for k, v in (self._client._default_headers or {}).items()})
+            effective = sdk_headers.get("x-nmp-principal-on-behalf-of") or sdk_headers.get("x-nmp-principal-id", "")
             if not effective.startswith("service:"):
                 setattr(result, "_auth_context", None)
 
@@ -507,26 +521,27 @@ class EntityClient:
             if filter_dict:
                 effective_filter_str = json.dumps(filter_dict)
 
-        response = await self.entities_api.list(
-            _get_entity_type(entity_type),
+        query_params: ListEntitiesQueryParams = {"page": page, "page_size": page_size}
+        if effective_filter_str:
+            query_params["filter"] = effective_filter_str
+        if sort:
+            query_params["sort"] = _convert_sort_to_api_sort(sort)
+
+        response = await self._client.list_entities(
+            entity_type=_get_entity_type(entity_type),
             workspace=workspace,
-            filter=effective_filter_str if effective_filter_str else omit,
-            sort=_convert_sort_to_api_sort(sort) if sort else omit,
-            page=page,
-            page_size=page_size,
+            query_params=query_params,
         )
+        result_page = response.page()
 
-        entities = [self._convert_api_entity_to_model(entity, entity_type) for entity in response.data]
-        if not response.pagination:
-            # Pagination should never be None, but this makes the type checker happy. -md
-            raise EntityStoreError("Pagination information not found in response")
-
+        entities = [self._convert_api_entity_to_model(entity, entity_type) for entity in result_page.items]
+        metadata = result_page.metadata
         pagination = PaginationInfo(
-            page=response.pagination.page,
-            page_size=response.pagination.page_size,
-            current_page_size=response.pagination.current_page_size,
-            total_pages=response.pagination.total_pages,
-            total_results=response.pagination.total_results,
+            page=metadata["page"],
+            page_size=metadata["page_size"],
+            current_page_size=metadata["current_page_size"],
+            total_pages=metadata["total_pages"],
+            total_results=metadata["total_results"],
         )
 
         return ListResponse(data=entities, pagination=pagination)
@@ -544,17 +559,28 @@ class EntityClient:
             raise ValueError(f"Field '{field}' is not a direct entity data field")
 
         filter_dict = _convert_filter_obj_to_filter_str(filter_obj) if filter_obj else {}
-        effective_filter = json.dumps(filter_dict) if filter_dict else omit
 
-        response = await self.entities_api.list(
-            _get_entity_type(entity_type),
+        # Only the grouped tallies are wanted, so ask for the smallest possible page.
+        query_params: ListEntitiesQueryParams = {
+            "page": 1,
+            "page_size": 1,
+            "count_by": f"data.{field}",
+        }
+        if filter_dict:
+            query_params["filter"] = json.dumps(filter_dict)
+
+        response = await self._client.list_entities(
+            entity_type=_get_entity_type(entity_type),
             workspace=workspace,
-            filter=effective_filter,
-            page=1,
-            page_size=1,
-            extra_query={"count_by": f"data.{field}"},
+            query_params=query_params,
         )
-        group_counts = getattr(response, "group_counts", None)
+        # ``group_counts`` rides on the response envelope rather than the item
+        # page, so read it off the raw body instead of ``response.page()``.
+        # Paginated responses defer their status check to ``page()``/``items()``,
+        # neither of which runs here, so a non-2xx would otherwise surface as a
+        # bogus "grouped counts not found" instead of the real HTTP error.
+        raise_for_status(response.http_response)
+        group_counts = response.http_response.json().get("group_counts")
         if group_counts is None:
             raise EntityStoreError("Grouped counts not found in response")
         return TypeAdapter(dict[str, int]).validate_python(group_counts)
@@ -572,16 +598,20 @@ class EntityClient:
             EntityConflictError: Entity already exists
         """
         entity_type = type(entity)
+        create_fields: dict[str, Any] = {"data": entity._get_data_fields()}
+        if entity.name:
+            create_fields["name"] = entity.name
+        if entity._parent:
+            create_fields["parent"] = entity._parent
+        if entity.project:
+            create_fields["project"] = entity.project
         try:
-            response = await self.entities_api.create(
-                _get_entity_type(entity_type),
+            response = await self._client.create_entity(
                 workspace=entity.workspace,
-                data=entity._get_data_fields(),
-                name=entity.name or omit,
-                parent=entity._parent or omit,
-                project=entity.project or omit,
+                entity_type=_get_entity_type(entity_type),
+                body=EntityCreateInput(**create_fields),
             )
-            return self._convert_api_entity_to_model(response, entity_type)
+            return self._convert_api_entity_to_model(response.data(), entity_type)
         except ConflictError as e:
             raise EntityConflictError(
                 f"Entity with name '{entity.name}' already exists in workspace '{entity.workspace}'"
@@ -615,14 +645,15 @@ class EntityClient:
             EntityNotFoundError: Entity not found
         """
         ws, entity_name = parse_qualified_name(name, default_workspace=workspace)
+        query_params: EntityByNameQueryParams | None = {"parent": parent} if parent else None
         try:
-            response = await self.entities_api.get_entity_by_name(
-                entity_name,
-                workspace=ws,
+            response = await self._client.get_entity_by_name(
                 entity_type=_get_entity_type(entity_type),
-                parent=parent if parent is not None else omit,
+                name=entity_name,
+                workspace=ws,
+                query_params=query_params,
             )
-            return self._convert_api_entity_to_model(response, entity_type)
+            return self._convert_api_entity_to_model(response.data(), entity_type)
         except NotFoundError as e:
             raise EntityNotFoundError(f"Entity '{entity_name}' not found in workspace '{ws}'") from e
 
@@ -644,10 +675,8 @@ class EntityClient:
             EntityNotFoundError: Entity not found
         """
         try:
-            response = await self.entities_api.get_entity_by_id(
-                entity_id,
-            )
-            return self._convert_api_entity_to_model(response, entity_type)
+            response = await self._client.get_entity_by_id(entity_id=entity_id)
+            return self._convert_api_entity_to_model(response.data(), entity_type)
         except NotFoundError as e:
             raise EntityNotFoundError(f"Entity with id '{entity_id}' not found") from e
 
@@ -672,18 +701,25 @@ class EntityClient:
         entity_type = type(entity)
         path_name = original_name or entity.name
 
+        update_fields: dict[str, Any] = {
+            "data": entity._get_data_fields(),
+            "expected_db_version": entity.db_version,
+        }
+        if original_name:
+            update_fields["new_name"] = entity.name
+        if entity.project:
+            update_fields["project"] = entity.project
+        query_params: EntityByNameQueryParams | None = {"parent": entity._parent} if entity._parent else None
+
         try:
-            response = await self.entities_api.update_entity_by_name(
-                path_name,
-                workspace=entity.workspace,
+            response = await self._client.update_entity_by_name(
                 entity_type=_get_entity_type(entity_type),
-                data=entity._get_data_fields(),
-                new_name=entity.name if original_name else omit,
-                parent=entity._parent if entity._parent is not None else omit,
-                project=entity.project or omit,
-                expected_db_version=entity.db_version,
+                name=path_name,
+                workspace=entity.workspace,
+                body=EntityUpdate(**update_fields),
+                query_params=query_params,
             )
-            return self._convert_api_entity_to_model(response, entity_type)
+            return self._convert_api_entity_to_model(response.data(), entity_type)
         except NotFoundError as e:
             raise EntityNotFoundError(f"Entity '{path_name}' not found in workspace '{entity.workspace}'") from e
         except ConflictError as e:
@@ -720,14 +756,19 @@ class EntityClient:
             EntityConflictError: Version mismatch (entity was modified by another request)
         """
         ws, entity_name = parse_qualified_name(name, default_workspace=workspace)
+        delete_params: EntityDeleteQueryParams = {}
+        if parent:
+            delete_params["parent"] = parent
+        if expected_db_version is not None:
+            delete_params["expected_db_version"] = expected_db_version
         try:
-            return await self.entities_api.delete_entity_by_name(
-                entity_name,
-                workspace=ws,
+            response = await self._client.delete_entity_by_name(
                 entity_type=_get_entity_type(entity_type),
-                parent=parent if parent is not None else omit,
-                expected_db_version=expected_db_version if expected_db_version is not None else omit,
+                name=entity_name,
+                workspace=ws,
+                query_params=delete_params or None,
             )
+            return response.data()
         except NotFoundError as e:
             raise EntityNotFoundError(f"Entity '{entity_name}' not found in workspace '{ws}'") from e
         except ConflictError as e:
@@ -754,14 +795,17 @@ class EntityClient:
             EntityConflictError: Version mismatch (entity was modified by another request)
         """
         try:
-            entity = await self.entities_api.get_entity_by_id(entity_id)
-            return await self.entities_api.delete_entity_by_name(
-                entity.name,
-                workspace=entity.workspace,
+            entity = (await self._client.get_entity_by_id(entity_id=entity_id)).data()
+            delete_params: EntityDeleteQueryParams = {"expected_db_version": entity.db_version}
+            if entity.parent:
+                delete_params["parent"] = entity.parent
+            response = await self._client.delete_entity_by_name(
                 entity_type=entity.entity_type,
-                parent=entity.parent if entity.parent is not None else omit,
-                expected_db_version=entity.db_version,
+                name=entity.name,
+                workspace=entity.workspace,
+                query_params=delete_params,
             )
+            return response.data()
         except NotFoundError as e:
             raise EntityNotFoundError(f"Entity with id '{entity_id}' not found") from e
         except ConflictError as e:
