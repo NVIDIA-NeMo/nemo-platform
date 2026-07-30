@@ -39,8 +39,14 @@ and deployments. Do not attempt to invoke the NeMo CLI or other subprocesses.
 
 Use the deployment's active workspace unless the user explicitly names another
 one. If a required workspace, resource name, target, or consequential parameter
-is missing or ambiguous, ask one focused clarification question and stop. Do
-not repeat the same failing tool call or guess a destructive target.
+is missing or ambiguous, ask one focused clarification and stop. When the answer
+is one of a finite set of choices, ask it with the `ask_user_question` tool
+(which renders a native options picker) instead of a free-text question; use a
+plain-text question only for genuinely open-ended input. Do not repeat the same
+failing tool call or guess a destructive target.
+
+For choosing an agent, model, dataset/fileset, or evaluation config, always use
+the matching `select_*` tool rather than asking in plain text.
 """
 SKILLS_DIR = Path(__file__).parent / "skills"
 DEFAULT_WORKSPACE = "default"
@@ -433,8 +439,17 @@ def select_model(
     description: str = "",
     default_model: str | None = None,
     output_key: str = "model",
+    display_label: str | None = None,
+    field_label: str | None = None,
+    placeholder: str | None = None,
+    required_message: str | None = None,
+    submit_label: str | None = None,
 ) -> str:
-    """Render Studio's model selector and return the user's selected model."""
+    """Render Studio's model selector and return the user's selected model.
+
+    The optional labels (display_label/field_label/placeholder/required_message/
+    submit_label) customize the picker's copy for the current task.
+    """
     return json.dumps(
         _call_studio_tool(
             studio_session_id,
@@ -444,6 +459,11 @@ def select_model(
                 "description": description,
                 "default_model": default_model,
                 "output_key": output_key,
+                "display_label": display_label,
+                "field_label": field_label,
+                "placeholder": placeholder,
+                "required_message": required_message,
+                "submit_label": submit_label,
             },
         )
     )
@@ -476,6 +496,8 @@ def select_eval_config(
     title: str = "Select evaluation config",
     description: str = "",
     agent: str | None = None,
+    default_agent: str | None = None,
+    accepted_file_types: list[str] | None = None,
 ) -> str:
     """Render Studio's evaluation-config picker and return the selected config."""
     return json.dumps(
@@ -486,6 +508,8 @@ def select_eval_config(
                 "title": title,
                 "description": description,
                 "agent": agent,
+                "default_agent": default_agent,
+                "accepted_file_types": accepted_file_types or [],
             },
         )
     )
@@ -499,6 +523,7 @@ def job_progress(
     source: str | None = None,
     title: str | None = None,
     description: str | None = None,
+    workspace: str | None = None,
 ) -> str:
     """Render a Studio progress card for a platform job that was just launched."""
     return json.dumps(
@@ -511,6 +536,7 @@ def job_progress(
                 "source": source,
                 "title": title,
                 "description": description,
+                "workspace": workspace,
             },
         )
     )
@@ -537,6 +563,49 @@ def studio_link(
             studio_base_url=studio_base_url,
         )
     )
+
+
+@tool
+def ask_user_question(studio_session_id: str, questions: str) -> str:
+    """Ask the user one or more multiple-choice questions and return their selections.
+
+    Prefer this over a free-text clarification whenever the choices are finite
+    (pick an option, yes/no, choose an approach). Studio renders a native options
+    picker; this blocks until the user answers or dismisses it. Routed through the
+    same permission channel Claude Code's ``AskUserQuestion`` uses, so the frontend
+    already renders it.
+
+    Args:
+        studio_session_id: The current Studio session id (provided in your context).
+        questions: A JSON array string. Each element is a question object:
+            {
+              "question": "<the question text>",
+              "header": "<short chip label, optional>",
+              "multiSelect": false,
+              "options": [
+                {"label": "<choice>", "description": "<what it means, optional>"}
+              ]
+            }
+            Example:
+            '[{"question": "Which model size?", "header": "Model",
+               "options": [{"label": "8B", "description": "faster, cheaper"},
+                           {"label": "70B", "description": "higher quality"}]}]'
+
+    Returns:
+        JSON string of the user's answers, or a message if they declined.
+    """
+    try:
+        parsed = json.loads(questions)
+    except (json.JSONDecodeError, TypeError) as exc:
+        return f"Error: `questions` must be a JSON array string: {exc}"
+    approval = _call_studio_tool(
+        studio_session_id,
+        "approval_prompt",
+        {"tool_name": "AskUserQuestion", "input": {"questions": parsed}},
+    )
+    if approval.get("behavior") != "allow":
+        return f"User declined to answer: {approval.get('message') or 'no selection made'}"
+    return json.dumps(approval.get("updatedInput") or {})
 
 
 @tool
@@ -585,6 +654,7 @@ _nemo_tools = [
     select_eval_config,
     job_progress,
     studio_link,
+    ask_user_question,
 ]
 
 
