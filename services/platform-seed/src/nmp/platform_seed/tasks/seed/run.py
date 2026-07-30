@@ -9,8 +9,9 @@ import sys
 from dataclasses import dataclass, field
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.discovery import discover_seed_jobs
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nmp.common.config import get_platform_config
 from nmp.common.entities import EntityClient
 from nmp.common.sdk_factory import get_async_platform_sdk
@@ -198,8 +199,7 @@ async def run_platform_seed_from_startup() -> bool:
             return False
 
     sdk = get_async_platform_sdk(as_service="platform-seed", internal=True)
-    entities_api = AsyncEntitiesResource(sdk)
-    entity_client = EntityClient(entities_api)
+    entity_client = EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
     try:
         result = await run_platform_seed(entity_client, sdk, config)

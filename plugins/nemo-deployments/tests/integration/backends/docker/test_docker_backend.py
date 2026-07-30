@@ -50,7 +50,7 @@ def _build_docker_backend(**config_overrides: Any) -> DockerDeploymentBackend:
         **config_overrides,
     }
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
     ):

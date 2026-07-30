@@ -47,7 +47,14 @@ class _StubBackend(DeploymentBackend):
     async def read_volume_status(self, **kwargs: Any) -> VolumeStatusUpdate:
         return VolumeStatusUpdate(status="BOUND")
 
-    async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate:
+    async def delete_volume(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
+        del backend_config
         return VolumeStatusUpdate(status="RELEASED")
 
 
@@ -65,7 +72,7 @@ def _patched_docker_init(
     client = mock_docker_client or MagicMock()
     entities = mock_entities or AsyncMock()
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=client),
@@ -214,4 +221,4 @@ async def test_executor_port_range_used_for_allocation() -> None:
     mock_find_port.assert_awaited()
     call_args = mock_find_port.await_args
     assert call_args is not None
-    assert call_args.args[1:3] == (9050, 9060)
+    assert list(call_args.args[1:3]) == [9050, 9060]

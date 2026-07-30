@@ -76,7 +76,7 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
     () =>
       routeContext?.kind === 'evaluation'
         ? routeContext.parentBreadcrumbs
-        : [{ slotLabel: 'Intake', href: getIntakeTracesRoute(workspace) }],
+        : [{ slotLabel: 'Traces', href: getIntakeTracesRoute(workspace) }],
     [routeContext, workspace]
   );
   const traceParentBreadcrumbs = useMemo(

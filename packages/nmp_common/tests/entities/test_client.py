@@ -7,10 +7,10 @@ from typing import Annotated, Any, Dict, List, Literal, Optional
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from nemo_platform import omit
-from nemo_platform.types.entities import EntitiesPage, Entity
-from nemo_platform.types.shared.pagination_data import PaginationData
+from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
+from nemo_platform_plugin.client.response import PageResult
 from nemo_platform_plugin.entities import _convert_filter_obj_to_filter_str
+from nemo_platform_plugin.entities.types import DeleteResponse, Entity
 from nmp.common.auth.models import AuthContext
 from nmp.common.entities import (
     ALL_WORKSPACES,
@@ -22,6 +22,39 @@ from nmp.common.entities import (
 )
 from nmp.common.entities.client import EntityConflictError
 from pydantic import BaseModel, Discriminator, Field, PrivateAttr, Tag, computed_field
+
+
+def _data_resp(entity: Any) -> Mock:
+    """Wrap an entity as a NemoResponse-like object whose ``.data()`` returns it."""
+    resp = Mock()
+    resp.data = Mock(return_value=entity)
+    return resp
+
+
+def _page_resp(
+    entities: list,
+    *,
+    page: int = 1,
+    page_size: int = 100,
+    total_pages: int = 0,
+    total_results: int = 0,
+    current_page_size: int | None = None,
+) -> Mock:
+    """Wrap entities as a paginated-response-like object whose ``.page()`` returns a PageResult."""
+    resp = Mock()
+    resp.page = Mock(
+        return_value=PageResult(
+            items=entities,
+            metadata={
+                "page": page,
+                "page_size": page_size,
+                "current_page_size": len(entities) if current_page_size is None else current_page_size,
+                "total_pages": total_pages,
+                "total_results": total_results,
+            },
+        )
+    )
+    return resp
 
 
 def test_entity_base_get_data_fields():
@@ -277,11 +310,7 @@ async def test_entity_client_list_with_all_workspaces_uses_wildcard():
 
     # Mock the entities API
     mock_api = Mock()
-    mock_api.list = AsyncMock()
-    mock_api.list.return_value = EntitiesPage(
-        data=[],
-        pagination=PaginationData(page=1, page_size=100, total_pages=0, total_results=0, current_page_size=0),
-    )
+    mock_api.list_entities = AsyncMock(return_value=_page_resp([]))
 
     client = EntityClient(mock_api)
 
@@ -289,9 +318,9 @@ async def test_entity_client_list_with_all_workspaces_uses_wildcard():
     await client.list(TestEntity, workspace=ALL_WORKSPACES)
 
     # Verify that the API was called with "-" wildcard
-    mock_api.list.assert_called_once()
-    call_args = mock_api.list.call_args
-    assert call_args.args[0] == "test_entity"  # entity type
+    mock_api.list_entities.assert_called_once()
+    call_args = mock_api.list_entities.call_args
+    assert call_args.kwargs["entity_type"] == "test_entity"  # entity type
     assert call_args.kwargs["workspace"] == "-"  # wildcard for all workspaces
 
 
@@ -304,11 +333,7 @@ async def test_entity_client_list_with_specific_workspace():
 
     # Mock the entities API
     mock_api = Mock()
-    mock_api.list = AsyncMock()
-    mock_api.list.return_value = EntitiesPage(
-        data=[],
-        pagination=PaginationData(page=1, page_size=100, total_pages=0, total_results=0, current_page_size=0),
-    )
+    mock_api.list_entities = AsyncMock(return_value=_page_resp([]))
 
     client = EntityClient(mock_api)
 
@@ -316,9 +341,9 @@ async def test_entity_client_list_with_specific_workspace():
     await client.list(TestEntity, workspace="my-workspace")
 
     # Verify that the API was called with the specific workspace
-    mock_api.list.assert_called_once()
-    call_args = mock_api.list.call_args
-    assert call_args.args[0] == "test_entity"
+    mock_api.list_entities.assert_called_once()
+    call_args = mock_api.list_entities.call_args
+    assert call_args.kwargs["entity_type"] == "test_entity"
     assert call_args.kwargs["workspace"] == "my-workspace"
 
 
@@ -331,11 +356,7 @@ async def test_entity_client_list_with_default_workspace():
 
     # Mock the entities API
     mock_api = Mock()
-    mock_api.list = AsyncMock()
-    mock_api.list.return_value = EntitiesPage(
-        data=[],
-        pagination=PaginationData(page=1, page_size=100, total_pages=0, total_results=0, current_page_size=0),
-    )
+    mock_api.list_entities = AsyncMock(return_value=_page_resp([]))
 
     client = EntityClient(mock_api)
 
@@ -343,9 +364,9 @@ async def test_entity_client_list_with_default_workspace():
     await client.list(TestEntity, workspace=DEFAULT_WORKSPACE)
 
     # Verify that the API was called with DEFAULT_WORKSPACE
-    mock_api.list.assert_called_once()
-    call_args = mock_api.list.call_args
-    assert call_args.args[0] == "test_entity"
+    mock_api.list_entities.assert_called_once()
+    call_args = mock_api.list_entities.call_args
+    assert call_args.kwargs["entity_type"] == "test_entity"
     assert call_args.kwargs["workspace"] == DEFAULT_WORKSPACE
 
 
@@ -358,23 +379,25 @@ async def test_entity_client_list_wildcard_with_filter():
         field_2: int
 
     # Mock the entities API
-    mock_api = Mock()
-    mock_api.list = AsyncMock()
     now = datetime.now()
-    mock_api.list.return_value = EntitiesPage(
-        data=[
-            Entity(
-                entity_type="test_entity",
-                name="test-1",
-                workspace="workspace-1",
-                id="id-1",
-                created_at=now,
-                updated_at=now,
-                db_version=1,
-                data={"field_1": "value", "field_2": 42},
-            ),
-        ],
-        pagination=PaginationData(page=1, page_size=100, total_pages=1, total_results=1, current_page_size=1),
+    mock_api = Mock()
+    mock_api.list_entities = AsyncMock(
+        return_value=_page_resp(
+            [
+                Entity(
+                    entity_type="test_entity",
+                    name="test-1",
+                    workspace="workspace-1",
+                    id="id-1",
+                    created_at=now,
+                    updated_at=now,
+                    db_version=1,
+                    data={"field_1": "value", "field_2": 42},
+                ),
+            ],
+            total_pages=1,
+            total_results=1,
+        )
     )
 
     client = EntityClient(mock_api)
@@ -383,14 +406,14 @@ async def test_entity_client_list_wildcard_with_filter():
     result = await client.list(TestEntity, workspace=ALL_WORKSPACES, filter_obj={"field_1": "value"})
 
     # Verify that the API was called with "*" wildcard
-    mock_api.list.assert_called_once()
-    call_args = mock_api.list.call_args
-    assert call_args.args[0] == "test_entity"
+    mock_api.list_entities.assert_called_once()
+    call_args = mock_api.list_entities.call_args
+    assert call_args.kwargs["entity_type"] == "test_entity"
     assert call_args.kwargs["workspace"] == ALL_WORKSPACES
     # Verify search filter was converted properly
     import json
 
-    filter_dict = json.loads(call_args.kwargs["filter"])
+    filter_dict = json.loads(call_args.kwargs["query_params"]["filter"])
     assert filter_dict == {"data.field_1": "value"}
 
     # Verify result
@@ -408,10 +431,8 @@ async def test_entity_client_list_wildcard_with_pagination():
 
     # Mock the entities API
     mock_api = Mock()
-    mock_api.list = AsyncMock()
-    mock_api.list.return_value = EntitiesPage(
-        data=[],
-        pagination=PaginationData(page=2, page_size=50, total_pages=3, total_results=150, current_page_size=0),
+    mock_api.list_entities = AsyncMock(
+        return_value=_page_resp([], page=2, page_size=50, total_pages=3, total_results=150)
     )
 
     client = EntityClient(mock_api)
@@ -420,11 +441,11 @@ async def test_entity_client_list_wildcard_with_pagination():
     result = await client.list(TestEntity, workspace=ALL_WORKSPACES, page=2, page_size=50)
 
     # Verify that the API was called with correct params
-    mock_api.list.assert_called_once()
-    call_args = mock_api.list.call_args
+    mock_api.list_entities.assert_called_once()
+    call_args = mock_api.list_entities.call_args
     assert call_args.kwargs["workspace"] == ALL_WORKSPACES
-    assert call_args.kwargs["page"] == 2
-    assert call_args.kwargs["page_size"] == 50
+    assert call_args.kwargs["query_params"]["page"] == 2
+    assert call_args.kwargs["query_params"]["page_size"] == 50
 
     # Verify pagination info
     assert result.pagination.page == 2
@@ -675,11 +696,7 @@ async def test_entity_client_list_with_datetime_filter():
 
     # Mock the entities API - return empty page since we're only testing filter parsing
     mock_api = Mock()
-    mock_api.list = AsyncMock()
-    mock_api.list.return_value = EntitiesPage(
-        data=[],
-        pagination=PaginationData(page=1, page_size=100, total_pages=0, total_results=0, current_page_size=0),
-    )
+    mock_api.list_entities = AsyncMock(return_value=_page_resp([]))
 
     client = EntityClient(mock_api)
 
@@ -693,9 +710,9 @@ async def test_entity_client_list_with_datetime_filter():
     )
 
     # Verify that the API was called with the correct search string
-    mock_api.list.assert_called_once()
-    call_args = mock_api.list.call_args
-    filter_str = call_args.kwargs["filter"]
+    mock_api.list_entities.assert_called_once()
+    call_args = mock_api.list_entities.call_args
+    filter_str = call_args.kwargs["query_params"]["filter"]
     filter_dict = json.loads(filter_str)
 
     # Verify datetime filter was passed through correctly
@@ -971,14 +988,14 @@ async def test_delete_passes_expected_db_version():
         field_1: str
 
     mock_api = Mock()
-    mock_api.delete_entity_by_name = AsyncMock()
+    mock_api.delete_entity_by_name = AsyncMock(return_value=_data_resp(DeleteResponse(id="123")))
     client = EntityClient(mock_api)
 
     await client.delete(TestEntity, "test-entity", workspace="test-workspace", expected_db_version=5)
 
     mock_api.delete_entity_by_name.assert_awaited_once()
     call_kwargs = mock_api.delete_entity_by_name.call_args.kwargs
-    assert call_kwargs["expected_db_version"] == 5
+    assert call_kwargs["query_params"]["expected_db_version"] == 5
 
 
 @pytest.mark.asyncio
@@ -989,14 +1006,14 @@ async def test_delete_omits_expected_db_version_by_default():
         field_1: str
 
     mock_api = Mock()
-    mock_api.delete_entity_by_name = AsyncMock()
+    mock_api.delete_entity_by_name = AsyncMock(return_value=_data_resp(DeleteResponse(id="123")))
     client = EntityClient(mock_api)
 
     await client.delete(TestEntity, "test-entity", workspace="test-workspace")
 
     mock_api.delete_entity_by_name.assert_awaited_once()
     call_kwargs = mock_api.delete_entity_by_name.call_args.kwargs
-    assert call_kwargs["expected_db_version"] is omit
+    assert call_kwargs["query_params"] is None
 
 
 @pytest.mark.asyncio
@@ -1009,25 +1026,27 @@ async def test_delete_by_id_passes_fetched_db_version():
     now = datetime.now()
     mock_api = Mock()
     mock_api.get_entity_by_id = AsyncMock(
-        return_value=Entity(
-            entity_type="test_entity",
-            name="test-entity",
-            workspace="test-workspace",
-            id="123",
-            created_at=now,
-            updated_at=now,
-            db_version=7,
-            data={"field_1": "value"},
+        return_value=_data_resp(
+            Entity(
+                entity_type="test_entity",
+                name="test-entity",
+                workspace="test-workspace",
+                id="123",
+                created_at=now,
+                updated_at=now,
+                db_version=7,
+                data={"field_1": "value"},
+            )
         )
     )
-    mock_api.delete_entity_by_name = AsyncMock()
+    mock_api.delete_entity_by_name = AsyncMock(return_value=_data_resp(DeleteResponse(id="123")))
     client = EntityClient(mock_api)
 
     await client.delete_by_id(TestEntity, "123")
 
     mock_api.delete_entity_by_name.assert_awaited_once()
     call_kwargs = mock_api.delete_entity_by_name.call_args.kwargs
-    assert call_kwargs["expected_db_version"] == 7
+    assert call_kwargs["query_params"]["expected_db_version"] == 7
 
 
 @pytest.mark.asyncio
@@ -1037,18 +1056,11 @@ async def test_delete_version_mismatch_raises_conflict():
     class TestEntity(EntityBase):
         field_1: str
 
-    from nemo_platform import ConflictError
-
     mock_response = Mock()
     mock_response.status_code = 409
+    mock_response.json.return_value = {"detail": "Entity was modified by another request."}
     mock_api = Mock()
-    mock_api.delete_entity_by_name = AsyncMock(
-        side_effect=ConflictError(
-            message="Entity was modified by another request.",
-            response=mock_response,
-            body=None,
-        )
-    )
+    mock_api.delete_entity_by_name = AsyncMock(side_effect=ClientConflictError(mock_response))
     client = EntityClient(mock_api)
 
     with pytest.raises(EntityConflictError):
@@ -1078,7 +1090,7 @@ async def test_update_with_automatic_version_check():
         db_version=2,
         data={"field_1": "old_value"},
     )
-    mock_api.get_entity_by_name.return_value = existing_entity
+    mock_api.get_entity_by_name.return_value = _data_resp(existing_entity)
 
     # Mock update returns updated entity with version 3
     updated_entity = Entity(
@@ -1091,7 +1103,7 @@ async def test_update_with_automatic_version_check():
         db_version=3,  # Version incremented after update
         data={"field_1": "new_value"},
     )
-    mock_api.update_entity_by_name.return_value = updated_entity
+    mock_api.update_entity_by_name.return_value = _data_resp(updated_entity)
 
     client = EntityClient(mock_api)
     # Get entity (db_version automatically populated)
@@ -1106,7 +1118,7 @@ async def test_update_with_automatic_version_check():
     # Verify update was called with expected_db_version in request body (not headers)
     mock_api.update_entity_by_name.assert_called_once()
     call_kwargs = mock_api.update_entity_by_name.call_args[1]
-    assert call_kwargs["expected_db_version"] == 2
+    assert call_kwargs["body"].expected_db_version == 2
     # Verify result has updated field
     assert result.field_1 == "new_value"
     assert result.db_version == 3
@@ -1118,8 +1130,6 @@ async def test_update_version_mismatch_raises_conflict():
 
     class TestEntity(EntityBase):
         field_1: str
-
-    from nemo_platform import ConflictError
 
     now = datetime.now()
     mock_api = Mock()
@@ -1137,17 +1147,19 @@ async def test_update_version_mismatch_raises_conflict():
         db_version=2,
         data={"field_1": "old_value"},
     )
-    mock_api.get_entity_by_name.return_value = existing_entity
+    mock_api.get_entity_by_name.return_value = _data_resp(existing_entity)
 
     # Mock update_entity_by_name to raise ConflictError (server-side version check fails)
     # This simulates another request modified the entity (version is now 3, not 2)
     mock_response = Mock()
     mock_response.status_code = 409
-    mock_api.update_entity_by_name.side_effect = ConflictError(
-        message="Entity 'test-entity' of type 'test_entity' in workspace 'test-workspace' was modified by another request. Expected version 2, but current version is 3. Please refetch and retry.",
-        response=mock_response,
-        body=None,
-    )
+    mock_response.json.return_value = {
+        "detail": (
+            "Entity 'test-entity' was modified by another request. "
+            "Expected version 2, but current version is 3. Please refetch and retry."
+        )
+    }
+    mock_api.update_entity_by_name.side_effect = ClientConflictError(mock_response)
 
     client = EntityClient(mock_api)
     # Get entity (db_version automatically populated as 2)
@@ -1163,7 +1175,7 @@ async def test_update_version_mismatch_raises_conflict():
     # Verify update was called with expected_db_version in request body (not headers)
     mock_api.update_entity_by_name.assert_called_once()
     call_kwargs = mock_api.update_entity_by_name.call_args[1]
-    assert call_kwargs["expected_db_version"] == 2
+    assert call_kwargs["body"].expected_db_version == 2
 
 
 @pytest.mark.asyncio
@@ -1188,7 +1200,7 @@ async def test_update_without_version_works():
         db_version=1,  # First version
         data={"field_1": "new_value"},
     )
-    mock_api.update_entity_by_name.return_value = updated_entity
+    mock_api.update_entity_by_name.return_value = _data_resp(updated_entity)
 
     client = EntityClient(mock_api)
     # Create entity directly (_db_version defaults to 1)
@@ -1206,7 +1218,7 @@ async def test_update_without_version_works():
     mock_api.update_entity_by_name.assert_called_once()
     call_kwargs = mock_api.update_entity_by_name.call_args[1]
     # expected_db_version should be 1 (default for new entities)
-    assert call_kwargs.get("expected_db_version") == 1
+    assert call_kwargs["body"].expected_db_version == 1
     # Verify result has updated field
     assert result.field_1 == "new_value"
 
@@ -1243,7 +1255,8 @@ def _make_entity_with_auth_context(now: datetime) -> Entity:
 
 def _entity_client_with_headers(headers: dict[str, str]) -> EntityClient:
     mock_api = Mock()
-    mock_api._client.default_headers = headers
+    mock_api._http.headers = {}
+    mock_api._default_headers = headers
     return EntityClient(mock_api)
 
 
@@ -1306,3 +1319,103 @@ class TestAuthContextSanitization:
         )
 
         assert result.source == "test-source"
+
+
+# ---------------------------------------------------------------------------
+# as_service() credential elevation
+# ---------------------------------------------------------------------------
+#
+# ``as_service()`` re-expresses service-principal elevation on top of
+# ``NemoClient.with_options``. The Stainless transport it replaced needed
+# ``with_options_preserving_request_router`` because its ``with_options`` built a
+# fresh client and dropped the platform ``_prepare_url`` hook. ``NemoClient``
+# clones with ``copy.copy``, so ``_url_resolver`` survives and no fixup is needed.
+#
+# That is an assumption about someone else's implementation, so these tests pin
+# it. If ``with_options`` ever stops shallow-copying, the resolver assertion here
+# fails loudly instead of silently sending service traffic to the wrong host.
+
+
+def _service_entities_client(url_resolver=None) -> tuple[EntityClient, AsyncMock]:
+    """Build a real EntityClient over a mocked httpx transport."""
+    import httpx
+    from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+
+    mock_http = AsyncMock(spec=httpx.AsyncClient)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("DELETE", "http://platform/apis/entities/v2/workspaces/default/entities/w/x"),
+        json={"message": "deleted", "id": "default/widget/x", "deleted_count": 1},
+    )
+    typed = AsyncEntitiesClient(
+        base_url="http://platform",
+        workspace="default",
+        default_headers={"X-NMP-Principal-Id": "alice@example.com"},
+        http_client=mock_http,
+        url_resolver=url_resolver,
+    )
+    return EntityClient(typed), mock_http
+
+
+def test_as_service_returns_new_client_without_mutating_the_original():
+    client, _ = _service_entities_client()
+
+    elevated = client.as_service("models")
+
+    assert elevated is not client
+    assert isinstance(elevated, EntityClient)
+    # The caller-scoped client must keep its original principal.
+    assert client._client._default_headers["X-NMP-Principal-Id"] == "alice@example.com"
+    assert elevated._client._default_headers["X-NMP-Principal-Id"] == "service:models"
+
+
+def test_as_service_preserves_the_platform_url_resolver():
+    """The regression the Stainless path needed a dedicated helper to avoid."""
+
+    def resolver(url: str) -> str:
+        return url.replace("http://platform", "http://uds-resolved")
+
+    client, _ = _service_entities_client(url_resolver=resolver)
+
+    elevated = client.as_service("models")
+
+    assert elevated._client._url_resolver is resolver
+
+
+def test_as_service_shares_the_underlying_http_transport():
+    """with_options is documented as cheap because the connection pool is shared."""
+    client, mock_http = _service_entities_client()
+
+    elevated = client.as_service("models")
+
+    assert elevated._client._http is mock_http
+    assert elevated._client._http is client._client._http
+
+
+@pytest.mark.asyncio
+async def test_as_service_principal_header_reaches_the_wire():
+    """Header must land on the actual request, not just in _default_headers."""
+
+    class TestEntity(EntityBase):
+        field_1: str
+
+    client, mock_http = _service_entities_client()
+
+    await client.as_service("models").delete(TestEntity, "test-entity", workspace="test-workspace")
+
+    sent_headers = mock_http.request.call_args.kwargs["headers"]
+    assert sent_headers["X-NMP-Principal-Id"] == "service:models"
+
+
+@pytest.mark.asyncio
+async def test_as_service_internal_marks_requests_internal_on_the_wire():
+    class TestEntity(EntityBase):
+        field_1: str
+
+    client, mock_http = _service_entities_client()
+
+    await client.as_service("audit", internal=True).delete(TestEntity, "test-entity", workspace="test-workspace")
+
+    sent_headers = mock_http.request.call_args.kwargs["headers"]
+    assert sent_headers["X-NMP-Principal-Id"] == "service:audit"
+    assert sent_headers["X-NMP-Internal"] == "true"

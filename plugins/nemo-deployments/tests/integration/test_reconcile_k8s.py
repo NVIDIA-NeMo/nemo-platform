@@ -43,7 +43,7 @@ NGINX_IMAGE = "docker.io/library/nginx:alpine"
 def k8s_registry() -> ExecutorRegistry:
     mock_sdk = MagicMock()
     with (
-        patch("nemo_deployments_plugin.backends.k8s.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.k8s.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.k8s.backend.NemoEntitiesClient"),
     ):
         backend = K8sDeploymentBackend(mock_sdk, {"default_namespace": NAMESPACE, "request_timeout": 30})
@@ -74,13 +74,13 @@ async def test_puller_server_prerequisite_chain(k8s_registry: ExecutorRegistry) 
     puller_cfg = DeploymentConfig(
         name="puller-cfg",
         workspace="itest",
-        restart_policy="Never",  # ty: ignore[unknown-argument]
+        restart_policy="Never",  # ty: ignore[unknown-argument]  # pyright: ignore[reportCallIssue]
         containers=[Container(name="puller", image=ALPINE_IMAGE, command=["sh", "-c"], args=["echo pulled"])],
     )
     server_cfg = DeploymentConfig(
         name="server-cfg",
         workspace="itest",
-        restart_policy="Always",  # ty: ignore[unknown-argument]
+        restart_policy="Always",  # ty: ignore[unknown-argument]  # pyright: ignore[reportCallIssue]
         containers=[Container(name="server", image=NGINX_IMAGE, ports=[ContainerPort(name="http", containerPort=80)])],
     )
 
@@ -132,10 +132,10 @@ async def test_puller_server_prerequisite_chain(k8s_registry: ExecutorRegistry) 
 
         for _ in range(POLL_ATTEMPTS):
             await deployment_reconciler.reconcile_one(server_dep, deployments_by_name=by_name, volumes_by_name={})
-            if server_dep.status in ("READY", "STARTING"):
+            if server_dep.status in {"READY", "STARTING"}:
                 break
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
-        assert server_dep.status in ("READY", "STARTING")
+        assert server_dep.status in {"READY", "STARTING"}
     finally:
         results = await asyncio.gather(
             backend.delete_deployment("itest", "puller"),

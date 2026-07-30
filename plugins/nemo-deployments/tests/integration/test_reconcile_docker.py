@@ -45,7 +45,7 @@ pytestmark = [
 def docker_registry() -> ExecutorRegistry:
     mock_sdk = MagicMock()
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient"),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
     ):
@@ -83,7 +83,7 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
     puller_cfg = DeploymentConfig(
         name="puller-cfg",
         workspace="itest",
-        restart_policy="OnFailure",  # ty: ignore[unknown-argument]
+        restart_policy="OnFailure",  # ty: ignore[unknown-argument]  # pyright: ignore[reportCallIssue]
         containers=[
             Container(
                 name="puller",
@@ -98,14 +98,20 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
     server_cfg = DeploymentConfig(
         name="server-cfg",
         workspace="itest",
-        restart_policy="Always",  # ty: ignore[unknown-argument]
+        restart_policy="Always",  # ty: ignore[unknown-argument]  # pyright: ignore[reportCallIssue]
         containers=[
             Container(
                 name="server",
                 image="alpine:3.20",
                 command=["sleep"],
                 args=["3600"],
-                volumeMounts=[VolumeMount(name="weights", mountPath="/data", read_only=True)],  # ty: ignore[unknown-argument]
+                volumeMounts=[
+                    VolumeMount(
+                        name="weights",
+                        mountPath="/data",
+                        read_only=True,  # ty: ignore[unknown-argument]  # pyright: ignore[reportCallIssue]
+                    )
+                ],
             )
         ],
         volumeMounts=[VolumeMount(name="weights", mountPath="/data")],
@@ -170,10 +176,10 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
                 deployments_by_name=by_name,
                 volumes_by_name=volumes_by_name,
             )
-            if server_dep.status in ("READY", "STARTING"):
+            if server_dep.status in {"READY", "STARTING"}:
                 break
             await asyncio.sleep(0.5)
-        assert server_dep.status in ("READY", "STARTING")
+        assert server_dep.status in {"READY", "STARTING"}
     finally:
         client = docker.from_env()
         await backend.delete_deployment("itest", "puller")

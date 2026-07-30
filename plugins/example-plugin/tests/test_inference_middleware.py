@@ -10,17 +10,18 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nemo_example_plugin.middleware import (
+from nemo_example_plugin.middleware import (  # pyright: ignore[reportMissingImports]
     ExampleInferenceMiddleware,
     ExampleMiddlewareConfigData,
     _extract_message_text,
     _find_keyword,
     _redact_keywords,
 )
-from nemo_example_plugin.middleware_config import ExampleMiddlewareConfig
+from nemo_example_plugin.middleware_config import ExampleMiddlewareConfig  # pyright: ignore[reportMissingImports]
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareCacheAccessor,
@@ -74,6 +75,31 @@ def _make_request(body: dict) -> InferenceRequest:
 
 def _make_response(result: ResponseResult) -> InferenceResponse:
     return InferenceResponse(result=result, headers={})
+
+
+@pytest.mark.asyncio
+async def test_startup_adapts_sdk_to_typed_entities_client() -> None:
+    plugin = _make_plugin()
+    sdk = MagicMock()
+    typed_client = MagicMock()
+    entity_client = MagicMock()
+
+    with (
+        patch("nemo_platform_plugin.sdk_provider.get_async_platform_sdk", return_value=sdk),
+        patch(
+            "nemo_example_plugin.middleware.client_from_platform",
+            return_value=typed_client,
+        ) as mock_adapter,
+        patch(
+            "nemo_example_plugin.middleware.NemoEntitiesClient",
+            return_value=entity_client,
+        ) as mock_entity_client,
+    ):
+        await plugin.on_startup()
+
+    mock_adapter.assert_called_once_with(sdk, AsyncEntitiesClient)
+    mock_entity_client.assert_called_once_with(typed_client)
+    assert plugin._entity_client is entity_client
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +392,8 @@ def test_extract_message_text_multi():
         ]
     }
     assert "You are helpful." in _extract_message_text(body)
-    assert "What is AI?" in _extract_message_text(body)
+    expected_question = "What is AI?"
+    assert expected_question in _extract_message_text(body)
 
 
 def test_extract_message_text_multimodal():
@@ -385,7 +412,8 @@ def test_extract_message_text_multimodal():
 
 
 def test_find_keyword_hit():
-    assert _find_keyword("There is violence here", ["violence"]) == "violence"
+    expected = "violence"
+    assert _find_keyword("There is violence here", [expected]) == expected
 
 
 def test_find_keyword_miss():

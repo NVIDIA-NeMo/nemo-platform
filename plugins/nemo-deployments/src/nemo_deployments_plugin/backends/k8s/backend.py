@@ -22,7 +22,8 @@ from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
 from nemo_deployments_plugin.backends.labels import deployment_identity_labels
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             kubeconfig_path=self._executor_config.kubeconfig_path,
             request_timeout=self._executor_config.request_timeout,
         )
-        self._entities = NemoEntitiesClient(AsyncEntitiesResource(self._sdk))
+        self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         logger.debug(
             "K8sDeploymentBackend initialized (default_namespace=%s)",
             self._executor_config.effective_namespace,
