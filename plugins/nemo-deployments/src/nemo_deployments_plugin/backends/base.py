@@ -15,6 +15,17 @@ from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel, Field
 
 
+class MissingBackendDependencyError(RuntimeError):
+    """A backend's optional dependency (its packaging extra) is not installed.
+
+    Backends whose substrate SDK ships as an optional extra (e.g. ``openshell``)
+    raise this when that SDK is absent, so the executor registry can skip the
+    executor with a warning instead of failing the whole deployments service at
+    startup. Subclasses ``RuntimeError`` so existing ``except RuntimeError`` paths
+    keep working.
+    """
+
+
 class BackendStatusUpdate(BaseModel):
     """Status projection returned by backends — consumed by the reconciler (758)."""
 

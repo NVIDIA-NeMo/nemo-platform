@@ -373,6 +373,15 @@ def _register_package_command(app: typer.Typer) -> None:
         allow_root: bool = typer.Option(
             False, "--allow-root", help="Disable non-root USER hardening in the rendered Dockerfile."
         ),
+        sandbox_runtime: Optional[str] = typer.Option(
+            None,
+            "--sandbox-runtime",
+            help=(
+                "Render an image compatible with a sandbox runtime (e.g. 'openshell'). "
+                "Discovers the runtime's image profile and bakes in its required apt "
+                "packages + users so the image can run inside that sandbox supervisor."
+            ),
+        ),
         generate_ignore: bool = typer.Option(
             True, "--ignore/--no-ignore", help="Generate a .dockerignore file alongside the Dockerfile."
         ),
@@ -419,6 +428,7 @@ def _register_package_command(app: typer.Typer) -> None:
                 format=format,
                 template=template,
                 allow_root=allow_root,
+                sandbox_runtime=sandbox_runtime,
                 agent_version=agent_version,
                 agent_author=agent_author,
                 generate_ignore=generate_ignore,
@@ -444,6 +454,7 @@ def _register_package_command(app: typer.Typer) -> None:
                 python_version=python_version,
                 uv_version=uv_version,
                 allow_root=allow_root,
+                sandbox_runtime=sandbox_runtime,
                 agent_version=agent_version,
                 agent_author=agent_author,
                 template_path=template,
@@ -556,6 +567,7 @@ def _package_render_only(
     format: str,
     template: Optional[str],
     allow_root: bool,
+    sandbox_runtime: Optional[str],
     agent_version: Optional[str],
     agent_author: Optional[str],
     generate_ignore: bool,
@@ -582,6 +594,7 @@ def _package_render_only(
             nat_version=nat_version,
             uv_version=uv_version,
             allow_root=allow_root,
+            sandbox_runtime=sandbox_runtime,
             agent_version=agent_version,
             agent_author=agent_author,
             template_path=template,

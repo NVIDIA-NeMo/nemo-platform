@@ -46,6 +46,7 @@ jobs:
       helm: ${{ steps.changes.outputs.helm }}
       cpu-smoke: ${{ steps.changes.outputs.cpu-smoke }}
       guardrails-benchmark: ${{ steps.changes.outputs.guardrails-benchmark }}
+      deployments-openshell: ${{ steps.changes.outputs.deployments-openshell }}
       ngc-metadata: ${{ steps.changes.outputs.ngc-metadata }}
       auth-idp: ${{ steps.changes.outputs.auth-idp }}
     steps:
@@ -1650,6 +1651,41 @@ jobs:
           name: studio-e2e-results
           retention-days: 7
           path: web/packages/studio/playwright-report/
+
+  deployments-openshell-tests:
+    # The openshell extra is a platform-restricted manylinux_2_39 wheel that the
+    # shared unit-test job does not install, so the OpenShell backend tests skip
+    # there. Install the extra in this isolated, path-filtered job and exercise the
+    # backend for real. Kept separate so a wheel-install failure fails only this
+    # small job, not the whole unit suite (mirrors the nemo-guardrails extra job).
+    name: Deployments OpenShell backend tests
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.deployments-openshell == 'true'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install uv
+        # No python-version pin: uv resolves the interpreter from the workspace
+        # requires-python (>=3.12), so this job can never fall back to an
+        # unsupported version.
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Run OpenShell backend unit tests
+        run: make test-deployments-openshell
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
 
   guardrails-benchmark:
     # Parallel matrix jobs (one NMP per variant) so the two sweeps don't

@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenShell gateway for the NeMo sandbox-deployment demo (Docker driver).
+#
+# Adapted from OpenShell's deploy/docker/docker-compose.yml, pinned to :17670
+# (OpenShell's documented docker default) instead of :8080, because the NeMo
+# platform owns :8080. Three changes beyond the port were proven necessary for
+# docker sandboxes to actually run (the stock OpenShell compose omits them):
+#   1. the port is set via the `command:` override below, because compose's
+#      `command: []` does NOT clear the image's baked `--port 8080` CLI flag;
+#   2. the port is published on all host interfaces (not 127.0.0.1-only) so
+#      sandbox containers can reach the gateway at the host bridge IP;
+#   3. gateway.toml carries JWT signing keys (docker sandboxes need them) that
+#      must be generated once first (see below).
+#
+# Bring up:
+#   # one-time JWT key generation (writes /var/lib/openshell/tls/jwt/*):
+#   docker run --rm --user 0 -v /var/lib/openshell:/var/lib/openshell \
+#     ghcr.io/nvidia/openshell/gateway:0.0.92 generate-certs \
+#     --output-dir /var/lib/openshell/tls --server-san host.openshell.internal
+#   docker compose up -d      # from this directory (examples/openshell/)
+#   openshell gateway add http://127.0.0.1:17670 --local --name docker-dev
+# Tear down:  docker compose down
+#
+# Sandbox containers are created and torn down by the gateway, not by this file.
+# This is Docker-outside-of-Docker: the gateway uses the host Docker socket to
+# create sibling sandbox containers on the host.
+
+services:
+  gateway:
+    # Pinned, and kept in step with the `openshell` client pin in the plugin's
+    # pyproject: the gateway enforces request limits the client does not, so :latest
+    # turns a gateway release into an unexplained deployment failure.
+    image: ghcr.io/nvidia/openshell/gateway:${IMAGE_TAG:-0.0.92}
+    restart: unless-stopped
+
+    # The image ENTRYPOINT is the gateway binary and its CMD bakes
+    # `--bind-address 0.0.0.0 --port 8080` as explicit CLI flags, which beat
+    # gateway.toml (precedence: CLI flag > env > TOML). `command: []` does NOT
+    # clear it (Compose treats [] as "no override" and uses the image CMD), so
+    # the bind must be set here as a real command override to move off :8080.
+    # Everything else stays in gateway.toml.
+    command: ["--bind-address", "0.0.0.0", "--port", "17670"]
+
+    # Local-dev: run as root so the gateway can write the extracted supervisor
+    # binary to /var/lib/openshell and access /var/run/docker.sock without a GID
+    # dance. Distroless images have no /etc/passwd, so use the numeric UID.
+    # Production should use a dedicated non-root UID with docker-group access.
+    user: "0"
+
+    # Host aliases resolved INSIDE THE GATEWAY CONTAINER, e.g. when the gateway dials
+    # a provider URL written as host.openshell.internal (`openshell inference set`
+    # validates the platform endpoint that way). Docker Desktop (macOS/Windows)
+    # provides both automatically; Linux needs these explicit host-gateway aliases.
+    # Sandboxes do NOT inherit them: the docker driver writes its own
+    # host.openshell.internal / host.docker.internal entries into each sandbox,
+    # pointing at the sandbox network's gateway address.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "host.openshell.internal:host-gateway"
+
+    ports:
+      # gRPC / control-plane API. Published on all host interfaces (NOT
+      # 127.0.0.1-only): sandbox containers reach the gateway via
+      # host.openshell.internal, which resolves to the host's docker bridge
+      # gateway IP, so the port must be reachable there, not just on loopback.
+      # Internal bind port and published port MUST match for that routing.
+      - "${OPENSHELL_PORT:-17670}:17670"
+
+    volumes:
+      # Docker socket: lets the gateway create and manage sandbox containers.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Data dir bind-mounted at the SAME absolute path on host and container so
+      # the supervisor binary the gateway extracts is resolvable by the host
+      # Docker daemon when it creates sandbox containers.
+      - type: bind
+        source: /var/lib/openshell
+        target: /var/lib/openshell
+        bind:
+          create_host_path: true
+      # Gateway + driver settings. Compose resolves ./ relative to THIS file's
+      # directory (examples/openshell/), not the caller's CWD.
+      - type: bind
+        source: ./gateway.toml
+        target: /etc/openshell/gateway.toml
+        read_only: true
+
+    environment:
+      OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
+      # DB URL is env-only (blocked in the TOML file). Plain SQLite path, no
+      # credentials, safe to inline. Swap for a real DSN via secret if needed.
+      OPENSHELL_DB_URL: "sqlite:/var/lib/openshell/gateway.db?mode=rwc"
+      # OS-level path vars (not part of the gateway config schema) so the
+      # extracted supervisor lands in the bind-mounted, same-path data dir.
+      XDG_DATA_HOME: /var/lib/openshell
+      HOME: /var/lib/openshell

@@ -15,6 +15,7 @@ not-for:
   - nemo-spec (use to write the spec file before building)
   - nemo-try-agent (use to query a deployed agent)
   - nemo-setup (use to install the platform first)
+  - deploy-sandbox (use to deploy the built agent as a governed OpenShell sandbox)
   - superpowers:brainstorming (use for unrelated design work)
 compatibility: nemo-platform >= 0.1.0; running platform (run nemo-setup first — uses `nemo services run`, no Docker); requires agents plugin installed; writes files to agents/; runs nemo CLI commands; defers platform-health probing to `nemo-status`; LangGraph + NAT under the hood; macOS or Linux; safe under sandbox.
 maturity: active
@@ -69,6 +70,8 @@ Verification: confirm the deployment reached ready state.
 ```
 
 If `DEPLOY_NOT_READY`: jump to the recovery table at the bottom.
+
+> **Governed sandbox deployment.** To deploy this agent as a policy-governed OpenShell sandbox instead of the default executor (Landlock filesystem isolation plus default-deny network egress, so its model traffic can only reach the platform), use the `deploy-sandbox` skill once the image is built. It swaps this step's deploy path for the `openshell-local` executor and an auto-generated SandboxPolicy.
 
 ## Step 2: Try the agent
 
@@ -207,7 +210,7 @@ Run the success-criteria question from the spec through `nemo agents invoke` onc
 ## If verification fails
 
 | Symptom | Cause | Recovery |
-|---|---|---|
+| --- | --- | --- |
 | `agents plugin unavailable` | `plugins/nemo-agents` not installed | Re-run the install loop from `nemo-setup` Step 3 for that package only |
 | `DEPLOY_NOT_READY` after wait | Container startup error or YAML rejected | Run `.venv/bin/nemo agents deployments get $AGENT_NAME`; check status detail and logs |
 | YAML rejected with `extra fields` | Top-level keys beyond `functions`, `llms`, `workflow`, `intercepts`, `middleware` | Strip extras from the YAML; only those five top-level keys are valid |

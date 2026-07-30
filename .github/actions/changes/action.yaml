@@ -46,6 +46,9 @@ outputs:
   guardrails-benchmark:
     description: "'true' if the nemo-guardrails plugin or guardrails service changed"
     value: ${{ steps.filter.outputs.guardrails-benchmark }}
+  deployments-openshell:
+    description: "'true' if the nemo-deployments plugin changed (OpenShell backend coverage)"
+    value: ${{ steps.filter.outputs.deployments-openshell }}
   ngc-metadata:
     description: "'true' if NGC metadata scripts, tests, or assets changed"
     value: ${{ steps.filter.outputs.ngc-metadata }}
@@ -118,6 +121,8 @@ runs:
           guardrails-benchmark:
             - 'plugins/nemo-guardrails/**'
             - 'services/guardrails/**'
+          deployments-openshell:
+            - 'plugins/nemo-deployments/**'
           ngc-metadata:
             - '.github/scripts/ngc_metadata.py'
             - '.github/scripts/tests/test_ngc_metadata.py'
