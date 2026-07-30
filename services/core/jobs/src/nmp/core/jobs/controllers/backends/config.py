@@ -20,6 +20,8 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+_RUNTIME_NONE_UNSUPPORTED_BACKENDS = frozenset({"docker", "kubernetes_job", "volcano_job"})
+
 
 class DefaultExecutionProfileConfig(BaseModel):
     """Holds default execution profile configurations for various backends."""
@@ -126,12 +128,15 @@ def get_default_executor_profiles_for_runtime(
 def merge_executor_profiles(
     custom_executors: list[ExecutionProfileT],
     default_executors: list[ExecutionProfileT],
+    *,
+    runtime: Runtime | None = None,
 ) -> list[ExecutionProfileT]:
     """
     Merge custom executor profiles with default profiles, giving precedence to custom profiles.
 
     If a custom profile has the same provider and profile as a default profile, the custom profile will override the default.
     If the custom profile matching a default profile has custom config values, those should override the default config values.
+    When runtime is NONE, custom container-backed profiles are skipped so local startup does not initialize unavailable runtimes.
     """
 
     merged_executors: dict[tuple[str, str], ExecutionProfileT] = {}
@@ -142,6 +147,15 @@ def merge_executor_profiles(
 
     # Override with custom profiles
     for custom_executor in custom_executors:
+        if runtime == Runtime.NONE and custom_executor.backend in _RUNTIME_NONE_UNSUPPORTED_BACKENDS:
+            logger.warning(
+                "Skipping executor profile %s/%s using backend '%s' because platform runtime is NONE.",
+                custom_executor.provider,
+                custom_executor.profile,
+                custom_executor.backend,
+            )
+            continue
+
         key = (custom_executor.provider, custom_executor.profile)
 
         # If the custom executor matches a default, update the default config with custom values

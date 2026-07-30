@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 import pathlib
 from unittest.mock import MagicMock, patch
 
@@ -30,6 +31,7 @@ from nmp.core.jobs.controllers.backends.kubernetes import (
     KubernetesJobExecutionProfile,
     KubernetesJobExecutionProfileConfig,
     KubernetesJobStorageConfig,
+    VolcanoJobExecutionProfile,
     VolcanoJobExecutionProfileConfig,
 )
 from nmp.core.jobs.controllers.backends.registry import BackendKey, BackendRegistry, backend_registry
@@ -426,6 +428,46 @@ def test_merge_executor_profiles_can_override_default_volcano_with_kubernetes_jo
     assert profile.config.namespace == "authentik"
 
 
+def test_merge_executor_profiles_skips_container_backends_for_none_runtime(caplog):
+    defaults = get_default_executor_profiles_for_runtime(Runtime.NONE, DefaultExecutionProfileConfig())
+    custom = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="custom-docker",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        KubernetesJobExecutionProfile(
+            provider="gpu",
+            profile="custom-k8s",
+            backend="kubernetes_job",
+            config=KubernetesJobExecutionProfileConfig(),
+        ),
+        VolcanoJobExecutionProfile(
+            provider="gpu_distributed",
+            profile="custom-volcano",
+            backend="volcano_job",
+            config=VolcanoJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="custom-subprocess",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    caplog.set_level(logging.WARNING)
+    merged = merge_executor_profiles(custom, defaults, runtime=Runtime.NONE)
+
+    assert [(p.provider, p.profile, p.backend) for p in merged] == [
+        ("subprocess", "default", "subprocess"),
+        ("subprocess", "custom-subprocess", "subprocess"),
+    ]
+    assert "Skipping executor profile cpu/custom-docker" in caplog.text
+    assert "Skipping executor profile gpu/custom-k8s" in caplog.text
+    assert "Skipping executor profile gpu_distributed/custom-volcano" in caplog.text
+
+
 def test_backend_registry_supports_gpu_distributed_kubernetes_job_override():
     assert BackendKey("gpu_distributed", "kubernetes_job") in backend_registry
 
@@ -561,6 +603,38 @@ def test_merge_executor_profiles_replaces_default_with_subprocess_profile():
     assert type(merged[0].config) is SubprocessJobExecutionProfileConfig
     assert merged[0].config.working_directory == "/tmp/custom-subprocess-jobs"
     assert merged[0].config.ttl_seconds_active == 123
+
+
+def test_merge_executor_profiles_keeps_subprocess_override_for_none_runtime(caplog):
+    caplog.set_level(logging.WARNING)
+    default_executors = get_default_executor_profiles_for_runtime(Runtime.NONE, DefaultExecutionProfileConfig())
+    custom_executors = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        KubernetesJobExecutionProfile(
+            provider="gpu",
+            profile="default",
+            backend="kubernetes_job",
+            config=KubernetesJobExecutionProfileConfig(namespace="custom-namespace"),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(working_directory="/tmp/custom-subprocess-jobs"),
+        ),
+    ]
+
+    merged = merge_executor_profiles(custom_executors, default_executors, runtime=Runtime.NONE)
+
+    assert [(p.provider, p.profile, p.backend) for p in merged] == [("subprocess", "default", "subprocess")]
+    assert type(merged[0].config) is SubprocessJobExecutionProfileConfig
+    assert merged[0].config.working_directory == "/tmp/custom-subprocess-jobs"
+    assert "Skipping executor profile cpu/default using backend 'docker'" in caplog.text
+    assert "Skipping executor profile gpu/default using backend 'kubernetes_job'" in caplog.text
 
 
 def test_subprocess_execution_provider_requires_command():

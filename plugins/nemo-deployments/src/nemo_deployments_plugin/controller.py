@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import ClassVar
 
 from nemo_deployments_plugin.backends.registry import ExecutorRegistry, ExecutorSpec
-from nemo_deployments_plugin.config import ControllerConfig, DeploymentsConfig
+from nemo_deployments_plugin.config import ControllerConfig, DeploymentsConfig, runtime_compatible_executor_config
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Volume
 from nemo_deployments_plugin.reconciler.deployment_reconciler import DeploymentReconciler
 from nemo_deployments_plugin.reconciler.entity_client import list_all_pages
@@ -78,12 +78,13 @@ class DeploymentsController(NemoController):
         entities_api = client_from_platform(sdk, AsyncEntitiesClient)
         self._entities = NemoEntitiesClient(entities_api)
 
-        specs = [ExecutorSpec(name=e.name, backend=e.backend, config=e.config) for e in config.executors]
+        executors, default_executor = runtime_compatible_executor_config(config)
+        specs = [ExecutorSpec(name=e.name, backend=e.backend, config=e.config) for e in executors]
         if specs:
             registry = ExecutorRegistry.from_config(
                 sdk,
                 specs,
-                default_executor=config.default_executor,
+                default_executor=default_executor,
             )
         else:
             registry = ExecutorRegistry.empty()
