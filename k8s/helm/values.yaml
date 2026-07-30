@@ -562,7 +562,7 @@ api:
     port: 8080
     # -- Annotations for the API service.
     annotations: {}
-  # -- Kubernetes deployment resources configuration for the API service.
+  # -- Kubernetes deployment resources configuration for the API service. Utilization-based autoscaling requires a matching resource request.
   resources: {}
 
   # -- Startup probe configuration for the api service.
@@ -631,9 +631,10 @@ api:
     minReplicas: 1
     # -- The maximum number of replicas for the deployment.
     maxReplicas: 10
-    # -- The target CPU utilization percentage.
+    # -- The target CPU utilization percentage. Requires api.resources.requests.cpu.
     targetCPUUtilizationPercentage: 80
-    # targetMemoryUtilizationPercentage: 80
+    # -- The target memory utilization percentage. Requires api.resources.requests.memory.
+    targetMemoryUtilizationPercentage: null
     # -- Annotations for the HorizontalPodAutoscaler.
     annotations: {}
 
@@ -929,7 +930,7 @@ envoyProxy:
     # -- Cluster connect timeout (time to establish connection to backend).
     connect: "30s"
 
-  # -- Kubernetes deployment resources configuration for the Envoy service.
+  # -- Kubernetes deployment resources configuration for the Envoy service. Utilization-based autoscaling requires a matching resource request.
   resources: {}
 
   # -- Liveness probe for the Envoy container (admin interface /ready).
@@ -979,9 +980,10 @@ envoyProxy:
     minReplicas: 1
     # -- The maximum number of replicas for the deployment.
     maxReplicas: 10
-    # -- The target CPU utilization percentage.
+    # -- The target CPU utilization percentage. Requires envoyProxy.resources.requests.cpu.
     targetCPUUtilizationPercentage: 80
-    # targetMemoryUtilizationPercentage: 80
+    # -- The target memory utilization percentage. Requires envoyProxy.resources.requests.memory.
+    targetMemoryUtilizationPercentage: null
     # -- Annotations for the HorizontalPodAutoscaler.
     annotations: {}
 

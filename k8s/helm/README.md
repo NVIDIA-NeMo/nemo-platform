@@ -36,12 +36,13 @@ secrets will not decrypt with a new key.
 | api | object | This object has the following default values for the API configuration. | API configuration settings for the api deployment |
 | api.affinity | object | `{}` | Affinity configuration for the API service. |
 | api.annotations | object | `{}` | Annotations to add to the API service deployment. |
-| api.autoscaling | object | `{"annotations":{},"enabled":false,"maxReplicas":10,"minReplicas":1,"targetCPUUtilizationPercentage":80}` | Specifies autoscaling configurations for the deployment. |
+| api.autoscaling | object | `{"annotations":{},"enabled":false,"maxReplicas":10,"minReplicas":1,"targetCPUUtilizationPercentage":80,"targetMemoryUtilizationPercentage":null}` | Specifies autoscaling configurations for the deployment. |
 | api.autoscaling.annotations | object | `{}` | Annotations for the HorizontalPodAutoscaler. |
 | api.autoscaling.enabled | bool | `false` | Whether to enable horizontal pod autoscaler. |
 | api.autoscaling.maxReplicas | int | `10` | The maximum number of replicas for the deployment. |
 | api.autoscaling.minReplicas | int | `1` | The minimum number of replicas for the deployment. |
-| api.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. |
+| api.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. Requires api.resources.requests.cpu. |
+| api.autoscaling.targetMemoryUtilizationPercentage | string | `nil` | The target memory utilization percentage. Requires api.resources.requests.memory. |
 | api.enabled | bool | `true` | Specifies whether to enable the api deployment. |
 | api.extraArgs | list | `[]` | Additional arguments to pass to the Platform API service |
 | api.extraVolumeMounts | list | `[]` | Additional volume mounts to add to the Platform API container. |
@@ -70,7 +71,7 @@ secrets will not decrypt with a new key.
 | api.readinessProbe.periodSeconds | int | `10` | The frequency in seconds to perform the readiness probe. |
 | api.readinessProbe.timeoutSeconds | int | `5` | The timeout in seconds for the readiness probe. |
 | api.replicaCount | int | `1` | Number of replicas for the API service. |
-| api.resources | object | `{}` | Kubernetes deployment resources configuration for the API service. |
+| api.resources | object | `{}` | Kubernetes deployment resources configuration for the API service. Utilization-based autoscaling requires a matching resource request. |
 | api.securityContext | object | `{}` | Container-level security context settings for the API service. |
 | api.service | object | This object has the following default values for the service configuration. | Service configuration for the API service. |
 | api.service.annotations | object | `{}` | Annotations for the API service. |
@@ -162,12 +163,13 @@ secrets will not decrypt with a new key.
 | envoyProxy.adminPort | int | `9901` | Envoy Admin port |
 | envoyProxy.affinity | object | `{}` | Affinity configuration for the Envoy pods. |
 | envoyProxy.annotations | object | `{}` | Annotations to add to the Envoy service deployment. |
-| envoyProxy.autoscaling | object | `{"annotations":{},"enabled":false,"maxReplicas":10,"minReplicas":1,"targetCPUUtilizationPercentage":80}` | Specifies autoscaling configurations for the deployment. |
+| envoyProxy.autoscaling | object | `{"annotations":{},"enabled":false,"maxReplicas":10,"minReplicas":1,"targetCPUUtilizationPercentage":80,"targetMemoryUtilizationPercentage":null}` | Specifies autoscaling configurations for the deployment. |
 | envoyProxy.autoscaling.annotations | object | `{}` | Annotations for the HorizontalPodAutoscaler. |
 | envoyProxy.autoscaling.enabled | bool | `false` | Whether to enable horizontal pod autoscaler. |
 | envoyProxy.autoscaling.maxReplicas | int | `10` | The maximum number of replicas for the deployment. |
 | envoyProxy.autoscaling.minReplicas | int | `1` | The minimum number of replicas for the deployment. |
-| envoyProxy.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. |
+| envoyProxy.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. Requires envoyProxy.resources.requests.cpu. |
+| envoyProxy.autoscaling.targetMemoryUtilizationPercentage | string | `nil` | The target memory utilization percentage. Requires envoyProxy.resources.requests.memory. |
 | envoyProxy.configOverride | string | `""` | Full Envoy config override. When set, this replaces the chart's default passthrough Envoy config. |
 | envoyProxy.enabled | bool | `true` | Specifies whether to enable the Envoy proxy deployment. Rendered only when platform config has auth.enabled: true. |
 | envoyProxy.extraArgs | list | `[]` | Extra arguments to append to the envoy container command. Useful for passing server flags such as concurrency. Example: ["--concurrency", "4"] |
@@ -185,7 +187,7 @@ secrets will not decrypt with a new key.
 | envoyProxy.podSecurityContext | object | This object has the following default values for the pod security context. | Pod-level security context settings for the Envoy service. |
 | envoyProxy.podSecurityContext.fsGroup | int | `1000` | The file system group ID to use for all containers. |
 | envoyProxy.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/ready","port":"admin"},"periodSeconds":10,"timeoutSeconds":5}` | Readiness probe for the Envoy container (admin interface /ready). |
-| envoyProxy.resources | object | `{}` | Kubernetes deployment resources configuration for the Envoy service. |
+| envoyProxy.resources | object | `{}` | Kubernetes deployment resources configuration for the Envoy service. Utilization-based autoscaling requires a matching resource request. |
 | envoyProxy.securityContext | object | `{}` | Container-level security context settings for the Envoy service. |
 | envoyProxy.service | object | This object has the following default values for the service configuration. | Service configuration for the Envoy service. |
 | envoyProxy.service.annotations | object | `{}` | Annotations for the Envoy service. |
