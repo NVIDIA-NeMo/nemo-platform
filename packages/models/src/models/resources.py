@@ -5,13 +5,18 @@
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime
+from typing import TypeVar
 
 from nemo_platform import NotFoundError
 from nemo_platform.resources.models import AsyncModelsResource as BaseAsyncModelsResource
 from nemo_platform.resources.models import ModelsResource as BaseModelsResource
 from nemo_platform.types.inference import ModelDeployment, ModelProvider
+from nemo_platform.types.inference.gateway.openai.v1 import OpenAIModelResp
 from nemo_platform.types.models import ModelEntity
+
+_T = TypeVar("_T")
 
 
 def _seconds_since_creation(entry_timestamp: datetime | str | None, created_at: datetime | None) -> int | None:
@@ -29,6 +34,90 @@ def _seconds_since_creation(entry_timestamp: datetime | str | None, created_at: 
         return int(entry_timestamp.timestamp() - created_at.timestamp())
     except (TypeError, OSError):
         return None
+
+
+def _openai_model_route_name(name: str, workspace: str) -> tuple[str, str]:
+    model_name = name.removeprefix(f"{workspace}/")
+    return model_name, f"{workspace}/{model_name}"
+
+
+class _PollPending(Exception):
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
+def _poll_sleep_seconds(*, start_time: float, timeout: float, poll_interval: float) -> float | None:
+    remaining_timeout = timeout - (time.time() - start_time)
+    if remaining_timeout <= 0:
+        return None
+    return min(poll_interval, remaining_timeout)
+
+
+def _poll_until_ready(
+    attempt: Callable[[], _T],
+    *,
+    timeout: float,
+    poll_interval: float,
+    timeout_message: Callable[[Exception | str | None], str],
+) -> _T:
+    start_time = time.time()
+    last_error: Exception | str | None = None
+
+    while time.time() - start_time < timeout:
+        try:
+            return attempt()
+        except _PollPending as exc:
+            last_error = exc.reason
+        except NotFoundError as exc:
+            last_error = exc
+
+        sleep_seconds = _poll_sleep_seconds(
+            start_time=start_time,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+        if sleep_seconds is None:
+            break
+        time.sleep(sleep_seconds)
+
+    raise TimeoutError(timeout_message(last_error))
+
+
+async def _async_poll_until_ready(
+    attempt: Callable[[], Awaitable[_T]],
+    *,
+    timeout: float,
+    poll_interval: float,
+    timeout_message: Callable[[Exception | str | None], str],
+) -> _T:
+    start_time = time.time()
+    last_error: Exception | str | None = None
+
+    while time.time() - start_time < timeout:
+        try:
+            return await attempt()
+        except _PollPending as exc:
+            last_error = exc.reason
+        except NotFoundError as exc:
+            last_error = exc
+
+        sleep_seconds = _poll_sleep_seconds(
+            start_time=start_time,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+        if sleep_seconds is None:
+            break
+        await asyncio.sleep(sleep_seconds)
+
+    raise TimeoutError(timeout_message(last_error))
+
+
+def _require_openai_model_id(model: OpenAIModelResp, expected_model_id: str) -> OpenAIModelResp:
+    if model.id != expected_model_id:
+        raise _PollPending(f"expected id {expected_model_id!r}, got {model.id!r}")
+    return model
 
 
 class ModelsResource(BaseModelsResource):
@@ -278,6 +367,52 @@ class ModelsResource(BaseModelsResource):
         elapsed = int(time.time() - start_time)
         print(f"Gateway timeout after {elapsed}s\n")
         return False
+
+    def wait_for_openai_model(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        timeout: float = 60,
+        poll_interval: float = 0.5,
+    ) -> OpenAIModelResp:
+        """
+        Wait for the inference gateway's OpenAI model route to resolve a model.
+
+        This verifies the gateway cache used by OpenAI chat completions when the
+        request model is ``workspace/model``. It is more specific than
+        :meth:`wait_for_gateway`, which only checks that the provider route is
+        ready.
+
+        Args:
+            name: Model entity name, with or without a ``workspace/`` prefix
+            workspace: Workspace of the model
+            timeout: Maximum time to wait in seconds
+            poll_interval: Time between route checks in seconds
+
+        Returns:
+            The OpenAI model route response once it matches ``workspace/name``.
+
+        Raises:
+            TimeoutError: If the route does not resolve the expected model in time.
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        model_name, expected_model_id = _openai_model_route_name(name, workspace)
+
+        def attempt() -> OpenAIModelResp:
+            model = self._client.inference.gateway.openai.v1.models.get(name=model_name, workspace=workspace)
+            return _require_openai_model_id(model, expected_model_id)
+
+        return _poll_until_ready(
+            attempt,
+            timeout=timeout,
+            poll_interval=poll_interval,
+            timeout_message=lambda last_error: (
+                f"OpenAI model {expected_model_id} not available in inference gateway after {timeout}s. "
+                f"Last error: {last_error}"
+            ),
+        )
 
     def wait_for_provider(
         self,
@@ -671,6 +806,52 @@ class AsyncModelsResource(BaseAsyncModelsResource):
         elapsed = int(time.time() - start_time)
         print(f"Gateway timeout after {elapsed}s\n")
         return False
+
+    async def wait_for_openai_model(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        timeout: float = 60,
+        poll_interval: float = 0.5,
+    ) -> OpenAIModelResp:
+        """
+        Wait for the inference gateway's OpenAI model route to resolve a model.
+
+        This verifies the gateway cache used by OpenAI chat completions when the
+        request model is ``workspace/model``. It is more specific than
+        :meth:`wait_for_gateway`, which only checks that the provider route is
+        ready.
+
+        Args:
+            name: Model entity name, with or without a ``workspace/`` prefix
+            workspace: Workspace of the model
+            timeout: Maximum time to wait in seconds
+            poll_interval: Time between route checks in seconds
+
+        Returns:
+            The OpenAI model route response once it matches ``workspace/name``.
+
+        Raises:
+            TimeoutError: If the route does not resolve the expected model in time.
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        model_name, expected_model_id = _openai_model_route_name(name, workspace)
+
+        async def attempt() -> OpenAIModelResp:
+            model = await self._client.inference.gateway.openai.v1.models.get(name=model_name, workspace=workspace)
+            return _require_openai_model_id(model, expected_model_id)
+
+        return await _async_poll_until_ready(
+            attempt,
+            timeout=timeout,
+            poll_interval=poll_interval,
+            timeout_message=lambda last_error: (
+                f"OpenAI model {expected_model_id} not available in inference gateway after {timeout}s. "
+                f"Last error: {last_error}"
+            ),
+        )
 
     async def wait_for_provider(
         self,

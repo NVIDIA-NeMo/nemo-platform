@@ -72,6 +72,17 @@ def _get_virtual_model_db_version(virtual_model: object) -> int | None:
     return None
 
 
+def _get_datetime_attr(obj: object, attr_name: str) -> datetime | None:
+    value = getattr(obj, attr_name, None)
+    if isinstance(value, datetime):
+        return ensure_utc(value)
+    return None
+
+
+def _get_virtual_model_observed_at(virtual_model: object) -> datetime | None:
+    return _get_datetime_attr(virtual_model, "updated_at") or _get_datetime_attr(virtual_model, "created_at")
+
+
 # ---------------------------------------------------------------------------
 # Discovery result types
 # ---------------------------------------------------------------------------
@@ -372,7 +383,7 @@ class ModelProviderReconciler:
             logger.warning("Skipping orphaned VirtualModel cleanup because the VirtualModel listing failed")
             return
         try:
-            await self._cleanup_orphaned_virtual_models(provider_contexts, virtual_models[0])
+            await self._cleanup_orphaned_virtual_models(provider_contexts, virtual_models[0], snapshot_taken_at=now)
         except Exception:
             logger.exception("Unexpected error cleaning up orphaned autoprovisioned VirtualModels")
 
@@ -1079,7 +1090,10 @@ class ModelProviderReconciler:
             existing_vm_names.add((workspace, model_name))
 
     async def _cleanup_orphaned_virtual_models(
-        self, provider_contexts: list[ModelContext], vm_snapshot: list[VirtualModel]
+        self,
+        provider_contexts: list[ModelContext],
+        vm_snapshot: list[VirtualModel],
+        snapshot_taken_at: datetime | None = None,
     ) -> None:
         """Delete autoprovisioned VirtualModels whose backing entities are no longer served.
 
@@ -1087,6 +1101,7 @@ class ModelProviderReconciler:
         created during the pass -- by this reconciler or anyone else -- is evaluated
         on a later pass rather than raced against.
         """
+        snapshot_taken_at = ensure_utc(snapshot_taken_at)
         active_model_entity_ids: set[str] = set()
         for ctx in provider_contexts:
             provider = ctx.model_provider
@@ -1109,6 +1124,15 @@ class ModelProviderReconciler:
                 virtual_model.default_model_entity is None
                 or virtual_model.default_model_entity in active_model_entity_ids
             ):
+                continue
+
+            observed_at = _get_virtual_model_observed_at(virtual_model)
+            if snapshot_taken_at is not None and observed_at is not None and observed_at > snapshot_taken_at:
+                logger.debug(
+                    "Skipping orphaned autoprovisioned VirtualModel %s/%s because it changed after the reconciliation snapshot",
+                    virtual_model.workspace,
+                    virtual_model.name,
+                )
                 continue
 
             expected_db_version = _get_virtual_model_db_version(virtual_model)
