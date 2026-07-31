@@ -13,7 +13,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 
 export interface SchemaListProps {
   selectedId: string | null;
-  onSelect: (id: string | null) => void;
+  onSelect: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
@@ -63,8 +63,8 @@ export const SchemaList: FC<SchemaListProps> = ({ selectedId, onSelect, onDelete
               column={column}
               references={referencesById.get(column.id) ?? []}
               selected={column.id === selectedId}
-              onSelect={() => onSelect(column.id)}
-              onDelete={() => onDelete(column.id)}
+              onSelect={onSelect}
+              onDelete={onDelete}
             />
           ))}
         </Stack>
