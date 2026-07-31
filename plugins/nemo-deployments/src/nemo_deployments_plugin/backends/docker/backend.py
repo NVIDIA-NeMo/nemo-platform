@@ -66,6 +66,7 @@ from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
+from requests.exceptions import Timeout as RequestsTimeout
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
 
 if TYPE_CHECKING:
@@ -115,7 +116,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._gpu_pool = get_shared_gpu_pool()
         try:
             self._client = self._create_client()
-        except (DockerException, RequestsConnectionError, OSError) as exc:
+        except (DockerException, RequestsConnectionError, RequestsTimeout, OSError) as exc:
             raise MissingBackendDependencyError(
                 f"Docker daemon is unavailable ({exc}). Docker-backed deployments will be disabled."
             ) from exc
