@@ -8605,6 +8605,11 @@ components:
           title: Principal On Behalf Of Email
           description: The on-behalf-of principal's email address
           type: string
+        origin_workspace:
+          title: Origin Workspace
+          description: Workspace that initiated the operation captured by this auth
+            context
+          type: string
       type: object
       required:
       - principal_id

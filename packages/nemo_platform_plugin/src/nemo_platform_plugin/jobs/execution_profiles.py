@@ -62,6 +62,7 @@ RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
         PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
         TASK_CONFIG_ENVVAR,
         # Auth
+        "NMP_ORIGIN_WORKSPACE",
         "NMP_PRINCIPAL",
         WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
         # Platform launcher logs

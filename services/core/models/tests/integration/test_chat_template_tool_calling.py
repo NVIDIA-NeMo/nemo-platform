@@ -188,6 +188,15 @@ def sample_deployment():
     dep.config = None
     dep.config_version = None
     dep.model_provider_id = None
+    dep.auth_context = SimpleNamespace(
+        principal_id="test-user@example.com",
+        principal_email="test-user@example.com",
+        principal_groups=[],
+        principal_on_behalf_of=None,
+        principal_on_behalf_of_email=None,
+        principal_on_behalf_of_groups=None,
+        origin_workspace=DEFAULT_WORKSPACE,
+    )
     return dep
 
 

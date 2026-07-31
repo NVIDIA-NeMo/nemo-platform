@@ -300,13 +300,20 @@ class TestBuildServicePrincipalHeadersDelegation:
             email="user@example.com",
             groups=["team-a", "team-b"],
         )
-        token = auth_client_context.set(AuthClient(principal=user, config=AuthConfig()))
+        token = auth_client_context.set(
+            AuthClient(
+                principal=user,
+                config=AuthConfig(),
+                request_workspace="workspace-a",
+            )
+        )
         try:
             h = build_service_principal_headers("guardrails")
             assert h["X-NMP-Principal-Id"] == "service:guardrails"
             assert h["X-NMP-Principal-On-Behalf-Of"] == "user@example.com"
             assert h["X-NMP-Principal-On-Behalf-Of-Email"] == "user@example.com"
             assert h["X-NMP-Principal-On-Behalf-Of-Groups"] == "team-a,team-b"
+            assert h["X-NMP-Origin-Workspace"] == "workspace-a"
         finally:
             auth_client_context.reset(token)
 

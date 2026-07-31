@@ -8,11 +8,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nmp.common.auth.client import AuthClient
+from nmp.common.auth.dependencies import build_service_principal_bearer_token
 from nmp.common.auth.jwt import TokenClaims, UnsignedJWTRejectedError
-from nmp.common.auth.middleware import HEALTH_ENDPOINTS, PUBLIC_GET_PATHS, AuthorizationMiddleware
+from nmp.common.auth.middleware import HEALTH_ENDPOINTS, PUBLIC_GET_PATHS, AuthorizationMiddleware, _request_workspace
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig, Configuration
 from nmp.common.config.base import OIDCConfig
@@ -26,12 +29,22 @@ def _cleanup_config_overrides():
 
 
 @pytest.fixture
-def oidc_config():
+def oidc_config(tmp_path):
     """Create an OIDC config for testing."""
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key_file = tmp_path / "service-token.pem"
+    private_key_file.write_bytes(
+        private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
     return OIDCConfig(
         enabled=True,
         issuer="https://sso.example.com",
         client_id="test-client",
+        workload_token_private_key_file=str(private_key_file),
     )
 
 
@@ -123,6 +136,12 @@ def create_test_app_with_platform_routes(auth_config: AuthConfig) -> FastAPI:
         return {"data": []}
 
     return app
+
+
+def test_request_workspace_uses_canonical_versioned_workspace_segment() -> None:
+    path = "/apis/entities/v2/workspaces/source/entities/workspaces/resource-name"
+
+    assert _request_workspace(path) == "source"
 
 
 class TestHealthEndpointsBypass:
@@ -440,8 +459,9 @@ class TestCompatibilityAuth:
     @pytest.mark.parametrize(
         "token,expected_status",
         [
-            ("service:nim", 200),
-            ("service:customizer", 200),
+            ("service:nim", 401),
+            ("service:customizer", 401),
+            ("nmp-service-v2.not-a-jwt", 401),
             ("invalid-token", 401),
         ],
     )
@@ -462,8 +482,8 @@ class TestCompatibilityAuth:
             if expected_status == 200:
                 mock_authorize.assert_called_once()
 
-    def test_hf_endpoint_authorizes_as_bearer_service_principal(self, auth_config_enabled):
-        """The PDP receives the service principal synthesized from the HF Bearer token."""
+    def test_hf_endpoint_rejects_legacy_service_principal_token(self, auth_config_enabled):
+        """Raw service principals are not credentials for the HF endpoint."""
         app = create_test_app(auth_config_enabled)
         client = TestClient(app, raise_server_exceptions=False)
 
@@ -475,9 +495,78 @@ class TestCompatibilityAuth:
                 headers={"Authorization": "Bearer service:models"},
             )
 
+        assert response.status_code == 401
+        mock_authorize.assert_not_called()
+
+    def test_hf_endpoint_authorizes_with_delegated_service_token(self, auth_config_enabled):
+        """A puller token preserves the original user and source workspace context."""
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+        token = build_service_principal_bearer_token(
+            "models",
+            on_behalf_of=Principal(
+                id="user@example.com",
+                email="user@example.com",
+                groups=["model-exporters"],
+            ),
+            origin_workspace="destination-workspace",
+            source_workspace="source-workspace",
+        )
+
+        with patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=True)
+            response = client.get(
+                "/apis/files/v2/hf/source-workspace/my-fileset/resolve/main/model.bin",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
         assert response.status_code == 200
         auth_client = mock_authorize.call_args.args[0]
         assert auth_client.principal.id == "service:models"
+        assert auth_client.principal.effective_id == "user@example.com"
+        assert auth_client.principal.effective_email == "user@example.com"
+        assert auth_client.principal.effective_groups == []
+        assert mock_authorize.call_args.kwargs["origin_workspace"] == "destination-workspace"
+
+    def test_hf_endpoint_rejects_token_for_different_source_workspace(self, auth_config_enabled):
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+        token = build_service_principal_bearer_token(
+            "models",
+            on_behalf_of=Principal(id="user@example.com"),
+            origin_workspace="destination-workspace",
+            source_workspace="different-source",
+        )
+
+        with patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize:
+            response = client.get(
+                "/apis/files/v2/hf/source-workspace/my-fileset/resolve/main/model.bin",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert response.status_code == 401
+        mock_authorize.assert_not_called()
+
+    def test_hf_endpoint_rejects_tampered_delegation_token(self, auth_config_enabled):
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+        token = build_service_principal_bearer_token(
+            "models",
+            on_behalf_of=Principal(id="user@example.com"),
+            origin_workspace="destination-workspace",
+            source_workspace="source-workspace",
+        )
+        replacement = "a" if token[-1] != "a" else "b"
+        tampered = f"{token[:-1]}{replacement}"
+
+        with patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize:
+            response = client.get(
+                "/apis/files/v2/hf/source-workspace/my-fileset/resolve/main/model.bin",
+                headers={"Authorization": f"Bearer {tampered}"},
+            )
+
+        assert response.status_code == 401
+        mock_authorize.assert_not_called()
 
     def test_files_otlp_logs_upload_accepts_service_principal_header(self, auth_config_enabled):
         """Job log uploads accept the launcher fallback service principal header."""
@@ -615,6 +704,7 @@ class TestServicePrincipalDelegationMiddleware:
                     "x-nmp-principal-on-behalf-of": "user@example.com",
                     "x-nmp-principal-on-behalf-of-groups": "ws-editors",
                     "x-nmp-principal-on-behalf-of-email": "user@example.com",
+                    "x-nmp-origin-workspace": "test-workspace",
                 },
             )
 
@@ -639,7 +729,77 @@ class TestServicePrincipalDelegationMiddleware:
                     "x-nmp-principal-id": "service:worker",
                     "x-nmp-principal-on-behalf-of": "user@example.com",
                     "x-nmp-principal-on-behalf-of-groups": "no-access",
+                    "x-nmp-origin-workspace": "test-workspace",
                 },
             )
 
         assert response.status_code == 403
+
+    def test_service_origin_workspace_is_sent_to_pdp(self, auth_config_enabled):
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch.object(AuthClient, "authorize_request", new_callable=AsyncMock) as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=True)
+            response = client.post(
+                "/apis/files/v2/workspaces/workspace-b/filesets/logs/otlp/v1/logs",
+                headers={
+                    "x-nmp-principal-id": "service:worker",
+                    "x-nmp-principal-on-behalf-of": "user@example.com",
+                    "x-nmp-origin-workspace": "workspace-a",
+                },
+            )
+
+        assert response.status_code == 200
+        assert mock_authorize.call_args.kwargs["origin_workspace"] == "workspace-a"
+
+    def test_user_cannot_spoof_origin_workspace(self, auth_config_enabled):
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch.object(AuthClient, "authorize_request", new_callable=AsyncMock) as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=True)
+            response = client.post(
+                "/apis/files/v2/workspaces/workspace-b/filesets/logs/otlp/v1/logs",
+                headers={
+                    "x-nmp-principal-id": "user@example.com",
+                    "x-nmp-origin-workspace": "workspace-b",
+                },
+            )
+
+        assert response.status_code == 200
+        assert mock_authorize.call_args.kwargs["origin_workspace"] is None
+
+    def test_service_delegation_requires_origin_workspace(self, auth_config_enabled):
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch.object(AuthClient, "authorize_request", new_callable=AsyncMock) as mock_authorize:
+            response = client.post(
+                "/apis/files/v2/workspaces/workspace-b/filesets/logs/otlp/v1/logs",
+                headers={
+                    "x-nmp-principal-id": "service:worker",
+                    "x-nmp-principal-on-behalf-of": "user@example.com",
+                },
+            )
+
+        assert response.status_code == 400
+        mock_authorize.assert_not_awaited()
+
+    def test_service_malformed_origin_workspace_is_rejected(self, auth_config_enabled):
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch.object(AuthClient, "authorize_request", new_callable=AsyncMock) as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=True)
+            response = client.post(
+                "/apis/files/v2/workspaces/workspace-b/filesets/logs/otlp/v1/logs",
+                headers={
+                    "x-nmp-principal-id": "service:worker",
+                    "x-nmp-principal-on-behalf-of": "user@example.com",
+                    "x-nmp-origin-workspace": "invalid!!header",
+                },
+            )
+
+        assert response.status_code == 400
+        mock_authorize.assert_not_awaited()

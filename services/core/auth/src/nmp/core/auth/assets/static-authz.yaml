@@ -14,6 +14,9 @@ authz:
       delete:
         description: "Delete entities"
         has_role: false
+      export:
+        description: "Reference entities from another workspace"
+        has_endpoint: false
       read:
         description: "Read entities"
         has_role: false
@@ -25,6 +28,9 @@ authz:
         description: "Create filesets"
       delete:
         description: "Delete filesets"
+      export:
+        description: "Reference filesets from another workspace"
+        has_endpoint: false
       list:
         description: "List filesets"
       read:
@@ -40,6 +46,9 @@ authz:
           description: "Create guardrail configurations"
         delete:
           description: "Delete guardrail configurations"
+        export:
+          description: "Reference guardrail configurations from another workspace"
+          has_endpoint: false
         list:
           description: "List guardrail configurations"
         read:
@@ -64,6 +73,9 @@ authz:
           description: "Create inference deployment configurations"
         delete:
           description: "Delete inference deployment configurations"
+        export:
+          description: "Reference inference deployment configurations from another workspace"
+          has_endpoint: false
         list:
           description: "List inference deployment configurations"
         read:
@@ -73,6 +85,9 @@ authz:
           description: "Create inference deployments"
         delete:
           description: "Delete inference deployments"
+        export:
+          description: "Reference inference deployments from another workspace"
+          has_endpoint: false
         list:
           description: "List inference deployments"
         read:
@@ -94,6 +109,9 @@ authz:
           description: "Create inference providers"
         delete:
           description: "Delete inference providers"
+        export:
+          description: "Reference inference providers from another workspace"
+          has_endpoint: false
         list:
           description: "List inference providers"
         read:
@@ -105,6 +123,9 @@ authz:
           description: "Create virtual models"
         delete:
           description: "Delete virtual models"
+        export:
+          description: "Reference virtual models from another workspace"
+          has_endpoint: false
         list:
           description: "List virtual models"
         read:
@@ -115,6 +136,9 @@ authz:
       evaluator-results:
         create:
           description: "Create intake evaluator results"
+        export:
+          description: "Reference intake evaluator results from another workspace"
+          has_endpoint: false
         list:
           description: "List intake evaluator results"
         read:
@@ -122,6 +146,9 @@ authz:
       annotations:
         create:
           description: "Create intake annotations"
+        export:
+          description: "Reference intake annotations from another workspace"
+          has_endpoint: false
         list:
           description: "List intake annotations"
         read:
@@ -133,6 +160,9 @@ authz:
           description: "Create intake experiments"
         delete:
           description: "Delete intake experiments"
+        export:
+          description: "Reference intake experiments from another workspace"
+          has_endpoint: false
         read:
           description: "Read intake experiments"
         update:
@@ -142,6 +172,9 @@ authz:
           description: "Create intake evaluations"
         delete:
           description: "Delete intake evaluations"
+        export:
+          description: "Reference intake evaluations from another workspace"
+          has_endpoint: false
         read:
           description: "Read intake evaluations"
         update:
@@ -150,14 +183,23 @@ authz:
         create:
           description: "Ingest traces into intake"
       sessions:
+        export:
+          description: "Reference intake sessions from another workspace"
+          has_endpoint: false
         read:
           description: "Read intake sessions"
       spans:
+        export:
+          description: "Reference intake spans from another workspace"
+          has_endpoint: false
         list:
           description: "List intake spans"
         read:
           description: "Read intake spans"
       traces:
+        export:
+          description: "Reference intake traces from another workspace"
+          has_endpoint: false
         read:
           description: "Read intake traces"
     jobs:
@@ -167,6 +209,9 @@ authz:
         description: "Create jobs"
       delete:
         description: "Delete jobs"
+      export:
+        description: "Reference jobs from another workspace"
+        has_endpoint: false
       list:
         description: "List jobs"
       logs:
@@ -182,6 +227,9 @@ authz:
           description: "Read model adapters"
         list:
           description: "List model adapters"
+        export:
+          description: "Reference model adapters from another workspace"
+          has_endpoint: false
         create:
           description: "Create model adapters"
         update:
@@ -193,6 +241,9 @@ authz:
           description: "Read model prompts"
         list:
           description: "List model prompts"
+        export:
+          description: "Reference model prompts from another workspace"
+          has_endpoint: false
         create:
           description: "Create model prompts"
         update:
@@ -203,6 +254,9 @@ authz:
         description: "Create models"
       delete:
         description: "Delete models"
+      export:
+        description: "Reference models from another workspace"
+        has_endpoint: false
       list:
         description: "List models"
       read:
@@ -226,6 +280,9 @@ authz:
         description: "Create projects"
       delete:
         description: "Delete projects"
+      export:
+        description: "Reference projects from another workspace"
+        has_endpoint: false
       list:
         description: "List projects"
       read:
@@ -240,6 +297,9 @@ authz:
           description: "Create safe synthesizer jobs"
         delete:
           description: "Delete safe synthesizer jobs"
+        export:
+          description: "Reference safe synthesizer jobs from another workspace"
+          has_endpoint: false
         list:
           description: "List safe synthesizer jobs"
         read:
@@ -252,6 +312,9 @@ authz:
         description: "Create secrets"
       delete:
         description: "Delete secrets"
+      export:
+        description: "Reference secrets from another workspace"
+        has_endpoint: false
       list:
         description: "List secrets"
       read:
@@ -272,6 +335,9 @@ authz:
           description: "Read workspace member details"
         list:
           description: "List workspace members"
+        export:
+          description: "Reference workspace member details from another workspace"
+          has_endpoint: false
         create:
           description: "Add workspace members"
         update:
@@ -280,6 +346,9 @@ authz:
           description: "Remove workspace members"
       read:
         description: "Read workspaces"
+      export:
+        description: "Reference workspaces from another workspace"
+        has_endpoint: false
       update:
         description: "Update workspaces"
 
@@ -377,14 +446,43 @@ authz:
       - projects.create
       - projects.delete
       - projects.update
+      - secrets.access
       - secrets.create
       - secrets.delete
       - secrets.update
       - workspaces.delete
       - workspaces.update
+    Exporter:
+      description: "Read resources and reference them from other workspaces"
+      includes: ["Viewer"]
+      permissions:
+      - entities.export
+      - filesets.export
+      - guardrails.configs.export
+      - inference.deployment-configs.export
+      - inference.deployments.export
+      - inference.providers.export
+      - inference.virtual-models.export
+      - intake.annotations.export
+      - intake.evaluations.export
+      - intake.evaluator-results.export
+      - intake.experiments.export
+      - intake.sessions.export
+      - intake.spans.export
+      - intake.traces.export
+      - jobs.export
+      - models.adapters.export
+      - models.export
+      - models.prompts.export
+      - projects.export
+      - safe-synthesizer.jobs.export
+      - secrets.access
+      - secrets.export
+      - workspaces.export
+      - workspaces.members.export
     Admin:
       description: "Full workspace management capabilities"
-      includes: ["Editor"]
+      includes: ["Editor", "Exporter"]
       permissions:
       - iam.create
       - iam.read

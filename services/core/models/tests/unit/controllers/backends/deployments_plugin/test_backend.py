@@ -18,9 +18,26 @@ from nmp.core.models.controllers.backends.deployments_plugin.config import Deplo
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
 
 
+def _auth_context() -> SimpleNamespace:
+    return SimpleNamespace(
+        principal_id="creator@example.com",
+        principal_email="creator@example.com",
+        principal_groups=["model-builders"],
+        principal_on_behalf_of=None,
+        principal_on_behalf_of_email=None,
+        principal_on_behalf_of_groups=None,
+        origin_workspace="default",
+    )
+
+
 def _ctx() -> SimpleNamespace:
     return SimpleNamespace(
-        model_deployment=SimpleNamespace(name="my-dep", workspace="default", status="CREATED"),
+        model_deployment=SimpleNamespace(
+            name="my-dep",
+            workspace="default",
+            status="CREATED",
+            auth_context=_auth_context(),
+        ),
         model_deployment_config=SimpleNamespace(engine="vllm"),
         model_entity=None,
     )
@@ -28,7 +45,7 @@ def _ctx() -> SimpleNamespace:
 
 def _resolved() -> ResolvedPluginDeployment:
     return ResolvedPluginDeployment(
-        deployment=SimpleNamespace(name="my-dep", workspace="default"),
+        deployment=SimpleNamespace(name="my-dep", workspace="default", auth_context=_auth_context()),
         config=SimpleNamespace(engine="vllm"),
         model_entity=None,
         view=DeploymentConfigView(model_namespace="org", model_name="model"),
@@ -131,7 +148,7 @@ async def test_create_order_volume_puller_server_with_prerequisite() -> None:
 
 def _resolved_docker_lora() -> ResolvedPluginDeployment:
     return ResolvedPluginDeployment(
-        deployment=SimpleNamespace(name="my-dep", workspace="default"),
+        deployment=SimpleNamespace(name="my-dep", workspace="default", auth_context=_auth_context()),
         config=SimpleNamespace(engine="vllm"),
         model_entity=None,
         view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=True, gpu=1),

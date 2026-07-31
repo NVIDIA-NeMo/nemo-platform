@@ -20,7 +20,7 @@ from nemo_platform_plugin.jobs import execution_profiles as _execution_profiles
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.jobs.types import PlatformJobStepResponse, PlatformJobStepWithContext
-from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
+from nmp.common.auth.models import NMP_ORIGIN_WORKSPACE_ENVVAR, NMP_PRINCIPAL_ENVVAR
 from nmp.common.config.base import (
     LOOPBACK_ADDRESSES,
     NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
@@ -98,6 +98,7 @@ RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = (
             PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
             TASK_CONFIG_ENVVAR,
             # Auth
+            NMP_ORIGIN_WORKSPACE_ENVVAR,
             NMP_PRINCIPAL_ENVVAR,
             # Platform launcher logs
             JOB_LOGS_ENDPOINT_ENVVAR,

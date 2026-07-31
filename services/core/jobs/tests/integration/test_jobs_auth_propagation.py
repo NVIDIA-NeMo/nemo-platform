@@ -118,4 +118,4 @@ class TestJobCreationWithAuth:
         assert step.auth_context is not None, "Service principal should see auth_context"
         assert step.auth_context.principal_id == creator_email
         assert step.auth_context.principal_email == creator_email
-        assert step.auth_context.principal_groups == creator_groups
+        assert step.auth_context.principal_groups == []

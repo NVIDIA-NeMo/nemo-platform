@@ -9,13 +9,20 @@ from .client import AuthClient, AuthorizationResult
 from .dependencies import (
     auth_as_service,
     auth_client_context,
+    build_service_principal_bearer_token,
     build_service_principal_headers,
     get_auth_client,
     get_principal_auth_headers,
 )
 from .exceptions import AuthorizationError, InvalidPermissionFormatError, InvalidScopeFormatError
 from .middleware import AuthorizationMiddleware
-from .models import NMP_PRINCIPAL_ENVVAR, AuthContext, Principal
+from .models import (
+    NMP_ORIGIN_WORKSPACE_ENVVAR,
+    NMP_ORIGIN_WORKSPACE_HEADER,
+    NMP_PRINCIPAL_ENVVAR,
+    AuthContext,
+    Principal,
+)
 from .permissions import ALL_WORKSPACES, compute_accessible_workspaces
 from .tasks import principal_from_env
 
@@ -32,10 +39,13 @@ __all__ = [
     "InvalidScopeFormatError",
     "AuthorizationMiddleware",
     "AuthorizationResult",
+    "NMP_ORIGIN_WORKSPACE_ENVVAR",
+    "NMP_ORIGIN_WORKSPACE_HEADER",
     "NMP_PRINCIPAL_ENVVAR",
     "Principal",
     "auth_as_service",
     "auth_client_context",
+    "build_service_principal_bearer_token",
     "build_service_principal_headers",
     "principal_from_env",
     "compute_accessible_workspaces",

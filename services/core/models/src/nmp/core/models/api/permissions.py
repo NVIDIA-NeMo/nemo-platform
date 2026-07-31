@@ -23,6 +23,21 @@ from nmp.common.auth import AuthClient
 from nmp.common.entities.utils import parse_entity_ref
 
 
+async def _has_reference_permissions(
+    auth_client: AuthClient,
+    *,
+    source_workspace: str,
+    destination_workspace: str,
+    read_permission: str,
+    export_permission: str,
+) -> bool:
+    """Require read access, plus export access when a reference crosses workspaces."""
+    permissions = [read_permission]
+    if source_workspace != destination_workspace:
+        permissions.append(export_permission)
+    return await auth_client.has_permissions(source_workspace, permissions)
+
+
 async def check_secret_access(nmp_sdk: AsyncNeMoPlatform, secret_name: str, workspace: str) -> None:
     """Check that the current user can access the referenced secret.
 
@@ -68,7 +83,13 @@ async def check_deployment_access(auth_client: AuthClient, deployment_id: str, w
         PermissionError: If the user cannot access the deployment's workspace.
     """
     deploy_workspace = parse_entity_ref(deployment_id, default_workspace=workspace).workspace
-    if not await auth_client.has_permissions(deploy_workspace, ["inference.deployments.read"]):
+    if not await _has_reference_permissions(
+        auth_client,
+        source_workspace=deploy_workspace,
+        destination_workspace=workspace,
+        read_permission="inference.deployments.read",
+        export_permission="inference.deployments.export",
+    ):
         raise PermissionError(f"Access denied to deployment '{deployment_id}'")
 
 
@@ -78,7 +99,14 @@ async def check_deployment_config_access(auth_client: AuthClient, config_name: s
     Raises:
         PermissionError: If the user cannot access the config's workspace.
     """
-    if not await auth_client.has_permissions(workspace, ["inference.deployment-configs.read"]):
+    config_workspace = parse_entity_ref(config_name, default_workspace=workspace).workspace
+    if not await _has_reference_permissions(
+        auth_client,
+        source_workspace=config_workspace,
+        destination_workspace=workspace,
+        read_permission="inference.deployment-configs.read",
+        export_permission="inference.deployment-configs.export",
+    ):
         raise PermissionError(f"Access denied to deployment config '{config_name}' in workspace '{workspace}'")
 
 
@@ -91,7 +119,13 @@ async def check_model_entity_access(auth_client: AuthClient, model_entity_id: st
         PermissionError: If the user cannot access the model entity's workspace.
     """
     entity_workspace = parse_entity_ref(model_entity_id, default_workspace=workspace).workspace
-    if not await auth_client.has_permissions(entity_workspace, ["models.read"]):
+    if not await _has_reference_permissions(
+        auth_client,
+        source_workspace=entity_workspace,
+        destination_workspace=workspace,
+        read_permission="models.read",
+        export_permission="models.export",
+    ):
         raise PermissionError(f"Access denied to model entity '{model_entity_id}'")
 
 

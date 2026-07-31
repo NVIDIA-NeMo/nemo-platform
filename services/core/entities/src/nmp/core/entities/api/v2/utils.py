@@ -26,6 +26,7 @@ ROLE_BINDING_ENTITY_TYPE = "role_binding"
 
 # Wildcard principal that grants access to all authenticated users
 WILDCARD_PRINCIPAL = "*"
+MAX_EXPORT_PERMISSION_CHECK_CONCURRENCY = 20
 
 # In-process LRU + TTL cache for _fetch_bindings_for_principal.
 # Configure with NMP_ENTITIES_PRINCIPAL_BINDINGS_CACHE_{ENABLED,TTL_SEC,MAX_SIZE} (see EntitiesConfig).
@@ -243,6 +244,27 @@ async def get_accessible_workspaces(
 
     if accessible == ALL_WORKSPACES:
         return None  # No filtering needed
+
+    # Delegated wildcard reads may include the operation's origin workspace,
+    # but data from any other workspace must be explicitly exportable by the
+    # effective user. The auth service's has-permissions entrypoint evaluates
+    # delegated requests using only that effective identity, not ServiceSystem.
+    if principal.is_delegated and auth_client.origin_workspace:
+        origin_workspace = auth_client.origin_workspace
+        candidate_exports = [workspace for workspace in accessible if workspace != origin_workspace]
+        semaphore = asyncio.Semaphore(MAX_EXPORT_PERMISSION_CHECK_CONCURRENCY)
+
+        async def can_export(workspace: str) -> bool:
+            async with semaphore:
+                return await auth_client.has_permissions(workspace, ["entities.export"])
+
+        export_checks = await asyncio.gather(*(can_export(workspace) for workspace in candidate_exports))
+        exportable_workspaces = {
+            workspace for workspace, allowed in zip(candidate_exports, export_checks, strict=True) if allowed
+        }
+        if origin_workspace in accessible:
+            exportable_workspaces.add(origin_workspace)
+        return exportable_workspaces
 
     return accessible
 

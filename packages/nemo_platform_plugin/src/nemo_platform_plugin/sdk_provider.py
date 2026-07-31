@@ -18,8 +18,9 @@ Lookup order for the provider
    When ``nmp-common`` is installed in the image (platform deployment), its
    provider is picked up automatically.
 3. **Built-in default** — :class:`DefaultSDKProvider`, an env-var-based
-   implementation that reads ``NMP_BASE_URL`` and ``NMP_PRINCIPAL``.  Works
-   for local development and gateway-routed task containers.
+   implementation that reads ``NMP_BASE_URL``, ``NMP_PRINCIPAL``, and
+   ``NMP_ORIGIN_WORKSPACE``. Works for local development and gateway-routed
+   task containers.
 
 Usage from a plugin ``__main__.py``::
 
@@ -51,6 +52,8 @@ _INTERNAL_REQUEST_HEADER = "X-NMP-Internal"
 # Environment variable the jobs backend writes with the job creator's
 # principal (JSON-serialised).
 _NMP_PRINCIPAL_ENVVAR = "NMP_PRINCIPAL"
+_NMP_ORIGIN_WORKSPACE_ENVVAR = "NMP_ORIGIN_WORKSPACE"
+_NMP_ORIGIN_WORKSPACE_HEADER = "X-NMP-Origin-Workspace"
 
 
 # ---------------------------------------------------------------------------
@@ -158,8 +161,15 @@ def _on_behalf_of_headers(principal: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
+def _task_origin_headers() -> dict[str, str]:
+    origin_workspace = os.environ.get(_NMP_ORIGIN_WORKSPACE_ENVVAR)
+    return {_NMP_ORIGIN_WORKSPACE_HEADER: origin_workspace} if origin_workspace else {}
+
+
 def _workload_identity_headers(*, internal: bool) -> dict[str, str]:
-    return {_INTERNAL_REQUEST_HEADER: "true"} if internal else {}
+    headers = {_INTERNAL_REQUEST_HEADER: "true"} if internal else {}
+    headers.update(_task_origin_headers())
+    return headers
 
 
 class DefaultSDKProvider:
@@ -181,6 +191,7 @@ class DefaultSDKProvider:
             "X-NMP-Principal-Id": f"service:{service_name}",
             _INTERNAL_REQUEST_HEADER: "true",
         }
+        headers.update(_task_origin_headers())
 
         principal = _read_principal_from_env()
         if principal is not None:
@@ -210,6 +221,7 @@ class DefaultSDKProvider:
             "X-NMP-Principal-Id": f"service:{service_name}",
             _INTERNAL_REQUEST_HEADER: "true",
         }
+        headers.update(_task_origin_headers())
 
         principal = _read_principal_from_env()
         if principal is not None:

@@ -92,7 +92,10 @@ async def create_provider(
     Create a new model provider.
     """
     logger.info(f"Creating model provider: {workspace}/{request.name}")
-    auth_context = AuthContext.from_principal(auth_client.principal)
+    auth_context = AuthContext.from_principal(
+        auth_client.principal,
+        origin_workspace=auth_client.outbound_origin_workspace,
+    )
 
     try:
         if request.api_key_secret_name:
@@ -145,7 +148,10 @@ async def upsert_provider(
     Create or update a model provider.
     """
     logger.debug(f"Upserting model provider: {workspace}/{name}")
-    auth_context = AuthContext.from_principal(auth_client.principal)
+    auth_context = AuthContext.from_principal(
+        auth_client.principal,
+        origin_workspace=auth_client.outbound_origin_workspace,
+    )
 
     try:
         if request.api_key_secret_name:

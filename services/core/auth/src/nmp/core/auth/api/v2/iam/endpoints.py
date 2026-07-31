@@ -75,6 +75,7 @@ async def list_role_bindings(
     This endpoint requires Platform Admin permissions.
     """
     require_service_principal_for_iam_role_bindings(auth_client)
+    entities_client = entities_client.as_service("auth", internal=True)
 
     # Translate is_active filter to revoked_at EXISTS filter for database query
     is_active_value = parsed.remove("is_active")
@@ -133,6 +134,7 @@ async def create_role_binding(
     Use `wait_role_propagation=false` to skip waiting (useful for bulk operations).
     """
     require_service_principal_for_iam_role_bindings(auth_client)
+    entities_client = entities_client.as_service("auth", internal=True)
     # Get the principal ID of the user making the request
     granted_by = auth_client.principal.id if auth_client.principal.id else "system"
 
@@ -197,6 +199,7 @@ async def get_role_binding(
     This endpoint requires Platform Admin permissions.
     """
     require_service_principal_for_iam_role_bindings(auth_client)
+    entities_client = entities_client.as_service("auth", internal=True)
     obj = await entities_client.get(RoleBindingEntity, name=name)
     if obj is None:
         raise HTTPException(status_code=404, detail="Role binding not found")
@@ -227,6 +230,7 @@ async def revoke_role_binding(
     Use `wait_role_propagation=false` to skip waiting (useful for bulk operations).
     """
     require_service_principal_for_iam_role_bindings(auth_client)
+    entities_client = entities_client.as_service("auth", internal=True)
     obj = await entities_client.get(RoleBindingEntity, name=name)
     if obj is None:
         raise HTTPException(status_code=404, detail="Role binding not found")

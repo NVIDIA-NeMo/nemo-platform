@@ -30,10 +30,12 @@ from nemo_deployments_plugin.entities import (
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
 from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.config import Runtime
+from nmp.common.entities.utils import parse_entity_ref
 from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
+from nmp.core.models.controllers.backends.deployments_plugin.runtime_auth import files_service_bearer_token
 from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, ENGINE_NIM, ENGINE_VLLM
 
 _WEIGHTS_MOUNT = "/model-store"
@@ -123,6 +125,7 @@ def tool_call_plugin_init_containers(
     puller_parts = _puller_image_parts(resolved.huggingface_model_puller)
     if puller_parts is None:
         return None
+    plugin_workspace = parse_entity_ref(plugin_fileset, default_workspace=resolved.deployment.workspace).workspace
     puller_repo, puller_tag = puller_parts
     scratch_mount = VolumeMount(name=names_scratch, mountPath=_SCRATCH_MOUNT)
     weights_mount = VolumeMount(name=names_volume, mountPath=_WEIGHTS_MOUNT)
@@ -152,7 +155,10 @@ def tool_call_plugin_init_containers(
             command=["download", plugin_fileset, "--local-dir", _TOOL_CALL_PLUGIN_SCRATCH_DIR],
             env=[
                 EnvVar(name="HF_ENDPOINT", value=resolved.files_hf_url),
-                EnvVar(name="HF_TOKEN", value="service:models"),
+                EnvVar(
+                    name="HF_TOKEN",
+                    value=files_service_bearer_token(resolved.deployment, plugin_workspace),
+                ),
             ],
             volumeMounts=[scratch_mount],
         ),

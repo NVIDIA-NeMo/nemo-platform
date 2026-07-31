@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nmp.common.auth import Principal
-from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
+from nmp.common.auth.models import NMP_ORIGIN_WORKSPACE_ENVVAR, NMP_PRINCIPAL_ENVVAR
 from nmp.common.jobs.constants import NEMO_JOB_SECRETS_ENVVAR
 from nmp.core.jobs.controllers.backends.subprocess_runtime import (
     NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR,
@@ -47,6 +47,7 @@ def test_inject_secret_env_vars():
     principal = Principal(id="creator@example.com")
     env = {
         NEMO_JOB_SECRETS_ENVVAR: "HF_TOKEN=default/hf-token",
+        NMP_ORIGIN_WORKSPACE_ENVVAR: "training-workspace",
         NMP_PRINCIPAL_ENVVAR: principal.model_dump_json(exclude_none=True),
         "NMP_SECRETS_URL": "http://secrets.example",
     }
@@ -64,6 +65,7 @@ def test_inject_secret_env_vars():
     assert request.full_url == "http://secrets.example/apis/secrets/v2/workspaces/default/secrets/hf-token/access"
     assert request.get_header("X-nmp-principal-id") == "service:jobs"
     assert request.get_header("X-nmp-principal-on-behalf-of") == "creator@example.com"
+    assert request.get_header("X-nmp-origin-workspace") == "training-workspace"
 
 
 def test_inject_secret_env_vars_rejects_missing_value_field():

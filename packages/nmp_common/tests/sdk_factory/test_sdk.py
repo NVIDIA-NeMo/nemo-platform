@@ -299,12 +299,14 @@ def test_get_task_sdk_with_principal(monkeypatch: pytest.MonkeyPatch):
         }
     )
     monkeypatch.setenv("NMP_PRINCIPAL", principal_json)
+    monkeypatch.setenv("NMP_ORIGIN_WORKSPACE", "training-workspace")
 
     sdk = get_task_sdk(as_service="customizer")
 
     assert sdk.default_headers["X-NMP-Principal-Id"] == "service:customizer"
     assert sdk.default_headers["X-NMP-Internal"] == "true"
     assert sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "real-user@example.com"
+    assert sdk.default_headers["X-NMP-Origin-Workspace"] == "training-workspace"
 
 
 def test_get_task_sdk_without_principal(monkeypatch: pytest.MonkeyPatch):
@@ -442,6 +444,54 @@ def test_get_request_scoped_sdk_merges_otel_and_auth_headers():
     assert scoped_sdk.default_headers["X-NMP-Principal-Groups"] == "group1,group2"
 
 
+def test_get_request_scoped_sdk_can_delegate_as_calling_service():
+    """Service request SDKs carry the trusted caller, delegated user, and origin."""
+    base_sdk = get_async_platform_sdk()
+    service_headers = {
+        "X-NMP-Principal-Id": "service:models",
+        "X-NMP-Principal-On-Behalf-Of": "user@example.com",
+        "X-NMP-Origin-Workspace": "workspace-a",
+    }
+
+    with (
+        patch("nmp.common.sdk_factory.get_otel_headers", return_value={}),
+        patch(
+            "nmp.common.sdk_factory.build_service_principal_headers",
+            return_value=service_headers,
+        ) as build_headers,
+    ):
+        scoped_sdk = get_request_scoped_sdk(base_sdk, as_service="models")
+
+    build_headers.assert_called_once_with("models")
+    assert scoped_sdk.default_headers["X-NMP-Principal-Id"] == "service:models"
+    assert scoped_sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "user@example.com"
+    assert scoped_sdk.default_headers["X-NMP-Origin-Workspace"] == "workspace-a"
+
+
+def test_get_request_scoped_sdk_uses_trusted_route_workspace_as_origin():
+    """A mounted workspace route supplies origin even when middleware path inference cannot."""
+    base_sdk = get_async_platform_sdk()
+    service_headers = {
+        "X-NMP-Principal-Id": "service:data-designer",
+        "X-NMP-Principal-On-Behalf-Of": "user@example.com",
+    }
+
+    with (
+        patch("nmp.common.sdk_factory.get_otel_headers", return_value={}),
+        patch(
+            "nmp.common.sdk_factory.build_service_principal_headers",
+            return_value=service_headers,
+        ),
+    ):
+        scoped_sdk = get_request_scoped_sdk(
+            base_sdk,
+            as_service="data-designer",
+            origin_workspace="workspace-a",
+        )
+
+    assert scoped_sdk.default_headers["X-NMP-Origin-Workspace"] == "workspace-a"
+
+
 def test_get_request_scoped_sdk_preserves_request_router(monkeypatch: pytest.MonkeyPatch):
     """Derived request SDKs must keep the base SDK's path-aware platform request router."""
     monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
@@ -480,7 +530,7 @@ def test_get_sdk_on_behalf_of_preserves_request_router(monkeypatch: pytest.Monke
 
     try:
         base_sdk = get_async_platform_sdk(as_service="models", internal=True)
-        scoped_sdk = get_sdk_on_behalf_of(base_sdk, "user@example.com")
+        scoped_sdk = get_sdk_on_behalf_of(base_sdk, "user@example.com", origin_workspace="workspace-a")
 
         prepared = scoped_sdk._prepare_url("https://nemo-gateway:8080/apis/entities/v2/workspaces")
 
@@ -488,6 +538,7 @@ def test_get_sdk_on_behalf_of_preserves_request_router(monkeypatch: pytest.Monke
         assert prepared.host == "127.0.0.1"
         assert prepared.port == 8080
         assert prepared.path == "/apis/entities/v2/workspaces"
+        assert scoped_sdk.default_headers["X-NMP-Origin-Workspace"] == "workspace-a"
     finally:
         Configuration.clear_cache()
 

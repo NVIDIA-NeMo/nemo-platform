@@ -2138,6 +2138,7 @@ def test_step_pending_with_auth_context() -> PlatformJobStepWithContext:
             principal_id="creator@example.com",
             principal_email="creator@example.com",
             principal_groups=["engineering", "ml-team"],
+            origin_workspace="default",
         ),
     )
 
@@ -2153,7 +2154,7 @@ def test_kubernetes_job_schedule_with_auth_context(
     """
     import json
 
-    from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
+    from nmp.common.auth.models import NMP_ORIGIN_WORKSPACE_ENVVAR, NMP_PRINCIPAL_ENVVAR
 
     # Mock successful job creation
     kubernetes_job._batch_v1.create_namespaced_job.return_value = MagicMock()
@@ -2180,8 +2181,9 @@ def test_kubernetes_job_schedule_with_auth_context(
     assert principal_data == {
         "id": "creator@example.com",
         "email": "creator@example.com",
-        "groups": ["engineering", "ml-team"],
+        "groups": [],
     }
+    assert env_vars[NMP_ORIGIN_WORKSPACE_ENVVAR] == "default"
 
     # Verify launcher application log auth is not configured through env headers.
     assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env_var_names

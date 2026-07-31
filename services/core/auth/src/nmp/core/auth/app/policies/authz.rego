@@ -5,10 +5,13 @@ import future.keywords.if
 import future.keywords.in
 
 import data.authz.extract_method
+import data.authz.extract_on_behalf_of_principal_id
+import data.authz.extract_origin_workspace
 import data.authz.extract_path
 import data.authz.scope_check_passed
 import data.common.endpoint_scan
 import data.common.get_applicable_principals
+import data.common.get_effective_applicable_principals
 import data.common.has_permissions
 import data.common.req_callers
 import data.common.req_deny
@@ -226,6 +229,111 @@ allow_request if {
 
 # Default allow (deny_request overrides allow_request when true)
 default deny_request := false
+
+# A downstream read from another workspace requires the sibling ``.export``
+# permission for every read/list permission declared by the endpoint.
+export_permission(permission) := export_perm if {
+	parts := split(permission, ".")
+	count(parts) >= 2
+	action := parts[count(parts) - 1]
+	action in ["read", "list", "access"]
+	prefix := array.slice(parts, 0, count(parts) - 1)
+	export_perm := concat(".", array.concat(prefix, ["export"]))
+}
+
+req_export_permissions := {export_perm |
+	some permission in req_permissions
+	export_perm := export_permission(permission)
+}
+
+default cross_workspace_export_required := false
+
+cross_workspace_export_required if {
+	method := extract_method
+	method in ["GET", "HEAD"]
+	origin_workspace := extract_origin_workspace
+	origin_workspace != ""
+	workspace_scan != ""
+	workspace_scan != "-"
+	origin_workspace != workspace_scan
+	count(req_export_permissions) > 0
+}
+
+default cross_workspace_export_allowed := false
+
+cross_workspace_export_allowed if {
+	applicable_principals := get_effective_applicable_principals
+	count(applicable_principals) > 0
+	some principal in applicable_principals
+	has_permissions(principal, workspace_scan, req_export_permissions)
+}
+
+deny_request if {
+	cross_workspace_export_required
+	not cross_workspace_export_allowed
+	not platform_admin_in_system
+}
+
+# A delegated service may use its own identity for private storage in the generic
+# Entities API, but reads from other service APIs must also be authorized for
+# the effective user. Otherwise ServiceSystem's wildcard would let a service
+# bypass same-workspace permissions such as secrets.read or filesets.read.
+delegated_read_permission_required if {
+	method := extract_method
+	method in ["GET", "HEAD"]
+	extract_on_behalf_of_principal_id != ""
+	count(req_permissions) > 0
+	base_path := split(extract_path, "?")[0]
+	not startswith(base_path, "/apis/entities/")
+}
+
+delegated_read_permission_allowed if {
+	applicable_principals := get_effective_applicable_principals
+	count(applicable_principals) > 0
+	some principal in applicable_principals
+	has_permissions(principal, workspace_scan, req_permissions)
+}
+
+deny_request if {
+	delegated_read_permission_required
+	not delegated_read_permission_allowed
+	not platform_admin_in_system
+}
+
+# A delegated read cannot safely use a wildcard or workspace-less resource path:
+# the PDP has no concrete source workspace against which to evaluate ``*.export``.
+# Callers must issue one request per source workspace instead.
+deny_request if {
+	method := extract_method
+	method in ["GET", "HEAD"]
+	extract_origin_workspace != ""
+	workspace_scan in ["", "-"]
+	count(req_export_permissions) > 0
+	not delegated_entities_list
+	not platform_admin_in_system
+}
+
+# The generic Entities list endpoint applies its own per-workspace filtering:
+# origin workspace access is preserved and every other workspace requires
+# ``entities.export`` for the effective user. Keep all other wildcard and
+# workspace-less delegated reads fail-closed.
+delegated_entities_list if {
+	principal_id := extract_principal_id
+	startswith(principal_id, "service:")
+	base_path := split(extract_path, "?")[0]
+	startswith(base_path, "/apis/entities/v2/workspaces/-/entities/")
+}
+
+# Delegated service reads must always identify their origin. Otherwise the
+# request is indistinguishable from a direct read and would skip export checks.
+deny_request if {
+	method := extract_method
+	method in ["GET", "HEAD"]
+	extract_on_behalf_of_principal_id != ""
+	extract_origin_workspace == ""
+	count(req_export_permissions) > 0
+	not platform_admin_in_system
+}
 
 # Explicit deny marker (data.authz.endpoints[...].deny == true) — the fail-closed signal for
 # unruled or invalid plugin routes. As a deny_request it overrides every allow rule, including

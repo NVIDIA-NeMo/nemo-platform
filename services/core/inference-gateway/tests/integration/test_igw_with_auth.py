@@ -21,6 +21,7 @@ from unittest.mock import patch
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nmp.common.auth import NMP_ORIGIN_WORKSPACE_HEADER
 from nmp.core.auth.app.bundle import build_authorization_data as _real_build_authorization_data
 from nmp.core.inference_gateway.service import InferenceGatewayService
 from nmp.core.models.service import ModelsService
@@ -785,11 +786,12 @@ class TestIGWDelegatedServicePrincipalAccess:
     SERVICE_PRINCIPAL_AGENTS = "service:agents"
 
     @staticmethod
-    def _delegated_headers(on_behalf_of: str) -> dict[str, str]:
+    def _delegated_headers(on_behalf_of: str, origin_workspace: str) -> dict[str, str]:
         return {
             "X-NMP-Principal-Id": TestIGWDelegatedServicePrincipalAccess.SERVICE_PRINCIPAL_AGENTS,
             "X-NMP-Principal-On-Behalf-Of": on_behalf_of,
             "X-NMP-Principal-On-Behalf-Of-Email": on_behalf_of,
+            NMP_ORIGIN_WORKSPACE_HEADER: origin_workspace,
         }
 
     def test_delegated_denied_when_obo_user_lacks_role(self, sdk: NeMoPlatform):
@@ -808,7 +810,7 @@ class TestIGWDelegatedServicePrincipalAccess:
 
         response = sdk._client.get(
             f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/models",
-            headers=self._delegated_headers(obo_email),
+            headers=self._delegated_headers(obo_email, workspace),
         )
         assert response.status_code == 403
 
@@ -823,7 +825,7 @@ class TestIGWDelegatedServicePrincipalAccess:
 
         response = sdk._client.get(
             f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/models",
-            headers=self._delegated_headers(obo_email),
+            headers=self._delegated_headers(obo_email, workspace),
         )
         assert response.status_code == 200
 
@@ -844,7 +846,7 @@ class TestIGWDelegatedServicePrincipalAccess:
         response = sdk._client.post(
             f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/chat/completions",
             json={"model": f"{workspace}/{model_name}", "messages": [{"role": "user", "content": "hi"}]},
-            headers=self._delegated_headers(obo_email),
+            headers=self._delegated_headers(obo_email, workspace),
         )
         assert response.status_code == 403
 
@@ -866,6 +868,6 @@ class TestIGWDelegatedServicePrincipalAccess:
         response = sdk._client.post(
             f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/chat/completions",
             json={"model": f"{workspace}/{model_name}", "messages": [{"role": "user", "content": "hi"}]},
-            headers=self._delegated_headers(obo_email),
+            headers=self._delegated_headers(obo_email, workspace),
         )
         assert response.status_code == 200

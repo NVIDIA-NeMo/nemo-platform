@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from nemo_deployments_plugin.entities import SecretRef
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
+from nmp.common.auth.dependencies import parse_service_principal_bearer_token
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
@@ -18,7 +19,19 @@ from nmp.core.models.controllers.backends.vllm_compiler import MODEL_STORE_PATH
 
 def _resolved(engine: str, *, lora: bool = False, runtime: Runtime = Runtime.KUBERNETES) -> ResolvedPluginDeployment:
     return ResolvedPluginDeployment(
-        deployment=SimpleNamespace(name="my-dep", workspace="default"),
+        deployment=SimpleNamespace(
+            name="my-dep",
+            workspace="default",
+            auth_context=SimpleNamespace(
+                principal_id="creator@example.com",
+                principal_email="creator@example.com",
+                principal_groups=["model-builders"],
+                principal_on_behalf_of=None,
+                principal_on_behalf_of_email=None,
+                principal_on_behalf_of_groups=None,
+                origin_workspace="default",
+            ),
+        ),
         config=SimpleNamespace(engine=engine),
         model_entity=None,
         view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=lora),
@@ -88,7 +101,14 @@ def test_vllm_server_command_image_args_and_gpu() -> None:
     puller = compiled.puller_config.containers[0]
     puller_env = {item.name: item.value for item in puller.env}
     assert puller_env["HF_ENDPOINT"] == resolved.files_hf_url
-    assert puller_env["HF_TOKEN"] == "service:models"
+    token_headers = parse_service_principal_bearer_token(
+        puller_env["HF_TOKEN"],
+        expected_source_workspace="org",
+    )
+    assert token_headers is not None
+    assert token_headers["x-nmp-principal-id"] == "service:models"
+    assert token_headers["x-nmp-principal-on-behalf-of"] == "creator@example.com"
+    assert token_headers["x-nmp-origin-workspace"] == "default"
     assert puller.resources is not None
     assert puller.resources.limits["nvidia.com/gpu"] == "1"
 
@@ -225,7 +245,13 @@ def test_nim_tool_call_plugin_adds_init_containers_and_env() -> None:
     pull = compiled.server_config.init_containers[1]
     assert pull.command == ["download", "test-ws/my-plugin-fileset", "--local-dir", "/scratch/plugin"]
     pull_env = {item.name: item.value for item in pull.env}
-    assert pull_env["HF_TOKEN"] == "service:models"
+    token_headers = parse_service_principal_bearer_token(
+        pull_env["HF_TOKEN"],
+        expected_source_workspace="test-ws",
+    )
+    assert token_headers is not None
+    assert token_headers["x-nmp-principal-on-behalf-of"] == "creator@example.com"
+    assert token_headers["x-nmp-origin-workspace"] == "default"
     assert pull_env["HF_ENDPOINT"] == resolved.files_hf_url
     server_env = {item.name: item.value for item in compiled.server_config.containers[0].env}
     assert server_env["NIM_TOOL_PARSER_PLUGIN"] == "/model-store/plugin/plugin.py"
@@ -371,3 +397,33 @@ def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     assert env["NMP_BASE_URL"] == "http://platform.example:8080"
     assert env["VLLM_ENDPOINT"] == "http://127.0.0.1:8000"
     assert len(docker.server_config.containers) == 2
+
+
+def test_lora_sidecar_delegates_as_creator_from_deployment_workspace() -> None:
+    resolved = _resolved("vllm", lora=True)
+    resolved.deployment.auth_context = SimpleNamespace(
+        principal_id="creator@example.com",
+        principal_email="creator@example.com",
+        principal_groups=["model-builders"],
+        principal_on_behalf_of=None,
+        principal_on_behalf_of_email=None,
+        principal_on_behalf_of_groups=None,
+    )
+    platform = MagicMock(base_url="http://platform.example:8080")
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_qualified_image",
+            return_value="registry/nmp-api:tag",
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_platform_config",
+            return_value=platform,
+        ),
+    ):
+        compiled = compile_model_deployment(resolved, DeploymentsPluginConfig())
+
+    sidecar = compiled.server_config.init_containers[-1]
+    env = {item.name: item.value for item in sidecar.env}
+    assert env["NMP_ORIGIN_WORKSPACE"] == "default"
+    assert '"id": "creator@example.com"' in env["NMP_PRINCIPAL"]
+    assert '"model-builders"' in env["NMP_PRINCIPAL"]

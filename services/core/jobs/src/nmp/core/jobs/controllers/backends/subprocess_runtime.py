@@ -20,7 +20,12 @@ import httpx
 import requests
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
-from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR, Principal
+from nmp.common.auth.models import (
+    NMP_ORIGIN_WORKSPACE_ENVVAR,
+    NMP_ORIGIN_WORKSPACE_HEADER,
+    NMP_PRINCIPAL_ENVVAR,
+    Principal,
+)
 from nmp.common.jobs.constants import NEMO_JOB_SECRETS_ENVVAR
 from opentelemetry._logs import Logger
 from opentelemetry._logs.severity import SeverityNumber
@@ -177,10 +182,12 @@ def inject_secret_env_vars(env: dict[str, str], *, secrets_url: str | None = Non
     _validate_http_url(api_base_url, "NMP_SECRETS_URL")
 
     principal = _principal_from_env(env)
+    origin_workspace = env.get(NMP_ORIGIN_WORKSPACE_ENVVAR)
     for reference in references:
         env[reference.env_var_name] = _fetch_secret(
             api_base_url=api_base_url,
             principal=principal,
+            origin_workspace=origin_workspace,
             workspace=reference.workspace,
             secret_name=reference.secret_name,
         )
@@ -301,13 +308,22 @@ def _principal_from_env(env: dict[str, str]) -> Principal | None:
         return None
 
 
-def _fetch_secret(*, api_base_url: str, principal: Principal | None, workspace: str, secret_name: str) -> str:
+def _fetch_secret(
+    *,
+    api_base_url: str,
+    principal: Principal | None,
+    origin_workspace: str | None,
+    workspace: str,
+    secret_name: str,
+) -> str:
     request = Request(
         url=f"{api_base_url}/apis/secrets/v2/workspaces/{quote(workspace, safe='')}/secrets/{quote(secret_name, safe='')}/access",
         method="GET",
     )
     for name, value in _secret_request_headers(principal).items():
         request.add_header(name, value)
+    if origin_workspace:
+        request.add_header(NMP_ORIGIN_WORKSPACE_HEADER, origin_workspace)
 
     try:
         with urlopen(request, timeout=10) as response:

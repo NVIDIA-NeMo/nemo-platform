@@ -359,7 +359,11 @@ class JobDispatcher:
         except EntityNotFoundError:
             return None
         try:
-            attempt = await self.store.get_by_id(PlatformJobAttempt, job_entity.current_attempt_id)  # type: ignore
+            attempt = await self.store.get_by_id(
+                PlatformJobAttempt,
+                job_entity.current_attempt_id,  # type: ignore[arg-type]
+                workspace=workspace,
+            )
         except EntityNotFoundError:
             return None
         return create_platform_job_response(job_entity, attempt)
@@ -406,7 +410,11 @@ class JobDispatcher:
                 continue
 
             try:
-                attempt = await self.store.get_by_id(PlatformJobAttempt, job.current_attempt_id)
+                attempt = await self.store.get_by_id(
+                    PlatformJobAttempt,
+                    job.current_attempt_id,
+                    workspace=workspace,
+                )
             except EntityNotFoundError:
                 logger.warning(f"Attempt {job.current_attempt_id} not found for job {job.id}")
                 continue
@@ -538,36 +546,46 @@ class JobDispatcher:
             "Created first step for job", extra={"job": job.name, "workspace": job.workspace, "step": first_step.name}
         )
 
-    async def get_attempt(self, attempt_id: str) -> Optional[PlatformJobAttempt]:
+    async def get_attempt(self, attempt_id: str, *, workspace: str | None = None) -> Optional[PlatformJobAttempt]:
         """Get an attempt by ID."""
         try:
-            return await self.store.get_by_id(PlatformJobAttempt, attempt_id)
+            return await self.store.get_by_id(PlatformJobAttempt, attempt_id, workspace=workspace)
         except EntityNotFoundError:
             return None
 
-    async def _get_job_by_id_optional(self, job_id: str) -> Optional[PlatformJob]:
+    async def _get_job_by_id_optional(self, job_id: str, *, workspace: str | None = None) -> Optional[PlatformJob]:
         """Get a job by ID, returning None if not found."""
         try:
-            return await self.store.get_by_id(PlatformJob, job_id)
+            return await self.store.get_by_id(PlatformJob, job_id, workspace=workspace)
         except EntityNotFoundError:
             return None
 
-    async def _gather_attempts(self, attempt_ids: set[str]) -> list[Optional[PlatformJobAttempt]]:
+    async def _gather_attempts(
+        self,
+        attempt_ids: set[str],
+        *,
+        workspace: str | None = None,
+    ) -> list[Optional[PlatformJobAttempt]]:
         """Fetch all attempts by ID concurrently using TaskGroup."""
         if not attempt_ids:
             return []
         aid_list = list(attempt_ids)
         async with asyncio.TaskGroup() as tg:
-            tasks = [tg.create_task(self.get_attempt(aid)) for aid in aid_list]
+            tasks = [tg.create_task(self.get_attempt(aid, workspace=workspace)) for aid in aid_list]
         return [t.result() for t in tasks]
 
-    async def _gather_jobs(self, job_ids: set[str]) -> list[Optional[PlatformJob]]:
+    async def _gather_jobs(
+        self,
+        job_ids: set[str],
+        *,
+        workspace: str | None = None,
+    ) -> list[Optional[PlatformJob]]:
         """Fetch all jobs by ID concurrently using TaskGroup."""
         if not job_ids:
             return []
         jid_list = list(job_ids)
         async with asyncio.TaskGroup() as tg:
-            tasks = [tg.create_task(self._get_job_by_id_optional(jid)) for jid in jid_list]
+            tasks = [tg.create_task(self._get_job_by_id_optional(jid, workspace=workspace)) for jid in jid_list]
         return [t.result() for t in tasks]
 
     async def get_current_attempt(self, job_name: str, workspace: str) -> Optional[PlatformJobAttempt]:
@@ -697,10 +715,10 @@ class JobDispatcher:
             return [], total_count if use_store_pagination else 0
 
         attempt_ids = {s.attempt_id for s in all_steps}
-        attempt_results = await self._gather_attempts(attempt_ids)
+        attempt_results = await self._gather_attempts(attempt_ids, workspace=workspace)
         attempt_by_id = {aid: a for aid, a in zip(attempt_ids, attempt_results) if a is not None}
         job_ids = {a.job for a in attempt_by_id.values()}
-        job_results = await self._gather_jobs(job_ids)
+        job_results = await self._gather_jobs(job_ids, workspace=workspace)
         job_by_id = {jid: j for jid, j in zip(job_ids, job_results) if j is not None}
 
         result = []
@@ -877,7 +895,11 @@ class JobDispatcher:
                 if attempt == 0:
                     # Refetch step and retry once if transition still valid
                     try:
-                        refetched = await self.store.get_by_id(PlatformJobStep, step_to_save.id)
+                        refetched = await self.store.get_by_id(
+                            PlatformJobStep,
+                            step_to_save.id,
+                            workspace=step_to_save.workspace,
+                        )
                     except EntityNotFoundError:
                         raise e from e
                     if refetched.status.can_transition_to(status):
@@ -889,7 +911,7 @@ class JobDispatcher:
             raise RuntimeError("update_job_status_from_step did not produce a saved step")
 
         # Update job / attempt status from step
-        attempt = await self.get_attempt(saved_step.attempt_id)
+        attempt = await self.get_attempt(saved_step.attempt_id, workspace=saved_step.workspace)
         if attempt is None:
             raise Exception(f"Attempt does not exist: {saved_step.attempt_id}")
 

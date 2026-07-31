@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Dict, Generic, List, Optional, Self, Type, TypeVar, cast, get_args, get_origin
 
 import httpx
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.openapi.utils import get_openapi
 from nemo_platform import AsyncNeMoPlatform, DefaultAsyncHttpxClient
 from nmp.common.api.utils import register_query_param_schemas
@@ -84,6 +84,23 @@ class DependencyProvider:
             self._http_client = DefaultAsyncHttpxClient()
         return self._http_client
 
+    def _request_service_name(self) -> str:
+        """Resolve the service owning the current route in a merged platform app."""
+        from nmp.common.observability.context import get_app_ctx
+
+        app_ctx = get_app_ctx()
+        if app_ctx is not None and app_ctx.service_name:
+            return app_ctx.service_name
+        return self._service_name
+
+    @staticmethod
+    def _route_origin_workspace(request: Request) -> str | None:
+        """Return a concrete route workspace, excluding the all-workspaces sentinel."""
+        workspace = request.path_params.get("workspace")
+        if isinstance(workspace, str) and workspace != "-":
+            return workspace
+        return None
+
     def get_sdk_client(self, as_service: str | None = None) -> AsyncNeMoPlatform:
         """Return the async platform SDK client.
 
@@ -112,6 +129,11 @@ class DependencyProvider:
     def get_entity_client(self, as_service: str | None = None) -> Optional[EntityClient]:
         """Return the EntityClient.
 
+        For FastAPI request handling, use ``get_request_scoped_entity_client`` instead —
+        it is the active dependency override and correctly propagates the route workspace
+        as the ``X-NMP-Origin-Workspace`` header. This method is for background tasks,
+        controllers, and startup code that run outside a request context.
+
         Args:
             as_service: If provided, creates a NEW EntityClient backed by an SDK with
                        service principal credentials (not cached). Use this for startup
@@ -119,9 +141,9 @@ class DependencyProvider:
                        request context.
 
         Returns:
-            EntityClient - new instance with service principal + on-behalf-of SDK
-            for request handling, or new instance with explicit service credentials
-            if as_service is provided.
+            EntityClient with explicit service credentials when ``as_service`` is provided,
+            otherwise an EntityClient with service principal + on-behalf-of from the
+            current auth context (no origin workspace).
         """
         from nemo_platform_plugin.client.adapter import client_from_platform
         from nemo_platform_plugin.entities.client import AsyncEntitiesClient
@@ -139,7 +161,7 @@ class DependencyProvider:
         sdk = self._get_entity_sdk_on_behalf_of()
         return EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
-    def _get_entity_sdk_on_behalf_of(self) -> AsyncNeMoPlatform:
+    def _get_entity_sdk_on_behalf_of(self, *, origin_workspace: str | None = None) -> AsyncNeMoPlatform:
         """Create a per-request SDK for entity operations using service principal + on-behalf-of.
 
         Uses the cached base SDK and applies per-request headers via .with_options()
@@ -149,9 +171,35 @@ class DependencyProvider:
         from nmp.common.service.headers import build_downstream_service_headers
 
         base_sdk = self.get_sdk_client()
-        headers = build_downstream_service_headers(self._service_name)
+        headers = build_downstream_service_headers(
+            self._service_name,
+            origin_workspace=origin_workspace,
+        )
 
         return with_options_preserving_request_router(base_sdk, set_default_headers=headers)
+
+    def get_request_scoped_entity_client(self, request: Request) -> EntityClient:
+        """Return an entity client scoped to the current route and principal."""
+        from nemo_platform_plugin.client.adapter import client_from_platform
+        from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+        from nmp.common.entities.client import EntityClient
+        from nmp.common.sdk_factory import get_request_scoped_sdk, with_options_preserving_request_router
+        from nmp.common.service.headers import build_downstream_service_headers
+
+        workspace = self._route_origin_workspace(request)
+        if workspace is not None:
+            service_name = self._request_service_name()
+            base_sdk = self.get_sdk_client()
+            headers = build_downstream_service_headers(
+                service_name,
+                origin_workspace=workspace,
+            )
+            sdk = with_options_preserving_request_router(base_sdk, set_default_headers=headers)
+        else:
+            # A workspace-less route has no trusted delegation origin. Preserve
+            # the direct caller instead of manufacturing an unverifiable origin.
+            sdk = get_request_scoped_sdk(self.get_sdk_client())
+        return EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
     def get_platform_config(self) -> PlatformConfig:
         """Return the PlatformConfig (lazily initialized)."""
@@ -159,7 +207,7 @@ class DependencyProvider:
             self._platform_config = Configuration.get_platform_config()
         return self._platform_config
 
-    def get_request_scoped_sdk(self) -> AsyncNeMoPlatform:
+    def get_request_scoped_sdk(self, request: Request) -> AsyncNeMoPlatform:
         """Return a request-scoped SDK with current auth and OTEL headers.
 
         This wraps the cached base SDK with per-request headers via .with_options().
@@ -168,7 +216,12 @@ class DependencyProvider:
         from nmp.common.sdk_factory import get_request_scoped_sdk
 
         base_sdk = self.get_sdk_client()  # Cached base SDK
-        return get_request_scoped_sdk(base_sdk)
+        workspace = self._route_origin_workspace(request)
+        return get_request_scoped_sdk(
+            base_sdk,
+            as_service=self._request_service_name() if workspace else None,
+            origin_workspace=workspace,
+        )
 
     def setup_dependencies(self, app: FastAPI, service: "Service") -> None:
         """Configure FastAPI dependency overrides."""
@@ -179,8 +232,9 @@ class DependencyProvider:
             get_service_config,
         )
 
+        self._service_name = service.name
         app.dependency_overrides[get_sdk_client] = self.get_request_scoped_sdk
-        app.dependency_overrides[get_entity_client] = self.get_entity_client
+        app.dependency_overrides[get_entity_client] = self.get_request_scoped_entity_client
         app.dependency_overrides[get_platform_config] = self.get_platform_config
         if service._service_config is not None:
             app.dependency_overrides[get_service_config] = lambda: service._service_config

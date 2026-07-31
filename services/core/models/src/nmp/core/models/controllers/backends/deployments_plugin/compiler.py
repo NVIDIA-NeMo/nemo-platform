@@ -7,6 +7,7 @@ Parity ports from ``k8s_nim_operator/nimservice_compiler.py`` — please review
 mapping of ``k8s_nim_operator_config`` → plugin ``K8sDeploymentConfig``.
 """
 
+import json
 from dataclasses import dataclass
 
 from nemo_deployments_plugin.entities import (
@@ -26,6 +27,7 @@ from nemo_deployments_plugin.entities import (
 from nemo_deployments_plugin.secrets import platform_ngc_secret_ref
 from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nmp.common.auth import NMP_ORIGIN_WORKSPACE_ENVVAR, NMP_PRINCIPAL_ENVVAR
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
@@ -41,6 +43,7 @@ from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import
     tool_call_plugin_install_path,
 )
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
+from nmp.core.models.controllers.backends.deployments_plugin.runtime_auth import files_service_bearer_token
 from nmp.core.models.controllers.backends.engine import (
     ENGINE_GENERIC,
     ENGINE_NIM,
@@ -173,6 +176,21 @@ def _lora_sidecar(
         "XDG_STATE_HOME": _LORA_SIDECAR_XDG_HOME,
         "XDG_DATA_HOME": _LORA_SIDECAR_XDG_HOME,
     }
+    auth_context = getattr(resolved.deployment, "auth_context", None)
+    if auth_context is not None:
+        sidecar_env[NMP_PRINCIPAL_ENVVAR] = json.dumps(
+            {
+                "id": auth_context.principal_id,
+                "email": auth_context.principal_email,
+                "groups": auth_context.principal_groups or [],
+                "on_behalf_of": auth_context.principal_on_behalf_of,
+                "on_behalf_of_email": auth_context.principal_on_behalf_of_email,
+                "on_behalf_of_groups": auth_context.principal_on_behalf_of_groups,
+            }
+        )
+        sidecar_env[NMP_ORIGIN_WORKSPACE_ENVVAR] = (
+            getattr(auth_context, "origin_workspace", None) or resolved.deployment.workspace
+        )
     if engine == ENGINE_VLLM:
         sidecar_env["VLLM_LORA_BASE_MODEL_OVERRIDE"] = MODEL_STORE_PATH
         # Native sidecar / pod-local network: talk to the sibling vLLM server.
@@ -237,7 +255,11 @@ def compile_model_deployment(
                 k8s=K8sVolumeConfig(storageClass=config.default_storage_class),
             ),
         )
-        puller_env = {"HF_ENDPOINT": resolved.files_hf_url, "HF_TOKEN": "service:models"}
+        assert resolved.model_namespace is not None
+        puller_env = {
+            "HF_ENDPOINT": resolved.files_hf_url,
+            "HF_TOKEN": files_service_bearer_token(resolved.deployment, resolved.model_namespace),
+        }
         puller_args = ["download", f"{resolved.model_namespace}/{resolved.model_name}", "--local-dir", _WEIGHTS_MOUNT]
         if resolved.model_revision:
             puller_args.extend(["--revision", resolved.model_revision])

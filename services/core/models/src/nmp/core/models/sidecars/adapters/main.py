@@ -25,7 +25,7 @@ from nmp.common.controller import (
     TimedLoopWaiter,
     TrackLastExecutionTime,
 )
-from nmp.common.sdk_factory import get_platform_sdk
+from nmp.common.sdk_factory import get_task_sdk
 
 stop_signal = threading.Event()
 
@@ -88,10 +88,7 @@ class AdaptersController(HeartbeatMixin, Controller):
 
         self.platform_config = get_platform_config()
 
-        self._sdk: NeMoPlatform = get_platform_sdk(
-            as_service="models",
-            internal=True,
-        )
+        self._sdk: NeMoPlatform = get_task_sdk("models")
 
     def download_fileset(self, dest_dir: str, workspace: str, name: str) -> bool:
         try:

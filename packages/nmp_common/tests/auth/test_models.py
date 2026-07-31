@@ -383,7 +383,7 @@ class TestPrincipalFromEnvVar:
 
 
 class TestAuthContextPrincipalRoundTrip:
-    """AuthContext should preserve delegation fields for persistence and SDK rehydration."""
+    """AuthContext preserves identity but drops durable group snapshots."""
 
     def test_from_principal_and_to_principal_round_trip(self):
         p = Principal(
@@ -394,16 +394,30 @@ class TestAuthContextPrincipalRoundTrip:
             on_behalf_of_email="user@example.com",
             on_behalf_of_groups=["g-user"],
         )
-        ctx = AuthContext.from_principal(p)
+        ctx = AuthContext.from_principal(p, origin_workspace="workspace-a")
         assert ctx.principal_id == "service:x"
         assert ctx.principal_email == "svc@example.com"
-        assert ctx.principal_groups == ["g-svc"]
+        assert ctx.principal_groups == []
         assert ctx.principal_on_behalf_of == "user@example.com"
         assert ctx.principal_on_behalf_of_email == "user@example.com"
-        assert ctx.principal_on_behalf_of_groups == ["g-user"]
+        assert ctx.principal_on_behalf_of_groups is None
+        assert ctx.origin_workspace == "workspace-a"
 
         restored = ctx.to_principal()
-        assert restored.model_dump() == p.model_dump()
+        assert restored.id == p.id
+        assert restored.email == p.email
+        assert restored.groups == []
+        assert restored.on_behalf_of == p.on_behalf_of
+        assert restored.on_behalf_of_email == p.on_behalf_of_email
+        assert restored.on_behalf_of_groups is None
+
+        env = ctx.get_env_vars()
+        assert env["NMP_ORIGIN_WORKSPACE"] == "workspace-a"
+
+    def test_from_principal_ignores_non_string_origin(self):
+        ctx = AuthContext.from_principal(Principal(id="service:x"), origin_workspace=object())  # type: ignore[arg-type]
+
+        assert ctx.origin_workspace is None
 
 
 class TestPrincipalGetOtlpHeadersValue:

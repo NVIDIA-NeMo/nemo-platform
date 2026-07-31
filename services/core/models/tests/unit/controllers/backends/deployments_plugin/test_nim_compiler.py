@@ -34,7 +34,19 @@ from nmp.core.models.controllers.backends.deployments_plugin.resolve import Reso
 
 def _resolved() -> ResolvedPluginDeployment:
     return ResolvedPluginDeployment(
-        deployment=SimpleNamespace(name="my-dep", workspace="default"),
+        deployment=SimpleNamespace(
+            name="my-dep",
+            workspace="default",
+            auth_context=SimpleNamespace(
+                principal_id="creator@example.com",
+                principal_email="creator@example.com",
+                principal_groups=[],
+                principal_on_behalf_of=None,
+                principal_on_behalf_of_email=None,
+                principal_on_behalf_of_groups=None,
+                origin_workspace="default",
+            ),
+        ),
         config=SimpleNamespace(engine="nim"),
         model_entity=None,
         view=DeploymentConfigView(model_namespace="org", model_name="model"),

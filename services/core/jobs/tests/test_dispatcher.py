@@ -119,6 +119,24 @@ async def create_test_job_data(
     return saved_job.id, saved_job.name, saved_attempt.id, saved_step.id, saved_task.id, saved_result.id
 
 
+@pytest.mark.asyncio
+async def test_get_job_uses_workspace_qualified_attempt_lookup(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+):
+    _, job_name, attempt_id, _, _, _ = await create_test_job_data(mock_store, "qualified-get-job")
+
+    with patch.object(mock_store, "get_by_id", wraps=mock_store.get_by_id) as get_by_id:
+        job = await mock_dispatcher.get_job(job_name, DEFAULT_WORKSPACE)
+
+    assert job is not None
+    get_by_id.assert_awaited_once_with(
+        PlatformJobAttempt,
+        attempt_id,
+        workspace=DEFAULT_WORKSPACE,
+    )
+
+
 async def verify_job_data_exists(store: EntityClient, job_id: str, should_exist: bool = True) -> None:
     """Verify that job data exists or does not exist."""
     if should_exist:

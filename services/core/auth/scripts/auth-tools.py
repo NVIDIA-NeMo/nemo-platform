@@ -707,6 +707,7 @@ def update(
     - Remove orphaned endpoints found in auth config but not in OpenAPI
     - Add orphaned permissions to appropriate roles:
       - .read and .list permissions → Viewer role
+      - .export permissions → Exporter role
       - All other permissions → Editor role
     """
     # Use default paths if not provided
@@ -801,7 +802,7 @@ def update(
     no_role_permissions = get_no_role_permissions(auth_config)
     orphaned_permissions = endpoint_permissions_stripped - role_permissions - no_role_permissions
 
-    permissions_added_to_roles = {"Viewer": [], "Editor": []}
+    permissions_added_to_roles = {"Viewer": [], "Editor": [], "Exporter": []}
 
     if orphaned_permissions and not dry_run:
         # Ensure roles exist
@@ -810,9 +811,12 @@ def update(
 
         # Add orphaned permissions to appropriate roles
         for perm in orphaned_permissions:
-            # Heuristic: .read and .list go to Viewer, everything else to Editor
+            # Read/list permissions belong to Viewer, export permissions to Exporter,
+            # and mutating permissions to Editor.
             if perm.endswith(".read") or perm.endswith(".list"):
                 target_role = "Viewer"
+            elif perm.endswith(".export"):
+                target_role = "Exporter"
             else:
                 target_role = "Editor"
 
@@ -832,7 +836,7 @@ def update(
                 permissions_added_to_roles[target_role].append(perm)
 
         # Sort permissions in each role for consistency
-        for role in ["Viewer", "Editor"]:
+        for role in ["Viewer", "Editor", "Exporter"]:
             if role in auth_config["authz"]["roles"] and "permissions" in auth_config["authz"]["roles"][role]:
                 auth_config["authz"]["roles"][role]["permissions"].sort()
     elif orphaned_permissions and dry_run:
@@ -840,6 +844,8 @@ def update(
         for perm in orphaned_permissions:
             if perm.endswith(".read") or perm.endswith(".list"):
                 permissions_added_to_roles["Viewer"].append(perm)
+            elif perm.endswith(".export"):
+                permissions_added_to_roles["Exporter"].append(perm)
             else:
                 permissions_added_to_roles["Editor"].append(perm)
 
@@ -1215,7 +1221,7 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
         role_perms_map[role_name] = extract_role_permissions_recursive(roles_data, role_name)
 
     area_groups = _build_docs_area_groups(registry)
-    ordered_roles = ["Viewer", "Editor", "Admin", "JobRunner"]
+    ordered_roles = ["Viewer", "Editor", "Exporter", "Admin", "JobRunner"]
 
     lines: List[str] = []
     lines.append("---")

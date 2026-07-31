@@ -182,9 +182,12 @@ The derivation grants each catalog permission to roles by a suffix heuristic:
 | Permission id ends with | Granted to |
 |-------------------------|------------|
 | `.list` or `.read` | Viewer + Editor |
+| `.export` | Exporter |
 | everything else | Editor only |
 
 Use `extra_role_permissions` when that heuristic is wrong — e.g. an agent gateway's `.invoke` permission that a Viewer must hold to call a deployed agent even though its suffix isn't `read`. Grants are **unioned** with the suffix defaults (never subtractive), every granted permission must live in this service's own namespace (or the whole plugin fails closed), and a permission granted here is registered in the catalog automatically, so it need not also appear in `extra_permissions`.
+
+Cross-workspace export is always opt-in. Declaring a `.read`, `.list`, or `.access` permission does not synthesize a sibling `.export` permission. A plugin that supports cross-workspace references must explicitly declare that `.export` permission through `extra_permissions()`; the suffix heuristic then grants it to the Exporter role.
 
 ## When a Plugin's Authz Is Invalid
 

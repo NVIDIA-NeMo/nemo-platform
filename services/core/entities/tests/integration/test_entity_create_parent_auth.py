@@ -4,9 +4,11 @@
 """Integration tests: create entity must allow access to path workspace and parent workspace (when set)."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
+from nmp.common.auth import AuthClient
 from nmp.core.entities.api.v2.utils import ROLE_BINDING_ENTITY_TYPE
 from nmp.core.entities.app.repository import (
     EntityRepositoryInterface,
@@ -30,6 +32,7 @@ async def _seed_workspaces(
     workspace_repo: WorkspaceRepositoryInterface,
     entity_repo: EntityRepositoryInterface,
     member_of: set[str] | None = None,
+    role: str = "Editor",
 ) -> None:
     """Create the two test workspaces, then optionally one Editor role_binding per name in *member_of*."""
     for name, desc in _WS_SEED:
@@ -46,7 +49,7 @@ async def _seed_workspaces(
             data={
                 "principal": TEST_USER_EMAIL,
                 "workspace": ws,
-                "role": "Editor",
+                "role": role,
                 "granted_by": TEST_USER_EMAIL,
                 "granted_at": granted,
                 "revoked_at": None,
@@ -106,10 +109,17 @@ class TestCreateEntityParentWorkspaceAuth:
         )
         assert r.status_code == 403, r.text
 
-    async def test_201_create_cross_ws_when_user_has_both(self, client_with_auth: AsyncClient, repos) -> None:
-        """With Editor in both workspaces, a cross-workspace child linked to a model in the default path returns 201."""
+    async def test_422_cross_ws_parent_requires_export_permission(
+        self,
+        client_with_auth: AsyncClient,
+        repos,
+        monkeypatch,
+    ) -> None:
+        """Workspace membership alone cannot authorize a cross-workspace parent reference."""
         wr: WorkspaceRepositoryInterface = repos["workspace"]
         await _seed_workspaces(wr, repos["entity"], member_of={_DEFAULT_WS, _OTHER_WS})
+        has_permissions = AsyncMock(return_value=False)
+        monkeypatch.setattr(AuthClient, "has_permissions", has_permissions)
         mresp = await client_with_auth.post(
             f"/apis/entities/v2/workspaces/{_DEFAULT_WS}/entities/model",
             json={"name": "m-both", "data": {}},
@@ -120,6 +130,36 @@ class TestCreateEntityParentWorkspaceAuth:
             f"/apis/entities/v2/workspaces/{_OTHER_WS}/entities/adapter",
             json={"name": "a-both", "parent": model_id, "data": {"finetuning_type": "LoRA"}},
         )
+        assert r.status_code == 422, r.text
+        has_permissions.assert_awaited_once_with(_DEFAULT_WS, ["entities.export"])
+
+    async def test_201_create_cross_ws_with_export_permission(
+        self,
+        client_with_auth: AsyncClient,
+        repos,
+        monkeypatch,
+    ) -> None:
+        """An Admin/Exporter authorization permits the external parent reference."""
+        wr: WorkspaceRepositoryInterface = repos["workspace"]
+        await _seed_workspaces(
+            wr,
+            repos["entity"],
+            member_of={_DEFAULT_WS, _OTHER_WS},
+            role="Admin",
+        )
+        has_permissions = AsyncMock(return_value=True)
+        monkeypatch.setattr(AuthClient, "has_permissions", has_permissions)
+        mresp = await client_with_auth.post(
+            f"/apis/entities/v2/workspaces/{_DEFAULT_WS}/entities/model",
+            json={"name": "m-exportable", "data": {}},
+        )
+        assert mresp.status_code == 201, mresp.text
+        model_id = mresp.json()["id"]
+        r = await client_with_auth.post(
+            f"/apis/entities/v2/workspaces/{_OTHER_WS}/entities/adapter",
+            json={"name": "a-exported", "parent": model_id, "data": {"finetuning_type": "LoRA"}},
+        )
         assert r.status_code == 201, r.text
         assert r.json()["parent"] == model_id
         assert r.json()["workspace"] == _OTHER_WS
+        has_permissions.assert_awaited_once_with(_DEFAULT_WS, ["entities.export"])

@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nmp.common.service import DependencyProvider
 from nmp.common.service.dependencies import get_entity_client, get_platform_config, get_sdk_client
+from starlette.requests import Request
 
 
 def test_get_http_client_caches_default_client() -> None:
@@ -47,13 +48,159 @@ def test_setup_dependencies_registers_fastapi_overrides() -> None:
     provider = DependencyProvider()
     app = FastAPI()
     service = MagicMock()
+    service.name = "data-designer"
     service._service_config = None
 
     provider.setup_dependencies(app, service)
 
+    assert provider._service_name == "data-designer"
     assert app.dependency_overrides[get_sdk_client] == provider.get_request_scoped_sdk
-    assert app.dependency_overrides[get_entity_client] == provider.get_entity_client
+    assert app.dependency_overrides[get_entity_client] == provider.get_request_scoped_entity_client
     assert app.dependency_overrides[get_platform_config] == provider.get_platform_config
+
+
+def test_request_scoped_sdk_uses_service_name_and_workspace_path() -> None:
+    provider = DependencyProvider()
+    provider._service_name = "data-designer"
+    base_sdk = MagicMock(name="base_sdk")
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/v2/workspaces/workspace-a/preview",
+            "headers": [],
+            "path_params": {"workspace": "workspace-a"},
+        }
+    )
+
+    with (
+        patch.object(provider, "get_sdk_client", return_value=base_sdk),
+        patch("nmp.common.sdk_factory.get_request_scoped_sdk", return_value=MagicMock()) as scoped,
+    ):
+        provider.get_request_scoped_sdk(request)
+
+    scoped.assert_called_once_with(
+        base_sdk,
+        as_service="data-designer",
+        origin_workspace="workspace-a",
+    )
+
+
+def test_request_scoped_sdk_preserves_direct_principal_without_workspace() -> None:
+    provider = DependencyProvider()
+    provider._service_name = "auth"
+    base_sdk = MagicMock(name="base_sdk")
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/v2/iam/opa-bundle.tar.gz",
+            "headers": [],
+            "path_params": {},
+        }
+    )
+
+    with (
+        patch.object(provider, "get_sdk_client", return_value=base_sdk),
+        patch("nmp.common.sdk_factory.get_request_scoped_sdk", return_value=MagicMock()) as scoped,
+    ):
+        provider.get_request_scoped_sdk(request)
+
+    scoped.assert_called_once_with(
+        base_sdk,
+        as_service=None,
+        origin_workspace=None,
+    )
+
+
+def test_request_scoped_sdk_preserves_direct_principal_for_all_workspaces() -> None:
+    provider = DependencyProvider()
+    base_sdk = MagicMock(name="base_sdk")
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/v2/workspaces/-/jobs",
+            "headers": [],
+            "path_params": {"workspace": "-"},
+        }
+    )
+
+    with (
+        patch.object(provider, "get_sdk_client", return_value=base_sdk),
+        patch("nmp.common.sdk_factory.get_request_scoped_sdk", return_value=MagicMock()) as scoped,
+    ):
+        provider.get_request_scoped_sdk(request)
+
+    scoped.assert_called_once_with(
+        base_sdk,
+        as_service=None,
+        origin_workspace=None,
+    )
+
+
+def test_request_scoped_entity_client_delegates_with_route_workspace() -> None:
+    provider = DependencyProvider()
+    provider._service_name = "data-designer"
+    base_sdk = MagicMock(name="base_sdk")
+    sdk = MagicMock(name="scoped_sdk")
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/v2/workspaces/workspace-a/entities",
+            "headers": [],
+            "path_params": {"workspace": "workspace-a"},
+        }
+    )
+
+    with (
+        patch.object(provider, "get_sdk_client", return_value=base_sdk),
+        patch(
+            "nmp.common.service.headers.build_downstream_service_headers", return_value={"test": "header"}
+        ) as headers,
+        patch("nmp.common.sdk_factory.with_options_preserving_request_router", return_value=sdk) as scoped,
+        patch("nemo_platform_plugin.client.adapter.client_from_platform"),
+        patch("nmp.common.entities.client.EntityClient"),
+    ):
+        provider.get_request_scoped_entity_client(request)
+
+    headers.assert_called_once_with("data-designer", origin_workspace="workspace-a")
+    scoped.assert_called_once_with(base_sdk, set_default_headers={"test": "header"})
+
+
+def test_request_service_name_uses_merged_router_context() -> None:
+    provider = DependencyProvider()
+    provider._service_name = "last-registered-service"
+    app_ctx = MagicMock(service_name="files")
+
+    with patch("nmp.common.observability.context.get_app_ctx", return_value=app_ctx):
+        assert provider._request_service_name() == "files"
+
+
+def test_request_scoped_entity_client_preserves_direct_principal_without_workspace() -> None:
+    provider = DependencyProvider()
+    base_sdk = MagicMock(name="base_sdk")
+    scoped_sdk = MagicMock(name="scoped_sdk")
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/v2/iam/opa-bundle.tar.gz",
+            "headers": [],
+            "path_params": {},
+        }
+    )
+
+    with (
+        patch.object(provider, "get_sdk_client", return_value=base_sdk),
+        patch("nmp.common.sdk_factory.get_request_scoped_sdk", return_value=scoped_sdk) as scoped,
+        patch("nemo_platform_plugin.client.adapter.client_from_platform"),
+        patch("nmp.common.entities.client.EntityClient"),
+    ):
+        provider.get_request_scoped_entity_client(request)
+
+    scoped.assert_called_once_with(base_sdk)
 
 
 @pytest.mark.asyncio

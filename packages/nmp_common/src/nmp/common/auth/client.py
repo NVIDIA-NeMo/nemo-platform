@@ -57,6 +57,14 @@ class AuthClient(BaseModel):
         default=None,
         description="Name of the calling service. Used to build service principal headers for PDP requests.",
     )
+    origin_workspace: Optional[str] = Field(
+        default=None,
+        description="Workspace that initiated this service-to-service request, if supplied by the caller.",
+    )
+    request_workspace: Optional[str] = Field(
+        default=None,
+        description="Workspace addressed by the current request, used for downstream origin propagation.",
+    )
 
     model_config = {"arbitrary_types_allowed": True, "validate_assignment": False}
 
@@ -69,6 +77,11 @@ class AuthClient(BaseModel):
     def policy_decision_point_base_url(self) -> Optional[str]:
         """Policy Decision Point (PDP) base URL for permission checks."""
         return self.config.policy_decision_point_base_url
+
+    @property
+    def outbound_origin_workspace(self) -> Optional[str]:
+        """Origin workspace to preserve on downstream calls."""
+        return self.origin_workspace or self.request_workspace
 
     def _new_pdp_http_client(self) -> httpx.AsyncClient:
         endpoint = parse_platform_endpoint(self.config.policy_decision_point_base_url)
@@ -95,6 +108,7 @@ class AuthClient(BaseModel):
         path: str,
         scopes: Optional[List[str]] = None,
         http_client: Optional[httpx.AsyncClient] = None,
+        origin_workspace: Optional[str] = None,
     ) -> AuthorizationResult:
         """Check if the current principal is authorized to make a request.
 
@@ -146,6 +160,8 @@ class AuthClient(BaseModel):
             auth_input["on_behalf_of_principal_id"] = self.principal.on_behalf_of
         if scopes:
             auth_input["scopes"] = scopes
+        if origin_workspace:
+            auth_input["origin_workspace"] = origin_workspace
 
         auth_url = self.config.get_pdp_url("allow")
 

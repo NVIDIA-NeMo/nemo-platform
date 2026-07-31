@@ -477,8 +477,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
 
         if step.auth_context:
             auth_context = AuthContext.model_validate(step.auth_context.model_dump(mode="python", exclude_none=True))
-            principal = auth_context.to_principal()
-            env.update(principal.get_env_var())
+            env.update(auth_context.get_env_vars())
 
         inject_secret_env_vars(env)
         return env, task_id, work_dir, log_path, persistent_dir

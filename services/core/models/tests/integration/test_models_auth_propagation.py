@@ -108,7 +108,7 @@ class TestDeploymentAuthPropagation:
         assert retrieved.auth_context is not None, "retrieve: service principal should see auth_context"
         assert retrieved.auth_context.principal_id == creator_email
         assert retrieved.auth_context.principal_email == creator_email
-        assert retrieved.auth_context.principal_groups == creator_groups
+        assert retrieved.auth_context.principal_groups == []
 
         # List response
         result = service_sdk.inference.deployments.list(workspace="default")
@@ -116,7 +116,7 @@ class TestDeploymentAuthPropagation:
         assert len(matching) == 1
         assert matching[0].auth_context is not None, "list: service principal should see auth_context"
         assert matching[0].auth_context.principal_id == creator_email
-        assert matching[0].auth_context.principal_groups == creator_groups
+        assert matching[0].auth_context.principal_groups == []
 
     def test_auth_context_persisted_across_users(self, sdk: NeMoPlatform):
         """Auth context persists the original creator's identity, invisible to other users."""
@@ -141,7 +141,7 @@ class TestDeploymentAuthPropagation:
         )
         assert retrieved_by_service.auth_context is not None
         assert retrieved_by_service.auth_context.principal_id == creator_email
-        assert retrieved_by_service.auth_context.principal_groups == creator_groups
+        assert retrieved_by_service.auth_context.principal_groups == []
 
 
 class TestProviderAuthPropagation:
@@ -170,7 +170,7 @@ class TestProviderAuthPropagation:
         assert retrieved.auth_context is not None, "Service principal should see auth_context"
         assert retrieved.auth_context.principal_id == creator_email
         assert retrieved.auth_context.principal_email == creator_email
-        assert retrieved.auth_context.principal_groups == creator_groups
+        assert retrieved.auth_context.principal_groups == []
 
     def test_auth_context_stripped_for_regular_user_on_list(self, sdk: NeMoPlatform):
         """Auth context should be stripped from list responses for regular users."""
@@ -214,7 +214,7 @@ class TestProviderAuthPropagation:
         )
         assert retrieved.auth_context is not None
         assert retrieved.auth_context.principal_id == creator_email
-        assert retrieved.auth_context.principal_groups == creator_groups
+        assert retrieved.auth_context.principal_groups == []
 
         # Upsert updates the existing provider
         updated = creator_sdk.inference.providers.update(
@@ -231,4 +231,4 @@ class TestProviderAuthPropagation:
         )
         assert retrieved_after_update.auth_context is not None, "Service principal should see auth_context after update"
         assert retrieved_after_update.auth_context.principal_id == creator_email
-        assert retrieved_after_update.auth_context.principal_groups == creator_groups
+        assert retrieved_after_update.auth_context.principal_groups == []

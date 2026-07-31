@@ -4,7 +4,9 @@
 """Authorization middleware for NeMo Platform services."""
 
 import logging
+import re
 from typing import Any, Callable, Optional
+from urllib.parse import unquote
 
 import httpx
 from fastapi import Request, Response
@@ -16,11 +18,13 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
 from .client import AuthClient
-from .dependencies import auth_client_context
+from .dependencies import auth_client_context, parse_service_principal_bearer_token
 from .exceptions import InvalidPrincipalHeader, InvalidScopeFormatError
-from .models import Principal
+from .models import NMP_ORIGIN_WORKSPACE_HEADER, Principal
 
 logger = logging.getLogger(__name__)
+_WORKSPACE_RE = re.compile(r"^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$")
+_ROUTE_WORKSPACE_RE = re.compile(r"/v\d+/workspaces/([^/]+)(?:/|$)")
 
 
 class PrincipalExtractionError(RuntimeError):
@@ -32,6 +36,28 @@ def _require_principal(principal: Principal | None) -> Principal:
     if principal is None:
         raise PrincipalExtractionError("principal extraction succeeded without returning a principal")
     return principal
+
+
+def _request_workspace(path: str) -> str | None:
+    """Extract a concrete workspace from the conventional platform URL shape."""
+    match = _ROUTE_WORKSPACE_RE.search(path)
+    workspace = unquote(match.group(1)) if match else None
+    if workspace is None or workspace == "-" or not _WORKSPACE_RE.fullmatch(workspace):
+        return None
+    return workspace
+
+
+def _hf_request_workspace(path: str) -> str | None:
+    """Extract the source workspace from supported Files HF-compatible paths."""
+    prefix = "/apis/files/v2/hf/"
+    if not path.startswith(prefix):
+        return None
+    parts = [unquote(part) for part in path.removeprefix(prefix).split("/") if part]
+    if parts[:2] == ["api", "models"]:
+        workspace = parts[2] if len(parts) > 2 else None
+    else:
+        workspace = parts[0] if parts else None
+    return workspace if workspace and _WORKSPACE_RE.fullmatch(workspace) else None
 
 
 def _describe_pdp_failure(exc: BaseException) -> str:
@@ -142,6 +168,18 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         except InvalidPrincipalHeader as e:
             logger.warning("Invalid principal header: %s", e)
             return None, JSONResponse(status_code=400, content={"detail": str(e)})
+        raw_origin = headers_dict.get(NMP_ORIGIN_WORKSPACE_HEADER.lower())
+        if principal.id.startswith("service:"):
+            if raw_origin and not _WORKSPACE_RE.fullmatch(raw_origin):
+                return None, JSONResponse(
+                    status_code=400,
+                    content={"detail": f"Invalid {NMP_ORIGIN_WORKSPACE_HEADER} header"},
+                )
+            if principal.is_delegated and not raw_origin:
+                return None, JSONResponse(
+                    status_code=400,
+                    content={"detail": f"{NMP_ORIGIN_WORKSPACE_HEADER} is required for delegated service requests"},
+                )
         return principal, None
 
     def _get_jwt_validator(self) -> Optional[Any]:
@@ -170,6 +208,28 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             endpoint = parse_platform_endpoint(self.config.policy_decision_point_base_url)
             self._client = endpoint.async_http_client(timeout=self.config.policy_decision_point_request_timeout_seconds)
         return self._client
+
+    def _make_auth_client(
+        self,
+        principal: Principal,
+        request: Request,
+        *,
+        headers_dict: dict[str, str] | None = None,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> AuthClient:
+        headers = headers_dict if headers_dict is not None else dict(request.headers)
+        raw_origin = headers.get(NMP_ORIGIN_WORKSPACE_HEADER.lower())
+        origin_workspace = None
+        if principal.id.startswith("service:") and raw_origin:
+            origin_workspace = raw_origin
+        return AuthClient(
+            principal=principal,
+            config=self.config,
+            http_client=http_client,
+            service_name=self.service_name,
+            origin_workspace=origin_workspace,
+            request_workspace=_request_workspace(request.url.path),
+        )
 
     def _update_auth_context(self, principal: Principal) -> None:
         """Update the observability AuthContext with principal info.
@@ -276,10 +336,9 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         """Handle requests to HuggingFace-compatible endpoints.
 
-        These endpoints are restricted to service principals only. Auth is provided
-        via Bearer token (HF_TOKEN) containing a service principal identifier like
-        "service:nim". This allows huggingface-hub clients to authenticate by setting
-        HF_TOKEN=service:<name>.
+        These endpoints are restricted to signed, source-workspace-bound runtime
+        tokens when authorization is enabled. Auth-disabled development retains
+        the legacy ``HF_TOKEN=service:<name>`` compatibility path.
 
         Args:
             request: The incoming HTTP request
@@ -292,8 +351,15 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         auth_header = headers_dict.get("authorization", "")
         if auth_header.lower().startswith("bearer "):
             token = auth_header[7:]
-            if token.startswith("service:"):
-                headers_dict["x-nmp-principal-id"] = token
+            source_workspace = _hf_request_workspace(request.url.path)
+            if source_workspace is None:
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+            service_headers = parse_service_principal_bearer_token(
+                token,
+                expected_source_workspace=source_workspace,
+            )
+            if service_headers is not None:
+                headers_dict.update(service_headers)
                 return await self._handle_principal_headers_request(request, call_next, headers_dict)
 
         return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
@@ -325,8 +391,11 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         if error_response is not None:
             return error_response
         principal = _require_principal(principal)
-        auth_client = AuthClient(
-            principal=principal, config=self.config, http_client=self._client, service_name=self.service_name
+        auth_client = self._make_auth_client(
+            principal,
+            request,
+            headers_dict=headers_dict,
+            http_client=self._client,
         )
         return await self._call_next_with_auth_client(request, call_next, auth_client)
 
@@ -354,8 +423,11 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
         if not self.config.enabled:
             # Auth disabled - just extract principal and proceed
-            auth_client = AuthClient(
-                principal=principal, config=self.config, http_client=self._client, service_name=self.service_name
+            auth_client = self._make_auth_client(
+                principal,
+                request,
+                headers_dict=headers_dict,
+                http_client=self._client,
             )
             return await self._call_next_with_auth_client(request, call_next, auth_client)
 
@@ -425,18 +497,11 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
         # If auth is disabled, just proceed with the principal
         if not self.config.enabled:
-            auth_client = AuthClient(
-                principal=principal, config=self.config, http_client=self._client, service_name=self.service_name
-            )
+            auth_client = self._make_auth_client(principal, request, http_client=self._client)
             return await self._call_next_with_auth_client(request, call_next, auth_client)
 
         # Perform authorization check with PDP
-        auth_client = AuthClient(
-            principal=principal,
-            config=self.config,
-            http_client=self._get_client(request),
-            service_name=self.service_name,
-        )
+        auth_client = self._make_auth_client(principal, request, http_client=self._get_client(request))
 
         # Extract scopes from token claims
         scopes = claims.scopes if claims.scopes else None
@@ -447,6 +512,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
                 path=request.url.path,
                 scopes=scopes,
                 http_client=auth_client.http_client,
+                origin_workspace=auth_client.origin_workspace,
             )
         except httpx.ConnectError as e:
             logger.error(
@@ -548,9 +614,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             principal.groups,
         )
 
-        auth_client = AuthClient(
-            principal=principal, config=self.config, http_client=self._client, service_name=self.service_name
-        )
+        auth_client = self._make_auth_client(principal, request, http_client=self._client)
         return await self._call_next_with_auth_client(request, call_next, auth_client)
 
     async def _handle_auth_check(
@@ -591,11 +655,11 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
         # Create AuthClient for the authorization check
         # Pass http_client for ASGI transport in tests - see architecture/docs/http-client-injection.md
-        auth_client = AuthClient(
-            principal=principal,
-            config=self.config,
+        auth_client = self._make_auth_client(
+            principal,
+            request,
+            headers_dict=headers_dict,
             http_client=self._get_client(request),
-            service_name=self.service_name,
         )
 
         # Perform authorization check - only catch errors from the PDP call itself.
@@ -606,6 +670,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
                 path=request.url.path,
                 scopes=scopes,
                 http_client=auth_client.http_client,
+                origin_workspace=auth_client.origin_workspace,
             )
         except httpx.ConnectError as e:
             logger.error(

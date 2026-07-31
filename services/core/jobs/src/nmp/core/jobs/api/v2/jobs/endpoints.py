@@ -267,7 +267,10 @@ async def create_job(
         return await dispatcher.create_job(
             request,
             workspace,
-            auth_context=AuthContext.from_principal(auth_client.principal),
+            auth_context=AuthContext.from_principal(
+                auth_client.principal,
+                origin_workspace=auth_client.outbound_origin_workspace,
+            ),
             sdk=sdk,
         )
     except JobOutputLocationError as exc:

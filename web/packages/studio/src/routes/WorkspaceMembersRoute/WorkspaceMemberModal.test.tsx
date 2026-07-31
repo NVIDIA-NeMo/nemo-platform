@@ -56,7 +56,7 @@ vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => {
 
 const mockMember = {
   principal: 'user@example.com',
-  roles: ['Viewer'] as ('Viewer' | 'Editor' | 'Admin')[],
+  roles: ['Viewer'] as ('Viewer' | 'Editor' | 'Exporter' | 'Admin')[],
   workspace: 'test-workspace',
 };
 

@@ -181,6 +181,35 @@ async def test_create_deployment_success(
 
 
 @pytest.mark.asyncio
+async def test_create_deployment_resolves_qualified_config_in_source_workspace(
+    deployment_service,
+    mock_entity_client,
+    sample_config_entity,
+    sample_deployment_entity,
+):
+    request = CreateModelDeploymentRequest(
+        name="test-deployment",
+        project="test-project",
+        config="source-workspace/test-config",
+    )
+    no_deployments = MagicMock(data=[])
+    source_configs = MagicMock(data=[sample_config_entity])
+    mock_entity_client.list.side_effect = [no_deployments, source_configs]
+    mock_entity_client.get.return_value = sample_config_entity
+    mock_entity_client.create.return_value = sample_deployment_entity
+
+    await deployment_service.create_deployment(request, "destination-workspace")
+
+    config_list_call = mock_entity_client.list.await_args_list[1]
+    assert config_list_call.kwargs["workspace"] == "source-workspace"
+    mock_entity_client.get.assert_awaited_once_with(
+        ModelDeploymentConfigEntity,
+        workspace="source-workspace",
+        name="test-config-v1",
+    )
+
+
+@pytest.mark.asyncio
 async def test_create_deployment_already_exists(
     deployment_service, mock_entity_client, sample_create_request, sample_deployment_entity
 ):

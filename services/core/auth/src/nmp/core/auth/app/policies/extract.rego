@@ -87,11 +87,52 @@ extract_principal_id := principal_id if {
 	principal_id := input.attributes.request.http.headers["X-NMP-Principal-Id"]
 }
 
+# Extract the delegated principal ID while retaining extract_principal_id as the
+# authenticated caller identity for caller-kind checks.
+extract_on_behalf_of_principal_id := principal_id if {
+	input.on_behalf_of_principal_id
+	principal_id := input.on_behalf_of_principal_id
+} else := principal_id if {
+	input.attributes.request.http.headers["x-nmp-principal-on-behalf-of"]
+	principal_id := input.attributes.request.http.headers["x-nmp-principal-on-behalf-of"]
+} else := principal_id if {
+	input.attributes.request.http.headers["X-NMP-Principal-On-Behalf-Of"]
+	principal_id := input.attributes.request.http.headers["X-NMP-Principal-On-Behalf-Of"]
+} else := ""
+
+# The effective principal is the original user for delegated service calls.
+extract_effective_principal_id := principal_id if {
+	principal_id := extract_on_behalf_of_principal_id
+	principal_id != ""
+} else := principal_id if {
+	principal_id := extract_principal_id
+}
+
+# Workspace from which a service operation originated. Direct user requests omit
+# this value, so ordinary UI/API browsing does not require export permission.
+extract_origin_workspace := workspace if {
+	input.origin_workspace
+	workspace := input.origin_workspace
+} else := workspace if {
+	input.attributes.request.http.headers["x-nmp-origin-workspace"]
+	workspace := input.attributes.request.http.headers["x-nmp-origin-workspace"]
+} else := workspace if {
+	input.attributes.request.http.headers["X-NMP-Origin-Workspace"]
+	workspace := input.attributes.request.http.headers["X-NMP-Origin-Workspace"]
+} else := ""
+
 # Extract principal_email from either format
 extract_principal_email := email if {
 	# Direct format
 	input.principal_email
 	email := input.principal_email
+} else := email if {
+	# Envoy delegated format - prefer the effective user's email
+	input.attributes.request.http.headers["x-nmp-principal-on-behalf-of-email"]
+	email := input.attributes.request.http.headers["x-nmp-principal-on-behalf-of-email"]
+} else := email if {
+	input.attributes.request.http.headers["X-NMP-Principal-On-Behalf-Of-Email"]
+	email := input.attributes.request.http.headers["X-NMP-Principal-On-Behalf-Of-Email"]
 } else := email if {
 	# Envoy format - try x-nmp-principal-email header
 	input.attributes.request.http.headers["x-nmp-principal-email"]
@@ -107,6 +148,13 @@ extract_principal_groups := groups if {
 	# Direct format
 	input.principal_groups
 	groups := input.principal_groups
+} else := groups if {
+	# Envoy delegated format - prefer the effective user's groups
+	input.attributes.request.http.headers["x-nmp-principal-on-behalf-of-groups"]
+	groups := split(input.attributes.request.http.headers["x-nmp-principal-on-behalf-of-groups"], ",")
+} else := groups if {
+	input.attributes.request.http.headers["X-NMP-Principal-On-Behalf-Of-Groups"]
+	groups := split(input.attributes.request.http.headers["X-NMP-Principal-On-Behalf-Of-Groups"], ",")
 } else := groups if {
 	# Envoy format - try x-nmp-principal-groups header (comma-separated)
 	input.attributes.request.http.headers["x-nmp-principal-groups"]

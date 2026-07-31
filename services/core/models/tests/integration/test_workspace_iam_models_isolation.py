@@ -10,9 +10,9 @@ HTTP to the same routes using a ``requests`` Session (see
 :class:`_TestClientToRequestsAdapter`) that forwards to the Starlette ``TestClient``,
 since CPython ``requests`` cannot open an in-process ASGI app directly.
 
-Per-workspace model entities exist in C and D. User A (group on C) may add an
-adapter in A whose fileset (LoRA / base data) is in C; a fileset in D while
-adapting a model in A must be denied (403) because the caller cannot read D.
+Per-workspace model entities exist in C and D. User A (group on C) may export a
+fileset from C for an adapter in A; a fileset in D while adapting a model in A
+must be denied (403) because the caller cannot export from D.
 """
 
 from __future__ import annotations
@@ -143,7 +143,7 @@ class TestWorkspaceIamIsolationSDK:
 
         grant_workspace_role(admin, workspace=ws_a, principal=user_a, roles=["Editor"])
         grant_workspace_role(admin, workspace=ws_b, principal=user_b, roles=["Editor"])
-        grant_workspace_role(admin, workspace=ws_c, principal=shared_group, roles=["Editor"])
+        grant_workspace_role(admin, workspace=ws_c, principal=shared_group, roles=["Editor", "Exporter"])
 
         model_a = short_unique_name("mdl-a")
         model_b = short_unique_name("mdl-b")
@@ -181,7 +181,7 @@ class TestWorkspaceIamIsolationSDK:
                 finetuning_type="lora",
             )
 
-        # Adapter in ws_a on local model, LoRA data in ws_c: allowed (user A can read C).
+        # Adapter in ws_a on local model, LoRA data in ws_c: allowed (user A can export from C).
         uac.models.adapters.create(
             model_a,
             workspace=ws_a,
@@ -288,7 +288,7 @@ class TestWorkspaceIamIsolationHttpRequests:
         assert (
             post(
                 f"{b}/apis/entities/v2/workspaces/{ws_c}/members?wait_role_propagation=true",
-                json={"principal": shared_group, "roles": ["Editor"]},
+                json={"principal": shared_group, "roles": ["Editor", "Exporter"]},
                 headers=h(TEST_ADMIN_EMAIL),
             ).status_code
             == 201

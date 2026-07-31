@@ -119,7 +119,7 @@ auth:
     workload_token_ttl_seconds: 300
     # JWT key id advertised by the NeMo auth service workload identity JWKS endpoint. | default: 'nemo-workload-exchange'
     workload_token_key_id: nemo-workload-exchange
-    # Path to a PEM-encoded RSA private key used by the NeMo auth service to sign workload identity access tokens. Intended for mounted shared secrets.
+    # Path to a PEM-encoded RSA private key used by the NeMo auth service to sign workload identity access tokens and by API services to authenticate Files HF runtime downloads. Required for model downloads when authorization is enabled; intended for mounted shared secrets.
     workload_token_private_key_file:
     # Additional RFC 8693 audience values accepted by the NeMo auth service workload token exchange endpoint. The configured workload_audience is always accepted.
     workload_allowed_audiences: []

@@ -17,12 +17,12 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_WORKSPACE_ENVVAR,
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
 )
-from nemo_platform_plugin.sdk_provider import get_platform_sdk
+from nemo_platform_plugin.sdk_provider import get_task_sdk
 
 
 def run() -> int:
     step_config = _get_step_config()
-    sdk = get_platform_sdk(as_service="data-designer")
+    sdk = get_task_sdk("data-designer")
     ctx = _get_ctx(sdk)
 
     return run_step_config(

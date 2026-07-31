@@ -96,6 +96,7 @@ class TestOnBehalfOfHeaders:
 class TestDefaultSDKProvider:
     def test_get_task_sdk_with_principal(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv("NMP_ORIGIN_WORKSPACE", "workspace-a")
         monkeypatch.setenv(
             "NMP_PRINCIPAL",
             json.dumps({"id": "creator@ex.com", "email": "creator@ex.com", "groups": ["team"]}),
@@ -109,6 +110,7 @@ class TestDefaultSDKProvider:
         assert sdk.default_headers["X-NMP-Principal-Id"] == "service:evaluator"
         assert sdk.default_headers["X-NMP-Internal"] == "true"
         assert sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "creator@ex.com"
+        assert sdk.default_headers["X-NMP-Origin-Workspace"] == "workspace-a"
 
     def test_get_task_sdk_without_principal(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
@@ -132,6 +134,7 @@ class TestDefaultSDKProvider:
         subject_token_file = tmp_path / "workload-token"
         subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv("NMP_ORIGIN_WORKSPACE", "workspace-a")
         monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
         monkeypatch.setenv(
             "NMP_PRINCIPAL",
@@ -142,6 +145,7 @@ class TestDefaultSDKProvider:
         sdk = provider.get_task_sdk("evaluator")
         try:
             assert sdk.default_headers["X-NMP-Internal"] == "true"
+            assert sdk.default_headers["X-NMP-Origin-Workspace"] == "workspace-a"
             assert "X-NMP-Principal-Id" not in sdk.default_headers
             assert "X-NMP-Principal-On-Behalf-Of" not in sdk.default_headers
         finally:
@@ -175,6 +179,7 @@ class TestDefaultSDKProvider:
 class TestAsyncTaskSdk:
     def test_async_task_sdk_with_principal(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv("NMP_ORIGIN_WORKSPACE", "workspace-a")
         monkeypatch.setenv(
             "NMP_PRINCIPAL",
             json.dumps({"id": "creator@ex.com", "email": "creator@ex.com", "groups": ["team"]}),
@@ -187,6 +192,7 @@ class TestAsyncTaskSdk:
         assert sdk.default_headers["X-NMP-Principal-Id"] == "service:evaluator"
         assert sdk.default_headers["X-NMP-Internal"] == "true"
         assert sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "creator@ex.com"
+        assert sdk.default_headers["X-NMP-Origin-Workspace"] == "workspace-a"
 
     def test_async_task_sdk_without_principal(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
