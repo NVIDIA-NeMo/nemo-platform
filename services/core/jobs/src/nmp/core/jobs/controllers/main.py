@@ -17,6 +17,26 @@ from nmp.core.jobs.controllers.reconciler import JobReconciler
 from nmp.core.jobs.controllers.scheduler import JobScheduler
 
 stop_signal = threading.Event()
+logger = logging.getLogger(__name__)
+
+
+def _sync_advertised_profiles_to_registry(backend_registry: BackendRegistry) -> None:
+    """Keep GET /v2/execution-profiles aligned with backends that actually registered.
+
+    ``profiles`` is built at import time; ``BackendRegistry.from_config`` may later
+    soft-skip Docker backends. Mutate the shared list in place so the API process
+    (same process in local standalone) stops advertising unusable executors.
+    """
+    registered = backend_registry.registered_profile_keys()
+    kept = [profile for profile in profiles if (profile.provider, profile.profile) in registered]
+    skipped = len(profiles) - len(kept)
+    if skipped:
+        logger.warning(
+            "Removed %s execution profile(s) that failed backend registration so advertised "
+            "profiles match the jobs controller registry.",
+            skipped,
+        )
+        profiles[:] = kept
 
 
 def handle_sighup(signum, frame):
@@ -25,7 +45,6 @@ def handle_sighup(signum, frame):
 
 def run(parent_stop_signal: threading.Event | None = None):
     # Create logger after configuration is set up
-    logger = logging.getLogger(__name__)
     logger.info("Starting jobs controller")
 
     # Use provided stop signal or create our own
@@ -43,6 +62,7 @@ def run(parent_stop_signal: threading.Event | None = None):
     logger.debug("Platform SDK initialized successfully.")
 
     backend_registry = BackendRegistry.from_config(nmp_sdk=nmp_sdk, profiles=profiles)
+    _sync_advertised_profiles_to_registry(backend_registry)
     logger.info("Executor backends registry initialized successfully.")
 
     # Wait for the jobs service to be ready before starting control loops (polls /status so we can start once jobs is ready)

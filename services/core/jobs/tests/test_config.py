@@ -431,6 +431,40 @@ def test_backend_registry_skips_docker_when_unavailable(mock_nmp_client, caplog)
     assert "Skipping job executor profile cpu/default" in caplog.text
 
 
+def test_backend_registry_registered_profile_keys_match_constructed_backends(mock_nmp_client):
+    class DummyBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            self.nmp_sdk = nmp_sdk
+            self.execution_profile_config = execution_profile_config
+            self.profile_name = profile_name
+
+    profiles = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
+        registry = BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=profiles,
+            backends={
+                BackendKey("cpu", "docker"): DummyBackend,
+                BackendKey("subprocess", "subprocess"): DummyBackend,
+            },
+        )
+
+    assert registry.registered_profile_keys() == frozenset({("subprocess", "default")})
+
+
 def test_subprocess_execution_profile_defaults_provider_to_subprocess():
     profile = SubprocessJobExecutionProfile(profile="default")
 

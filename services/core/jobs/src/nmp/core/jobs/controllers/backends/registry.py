@@ -152,6 +152,10 @@ class BackendRegistry:
                 )
         return cls(registry)
 
+    def registered_profile_keys(self) -> frozenset[tuple[str, str]]:
+        """Return (provider, profile) keys for backends that successfully registered."""
+        return frozenset((key.provider, key.profile) for key in self._registry)
+
     def get_backend(self, *, provider: str | None = None, profile: str | None = None) -> JobBackend:
         """Retrieve a configured backend for the specified provider and profile.
 
