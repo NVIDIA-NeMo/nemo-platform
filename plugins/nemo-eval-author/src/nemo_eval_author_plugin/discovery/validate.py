@@ -29,7 +29,6 @@ names remote datasets, and rung 6 imports a module from the repo under test, whi
 that module's top level. Neither starts a container or writes into the repo.
 """
 
-import asyncio
 import contextlib
 import shutil
 import subprocess
@@ -710,13 +709,3 @@ def _executable_lines(text: str) -> str:
         if not line.lstrip().startswith(("#", "::")) and not line.lstrip().upper().startswith("REM ")
     ]
     return "\n".join(kept)
-
-
-def validate(candidate: CandidateConfig, repo_root: Path) -> ValidationOutcome:
-    """Synchronous entry point, since the CLI is not async but ``Job.create`` is."""
-    return asyncio.run(run_ladder(candidate, repo_root))
-
-
-def temp_logs_dir() -> tempfile.TemporaryDirectory:
-    """Exposed for tests that need a throwaway logs dir when constructing agents."""
-    return tempfile.TemporaryDirectory(prefix="eval-author-discover-")
