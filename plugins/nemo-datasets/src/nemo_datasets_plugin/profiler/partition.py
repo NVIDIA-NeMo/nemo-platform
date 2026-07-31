@@ -12,12 +12,21 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 
 from nemo_datasets_plugin.profiler.file_source import FileEntry
+from nemo_datasets_plugin.profiler.splits import is_split_directory
 
 
 def _top_dir(path: str) -> str | None:
-    """The first path segment when the file is nested, else None for a root-level file."""
+    """The partition directory for a file: its first path segment, else None for a root-level file.
+
+    A split-named top-level directory (``train/``, ``test/``) is deliberately *not* a partition
+    dimension. Grouping on it would split one dataset's train and test into unrelated partitions,
+    each deriving its own schema and classification — the exact structure `splits` exists to model.
+    Those files fall through to the same partition and are separated by :mod:`splits` instead.
+    """
     parts = PurePosixPath(path).parts
-    return parts[0] if len(parts) > 1 else None
+    if len(parts) <= 1 or is_split_directory(parts[0]):
+        return None
+    return parts[0]
 
 
 def group_partitions(entries: list[FileEntry]) -> list[tuple[str, list[FileEntry]]]:
