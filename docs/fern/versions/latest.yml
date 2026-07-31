@@ -263,6 +263,11 @@ navigation:
             path: ../../agents/deploy-agents.mdx
           - page: Optimize Agents
             path: ../../agents/optimization.mdx
+          # Gated until Insight-Driven Optimization ships. Uncomment the two
+          # lines below to publish it here, then drop the matching Agents block
+          # from gated-nav.yml and re-add inbound links from Optimize Agents.
+          # - page: Insight-Driven Optimization
+          #   path: ../../agents/insight-driven-optimization.mdx
           - page: Secure Agents
             path: ../../agents/security.mdx
           - page: Plugins and Skills
