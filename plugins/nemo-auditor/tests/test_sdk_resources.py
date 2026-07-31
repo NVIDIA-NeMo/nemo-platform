@@ -15,9 +15,9 @@ actually shells out to garak; we just verify the SDK builds the right
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import io
 import tarfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -640,9 +640,7 @@ class TestAuditorJobResource:
         ]
         logs_response = _ok_response({"data": [], "next_page": None})
         platform._client.get.side_effect = (
-            status_responses[:1]
-            + [logs_response, status_responses[1]]
-            + [logs_response, status_responses[2]]
+            status_responses[:1] + [logs_response, status_responses[1]] + [logs_response, status_responses[2]]
         )
 
         with patch("nemo_auditor.sdk_resources.job_resources._pause"):
@@ -756,9 +754,7 @@ class TestAsyncAuditorJobResource:
         ]
         logs_response = _ok_response({"data": [], "next_page": None})
         platform._client.get.side_effect = (
-            status_responses[:1]
-            + [logs_response, status_responses[1]]
-            + [logs_response, status_responses[2]]
+            status_responses[:1] + [logs_response, status_responses[1]] + [logs_response, status_responses[2]]
         )
 
         with patch("nemo_auditor.sdk_resources.job_resources._async_pause", new=AsyncMock()):
