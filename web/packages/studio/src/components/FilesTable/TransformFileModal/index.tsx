@@ -8,22 +8,14 @@ import { ModelSelect } from '@nemo/common/src/components/ModelSelect';
 import { getEntityReference, getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
-import {
-  CodeSnippet,
-  Divider,
-  Flex,
-  Label,
-  Spinner,
-  Stack,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Divider, Flex, Label, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { useDatasetFileTransform } from '@studio/api/datasets/useDatasetFileTransform';
+import { TransformPreview } from '@studio/components/FilesTable/TransformFileModal/TransformPreview';
 import {
   TransformFileFormFields,
   transformFileSchema,
 } from '@studio/components/FilesTable/TransformFileModal/types';
-import { InfoTooltip } from '@studio/components/InfoTooltip';
 import { ValueWithLabel } from '@studio/components/ValueWithLabel';
 import { useSelectedDatasetId } from '@studio/hooks/useSelectedDatasetId';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -31,23 +23,23 @@ import { getContentSchema } from '@studio/util/files';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { GitBranch } from 'lucide-react';
 import { ComponentProps, FC, useMemo } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 
 interface Props extends Pick<ComponentProps<typeof FormModal>, 'open' | 'onClose'> {
   filepath?: string;
+  datasetId?: string;
 }
 
 /**
  * This modal is used to handle transforms to a file's schema
  * such as manipulating columns and adding model completions.
  */
-export const TransformFileModal: FC<Props> = ({ open, onClose, filepath }) => {
+export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, datasetId }) => {
   const toast = useToast();
-  const datasetId = useSelectedDatasetId();
-  const datasetNameSplit = getPartsFromReference(datasetId);
+  const resolvedDatasetId = useSelectedDatasetId({ datasetId });
+  const datasetNameSplit = getPartsFromReference(resolvedDatasetId);
   const workspace = useWorkspaceFromPath();
 
-  // Form Fields
   const { control, reset, handleSubmit } = useForm<TransformFileFormFields>({
     mode: 'onChange',
     resolver: zodResolver(transformFileSchema),
@@ -56,7 +48,6 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath }) => {
       mappings: [],
     },
   });
-  const filepathForm = useWatch({ control, name: 'filepath' });
   const resetAndClose = () => {
     reset();
     onClose();
@@ -70,15 +61,16 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath }) => {
     return modelsResponse?.data;
   }, [modelsResponse]);
 
+  const resolvedFilepath = filepath ?? '';
+  const fileType = resolvedFilepath.split('.').at(-1) ?? '';
+
   const { data: fileContent, isLoading: isLoadingFileContent } = useDatasetFileContent({
     ...datasetNameSplit,
-    path: filepathForm,
+    path: resolvedFilepath,
   });
-  const { schema, total_rows } = useMemo(() => {
-    return getContentSchema(fileContent, {
-      fileType: filepathForm.split('.').at(-1) ?? '',
-    });
-  }, [filepathForm, fileContent]);
+  const { schema } = useMemo(() => {
+    return getContentSchema(fileContent, { fileType });
+  }, [fileType, fileContent]);
 
   const { mutate: transformFile, isPending } = useDatasetFileTransform({
     onSuccess: () => {
@@ -100,7 +92,7 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath }) => {
     transformFile({
       workspace: datasetNameSplit.workspace,
       datasetName: datasetNameSplit.name,
-      filepath: filepathForm,
+      filepath: resolvedFilepath,
       mappings: data.mappings.filter((m) => m.key.trim() !== ''),
       fileContent: fileContent,
       model,
@@ -121,6 +113,7 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath }) => {
         onSubmit,
         handleFormErrorsGeneric({ title: 'Transform File Form Errors' })
       )}
+      className="w-[960px] overflow-hidden"
       onClose={resetAndClose}
       disabled={isPending}
       submitDisabled={isLoadingFileContent}
@@ -139,35 +132,17 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath }) => {
         <Divider />
         {isLoadingFileContent ? (
           <Flex justify="center" align="center" className="h-full py-[80px]">
-            <Spinner description="Loading file content..." />
+            <Spinner slotDescription="Loading file content..." />
           </Flex>
         ) : (
           <Stack gap="density-xl" className="pb-4">
-            <CodeSnippet
-              value={JSON.stringify(schema, null, 2)}
-              language="json"
-              kind="block"
-              attributes={{
-                CodeSnippetCopyButton: {
-                  type: 'button',
-                  onClick: () => {
-                    toast.success('Schema copied to clipboard!');
-                  },
-                },
-              }}
-              slotActions={
-                <Flex className="w-full" justify="between">
-                  <Label className="font-bold">Schema ({total_rows ?? 0} rows)</Label>
-                  <InfoTooltip message="The schema of the source file." />
-                </Flex>
-              }
-            />
             <MappingFields
               control={control}
               name="mappings"
               disabled={isLoadingFileContent}
               schema={schema}
             />
+            <TransformPreview control={control} fileContent={fileContent} fileType={fileType} />
             <ModelSelect
               tooltip="Runs inference on EACH ROW of the file. Please ensure your file schema uses 'prompt', 'instruction', or 'question' as your user message key."
               models={models}
