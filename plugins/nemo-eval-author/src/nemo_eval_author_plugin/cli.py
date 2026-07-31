@@ -20,9 +20,8 @@ from typing import Annotated, ClassVar, NoReturn
 
 import typer
 from nemo_eval_author_plugin.discovery import run as discovery
-from nemo_eval_author_plugin.discovery.memory import FILESET_NAME
-from nemo_eval_author_plugin.discovery.models import Finding
-from nemo_eval_author_plugin.discovery.report import JOB_CONFIG_FILENAME
+from nemo_eval_author_plugin.discovery.models import FILESET_NAME, JOB_CONFIG_FILENAME, Finding
+from nemo_eval_author_plugin.discovery.report import run_target
 from nemo_platform_plugin.cli import NemoCLI
 
 _STATUS_MARK = {"pass": "  ok  ", "warn": " warn ", "fail": " FAIL "}
@@ -57,11 +56,17 @@ def _report_discovery(result: discovery.DiscoverResult) -> None:
                 _echo_finding(finding)
 
     typer.echo("")
-    if record.runnable:
+    target = run_target(record)
+    if target is not None:
         source = record.config_source
         typer.echo(f"Harbor can run this repo's evals ({source.detail if source else 'unknown source'}).")
-        typer.echo(f"Run it from {record.repo_root}:")
-        typer.echo(f"  harbor job start -c {JOB_CONFIG_FILENAME}")
+        if target.location == "repo":
+            typer.echo(f"Run it from {record.repo_root}, using the config this repo already maintains:")
+            typer.echo(f"  harbor job start -c {target.path}")
+        else:
+            typer.echo(f"Discovery wrote the config to fileset '{FILESET_NAME}' at {target.path}.")
+            typer.echo(f"Fetch it into {record.repo_root}, then:")
+            typer.echo(f"  harbor job start -c {JOB_CONFIG_FILENAME}")
         if record.required_env_vars:
             typer.echo(f"  Needs: {', '.join(item.name for item in record.required_env_vars)}")
     else:

@@ -283,7 +283,7 @@ async def test_the_persisted_config_is_checked_through_the_harbor_cli(tmp_path):
     config_path = tmp_path / "harbor-job.yaml"
     config_path.write_text(f"datasets:\n- path: {dataset}\n")
 
-    finding = validate.check_persisted_config(config_path, tmp_path)
+    finding = validate.check_config_file(config_path, tmp_path)
 
     assert finding.status in {"pass", "warn"}
     if finding.status == "pass":
@@ -294,7 +294,7 @@ async def test_a_config_the_cli_rejects_fails_the_round_trip(tmp_path):
     config_path = tmp_path / "harbor-job.yaml"
     config_path.write_text("datasets: not-a-list\n")
 
-    finding = validate.check_persisted_config(config_path, tmp_path)
+    finding = validate.check_config_file(config_path, tmp_path)
 
     if finding.status != "warn":  # warn means no harbor executable on PATH
         assert finding.status == "fail"

@@ -27,16 +27,16 @@ from typing import Any
 import yaml
 from harbor.models.job.config import JobConfig
 from nemo_eval_author_plugin.discovery.models import (
+    FILESET_NAME,
+    JOB_CONFIG_FILENAME,
     CandidateConfig,
     DiscoveryReport,
     Finding,
     InputFingerprint,
     RequiredEnvVar,
+    RunTarget,
 )
 from nemo_eval_author_plugin.discovery.scan import display_path
-
-JOB_CONFIG_FILENAME = "harbor-job.yaml"
-REPORT_FILENAME = "discovery.md"
 
 _STATUS_MARK = {"pass": "ok", "warn": "warn", "fail": "FAIL"}
 
@@ -96,6 +96,22 @@ def build_report(
     )
 
 
+def run_target(report: DiscoveryReport) -> RunTarget | None:
+    """Which config a later run should pass to ``-c``, or ``None`` when there is none.
+
+    A repo that maintains its own config keeps it: Harbor accepted exactly that file, so the
+    artifact points at it rather than shipping a copy that starts drifting the moment
+    someone edits the original. Every other source has no such file — the payload is
+    discovery's own synthesis — so the fileset is the only place it exists.
+    """
+    if not report.runnable:
+        return None
+    source = report.config_source
+    if source is not None and source.owns_file and source.path is not None:
+        return RunTarget(location="repo", path=display_path(source.path, report.repo_root))
+    return RunTarget(location="fileset", path=f"{report.agent}/{JOB_CONFIG_FILENAME}")
+
+
 def render_job_config(config: JobConfig, repo_root: Path) -> str:
     """Serialize the validated config, with in-repo paths made relative.
 
@@ -133,10 +149,14 @@ def _front_matter(report: DiscoveryReport) -> dict[str, Any]:
                 "kind": source.kind,
                 "detail": source.detail,
                 "path": display_path(source.path, report.repo_root) if source.path else None,
+                # Carried so a reused report resolves to the same run_config. Without it, a
+                # repo whose config we had to adjust would read back as ours to run.
+                "adjusted": source.adjusted,
             }
             if source is not None
             else None
         ),
+        "run_config": (target.model_dump() if (target := run_target(report)) is not None else None),
         "validation": {finding.name: finding.status for finding in report.findings if finding.group == "validation"},
         "harbor_version": report.harbor_version,
         "required_env_vars": [
@@ -166,13 +186,13 @@ def _body(report: DiscoveryReport) -> list[str]:
 
 
 def _verdict_section(report: DiscoveryReport) -> list[str]:
-    if report.runnable:
+    target = run_target(report)
+    if target is not None:
         source = report.config_source
         detail = source.detail if source is not None else "unknown"
         return [
-            f"Harbor can run this repo's evals. The config in `{JOB_CONFIG_FILENAME}` was "
-            f"{detail}, and every check below was answered by Harbor {report.harbor_version} "
-            "rather than inferred.",
+            f"Harbor can run this repo's evals. The config was {detail}, and every check below "
+            f"was answered by Harbor {report.harbor_version} rather than inferred.",
             "",
         ]
 
@@ -200,15 +220,42 @@ def _verdict_section(report: DiscoveryReport) -> list[str]:
 
 
 def _how_to_run_section(report: DiscoveryReport) -> list[str]:
-    if not report.runnable:
+    target = run_target(report)
+    if target is None:
         return []
     lines = [
         "## Running it",
         "",
-        f"From `{report.repo_root}`, because the config uses repo-relative paths:",
+        "Harbor runs local task directories through `-c` and no other way: `--dataset` and "
+        "`--task` name registry packages, so a filesystem path given to either is read as a "
+        "package reference. The config below is that file.",
         "",
+    ]
+    if target.location == "repo":
+        config_arg = target.path
+        lines += [
+            f"This repo maintains its own config at `{config_arg}`, and that file is what Harbor "
+            f"accepted here, so run it rather than a copy of it. From `{report.repo_root}`, "
+            "because its paths are relative to the repo:",
+            "",
+        ]
+    else:
+        config_arg = JOB_CONFIG_FILENAME
+        lines += [
+            "Nothing in this repo declares a Harbor job config, so discovery wrote the one it "
+            f"validated. Fetch it into `{report.repo_root}`, the directory its relative paths "
+            "assume:",
+            "",
+            "```bash",
+            f"nemo files download {FILESET_NAME} --workspace {report.workspace} --remote-path {target.path} -o .",
+            "```",
+            "",
+            "Then, from that same directory:",
+            "",
+        ]
+    lines += [
         "```bash",
-        f"harbor job start -c {JOB_CONFIG_FILENAME}",
+        f"harbor job start -c {config_arg}",
         "```",
         "",
     ]
@@ -220,7 +267,7 @@ def _how_to_run_section(report: DiscoveryReport) -> list[str]:
         "oracle, which replays each task's own solution and should score 1.0:",
         "",
         "```bash",
-        f"harbor run -a oracle -c {JOB_CONFIG_FILENAME}",
+        f"harbor run -a oracle -c {config_arg}",
         "```",
         "",
         "Discovery does not run this itself, because unlike every check above it builds and starts containers.",

@@ -23,6 +23,7 @@ from harbor_fixtures import (
     StubClient,
     StubFiles,
     write_dataset,
+    write_job_config,
     write_wrapper,
 )
 from nemo_eval_author_plugin import cli
@@ -81,6 +82,31 @@ def test_a_healthy_repo_exits_zero_and_records_both_artifacts(app, client, tmp_p
     assert sorted(client.files.stored) == [f"{AGENT}/discovery.md", f"{AGENT}/harbor-job.yaml"]
 
 
+def test_a_repo_that_maintains_its_own_config_keeps_it_and_records_only_the_report(app, client, tmp_path):
+    """The repo's file is what Harbor validated, so a copy in the fileset could only drift from it."""
+    write_dataset(tmp_path / "evals" / "validation")
+    write_job_config(tmp_path / "configs" / "eval.yaml", dataset="evals/validation")
+
+    result = _invoke_named(app, tmp_path)
+
+    assert result.exit_code == 0, result.output
+    assert "harbor job start -c configs/eval.yaml" in result.output
+    assert client.files.stored.keys() == {f"{AGENT}/discovery.md"}
+    assert "Withheld" not in result.output, "nothing was withheld; there was nothing of ours to publish"
+
+
+def test_an_env_backend_that_the_config_omits_makes_discovery_publish_its_own(app, client, tmp_path):
+    """The payload now names a backend the repo's file does not, so that file is not what to run."""
+    write_dataset(tmp_path / "evals" / "validation")
+    write_job_config(tmp_path / "configs" / "eval.yaml", dataset="evals/validation")
+
+    result = _invoke_named(app, tmp_path, "--env-backend", "docker")
+
+    assert result.exit_code == 0, result.output
+    assert "harbor job start -c harbor-job.yaml" in result.output
+    assert sorted(client.files.stored) == [f"{AGENT}/discovery.md", f"{AGENT}/harbor-job.yaml"]
+
+
 def test_a_repo_whose_tasks_never_score_exits_one_and_withholds_the_config(app, client, tmp_path):
     write_dataset(tmp_path / "evals" / "validation", test_script=MENTIONS_REWARD_IN_COMMENT)
 
@@ -89,6 +115,7 @@ def test_a_repo_whose_tasks_never_score_exits_one_and_withholds_the_config(app, 
     assert result.exit_code == 1, result.output
     assert "Harbor cannot run this repo's evals" in result.output
     assert "reward" in result.output
+    assert "Withheld harbor-job.yaml" in result.output, "an absent config has to be explained, not just missing"
     # The report still lands, so the failure is documented rather than lost.
     assert sorted(client.files.stored) == [f"{AGENT}/discovery.md"]
 
@@ -223,6 +250,17 @@ def test_traces_are_reported_without_blocking_a_run(app, monkeypatch, tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "repo/traces" in result.output
+
+
+def test_nothing_is_written_into_the_repo_being_inspected(app, client, tmp_path):
+    """The ladder runs with cwd inside the repo, so a Harbor side effect would land here."""
+    write_dataset(tmp_path / "evals" / "validation")
+    write_job_config(tmp_path / "configs" / "eval.yaml", dataset="evals/validation")
+    before = {path.name for path in tmp_path.rglob("*")}
+
+    assert _invoke_named(app, tmp_path).exit_code == 0
+
+    assert {path.name for path in tmp_path.rglob("*")} == before
 
 
 def test_the_platform_client_is_closed(app, client, tmp_path):

@@ -29,6 +29,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 WRITES_REWARD = "#!/bin/bash\necho 1 > /logs/verifier/reward.txt\n"
 
 # What Harbor's own template ships: a comment telling the author to write a reward, and no
@@ -110,6 +112,14 @@ def write_wrapper(repo_root: Path, *, class_name: str = "WrappedAgent", base: st
         "        return None\n",
         encoding="utf-8",
     )
+    return path
+
+
+def write_job_config(path: Path, *, dataset: str, agent: dict[str, Any] | None = None) -> Path:
+    """A job config of the kind a repo maintains itself, which is what ``-c`` takes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"agents": [agent or {"name": "oracle"}], "datasets": [{"path": dataset}]}
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
     return path
 
 

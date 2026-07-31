@@ -23,15 +23,15 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from nemo_eval_author_plugin.discovery.models import Finding, InputFingerprint
-from nemo_eval_author_plugin.discovery.report import (
+from nemo_eval_author_plugin.discovery.models import (
+    FILESET_NAME,
     JOB_CONFIG_FILENAME,
     REPORT_FILENAME,
-    fingerprint_inputs,
+    Finding,
+    InputFingerprint,
 )
+from nemo_eval_author_plugin.discovery.report import fingerprint_inputs
 from pydantic import BaseModel, Field
-
-FILESET_NAME = "nemo-eval-author"
 
 _GROUP = "memory"
 _FRONT_MATTER_FENCE = "---"
@@ -163,7 +163,11 @@ async def persist(
     markdown: str,
     job_config: str | None,
 ) -> tuple[bool, list[Finding]]:
-    """Upload the report, and the config when there is one worth uploading.
+    """Upload the report, and the config when the caller passed one.
+
+    Reports only what it did. Why a config might be absent is the caller's to explain —
+    withheld because nothing validated, not needed because the repo maintains its own,
+    already stored by an earlier run — and a message here could only guess between them.
 
     Returns whether everything landed. Upload failures are reported as warnings rather
     than failures, because ``runnable`` answers one question only — can Harbor run this
@@ -206,14 +210,4 @@ async def persist(
             )
         )
 
-    if job_config is None:
-        findings.append(
-            Finding(
-                name="upload",
-                group=_GROUP,
-                status="warn",
-                message=f"Withheld {JOB_CONFIG_FILENAME}: no config passed Harbor's schema check",
-                hint="A config in this fileset is always one Harbor could load, so none was written.",
-            )
-        )
     return ok, findings

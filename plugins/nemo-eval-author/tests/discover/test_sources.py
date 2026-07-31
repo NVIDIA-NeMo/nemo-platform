@@ -139,6 +139,49 @@ def test_env_backend_fills_a_gap_but_never_overrides_a_declaration(tmp_path):
     assert respected.data["environment"]["type"] == "daytona"
 
 
+def test_a_config_file_is_only_owned_by_the_repo_while_we_leave_it_alone(tmp_path):
+    """Ownership decides whether the artifact can point at the repo's file instead of a copy."""
+    write_dataset(tmp_path / "evals" / "validation")
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "configs" / "eval.yaml").write_text(yaml.safe_dump(_job_config("evals/validation")))
+
+    untouched, _ = sources.find_candidate(tmp_path)
+    assert untouched is not None
+    assert untouched.source.owns_file is True
+
+    # Filling in a backend the file never named makes our payload the only runnable one.
+    injected, _ = sources.find_candidate(tmp_path, env_backend="docker")
+    assert injected is not None
+    assert injected.source.adjusted is True
+    assert injected.source.owns_file is False
+
+
+def test_a_declared_backend_leaves_the_config_owned_by_the_repo(tmp_path):
+    """Nothing changed, so nothing stops a run from using the file that is already there."""
+    write_dataset(tmp_path / "evals" / "validation")
+    (tmp_path / "configs").mkdir()
+    declared = {**_job_config("evals/validation"), "environment": {"type": "docker"}}
+    (tmp_path / "configs" / "eval.yaml").write_text(yaml.safe_dump(declared))
+
+    candidate, _ = sources.find_candidate(tmp_path, env_backend="docker")
+
+    assert candidate is not None
+    assert candidate.source.adjusted is False
+    assert candidate.source.owns_file is True
+
+
+def test_an_inferred_source_never_claims_a_file_it_could_be_run_from(tmp_path):
+    """A prior job's config.json is Harbor's own output record, not an input anyone maintains."""
+    write_dataset(tmp_path / "evals" / "validation")
+    write_job_dir(tmp_path / "jobs" / "run-1", config=_job_config("evals/validation"))
+
+    candidate, _ = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.source.path is not None
+    assert candidate.source.owns_file is False
+
+
 def test_unreadable_yaml_is_skipped_rather_than_raising(tmp_path):
     write_dataset(tmp_path / "evals" / "validation")
     (tmp_path / "configs").mkdir()

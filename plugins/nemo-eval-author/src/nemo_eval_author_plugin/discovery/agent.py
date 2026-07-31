@@ -164,6 +164,9 @@ async def attempt_repair(
             kind=candidate.source.kind,
             detail=f"{candidate.source.detail}, then adjusted by the discovery scout",
             path=candidate.source.path,
+            # Even when the source was the repo's own config file, the artifact can no
+            # longer point at it: what Harbor accepted is the scout's version.
+            adjusted=True,
         ),
     )
     revalidated = await run_ladder(proposed, repo_root)

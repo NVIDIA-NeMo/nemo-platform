@@ -23,6 +23,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+FILESET_NAME = "nemo-eval-author"
+"""One fixed fileset with agent-scoped paths, following the telemetry precedent."""
+
+JOB_CONFIG_FILENAME = "harbor-job.yaml"
+REPORT_FILENAME = "discovery.md"
+
 Status = Literal["pass", "warn", "fail"]
 
 Provenance = Literal["harbor", "filesystem", "inference"]
@@ -72,10 +78,27 @@ class ConfigSource(BaseModel):
     kind: SourceKind
     detail: str
     path: Path | None = None
+    adjusted: bool = Field(
+        default=False,
+        description="Whether the validated payload has diverged from the file at ``path``.",
+    )
 
     @property
     def rank(self) -> int:
         return SOURCE_PRIORITY.index(self.kind)
+
+    @property
+    def owns_file(self) -> bool:
+        """Whether the repo maintains the config file we validated, unchanged.
+
+        The one case where discovery has nothing of its own to persist: the file already
+        exists, someone maintains it, and Harbor accepted exactly its contents. Shipping a
+        second copy would create a config nobody owns and that drifts the moment the real
+        one is edited. ``prior_job`` is excluded even though it has a path, because that
+        path is a record Harbor wrote inside a job's output directory rather than an input
+        anyone maintains.
+        """
+        return self.kind == "config_file" and self.path is not None and not self.adjusted
 
 
 class CandidateConfig(BaseModel):
@@ -89,6 +112,23 @@ class CandidateConfig(BaseModel):
 
     data: dict[str, Any]
     source: ConfigSource
+
+
+class RunTarget(BaseModel):
+    """The config a later run passes to ``harbor job start -c``, and where to get it.
+
+    Harbor runs local task directories through ``-c`` and no other way: ``--dataset`` and
+    ``--task`` name registry packages, so a filesystem path handed to either is read as a
+    package reference. A repo full of task dirs and no config file therefore cannot be run
+    as-is, which is why discovery writes one when the repo does not.
+
+    ``location`` spares the reader from deciding which case they are in: ``repo`` means the
+    path is relative to ``repo_root`` and already on disk, ``fileset`` means it is a remote
+    path in ``FILESET_NAME`` to fetch first.
+    """
+
+    location: Literal["repo", "fileset"]
+    path: str
 
 
 class RequiredEnvVar(BaseModel):

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from nemo_eval_author_plugin.discovery import memory, report, scan, sources, validate
 from nemo_eval_author_plugin.discovery.models import (
+    JOB_CONFIG_FILENAME,
     CandidateConfig,
     DiscoveryReport,
     Finding,
@@ -106,8 +107,15 @@ async def _discover(
     findings.extend(outcome.findings)
     findings.extend(await _probe_repo(client, repo_root, agent=agent, workspace=options.workspace))
 
+    # When the repo maintains the config Harbor accepted, that file is what a later run will
+    # pass to -c, so it is the thing worth round-tripping and there is nothing of ours to
+    # persist. Rendering a copy anyway would put a second config in the fileset that no one
+    # owns and that goes stale the moment the real one is edited.
+    repo_config = candidate.source.path if candidate is not None and candidate.source.owns_file else None
     job_config = None
-    if outcome.config is not None:
+    if repo_config is not None:
+        findings.append(validate.check_config_file(repo_config, repo_root))
+    elif outcome.config is not None:
         job_config = report.render_job_config(outcome.config, repo_root)
         findings.append(_round_trip(job_config, repo_root))
 
@@ -136,6 +144,16 @@ async def _discover(
         markdown=markdown,
         job_config=publishable,
     )
+    if job_config is not None and publishable is None:
+        memory_findings.append(
+            Finding(
+                name="upload",
+                group="memory",
+                status="warn",
+                message=f"Withheld {JOB_CONFIG_FILENAME}: the config did not clear every check",
+                hint="A config in this fileset is always one Harbor could run, so none was written.",
+            )
+        )
     return DiscoverResult(
         report=record,
         markdown=markdown,
@@ -204,7 +222,7 @@ async def _reuse(
         markdown=restamped,
         persisted=persisted,
         reused=True,
-        memory_findings=[item for item in memory_findings if item.name != "upload" or item.status != "warn"],
+        memory_findings=memory_findings,
     )
 
 
@@ -238,9 +256,9 @@ def _round_trip(job_config: str, repo_root: Path) -> Finding:
     to the repo root, so the file's own location does not matter.
     """
     with tempfile.TemporaryDirectory(prefix="eval-author-discover-") as scratch:
-        config_path = Path(scratch) / report.JOB_CONFIG_FILENAME
+        config_path = Path(scratch) / JOB_CONFIG_FILENAME
         config_path.write_text(job_config, encoding="utf-8")
-        return validate.check_persisted_config(config_path, repo_root)
+        return validate.check_config_file(config_path, repo_root)
 
 
 def _input_paths(repo_root: Path, candidate: CandidateConfig | None, outcome: ValidationOutcome) -> list[Path]:

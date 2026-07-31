@@ -16,8 +16,10 @@ from harbor.models.job.config import JobConfig
 from harbor_fixtures import write_dataset
 from nemo_eval_author_plugin.discovery import memory, report
 from nemo_eval_author_plugin.discovery.models import (
+    FILESET_NAME,
     CandidateConfig,
     ConfigSource,
+    DiscoveryReport,
     Finding,
     RequiredEnvVar,
 )
@@ -55,6 +57,66 @@ def test_front_matter_survives_a_round_trip(tmp_path):
     # Recorded relative, so the artifact means the same thing on another machine.
     assert front["required_env_vars"][0]["declared_in"] == "evals/task-0/task.toml"
     assert front["inputs"] == [{"path": "ETHOS.md", "sha256": record.inputs[0].sha256}]
+
+
+def _owned_config(tmp_path, *, adjusted=False):
+    return CandidateConfig(
+        data={},
+        source=ConfigSource(
+            kind="config_file",
+            detail="declared at configs/eval.yaml",
+            path=tmp_path / "configs" / "eval.yaml",
+            adjusted=adjusted,
+        ),
+    )
+
+
+def test_a_repo_that_maintains_its_own_config_is_told_to_run_that_file(tmp_path):
+    """Publishing a second copy would leave a config in the fileset that nobody edits."""
+    record = _record(tmp_path, candidate=_owned_config(tmp_path))
+
+    markdown = report.render_markdown(record)
+    front = memory.parse_front_matter(markdown)
+
+    assert front is not None
+    assert front["run_config"] == {"location": "repo", "path": "configs/eval.yaml"}
+    assert "harbor job start -c configs/eval.yaml" in markdown
+    assert "harbor-job.yaml" not in markdown
+    # Why a config file is involved at all, since a reader may only have task directories.
+    assert "package reference" in markdown
+
+
+def test_a_config_we_had_to_adjust_points_at_the_copy_discovery_wrote(tmp_path):
+    record = _record(tmp_path, candidate=_owned_config(tmp_path, adjusted=True))
+
+    markdown = report.render_markdown(record)
+    front = memory.parse_front_matter(markdown)
+
+    assert front is not None
+    assert front["run_config"] == {"location": "fileset", "path": "ticket-triage/harbor-job.yaml"}
+    assert "harbor job start -c harbor-job.yaml" in markdown
+    assert f"nemo files download {FILESET_NAME}" in markdown, "the config is not on disk yet"
+
+
+def test_a_reused_report_resolves_the_target_it_was_written_with(tmp_path):
+    """Reuse rebuilds the record from front matter alone, so what decided the target must be in it."""
+    record = _record(tmp_path, candidate=_owned_config(tmp_path, adjusted=True))
+    front = memory.parse_front_matter(report.render_markdown(record))
+
+    assert front is not None
+    rebuilt = DiscoveryReport.model_validate(
+        {
+            "agent": record.agent,
+            "workspace": record.workspace,
+            "repo_root": front["repo_root"],
+            "harbor_version": front["harbor_version"],
+            "config_source": front["config_source"],
+            "discovered_at": front["discovered_at"],
+            "last_validated_at": front["last_validated_at"],
+        }
+    )
+
+    assert report.run_target(rebuilt) == report.run_target(record)
 
 
 def test_the_digest_is_stable_and_notices_a_changed_input(tmp_path):

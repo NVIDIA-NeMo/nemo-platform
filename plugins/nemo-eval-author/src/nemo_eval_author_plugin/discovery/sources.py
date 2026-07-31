@@ -133,12 +133,18 @@ def _apply_env_backend(candidate: CandidateConfig, env_backend: str) -> None:
 
     A user who wrote ``type: daytona`` into their config meant it, and a CLI default
     should not quietly overwrite a declaration on its way into the persisted artifact.
+
+    Filling the gap counts as adjusting the payload, because it now says something the
+    source file does not: a reader pointed at that file would run a different backend.
     """
     environment = candidate.data.get("environment")
     if not isinstance(environment, dict):
         candidate.data["environment"] = {"type": env_backend}
     elif environment.get("type") is None:
         environment["type"] = env_backend
+    else:
+        return
+    candidate.source.adjusted = True
 
 
 def _from_config_file(repo_root: Path) -> tuple[CandidateConfig | None, list[Finding]]:

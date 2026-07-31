@@ -29,18 +29,17 @@ async def test_both_artifacts_are_uploaded_under_the_agent_prefix():
     assert all(item.status == "pass" for item in findings)
 
 
-async def test_the_config_is_withheld_when_harbor_never_accepted_one():
+async def test_no_config_uploads_the_report_alone_and_says_nothing_about_why():
+    """Absent for several reasons — withheld, repo-owned, already stored — and only the caller knows which."""
     client = StubClient()
 
     ok, findings = await memory.persist(
         client, agent="ticket-triage", workspace="default", markdown="# report\n", job_config=None
     )
 
-    assert ok is True, "the report still has to land, so the failure is documented"
+    assert ok is True, "the report still has to land, so the verdict is documented either way"
     assert [item["remote_path"] for item in client.files.uploads] == ["ticket-triage/discovery.md"]
-    withheld = next(item for item in findings if "Withheld" in item.message)
-    assert withheld.status == "warn"
-    assert withheld.hint is not None and "always one Harbor could load" in withheld.hint
+    assert all(item.status == "pass" for item in findings)
 
 
 async def test_an_upload_failure_is_reported_without_claiming_the_config_is_broken():

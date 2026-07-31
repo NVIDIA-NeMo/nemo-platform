@@ -97,6 +97,21 @@ def _harbor(name: str, status: Status, message: str, call: str, **kwargs) -> Fin
 
 
 async def run_ladder(candidate: CandidateConfig, repo_root: Path) -> ValidationOutcome:
+    """Judge the config from the directory a real run would be started in.
+
+    Harbor resolves a config's relative paths against the process directory, and a config a
+    repo maintains says ``path: evals/validation`` meaning "from the repo root". Validating
+    it from anywhere else reports a dataset Harbor cannot find while ``harbor job start -c``
+    from the repo root would run it — a false verdict on the case that matters most. The
+    subprocess round trip already passes ``cwd``; this gives the in-process rungs the same
+    footing. A process-wide chdir is only defensible because the CLI awaits one ladder and
+    nothing else.
+    """
+    with contextlib.chdir(repo_root):
+        return await _ladder(candidate, repo_root)
+
+
+async def _ladder(candidate: CandidateConfig, repo_root: Path) -> ValidationOutcome:
     """Walk the ladder, stopping only where a later rung has nothing left to judge."""
     outcome = ValidationOutcome()
 
@@ -175,9 +190,16 @@ async def _rung_resolution(config: JobConfig, outcome: ValidationOutcome) -> Job
     datasets into task configs, resolves skill sources, validates resource policies
     against the chosen backend, and builds metrics. Anything it raises is an error the
     real run would have hit at the same point.
+
+    It does have one side effect: it opens its output directory and starts a ``job.log``
+    there. ``jobs_dir`` defaults to a relative ``jobs/``, which the ladder's chdir would put
+    inside the repo, so resolution runs against a copy pointed at scratch space. A copy
+    because the original is what gets persisted, and a real run's output belongs wherever
+    that run decides, not in a temp dir that no longer exists.
     """
     try:
-        job = await Job.create(config)
+        with tempfile.TemporaryDirectory(prefix="eval-author-jobs-") as scratch:
+            job = await Job.create(config.model_copy(update={"jobs_dir": Path(scratch)}))
     except Exception as exc:
         outcome.findings.append(
             _harbor(
@@ -208,11 +230,15 @@ def _resolved_local_paths(job: Job) -> list[Path]:
     reason; there is no public accessor for the resolved list. Tasks that live only in a
     remote registry are skipped, since the resolution rung already spoke for whether they
     could be fetched.
+
+    Absolute on the way out. Harbor hands back whatever the config said, and a relative path
+    means the repo root only while the ladder's chdir is in effect; these outlive it as the
+    task list the report fingerprints.
     """
     paths: list[Path] = []
     for task_config in getattr(job, "_task_configs", []):
         try:
-            paths.append(task_config.get_local_path())
+            paths.append(task_config.get_local_path().resolve())
         except ValueError:
             continue
     return paths
@@ -566,13 +592,16 @@ def _rung_backend(config: JobConfig, outcome: ValidationOutcome) -> None:
     )
 
 
-def check_persisted_config(config_path: Path, repo_root: Path) -> Finding:
-    """Load the file we are about to persist through the Harbor CLI itself.
+def check_config_file(config_path: Path, repo_root: Path) -> Finding:
+    """Load the file a later run will pass to ``-c`` through the Harbor CLI itself.
 
     The only rung that judges bytes rather than an in-memory object, which matters
     because bytes are what a later agent will hand to Harbor. ``--print-config`` returns
     before ``Job.create``, so this re-validates the schema and resolves nothing. It runs
-    with ``cwd`` at the repo root because the persisted config uses repo-relative paths.
+    with ``cwd`` at the repo root because these configs use repo-relative paths.
+
+    The file is either one discovery wrote or the repo's own, whichever the artifact ends
+    up pointing at; the check is the same either way.
     """
     harbor_bin = shutil.which("harbor")
     if harbor_bin is None:
@@ -607,14 +636,14 @@ def check_persisted_config(config_path: Path, repo_root: Path) -> Finding:
         return _harbor(
             "round-trip",
             "fail",
-            f"`harbor job start --print-config` rejected the persisted config: {detail[-1] if detail else 'no output'}",
+            f"`harbor job start --print-config` rejected the config file: {detail[-1] if detail else 'no output'}",
             "harbor job start --print-config",
             path=config_path,
         )
     return _harbor(
         "round-trip",
         "pass",
-        "The persisted config loads through the Harbor CLI",
+        "The config file loads through the Harbor CLI",
         "harbor job start --print-config",
         path=config_path,
     )
