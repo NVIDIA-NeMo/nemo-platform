@@ -36,10 +36,13 @@ import {
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { useAnonymizerPreview } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerPreview';
 import { useDefaultRoleModels } from '@studio/routes/AnonymizerBuilderRoute/useDefaultRoleModels';
-import { tabForValidationErrors } from '@studio/routes/AnonymizerBuilderRoute/utils';
+import {
+  outputHeadingForStrategy,
+  tabForValidationErrors,
+} from '@studio/routes/AnonymizerBuilderRoute/utils';
 import { getWorkspaceAnonymizerRoute, getWorkspaceJobDetailRoute } from '@studio/routes/utils';
 import { useCallback, useState, type FC } from 'react';
-import { useFormContext, type FieldErrors } from 'react-hook-form';
+import { useFormContext, useWatch, type FieldErrors } from 'react-hook-form';
 import { useAuth } from 'react-oidc-context';
 import { useNavigate } from 'react-router';
 
@@ -50,6 +53,7 @@ export const AnonymizerBuilderForm: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { user } = useAuth();
   const form = useFormContext<AnonymizerFormData>();
+  const strategy = useWatch({ control: form.control, name: 'strategy' });
   const [activeTab, setActiveTab] = useState<string>(TAB_SOURCE);
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
 
@@ -180,6 +184,7 @@ export const AnonymizerBuilderForm: FC = () => {
         </Panel>
 
         <PreviewPanel
+          pendingOutputHeading={outputHeadingForStrategy(strategy)}
           preview={preview}
           slotActions={
             <Button color="brand" disabled={isBusy} kind="primary" type="submit">

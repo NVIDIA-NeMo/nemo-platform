@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { DataDesignerModelOption } from '@studio/components/NewDataDesignerJobForm/utils';
-import { isGlinerModel, tabForValidationErrors } from '@studio/routes/AnonymizerBuilderRoute/utils';
+import {
+  isGlinerModel,
+  outputHeadingForStrategy,
+  tabForValidationErrors,
+} from '@studio/routes/AnonymizerBuilderRoute/utils';
 
 const model = (name: string, servedModelName: string, id = name): DataDesignerModelOption =>
   ({ id, name, served_model_name: servedModelName }) as DataDesignerModelOption;
@@ -41,5 +45,18 @@ describe('tabForValidationErrors', () => {
 
   it('stays on Source when no fields are reported', () => {
     expect(tabForValidationErrors([])).toBe('source');
+  });
+});
+
+describe('outputHeadingForStrategy', () => {
+  it('names the rewrite output', () => {
+    expect(outputHeadingForStrategy('rewrite')).toBe('Rewritten');
+  });
+
+  it('names the replace output for every other strategy', () => {
+    expect(outputHeadingForStrategy('substitute')).toBe('Replaced');
+    expect(outputHeadingForStrategy('redact')).toBe('Replaced');
+    expect(outputHeadingForStrategy('annotate')).toBe('Replaced');
+    expect(outputHeadingForStrategy('hash')).toBe('Replaced');
   });
 });

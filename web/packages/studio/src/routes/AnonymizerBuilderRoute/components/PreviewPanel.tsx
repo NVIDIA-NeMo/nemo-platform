@@ -15,16 +15,26 @@ import { AnonymizerRecordView } from '@studio/components/AnonymizerRecordView/An
 import { buildAnonymizerRecord, outputColumn } from '@studio/components/AnonymizerRecordView/parse';
 import { RecordPager } from '@studio/routes/AnonymizerBuilderRoute/components/RecordPager';
 import type { UseAnonymizerPreview } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerPreview';
+import {
+  OUTPUT_HEADING_REPLACED,
+  OUTPUT_HEADING_REWRITTEN,
+} from '@studio/routes/AnonymizerBuilderRoute/utils';
 import { useMemo, useState, type FC, type ReactNode } from 'react';
 
 const REWRITTEN_SUFFIX = '_rewritten';
 
 interface PreviewPanelProps {
   readonly preview: UseAnonymizerPreview;
+  /** Shown while loading, before a record reveals which output column was written. */
+  readonly pendingOutputHeading: string;
   readonly slotActions: ReactNode;
 }
 
-export const PreviewPanel: FC<PreviewPanelProps> = ({ preview, slotActions }) => {
+export const PreviewPanel: FC<PreviewPanelProps> = ({
+  preview,
+  pendingOutputHeading,
+  slotActions,
+}) => {
   const { result, logs, isPreviewing, error, hasRun, wasStopped } = preview;
   const { records, textColumn, failedRecords } = result;
   const [recordIndex, setRecordIndex] = useState(0);
@@ -40,10 +50,9 @@ export const PreviewPanel: FC<PreviewPanelProps> = ({ preview, slotActions }) =>
   const { record, outputHeading } = useMemo(
     () => ({
       record: activeRow ? buildAnonymizerRecord(activeRow, textColumn) : undefined,
-      outputHeading:
-        activeRow && outputColumn(activeRow, textColumn)?.endsWith(REWRITTEN_SUFFIX)
-          ? 'Rewritten'
-          : 'Replaced',
+      outputHeading: outputColumn(activeRow ?? {}, textColumn)?.endsWith(REWRITTEN_SUFFIX)
+        ? OUTPUT_HEADING_REWRITTEN
+        : OUTPUT_HEADING_REPLACED,
     }),
     [activeRow, textColumn]
   );
@@ -98,7 +107,7 @@ export const PreviewPanel: FC<PreviewPanelProps> = ({ preview, slotActions }) =>
         {record ? (
           <AnonymizerRecordView outputHeading={outputHeading} record={record} />
         ) : isPreviewing ? (
-          <AnonymizerRecordSkeleton outputHeading={outputHeading} />
+          <AnonymizerRecordSkeleton outputHeading={pendingOutputHeading} />
         ) : error ? null : (
           <Flex align="center" className="flex-1" justify="center">
             <Text color="secondary" kind="body/regular/md">
