@@ -252,5 +252,5 @@ async def test_mirror_projects_every_measured_channel_without_an_allowlist() -> 
     )
 
     assert set(candidate.rewards) == {"validation", "some-new-channel"}
-    assert candidate.metrics("some-new-channel") == {"score": 0.25}
-    assert candidate.metrics("never-measured") == {}
+    assert candidate.reward("some-new-channel").metrics == {"score": 0.25}
+    assert candidate.reward("never-measured").metrics == {}

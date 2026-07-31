@@ -537,15 +537,15 @@ class Candidate(NemoEntity, entity_type="candidate"):
         parts.append(")")
         return "".join(parts)
 
-    def metrics(self, channel: str) -> dict[str, float]:
-        """Reward dimensions for *channel*, or an empty mapping when unmeasured."""
-        record = self.rewards.get(channel)
-        return record.metrics if record else {}
+    def reward(self, channel: str) -> RewardRecord:
+        """This candidate's measurement on *channel*, empty when unmeasured.
 
-    def trials(self, channel: str) -> Sequence[TrialResult]:
-        """Per-trial detail for *channel*, or an empty sequence when unmeasured."""
-        record = self.rewards.get(channel)
-        return record.trials if record else []
+        Returns a blank record rather than ``None`` so call sites read
+        ``candidate.reward("train").metrics`` without a presence check. Use
+        ``channel in candidate.rewards`` to ask whether it was measured at all —
+        an empty record and an unmeasured channel are different things.
+        """
+        return self.rewards.get(channel) or RewardRecord()
 
     def set_reward(
         self,

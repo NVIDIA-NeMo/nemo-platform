@@ -45,10 +45,22 @@ def test_markdown_table_renders_every_reward_dimension() -> None:
     assert "0.50" in table and "1.00" in table  # validation columns
 
 
-def test_node_reward_str_reads_the_delegating_properties() -> None:
+def test_node_reward_str_renders_every_measured_channel() -> None:
     node = _node("agent-0", round_num=0, train={"reward": 0.25}, val={"reward": 0.5})
 
     rendered = node.reward_str
 
-    assert "tr[" in rendered
+    assert "train[" in rendered
     assert "val[" in rendered
+
+
+def test_rendering_picks_up_an_unknown_channel_without_code_changes() -> None:
+    """The point of the channel map: a new channel reaches the report unaided."""
+    node = _node("agent-0", round_num=0, train={"reward": 0.25}, val={"reward": 0.5})
+    node.candidate.set_reward("some-new-channel", metrics={"score": 0.9})
+    tree = EvolutionTree()
+    tree.nodes = {"agent-0": node}
+
+    assert "some-new-channel[" in node.reward_str
+    assert "some-new-channel:score" in tree.to_markdown_table()
+    assert "0.90" in tree.to_markdown_table()

@@ -242,8 +242,8 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
         (insight_dataset, [baseline]),
         (insight_dataset, [new_candidate]),
     ]
-    assert baseline.metrics("insight") == {"uses_required_tool": 0.0}
-    assert new_candidate.metrics("insight") == {"uses_required_tool": 1.0}
+    assert baseline.reward("insight").metrics == {"uses_required_tool": 0.0}
+    assert new_candidate.reward("insight").metrics == {"uses_required_tool": 1.0}
     assert baseline.rewards["insight"].metadata["suite_identity"] == f"sha256:{'a' * 64}"
     assert new_candidate.rewards["insight"].metadata["suite_identity"] == f"sha256:{'a' * 64}"
     assert baseline.rewards["insight"].metadata["metric_keys"] == ["uses_required_tool"]

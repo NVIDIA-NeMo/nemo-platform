@@ -382,8 +382,8 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
         == []
     )
 
-    baseline.trials("insight").append(_insight_trial("task-a", 0.0, attempt=2))
-    winner.trials("insight").append(_insight_trial("task-a", 1.0, attempt=2, status="failed"))
+    baseline.reward("insight").trials.append(_insight_trial("task-a", 0.0, attempt=2))
+    winner.reward("insight").trials.append(_insight_trial("task-a", 1.0, attempt=2, status="failed"))
     assert (
         select_insight_promotion_suggestions(
             _insight_dataset([task]),

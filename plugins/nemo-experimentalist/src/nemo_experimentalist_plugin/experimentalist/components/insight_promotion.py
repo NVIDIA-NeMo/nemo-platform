@@ -216,7 +216,7 @@ def _task_evidence(
         return None
 
     trials_by_candidate = {
-        candidate.label: [trial for trial in candidate.trials("insight") or () if trial.task_id == task.id]
+        candidate.label: [trial for trial in candidate.reward("insight").trials or () if trial.task_id == task.id]
         for candidate in suite_candidates
     }
     values_by_candidate: dict[str, dict[str, list[float]]] = {}
@@ -469,8 +469,8 @@ def render_insight_comparison_section(
             raise ValueError(
                 f"Candidate {candidate.label!r} Insight evidence does not match finalized suite {provenance.identity}"
             )
-    baseline_reward = baseline.metrics("insight") or {}
-    winner_reward = winner.metrics("insight") or {}
+    baseline_reward = baseline.reward("insight").metrics or {}
+    winner_reward = winner.reward("insight").metrics or {}
     metric_names = sorted(set(baseline_reward) | set(winner_reward))
     lines = [
         "## Deterministic Insight Suite Comparison",

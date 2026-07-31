@@ -117,6 +117,13 @@ def _format_reward(reward: dict[str, float]) -> str:
 # ---------------------------------------------------------------------------
 
 
+_CHANNEL_ABBREV = {
+    "train": "train",
+    "validation": "val",
+    "validation-trajectory": "traj",
+}
+
+
 class EvolutionNode(BaseModel):
     """One node in the evolution tree, representing one Candidate."""
 
@@ -145,15 +152,15 @@ class EvolutionNode(BaseModel):
 
     @property
     def train_reward(self) -> dict[str, float]:
-        return self.candidate.metrics("train") or {}
+        return self.candidate.reward("train").metrics or {}
 
     @property
     def val_reward(self) -> dict[str, float]:
-        return self.candidate.metrics("validation") or {}
+        return self.candidate.reward("validation").metrics or {}
 
     @property
     def trajectory_reward(self) -> dict[str, float]:
-        return self.candidate.metrics("validation-trajectory") or {}
+        return self.candidate.reward("validation-trajectory").metrics or {}
 
     @property
     def is_survivor(self) -> bool:
@@ -161,13 +168,12 @@ class EvolutionNode(BaseModel):
 
     @property
     def reward_str(self) -> str:
-        parts = []
-        if self.train_reward:
-            parts.append(f"tr[{_format_reward(self.train_reward)}]")
-        if self.val_reward:
-            parts.append(f"val[{_format_reward(self.val_reward)}]")
-        if self.trajectory_reward:
-            parts.append(f"traj[{_format_reward(self.trajectory_reward)}]")
+        """One-line reward summary over every measured channel, not a fixed three."""
+        parts = [
+            f"{_CHANNEL_ABBREV.get(channel, channel)}[{_format_reward(record.metrics)}]"
+            for channel, record in sorted(self.candidate.rewards.items())
+            if record.metrics
+        ]
         return " ".join(parts) if parts else "no rewards"
 
 
@@ -237,24 +243,25 @@ class EvolutionTree:
         return pareto_front(scored, lambda n: n.val_reward)
 
     def to_markdown_table(self) -> str:
-        """Export as a markdown table with all score dimensions as columns."""
-        train_keys: set[str] = set()
-        val_keys: set[str] = set()
-        traj_keys: set[str] = set()
-        for n in self.nodes.values():
-            train_keys.update(n.train_reward.keys())
-            val_keys.update(n.val_reward.keys())
-            traj_keys.update(n.trajectory_reward.keys())
-        train_cols = sorted(train_keys)
-        val_cols = sorted(val_keys)
-        traj_cols = sorted(traj_keys)
+        """Export as a markdown table, one column per (channel, dimension) measured.
+
+        Columns come from the channels actually present across the nodes, so a new reward
+        channel appears here with no change to this method.
+        """
+        dimensions: dict[str, list[str]] = {}
+        for node in self.nodes.values():
+            for channel, record in node.candidate.rewards.items():
+                seen = set(dimensions.setdefault(channel, []))
+                dimensions[channel].extend(sorted(set(record.metrics) - seen))
+        channels = sorted(dimensions)
+        for channel in channels:
+            dimensions[channel].sort()
 
         fixed = ["round", "agent", "ancestor", "type"]
+        reward_cols = [(channel, dimension) for channel in channels for dimension in dimensions[channel]]
         all_cols = (
             fixed
-            + [f"train:{k}" for k in train_cols]
-            + [f"val:{k}" for k in val_cols]
-            + [f"traj:{k}" for k in traj_cols]
+            + [f"{_CHANNEL_ABBREV.get(channel, channel)}:{dimension}" for channel, dimension in reward_cols]
             + ["optimization"]
         )
         header = "| " + " | ".join(all_cols) + " |"
@@ -266,9 +273,10 @@ class EvolutionTree:
             key=lambda x: int(x.split("-")[1]) if x.split("-")[-1].isdigit() else 0,
         ):
             n = self.nodes[label]
-            train_vals = [f"{n.train_reward[k]:.2f}" if k in n.train_reward else "-" for k in train_cols]
-            val_vals = [f"{n.val_reward[k]:.2f}" if k in n.val_reward else "-" for k in val_cols]
-            traj_vals = [f"{n.trajectory_reward[k]:.2f}" if k in n.trajectory_reward else "-" for k in traj_cols]
+            reward_vals = []
+            for channel, dimension in reward_cols:
+                metrics = n.candidate.reward(channel).metrics
+                reward_vals.append(f"{metrics[dimension]:.2f}" if dimension in metrics else "-")
             opt = (n.optimization or "")[:50].replace("\n", " ")
             cells = [
                 str(n.round),
@@ -276,7 +284,7 @@ class EvolutionTree:
                 n.ancestor or "-",
                 n.optimization_type or "-",
             ]
-            cells += [*train_vals, *val_vals, *traj_vals, opt]
+            cells += [*reward_vals, opt]
             lines.append("| " + " | ".join(cells) + " |")
         return "\n".join(lines)
 
