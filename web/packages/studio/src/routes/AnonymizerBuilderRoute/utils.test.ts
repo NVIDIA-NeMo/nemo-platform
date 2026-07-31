@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { DataDesignerModelOption } from '@studio/components/NewDataDesignerJobForm/utils';
-import { isGlinerModel } from '@studio/routes/AnonymizerBuilderRoute/utils';
+import { isGlinerModel, tabForValidationErrors } from '@studio/routes/AnonymizerBuilderRoute/utils';
 
 const model = (name: string, servedModelName: string, id = name): DataDesignerModelOption =>
   ({ id, name, served_model_name: servedModelName }) as DataDesignerModelOption;
@@ -25,5 +25,21 @@ describe('isGlinerModel', () => {
       false
     );
     expect(isGlinerModel(model('gpt-oss-120b', 'openai/gpt-oss-120b'))).toBe(false);
+  });
+});
+
+describe('tabForValidationErrors', () => {
+  it('stays on Source whenever a Source field failed', () => {
+    expect(tabForValidationErrors(['source'])).toBe('source');
+    expect(tabForValidationErrors(['source', 'roleModels'])).toBe('source');
+    expect(tabForValidationErrors(['entityLabels', 'roleModels'])).toBe('source');
+  });
+
+  it('switches to Model Settings only when models are the sole failure', () => {
+    expect(tabForValidationErrors(['roleModels'])).toBe('model-settings');
+  });
+
+  it('stays on Source when no fields are reported', () => {
+    expect(tabForValidationErrors([])).toBe('source');
   });
 });

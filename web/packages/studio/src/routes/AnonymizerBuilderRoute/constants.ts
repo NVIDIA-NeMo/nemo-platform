@@ -279,3 +279,13 @@ export const activeRolesForStrategy = (strategy: Strategy): string[] => {
   if (strategy === STRATEGY_SUBSTITUTE) return [...DETECTION_ROLES, REPLACE_ROLE];
   return [...DETECTION_ROLES];
 };
+
+export const TAB_SOURCE = 'source';
+export const TAB_MODEL_SETTINGS = 'model-settings';
+
+export type BuilderTab = typeof TAB_SOURCE | typeof TAB_MODEL_SETTINGS;
+
+export const PANEL_TABS: { value: BuilderTab; children: string }[] = [
+  { value: TAB_SOURCE, children: 'Source' },
+  { value: TAB_MODEL_SETTINGS, children: 'Model Settings' },
+];

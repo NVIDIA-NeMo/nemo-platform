@@ -5,7 +5,7 @@ import {
   useAnonymizerCreateRunJob,
   useAnonymizerListEntityLabels,
 } from '@nemo/sdk/generated/anonymizer/api';
-import type { RunJob } from '@nemo/sdk/generated/anonymizer/schema';
+import type { PreviewRequest, RunJob } from '@nemo/sdk/generated/anonymizer/schema';
 import {
   Banner,
   Button,
@@ -25,25 +25,23 @@ import { GenerationSection } from '@studio/routes/AnonymizerBuilderRoute/compone
 import { ModelSettingsSection } from '@studio/routes/AnonymizerBuilderRoute/components/ModelSettingsSection';
 import { PreviewPanel } from '@studio/routes/AnonymizerBuilderRoute/components/PreviewPanel';
 import {
+  PANEL_TABS,
+  TAB_MODEL_SETTINGS,
+  TAB_SOURCE,
+} from '@studio/routes/AnonymizerBuilderRoute/constants';
+import {
   buildAnonymizerJobRequest,
   buildAnonymizerPreviewRequest,
   type AnonymizerFormData,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { useAnonymizerPreview } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerPreview';
 import { useDefaultRoleModels } from '@studio/routes/AnonymizerBuilderRoute/useDefaultRoleModels';
+import { tabForValidationErrors } from '@studio/routes/AnonymizerBuilderRoute/utils';
 import { getWorkspaceAnonymizerRoute, getWorkspaceJobDetailRoute } from '@studio/routes/utils';
 import { useCallback, useState, type FC } from 'react';
 import { useFormContext, type FieldErrors } from 'react-hook-form';
 import { useAuth } from 'react-oidc-context';
 import { useNavigate } from 'react-router';
-
-const TAB_SOURCE = 'source';
-const TAB_MODEL_SETTINGS = 'model-settings';
-
-const PANEL_TABS = [
-  { value: TAB_SOURCE, children: 'Source' },
-  { value: TAB_MODEL_SETTINGS, children: 'Model Settings' },
-];
 
 const INCOMPLETE_FORM_MESSAGE = 'Please complete the required fields highlighted below.';
 
@@ -85,19 +83,31 @@ export const AnonymizerBuilderForm: FC = () => {
   });
 
   const showValidationErrors = useCallback((errors: FieldErrors<AnonymizerFormData>) => {
-    const onlyModelErrors = Object.keys(errors).every((key) => key === 'roleModels');
-    setActiveTab(onlyModelErrors ? TAB_MODEL_SETTINGS : TAB_SOURCE);
+    setActiveTab(tabForValidationErrors(Object.keys(errors)));
     setSubmitError(INCOMPLETE_FORM_MESSAGE);
   }, []);
 
-  const getPreviewRequest = useCallback(async () => {
-    if (!(await form.trigger())) {
-      showValidationErrors(form.formState.errors);
-      return undefined;
-    }
-    setSubmitError(undefined);
-    return buildAnonymizerPreviewRequest(form.getValues(), defaultEntityLabels?.data ?? []);
-  }, [form, defaultEntityLabels, showValidationErrors]);
+  /**
+   * Validates through `handleSubmit` rather than `trigger`, because the errors it hands back are
+   * the only ones guaranteed to be populated — `formState` is a proxy that tracks what the render
+   * body reads, and this component reads none of it.
+   */
+  const getPreviewRequest = useCallback(
+    () =>
+      new Promise<PreviewRequest | undefined>((resolve) => {
+        void form.handleSubmit(
+          (values) => {
+            setSubmitError(undefined);
+            resolve(buildAnonymizerPreviewRequest(values, defaultEntityLabels?.data ?? []));
+          },
+          (errors) => {
+            showValidationErrors(errors);
+            resolve(undefined);
+          }
+        )();
+      }),
+    [form, defaultEntityLabels, showValidationErrors]
+  );
 
   const preview = useAnonymizerPreview({
     workspace,
