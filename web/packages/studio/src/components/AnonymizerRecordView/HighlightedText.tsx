@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Tag, Text } from '@nvidia/foundations-react-core';
+import { Badge, Text } from '@nvidia/foundations-react-core';
 import type { TextSegment } from '@studio/components/AnonymizerRecordView/types';
 import { entityTagColor } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { FC } from 'react';
@@ -18,13 +18,13 @@ export const HighlightedText: FC<HighlightedTextProps> = ({ segments, emptyMessa
         if (!segment.label) return <span key={index}>{segment.text}</span>;
         const color = entityTagColor(segment.label);
         return (
-          <span className="inline-flex items-center gap-density-2xs" key={index}>
-            <Tag color={color} readOnly>
+          <span className="inline-flex items-center" key={index}>
+            <Badge color={color} kind="solid">
               {segment.text}
-            </Tag>
-            <Tag color={color} kind="outline" readOnly>
+            </Badge>
+            <Badge color={color} kind="outline">
               {segment.label}
-            </Tag>
+            </Badge>
           </span>
         );
       })}

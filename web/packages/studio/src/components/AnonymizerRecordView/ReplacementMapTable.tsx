@@ -3,7 +3,7 @@
 
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { Tag, Text } from '@nvidia/foundations-react-core';
+import { Badge, Text } from '@nvidia/foundations-react-core';
 import type { EntityReplacement } from '@studio/components/AnonymizerRecordView/types';
 import { entityTagColor } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import { ArrowRight } from 'lucide-react';
@@ -39,9 +39,9 @@ export const ReplacementMapTable: FC<ReplacementMapTableProps> = memo(({ replace
         id: 'label',
         header: 'Label',
         cell: ({ row }) => (
-          <Tag color={entityTagColor(row.original.label)} kind="outline" readOnly>
+          <Badge color={entityTagColor(row.original.label)} kind="outline">
             {row.original.label}
-          </Tag>
+          </Badge>
         ),
       }),
       col.display({
