@@ -189,6 +189,22 @@ def test_post_evaluator_results_route_and_body():
     }
 
 
+def test_post_evaluator_results_accepts_named_criterion():
+    stub = _JsonStub(status=201)
+
+    post_evaluator_results(
+        "http://x",
+        "ws",
+        span_id="sp1",
+        session_id="sess-1",
+        score=0.75,
+        name="policy_compliance",
+        client=stub,
+    )
+
+    assert stub.calls[0][1]["name"] == "policy_compliance"
+
+
 def test_post_evaluator_results_raises_on_error():
     with pytest.raises(RuntimeError):
         post_evaluator_results("http://x", "ws", span_id="s", session_id="z", score=0.0, client=_JsonStub(status=500))

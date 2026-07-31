@@ -13,6 +13,7 @@ uv run python -m testbed analyze all                  # refresh every pinned ben
 uv run python -m testbed list
 uv run python -m testbed doctor                       # fresh clone? run this first
 uv run python -m testbed run tau2-airline             # produce: tau2 -> ingest -> record the run (expensive, once)
+uv run python -m testbed run tau3-airline-harbor      # produce: Harbor -> ingest -> record the run
 uv run python -m testbed analyze tau2-airline --live  # analyze the recorded run's live traces (no restore)
 uv run python -m testbed analyze glamr --live         # intake: analyze existing live traces
 uv run python -m testbed snapshot tau2-airline        # export the subject's workspaces (read API) into a portable bundle
@@ -198,16 +199,38 @@ exactly what to install/set (`✓ ready` or `✗ needs: …`).
 Subjects live in `testbeds.toml` — one table per subject, keyed by `type`:
 - `type = "intake"` — analyze an agent's existing Intake traces (config: `agent`, `workspace`, `base_url`, optional `since`).
 - `type = "benchmark"` — run a benchmark to produce traces, ingest them into Intake, then analyze (config: `domain`, `base_url`, `workspace`, `agent_llm`, `user_llm`, `task_split_name`, `num_trials`, `max_concurrency`, `seed`, optional `num_tasks`/`timeout`/`include_rewards`).
+- `type = "harbor"` — run a Harbor dataset against an importable agent wrapper, enrich and ingest its OTLP traces, then analyze the recorded evaluation. Use exactly one of `dataset`, `dataset_ref`, or `dataset_id`.
 
 `--since` (analyze `--live`, snapshot) accepts `Nd`/`Nh`/`Nm` (days/hours/minutes)
 or an ISO date; `--since ''` means no lower bound (the epoch). Insights are
 written to `testbed/tmp/insights_<name>.yaml`.
+
+## Harbor benchmark (Tau3 Airline example)
+
+The checked-in subject runs `sierra-research/tau3-bench@1` from Harbor Hub
+against the Experimentalist's Tau3 NOOA example agent. Harbor and its container
+runtime are required.
+
+```bash
+export NMP_BASE_URL=http://localhost:8080
+export INFERENCE_API_KEY=sk-...
+export OPENAI_API_KEY="$INFERENCE_API_KEY"
+export OPENAI_BASE_URL=https://inference-api.nvidia.com/v1
+
+uv run python -m testbed run tau3-airline-harbor --base "$NMP_BASE_URL"
+uv run python -m testbed analyze tau3-airline-harbor --live
+```
+
+The run creates an Evaluation in `canonical-tau3-airline`, associates every
+Harbor trial through `nemo.experiment.id`, adds `nemo.test_case.id`, and posts
+each numeric verifier reward as an evaluator result.
 
 ## Config split: secrets in `.env`, everything else in `testbeds.toml`
 
 On startup the CLI auto-loads `testbed/.env` (gitignored) as `KEY=VALUE` lines. Keep
 **only secrets/endpoints** there — `INFERENCE_API_KEY` (analyst) and
 `OPENAI_API_KEY`/`OPENAI_API_BASE` (the proxy litellm uses for the benchmark sim LLMs).
+The Harbor example agent uses `OPENAI_API_KEY`/`OPENAI_BASE_URL` instead.
 GLAMR live analysis additionally reads `GLAMR_INTAKE_USER` and
 `GLAMR_INTAKE_PASSWORD` from `.env`; `testbeds.toml` stores only those
 environment-variable names, never their credential values.
