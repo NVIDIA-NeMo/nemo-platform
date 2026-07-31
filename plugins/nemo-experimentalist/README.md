@@ -57,16 +57,18 @@ a baseline agent on Harbor-compatible train and validation datasets, proposes
 candidate mutations, and records its artifacts under the selected experiment
 directory.
 
-Models are configured by environment only — there is no `models:` key in the
-`--config` YAML. `nemo experimentalist doctor` reports which of these are unset.
+Model tiers come from the environment, or from a `models:` block in the `--config`
+YAML which is applied to the environment before any agent is built. Credentials are
+environment-only and never read from config. `nemo experimentalist doctor` reports
+which are unset.
 
 | Variable | Default | Used by |
 |---|---|---|
 | `EXPERIMENTALIST_API_BASE` | `https://inference-api.nvidia.com/v1` | all optimizer agents |
 | `EXPERIMENTALIST_API_KEY` | — (required) | all optimizer agents |
-| `EXPERIMENTALIST_SMART_MODEL_NAME` | `openai/openai/openai/gpt-5.5` | Coder, Analyzer, Proposer, Rationalizer, TraceAnalyzer |
-| `EXPERIMENTALIST_MID_MODEL_NAME` | `openai/gcp/google/gemini-3.5-flash` | trajectory scorer, architecture doc |
-| `EXPERIMENTALIST_FAST_MODEL_NAME` | `openai/openai/openai/gpt-5-mini` | Terminator, goal tree, summarizers |
+| `EXPERIMENTALIST_SMART_MODEL_NAME` | — (required) | Coder, Analyzer, Proposer, Rationalizer, TraceAnalyzer |
+| `EXPERIMENTALIST_MID_MODEL_NAME` | — (required) | trajectory scorer, architecture doc |
+| `EXPERIMENTALIST_FAST_MODEL_NAME` | — (required) | Terminator, goal tree, summarizers |
 
 ```bash
 export EXPERIMENTALIST_API_KEY=sk-...
@@ -75,9 +77,16 @@ export EXPERIMENTALIST_MID_MODEL_NAME=openai/openai/openai/gpt-5-mini
 export EXPERIMENTALIST_FAST_MODEL_NAME=openai/openai/openai/gpt-5-mini
 ```
 
-When `EXPERIMENTALIST_API_BASE` is the NVIDIA gateway (the default), a set
-`INFERENCE_API_KEY` fills `EXPERIMENTALIST_API_KEY` automatically; a custom base
-never inherits it. The agent under test is separate: it reads `AUT_MODEL_NAME`
+Model names have no default: a name is only meaningful against a specific endpoint, so
+an unset tier fails before the run starts rather than at the first LLM call. Name them
+as *your* endpoint does — `openai/openai/openai/gpt-5-mini` on the NVIDIA gateway,
+`gpt-5-mini` against OpenAI directly.
+
+Credentials are the one place a default applies: when `EXPERIMENTALIST_API_BASE` is the
+NVIDIA gateway, a set `INFERENCE_API_KEY` fills `EXPERIMENTALIST_API_KEY`. A custom base
+never inherits it, so a key scoped to the gateway is not forwarded elsewhere.
+
+The agent under test is separate: it reads `AUT_MODEL_NAME`
 plus `OPENAI_API_KEY` / `OPENAI_BASE_URL`, which are the only variables forwarded
 into the evaluation container.
 

@@ -6,24 +6,44 @@ import sys
 
 from nemo_experimentalist_plugin.experimentalist.components.model_config import (
     _client,
-    get_mid_model,
     log_model_config,
+    model_name,
 )
 
 
-def test_mid_model_default_uses_openai_provider_for_gateway(monkeypatch) -> None:
-    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://example.test/v1")
-    monkeypatch.setenv("EXPERIMENTALIST_API_KEY", "test-key")
-    monkeypatch.delenv("EXPERIMENTALIST_MID_MODEL_NAME", raising=False)
-    _client.cache_clear()
+def test_model_name_is_required_per_tier(monkeypatch) -> None:
+    """There is no portable default for a model name, so an unset tier must fail here.
 
-    try:
-        client = get_mid_model()
-    finally:
-        _client.cache_clear()
+    Any built-in default would name a model on exactly one endpoint and be wrong on every
+    other, surfacing as an opaque provider error at the first LLM call instead of a
+    configuration error before the run starts.
+    """
+    import pytest
 
-    assert client.model == "openai/gcp/google/gemini-3.5-flash"
-    assert "mid model:   openai/gcp/google/gemini-3.5-flash" in log_model_config()
+    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://inference-api.nvidia.com/v1")
+    monkeypatch.setenv("EXPERIMENTALIST_API_KEY", "k")
+    monkeypatch.delenv("EXPERIMENTALIST_SMART_MODEL_NAME", raising=False)
+
+    with pytest.raises(ValueError, match="EXPERIMENTALIST_SMART_MODEL_NAME"):
+        model_name("smart")
+
+
+def test_model_name_reads_its_tier(monkeypatch) -> None:
+    monkeypatch.setenv("EXPERIMENTALIST_SMART_MODEL_NAME", "vendor/smart-1")
+    monkeypatch.setenv("EXPERIMENTALIST_FAST_MODEL_NAME", "vendor/fast-1")
+
+    assert model_name("smart") == "vendor/smart-1"
+    assert model_name("fast") == "vendor/fast-1"
+
+
+def test_log_model_config_tolerates_unset_tiers(monkeypatch) -> None:
+    """A display helper must not be the thing that fails."""
+    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://llm.example/v1")
+    monkeypatch.setenv("EXPERIMENTALIST_API_KEY", "k")
+    for tier in ("SMART", "MID", "FAST"):
+        monkeypatch.delenv(f"EXPERIMENTALIST_{tier}_MODEL_NAME", raising=False)
+
+    assert "(unset)" in log_model_config()
 
 
 def test_model_tiers_cache_on_full_identity() -> None:

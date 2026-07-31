@@ -19,16 +19,20 @@ def _optional_env(name: str, default: str) -> str:
     return os.environ.get(name, "").strip() or default
 
 
-_DEFAULTS = {
-    "smart": "openai/openai/openai/gpt-5.5",
-    "mid": "openai/gcp/google/gemini-3.5-flash",
-    "fast": "openai/openai/openai/gpt-5-mini",
-}
-
-
 def model_name(tier: str) -> str:
-    """Return the configured model name for *tier* (``smart``/``mid``/``fast``)."""
-    return _optional_env(f"EXPERIMENTALIST_{tier.upper()}_MODEL_NAME", _DEFAULTS[tier])
+    """Return the configured model name for *tier* (``smart``/``mid``/``fast``).
+
+    No default: a model name is only meaningful against a specific endpoint, so there is
+    no portable value to fall back to. Failing here beats failing at the first LLM call,
+    minutes into a run.
+
+    Raises:
+        ValueError: if the tier's environment variable is unset or empty.
+
+    """
+    if tier not in ("smart", "mid", "fast"):
+        raise ValueError(f"unknown model tier {tier!r}")
+    return _required_env(f"EXPERIMENTALIST_{tier.upper()}_MODEL_NAME")
 
 
 @functools.cache
@@ -126,7 +130,14 @@ def log_model_config() -> str:
         str: a multi-line summary of smart model, fast model, API base, and masked API key.
 
     """
-    smart, mid, fast = (model_name(tier) for tier in ("smart", "mid", "fast"))
+
+    def _shown(tier: str) -> str:
+        try:
+            return model_name(tier)
+        except ValueError:
+            return "(unset)"
+
+    smart, mid, fast = (_shown(tier) for tier in ("smart", "mid", "fast"))
     api_base = _required_env("EXPERIMENTALIST_API_BASE")
     api_key = _required_env("EXPERIMENTALIST_API_KEY")
     return (
