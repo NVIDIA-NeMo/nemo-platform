@@ -31,7 +31,7 @@ from nemo_deployments_plugin.backends.docker.containers import (
     restart_policy_kwargs,
 )
 from nemo_deployments_plugin.backends.docker.gpu import GPUAllocationError, get_shared_gpu_pool
-from nemo_deployments_plugin.backends.docker.ports import find_available_port
+from nemo_deployments_plugin.backends.docker.ports import PortEnumerationError, find_available_port
 from nemo_deployments_plugin.backends.docker.probes import check_readiness_probe, host_url_for_port
 from nemo_deployments_plugin.backends.docker.status import (
     LOG_MAX_CHARS,
@@ -204,7 +204,13 @@ class DockerDeploymentBackend(DeploymentBackend):
             except GPUAllocationError as exc:
                 return BackendStatusUpdate(status="FAILED", status_message=str(exc))
 
-        host_ports = await self._allocate_host_ports(container_spec)
+        try:
+            host_ports = await self._allocate_host_ports(container_spec)
+        except PortEnumerationError as exc:
+            # Could not determine what is in use — report that, rather than blaming the port range.
+            if gpu_ids and gpu_pool is not None:
+                gpu_pool.release_gpu(dep_key)
+            return BackendStatusUpdate(status="FAILED", status_message=f"Could not determine host ports in use: {exc}")
         if host_ports is None:
             if gpu_ids and gpu_pool is not None:
                 gpu_pool.release_gpu(dep_key)
@@ -334,7 +340,9 @@ class DockerDeploymentBackend(DeploymentBackend):
     ) -> dict[int, int] | None:
         """Map each published container port to a free host port.
 
-        Returns None when the configured range holds no more free ports.
+        Returns None when the configured range holds no more free ports. Propagates
+        :class:`PortEnumerationError` when the ports in use could not be determined at all — that is
+        a different (usually transient) condition and must not be reported as an exhausted range.
         """
         excluded = set(exclude_ports or ())
         host_ports: dict[int, int] = {}
@@ -411,7 +419,10 @@ class DockerDeploymentBackend(DeploymentBackend):
                 # containers.run() creates then starts, so a failed start leaves the
                 # created container holding the name and blocking the retry.
                 await self._remove_container_by_name(name)
-                reallocated = await self._allocate_host_ports(container_spec, exclude_ports=rejected_ports)
+                try:
+                    reallocated = await self._allocate_host_ports(container_spec, exclude_ports=rejected_ports)
+                except PortEnumerationError as port_exc:
+                    return None, host_ports, f"Could not determine host ports in use: {port_exc}"
                 if reallocated is None:
                     return None, host_ports, "No host ports available in configured range"
                 host_ports = reallocated
