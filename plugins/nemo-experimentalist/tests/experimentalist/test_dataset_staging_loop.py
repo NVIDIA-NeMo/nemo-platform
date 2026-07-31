@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
 
 

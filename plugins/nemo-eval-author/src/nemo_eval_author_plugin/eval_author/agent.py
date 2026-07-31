@@ -19,14 +19,8 @@ from nemo_eval_author_plugin.model_config import (
     get_fast_model,
     get_smart_model,
 )
+from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, ResourceRef, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components import cache
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
-    Dataset,
-    DatasetValidationError,
-    Task,
-    TrialResult,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,

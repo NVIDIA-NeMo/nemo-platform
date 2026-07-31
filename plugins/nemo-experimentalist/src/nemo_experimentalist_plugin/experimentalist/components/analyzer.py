@@ -11,12 +11,7 @@ from collections import Counter, defaultdict  # noqa: F401
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
-    Dataset,
-    EvaluationResult,
-    Task,
-    TrialResult,
-)
+from nemo_experimentalist_plugin.entities import Dataset, EvaluationResult, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (  # noqa: F401
     Diagnostic,
     TraceAnalyzer,

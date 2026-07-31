@@ -13,15 +13,8 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from nemo_experimentalist_plugin.entities import Candidate
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
-    Dataset,
-    EvaluationResult,
-    Evaluator,
-    EvaluatorConfig,
-    Task,
-    TrialResult,
-)
+from nemo_experimentalist_plugin.entities import Candidate, Dataset, EvaluationResult, Task, TrialResult
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator, EvaluatorConfig
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer

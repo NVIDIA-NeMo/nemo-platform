@@ -6,7 +6,7 @@
 from pathlib import Path
 
 import pytest
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 
 

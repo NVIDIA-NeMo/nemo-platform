@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.entities import ResourceRef
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel, ConfigDict, Field
 

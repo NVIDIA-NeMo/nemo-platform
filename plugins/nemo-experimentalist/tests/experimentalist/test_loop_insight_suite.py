@@ -8,21 +8,19 @@ from unittest.mock import AsyncMock
 
 import pytest
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.entities import Candidate
-from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
     Dataset,
+    DatasetRef,
+    DataValue,
     EvaluationResult,
     MetricResult,
+    ResourceRef,
     Task,
     TrialResult,
 )
+from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborEvaluatorConfig
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
-    DatasetRef,
-    DataValue,
-    ResourceRef,
-)
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
 
 

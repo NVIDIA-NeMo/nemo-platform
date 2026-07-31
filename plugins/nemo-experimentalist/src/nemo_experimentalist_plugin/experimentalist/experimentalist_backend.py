@@ -25,9 +25,10 @@ from urllib.parse import urlparse
 
 import httpx
 from nemo_experimentalist_plugin.config import CandidateStorageConfig
-from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
     EvaluationResult,
+    ExperimentRun,
     ResourceRef,
     TrialResult,
 )

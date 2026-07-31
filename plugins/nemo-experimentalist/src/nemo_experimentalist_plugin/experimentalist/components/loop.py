@@ -20,16 +20,11 @@ from typing import Any, Literal, cast, get_args
 
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
+from nemo_experimentalist_plugin.entities import Candidate, Dataset, EvaluationResult, ExperimentRun, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
-    Dataset,
-    EvaluationResult,
-    Evaluator,
-    TrialResult,
-)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory, EvaluatorFactory
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import (
     GoalTree,

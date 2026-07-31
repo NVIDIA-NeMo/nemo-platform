@@ -9,11 +9,10 @@ from typing import Literal, Protocol, cast
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.client import make_client
+from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
 from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset, Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     make_experimentalist_backend,
 )

@@ -14,8 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )

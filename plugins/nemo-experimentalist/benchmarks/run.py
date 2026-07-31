@@ -16,16 +16,16 @@ from typing import Any, Literal, Self
 import yaml
 from harbor.registry.client.package import PackageDatasetClient
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
-    HarborEvaluator,
-    HarborEvaluatorConfig,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+from nemo_experimentalist_plugin.entities import (
     DatasetRef,
     EvaluationResult,
     TrialResult,
     local_path_from_uri,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
+    HarborDataset,
+    HarborEvaluator,
+    HarborEvaluatorConfig,
 )
 from nemo_experimentalist_plugin.resolve import resolve_dataset
 from pydantic import BaseModel, Field, model_validator
