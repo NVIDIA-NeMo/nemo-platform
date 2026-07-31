@@ -7,6 +7,7 @@ import type {
   EntityReplacement,
   TextSegment,
 } from '@studio/components/AnonymizerRecordView/types';
+import { asRecord } from '@studio/util/guards';
 
 const DETECTED_ENTITIES_COLUMN = '_detected_entities';
 const FINAL_ENTITIES_COLUMN = 'final_entities';
@@ -14,11 +15,6 @@ const REPLACEMENT_MAP_COLUMN = '_replacement_map';
 
 /** Rewrite writes `<column>_rewritten`; the replace strategies write `<column>_replaced`. */
 export const OUTPUT_SUFFIXES = ['_rewritten', '_replaced'] as const;
-
-const asObject = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 
 /** Trace cells arrive either already decoded or as a JSON string, depending on the writer. */
 const decodeCell = (value: unknown): unknown => {
@@ -31,12 +27,12 @@ const decodeCell = (value: unknown): unknown => {
 };
 
 const wrappedList = (cell: unknown, key: string): unknown[] => {
-  const entries = asObject(decodeCell(cell))?.[key];
+  const entries = asRecord(decodeCell(cell))?.[key];
   return Array.isArray(entries) ? entries : [];
 };
 
 const toEntity = (entry: unknown): AnonymizerEntity | undefined => {
-  const row = asObject(entry);
+  const row = asRecord(entry);
   if (!row) return undefined;
   const { value, label, start_position: start, end_position: end } = row;
   if (typeof label !== 'string' || typeof start !== 'number' || typeof end !== 'number') {
@@ -53,7 +49,7 @@ export const parseEntities = (cell: unknown): AnonymizerEntity[] =>
 
 export const parseReplacements = (cell: unknown): EntityReplacement[] =>
   wrappedList(cell, 'replacements').flatMap((entry) => {
-    const row = asObject(entry);
+    const row = asRecord(entry);
     const { original, label, synthetic } = row ?? {};
     return typeof original === 'string' &&
       typeof label === 'string' &&

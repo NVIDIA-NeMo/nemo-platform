@@ -4,53 +4,20 @@
 import {
   Accordion,
   Banner,
-  Button,
   CodeSnippet,
   Flex,
   Panel,
-  Skeleton,
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
+import { AnonymizerRecordSkeleton } from '@studio/components/AnonymizerRecordView/AnonymizerRecordSkeleton';
 import { AnonymizerRecordView } from '@studio/components/AnonymizerRecordView/AnonymizerRecordView';
 import { buildAnonymizerRecord, outputColumn } from '@studio/components/AnonymizerRecordView/parse';
+import { RecordPager } from '@studio/routes/AnonymizerBuilderRoute/components/RecordPager';
 import type { UseAnonymizerPreview } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerPreview';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMemo, useState, type FC, type ReactNode } from 'react';
 
-const SKELETON_LINES = 8;
 const REWRITTEN_SUFFIX = '_rewritten';
-
-const SKELETON_ROWS = Array.from({ length: SKELETON_LINES }, (_, index) => (
-  <Skeleton key={index} />
-));
-
-const SkeletonBlock: FC = () => <Stack gap="density-sm">{SKELETON_ROWS}</Stack>;
-
-const LoadingState: FC = () => (
-  <Stack gap="density-2xl">
-    <Flex align="start" gap="density-2xl">
-      <Stack className="flex-1 min-w-0" gap="density-md">
-        <Text color="secondary" kind="label/regular/md">
-          Original
-        </Text>
-        <SkeletonBlock />
-      </Stack>
-      <Stack className="flex-1 min-w-0" gap="density-md">
-        <Text color="secondary" kind="label/regular/md">
-          Replaced
-        </Text>
-        <SkeletonBlock />
-      </Stack>
-    </Flex>
-    <Stack gap="density-md">
-      <Text color="secondary" kind="label/regular/md">
-        Replacement Map
-      </Text>
-      <SkeletonBlock />
-    </Stack>
-  </Stack>
-);
 
 interface PreviewPanelProps {
   readonly preview: UseAnonymizerPreview;
@@ -91,29 +58,7 @@ export const PreviewPanel: FC<PreviewPanelProps> = ({ preview, slotActions }) =>
         <Flex align="center" className="w-full" gap="density-md" justify="between">
           <Text kind="label/bold/xl">Preview</Text>
           {records.length > 0 ? (
-            <Flex align="center" gap="density-sm">
-              <Button
-                aria-label="Previous record"
-                disabled={recordIndex === 0}
-                kind="tertiary"
-                onClick={() => setRecordIndex((index) => index - 1)}
-                type="button"
-              >
-                <ChevronLeft size={16} />
-              </Button>
-              <Text kind="body/regular/md">
-                Record {recordIndex + 1} of {records.length}
-              </Text>
-              <Button
-                aria-label="Next record"
-                disabled={recordIndex >= records.length - 1}
-                kind="tertiary"
-                onClick={() => setRecordIndex((index) => index + 1)}
-                type="button"
-              >
-                <ChevronRight size={16} />
-              </Button>
-            </Flex>
+            <RecordPager index={recordIndex} onChange={setRecordIndex} total={records.length} />
           ) : null}
           {slotActions}
         </Flex>
@@ -153,7 +98,7 @@ export const PreviewPanel: FC<PreviewPanelProps> = ({ preview, slotActions }) =>
         {record ? (
           <AnonymizerRecordView outputHeading={outputHeading} record={record} />
         ) : isPreviewing ? (
-          <LoadingState />
+          <AnonymizerRecordSkeleton outputHeading={outputHeading} />
         ) : error ? null : (
           <Flex align="center" className="flex-1" justify="center">
             <Text color="secondary" kind="body/regular/md">

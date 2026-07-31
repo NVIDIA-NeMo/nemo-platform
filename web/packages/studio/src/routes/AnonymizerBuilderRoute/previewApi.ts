@@ -3,6 +3,7 @@
 
 import type { PreviewRequest } from '@nemo/sdk/generated/anonymizer/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { asRecord } from '@studio/util/guards';
 
 export type PreviewLogLevel = 'debug' | 'info' | 'warning' | 'error';
 
@@ -17,15 +18,10 @@ export type PreviewFrame =
 
 const LOG_LEVELS: readonly string[] = ['debug', 'info', 'warning', 'error'];
 
-const asObject = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-
 const asRecordList = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value)
     ? value.flatMap((entry) => {
-        const row = asObject(entry);
+        const row = asRecord(entry);
         return row ? [row] : [];
       })
     : [];
@@ -42,7 +38,7 @@ export const parsePreviewFrame = (line: string): PreviewFrame | undefined => {
     return undefined;
   }
 
-  const frame = asObject(decoded);
+  const frame = asRecord(decoded);
   const kind = frame?.kind;
   if (!frame || typeof kind !== 'string') return undefined;
 
@@ -87,11 +83,11 @@ const messageFromErrorBody = (body: string): string | undefined => {
   } catch {
     return body.trim() || undefined;
   }
-  const detail = asObject(decoded)?.detail;
+  const detail = asRecord(decoded)?.detail;
   if (typeof detail === 'string') return detail;
   if (!Array.isArray(detail)) return undefined;
   const messages = detail.flatMap((item) => {
-    const msg = asObject(item)?.msg;
+    const msg = asRecord(item)?.msg;
     return typeof msg === 'string' ? [msg] : [];
   });
   return messages.length ? messages.join(' ') : undefined;

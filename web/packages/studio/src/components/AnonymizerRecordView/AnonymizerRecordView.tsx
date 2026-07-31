@@ -3,6 +3,7 @@
 
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { HighlightedText } from '@studio/components/AnonymizerRecordView/HighlightedText';
+import { RecordSection } from '@studio/components/AnonymizerRecordView/RecordSection';
 import { ReplacementMapTable } from '@studio/components/AnonymizerRecordView/ReplacementMapTable';
 import type { AnonymizerRecord } from '@studio/components/AnonymizerRecordView/types';
 import { memo, type FC } from 'react';
@@ -16,30 +17,21 @@ export const AnonymizerRecordView: FC<AnonymizerRecordViewProps> = memo(
   ({ record, outputHeading }) => (
     <Stack gap="density-2xl">
       <Flex align="start" gap="density-2xl">
-        <Stack className="flex-1 min-w-0" gap="density-md">
-          <Text color="secondary" kind="label/regular/md">
-            Original
-          </Text>
+        <RecordSection className="flex-1 min-w-0" heading="Original">
           <HighlightedText
             emptyMessage="This record has no text."
             segments={record.originalSegments}
           />
-        </Stack>
-        <Stack className="flex-1 min-w-0" gap="density-md">
-          <Text color="secondary" kind="label/regular/md">
-            {outputHeading}
-          </Text>
+        </RecordSection>
+        <RecordSection className="flex-1 min-w-0" heading={outputHeading}>
           <HighlightedText
             emptyMessage="No output was produced for this record."
             segments={record.replacedSegments}
           />
-        </Stack>
+        </RecordSection>
       </Flex>
 
-      <Stack gap="density-md">
-        <Text color="secondary" kind="label/regular/md">
-          Replacement Map
-        </Text>
+      <RecordSection heading="Replacement Map">
         {record.replacements.length ? (
           <ReplacementMapTable replacements={record.replacements} />
         ) : (
@@ -47,7 +39,7 @@ export const AnonymizerRecordView: FC<AnonymizerRecordViewProps> = memo(
             No entities were replaced in this record.
           </Text>
         )}
-      </Stack>
+      </RecordSection>
     </Stack>
   )
 );
