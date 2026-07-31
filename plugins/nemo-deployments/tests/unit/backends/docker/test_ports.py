@@ -102,7 +102,56 @@ async def test_find_available_port_skips_unmanaged_containers(
     port = await find_available_port(mock_docker_client, 9000, 9002)
 
     assert port == 9001
-    assert mock_docker_client.containers.list.call_args.kwargs == {"all": True}
+    # No label filter: foreign containers hold host ports too, so they must be enumerated as well.
+    assert mock_docker_client.containers.list.call_args.kwargs == {"all": True, "ignore_removed": True}
+
+
+@pytest.mark.asyncio
+async def test_find_available_port_tolerates_containers_removed_mid_enumeration(
+    mock_docker_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """docker-py inspects each container individually after enumerating them.
+
+    A container removed between those two calls makes the inspect 404, which aborts the whole
+    ``list``. Under a teardown-heavy workload that is routine, not exceptional, so the listing must
+    opt in to skipping vanished containers -- one that no longer exists holds no host ports.
+    """
+    from nemo_deployments_plugin.backends.docker import ports as ports_mod
+    from nemo_deployments_plugin.backends.docker.ports import find_available_port
+
+    mock_docker_client.containers.list.return_value = []
+    monkeypatch.setattr(ports_mod, "is_port_free", lambda port: True)
+
+    assert await find_available_port(mock_docker_client, 9000, 9002) == 9000
+    assert mock_docker_client.containers.list.call_args.kwargs["ignore_removed"] is True
+
+
+@pytest.mark.asyncio
+async def test_find_available_port_raises_when_enumeration_fails(mock_docker_client: MagicMock) -> None:
+    """A failure to enumerate is not the same as a full port range.
+
+    Returning None for both made the caller report "No host ports available in configured range"
+    whenever the daemon query failed, which misdirects anyone debugging it -- the range was empty.
+    """
+    from nemo_deployments_plugin.backends.docker.ports import PortEnumerationError, find_available_port
+
+    mock_docker_client.containers.list.side_effect = RuntimeError("daemon says no")
+
+    with pytest.raises(PortEnumerationError):
+        await find_available_port(mock_docker_client, 9000, 9002)
+
+
+@pytest.mark.asyncio
+async def test_find_available_port_returns_none_only_when_range_is_full(
+    mock_docker_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from nemo_deployments_plugin.backends.docker import ports as ports_mod
+    from nemo_deployments_plugin.backends.docker.ports import find_available_port
+
+    mock_docker_client.containers.list.return_value = []
+    monkeypatch.setattr(ports_mod, "is_port_free", lambda port: False)  # every port taken
+
+    assert await find_available_port(mock_docker_client, 9000, 9002) is None
 
 
 @pytest.mark.asyncio

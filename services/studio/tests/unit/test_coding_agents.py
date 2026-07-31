@@ -848,8 +848,8 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
     assert "behind a 'worked for <time>' accordion" in prompt
     assert "Never end a message with only a plain-text question" in prompt
     assert "call the matching select_* tool before completing the message" in prompt
-    assert "ask one concise plain-text question" in prompt
-    assert "AskUserQuestion" not in prompt
+    assert "you MUST call AskUserQuestion to render a selectable options picker" in prompt
+    assert "Only ask a concise plain-text question for genuinely open-ended" in prompt
     assert "A timeout, disconnect, or other interactive-tool error is not permission to continue" in prompt
     assert "summary's final sentence MUST state the exact unresolved selection or action" in prompt
     assert "Never show only the investigation result" in prompt
@@ -1734,7 +1734,9 @@ def test_platform_route_stream_uses_deployed_nemo_agent(monkeypatch: pytest.Monk
     assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
     assert "you MUST call select_agent" in captured["studio_system_prompt"]
     assert "you MUST call select_model" in captured["studio_system_prompt"]
-    assert "no dedicated Studio picker" in captured["studio_system_prompt"]
+    # The options-picker directive is present and rewritten to the deployed agent's tool name.
+    assert "you MUST call ask_user_question to render a selectable options picker" in captured["studio_system_prompt"]
+    assert "AskUserQuestion" not in captured["studio_system_prompt"]
     assert "Prefer NeMo Studio MCP tools and Studio views over CLI commands" in captured["studio_system_prompt"]
     assert "Do not tell the user to run nemo CLI commands" in captured["studio_system_prompt"]
     assert "when a Studio view, Studio link, or Studio progress card is available" in captured["studio_system_prompt"]
