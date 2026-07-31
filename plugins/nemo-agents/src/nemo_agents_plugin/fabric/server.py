@@ -76,7 +76,7 @@ def _to_fabric_invocation_request(
 ) -> FabricInvocationRequest:
     """Translate the chat transcript into a Platform-owned Fabric request."""
     messages = request.messages
-    # AIRCORE-969: Interim behavior to get multi-turn in Studio chat.
+    # Interim behavior to get multi-turn in Studio chat.
     input_text = (
         messages[0].content
         if len(messages) == 1
