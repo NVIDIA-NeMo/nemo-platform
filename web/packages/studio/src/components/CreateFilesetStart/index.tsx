@@ -21,6 +21,11 @@ import type {
 import { ArrowRight } from 'lucide-react';
 import { useState, type FC } from 'react';
 
+/** Why Continue is unavailable, shown next to the disabled button. */
+const BLOCKED_HINT: Partial<Record<StartOptionId, string>> = {
+  template: 'Pick a recipe to continue.',
+};
+
 export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) => {
   const [selectedId, setSelectedId] = useState<StartOptionId | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -38,9 +43,9 @@ export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) 
   const handleContinue = () => {
     if (!selectedOption) return;
     if (selectedOption.id === 'template' && selectedTemplateId) {
-      onContinue(selectedOption.id, selectedTemplateId);
-    } else {
-      onContinue(selectedOption.id);
+      onContinue({ optionId: 'template', templateId: selectedTemplateId });
+    } else if (selectedOption.id === 'scratch') {
+      onContinue({ optionId: 'scratch' });
     }
   };
 
@@ -80,13 +85,18 @@ export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) 
         </Stack>
       </Block>
 
-      {canContinue ? (
+      {selectedOption ? (
         <Flex
           align="center"
           justify="end"
           className="shrink-0 gap-4 border-t border-base bg-surface-base px-10 py-4"
         >
-          <Button color="brand" kind="primary" onClick={handleContinue}>
+          {!canContinue && BLOCKED_HINT[selectedOption.id] ? (
+            <Text kind="body/regular/sm" className="text-secondary">
+              {BLOCKED_HINT[selectedOption.id]}
+            </Text>
+          ) : null}
+          <Button color="brand" kind="primary" onClick={handleContinue} disabled={!canContinue}>
             Continue
             <ArrowRight size={16} aria-hidden />
           </Button>
