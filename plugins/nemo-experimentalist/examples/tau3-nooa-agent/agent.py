@@ -2,9 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import cast
 
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.config import CodeActConfig
@@ -15,7 +13,7 @@ from nooa.unifiedllm import CompletionClient
 
 enable_tracing(
     exporters=[
-        exporters.jsonl(trace_dir=os.environ.get("NEMO_AGENT_TRACE_DIR", "/app/traces/")),
+        exporters.jsonl(trace_dir="/app/traces/"),
     ]
 )
 
@@ -33,56 +31,15 @@ llm = CompletionClient(
 )
 
 
-class ConversationEnded(BaseException):
-    """Stop the agent cleanly after the Tau3 user simulator emits its stop token."""
-
-
-class StopAwareMCPManager:
-    """End the current CodeAct block when Tau3 signals that the user is done."""
-
-    def __init__(self, manager: object) -> None:
-        self._manager = manager
-
-    def __dir__(self) -> list[str]:
-        return dir(self._manager)
-
-    def __getattr__(self, name: str) -> object:
-        attribute = getattr(self._manager, name)
-        if not callable(attribute):
-            return attribute
-
-        tool = cast(Callable[..., Awaitable[object]], attribute)
-
-        async def call_and_stop(*args: object, **kwargs: object) -> object:
-            try:
-                result = await tool(*args, **kwargs)
-            except Exception as exc:
-                if "Conversation has already ended" in str(exc):
-                    raise ConversationEnded from None
-                raise
-            rendered = str(result)
-            if "###STOP###" in rendered or "Conversation has already ended" in rendered:
-                raise ConversationEnded
-            return result
-
-        call_and_stop.__name__ = getattr(attribute, "__name__", name)
-        call_and_stop.__qualname__ = getattr(attribute, "__qualname__", name)
-        call_and_stop.__doc__ = getattr(attribute, "__doc__", None)
-        setattr(call_and_stop, "__wrapped__", attribute)
-        return call_and_stop
-
-
 class Codeact(Agent, llm=llm):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
         self.shell = ShellTools()
-        self.tau3_runtime = StopAwareMCPManager(
-            MCPManager.create_from_server(
-                "tau3-runtime",
-                url=os.environ.get("TAU3_RUNTIME_URL", "http://tau3-runtime:8000/mcp"),
-                transport="streamable-http",
-                tool_call_timeout=timedelta(seconds=MCP_TOOL_TIMEOUT_SECONDS),
-            )
+        self.tau3_runtime = MCPManager.create_from_server(
+            "tau3-runtime",
+            url=os.environ.get("TAU3_RUNTIME_URL", "http://tau3-runtime:8000/mcp"),
+            transport="streamable-http",
+            tool_call_timeout=timedelta(seconds=MCP_TOOL_TIMEOUT_SECONDS),
         )
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=60)))
@@ -97,11 +54,6 @@ class Codeact(Agent, llm=llm):
         self.context["mcp_usage"] = (
             "Use await self.tau3_runtime.<tool_name>(...) to call the "
             "tau3-runtime MCP tools. Start with "
-            "await self.tau3_runtime.start_conversation(). Discover the domain "
-            "tools with dir(self.tau3_runtime), then use inspect.signature(...) "
-            "and inspect.getdoc(...) before calling them. Use the relevant domain "
-            "tools to perform the requested operation; do not replace them with a "
-            "conversation-only loop. The process exits automatically when the "
-            "user simulator emits ###STOP###."
+            "await self.tau3_runtime.start_conversation()."
         )
         ...
