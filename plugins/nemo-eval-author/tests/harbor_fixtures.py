@@ -112,9 +112,14 @@ def write_dataset(root: Path, *, count: int = 2, test_script: str = WRITES_REWAR
     return root
 
 
-def write_wrapper(repo_root: Path, *, class_name: str = "WrappedAgent", base: str = "BaseAgent") -> Path:
-    """A ``harbor_wrapper.py`` holding a real ``BaseAgent`` subclass."""
-    path = repo_root / "harbor_wrapper.py"
+def write_wrapper(wrapper_dir: Path, *, class_name: str = "WrappedAgent", base: str = "BaseAgent") -> Path:
+    """A ``harbor_wrapper.py`` holding a real ``BaseAgent`` subclass.
+
+    *wrapper_dir* is created if needed, because a wrapper nested under ``src/`` is the case
+    that separates the module's directory from the repo root.
+    """
+    wrapper_dir.mkdir(parents=True, exist_ok=True)
+    path = wrapper_dir / "harbor_wrapper.py"
     path.write_text(
         f"from harbor.agents.base import {base}\n\n\n"
         f"class {class_name}({base}):\n"

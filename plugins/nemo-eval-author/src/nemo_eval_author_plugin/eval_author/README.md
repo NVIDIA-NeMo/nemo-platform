@@ -40,16 +40,40 @@ reimplemented rules: schema, job resolution, task validity and coverage,
 required host variables, the agent class, the environment backend, and a round
 trip of the persisted bytes through `harbor job start --print-config`.
 [`discovery/validate.py`](../discovery/validate.py) names the Harbor API behind
-each rung. Findings that Harbor returned carry a `harbor_call`; the one check
-that reads the repository directly — whether each test script names a reward
-file — carries none and can only warn, because a script that builds the path in
-a variable is indistinguishable from one that writes nothing.
+each rung. Findings that Harbor returned carry a `harbor_call`; the two checks
+that are discovery's own carry none and can only warn. Whether each test script
+names a reward file is read from the repository, because a script that builds
+the path in a variable is indistinguishable from one that writes nothing.
+Whether the agent subclasses `BaseAgent` is a judgement Harbor deliberately
+does not make — it is strict for verifiers and not for agents — so failing it
+would block a repository Harbor's own gate accepts.
 
 The result is recorded to the `nemo-eval-author` fileset as
 `<agent>/discovery.md`. A `<agent>/harbor-job.yaml` is published alongside the
 report only when discovery authored the config; when the repository maintains
 its own valid config file, the report points at that file instead. Nothing is
 written into the repository under inspection.
+
+When the config's agent is a `harbor_wrapper.py` in the repository, the run
+command carries the wrapper's directory as `PYTHONPATH`:
+
+```bash
+PYTHONPATH=src/myagent harbor job start -c harbor-job.yaml
+```
+
+This is not a convenience. Harbor imports an agent with plain
+`importlib.import_module` and never adds the working directory to `sys.path`, so
+a config naming `harbor_wrapper:WrappedAgent` fails at the first trial with
+`No module named 'harbor_wrapper'` without it. A Harbor `JobConfig` has no field
+for a module search path, so it is recorded beside the config as
+`run_config.pythonpath` in the report's front matter, repo-relative like every
+other path in the artifact — `.` for a wrapper at the repository root. The agent
+rung imports with exactly that search path and nothing else, so a rung that
+passes is a rung the recorded command will pass too.
+
+A dataset the profile declares as a registry ref alongside a `registry_url` is
+recorded as a ref Harbor downloads rather than as a local directory, and
+reported as a warning because resolving it needs the registry to be reachable.
 
 Every run revalidates from scratch. The report is a record of what was true when
 it was written, not a cache that a later run consults.

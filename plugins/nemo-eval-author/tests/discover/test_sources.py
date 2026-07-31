@@ -9,9 +9,11 @@ former, and the report must say which it used.
 """
 
 import yaml
+from harbor.models.job.config import JobConfig
 from harbor_fixtures import write_dataset, write_job_dir, write_task, write_wrapper
 from nemo_eval_author_plugin.discovery import sources
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import _AGENT_IMPORT_ROOT
+from nemo_experimentalist_plugin.resolve import classify_dataset_value
 
 
 def _job_config(dataset: str) -> dict:
@@ -137,6 +139,91 @@ def test_profile_outranks_convention_and_reads_the_validation_split(tmp_path):
     assert split.hint is not None and "train" in split.hint
 
 
+def test_a_registry_dataset_ref_is_passed_to_harbor_as_a_ref(tmp_path):
+    """A ref is a name Harbor downloads, not a directory under the profile.
+
+    ``resolve_profile_path`` has no registry awareness, so it turned
+    ``tau2-bench-live-validation@1.0`` into ``<profile-dir>/tau2-bench-live-validation@1.0`` and
+    ``Job.create`` raised ``FileNotFoundError`` — discover reporting "cannot run" about a
+    profile the optimizer runs every day.
+    """
+    (tmp_path / "optimizer.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "agent": "nemo-oo-airline",
+                "datasets": {
+                    "train": "tau2-bench-live-train@1.0",
+                    "validation": "tau2-bench-live-validation@1.0",
+                    "registry_url": "https://registry.example/registry.json",
+                },
+            }
+        )
+    )
+
+    candidate, findings = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.source.kind == "profile"
+    assert candidate.data["datasets"] == [
+        {
+            "name": "tau2-bench-live-validation",
+            "version": "1.0",
+            "registry_url": "https://registry.example/registry.json",
+        }
+    ]
+    # Harbor is the judge of whether that names a dataset it can fetch.
+    assert JobConfig.model_validate(candidate.data).datasets[0].is_registry()
+    split = next(item for item in findings if item.name == "profile-datasets")
+    assert split.status == "warn"
+    assert "registry ref" in split.message
+    assert split.hint is not None and "reachable" in split.hint
+
+
+def test_a_local_dataset_path_is_unaffected_by_a_declared_registry(tmp_path):
+    """An explicit relative path stays a path, which is the rule Experimentalist applies."""
+    write_dataset(tmp_path / "evals" / "validation")
+    (tmp_path / "optimizer.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "datasets": {
+                    "validation": "./evals/validation",
+                    "registry_url": "https://registry.example/registry.json",
+                }
+            }
+        )
+    )
+
+    candidate, findings = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.data["datasets"] == [{"path": str(tmp_path / "evals" / "validation")}]
+    assert next(item for item in findings if item.name == "profile-datasets").status == "pass"
+
+
+def test_the_dataset_classifier_agrees_with_experimentalist(tmp_path):
+    """The copy exists to keep the plugin boundary shrinking, not to hold a second opinion.
+
+    Both plugins read the same ``optimizer.yaml``. A value the optimizer downloads and discover
+    resolves as a path would produce an artifact describing a directory nobody has.
+    """
+    (tmp_path / "local-dir").mkdir()
+    values = [
+        "./evals/validation",
+        "../sibling/evals",
+        "/absolute/evals",
+        "~/evals",
+        "local-dir",
+        "not-on-disk",
+        "namespaced/dataset",
+        "tau2-bench-live-validation@1.0",
+    ]
+
+    for registry_url in (None, "https://registry.example/registry.json"):
+        ours = [sources.classify_dataset_value(value, tmp_path, registry_url=registry_url) for value in values]
+        theirs = [classify_dataset_value(value, tmp_path, registry_url=registry_url) for value in values]
+        assert ours == theirs, f"classifiers disagree with registry_url={registry_url}"
+
+
 def test_convention_prefers_a_conventional_eval_dir_over_a_larger_one(tmp_path):
     write_dataset(tmp_path / "evals" / "validation", count=2)
     write_dataset(tmp_path / "experiments" / "scratch", count=5)
@@ -169,6 +256,45 @@ def test_wrapper_class_name_is_read_from_the_file(tmp_path):
     assert entry.hint is not None and "not assumed" in entry.hint
 
 
+def test_a_wrapper_at_the_repo_root_is_importable_from_the_root(tmp_path):
+    write_dataset(tmp_path / "evals" / "validation")
+    write_wrapper(tmp_path)
+
+    candidate, _ = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.agent_search_path == "."
+
+
+def test_a_nested_wrapper_records_the_directory_the_import_path_omits(tmp_path):
+    """``harbor_wrapper:WrappedAgent`` is where the module is *not*, which is the whole problem.
+
+    The wrapper is found by walking, so it can be anywhere; the import path Harbor takes is a
+    bare module name. Without the directory beside it, ``harbor job start -c`` fails with
+    ``No module named 'harbor_wrapper'`` on a config discovery called runnable.
+    """
+    write_dataset(tmp_path / "evals" / "validation")
+    write_wrapper(tmp_path / "src" / "myagent")
+
+    candidate, findings = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.data["agents"] == [{"import_path": "harbor_wrapper:WrappedAgent"}]
+    assert candidate.agent_search_path == "src/myagent"
+    entry = next(item for item in findings if item.name == "agent-entrypoint")
+    assert "src/myagent" in entry.message, "a reader has to be able to see where it is imported from"
+
+
+def test_a_builtin_agent_needs_no_search_path(tmp_path):
+    write_dataset(tmp_path / "evals" / "validation")
+
+    candidate, _ = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.data["agents"] == [{"name": "oracle"}]
+    assert candidate.agent_search_path is None
+
+
 def test_missing_wrapper_falls_back_to_the_oracle_and_says_what_that_means(tmp_path):
     write_dataset(tmp_path / "evals" / "validation")
 
@@ -178,6 +304,32 @@ def test_missing_wrapper_falls_back_to_the_oracle_and_says_what_that_means(tmp_p
     assert candidate.data["agents"] == [{"name": "oracle"}]
     entry = next(item for item in findings if item.name == "agent-entrypoint")
     assert entry.status == "warn"
+    assert "No harbor_wrapper.py found" in entry.message
+    assert entry.hint is not None and "evaluates no agent" in entry.hint
+
+
+def test_a_wrapper_whose_class_was_not_recognized_is_not_reported_as_a_missing_file(tmp_path):
+    """The oracle silently replaces the agent, so the reason has to be the true one.
+
+    The class is matched by the base name in the source, so a duck-typed wrapper falls through
+    to the oracle — which replays ``solution/solve.sh`` and evaluates nothing. Reporting that
+    as "No harbor_wrapper.py found" sends the author looking for a file that is right there.
+    """
+    write_dataset(tmp_path / "evals" / "validation")
+    (tmp_path / "agent" / "nested").mkdir(parents=True)
+    (tmp_path / "agent" / "nested" / "harbor_wrapper.py").write_text(
+        "class WrappedAgent:\n    async def run(self, instruction, environment):\n        return None\n"
+    )
+
+    candidate, findings = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.data["agents"] == [{"name": "oracle"}]
+    entry = next(item for item in findings if item.name == "agent-entrypoint")
+    assert entry.status == "warn"
+    assert "No harbor_wrapper.py found" not in entry.message
+    assert "agent/nested/harbor_wrapper.py" in entry.message
+    assert "BaseAgent" in entry.message and "BaseInstalledAgent" in entry.message
     assert entry.hint is not None and "evaluates no agent" in entry.hint
 
 

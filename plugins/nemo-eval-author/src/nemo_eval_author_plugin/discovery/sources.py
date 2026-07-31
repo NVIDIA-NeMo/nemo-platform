@@ -13,14 +13,17 @@ assembly apart from judgement is what turns "no config reaches the artifact unle
 accepted it" into a property that can be checked rather than a promise: if this module
 returned a parsed ``JobConfig``, the schema rung would already have run off to the side.
 
-Paths come back absolute so validation needs no working-directory tricks. Rewriting them
-relative to the repo for the persisted artifact is ``report``'s job.
+Paths inside the config come back absolute so validation needs no working-directory tricks.
+Rewriting them relative to the repo for the persisted artifact is ``report``'s job. The one
+exception is ``CandidateConfig.agent_search_path``, which is repo-relative from the start
+because it is not a config field: it is the ``PYTHONPATH`` a run needs, and both the ladder
+and the artifact read it as written.
 """
 
 import ast
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, NamedTuple
 
 import yaml
 from nemo_eval_author_plugin.discovery.models import (
@@ -41,6 +44,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 _GROUP = "config"
 
+DatasetKind = Literal["path", "ref"]
+
 # `harbor job init` writes into `configs/` unless told otherwise, so look there first.
 _CONFIG_SEARCH_DIRS = ("configs", ".", "harbor", ".harbor", "evals")
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
@@ -57,6 +62,13 @@ class _ProfileDatasets(BaseModel):
 
     train: str | None = None
     validation: str | None = None
+    registry_url: str | None = None
+    """Present or absent, this decides how the split values are read, so it cannot be ignored.
+
+    ``extra="ignore"`` swallowed it before, which left every value looking like a local path
+    and turned ``validation: tau2-bench-live-validation@1.0`` into a directory that is not
+    there.
+    """
 
 
 class _DiscoveryProfile(BaseModel):
@@ -241,11 +253,11 @@ def _from_profile(repo_root: Path) -> tuple[CandidateConfig | None, list[Finding
         )
     ]
 
-    # validation is the eval set; train exists to optimize against, so preferring it
-    # here would quietly evaluate on the wrong split.
+    # validation first: it is the eval set, and train exists to optimize against, so
+    # preferring train here would quietly evaluate on the wrong split.
     declared = {"validation": profile.datasets.validation, "train": profile.datasets.train}
-    chosen_split = next((split for split in ("validation", "train") if declared[split]), None)
-    if chosen_split is None:
+    evaluable = [(split, value) for split, value in declared.items() if value]
+    if not evaluable:
         findings.append(
             Finding(
                 name="profile-datasets",
@@ -257,47 +269,82 @@ def _from_profile(repo_root: Path) -> tuple[CandidateConfig | None, list[Finding
         )
         return None, findings
 
-    dataset_path = _resolve_profile_path(declared[chosen_split], profile.profile_dir)
-    if dataset_path is None:
+    chosen_split, declared_value = evaluable[0]
+    other_split = "train" if chosen_split == "validation" else "validation"
+    also_declares = (
+        f"{PROFILE_FILENAME} also declares datasets.{other_split}, which is not evaluated here."
+        if declared[other_split]
+        else None
+    )
+    registry_url = profile.datasets.registry_url
+
+    if classify_dataset_value(declared_value, profile.profile_dir, registry_url=registry_url) == "ref":
+        dataset_entry = _registry_dataset(declared_value, registry_url)
         findings.append(
             Finding(
                 name="profile-datasets",
                 group=_GROUP,
+                # A ref is a legitimate way to declare a dataset, and one this machine may
+                # have no reach to. Recorded as a warning rather than passed over in silence,
+                # because a reader of the artifact cannot see the tasks the way they can for
+                # a local path.
                 status="warn",
-                message=f"Could not resolve datasets.{chosen_split} from {PROFILE_FILENAME}",
+                message=(
+                    f"datasets.{chosen_split} is the registry ref '{declared_value}', "
+                    f"which a run downloads rather than reads from this repo"
+                ),
                 path=profile_path,
+                hint=" ".join(
+                    filter(
+                        None,
+                        [
+                            "Resolving it needs the registry to be reachable, and Harbor caches "
+                            "it under ~/.cache/harbor on first use.",
+                            also_declares,
+                        ],
+                    )
+                ),
             )
         )
-        return None, findings
+    else:
+        dataset_path = _resolve_profile_path(declared_value, profile.profile_dir)
+        if dataset_path is None:
+            findings.append(
+                Finding(
+                    name="profile-datasets",
+                    group=_GROUP,
+                    status="warn",
+                    message=f"Could not resolve datasets.{chosen_split} from {PROFILE_FILENAME}",
+                    path=profile_path,
+                )
+            )
+            return None, findings
 
-    other_split = "train" if chosen_split == "validation" else "validation"
-    findings.append(
-        Finding(
-            name="profile-datasets",
-            group=_GROUP,
-            status="pass",
-            message=f"Evaluating datasets.{chosen_split} at {display_path(dataset_path, repo_root)}",
-            path=dataset_path,
-            hint=(
-                f"{PROFILE_FILENAME} also declares datasets.{other_split}, which is not evaluated here."
-                if declared[other_split]
-                else None
-            ),
+        dataset_entry = {"path": str(dataset_path)}
+        findings.append(
+            Finding(
+                name="profile-datasets",
+                group=_GROUP,
+                status="pass",
+                message=f"Evaluating datasets.{chosen_split} at {display_path(dataset_path, repo_root)}",
+                path=dataset_path,
+                hint=also_declares,
+            )
         )
-    )
 
     agent_root = _resolve_profile_path(profile.agent_source, profile.profile_dir) or repo_root
-    agent_entry, agent_findings = _agent_entry(agent_root, repo_root)
-    findings.extend(agent_findings)
+    agent = _agent_entry(agent_root, repo_root)
+    findings.extend(agent.findings)
 
     return (
         CandidateConfig(
-            data={"agents": [agent_entry], "datasets": [{"path": str(dataset_path)}]},
+            data={"agents": [agent.data], "datasets": [dataset_entry]},
             source=ConfigSource(
                 kind="profile",
                 detail=f"assembled from {PROFILE_FILENAME} datasets.{chosen_split}",
                 path=profile_path,
             ),
+            agent_search_path=agent.search_path,
         ),
         findings,
     )
@@ -346,17 +393,18 @@ def _from_convention(repo_root: Path) -> tuple[CandidateConfig | None, list[Find
         )
     ]
 
-    agent_entry, agent_findings = _agent_entry(repo_root, repo_root)
-    findings.extend(agent_findings)
+    agent = _agent_entry(repo_root, repo_root)
+    findings.extend(agent.findings)
 
     return (
         CandidateConfig(
-            data={"agents": [agent_entry], "datasets": [{"path": str(chosen)}]},
+            data={"agents": [agent.data], "datasets": [{"path": str(chosen)}]},
             source=ConfigSource(
                 kind="convention",
                 detail=f"inferred from task dirs under {shown}",
                 path=chosen,
             ),
+            agent_search_path=agent.search_path,
         ),
         findings,
     )
@@ -371,39 +419,88 @@ def _preferred_dataset_dir(repo_root: Path, dataset_dirs: dict[Path, list[Path]]
     return max(dataset_dirs, key=lambda parent: (len(dataset_dirs[parent]), str(parent)))
 
 
-def _agent_entry(agent_root: Path, repo_root: Path) -> tuple[dict[str, Any], list[Finding]]:
+class _AgentEntry(NamedTuple):
+    """One ``agents`` entry, plus the search path the entry needs to be importable."""
+
+    data: dict[str, Any]
+    search_path: str | None
+    findings: list[Finding]
+
+
+def _agent_entry(agent_root: Path, repo_root: Path) -> _AgentEntry:
     """Describe the agent to run, preferring a wrapper in the repo over Harbor's default.
 
     Falls back to ``oracle``, which is what Harbor itself defaults to and the only agent
     that needs no model or credentials. It runs ``solution/solve.sh``, so a config that
     lands here still proves the tasks work even though it evaluates nothing.
+
+    A wrapper yields a bare ``module:Class`` import path, which is what Harbor's own
+    examples use, plus the directory holding that module. The directory is not decoration:
+    Harbor imports through ``importlib.import_module`` and adds nothing to ``sys.path``, so
+    a bare module name resolves only if something already put its directory there. Recording
+    it is what lets the artifact hand out a run command that works, and a nested wrapper is
+    why it cannot be assumed to be the repo root.
     """
     wrapper = _find_wrapper(agent_root) or _find_wrapper(repo_root)
     if wrapper is None:
-        return {"name": "oracle"}, [
+        return _AgentEntry({"name": "oracle"}, None, [_no_wrapper_finding(agent_root, repo_root)])
+
+    path, class_name = wrapper
+    search_path = display_path(path.parent, repo_root)
+    return _AgentEntry(
+        {"import_path": f"{path.stem}:{class_name}"},
+        search_path,
+        [
             Finding(
                 name="agent-entrypoint",
                 group=_GROUP,
-                status="warn",
-                message=f"No {_WRAPPER_FILENAME} found; falling back to Harbor's oracle agent",
-                hint=(
-                    "The oracle replays solution/solve.sh, so it validates the tasks but "
-                    "evaluates no agent. Add a harbor_wrapper.py to evaluate yours."
-                ),
+                status="pass",
+                message=f"Agent import path {path.stem}:{class_name}, importable from {search_path}",
+                path=path,
+                hint=f"Read from the class definition in {display_path(path, repo_root)}, not assumed.",
             )
-        ]
+        ],
+    )
 
-    path, class_name = wrapper
-    return {"import_path": f"{path.stem}:{class_name}"}, [
-        Finding(
+
+def _no_wrapper_finding(agent_root: Path, repo_root: Path) -> Finding:
+    """Say why the oracle is standing in, distinguishing no wrapper from no agent in one.
+
+    The two read identically from the config and mean opposite things. A repo with no
+    wrapper has nothing to evaluate yet; a repo whose wrapper this module could not
+    recognize has an agent that is simply not being run, and reporting that as "no
+    harbor_wrapper.py found" sends its author looking for a missing file.
+    """
+    unmatched = _wrapper_paths(agent_root) or _wrapper_paths(repo_root)
+    oracle = (
+        "The oracle replays solution/solve.sh, so it validates the tasks but evaluates no agent. "
+        "Add a harbor_wrapper.py to evaluate yours."
+    )
+    if not unmatched:
+        return Finding(
             name="agent-entrypoint",
             group=_GROUP,
-            status="pass",
-            message=f"Agent import path {path.stem}:{class_name}",
-            path=path,
-            hint=f"Read from the class definition in {display_path(path, repo_root)}, not assumed.",
+            status="warn",
+            message=f"No {_WRAPPER_FILENAME} found; falling back to Harbor's oracle agent",
+            hint=oracle,
         )
-    ]
+
+    bases = " or ".join(sorted(_AGENT_BASE_CLASSES))
+    return Finding(
+        name="agent-entrypoint",
+        group=_GROUP,
+        status="warn",
+        message=(
+            f"{display_path(unmatched[0], repo_root)} declares no class based on {bases}; "
+            "falling back to Harbor's oracle agent"
+        ),
+        path=unmatched[0],
+        hint=(
+            f"The base is matched by name in the source, so a wrapper reaching {bases} through an "
+            "alias or an intermediate class is not recognized. A Harbor config file declaring the "
+            "agent's import_path outranks this source, and would run it. " + oracle
+        ),
+    )
 
 
 def _find_wrapper(root: Path) -> tuple[Path, str] | None:
@@ -413,14 +510,16 @@ def _find_wrapper(root: Path) -> tuple[Path, str] | None:
     repo, but a wrapper is a file the user wrote and the ladder's agent rung is the thing
     that gets to import it.
     """
-    for directory in walk_dirs(root):
-        path = directory / _WRAPPER_FILENAME
-        if not path.is_file():
-            continue
+    for path in _wrapper_paths(root):
         class_name = _agent_class_name(path)
         if class_name is not None:
             return path, class_name
     return None
+
+
+def _wrapper_paths(root: Path) -> list[Path]:
+    """Every ``harbor_wrapper.py`` under *root*, shallowest first."""
+    return [directory / _WRAPPER_FILENAME for directory in walk_dirs(root) if (directory / _WRAPPER_FILENAME).is_file()]
 
 
 def _agent_class_name(path: Path) -> str | None:
@@ -436,6 +535,45 @@ def _agent_class_name(path: Path) -> str | None:
             if name in _AGENT_BASE_CLASSES:
                 return node.name
     return None
+
+
+def classify_dataset_value(value: str, base_dir: Path, *, registry_url: str | None = None) -> DatasetKind:
+    """Classify an ``optimizer.yaml`` dataset value as a local path or a Harbor registry ref.
+
+    Mirrors ``nemo_experimentalist_plugin.resolve.classify_dataset_value``, which is the rule
+    Experimentalist applies to the same file, so the two must agree — a value the optimizer
+    downloads and discover resolves as a path yields an artifact about a directory nobody has.
+    A copy rather than an import because Eval Author's dependency on Experimentalist is being
+    removed rather than added to; ``test_sources.py`` pins the agreement instead.
+    """
+    if value.startswith(("./", "../", "/", "~")):
+        return "path"
+    if registry_url is not None:
+        return "ref"
+    if "/" in value:
+        return "path"
+    try:
+        if (base_dir / value).exists():
+            return "path"
+    except OSError:  # not representable as a local path (e.g. name too long)
+        pass
+    return "ref"
+
+
+def _registry_dataset(value: str, registry_url: str | None) -> dict[str, Any]:
+    """A ``DatasetConfig`` naming a registry dataset, which is what Harbor resolves refs from.
+
+    ``name`` and ``version`` rather than ``path``: Harbor's ``DatasetConfig`` rejects both at
+    once, and a ref pointed at ``path`` is how the profile's ``name@version`` became a
+    nonexistent directory under the profile dir.
+    """
+    name, separator, version = value.partition("@")
+    entry: dict[str, Any] = {"name": name}
+    if separator:
+        entry["version"] = version
+    if registry_url is not None:
+        entry["registry_url"] = registry_url
+    return entry
 
 
 def _resolve_profile_path(value: str | None, profile_dir: Path) -> Path | None:

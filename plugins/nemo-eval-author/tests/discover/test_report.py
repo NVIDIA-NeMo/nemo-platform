@@ -33,6 +33,14 @@ def _record(tmp_path, findings=(), env_vars=(), candidate=None):
     )
 
 
+def _authored(**kwargs):
+    return CandidateConfig(
+        data={},
+        source=ConfigSource(kind="convention", detail="inferred from task dirs under evals/validation"),
+        **kwargs,
+    )
+
+
 def test_front_matter_survives_a_round_trip(tmp_path):
     record = _record(
         tmp_path,
@@ -68,26 +76,63 @@ def test_a_repo_that_maintains_its_own_config_is_told_to_run_that_file(tmp_path)
     markdown = report.render_markdown(record)
     front = read_front_matter(markdown)
 
-    assert front["run_config"] == {"location": "repo", "path": "configs/eval.yaml"}
+    assert front["run_config"] == {"location": "repo", "path": "configs/eval.yaml", "pythonpath": None}
     assert "harbor job start -c configs/eval.yaml" in markdown
     assert "harbor-job.yaml" not in markdown
 
 
 def test_a_config_discovery_authored_points_at_the_fileset_copy(tmp_path):
     """Nothing in the repo declares a config, so the fileset is the only place it exists."""
-    record = _record(
-        tmp_path,
-        candidate=CandidateConfig(
-            data={}, source=ConfigSource(kind="convention", detail="inferred from task dirs under evals/validation")
-        ),
-    )
+    record = _record(tmp_path, candidate=_authored())
 
     markdown = report.render_markdown(record)
     front = read_front_matter(markdown)
 
-    assert front["run_config"] == {"location": "fileset", "path": "ticket-triage/harbor-job.yaml"}
+    assert front["run_config"] == {
+        "location": "fileset",
+        "path": "ticket-triage/harbor-job.yaml",
+        "pythonpath": None,
+    }
     assert "harbor job start -c harbor-job.yaml" in markdown
     assert "Fetch `ticket-triage/harbor-job.yaml`" in markdown, "the config is not on disk yet"
+
+
+def test_a_config_whose_agent_is_a_repo_module_records_the_search_path_in_the_command(tmp_path):
+    """A Harbor JobConfig cannot carry this, and the run fails without it.
+
+    ``harbor job start -c harbor-job.yaml`` on a config naming ``harbor_wrapper:WrappedAgent``
+    raises ``No module named 'harbor_wrapper'``: Harbor imports through ``importlib`` and the
+    working directory is not on ``sys.path``. So the search path is part of the contract, in
+    the front matter for the agent that reads it and in the command for the human who runs it.
+    """
+    record = _record(tmp_path, candidate=_authored(agent_search_path="src/myagent"))
+
+    markdown = report.render_markdown(record)
+    front = read_front_matter(markdown)
+
+    assert front["run_config"]["pythonpath"] == "src/myagent"
+    assert "PYTHONPATH=src/myagent harbor job start -c harbor-job.yaml" in markdown
+
+
+def test_a_wrapper_at_the_repo_root_records_a_repo_relative_dot(tmp_path):
+    """Recorded relative like every other path, so the artifact outlives this machine."""
+    record = _record(tmp_path, candidate=_authored(agent_search_path="."))
+
+    markdown = report.render_markdown(record)
+    target = report.run_target(record)
+
+    assert read_front_matter(markdown)["run_config"]["pythonpath"] == "."
+    assert "PYTHONPATH=. harbor job start -c harbor-job.yaml" in markdown
+    assert target is not None and str(tmp_path) not in report.run_command(target)
+
+
+def test_a_config_naming_a_builtin_agent_asks_for_no_search_path(tmp_path):
+    """The oracle is Harbor's own, so there is nothing to put on the path."""
+    record = _record(tmp_path, candidate=_authored())
+
+    markdown = report.render_markdown(record)
+
+    assert "PYTHONPATH" not in markdown
 
 
 def test_the_persisted_config_carries_no_absolute_paths(tmp_path):

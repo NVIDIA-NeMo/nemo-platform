@@ -14,6 +14,12 @@ short human summary of the same thing.
 Paths in the persisted config are rewritten relative to the repo root. An absolute path
 would encode this machine into an artifact meant to outlive it, so the config is written to
 be run from ``repo_root``, and the front matter records where that is.
+
+``run_config.pythonpath`` is part of that contract rather than a convenience. A Harbor
+``JobConfig`` has no field for a module search path, and Harbor imports an agent with plain
+``importlib``, so a config naming a bare ``harbor_wrapper:WrappedAgent`` runs only with that
+directory exported. Recording the config without it would hand out a command that fails on
+the first trial.
 """
 
 from datetime import UTC, datetime
@@ -64,6 +70,7 @@ def build_report(
         repo_root=repo_root,
         harbor_version=harbor_version(),
         config_source=candidate.source if candidate is not None else None,
+        agent_search_path=candidate.agent_search_path if candidate is not None else None,
         findings=findings,
         required_env_vars=required_env_vars,
         discovered_at=discovered_at or datetime.now(UTC),
@@ -82,8 +89,28 @@ def run_target(report: DiscoveryReport) -> RunTarget | None:
         return None
     source = report.config_source
     if source is not None and source.owns_file and source.path is not None:
-        return RunTarget(location="repo", path=display_path(source.path, report.repo_root))
-    return RunTarget(location="fileset", path=f"{report.agent}/{JOB_CONFIG_FILENAME}")
+        return RunTarget(
+            location="repo",
+            path=display_path(source.path, report.repo_root),
+            pythonpath=report.agent_search_path,
+        )
+    return RunTarget(
+        location="fileset",
+        path=f"{report.agent}/{JOB_CONFIG_FILENAME}",
+        pythonpath=report.agent_search_path,
+    )
+
+
+def run_command(target: RunTarget) -> str:
+    """The exact command a later run issues, search path included when the agent needs one.
+
+    Built here rather than in each renderer so the command the CLI prints and the one the
+    artifact records cannot drift; a reader who copies whichever they saw has no way to tell
+    that the other said something else.
+    """
+    config_arg = target.path if target.location == "repo" else JOB_CONFIG_FILENAME
+    prefix = f"PYTHONPATH={target.pythonpath} " if target.pythonpath is not None else ""
+    return f"{prefix}harbor job start -c {config_arg}"
 
 
 def render_job_config(config: JobConfig, repo_root: Path) -> str:
@@ -165,10 +192,8 @@ def _verdict_section(report: DiscoveryReport) -> list[str]:
 
     source = report.config_source
     if target.location == "repo":
-        config_arg = target.path
         where = f"From `{report.repo_root}`, because the config's paths are relative to it:"
     else:
-        config_arg = JOB_CONFIG_FILENAME
         where = f"Fetch `{target.path}` from the `{report.workspace}` workspace into `{report.repo_root}`, then:"
 
     lines = [
@@ -178,10 +203,16 @@ def _verdict_section(report: DiscoveryReport) -> list[str]:
         where,
         "",
         "```bash",
-        f"harbor job start -c {config_arg}",
+        run_command(target),
         "```",
         "",
     ]
+    if target.pythonpath is not None:
+        lines += [
+            f"`PYTHONPATH` is required: the agent is the module in `{target.pythonpath}`, and Harbor "
+            "imports it with plain `importlib`, which does not search the working directory.",
+            "",
+        ]
     if report.required_env_vars:
         names = " ".join(f"{item.name}=..." for item in report.required_env_vars)
         lines += [f"Set the host variables first: `{names}`", ""]

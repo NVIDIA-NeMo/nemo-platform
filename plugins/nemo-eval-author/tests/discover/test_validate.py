@@ -32,8 +32,12 @@ from nemo_eval_author_plugin.discovery import sources, validate
 from nemo_eval_author_plugin.discovery.models import CandidateConfig, ConfigSource
 
 
-def _candidate(data: dict) -> CandidateConfig:
-    return CandidateConfig(data=data, source=ConfigSource(kind="config_file", detail="test fixture"))
+def _candidate(data: dict, agent_search_path: str | None = None) -> CandidateConfig:
+    return CandidateConfig(
+        data=data,
+        source=ConfigSource(kind="config_file", detail="test fixture"),
+        agent_search_path=agent_search_path,
+    )
 
 
 def _finding(outcome, name):
@@ -314,7 +318,8 @@ async def test_a_repo_wrapper_is_imported_and_sys_path_is_left_alone(tmp_path):
         {
             "agents": [{"import_path": "harbor_wrapper:TicketTriageAgent"}],
             "datasets": [{"path": str(dataset)}],
-        }
+        },
+        agent_search_path=".",
     )
     before = list(sys.path)
 
@@ -322,8 +327,52 @@ async def test_a_repo_wrapper_is_imported_and_sys_path_is_left_alone(tmp_path):
 
     agent = _finding(outcome, "agent")
     assert agent.status == "pass"
-    assert "subclasses BaseAgent" in agent.message
+    assert "TicketTriageAgent" in agent.message
     assert sys.path == before, "the wrapper's directory must not be left on sys.path"
+
+
+async def test_the_agent_rung_imports_only_from_the_search_path_the_artifact_records(tmp_path):
+    """The rung has to fail wherever the recorded command would.
+
+    Harbor imports through ``importlib`` and adds nothing to ``sys.path``, so a bare
+    ``harbor_wrapper:...`` resolves only from the directory the artifact tells a run to
+    export. A rung that goes looking for the file itself passes for a reason
+    ``harbor job start -c`` will not have, and that is precisely how an unimportable config
+    came to be published as runnable.
+    """
+    dataset = write_dataset(tmp_path / "evals" / "validation", count=1)
+    write_wrapper(tmp_path / "src" / "myagent")
+    data = {"agents": [{"import_path": "harbor_wrapper:WrappedAgent"}], "datasets": [{"path": str(dataset)}]}
+
+    reachable = await validate.run_ladder(_candidate(data, agent_search_path="src/myagent"), tmp_path)
+    assert _finding(reachable, "agent").status == "pass"
+
+    unreachable = await validate.run_ladder(_candidate(data, agent_search_path="."), tmp_path)
+    agent = _finding(unreachable, "agent")
+    assert agent.status == "fail"
+    assert "No module named 'harbor_wrapper'" in agent.message
+    # The directory that would work is named, since the whole point is to be actionable.
+    assert agent.hint is not None and "PYTHONPATH=src/myagent" in agent.hint
+
+
+async def test_an_agent_import_with_no_recorded_search_path_gets_no_help_finding_it(tmp_path):
+    """A config the repo maintains is validated with the environment a bare ``harbor`` has.
+
+    Nothing about that config says where its module lives, so an import that only works
+    because discovery went hunting for the file is a verdict about this process rather than
+    about the run.
+    """
+    dataset = write_dataset(tmp_path / "evals" / "validation", count=1)
+    write_wrapper(tmp_path)
+    candidate = _candidate(
+        {"agents": [{"import_path": "harbor_wrapper:WrappedAgent"}], "datasets": [{"path": str(dataset)}]}
+    )
+
+    outcome = await validate.run_ladder(candidate, tmp_path)
+
+    agent = _finding(outcome, "agent")
+    assert agent.status == "fail"
+    assert agent.hint is not None and "PYTHONPATH=." in agent.hint
 
 
 async def test_a_second_repos_wrapper_is_not_shadowed_by_the_first(tmp_path):
@@ -338,17 +387,72 @@ async def test_a_second_repos_wrapper_is_not_shadowed_by_the_first(tmp_path):
             {
                 "agents": [{"import_path": f"harbor_wrapper:{class_name}"}],
                 "datasets": [{"path": str(repo / "evals/validation")}],
-            }
+            },
+            agent_search_path=".",
         )
         outcome = await validate.run_ladder(candidate, repo)
         assert _finding(outcome, "agent").status == "pass", f"{class_name} was shadowed by a cached module"
 
 
-async def test_a_wrapper_that_is_not_an_agent_fails_the_agent_rung(tmp_path):
+async def test_a_module_left_in_sys_modules_cannot_stand_in_for_a_missing_one(tmp_path):
+    """Eviction is what keeps the rung honest once nothing is added to the path.
+
+    With the search path narrowed to one directory, a stale ``harbor_wrapper`` from an earlier
+    repo is the only way an unimportable config could still pass — the exact false verdict
+    this rung exists to prevent.
+    """
+    first, second = tmp_path / "first", tmp_path / "second"
+    for repo in (first, second):
+        write_dataset(repo / "evals" / "validation", count=1)
+    write_wrapper(first)
+
+    def candidate(repo):
+        return _candidate(
+            {
+                "agents": [{"import_path": "harbor_wrapper:WrappedAgent"}],
+                "datasets": [{"path": str(repo / "evals/validation")}],
+            },
+            agent_search_path=".",
+        )
+
+    assert _finding(await validate.run_ladder(candidate(first), first), "agent").status == "pass"
+
+    outcome = await validate.run_ladder(candidate(second), second)
+
+    assert _finding(outcome, "agent").status == "fail", "the first repo's module answered for the second"
+    assert "harbor_wrapper" not in sys.modules
+
+
+async def test_a_wrapper_that_is_not_an_agent_is_a_warning_rather_than_a_failure(tmp_path):
+    """Harbor's own agent gate passes this, so failing it would block a repo Harbor runs.
+
+    ``harbor/agents/factory.py`` calls ``import_class(import_path, label="agent")`` with no
+    ``base`` — strict for verifiers, deliberately not for agents. Still worth saying: the run
+    starts and then dies at trial time on a method the class does not have.
+    """
     dataset = write_dataset(tmp_path / "evals" / "validation", count=1)
     (tmp_path / "harbor_wrapper.py").write_text("class NotAnAgent:\n    pass\n")
     candidate = _candidate(
-        {"agents": [{"import_path": "harbor_wrapper:NotAnAgent"}], "datasets": [{"path": str(dataset)}]}
+        {"agents": [{"import_path": "harbor_wrapper:NotAnAgent"}], "datasets": [{"path": str(dataset)}]},
+        agent_search_path=".",
+    )
+
+    outcome = await validate.run_ladder(candidate, tmp_path)
+
+    assert _finding(outcome, "agent").status == "pass"
+    base = _finding(outcome, "agent-base")
+    assert base.status == "warn"
+    assert base.harbor_call is None, "Harbor does not make this judgement, so it cannot be credited with it"
+    assert _repo_failures(outcome) == []
+
+
+async def test_an_import_path_naming_something_that_is_not_a_class_still_fails(tmp_path):
+    """The one thing ``import_class`` enforces without a ``base``, so it stays a failure."""
+    dataset = write_dataset(tmp_path / "evals" / "validation", count=1)
+    (tmp_path / "harbor_wrapper.py").write_text("def not_a_class():\n    return None\n")
+    candidate = _candidate(
+        {"agents": [{"import_path": "harbor_wrapper:not_a_class"}], "datasets": [{"path": str(dataset)}]},
+        agent_search_path=".",
     )
 
     outcome = await validate.run_ladder(candidate, tmp_path)
@@ -418,3 +522,23 @@ async def test_the_full_pipeline_agrees_with_the_source_it_chose(tmp_path):
     assert _repo_failures(outcome) == []
     assert outcome.config is not None
     assert outcome.config.agents[0].import_path == "harbor_wrapper:WrappedAgent"
+
+
+async def test_the_full_pipeline_carries_a_nested_wrapper_s_search_path_through_the_ladder(tmp_path):
+    """The case the bare import path dropped on the floor.
+
+    ``_find_wrapper`` walks the repo, so the wrapper it finds need not be at the root, and the
+    emitted ``harbor_wrapper:WrappedAgent`` says nothing about where it was. Assembly and the
+    ladder have to agree on the directory or the ladder is judging a different config.
+    """
+    write_dataset(tmp_path / "evals" / "validation", count=1)
+    write_wrapper(tmp_path / "src" / "myagent")
+
+    candidate, _ = sources.find_candidate(tmp_path)
+    assert candidate is not None
+    assert candidate.agent_search_path == "src/myagent"
+
+    outcome = await validate.run_ladder(candidate, tmp_path)
+
+    assert _repo_failures(outcome) == []
+    assert _finding(outcome, "agent").status == "pass"

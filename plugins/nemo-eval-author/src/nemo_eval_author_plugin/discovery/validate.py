@@ -18,14 +18,17 @@ The rungs, in order, and the Harbor API each one leans on:
 4. coverage    every task dir on disk against the set ``Job.create`` actually resolved,
                because Harbor drops one it cannot parse without raising.
 5. credentials ``get_required_host_vars`` over the task and job env templates.
-6. agent       ``import_class(..., base=BaseAgent)`` or ``AgentFactory.get_agent_class``.
+6. agent       ``import_class`` or ``AgentFactory.get_agent_class``, called the way Harbor's
+               own ``AgentFactory`` calls them.
 7. backend     ``EnvironmentFactory.run_preflight``.
 8. round trip  ``harbor job start --print-config -c <file>`` against the persisted bytes.
 
-The one exception is the reward advisory, which reads the test scripts itself because
-Harbor has no API that answers the question before a trial runs. It carries no
-``harbor_call`` and can only warn, since a text search cannot tell a script that writes a
-reward through a variable from one that never writes a reward at all.
+Two findings are ours rather than Harbor's, and neither carries a ``harbor_call``. The reward
+advisory reads the test scripts itself, because Harbor has no API that answers the question
+before a trial runs, and it can only warn since a text search cannot tell a script that writes
+a reward through a variable from one that never writes a reward at all. The agent base-class
+advisory is a judgement Harbor deliberately does not make: it enforces a base for verifiers
+and not for agents, so an agent that is a plain class is worth saying and not worth failing.
 
 A failing rung is recorded, not raised. A report listing every problem is worth more than
 one that stops at the first, and the command's whole job is to say why a repo cannot run.
@@ -58,6 +61,7 @@ from harbor.models.task.verifier_mode import resolve_effective_verifier_env_conf
 from harbor.utils.env import get_required_host_vars
 from harbor.utils.import_path import import_class
 from nemo_eval_author_plugin.discovery.models import CandidateConfig, Finding, RequiredEnvVar, Status
+from nemo_eval_author_plugin.discovery.scan import display_path
 from pydantic import ValidationError
 
 _GROUP = "validation"
@@ -124,7 +128,7 @@ async def _ladder(candidate: CandidateConfig, repo_root: Path) -> ValidationOutc
     outcome.config = config
 
     job = await _rung_resolution(config, outcome)
-    _rung_agent(config, repo_root, outcome)
+    _rung_agent(config, repo_root, candidate.agent_search_path, outcome)
     _rung_backend(config, outcome)
     if job is None:
         return outcome
@@ -506,25 +510,38 @@ def _rung_credentials(config: JobConfig, task_dirs: list[Path], outcome: Validat
     )
 
 
-def _rung_agent(config: JobConfig, repo_root: Path, outcome: ValidationOutcome) -> None:
+def _rung_agent(config: JobConfig, repo_root: Path, search_path: str | None, outcome: ValidationOutcome) -> None:
     """Does the agent this config names actually exist?
 
     Importing the class proves what matters without constructing it. Harbor instantiates
     agents at trial time, but a discovery command has no business running a user's
-    ``__init__``, and ``import_class`` already enforces the ``BaseAgent`` contract.
+    ``__init__``.
     """
     for agent in config.agents:
         if agent.import_path is not None:
-            _check_agent_import(agent.import_path, repo_root, outcome)
+            _check_agent_import(agent.import_path, repo_root, search_path, outcome)
         elif agent.name is not None:
             _check_agent_name(agent.name, outcome)
 
 
-def _check_agent_import(import_path: str, repo_root: Path, outcome: ValidationOutcome) -> None:
+def _check_agent_import(import_path: str, repo_root: Path, search_path: str | None, outcome: ValidationOutcome) -> None:
+    """Import the agent with the search path the persisted config will actually get.
+
+    *search_path* is the single directory the artifact tells a run to put on ``PYTHONPATH``,
+    or ``None`` when the config came with an import path we did not author. Arranging the
+    import any other way — searching the repo for a file named after the module, say — passes
+    this rung for a reason ``harbor job start -c`` will not have, which is how a config that
+    cannot import its own agent came to be recorded as runnable.
+
+    ``base`` is deliberately not passed. Harbor's ``AgentFactory`` calls
+    ``import_class(import_path, label="agent")``, strict for verifiers and not for agents, and
+    a rung stricter than the gate it stands for fails repos Harbor would run.
+    """
     module_name = import_path.split(":", 1)[0]
-    with _module_search_path(repo_root, module_name):
+    search_dir = None if search_path is None else (repo_root / search_path).resolve()
+    with _module_search_path(search_dir, module_name):
         try:
-            agent_class = import_class(import_path, base=BaseAgent, label="agent")
+            agent_class = import_class(import_path, label="agent")
         except Exception as exc:
             outcome.findings.append(
                 _harbor(
@@ -532,7 +549,7 @@ def _check_agent_import(import_path: str, repo_root: Path, outcome: ValidationOu
                     "fail",
                     f"Could not load agent {import_path}: {type(exc).__name__}: {exc}",
                     "import_class",
-                    hint="Harbor needs the module importable and the class to subclass BaseAgent.",
+                    hint=_import_hint(repo_root, module_name, search_path),
                 )
             )
             return
@@ -540,10 +557,47 @@ def _check_agent_import(import_path: str, repo_root: Path, outcome: ValidationOu
         _harbor(
             "agent",
             "pass",
-            f"Agent {import_path} imports and subclasses BaseAgent ({agent_class.__name__})",
+            f"Agent {import_path} imports as a class ({agent_class.__name__})"
+            + (f", searching {search_path}" if search_path is not None else ""),
             "import_class",
         )
     )
+    if not issubclass(agent_class, BaseAgent):
+        outcome.findings.append(
+            Finding(
+                name="agent-base",
+                group=_GROUP,
+                status="warn",
+                message=f"{import_path} does not subclass harbor.agents.base.BaseAgent",
+                hint=(
+                    "Harbor imports agents without checking a base class, so a run starts and "
+                    "then fails at trial time on whichever method it expected."
+                ),
+            )
+        )
+
+
+def _import_hint(repo_root: Path, module_name: str, search_path: str | None) -> str:
+    """Say what would make the import work, naming a directory holding the module if one does.
+
+    The search is for the hint only. Letting it widen the path the rung imports from is the
+    bug this whole function exists to explain.
+    """
+    top = module_name.split(".", 1)[0]
+    found = [
+        display_path(path.parent, repo_root)
+        for path in sorted(repo_root.rglob(f"{top}.py"))
+        if ".venv" not in path.parts and "site-packages" not in path.parts
+    ]
+    reason = (
+        "Harbor imports the agent with plain importlib and never adds the working directory to sys.path."
+        if search_path is None
+        else f"PYTHONPATH={search_path} is what this config is recorded with, and {top} does not import from there."
+    )
+    remainder = [directory for directory in found if directory != search_path]
+    if remainder:
+        return f"{reason} {top}.py is at {remainder[0]}, so a run needs PYTHONPATH={remainder[0]} from the repo root."
+    return reason
 
 
 def _check_agent_name(name: str, outcome: ValidationOutcome) -> None:
@@ -674,32 +728,29 @@ def check_config_file(config_path: Path, repo_root: Path) -> Finding:
 
 
 @contextlib.contextmanager
-def _module_search_path(repo_root: Path, module_name: str) -> Iterator[None]:
-    """Make *module_name* importable from this repo, then undo it.
+def _module_search_path(directory: Path | None, module_name: str) -> Iterator[None]:
+    """Put exactly *directory* on ``sys.path`` for the duration, then undo it.
 
-    Two things have to be arranged. A wrapper is referenced as
-    ``harbor_wrapper:WrappedAgent``, a bare module name that only imports if its directory
-    is on ``sys.path``; Harbor's callers arrange that themselves at run time.
+    One directory, because that is what the artifact tells a run to export as ``PYTHONPATH``
+    and the rung is only worth anything if it imports from the same place. ``None`` adds
+    nothing, which is what a separate ``harbor`` process gets.
 
-    And the name has to be evicted from ``sys.modules`` first. ``harbor_wrapper`` is a
+    The eviction is unconditional and matters more than the insertion. ``harbor_wrapper`` is a
     convention, so two different repos, or the same repo before and after an edit, claim the
-    same module name. Without eviction the second import silently returns the first repo's
-    module and the rung would validate a file that is not the one under inspection. Both
+    same module name. Without it the second import silently returns the first repo's module and
+    the rung would validate a file that is not the one under inspection — and with nothing
+    added to the path, a stale entry is the only way the import could succeed at all. Both
     changes are reversed on the way out, since this process did not ask to be reshaped.
     """
     top = module_name.split(".", 1)[0]
-    directories = [
-        path.parent
-        for path in sorted(repo_root.rglob(f"{top}.py"))
-        if ".venv" not in path.parts and "site-packages" not in path.parts
-    ]
-    added = [str(directory) for directory in directories if str(directory) not in sys.path]
-    sys.path[:0] = added
+    entry = str(directory) if directory is not None and str(directory) not in sys.path else None
+    if entry is not None:
+        sys.path.insert(0, entry)
     displaced = sys.modules.pop(top, None)
     try:
         yield
     finally:
-        for entry in added:
+        if entry is not None:
             with contextlib.suppress(ValueError):
                 sys.path.remove(entry)
         sys.modules.pop(top, None)

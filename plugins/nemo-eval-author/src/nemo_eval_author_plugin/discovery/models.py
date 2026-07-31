@@ -37,6 +37,13 @@ Ordered by how much of it Harbor already agreed to, which is what
 
 SOURCE_PRIORITY: tuple[SourceKind, ...] = ("config_file", "prior_job", "profile", "convention")
 
+AGENT_SEARCH_PATH_DESCRIPTION = (
+    "Repo-relative directory that must be on PYTHONPATH for the config's agent import "
+    "path to resolve, or None when it names no module. Harbor imports agents with plain "
+    "importlib and never adds the working directory, and a Harbor JobConfig has nowhere to "
+    "record this, so it travels beside the config instead of in it."
+)
+
 
 class Finding(BaseModel):
     """One thing discover learned, and who vouches for it."""
@@ -87,6 +94,10 @@ class CandidateConfig(BaseModel):
 
     data: dict[str, Any]
     source: ConfigSource
+    agent_search_path: str | None = Field(
+        default=None,
+        description=AGENT_SEARCH_PATH_DESCRIPTION,
+    )
 
 
 class RunTarget(BaseModel):
@@ -100,6 +111,10 @@ class RunTarget(BaseModel):
 
     location: Literal["repo", "fileset"]
     path: str
+    pythonpath: str | None = Field(
+        default=None,
+        description=AGENT_SEARCH_PATH_DESCRIPTION,
+    )
 
 
 class RequiredEnvVar(BaseModel):
@@ -122,6 +137,7 @@ class DiscoveryReport(BaseModel):
         "which is why Harbor stamps its own version into lock.json.",
     )
     config_source: ConfigSource | None = None
+    agent_search_path: str | None = Field(default=None, description=AGENT_SEARCH_PATH_DESCRIPTION)
     findings: list[Finding] = Field(default_factory=list)
     required_env_vars: list[RequiredEnvVar] = Field(default_factory=list)
     discovered_at: datetime

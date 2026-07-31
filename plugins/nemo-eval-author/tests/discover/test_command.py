@@ -85,8 +85,29 @@ def test_a_healthy_repo_exits_zero_and_records_both_artifacts(app, client, tmp_p
 
     assert result.exit_code == 0, result.output
     assert "Harbor can run this repo's evals" in result.output
-    assert "harbor job start -c harbor-job.yaml" in result.output
+    assert "PYTHONPATH=. harbor job start -c harbor-job.yaml" in result.output
     assert sorted(client.files.stored) == [f"{AGENT}/discovery.md", f"{AGENT}/harbor-job.yaml"]
+
+
+def test_the_command_printed_for_a_nested_wrapper_can_actually_import_it(app, client, tmp_path):
+    """The command is the deliverable, so it has to name the directory the module is in.
+
+    ``harbor job start -c harbor-job.yaml`` against a config naming ``harbor_wrapper`` fails
+    with ``No module named 'harbor_wrapper'``; Harbor's importer never looks in the working
+    directory. The printed command and the recorded one both have to carry the fix, and
+    they have to agree.
+    """
+    write_dataset(tmp_path / "evals" / "validation")
+    write_wrapper(tmp_path / "src" / "myagent")
+
+    result = _invoke_named(app, tmp_path)
+
+    assert result.exit_code == 0, result.output
+    assert "PYTHONPATH=src/myagent harbor job start -c harbor-job.yaml" in result.output
+    front = read_front_matter(client.files.stored[memory.remote_report_path(AGENT)])
+    assert front["run_config"]["pythonpath"] == "src/myagent"
+    # The config itself is a Harbor JobConfig and has nowhere to say this.
+    assert "PYTHONPATH" not in client.files.stored[f"{AGENT}/{JOB_CONFIG_FILENAME}"].decode()
 
 
 def test_a_repo_that_maintains_its_own_config_keeps_it_and_records_only_the_report(app, client, tmp_path):
@@ -276,4 +297,8 @@ def test_the_uploaded_report_carries_the_verdict_that_was_printed(app, client, t
     front = read_front_matter(client.files.stored[memory.remote_report_path(AGENT)])
     assert front["runnable"] is True
     assert front["config_source"]["kind"] == "convention"
-    assert front["run_config"] == {"location": "fileset", "path": f"{AGENT}/{JOB_CONFIG_FILENAME}"}
+    assert front["run_config"] == {
+        "location": "fileset",
+        "path": f"{AGENT}/{JOB_CONFIG_FILENAME}",
+        "pythonpath": None,
+    }
