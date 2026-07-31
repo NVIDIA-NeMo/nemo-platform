@@ -39,12 +39,14 @@ from pydantic import Field
 
 from .prompt import (
     analyze_headers_prompt,
+    assess_severity_prompt,
     attribute_attack_prompt,
     check_url_brand_prompt,
     draft_warning_prompt,
     incident_response_prompt,
     review_messages_prompt,
     trace_thread_prompt,
+    triage_batch_prompt,
     triage_message_prompt,
 )
 from .utils import extract_iocs
@@ -91,6 +93,29 @@ async def review_messages(config: ReviewMessagesConfig, builder: Builder) -> Any
     )
 
 
+class TriageBatchConfig(FunctionBaseConfig, name="triage_batch"):
+    _type: str = "triage_batch"
+    llm: LLMRef = Field(description="The LLM to use for batch quarantine decisions.")
+    prompt: str = Field(default=triage_batch_prompt, description=_PROMPT_FIELD_DESCRIPTION)
+
+
+@register_function(config_type=TriageBatchConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
+async def triage_batch(config: TriageBatchConfig, builder: Builder) -> Any:
+    """Register the batch quarantine-decision tool."""
+
+    async def _triage_batch(text: str) -> str:
+        """Name which of the selected messages to quarantine."""
+        return await _invoke_llm(config, builder, text)
+
+    yield FunctionInfo.from_fn(
+        _triage_batch,
+        description=(
+            "Use this when the analyst asks which of several selected messages should be "
+            "quarantined, blocked, or removed. Answers with the positions of those messages."
+        ),
+    )
+
+
 class TriageMessageConfig(FunctionBaseConfig, OptimizableMixin, name="triage_message"):
     _type: str = "triage_message"
     llm: LLMRef = Field(description="The LLM to use for verdict triage.")
@@ -118,9 +143,33 @@ async def triage_message(config: TriageMessageConfig, builder: Builder) -> Any:
     yield FunctionInfo.from_fn(
         _triage_message,
         description=(
-            "Use this when the analyst asks whether a message is safe, whether it is phishing, "
-            "or whether they should trust it. Answers with a phishing or benign verdict and the "
-            "reasoning behind it."
+            "Use this when the analyst asks whether a single message is legitimate, whether it is "
+            "phishing, or whether they should trust it or act on it. Answers with a phishing or "
+            "benign verdict and the reasoning behind it."
+        ),
+    )
+
+
+class AssessSeverityConfig(FunctionBaseConfig, name="assess_severity"):
+    _type: str = "assess_severity"
+    llm: LLMRef = Field(description="The LLM to use for severity rating.")
+    prompt: str = Field(default=assess_severity_prompt, description=_PROMPT_FIELD_DESCRIPTION)
+
+
+@register_function(config_type=AssessSeverityConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
+async def assess_severity(config: AssessSeverityConfig, builder: Builder) -> Any:
+    """Register the threat severity rating tool."""
+
+    async def _assess_severity(text: str) -> str:
+        """Rate how serious a threat is."""
+        return await _invoke_llm(config, builder, text)
+
+    yield FunctionInfo.from_fn(
+        _assess_severity,
+        description=(
+            "Use this when the analyst asks how serious, severe, urgent or high-priority a "
+            "message is, or how it should be triaged relative to other work. Answers with a "
+            "low, medium or high severity rating."
         ),
     )
 

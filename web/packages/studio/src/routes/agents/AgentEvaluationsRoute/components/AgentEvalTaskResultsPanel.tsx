@@ -19,12 +19,38 @@ interface AgentEvalTaskResultsPanelProps {
   tasks: AgentEvalTaskDetail[];
 }
 
+const isScalar = (v: unknown): v is string | number | boolean =>
+  typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
+
+/** Reference entries worth rendering as labelled chips: every value is a scalar and each
+ *  is short enough to read inline. Anything else (step lists, nested objects) stays a
+ *  JSON blob in the expandable cell. */
+const scalarReferenceEntries = (reference?: Record<string, unknown>): [string, string][] | null => {
+  const entries = Object.entries(reference ?? {});
+  if (entries.length === 0) return null;
+  if (!entries.every(([, v]) => isScalar(v) && String(v).length <= EXPECTED_CHIP_MAX_LENGTH)) {
+    return null;
+  }
+  return entries.map(([k, v]) => [k, String(v)]);
+};
+
 const referenceText = (reference?: Record<string, unknown>): string | null => {
   if (!reference || Object.keys(reference).length === 0) return null;
   const values = Object.values(reference);
-  if (values.length === 1 && typeof values[0] === 'string') return values[0];
-  return JSON.stringify(reference);
+  const only = values[0];
+  if (
+    values.length === 1 &&
+    (typeof only === 'string' || typeof only === 'number' || typeof only === 'boolean')
+  ) {
+    return String(only);
+  }
+  return JSON.stringify(reference, null, 2);
 };
+
+/** Longest expected value that still reads as a chip in this column. Anything
+ *  longer (an ordered step list, a nested object) gets the expandable cell the
+ *  Input and Agent Response columns use. */
+const EXPECTED_CHIP_MAX_LENGTH = 32;
 
 const diagnosticsText = (diagnostics: unknown[]): string =>
   diagnostics.map((d) => JSON.stringify(d)).join('\n');
@@ -94,14 +120,42 @@ export const AgentEvalTaskResultsPanel: FC<AgentEvalTaskResultsPanelProps> = ({ 
         size: 140,
         cell: ({ row }) => {
           const expected = referenceText(row.original.reference);
-          return expected ? (
+          if (!expected) {
+            return (
+              <Text kind="body/regular/sm" color="secondary">
+                —
+              </Text>
+            );
+          }
+          const entries = scalarReferenceEntries(row.original.reference);
+          if (entries) {
+            return (
+              <Stack gap="density-sm">
+                {entries.map(([key, val]) => (
+                  <Stack key={key} gap="density-xs" className="min-w-0">
+                    {entries.length > 1 && (
+                      <Text kind="body/regular/sm" color="secondary" className="truncate">
+                        {key}
+                      </Text>
+                    )}
+                    <Badge kind="outline" color="gray">
+                      {val}
+                    </Badge>
+                  </Stack>
+                ))}
+              </Stack>
+            );
+          }
+          return expected.length <= EXPECTED_CHIP_MAX_LENGTH ? (
             <Badge kind="outline" color="gray">
               {expected}
             </Badge>
           ) : (
-            <Text kind="body/regular/sm" color="secondary">
-              —
-            </Text>
+            <LongCell
+              content={expected}
+              title={`Task ${pageIndex * pageSize + row.index + 1} — Expected`}
+              onExpand={setExpandedCell}
+            />
           );
         },
       }),

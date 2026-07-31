@@ -5,9 +5,11 @@ import { z } from 'zod';
 
 // Registry of canned example agents. Each entry references curated static assets
 // under public/sample-agents/<dir>/ by path (fetched on demand, never bundled) —
-// mirroring src/constants/sampleDatasets.ts. Used by both the Create Example Agent
-// modal (fetch + parse agent.yml, inject model, POST). Samples with an
-// evalConfigPath also appear in the Run Evaluation modal.
+// mirroring src/constants/sampleDatasets.ts. Used by the Create Example Agent
+// modal (fetch + parse agent.yml, inject model, POST).
+//
+// Eval configs are a SEPARATE registry (EVAL_CONFIG_SAMPLES) on purpose: either
+// paradigm can target any agent, so a config is not owned by an agent.
 //
 // INVARIANT: an entry whose agent.yml uses a custom NAT `_type` requires that
 // tool's Python package to be installed in the deploy venv, or the deployment
@@ -17,72 +19,69 @@ import { z } from 'zod';
 //   _type: analyze_email           -> plugins/nemo-agents/examples/email-security-analyst
 //   _type: extract_iocs            -> plugins/nemo-agents/examples/email-security-analyst
 export interface SampleAgent {
-  /** Stable key; also the dropdown value and label. */
   key: string;
-  label: string;
   displayName: string;
   description: string;
-  evalSummary: string;
   /** Prefix for generated agent names; drives onboarding detection. */
   namePrefix: string;
   /** Public path to the NAT workflow config (parsed + model-injected at create). */
   agentConfigPath: string;
-  /** Public path to a reusable nemo-evaluator eval-config.json. Samples without
-   *  one remain available for agent creation but not evaluation seeding. */
-  evalConfigPath?: string;
-  /** Public path to the dataset a dataset-driven eval-config scores over. Seeded
-   *  into the run's fileset alongside the config so the sample is self-contained. */
-  datasetPath?: string;
 }
 
 export const SAMPLE_AGENTS: SampleAgent[] = [
   {
-    key: 'email_phishing_analyzer',
-    label: 'email_phishing_analyzer',
-    displayName: 'Email Phishing Analyzer',
-    description:
-      'A phishing classifier scored dataset-driven: one metric set over every row of a labeled email dataset.',
-    evalSummary:
-      'Dataset-driven: the agent produces an output for every row of a fixed dataset, and one metric set scores each output against its expected answer.',
-    namePrefix: 'email-phishing',
-    agentConfigPath: 'sample-agents/email-phishing-analyzer/agent.yml',
-    evalConfigPath: 'sample-agents/email-phishing-analyzer/eval-config.json',
-    datasetPath: 'sample-agents/email-phishing-analyzer/dataset.jsonl',
-  },
-  {
     key: 'email_security_analyst',
-    label: 'email_security_analyst',
     displayName: 'Email Security Analyst',
     description:
-      'A security analyst scored task-driven: varied input shapes — single messages, inbox batches, threads, headers, URLs — each with the metrics that fit it.',
-    evalSummary:
-      'Task-driven: the agent performs a set of distinct tasks, and each task carries its own metrics, so one suite can grade heterogeneous work.',
+      'An analyst-facing email security assistant: select one or more messages, optionally ask a question, and it routes to the capability that answers it.',
     namePrefix: 'email-security-analyst',
     agentConfigPath: 'sample-agents/email-security-analyst/agent.yml',
-    evalConfigPath: 'sample-agents/email-security-analyst/eval-config.json',
   },
 ];
 
-export type EvaluationSampleAgent = SampleAgent & { evalConfigPath: string };
+export interface EvalConfigSample {
+  key: string;
+  displayName: string;
+  description: string;
+  /** Public path to a reusable nemo-evaluator eval config. */
+  configPath: string;
+  /** Public path to the dataset a dataset-driven config scores over. Seeded into
+   *  the run's fileset alongside the config so the sample is self-contained. */
+  datasetPath?: string;
+  /** Public path to a README seeded beside the config, explaining what the suite
+   *  measures. Best-effort: a fetch failure does not block the submission. */
+  readmePath?: string;
+}
 
-export const EVALUATION_SAMPLE_AGENTS = SAMPLE_AGENTS.filter(
-  (agent): agent is EvaluationSampleAgent => typeof agent.evalConfigPath === 'string'
-);
+export const EVAL_CONFIG_SAMPLES: EvalConfigSample[] = [
+  {
+    key: 'task_driven',
+    displayName: 'Task-Driven',
+    description:
+      'Inputs are varied tasks, each with its own metrics, so one suite can grade different kinds of work.',
+    configPath: 'sample-agents/email-security-analyst/eval-config.task-driven.json',
+    readmePath: 'sample-agents/email-security-analyst/eval-config.task-driven.README.md',
+  },
+  {
+    key: 'dataset_driven',
+    displayName: 'Dataset-Driven',
+    description:
+      'Inputs are rows in a dataset, each with an ideal response, scored by a common metric set.',
+    configPath: 'sample-agents/email-security-analyst/eval-config.dataset-driven.json',
+    datasetPath: 'sample-agents/email-security-analyst/dataset.jsonl',
+    readmePath: 'sample-agents/email-security-analyst/eval-config.dataset-driven.README.md',
+  },
+];
+
+export const DEFAULT_EVAL_CONFIG_KEY = EVAL_CONFIG_SAMPLES[0].key;
+
+export const getEvalConfigSample = (key: string): EvalConfigSample =>
+  EVAL_CONFIG_SAMPLES.find((sample) => sample.key === key) ?? EVAL_CONFIG_SAMPLES[0];
 
 export const DEFAULT_SAMPLE_AGENT_KEY = SAMPLE_AGENTS[0].key;
 
 export const getSampleAgent = (key: string): SampleAgent =>
   SAMPLE_AGENTS.find((agent) => agent.key === key) ?? SAMPLE_AGENTS[0];
-
-export const getEvaluationSampleAgent = (key: string): EvaluationSampleAgent =>
-  EVALUATION_SAMPLE_AGENTS.find((agent) => agent.key === key) ?? EVALUATION_SAMPLE_AGENTS[0];
-
-export const evaluationSampleAgentKeyForAgentName = (
-  name: string | undefined
-): string | undefined => {
-  const key = sampleAgentKeyForAgentName(name);
-  return EVALUATION_SAMPLE_AGENTS.some((agent) => agent.key === key) ? key : undefined;
-};
 
 export const buildSampleAgentName = (namePrefix: string): string =>
   `${namePrefix}-${Math.random().toString(36).slice(2, 8)}`;
@@ -93,8 +92,7 @@ export const isSampleAgentName = (name: string): boolean =>
 /**
  * Infer which sample-agent example a deployed agent came from by matching its
  * generated name (`${namePrefix}-<suffix>`). Returns the example key, or
- * undefined for agents not created from an example. Used to auto-select the
- * matching eval config.
+ * undefined for agents not created from an example.
  *
  * Robustness: requires the `${namePrefix}-` separator (so a prefix only matches
  * a real name boundary, not a partial token) and picks the LONGEST matching

@@ -8,7 +8,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { utcToLocalDate } from '@nemo/common/src/utils/date';
+import { formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
 import { evaluatorCancelAgentEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
@@ -222,7 +222,7 @@ export const AgentEvaluationDetailRoute: FC = () => {
                   <Flex align="center" gap="density-md">
                     <StatusBadge status={job.status} />
                     {!isJobTerminal && liveSeconds !== undefined && (
-                      <Text kind="body/regular/sm">{liveSeconds}s</Text>
+                      <Text kind="body/regular/sm">{formatTimeInSeconds(liveSeconds)}</Text>
                     )}
                   </Flex>
                 }

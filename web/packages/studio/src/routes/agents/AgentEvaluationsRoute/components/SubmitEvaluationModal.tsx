@@ -2,34 +2,38 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { CardSelect } from '@nemo/common/src/components/CardSelect';
 import { ControlledDatasetFileSelect } from '@nemo/common/src/components/DatasetFileSelect/ControlledDatasetFileSelect';
 import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSelect/parseFilesetLocation';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
-import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getEntityNameError } from '@nemo/common/src/utils/entityName';
-import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
+import { useAgentsListAgents, useAgentsListDeployments } from '@nemo/sdk/generated/agents/api';
+import type { AgentsListDeploymentsParams } from '@nemo/sdk/generated/agents/schema/AgentsListDeploymentsParams';
 import { evaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type {
   AgentEvaluateJobRequest,
   EvaluateJobRequest,
 } from '@nemo/sdk/generated/evaluator/schema';
-import { filesDownloadFile, filesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
-import { RadioGroupRoot, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  filesCreateFileset,
+  filesDeleteFileset,
+  filesDownloadFile,
+  filesUploadFile,
+} from '@nemo/sdk/generated/platform/api';
+import { Anchor, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
-import {
-  ensureEvalConfigFileset,
-  type EvalSeedFile,
-} from '@studio/api/evaluation/eval-config-fileset';
+import { isConflictError, type EvalSeedFile } from '@studio/api/evaluation/eval-config-fileset';
 import { JudgeModelSelect } from '@studio/components/evaluation/JudgeModelSelect';
+import { LINK_EVAL_DOCS_APPROACHES } from '@studio/constants/links';
 import {
-  EVALUATION_SAMPLE_AGENTS,
-  evaluationSampleAgentKeyForAgentName,
-  getEvaluationSampleAgent,
+  DEFAULT_EVAL_CONFIG_KEY,
+  EVAL_CONFIG_SAMPLES,
+  getEvalConfigSample,
 } from '@studio/constants/sampleAgents';
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import {
@@ -38,6 +42,7 @@ import {
   buildDatasetEvalRequestBody,
   buildPersistedSpec,
   type EvalSpec,
+  injectJudgeModel,
   type InlineMetricBundle,
   isDatasetEvalSpec,
   generateEvalConfigName,
@@ -45,9 +50,14 @@ import {
   MODE_FILESET,
   parseEvalConfig,
 } from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
+import {
+  getAgentEvaluationDetailRoute,
+  getEvaluationResultDetailsRoute,
+} from '@studio/routes/utils';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
+import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
 const EVAL_CONFIG_MODE_ITEMS = [
@@ -58,6 +68,9 @@ const EVAL_CONFIG_MODE_ITEMS = [
 /** Flat filename the reusable config is stored as inside its fileset. */
 const EVAL_CONFIG_FILENAME = 'eval-config.json';
 const DATASET_FILENAME = 'dataset.jsonl';
+const README_FILENAME = 'README.md';
+
+const NO_DEPLOYMENT_MESSAGE = 'This agent has no active deployment.';
 
 const submitEvaluationBaseSchema = z.object({
   agent: z.string().min(1, 'Agent is required'),
@@ -98,11 +111,19 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
     }
   });
 
+/** Narrows the deployments list to one agent's running deployments, so the modal never
+ *  pages through a workspace-wide list to answer a per-agent question. The endpoint
+ *  accepts these as deepObject query params (``filter[agent]``, ``filter[status]``) and
+ *  the fetcher serializes nested objects that way, but the generated params type omits
+ *  ``filter`` — the agents plugin never declares it via ``openapi_extra`` — hence the cast. */
+const runningDeploymentsQuery = (agent: string): AgentsListDeploymentsParams =>
+  ({ filter: { agent: bareName(agent), status: 'running' } }) as AgentsListDeploymentsParams;
+
 const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => ({
   agent: agent ?? '',
   judgeModel: '',
   mode: MODE_DEFAULT,
-  exampleKey: evaluationSampleAgentKeyForAgentName(agent) ?? EVALUATION_SAMPLE_AGENTS[0]?.key ?? '',
+  exampleKey: DEFAULT_EVAL_CONFIG_KEY,
   newName: generateEvalConfigName(),
   configFile: null,
 });
@@ -115,25 +136,6 @@ interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onCl
   onSubmitted?: (jobName: string) => void;
 }
 
-/** True when a fileset of this name already holds an eval-config.json. A "Create new"
- *  submission must use a free name: ensureEvalConfigFileset never overwrites an existing
- *  file, so a name collision would leave the fileset holding the old config while we submit
- *  the new spec — the persisted yardstick and the evaluated spec would diverge. */
-const evalConfigFilesetExists = async (
-  workspace: string,
-  fileset: string,
-  signal: AbortSignal
-): Promise<boolean> => {
-  try {
-    const listing = await filesListFilesetFiles(workspace, fileset, undefined, signal);
-    return (listing?.data ?? []).some((f) => f.path === EVAL_CONFIG_FILENAME);
-  } catch (err) {
-    const e = err as { response?: { status?: number }; status?: number };
-    if (e?.response?.status === 404 || e?.status === 404) return false;
-    throw err;
-  }
-};
-
 /** Resolves the persisted yardstick spec for this submission. In "Use Example" mode
  *  it builds the spec from the sample template (fanning the metric onto every task with
  *  the picked judge baked in) and seeds it into a new fileset; in "Choose Fileset" mode
@@ -145,18 +147,16 @@ const loadPersistedSpec = async (
   if (formData.mode === MODE_DEFAULT) {
     const signal = new AbortController().signal;
     const name = formData.newName.trim();
-    if (await evalConfigFilesetExists(workspace, name, signal)) {
-      throw new Error(`A fileset named "${name}" already exists — choose a different name`);
-    }
-    const example = getEvaluationSampleAgent(formData.exampleKey);
-    const template = parseEvalConfig(await fetchSampleText(example.evalConfigPath));
+    const example = getEvalConfigSample(formData.exampleKey);
+    const template = parseEvalConfig(await fetchSampleText(example.configPath));
     const files: EvalSeedFile[] = [];
     let spec: EvalSpec;
 
     if (isDatasetEvalSpec(template)) {
-      // Seed the dataset beside the config and repoint the spec at it, so the run
-      // owns its data instead of referencing a fileset the workspace may not have.
-      spec = template;
+      const judgeModel = formData.judgeModel || null;
+      const bakedMetrics = judgeModel
+        ? template.metrics.map((m) => injectJudgeModel(m, judgeModel))
+        : template.metrics;
       if (example.datasetPath) {
         const datasetFile = example.datasetPath.split('/').pop() ?? DATASET_FILENAME;
         files.push({
@@ -164,7 +164,13 @@ const loadPersistedSpec = async (
           content: await fetchSampleText(example.datasetPath),
           type: 'application/jsonl',
         });
-        spec = { ...template, dataset: `${workspace}/${name}#${datasetFile}` };
+        spec = {
+          ...template,
+          dataset: `${workspace}/${name}#${datasetFile}`,
+          metrics: bakedMetrics,
+        };
+      } else {
+        spec = { ...template, dataset: [], metrics: bakedMetrics };
       }
     } else {
       spec = buildPersistedSpec(template, formData.judgeModel || null);
@@ -175,7 +181,36 @@ const loadPersistedSpec = async (
       content: JSON.stringify(spec, null, 2),
       type: 'application/json',
     });
-    await ensureEvalConfigFileset(workspace, name, signal, files, 'Agent Evaluation Config');
+
+    if (example.readmePath) {
+      const readme = await fetchSampleText(example.readmePath).catch(() => null);
+      if (readme) {
+        files.push({ path: README_FILENAME, content: readme, type: 'text/markdown' });
+      }
+    }
+
+    try {
+      await filesCreateFileset(workspace, { name, description: 'Agent Evaluation Config' }, signal);
+    } catch (err) {
+      if (isConflictError(err)) {
+        throw new Error(`A fileset named "${name}" already exists — choose a different name`);
+      }
+      throw err;
+    }
+    try {
+      for (const f of files) {
+        await filesUploadFile(
+          workspace,
+          name,
+          f.path,
+          new Blob([f.content], { type: f.type }),
+          signal
+        );
+      }
+    } catch (uploadErr) {
+      await filesDeleteFileset(workspace, name, signal).catch(() => {});
+      throw uploadErr;
+    }
     return spec;
   }
   // Choose-fileset mode: read the saved yardstick spec out of its fileset, as-is.
@@ -200,6 +235,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 }) => {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Ref keeps isLlmJudge current for the zod schema getter at validation time.
   const isLlmJudgeRef = useRef(false);
@@ -232,15 +268,30 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
   const mode = useWatch({ control, name: 'mode' });
   const selectedAgent = useWatch({ control, name: 'agent' });
+
+  const { data: runningDeployments, isLoading: isDeploymentsLoading } = useAgentsListDeployments(
+    workspace,
+    runningDeploymentsQuery(selectedAgent),
+    { query: { enabled: open && Boolean(selectedAgent) } }
+  );
+
+  const hasRunningDeployment = (runningDeployments?.data ?? []).length > 0;
+
+  const noDeploymentError =
+    selectedAgent && !isDeploymentsLoading && !hasRunningDeployment
+      ? NO_DEPLOYMENT_MESSAGE
+      : undefined;
+
+  const agentFieldError = errors.agent?.message ?? noDeploymentError;
   const exampleKey = useWatch({ control, name: 'exampleKey' });
 
   // Fetch and parse the selected example config early to detect metric type and default model.
   const { data: exampleConfig } = useQuery({
     queryKey: ['eval-config-preview', exampleKey],
     queryFn: async () => {
-      const example = getEvaluationSampleAgent(exampleKey);
+      const example = getEvalConfigSample(exampleKey);
       if (!example) return null;
-      const text = await fetchSampleText(example.evalConfigPath);
+      const text = await fetchSampleText(example.configPath);
       return parseEvalConfig(text);
     },
     enabled: open && mode === MODE_DEFAULT && !!exampleKey,
@@ -309,25 +360,30 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
             buildAgentEvalRequestBody(spec, selections) as AgentEvaluateJobRequest
           );
       if (!created?.name) throw new Error('Submission did not return a job name');
-      return created.name;
+      return { name: created.name, isDataset: isDatasetEvalSpec(spec) };
     },
-    onSuccess: (jobName) => {
-      toast.success(`Evaluation "${jobName}" submitted`);
+    onSuccess: ({ name, isDataset }) => {
+      toast.success(`Evaluation "${name}" submitted`);
       void queryClient.invalidateQueries({ queryKey: ['agent-eval-jobs', workspace] });
-      onSubmitted?.(jobName);
+      onSubmitted?.(name);
       resetAndClose();
+      navigate(
+        isDataset
+          ? getEvaluationResultDetailsRoute(workspace, name)
+          : getAgentEvaluationDetailRoute(workspace, name)
+      );
     },
   });
-
-  // Keep the example matched to the agent it was created from.
-  useEffect(() => {
-    const matchedKey = evaluationSampleAgentKeyForAgentName(selectedAgent);
-    if (matchedKey) setValue('exampleKey', matchedKey);
-  }, [selectedAgent, setValue]);
 
   useEffect(() => {
     if (!open) resetForm(makeDefaultValues(agentProp));
   }, [open, agentProp, resetForm]);
+
+  // Seed the locked agent on open. A blanket reset here would clobber the judge-model
+  // preselect above, which runs earlier in effect order.
+  useEffect(() => {
+    if (open && agentProp) setValue('agent', agentProp);
+  }, [open, agentProp, setValue]);
 
   const resetAndClose = () => {
     resetMutation();
@@ -358,6 +414,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       submitButtonText="Submit"
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
+      submitDisabled={Boolean(noDeploymentError)}
       loading={isPending}
       errorText={errorMessage}
       className="w-[690px]! max-w-[95vw]!"
@@ -365,9 +422,14 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       <FormProvider {...methods}>
         <Stack gap="density-xl">
           {agentProp ? (
-            <Text kind="body/regular/sm" color="secondary">
-              Evaluating agent <Text kind="body/semibold/sm">{agentProp}</Text>
-            </Text>
+            <Stack gap="density-xs">
+              <Text kind="body/semibold/lg">{agentProp}</Text>
+              {noDeploymentError && (
+                <Text kind="body/regular/sm" className="text-[var(--text-color-feedback-danger)]">
+                  {noDeploymentError}
+                </Text>
+              )}
+            </Stack>
           ) : (
             <ControlledSelect
               useControllerProps={{ control, name: 'agent' }}
@@ -375,7 +437,11 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
               items={agents.flatMap((agent) =>
                 agent.name ? [{ value: agent.name, children: agent.name }] : []
               )}
-              formFieldProps={{ slotLabel: 'Agent', slotError: errors.agent?.message }}
+              formFieldProps={{
+                slotLabel: 'Agent',
+                slotError: agentFieldError,
+                status: agentFieldError ? 'error' : undefined,
+              }}
             />
           )}
 
@@ -399,33 +465,29 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
               {mode === MODE_DEFAULT ? (
                 <>
                   <Stack gap="density-sm">
-                    <Text kind="label/bold/sm" color="secondary">
-                      Example
-                    </Text>
-                    <RadioGroupRoot
-                      name="eval-example"
+                    <CardSelect
+                      label="Eval config template"
                       value={exampleKey}
-                      onValueChange={(v) => setValue('exampleKey', v, { shouldValidate: true })}
-                      orientation="horizontal"
-                    >
-                      <div className="grid grid-cols-2 gap-3">
-                        {EVALUATION_SAMPLE_AGENTS.map((example) => (
-                          <RadioCard
-                            key={example.key}
-                            value={example.key}
-                            label={example.displayName}
-                            description={example.evalSummary}
-                            labelSide="left"
-                            checked={example.key === exampleKey}
-                          />
-                        ))}
-                      </div>
-                    </RadioGroupRoot>
-                    {errors.exampleKey?.message ? (
-                      <Text kind="body/regular/sm" color="danger">
-                        {errors.exampleKey.message}
-                      </Text>
-                    ) : null}
+                      onChange={(key) => setValue('exampleKey', key, { shouldValidate: true })}
+                      options={EVAL_CONFIG_SAMPLES.map((sample) => ({
+                        value: sample.key,
+                        title: sample.displayName,
+                        description: sample.description,
+                      }))}
+                    />
+                    <Text kind="body/regular/md" color="secondary">
+                      Learn more about{' '}
+                      <Anchor
+                        kind="inline"
+                        textKind="body/regular/md"
+                        href={LINK_EVAL_DOCS_APPROACHES}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Dataset-Driven vs Task-Driven evaluation
+                      </Anchor>
+                      .
+                    </Text>
                   </Stack>
                   {isLlmJudge && (
                     <JudgeModelSelect<SubmitEvaluationFormData>
@@ -438,6 +500,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     selectOnFocus
                     formFieldProps={{
                       slotLabel: 'New Fileset Name',
+                      slotHelp: 'Saves a reusable eval-config.json you can select for future runs.',
                       slotError: errors.newName?.message,
                     }}
                   />

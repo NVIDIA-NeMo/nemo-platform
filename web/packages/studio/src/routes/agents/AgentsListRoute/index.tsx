@@ -8,6 +8,7 @@ import { AgentsTable, type AgentTableRow } from '@studio/components/dataViews/Ag
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
+import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
 import { CloneAgentModal } from '@studio/routes/agents/AgentsListRoute/CloneAgentModal';
 import { CreateExampleAgentModal } from '@studio/routes/agents/AgentsListRoute/CreateExampleAgentModal';
 import { getAgentDetailRoute } from '@studio/routes/utils';
@@ -20,6 +21,7 @@ export const AgentsListRoute: FC = () => {
   const [createDeploymentAgent, setCreateDeploymentAgent] = useState<string | null>(null);
   const [isCreateExampleOpen, setCreateExampleOpen] = useState(false);
   const [cloneSource, setCloneSource] = useState<AgentTableRow | null>(null);
+  const [evaluateAgent, setEvaluateAgent] = useState<string | null>(null);
   const [loadedAgents, setLoadedAgents] = useState<Agent[]>([]);
 
   useBreadcrumbs({
@@ -46,6 +48,7 @@ export const AgentsListRoute: FC = () => {
           onAgentRowClick={handleOpenDetails}
           onCreateDeployment={(agentName) => setCreateDeploymentAgent(agentName)}
           onCloneAgent={setCloneSource}
+          onRunEvaluation={setEvaluateAgent}
           onAgentsLoaded={setLoadedAgents}
         />
       </Stack>
@@ -60,6 +63,12 @@ export const AgentsListRoute: FC = () => {
         onClose={() => setCloneSource(null)}
         workspace={workspace}
         sourceAgent={cloneSource}
+      />
+      <SubmitEvaluationModal
+        open={evaluateAgent !== null}
+        onClose={() => setEvaluateAgent(null)}
+        workspace={workspace}
+        agent={evaluateAgent ?? undefined}
       />
       <CreateDeploymentModal
         open={createDeploymentAgent !== null}

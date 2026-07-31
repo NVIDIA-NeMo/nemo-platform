@@ -101,7 +101,7 @@ describe('AgentsListRoute', () => {
 
     expect(await screen.findByText('Agent detail page')).toBeInTheDocument();
 
-    expect(captured.name).toMatch(/^email-phishing-[a-z0-9]{6}$/);
+    expect(captured.name).toMatch(/^email-security-analyst-[a-z0-9]{6}$/);
     expect(captured.description).toBeTruthy();
     const config = captured.config as {
       workflow: { _type: string; tool_names: string[] };
@@ -109,8 +109,12 @@ describe('AgentsListRoute', () => {
       llms: { llm: { model_name: string } };
     };
     expect(config.workflow._type).toBe('tool_calling_agent');
-    expect(config.workflow.tool_names).toEqual(['email_phishing_analyzer']);
-    expect(config.functions.email_phishing_analyzer._type).toBe('email_phishing_analyzer');
+    expect(config.workflow.tool_names).toEqual([
+      'review_messages',
+      'triage_message',
+      'extract_iocs',
+    ]);
+    expect(config.functions.triage_message._type).toBe('triage_message');
     expect(config.llms.llm.model_name).toBe('nvidia-nemotron-super-49b');
   });
 
@@ -126,7 +130,7 @@ describe('AgentsListRoute', () => {
         };
         modelName = body.config.llms.llm.model_name;
         return HttpResponse.json({
-          name: 'email-phishing-demo-agent-abc123',
+          name: 'email-security-analyst-demo-agent-abc123',
           workspace: params['workspace'],
         });
       })
@@ -168,7 +172,7 @@ describe('AgentsListRoute', () => {
     );
 
     await user.click(within(dialog).getByRole('combobox', { name: 'Example' }));
-    await user.click(await screen.findByRole('option', { name: 'email_security_analyst' }));
+    await user.click(await screen.findByRole('option', { name: 'Email Security Analyst' }));
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
     await waitFor(() => expect(captured.name).toMatch(/^email-security-analyst-[a-z0-9]{6}$/));
@@ -177,8 +181,12 @@ describe('AgentsListRoute', () => {
       functions: Record<string, { _type: string }>;
       llms: { llm: { model_name: string } };
     };
-    expect(config.workflow.tool_names).toEqual(['analyze_email', 'extract_iocs']);
-    expect(config.functions.analyze_email._type).toBe('analyze_email');
+    expect(config.workflow.tool_names).toEqual([
+      'review_messages',
+      'triage_message',
+      'extract_iocs',
+    ]);
+    expect(config.functions.triage_message._type).toBe('triage_message');
     expect(config.functions.extract_iocs._type).toBe('extract_iocs');
     expect(config.llms.llm.model_name).toBe('nvidia-nemotron-super-49b');
   });
@@ -189,14 +197,6 @@ describe('AgentsListRoute', () => {
 
     renderList();
     const dialog = await openModal(user);
-    await waitFor(() =>
-      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
-        'nvidia-nemotron-super-49b'
-      )
-    );
-
-    await user.click(within(dialog).getByRole('combobox', { name: 'Example' }));
-    await user.click(await screen.findByRole('option', { name: 'email_security_analyst' }));
 
     await waitFor(() =>
       expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
@@ -212,7 +212,7 @@ describe('AgentsListRoute', () => {
     renderList();
     const dialog = await openModal(user);
     await user.click(within(dialog).getByRole('combobox', { name: 'Example' }));
-    await user.click(await screen.findByRole('option', { name: 'email_security_analyst' }));
+    await user.click(await screen.findByRole('option', { name: 'Email Security Analyst' }));
 
     await waitFor(() =>
       expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
@@ -321,7 +321,7 @@ describe('AgentsListRoute', () => {
     server.use(
       http.get(CREATE_AGENT_URL, () =>
         HttpResponse.json({
-          data: [{ name: 'email-phishing-demo-agent-abc123', workspace }],
+          data: [{ name: 'email-security-analyst-demo-agent-abc123', workspace }],
           pagination: {
             page: 1,
             page_size: 50,
@@ -345,7 +345,7 @@ describe('AgentsListRoute', () => {
     );
 
     renderList();
-    await screen.findByText('email-phishing-demo-agent-abc123');
+    await screen.findByText('email-security-analyst-demo-agent-abc123');
     const dialog = await openModal(user);
     await waitFor(() =>
       expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(

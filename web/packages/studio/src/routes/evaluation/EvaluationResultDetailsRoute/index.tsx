@@ -4,6 +4,7 @@
 import { AccordionPanel } from '@nemo/common/src/components/AccordionPanel';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { useEvaluatorGetEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,
   Flex,
@@ -44,11 +45,16 @@ export const EvaluationResultDetailsRoute: FC = () => {
     },
   });
 
-  const { scores, rows, isPending, isLoadingScores, isLoadingRows } = useDatasetEvalResults(
-    workspace,
-    id,
-    job?.status
-  );
+  const {
+    scores,
+    rows,
+    isPending,
+    hasFailed,
+    isLoadingScores,
+    isLoadingRows,
+    scoresError,
+    rowsError,
+  } = useDatasetEvalResults(workspace, id, job?.status);
 
   useBreadcrumbs({
     items: [
@@ -82,24 +88,49 @@ export const EvaluationResultDetailsRoute: FC = () => {
                     Scores are computed once the job reaches a terminal state.
                   </Block>
                 )}
-                {!isPending && isLoadingScores && (
+                {hasFailed && (
+                  <Block className="text-subtle">Scores are not available for this job.</Block>
+                )}
+                {!isPending && !hasFailed && isLoadingScores && (
                   <Flex justify="center" align="center" className="min-h-[120px] w-full">
                     <Spinner size="small" aria-label="Loading scores..." />
                   </Flex>
                 )}
-                {!isPending && !isLoadingScores && <DatasetEvalScoresPanel scores={scores} />}
+                {!isPending && !hasFailed && !isLoadingScores && !scoresError && (
+                  <DatasetEvalScoresPanel scores={scores} />
+                )}
+                {!isPending && !hasFailed && scoresError && (
+                  <Block className="text-subtle">Scores could not be loaded.</Block>
+                )}
               </Panel>
             </Grid>
 
-            {!isPending && isLoadingRows && (
+            {isPending && (
+              <Block className="text-subtle">
+                Row results are computed once the job reaches a terminal state.
+              </Block>
+            )}
+            {hasFailed && (
+              <Block className="text-subtle">Row results are not available for this job.</Block>
+            )}
+            {!isPending && !hasFailed && isLoadingRows && (
               <Flex justify="center" align="center" className="min-h-[120px] w-full">
                 <Spinner size="small" aria-label="Loading row results..." />
               </Flex>
             )}
-            {!isPending && !isLoadingRows && <DatasetEvalRowResultsPanel rows={rows} />}
+            {!isPending && !hasFailed && !isLoadingRows && !rowsError && (
+              <DatasetEvalRowResultsPanel rows={rows} />
+            )}
+            {!isPending && !hasFailed && rowsError && (
+              <Block className="text-subtle">Row results could not be loaded.</Block>
+            )}
 
             <AccordionPanel slotHeading="Logs" slotIcon={<ScrollText />}>
-              <StatusLogsContent workspace={workspace} jobName={id} />
+              <StatusLogsContent
+                workspace={workspace}
+                jobName={id}
+                jobStatus={job?.status as PlatformJobStatus}
+              />
             </AccordionPanel>
           </Stack>
         </Flex>

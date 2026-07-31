@@ -139,7 +139,7 @@ describe('CombinedAgentsTable', () => {
   });
 
   describe('row actions', () => {
-    it('shows Deploy, Test models, Clone, and Delete actions for agent rows', async () => {
+    it('shows Deploy, Compare Models, Clone, and Delete actions for agent rows', async () => {
       const user = userEvent.setup();
       renderTable();
 
@@ -149,7 +149,7 @@ describe('CombinedAgentsTable', () => {
       await user.click(menuButtons[0]);
 
       const deployItems = await screen.findAllByRole('menuitem', { name: 'Deploy' });
-      const testModelItems = screen.getAllByRole('menuitem', { name: 'Test models' });
+      const testModelItems = screen.getAllByRole('menuitem', { name: 'Compare Models' });
       const cloneItems = screen.getAllByRole('menuitem', { name: 'Clone' });
       const deleteItems = screen.getAllByRole('menuitem', { name: 'Delete' });
       expect(deployItems.length).toBeGreaterThan(0);
@@ -158,7 +158,7 @@ describe('CombinedAgentsTable', () => {
       expect(deleteItems.length).toBeGreaterThan(0);
     });
 
-    it('opens Playground with the row model selected when Test models is selected', async () => {
+    it('opens Playground with the row model selected when Compare Models is selected', async () => {
       const user = userEvent.setup();
       renderRoute(undefined, {
         history: getAgentsListRoute(WORKSPACE),
@@ -177,7 +177,7 @@ describe('CombinedAgentsTable', () => {
       await screen.findByText(MOCK_AGENTS[0].name);
 
       await user.click(screen.getAllByRole('button', { name: /actions/i })[0]);
-      await user.click((await screen.findAllByRole('menuitem', { name: 'Test models' }))[0]);
+      await user.click((await screen.findAllByRole('menuitem', { name: 'Compare Models' }))[0]);
 
       expect(await screen.findByTestId('model-compare-location')).toHaveTextContent(
         `${getModelCompareRoute(WORKSPACE)}?model=${encodeURIComponent(
@@ -186,7 +186,7 @@ describe('CombinedAgentsTable', () => {
       );
     });
 
-    it('hides Test models when Playground is disabled', async () => {
+    it('hides Compare Models when Playground is disabled', async () => {
       const user = userEvent.setup();
       renderRoute(undefined, {
         history: getAgentsListRoute(WORKSPACE),
@@ -205,7 +205,7 @@ describe('CombinedAgentsTable', () => {
       expect((await screen.findAllByRole('menuitem', { name: 'Deploy' })).length).toBeGreaterThan(
         0
       );
-      expect(screen.queryByRole('menuitem', { name: 'Test models' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Compare Models' })).not.toBeInTheDocument();
     });
 
     it('calls onCloneAgent with the row when Clone is selected', async () => {

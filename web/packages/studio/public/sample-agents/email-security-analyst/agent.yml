@@ -28,8 +28,14 @@ functions:
   triage_message:
     _type: triage_message
     llm: llm
+  triage_batch:
+    _type: triage_batch
+    llm: llm
   attribute_attack:
     _type: attribute_attack
+    llm: llm
+  assess_severity:
+    _type: assess_severity
     llm: llm
   trace_thread:
     _type: trace_thread
@@ -61,7 +67,9 @@ workflow:
     [
       review_messages,
       triage_message,
+      triage_batch,
       attribute_attack,
+      assess_severity,
       trace_thread,
       analyze_headers,
       check_url_brand,
@@ -73,7 +81,9 @@ workflow:
     [
       review_messages,
       triage_message,
+      triage_batch,
       attribute_attack,
+      assess_severity,
       trace_thread,
       analyze_headers,
       check_url_brand,
@@ -96,6 +106,11 @@ workflow:
 
     Refer to messages by their 1-based position in `emails`: the first is 1, the
     second is 2, and so on.
+
+    Input that is not that JSON object is the request itself. Read any question it
+    contains as the analyst's ask and treat the remaining material as the selected
+    message, then pick a tool the same way. Never refuse or ask for a different
+    format.
 general:
   telemetry:
     tracing:

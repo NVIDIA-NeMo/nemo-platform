@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  EVALUATION_SAMPLE_AGENTS,
-  evaluationSampleAgentKeyForAgentName,
+  EVAL_CONFIG_SAMPLES,
   isSampleAgentName,
   SAMPLE_AGENTS,
   sampleAgentKeyForAgentName,
@@ -11,9 +10,6 @@ import {
 
 describe('sampleAgentKeyForAgentName', () => {
   it('matches a generated example agent name to its key', () => {
-    expect(sampleAgentKeyForAgentName('email-phishing-demo-agent-9lhh53')).toBe(
-      'email_phishing_analyzer'
-    );
     expect(sampleAgentKeyForAgentName('email-security-analyst-demo-agent-abc123')).toBe(
       'email_security_analyst'
     );
@@ -26,7 +22,7 @@ describe('sampleAgentKeyForAgentName', () => {
   });
 
   it('requires the prefix separator (no partial-token match)', () => {
-    expect(sampleAgentKeyForAgentName('email-phishingxyz')).toBeUndefined();
+    expect(sampleAgentKeyForAgentName('email-security-analystxyz')).toBeUndefined();
   });
 
   it('picks the longest matching prefix when one is a substring of another', () => {
@@ -70,17 +66,23 @@ describe('isSampleAgentName', () => {
 });
 
 describe('evaluation samples', () => {
-  it('keeps creation-only samples out of the evaluation picker', () => {
-    expect(SAMPLE_AGENTS.some((agent) => agent.key === 'email_security_analyst')).toBe(true);
-    expect(EVALUATION_SAMPLE_AGENTS.map((agent) => agent.key)).toEqual([
-      'email_phishing_analyzer',
-      'email_security_analyst',
+  it('offers both paradigms independently of any agent', () => {
+    expect(EVAL_CONFIG_SAMPLES.map((sample) => sample.key)).toEqual([
+      'task_driven',
+      'dataset_driven',
     ]);
-    expect(evaluationSampleAgentKeyForAgentName('email-security-analyst-demo-agent-abc123')).toBe(
-      'email_security_analyst'
-    );
-    expect(evaluationSampleAgentKeyForAgentName('email-phishing-demo-agent-abc123')).toBe(
-      'email_phishing_analyzer'
-    );
+  });
+
+  it('gives the dataset-driven config a dataset to seed and the task-driven one none', () => {
+    const byKey = Object.fromEntries(EVAL_CONFIG_SAMPLES.map((sample) => [sample.key, sample]));
+    expect(byKey.dataset_driven.datasetPath).toBeDefined();
+    expect(byKey.task_driven.datasetPath).toBeUndefined();
+  });
+
+  it('carries no agent coupling on the config entries', () => {
+    for (const sample of EVAL_CONFIG_SAMPLES) {
+      expect(Object.keys(sample)).not.toContain('namePrefix');
+      expect(Object.keys(sample)).not.toContain('agentConfigPath');
+    }
   });
 });

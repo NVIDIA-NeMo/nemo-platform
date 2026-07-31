@@ -3,6 +3,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledSearchableSelect } from '@nemo/common/src/components/form/ControlledSearchableSelect';
+import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
@@ -56,9 +57,9 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
   );
   const models = modelsPage?.data ?? [];
   const modelOptions = buildSuggestedModelOptions(models);
-  const exampleOptions = SAMPLE_AGENTS.map((example) => ({
+  const exampleItems = SAMPLE_AGENTS.map((example) => ({
     value: example.key,
-    label: example.label,
+    children: example.displayName,
   }));
 
   const {
@@ -189,11 +190,10 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
       loading={isPending}
       errorText={errorMessage}
     >
-      <ControlledSearchableSelect
+      <ControlledSelect
         useControllerProps={{ control, name: 'exampleKey' }}
-        options={exampleOptions}
-        triggerPlaceholder="Select an example"
-        searchPlaceholder="Search examples..."
+        items={exampleItems}
+        renderValue={(v) => exampleItems.find((item) => item.value === v)?.children}
         formFieldProps={{
           slotLabel: 'Example',
           slotError: errors.exampleKey?.message,

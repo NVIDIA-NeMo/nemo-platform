@@ -56,22 +56,22 @@ export const useDatasetEvalResults = (workspace: string, jobName: string, status
     retry: 3,
   });
 
-  const { data: rowsMetadata } = useEvaluatorGetEvaluateJobResult(
-    workspace,
-    jobName,
-    'row-scores',
-    {
-      query: { enabled, retry: 3 },
-    }
-  );
+  const {
+    data: rowsMetadata,
+    isLoading: isLoadingRowsMetadata,
+    error: rowsMetadataError,
+  } = useEvaluatorGetEvaluateJobResult(workspace, jobName, 'row-scores', {
+    query: { enabled, retry: 3 },
+  });
 
-  const { data: rows, isLoading: isLoadingRows } = useQuery({
+  const {
+    data: rows,
+    isLoading: isLoadingRowsDownload,
+    error: rowsError,
+  } = useQuery({
     queryKey: ['dataset-eval-row-scores', workspace, jobName, rowsMetadata?.download_url],
-    queryFn: async () => {
-      const response = await fetch(rowsMetadata?.download_url ?? '');
-      if (!response.ok) throw new Error(`Failed to download row scores: ${response.statusText}`);
-      return parseRowScores(await response.text());
-    },
+    queryFn: () =>
+      downloadText(rowsMetadata?.download_url ?? '', 'row scores').then(parseRowScores),
     enabled: !!rowsMetadata?.download_url,
     retry: 3,
   });
@@ -82,7 +82,8 @@ export const useDatasetEvalResults = (workspace: string, jobName: string, status
     isPending,
     hasFailed,
     isLoadingScores: isLoadingScoresMetadata || isLoadingScores,
-    isLoadingRows,
-    error: scoresMetadataError || scoresError,
+    isLoadingRows: isLoadingRowsMetadata || isLoadingRowsDownload,
+    scoresError: scoresMetadataError || scoresError,
+    rowsError: rowsMetadataError || rowsError,
   };
 };
