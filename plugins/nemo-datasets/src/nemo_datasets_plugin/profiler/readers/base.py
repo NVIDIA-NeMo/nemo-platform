@@ -28,6 +28,10 @@ class ReadResult:
     rows_scanned: int  # number of rows actually parsed
     num_rows: int | None = None  # exact total when cheaply known (e.g. a parquet footer), else None
     arrow_schema: pa.Schema | None = None  # the declared column schema, when the format carries one
+    # Why the read understood less than the whole file, when that happened. None means nothing was
+    # lost. This is the only channel a reader has to explain a partial result, so a consumer can tell
+    # "corrupt input" from "unsupported format" from "profiler bug" instead of seeing a silent gap.
+    error: str | None = None
 
 
 class FormatReader(Protocol):
@@ -79,3 +83,14 @@ _EXTENSION_FORMATS = {
 def detect_format(path: str) -> str | None:
     """Map a file path to a registered format by extension, or None when unrecognized."""
     return _EXTENSION_FORMATS.get(Path(path).suffix.lower())
+
+
+# Extensions that plainly hold dataset records but have no reader yet. Naming them explicitly is what
+# lets the profiler say "there is data here I cannot read" instead of treating a dataset it does not
+# understand as an empty one — a README or a LICENSE is genuinely not data and stays ignored.
+_UNSUPPORTED_DATA_EXTENSIONS = {".csv", ".tsv", ".arrow", ".feather", ".json", ".avro", ".orc"}
+
+
+def is_unsupported_data(path: str) -> bool:
+    """Whether a path looks like dataset records this profiler has no reader for."""
+    return Path(path).suffix.lower() in _UNSUPPORTED_DATA_EXTENSIONS
