@@ -129,7 +129,7 @@ async def run_experimentalist(
     winner = result.winner
     reporter.run_finished(
         winner=winner.label if winner is not None else None,
-        scores=dict(winner.validation_reward) if winner and winner.validation_reward else {},
+        scores=dict(winner.metrics("validation")) if winner and winner.metrics("validation") else {},
         report_path=(experiment_dir / "eval-and-optimize" / "OPTIMIZATION.md") if winner is not None else None,
     )
     return result.summary

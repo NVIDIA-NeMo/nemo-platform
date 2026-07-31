@@ -78,3 +78,14 @@ def test_lazy_model_defers_construction_until_first_use(monkeypatch) -> None:
         assert "unresolved" not in repr(proxy)
     finally:
         _client.cache_clear()
+
+
+def test_reward_summary_is_separate_from_the_dimensions() -> None:
+    """A scalar rollup must not sit in metrics, where a selector would treat it as a
+    dimension that dominates every real one."""
+    from nemo_experimentalist_plugin.entities import RewardRecord
+
+    record = RewardRecord(metrics={"node-1": 0.6, "node-2": 0.8}, summary=0.7)
+
+    assert "summary" not in record.metrics
+    assert record.summary == 0.7

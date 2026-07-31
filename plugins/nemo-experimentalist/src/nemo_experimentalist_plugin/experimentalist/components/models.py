@@ -145,15 +145,15 @@ class EvolutionNode(BaseModel):
 
     @property
     def train_reward(self) -> dict[str, float]:
-        return self.candidate.train_reward or {}
+        return self.candidate.metrics("train") or {}
 
     @property
     def val_reward(self) -> dict[str, float]:
-        return self.candidate.validation_reward or {}
+        return self.candidate.metrics("validation") or {}
 
     @property
     def trajectory_reward(self) -> dict[str, float]:
-        return self.candidate.validation_trajectory_reward or {}
+        return self.candidate.metrics("validation-trajectory") or {}
 
     @property
     def is_survivor(self) -> bool:
@@ -162,8 +162,8 @@ class EvolutionNode(BaseModel):
     @property
     def reward_str(self) -> str:
         parts = []
-        if self.train_reward:
-            parts.append(f"tr[{_format_reward(self.train_reward)}]")
+        if self.metrics("train"):
+            parts.append(f"tr[{_format_reward(self.metrics('train'))}]")
         if self.val_reward:
             parts.append(f"val[{_format_reward(self.val_reward)}]")
         if self.trajectory_reward:
@@ -242,7 +242,7 @@ class EvolutionTree:
         val_keys: set[str] = set()
         traj_keys: set[str] = set()
         for n in self.nodes.values():
-            train_keys.update(n.train_reward.keys())
+            train_keys.update(n.metrics("train").keys())
             val_keys.update(n.val_reward.keys())
             traj_keys.update(n.trajectory_reward.keys())
         train_cols = sorted(train_keys)
@@ -266,7 +266,7 @@ class EvolutionTree:
             key=lambda x: int(x.split("-")[1]) if x.split("-")[-1].isdigit() else 0,
         ):
             n = self.nodes[label]
-            train_vals = [f"{n.train_reward[k]:.2f}" if k in n.train_reward else "-" for k in train_cols]
+            train_vals = [f"{n.metrics('train')[k]:.2f}" if k in n.metrics("train") else "-" for k in train_cols]
             val_vals = [f"{n.val_reward[k]:.2f}" if k in n.val_reward else "-" for k in val_cols]
             traj_vals = [f"{n.trajectory_reward[k]:.2f}" if k in n.trajectory_reward else "-" for k in traj_cols]
             opt = (n.optimization or "")[:50].replace("\n", " ")

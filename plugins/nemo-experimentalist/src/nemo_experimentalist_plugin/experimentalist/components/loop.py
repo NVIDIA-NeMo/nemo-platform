@@ -15,12 +15,20 @@ import logging
 import random
 import shutil
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal, cast, get_args
 
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.entities import Candidate, Dataset, EvaluationResult, ExperimentRun, TrialResult
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
+    Dataset,
+    EvaluationResult,
+    ExperimentRun,
+    RewardRecord,
+    TrialResult,
+)
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
@@ -82,6 +90,19 @@ from nooa.tools import Match
 
 from .util import load_framework_skills
 
+
+def _suite_identity(candidate: Candidate) -> str | None:
+    """The Insight-suite identity this candidate's insight reward was measured against."""
+    value = candidate.rewards.get("insight", RewardRecord()).metadata.get("suite_identity")
+    return value if isinstance(value, str) else None
+
+
+def _metric_keys(candidate: Candidate) -> list[str]:
+    """The validated metric keys recorded alongside this candidate's insight reward."""
+    value = candidate.rewards.get("insight", RewardRecord()).metadata.get("metric_keys")
+    return [str(key) for key in value] if isinstance(value, list) else []
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,6 +121,20 @@ _EXCLUDE_DIRS = {
     "scratch",
 }
 _EXCLUDE_GLOBS = {"*traces*", "*eval-and-optimize_*"}
+
+
+def _with_reward(
+    candidate: Candidate,
+    channel: str,
+    *,
+    metrics: dict[str, float] | None = None,
+    trials: Sequence[TrialResult] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, RewardRecord]:
+    """The candidate's reward map with *channel* merged in, for an entity update."""
+    current = candidate.rewards.get(channel) or RewardRecord()
+    update = {k: v for k, v in (("metrics", metrics), ("trials", trials), ("metadata", metadata)) if v is not None}
+    return {**candidate.rewards, channel: current.model_copy(update=update)}
 
 
 def _warn_persistence_failure(operation: Literal["archive", "publish"], candidate: str, exc: Exception) -> None:
@@ -196,8 +231,8 @@ class AnalysisSkill(Skill):
 
     [Columns are the actual reward dimension keys from metadata. Order by any dimension that
     helps comparison — no dimension is privileged. Read Insight Suite Reward from
-    `candidate.insight_reward`. Omit that table when `insight_reward` is absent or empty
-    for every agent. Keep Insight Suite Reward separate from train and validation rewards:
+    `candidate.rewards["insight"].metrics`. Omit that table when the `insight` channel is
+    absent or empty for every agent. Keep Insight Suite Reward separate from train and validation rewards:
     it reports performance on scenarios authored for the motivating Insight and is not a
     ranking or Pareto-selection input. Insight Suite metrics may steer round analysis,
     goal-tree updates, and the proposer only as adaptive/development feedback. Label any
@@ -211,9 +246,9 @@ class AnalysisSkill(Skill):
 
     ```python
     candidate = self.workspace.get_metadata(agent_id)
-    traj = candidate.validation_trajectory_reward or {}
+    traj = candidate.metrics("validation-trajectory") or {}
     # e.g. {"aggregate": 0.74, "parse-cli-input": 0.31, "search-web-sources": 0.78}
-    details = candidate.validation_trajectory_reward_details or {}
+    details = candidate.trajectory_detail or {}
     # details[node_id][task_id] = {"reward": 0.7, "explanation": "..."}
     ```
 
@@ -560,8 +595,12 @@ class EvolutionaryOptimizer(Agent):
                 await self._update_candidate(
                     candidates[0],
                     updates={
-                        "validation_reward": validation_result.aggregate_metrics,
-                        "validation_reward_details": validation_result.trials,
+                        "rewards": _with_reward(
+                            candidates[0],
+                            "validation",
+                            metrics=validation_result.aggregate_metrics,
+                            trials=validation_result.trials,
+                        ),
                     },
                     workspace=workspace,
                     backend=backend,
@@ -662,8 +701,12 @@ class EvolutionaryOptimizer(Agent):
                             backend=backend,
                             run_id=run_id,
                             updates={
-                                "train_reward": train_candidate_results[survivor.label].aggregate_metrics,
-                                "train_reward_details": train_candidate_results[survivor.label].trials,
+                                "rewards": _with_reward(
+                                    survivor,
+                                    "train",
+                                    metrics=train_candidate_results[survivor.label].aggregate_metrics,
+                                    trials=train_candidate_results[survivor.label].trials,
+                                ),
                             },
                         )
                         if reporter:
@@ -760,7 +803,7 @@ class EvolutionaryOptimizer(Agent):
                     # Mirror _evaluate_validation_candidates' own filter so we
                     # only announce candidates that will actually be evaluated
                     # (cached survivors already carry a validation_reward).
-                    pending_validation = [c for c in candidates if c.validation_reward is None]
+                    pending_validation = [c for c in candidates if "validation" not in c.rewards]
                     for i, candidate in enumerate(pending_validation, start=1):
                         reporter.candidate_started(
                             label=candidate.label,
@@ -788,8 +831,12 @@ class EvolutionaryOptimizer(Agent):
                             backend=backend,
                             run_id=run_id,
                             updates={
-                                "validation_reward": validation_candidate_results[candidate.label].aggregate_metrics,
-                                "validation_reward_details": validation_candidate_results[candidate.label].trials,
+                                "rewards": _with_reward(
+                                    candidate,
+                                    "validation",
+                                    metrics=validation_candidate_results[candidate.label].aggregate_metrics,
+                                    trials=validation_candidate_results[candidate.label].trials,
+                                ),
                             },
                         )
                         if reporter:
@@ -816,10 +863,12 @@ class EvolutionaryOptimizer(Agent):
                                 backend=backend,
                                 run_id=run_id,
                                 updates={
-                                    "validation_trajectory_reward": trajectory_results[candidate.label]["reward"],
-                                    "validation_trajectory_reward_details": trajectory_results[candidate.label][
-                                        "details"
-                                    ],
+                                    "rewards": _with_reward(
+                                        candidate,
+                                        "validation-trajectory",
+                                        metrics=trajectory_results[candidate.label]["reward"],
+                                    ),
+                                    "trajectory_detail": trajectory_results[candidate.label]["details"],
                                 },
                             )
 
@@ -900,7 +949,7 @@ class EvolutionaryOptimizer(Agent):
         dimensions where another trails):
 
         ```python
-        rewards = {c.id: self.workspace.get_metadata(c.name).validation_reward or {} for c in ranked}
+        rewards = {c.id: self.workspace.get_metadata(c.name).metrics("validation") or {} for c in ranked}
         ```
 
         Between 1 to 3 survivors per round.
@@ -922,9 +971,9 @@ class EvolutionaryOptimizer(Agent):
         Read each agent's per-dimension train rewards from metadata:
 
         ```python
-        rewards = {c.id: self.workspace.get_metadata(c.name).train_reward or {} for c in agent_ids}
+        rewards = {c.id: self.workspace.get_metadata(c.name).metrics("train") or {} for c in agent_ids}
         insight_rewards = {
-            c.id: self.workspace.get_metadata(c.name).insight_reward or {} for c in agent_ids
+            c.id: self.workspace.get_metadata(c.name).metrics("insight") or {} for c in agent_ids
         }
         all_candidates = [
             self.workspace.get_metadata(agent_id).slim() for agent_id in self.workspace.list_agents()
@@ -948,7 +997,7 @@ class EvolutionaryOptimizer(Agent):
         First, discover reward dimensions from metadata:
         ```python
         candidate = self.workspace.get_metadata(agent_ids[0].name).slim()
-        train_reward = candidate.train_reward or {}
+        train_reward = candidate.metrics("train") or {}
         dim_keys = sorted(train_reward.keys())
         insight_dim_keys = sorted({key for reward in insight_rewards.values() for key in reward})
         ```
@@ -978,7 +1027,7 @@ class EvolutionaryOptimizer(Agent):
         ```python
         agent_ids = self.workspace.list_agents()
         candidate = self.workspace.get_metadata(agent_id).slim()
-        insight_reward = candidate.insight_reward or {}
+        insight_reward = candidate.metrics("insight") or {}
         analysis  = self.workspace.read_analysis_file(n)
         ```
 
@@ -1382,7 +1431,7 @@ class EvolutionaryOptimizer(Agent):
         candidates: list[Candidate],
     ) -> dict[str, EvaluationResult]:
         """Evaluate candidates on the validation split; skip any that already have a reward."""
-        pending = [c for c in candidates if c.validation_reward is None]
+        pending = [c for c in candidates if "validation" not in c.rewards]
         if not pending:
             return {}
         if pending:
@@ -1421,10 +1470,10 @@ class EvolutionaryOptimizer(Agent):
         pending = [
             candidate
             for candidate in candidates
-            if candidate.insight_reward is None
-            or candidate.insight_reward_details is None
-            or candidate.insight_suite_identity != provenance.identity
-            or not candidate.insight_metric_keys
+            if "insight" not in candidate.rewards
+            or "insight" not in candidate.rewards
+            or _suite_identity(candidate) != provenance.identity
+            or not _metric_keys(candidate)
         ]
         evaluated = await asyncio.gather(
             *[
@@ -1462,9 +1511,9 @@ class EvolutionaryOptimizer(Agent):
         ):
             raise ValueError("Insight suite runtime metric keys have invalid metadata")
         cached_metric_key_sets = {
-            tuple(sorted(candidate.insight_metric_keys or ()))
+            tuple(sorted(_metric_keys(candidate)))
             for candidate in candidates
-            if candidate.insight_suite_identity == provenance.identity and candidate.insight_metric_keys
+            if _suite_identity(candidate) == provenance.identity and _metric_keys(candidate)
         }
         if isinstance(dataset_metric_keys, list):
             cached_metric_key_sets.add(tuple(sorted(dataset_metric_keys)))
@@ -1493,10 +1542,13 @@ class EvolutionaryOptimizer(Agent):
             await self._update_candidate(
                 candidate,
                 updates={
-                    "insight_reward": result.aggregate_metrics,
-                    "insight_reward_details": result.trials,
-                    "insight_suite_identity": provenance.identity,
-                    "insight_metric_keys": list(metric_keys),
+                    "rewards": _with_reward(
+                        candidate,
+                        "insight",
+                        metrics=result.aggregate_metrics,
+                        trials=result.trials,
+                        metadata={"suite_identity": provenance.identity, "metric_keys": list(metric_keys)},
+                    ),
                 },
                 workspace=workspace,
                 backend=backend,
@@ -1537,7 +1589,7 @@ class EvolutionaryOptimizer(Agent):
         k: int,
     ) -> list[Candidate]:
         """Return the top-k Pareto-optimal and architecturally diverse candidates."""
-        ranked = pareto_sort(candidates, lambda c: c.validation_reward or {})
+        ranked = pareto_sort(candidates, lambda c: c.metrics("validation") or {})
         return await self.select_diverse_survivors(ranked, k)
 
     async def _evaluate_train_candidates(
@@ -1561,7 +1613,7 @@ class EvolutionaryOptimizer(Agent):
         if max_train_batch_tasks is None:
             # Full-dataset mode: the eval set is identical every round, so evaluate only
             # survivors that lack a reward and reuse each survivor's cached train reward.
-            pending = [s for s in survivors if s.train_reward is None]
+            pending = [s for s in survivors if "train" not in s.rewards]
             evaluated: list[tuple[Candidate, EvaluationResult]] = []
             if pending:
                 evaluated = await asyncio.gather(*[self._evaluate_agent(c, dataset, evaluator) for c in pending])
@@ -1569,12 +1621,12 @@ class EvolutionaryOptimizer(Agent):
             for survivor in survivors:
                 if survivor.label in results:
                     continue
-                if survivor.train_reward is None and survivor.train_reward_details is None:
+                if "train" not in survivor.rewards:
                     continue
                 results[survivor.label] = EvaluationResult(
                     id=f"{survivor.label}-train",
-                    aggregate_metrics=survivor.train_reward or {},
-                    trials=list(survivor.train_reward_details or []),
+                    aggregate_metrics=survivor.metrics("train") or {},
+                    trials=list(survivor.trials("train") or []),
                 )
             return results
 
@@ -1779,9 +1831,9 @@ class EvolutionaryOptimizer(Agent):
         node_weights = leaf_weights_by_id(goal_tree.root)
         traces_by_task: dict[str, dict[str, TrialResult]] = {}
         for candidate in candidates:
-            if candidate.validation_reward is None and candidate.validation_reward_details is None:
+            if "validation" not in candidate.rewards:
                 continue
-            for trial in candidate.validation_reward_details or []:
+            for trial in candidate.trials("validation") or []:
                 if trial.trace is None:
                     continue
                 traces_by_task.setdefault(trial.task_id, {}).setdefault(candidate.label, trial)
@@ -1940,9 +1992,11 @@ class EvolutionaryOptimizer(Agent):
         winner_str = winner.name if winner else "none"
         details: list[str] = []
         if winner:
-            if winner.validation_reward:
-                details.append(f"validation_reward={winner.validation_reward}")
-            if baseline is not None and baseline.insight_reward and winner.insight_reward:
-                details.append(f"insight_suite=(baseline={baseline.insight_reward}, winner={winner.insight_reward})")
+            if winner.metrics("validation"):
+                details.append(f"validation_reward={winner.metrics('validation')}")
+            if baseline is not None and baseline.metrics("insight") and winner.metrics("insight"):
+                details.append(
+                    f"insight_suite=(baseline={baseline.metrics('insight')}, winner={winner.metrics('insight')})"
+                )
         suffix = f", {', '.join(details)}" if details else ""
         return f"Optimization complete: {rounds_completed} round(s) completed, winner={winner_str}{suffix}"

@@ -140,8 +140,8 @@ class Proposer(Agent):
             survivor_context.append(
                 {
                     "id": s.label,
-                    "reward": s.validation_reward or {},
-                    "trajectory_reward": s.validation_trajectory_reward or {},
+                    "reward": s.metrics("validation") or {},
+                    "trajectory_reward": s.metrics("validation-trajectory") or {},
                     "metadata": meta,
                     "architecture": arch_text,
                 }

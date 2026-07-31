@@ -14,10 +14,24 @@ from nemo_experimentalist_plugin.entities import (
     Candidate,
     Dataset,
     EvaluationResult,
+    RewardRecord,
     Task,
     TrialResult,
     local_path_from_uri,
 )
+
+
+def _suite_identity(candidate: Candidate) -> str | None:
+    """The Insight-suite identity this candidate's insight reward was measured against."""
+    value = candidate.rewards.get("insight", RewardRecord()).metadata.get("suite_identity")
+    return value if isinstance(value, str) else None
+
+
+def _metric_keys(candidate: Candidate) -> list[str]:
+    """The validated metric keys recorded alongside this candidate's insight reward."""
+    value = candidate.rewards.get("insight", RewardRecord()).metadata.get("metric_keys")
+    return [str(key) for key in value] if isinstance(value, list) else []
+
 
 _GENERIC_METRIC_NAMES = frozenset({"reward", "score"})
 _MAX_REPEAT_SPREAD = 0.1
@@ -192,10 +206,8 @@ def _task_evidence(
     winner: Candidate,
     provenance: InsightSuiteProvenance,
 ) -> _TaskEvidence | None:
-    suite_candidates = [
-        candidate for candidate in candidates if candidate.insight_suite_identity == provenance.identity
-    ]
-    metric_key_sets = {tuple(sorted(candidate.insight_metric_keys or ())) for candidate in suite_candidates}
+    suite_candidates = [candidate for candidate in candidates if _suite_identity(candidate) == provenance.identity]
+    metric_key_sets = {tuple(sorted(_metric_keys(candidate))) for candidate in suite_candidates}
     if len(metric_key_sets) != 1:
         return None
     required_metrics = set(next(iter(metric_key_sets), ()))
@@ -204,7 +216,7 @@ def _task_evidence(
         return None
 
     trials_by_candidate = {
-        candidate.label: [trial for trial in candidate.insight_reward_details or () if trial.task_id == task.id]
+        candidate.label: [trial for trial in candidate.trials("insight") or () if trial.task_id == task.id]
         for candidate in suite_candidates
     }
     values_by_candidate: dict[str, dict[str, list[float]]] = {}
@@ -296,7 +308,7 @@ def select_insight_promotion_suggestions(
     evaluated_candidates = [
         candidate
         for candidate in candidates
-        if candidate.insight_reward_details is not None and candidate.insight_suite_identity == provenance.identity
+        if "insight" in candidate.rewards and _suite_identity(candidate) == provenance.identity
     ]
     if len(evaluated_candidates) < 2:
         return []
@@ -453,12 +465,12 @@ def render_insight_comparison_section(
 ) -> str:
     """Render the deterministic baseline-versus-winner Insight comparison."""
     for candidate in (baseline, winner):
-        if candidate.insight_suite_identity != provenance.identity:
+        if _suite_identity(candidate) != provenance.identity:
             raise ValueError(
                 f"Candidate {candidate.label!r} Insight evidence does not match finalized suite {provenance.identity}"
             )
-    baseline_reward = baseline.insight_reward or {}
-    winner_reward = winner.insight_reward or {}
+    baseline_reward = baseline.metrics("insight") or {}
+    winner_reward = winner.metrics("insight") or {}
     metric_names = sorted(set(baseline_reward) | set(winner_reward))
     lines = [
         "## Deterministic Insight Suite Comparison",

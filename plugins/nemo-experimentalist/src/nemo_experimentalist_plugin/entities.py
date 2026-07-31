@@ -412,6 +412,23 @@ class ExperimentRun(NemoEntity, entity_type="experiment_run"):
         return handler(data)
 
 
+class RewardRecord(BaseModel):
+    """One measurement of one candidate on one reward channel.
+
+    ``metrics`` are the channel's dimensions — what a selector may compare on.
+    ``summary`` is an optional scalar rollup of them, kept out of ``metrics`` so a
+    selector can never mistake a derived total for a Pareto dimension that dominates
+    every real one.
+    """
+
+    metrics: dict[str, float] = Field(default_factory=dict, description="This channel's reward dimensions.")
+    summary: float | None = Field(default=None, description="Optional scalar rollup; never a metrics key.")
+    trials: Sequence[TrialResult] = Field(
+        default_factory=list, description="Per-trial detail, when the channel has any."
+    )
+    metadata: dict[str, DataValue] = Field(default_factory=dict, description="Provenance for this measurement.")
+
+
 class Candidate(NemoEntity, entity_type="candidate"):
     """A candidate agent version produced during an Experimentalist run.
 
@@ -470,45 +487,29 @@ class Candidate(NemoEntity, entity_type="candidate"):
             "cause; the coder uses them to validate the fix during subproblem refinement."
         ),
     )
-    train_reward: dict[str, float] | None = Field(
+    optimization_params: dict[str, Any] | None = Field(
         default=None,
-        description="Multi-dimensional reward on the training split.",
+        description=(
+            "The genotype this candidate encodes, when it has one — hyper-parameters for a "
+            "numeric trial. Read back to breed the next generation."
+        ),
     )
-    train_reward_details: Sequence[TrialResult] | None = Field(
-        default=None,
-        description="Train split trial results from the last evaluation run.",
+    rewards: dict[str, RewardRecord] = Field(
+        default_factory=dict,
+        description=(
+            "Measurements keyed by reward channel. An open set: 'train', 'validation', "
+            "'insight' and 'validation-trajectory' today. A channel is a measurement, not a "
+            "dataset split — trajectory scoring is a second measurement of the validation "
+            "split — so adding one costs no entity change."
+        ),
     )
-    validation_reward: dict[str, float] | None = Field(
+    trajectory_detail: dict[str, Any] | None = Field(
         default=None,
-        description="Multi-dimensional reward on the validation split.",
-    )
-    validation_reward_details: Sequence[TrialResult] | None = Field(
-        default=None,
-        description="Validation split trial results from the last evaluation run.",
-    )
-    insight_reward: dict[str, float] | None = Field(
-        default=None,
-        description="Multi-dimensional reward on the materialized Insight suite.",
-    )
-    insight_reward_details: Sequence[TrialResult] | None = Field(
-        default=None,
-        description="Insight-suite trial results from the last evaluation run.",
-    )
-    insight_suite_identity: str | None = Field(
-        default=None,
-        description="Content identity of the Insight suite associated with insight_reward.",
-    )
-    insight_metric_keys: list[str] | None = Field(
-        default=None,
-        description="Validated runtime metric keys associated with insight_reward.",
-    )
-    validation_trajectory_reward: dict[str, float] | None = Field(
-        default=None,
-        description="Validation trajectory reward: aggregate + per-node scores.",
-    )
-    validation_trajectory_reward_details: dict[str, Any] | None = Field(
-        default=None,
-        description="Validation trajectory reward details: node_id → task_id → {reward, explanation}.",
+        description=(
+            "Per-node, per-task trajectory scores and explanations "
+            "(node_id -> task_id -> {reward, explanation}). Shaped unlike RewardRecord.trials "
+            "and produced by one scorer; revisit when the trajectory-scorer seam lands."
+        ),
     )
     killed_round: int | None = Field(
         default=None,
@@ -527,27 +528,53 @@ class Candidate(NemoEntity, entity_type="candidate"):
         parts.append(f", optimization={self.optimization!r}")
         if self.optimization_type is not None:
             parts.append(f", optimization_type={self.optimization_type!r}")
-        if self.train_reward:
-            scores = ", ".join(f"{k}={v:.3f}" for k, v in self.train_reward.items())
-            parts.append(f", train_reward={{{scores}}}")
-        if self.validation_reward:
-            scores = ", ".join(f"{k}={v:.3f}" for k, v in self.validation_reward.items())
-            parts.append(f", validation_reward={{{scores}}}")
-        if self.insight_reward:
-            scores = ", ".join(f"{k}={v:.3f}" for k, v in self.insight_reward.items())
-            parts.append(f", insight_reward={{{scores}}}")
+        for channel, record in self.rewards.items():
+            if record.metrics:
+                scores = ", ".join(f"{k}={v:.3f}" for k, v in record.metrics.items())
+                parts.append(f", {channel}={{{scores}}}")
         if self.killed_round is not None:
             parts.append(f", killed_round={self.killed_round}")
         parts.append(")")
         return "".join(parts)
 
+    def metrics(self, channel: str) -> dict[str, float]:
+        """Reward dimensions for *channel*, or an empty mapping when unmeasured."""
+        record = self.rewards.get(channel)
+        return record.metrics if record else {}
+
+    def trials(self, channel: str) -> Sequence[TrialResult]:
+        """Per-trial detail for *channel*, or an empty sequence when unmeasured."""
+        record = self.rewards.get(channel)
+        return record.trials if record else []
+
+    def set_reward(
+        self,
+        channel: str,
+        *,
+        metrics: dict[str, float] | None = None,
+        summary: float | None = None,
+        trials: Sequence[TrialResult] | None = None,
+        metadata: dict[str, DataValue] | None = None,
+    ) -> None:
+        """Merge a measurement into *channel*, leaving unspecified parts untouched."""
+        current = self.rewards.get(channel) or RewardRecord()
+        update = {
+            key: value
+            for key, value in (
+                ("metrics", metrics),
+                ("summary", summary),
+                ("trials", trials),
+                ("metadata", metadata),
+            )
+            if value is not None
+        }
+        self.rewards = {**self.rewards, channel: current.model_copy(update=update)}
+
     def slim(self) -> "Candidate":
-        """Return a copy without per-trial detail fields (safe to pass to LLM methods)."""
+        """Return a copy without per-trial detail (safe to pass to LLM methods)."""
         return self.model_copy(
             update={
-                "train_reward_details": None,
-                "validation_reward_details": None,
-                "insight_reward_details": None,
-                "validation_trajectory_reward_details": None,
+                "rewards": {c: r.model_copy(update={"trials": []}) for c, r in self.rewards.items()},
+                "trajectory_detail": None,
             }
         )
