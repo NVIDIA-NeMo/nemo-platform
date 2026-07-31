@@ -95,7 +95,7 @@ def _outcome_from_eval_passed(eval_passed: bool | None) -> Literal["SUCCESS", "F
     return "SUCCESS" if eval_passed else "FAILURE"
 
 
-class TraceAnalyzer(Agent, llm=get_smart_model()):
+class TraceAnalyzer(Agent):
     """Perform deep trace analysis for a single task.
 
     Spawned by AgentAnalyzer.run in parallel — one instance per task.
@@ -123,7 +123,7 @@ class TraceAnalyzer(Agent, llm=get_smart_model()):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or TraceAnalyzerConfig()
         self._experiment_dir = experiment_dir
         self.shell = GuardedShellTools(cwd=experiment_dir)

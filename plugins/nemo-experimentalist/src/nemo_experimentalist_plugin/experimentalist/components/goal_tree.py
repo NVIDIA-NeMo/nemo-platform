@@ -279,7 +279,7 @@ def find_node(root: GoalNode, node_id: str) -> GoalNode | None:
 GoalNode.model_rebuild()
 
 
-class GoalTreeGenerator(Agent, llm=get_fast_model()):
+class GoalTreeGenerator(Agent):
     """Generates the goal tree consumed by the trajectory scorer.
 
     The generator MUST NOT see the agent's implementation, harbor wrapper, or any
@@ -300,7 +300,7 @@ class GoalTreeGenerator(Agent, llm=get_fast_model()):
             **kwargs: additional arguments passed to the parent Agent.
 
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_fast_model(), **kwargs)
         self._config = config
         self._workspace_path = workspace.resolve()
 

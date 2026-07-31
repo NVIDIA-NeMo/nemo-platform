@@ -38,7 +38,7 @@ class RationalizerConfig(BaseModel):
     )
 
 
-class Rationalizer(Agent, llm=get_smart_model()):
+class Rationalizer(Agent):
     """Your role is to bootstrap the reference reasoning trace.
 
     You are the bootstrapping reasoner for trace analysis. Your output is
@@ -79,7 +79,7 @@ class Rationalizer(Agent, llm=get_smart_model()):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or RationalizerConfig()
         self._workspace_path = workspace
         self.shell = GuardedShellTools(cwd=workspace)

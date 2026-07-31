@@ -63,7 +63,7 @@ class ProposerConfig(BaseModel):
     )
 
 
-class Proposer(Agent, llm=get_smart_model()):
+class Proposer(Agent):
     """Propose the next round's isolated optimization candidates."""
 
     def __init__(
@@ -73,7 +73,7 @@ class Proposer(Agent, llm=get_smart_model()):
         framework_skills_dirs: list[Path] | None = None,
         **kwargs: Any,
     ):
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or ProposerConfig()
         self._workspace_path = workspace.resolve()
         self.workspace = WorkspaceTool(workspace=self._workspace_path)

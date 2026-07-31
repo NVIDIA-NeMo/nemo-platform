@@ -41,11 +41,11 @@ class TerminationDecision(BaseModel):
     reason: str = ""
 
 
-class Terminator(Agent, llm=get_fast_model()):
+class Terminator(Agent):
     """Decides when the evolutionary optimization loop should stop."""
 
     def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_fast_model(), **kwargs)
         self.terminator_skill = TextSkill(path=skills_dir() / "terminator")
 
     @hidden

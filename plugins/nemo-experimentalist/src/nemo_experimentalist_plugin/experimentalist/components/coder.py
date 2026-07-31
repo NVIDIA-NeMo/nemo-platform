@@ -33,7 +33,7 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .model_config import get_fast_model, get_mid_model, get_smart_model
+from .model_config import get_fast_model, get_smart_model, lazy_model
 from .tools import GuardedShellTools
 from .util import load_framework_skills
 
@@ -580,7 +580,7 @@ class ArchitectureSkill(Skill):
     """
 
 
-class Coder(Agent, llm=get_smart_model()):
+class Coder(Agent):
     """Create and modify agent source code as part of the optimization loop."""
 
     def __init__(
@@ -591,7 +591,7 @@ class Coder(Agent, llm=get_smart_model()):
         **kwargs: Any,
     ):
         """Initialize the coder for the given workspace."""
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or CoderConfig()
         self._workspace_path = workspace.resolve()
         self.shell = GuardedShellTools(cwd=self._workspace_path)
@@ -1043,7 +1043,7 @@ class Coder(Agent, llm=get_smart_model()):
             options=smoke_options,
         )
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)), llm=get_mid_model())
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)), llm=lazy_model("mid"))
     async def create_architecture_doc(
         self, agent_id: str, source_path: str | None = None, entrypoint: str | None = None
     ) -> None:

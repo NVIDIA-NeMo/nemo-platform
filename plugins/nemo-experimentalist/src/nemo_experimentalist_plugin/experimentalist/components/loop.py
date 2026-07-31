@@ -318,7 +318,7 @@ class AnalysisSkill(Skill):
     """
 
 
-class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
+class EvolutionaryOptimizer(Agent):
     """The Experimentalist's deterministic Pareto optimization loop.
 
     Orchestrates the baseline → [convergence-check → select → train-eval →
@@ -333,7 +333,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         framework_skills_dirs: list[Path] | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self.working_dir = working_dir.resolve()
         self.config = config or EvolutionaryOptimizerConfig()
         self._config = self.config

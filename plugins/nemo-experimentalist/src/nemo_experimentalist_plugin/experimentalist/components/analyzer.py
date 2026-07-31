@@ -34,7 +34,7 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from . import cache
-from .model_config import get_fast_model, get_smart_model
+from .model_config import get_fast_model, get_smart_model, lazy_model
 from .rationalizer import Rationale, Rationalizer, RationalizerConfig  # noqa: F401
 from .tools import GuardedShellTools
 from .util import load_framework_skills
@@ -219,7 +219,7 @@ class AgentAnalysis(BaseModel):
         return "\n\n".join(sections)
 
 
-class AgentAnalyzer(Agent, llm=get_smart_model()):
+class AgentAnalyzer(Agent):
     """Analyze an agent's trace and failure patterns for a single optimization round."""
 
     def __init__(
@@ -238,7 +238,7 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or AnalyzerConfig()
         self._workspace_path = workspace
         self._framework_skills_dirs: list[Path] = framework_skills_dirs or []
@@ -256,7 +256,7 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
 
     @strategy(
         CodeActStrategy(config=CodeActConfig(max_iterations=20, cell_timeout=3600.0)),
-        llm=get_fast_model(),
+        llm=lazy_model("fast"),
     )
     async def select_trials(
         self,
@@ -312,7 +312,7 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
 
     @strategy(
         CodeActStrategy(config=CodeActConfig(max_iterations=30, cell_timeout=3600.0)),
-        llm=get_fast_model(),
+        llm=lazy_model("fast"),
     )
     async def classify_failures(
         self,

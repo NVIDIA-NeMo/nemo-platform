@@ -51,7 +51,7 @@ from nooa.tools import TodoManager
 logger = logging.getLogger(__name__)
 
 
-class EvalAuthor(Agent, llm=get_smart_model()):
+class EvalAuthor(Agent):
     """Insights are failure modes of an agent in production.
 
     The role of the Eval Author is to create or augment the evaluation suite in such a way that it can be used to detect the failure mode.
@@ -66,7 +66,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             config: Tuning parameters; defaults to ``EvalAuthorConfig()``.
             **kwargs: Forwarded to ``Agent.__init__``.
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or EvalAuthorConfig()
         self.experiment_dir = experiment_dir
         self.shell = GuardedShellTools(cwd=experiment_dir)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import functools
 import os
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from nooa.unifiedllm import CompletionClient
@@ -18,55 +19,90 @@ def _optional_env(name: str, default: str) -> str:
     return os.environ.get(name, "").strip() or default
 
 
+_DEFAULTS = {
+    "smart": "openai/openai/openai/gpt-5.5",
+    "mid": "openai/gcp/google/gemini-3.5-flash",
+    "fast": "openai/openai/openai/gpt-5-mini",
+}
+
+
+def model_name(tier: str) -> str:
+    """Return the configured model name for *tier* (``smart``/``mid``/``fast``)."""
+    return _optional_env(f"EXPERIMENTALIST_{tier.upper()}_MODEL_NAME", _DEFAULTS[tier])
+
+
 @functools.cache
+def _client(name: str, api_base: str, api_key: str) -> CompletionClient:
+    """Cache on the full identity, not the tier: two tiers may name the same model,
+    and a caller may legitimately switch endpoint or key within one process."""
+    return CompletionClient(name, api_base=api_base, api_key=api_key)
+
+
+def get_model(tier: str) -> CompletionClient:
+    """Build (or reuse) the client for *tier*, reading credentials at call time.
+
+    Raises:
+        ValueError: if ``EXPERIMENTALIST_API_BASE`` or ``EXPERIMENTALIST_API_KEY``
+            are unset or empty.
+
+    """
+    return _client(
+        model_name(tier),
+        _required_env("EXPERIMENTALIST_API_BASE"),
+        _required_env("EXPERIMENTALIST_API_KEY"),
+    )
+
+
+class LazyModel:
+    """Deferred :class:`CompletionClient` for sites that cannot resolve at call time.
+
+    Agent classes resolve their tier in ``__init__``. Method-level overrides
+    (``@strategy(..., llm=...)``) are decorator arguments, so they evaluate when the
+    module is imported -- before credentials are necessarily set. This proxy keeps the
+    override declarative while deferring construction to first use, which is what makes
+    importing a component module credential-free.
+    """
+
+    def __init__(self, tier: str) -> None:
+        self._tier = tier
+        self._resolved: CompletionClient | None = None
+
+    def _target(self) -> CompletionClient:
+        if self._resolved is None:
+            self._resolved = get_model(self._tier)
+        return self._resolved
+
+    def __getattr__(self, item: str) -> Any:
+        return getattr(self._target(), item)
+
+    def __repr__(self) -> str:
+        state = "unresolved" if self._resolved is None else repr(self._resolved)
+        return f"LazyModel(tier={self._tier!r}, {state})"
+
+
+def lazy_model(tier: str) -> CompletionClient:
+    """A :class:`LazyModel` typed as a client, for ``@strategy(llm=...)`` overrides.
+
+    The cast is deliberate: ``LazyModel`` is a forwarding proxy, not a subclass. nooa
+    accepts the override as ``Any``, stores it with ``setattr`` and reads it back with
+    ``getattr`` without an ``isinstance`` check, so a proxy is transparent to it.
+    """
+    return cast(CompletionClient, LazyModel(tier))
+
+
 def get_smart_model() -> CompletionClient:
-    """Return the cached smart (high-capability) LLM client configured from environment variables.
-
-    Returns:
-        CompletionClient: the singleton smart-model client.
-
-    Raises:
-        ValueError: if ``EXPERIMENTALIST_API_BASE`` or ``EXPERIMENTALIST_API_KEY`` are unset or empty.
-
-    """
-    api_base = _required_env("EXPERIMENTALIST_API_BASE")
-    api_key = _required_env("EXPERIMENTALIST_API_KEY")
-    name = _optional_env("EXPERIMENTALIST_SMART_MODEL_NAME", "openai/openai/openai/gpt-5.5")
-    return CompletionClient(name, api_base=api_base, api_key=api_key)
+    """Return the smart (high-capability) client, resolved from the environment."""
+    return get_model("smart")
 
 
-@functools.cache
 def get_mid_model() -> CompletionClient:
-    """Return the cached mid-tier LLM client configured from environment variables.
-
-    Returns:
-        CompletionClient: the singleton mid-model client.
-
-    Raises:
-        ValueError: if ``EXPERIMENTALIST_API_BASE`` or ``EXPERIMENTALIST_API_KEY`` are unset or empty.
-
-    """
-    api_base = _required_env("EXPERIMENTALIST_API_BASE")
-    api_key = _required_env("EXPERIMENTALIST_API_KEY")
-    name = _optional_env("EXPERIMENTALIST_MID_MODEL_NAME", "openai/gcp/google/gemini-3.5-flash")
-    return CompletionClient(name, api_base=api_base, api_key=api_key)
+    """Return the mid-tier client, resolved from the environment."""
+    return get_model("mid")
 
 
-@functools.cache
 def get_fast_model() -> CompletionClient:
-    """Return the cached fast (low-latency) LLM client configured from environment variables.
-
-    Returns:
-        CompletionClient: the singleton fast-model client.
-
-    Raises:
-        ValueError: if ``EXPERIMENTALIST_API_BASE`` or ``EXPERIMENTALIST_API_KEY`` are unset or empty.
-
-    """
-    api_base = _required_env("EXPERIMENTALIST_API_BASE")
-    api_key = _required_env("EXPERIMENTALIST_API_KEY")
-    name = _optional_env("EXPERIMENTALIST_FAST_MODEL_NAME", "openai/openai/openai/gpt-5-mini")
-    return CompletionClient(name, api_base=api_base, api_key=api_key)
+    """Return the fast (low-latency) client, resolved from the environment."""
+    return get_model("fast")
 
 
 def _mask_key(value: str) -> str:
@@ -90,9 +126,7 @@ def log_model_config() -> str:
         str: a multi-line summary of smart model, fast model, API base, and masked API key.
 
     """
-    smart = _optional_env("EXPERIMENTALIST_SMART_MODEL_NAME", "openai/openai/openai/gpt-5.5")
-    mid = _optional_env("EXPERIMENTALIST_MID_MODEL_NAME", "openai/gcp/google/gemini-3.5-flash")
-    fast = _optional_env("EXPERIMENTALIST_FAST_MODEL_NAME", "openai/openai/openai/gpt-5-mini")
+    smart, mid, fast = (model_name(tier) for tier in ("smart", "mid", "fast"))
     api_base = _required_env("EXPERIMENTALIST_API_BASE")
     api_key = _required_env("EXPERIMENTALIST_API_KEY")
     return (
