@@ -109,7 +109,7 @@ runs:
           web-studio:
             - 'web/**'
             - '.nvmrc'
-            - 'tools/web/**'
+            - 'tools/nodejs/**'
           docker:
             - 'docker-bake.hcl'
             - 'docker/**'

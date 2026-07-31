@@ -13,7 +13,7 @@ environments = [
     { dir = "tools/helm" },
     { dir = "tools/actionlint" },
     { dir = "tools/python" },
-    { dir = "tools/web" },
+    { dir = "tools/nodejs" },
     { dir = "tools/osv-scanner" },
     { dir = "tools/open-policy-agent" },
 ]

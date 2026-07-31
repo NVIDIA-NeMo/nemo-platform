@@ -1483,7 +1483,7 @@
             "dir": "tools/python"
           },
           {
-            "dir": "tools/web"
+            "dir": "tools/nodejs"
           },
           {
             "dir": "tools/osv-scanner"
@@ -1648,7 +1648,7 @@
         },
         "name": "nemo-platform-nodejs",
         "descriptor": {
-          "dir": "tools/web"
+          "dir": "tools/nodejs"
         }
       },
       {
