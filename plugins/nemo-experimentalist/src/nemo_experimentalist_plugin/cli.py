@@ -14,7 +14,7 @@ import uuid
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import ClassVar
 from urllib.parse import urlsplit
 
 import typer
@@ -170,11 +170,6 @@ class ExperimentalistCLI(NemoCLI):
                 file_okay=False,
                 dir_okay=True,
             ),
-            mode: Literal["local", "remote"] = typer.Option(
-                "local",
-                "--mode",
-                help="Mode of the optimizer run.",
-            ),
             workspace: str | None = typer.Option(
                 None,
                 "--workspace",
@@ -212,9 +207,6 @@ class ExperimentalistCLI(NemoCLI):
 
             if no_insight and (insight is not None or insight_id is not None):
                 typer.echo("--no-insight cannot be combined with --insight or --insight-id", err=True)
-                raise typer.Exit(code=1)
-            if mode == "remote":
-                typer.echo("Remote mode is not implemented yet", err=True)
                 raise typer.Exit(code=1)
 
             async def _flow() -> str:
@@ -318,7 +310,6 @@ class ExperimentalistCLI(NemoCLI):
                         workspace=inputs.workspace,
                         client=client,
                         config=inputs.config,
-                        mode=mode,
                         framework_skills_dirs=inputs.framework_skills_dirs,
                     )
                 finally:

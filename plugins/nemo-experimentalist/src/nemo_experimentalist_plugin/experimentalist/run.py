@@ -5,7 +5,7 @@
 
 import importlib
 from pathlib import Path
-from typing import Literal, Protocol, TextIO, cast
+from typing import Protocol, TextIO, cast
 
 from nemo_experimentalist_plugin.experimentalist.agent import build_experimentalist_agent
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
@@ -49,7 +49,6 @@ async def run_experimentalist(
     client: AsyncNeMoPlatform | None,
     config: EvolutionaryOptimizerConfig,
     task_template: DatasetRef | None = None,
-    mode: Literal["local", "remote"] = "local",
     framework_skills_dirs: list[Path] | None = None,
 ) -> str:
     """Build and run the Experimentalist against an agent and dataset.
@@ -72,8 +71,6 @@ async def run_experimentalist(
             may pass ``None``; Platform Insight access, mirroring, and Intake
             persistence require a client.
         config: Evolutionary optimizer configuration.
-        mode: Backend mode. Local writes to ``experiment_dir``; remote uses the
-            platform-backed backend.
 
     Returns:
         Terminal optimization summary.
@@ -99,7 +96,6 @@ async def run_experimentalist(
     backend = make_experimentalist_backend(
         client=client,
         experiments_output=str(experiment_dir),
-        mode=mode,
         storage=config.storage,
     )
     deps = ExperimentalistDeps(
