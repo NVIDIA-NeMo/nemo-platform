@@ -120,7 +120,13 @@ class EvalAuthorCLI(NemoCLI):
             ] = None,
             fix: Annotated[
                 bool,
-                typer.Option("--fix/--no-fix", help="Let an LLM scout propose fixes for a config that failed."),
+                typer.Option(
+                    "--dangerously-fix",
+                    help=(
+                        "Let an LLM scout propose fixes for a config Harbor rejected. The scout runs shell "
+                        "commands in the repo under inspection with no sandbox. Only use it on a repo you trust."
+                    ),
+                ),
             ] = False,
             refresh: Annotated[
                 bool,

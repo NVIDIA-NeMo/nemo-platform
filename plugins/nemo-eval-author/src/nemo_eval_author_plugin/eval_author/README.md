@@ -5,6 +5,15 @@ SPDX-License-Identifier: Apache-2.0
 
 # Eval Author
 
+> **Active development. Not intended for external use.**
+>
+> This plugin is incomplete and its interfaces will change without notice. It also
+> runs code from the repository you point it at: validating a config imports that
+> repository's agent module into the running process, and `--dangerously-fix` gives a
+> language model a shell in that directory with no sandbox. Treat pointing Eval Author
+> at a repository as equivalent to running that repository's code yourself, and only
+> do it for code you already trust. Sandboxing is not implemented yet.
+
 The Eval Author plugin is a NeMo OO Agent specialized in auditing and improving the
 eval suite of a target agent.
 
@@ -49,9 +58,12 @@ which is what makes the command usable as a gate.
 - `--repo`: agent repository to inspect. Defaults to the current directory.
 - `--agent`: name the artifacts are stored under. Defaults to the agent named in
   `optimizer.yaml`, else a slug of the directory name.
-- `--fix` / `--no-fix`: let an LLM scout propose fixes for a config Harbor
-  rejected. Defaults to `--no-fix`, and the scout is the only part of `discover`
-  that needs `AUTHOR_*` credentials.
+- `--dangerously-fix`: let an LLM scout propose fixes for a config Harbor
+  rejected. Off unless passed. The scout runs shell commands in the repository
+  under inspection with no sandbox, and it decides what to run by reading files
+  from that same repository, so hostile content there can steer it. It is also
+  the only part of `discover` that needs `AUTHOR_*` credentials, which are in
+  its environment while it runs.
 - `--refresh`: revalidate even when nothing the last report depended on moved.
 - `--dry-run`: print the findings and the config without uploading anything.
 

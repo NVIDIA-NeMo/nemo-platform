@@ -138,7 +138,7 @@ async def attempt_repair(
                     group=_GROUP,
                     status="warn",
                     message=f"The scout could not run: {type(exc).__name__}: {exc}",
-                    hint="Set AUTHOR_API_KEY and AUTHOR_BASE_URL, or drop --fix to skip this step.",
+                    hint="Set AUTHOR_API_KEY and AUTHOR_BASE_URL, or drop --dangerously-fix to skip this step.",
                     provenance="inference",
                 )
             ],

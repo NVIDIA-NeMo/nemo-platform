@@ -79,9 +79,9 @@ AGENT = "ticket-triage"
 
 
 def _invoke(app, repo, *extra):
-    # --no-fix is the default; passed anyway so a later default flip cannot make this suite
-    # start calling a model.
-    return runner.invoke(app, ["discover", "--repo", str(repo), "--no-fix", *extra])
+    # The scout is opt-in and there is no way to ask for it here, so no test that goes through
+    # this helper can reach a model. test_the_scout_is_opt_in pins that default.
+    return runner.invoke(app, ["discover", "--repo", str(repo), *extra])
 
 
 def _invoke_named(app, repo, *extra):
@@ -129,7 +129,7 @@ def test_a_config_the_scout_adjusted_is_published_instead_of_the_repo_file(app, 
 
     monkeypatch.setattr(discovery, "_scout", _repair)
 
-    result = runner.invoke(app, ["discover", "--repo", str(tmp_path), "--agent", AGENT, "--fix"])
+    result = runner.invoke(app, ["discover", "--repo", str(tmp_path), "--agent", AGENT, "--dangerously-fix"])
 
     assert result.exit_code == 0, result.output
     assert "harbor job start -c harbor-job.yaml" in result.output
@@ -150,7 +150,7 @@ def test_a_repo_whose_tasks_never_score_exits_one_and_withholds_the_config(app, 
 
 
 def test_the_scout_is_opt_in(app, client, tmp_path, no_scout):
-    """A config Harbor rejects must not reach a model unless --fix asked for it."""
+    """A config Harbor rejects must not reach a model unless --dangerously-fix asked for it."""
     write_dataset(tmp_path / "evals" / "validation", test_script=MENTIONS_REWARD_IN_COMMENT)
 
     result = runner.invoke(app, ["discover", "--repo", str(tmp_path), "--agent", AGENT])
