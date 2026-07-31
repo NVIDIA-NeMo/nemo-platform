@@ -600,9 +600,7 @@ def test_chat_completion_request_serializes_full_transcript() -> None:
 
     invocation_request = server._to_fabric_invocation_request(request, session_id="session-1")
 
-    assert invocation_request.input == (
-        "system: Be concise.\n\nassistant: How can I help?\n\nuser: Say hello."
-    )
+    assert invocation_request.input == ("system: Be concise.\n\nassistant: How can I help?\n\nuser: Say hello.")
     assert invocation_request.caller_context == {"session_id": "session-1"}
 
 
