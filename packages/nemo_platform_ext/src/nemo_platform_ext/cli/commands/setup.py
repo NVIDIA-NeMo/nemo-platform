@@ -28,6 +28,7 @@ import typer
 import yaml as _yaml
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.config import validate_docker_available
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 from nmp.common.config import nmp_user_data_dir
@@ -808,17 +809,23 @@ def _wait_for_platform(
     timeout: int = _SERVICE_STARTUP_TIMEOUT_SECONDS,
     poll_interval: float = _SERVICE_STARTUP_POLL_INTERVAL,
     log_path: Path | None = None,
+    proc: subprocess.Popen | None = None,
 ) -> bool:
     """Poll until the platform health endpoint responds. Returns True on success.
 
     When *log_path* is provided, the spinner shows the last service that
     finished loading so users see that progress is being made during a
     slow cold start.
+
+    When *proc* is provided, return False immediately if the service process
+    exits before the platform becomes ready (avoid waiting the full timeout).
     """
     start = time.monotonic()
     deadline = start + timeout
     with console.status("[bold cyan]Waiting for platform...") as status:
         while time.monotonic() < deadline:
+            if proc is not None and proc.poll() is not None:
+                return False
             elapsed = int(time.monotonic() - start)
             svc = _last_startup_service(log_path)
             hint = f" — loaded {svc}" if svc else ""
@@ -938,7 +945,7 @@ def _maybe_start_services(
 
     log = log_path_for(compute_scope(port=_resolve_services_port(base_url)))
 
-    if not _wait_for_platform(base_url, timeout=timeout, log_path=log):
+    if not _wait_for_platform(base_url, timeout=timeout, log_path=log, proc=proc):
         exit_code = proc.poll()
         if exit_code is not None:
             console.print(f"{CROSS} Service process exited early (exit code {exit_code})")
@@ -946,6 +953,11 @@ def _maybe_start_services(
             proc.terminate()
             console.print(f"{CROSS} Platform did not become ready within {timeout}s")
         console.print(f"  Check {log} for details.")
+        if not validate_docker_available():
+            console.print(
+                "  Docker does not appear to be available. "
+                "Install and start Docker, or configure non-Docker executors, then retry."
+            )
         raise typer.Exit(1)
 
     console.print(f"{CHECK} Platform running at {base_url} (pid {proc.pid})\n")

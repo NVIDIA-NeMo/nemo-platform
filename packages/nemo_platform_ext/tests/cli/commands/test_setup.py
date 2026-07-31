@@ -760,6 +760,24 @@ class TestMaybeStartServices:
             _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
         maybe_start_preflight_mocks.assert_called_once()
 
+    def test_early_exit_prints_docker_hint_when_daemon_unavailable(self, maybe_start_preflight_mocks, capsys):
+        dead = MagicMock(pid=999)
+        dead.poll.return_value = 3
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
+            patch(f"{SETUP_MOD}.validate_docker_available", return_value=False),
+            patch(f"{SETUP_MOD}.log_path_for", return_value=MagicMock(__str__=lambda self: "/tmp/services.log")),
+            patch(f"{SETUP_MOD}._pause"),
+            pytest.raises(ClickExit),
+        ):
+            maybe_start_preflight_mocks.return_value = dead
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        captured = capsys.readouterr()
+        assert "exited early (exit code 3)" in captured.err
+        assert "Check /tmp/services.log for details." in captured.err
+        assert "Docker does not appear to be available" in captured.err
+
 
 class TestRemoteConnection:
     def test_prompts_again_until_platform_is_reachable(self, capsys):
@@ -2018,6 +2036,21 @@ class TestWaitForPlatformSpinner:
         assert result is True
         update_texts = [c.args[0] for c in mock_status.update.call_args_list]
         assert all("loaded" not in t for t in update_texts)
+
+    def test_returns_false_immediately_when_process_exits(self, spinner_console):
+        """Do not wait the full timeout when the service process already exited."""
+        dead = MagicMock()
+        dead.poll.return_value = 3
+        with (
+            patch(f"{self._MOD}._pause") as pause,
+            patch(f"{self._MOD}.time.monotonic", side_effect=[0, 0, 1, 2]),
+            patch(f"{self._MOD}._check_platform_reachable") as reachable,
+        ):
+            result = _wait_for_platform("http://localhost:8080", timeout=120, proc=dead)
+
+        assert result is False
+        reachable.assert_not_called()
+        pause.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
