@@ -15,10 +15,9 @@ import type { FC } from 'react';
 import { useController } from 'react-hook-form';
 
 const PROMPT_PLACEHOLDER =
-  'e.g. 400 customer support emails, each labelled as phishing or legitimate, with a short reason for the label and the sender domain.';
+  '100 customer support emails, each labelled as phishing or legitimate, with a short reason for the label and the sender domain. Sampled across categories (billing, returns, tech support) with subcategories per category (billing: overcharge, failed payment; returns: damaged item, wrong size)';
 
-const MODEL_HELP =
-  'Needs tool-calling support. LLM columns in the draft are wired to a model from this workspace.';
+const MODEL_HELP = 'Needs tool-calling support. This model will be used in LLM columns.';
 
 /**
  * "Describe with AI" detail panel: pick the model that drafts the config, describe the fileset
