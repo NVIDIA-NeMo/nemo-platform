@@ -33,21 +33,26 @@ openshell provider profile lint --from "$profile_dir"
 if ! openshell provider profile export "$bridge_provider_type" -o yaml >/dev/null 2>&1; then
   openshell provider profile import --from "$profile_dir"
 fi
-openshell provider create \
-  --name "$bridge_provider" \
-  --type "$bridge_provider_type" \
-  --credential NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN
-bridge_provider_created=1
 
+bridge_provider_created=0
 cleanup_failed_setup() {
   status=$?
-  if [[ "$status" -ne 0 && "${bridge_provider_created:-0}" == "1" ]]; then
+  if [[ "$status" -ne 0 && "$bridge_provider_created" == "1" ]]; then
     openshell provider delete "$bridge_provider" >/dev/null 2>&1 || \
       echo "WARNING: could not delete partially configured provider $bridge_provider" >&2
   fi
   exit "$status"
 }
 trap cleanup_failed_setup EXIT
+
+if openshell provider get "$bridge_provider" >/dev/null 2>&1; then
+  openshell provider delete "$bridge_provider"
+fi
+bridge_provider_created=1
+openshell provider create \
+  --name "$bridge_provider" \
+  --type "$bridge_provider_type" \
+  --credential NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN
 
 if [[ -n "$inference_model" ]]; then
   if openshell provider get "$inference_provider" >/dev/null 2>&1; then

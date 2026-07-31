@@ -12,6 +12,7 @@ import logging
 import os
 import shutil
 import stat
+import tarfile
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -206,6 +207,10 @@ def _redact_value(value: DataValue, sensitive: tuple[str, ...]) -> DataValue:
     return value
 
 
+def _constant_time_equal(value: str, expected: str) -> bool:
+    return hmac.compare_digest(value.encode("utf-8"), expected.encode("utf-8"))
+
+
 def _copy_result_resource(
     source: Path,
     destination: Path,
@@ -275,6 +280,10 @@ def _export_result(
         resource.metadata = {key: _redact_value(value, sensitive) for key, value in resource.metadata.items()}
     for trial in sanitized.trials:
         trial.metadata = {key: _redact_value(value, sensitive) for key, value in trial.metadata.items()}
+        trial.outputs = {
+            key: value if isinstance(value, ResourceRef) else _redact_value(value, sensitive)
+            for key, value in trial.outputs.items()
+        }
         if trial.error is not None:
             trial.error = {"type": "trial_failed", "message": "See retained Harbor trial logs"}
         for metric in trial.metrics.values():
@@ -317,7 +326,7 @@ def create_app(
 
     async def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
         expected = f"Bearer {settings.token}"
-        if authorization is None or not hmac.compare_digest(authorization, expected):
+        if authorization is None or not _constant_time_equal(authorization, expected):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
     async def execute(job: _Job, submission: EvaluationSubmission) -> None:
@@ -439,7 +448,7 @@ def create_app(
                 destination=work_dir / "dataset",
                 overlay_dir=overlay_dir,
             )
-        except (OSError, KeyError, ValueError):
+        except (OSError, KeyError, ValueError, tarfile.TarError):
             logger.exception("Rejected Harbor bridge submission %s", job_id)
             shutil.rmtree(work_dir, ignore_errors=True)
             raise HTTPException(status_code=422, detail="Evaluation request failed trusted validation") from None
@@ -541,7 +550,7 @@ def create_app(
                 task_dir=dataset_dir / metadata.task_id,
                 work_dir=work_dir,
             )
-        except (OSError, KeyError, ValueError, RuntimeError):
+        except (OSError, KeyError, ValueError, RuntimeError, tarfile.TarError):
             logger.exception("Rejected dependency session request")
             shutil.rmtree(work_dir, ignore_errors=True)
             raise HTTPException(status_code=422, detail="Dependency request failed trusted validation") from None
@@ -554,7 +563,7 @@ def create_app(
         expected = dependency_capabilities.get(session_id)
         if expected is None:
             raise HTTPException(status_code=404, detail="Dependency session not found")
-        if capability is None or not hmac.compare_digest(capability, expected):
+        if capability is None or not _constant_time_equal(capability, expected):
             raise HTTPException(status_code=403, detail="Invalid dependency capability")
 
     @app.post(

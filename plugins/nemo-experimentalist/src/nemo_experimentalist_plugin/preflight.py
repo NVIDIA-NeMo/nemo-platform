@@ -143,21 +143,6 @@ def check_environment(
             )
         )
         results += _check_env(p, "credentials-candidate", ("INFERENCE_API_KEY", "AUT_MODEL_NAME"), profile_dir)
-        optimizer_credential = any(
-            p.env.get(name, "").strip()
-            for name in ("NVIDIA_API_KEY", "INFERENCE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")
-        )
-        results.append(
-            make_check_result(
-                "openshell-inference-credential",
-                "credentials-experiment",
-                optimizer_credential,
-                "required",
-                "OpenShell inference provider credential available",
-                "no OpenShell inference provider credential available",
-                hint="set NVIDIA_API_KEY or configure NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER_TYPE",
-            )
-        )
     else:
         results += _check_env(
             p, "credentials-experiment", ("EXPERIMENTALIST_API_BASE", "EXPERIMENTALIST_API_KEY"), profile_dir

@@ -111,6 +111,20 @@ async def test_preparation_rejects_source_control_publishing(tmp_path: Path) -> 
         await prepare_openshell_run(inputs, experiment_dir=tmp_path / "experiment", client=None)
 
 
+async def test_preparation_rejects_linked_agent_spec(tmp_path: Path) -> None:
+    inputs = _resolved_inputs(tmp_path)
+    source = tmp_path / "AGENT-SPEC-source.md"
+    source.write_text("# Agent\n", encoding="utf-8")
+    linked = tmp_path / "AGENT-SPEC.md"
+    linked.symlink_to(source)
+    inputs.agent_spec = str(linked)
+
+    with pytest.raises(ValueError, match="must not be linked"):
+        await prepare_openshell_run(inputs, experiment_dir=tmp_path / "experiment", client=None)
+
+    assert not (tmp_path / "experiment" / "openshell-runtime").exists()
+
+
 async def test_inner_entrypoint_runs_only_with_marker_and_prepared_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -243,12 +257,68 @@ def test_launcher_uses_custom_image_and_never_calls_local_runner(
     ]
 
 
+def test_bridge_listener_uses_configured_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = PreparedOpenShellRun(
+        root=tmp_path,
+        catalog_root=tmp_path / "catalog",
+        sandbox_input=tmp_path / "input",
+        manifest_path=tmp_path / "input" / "run.json",
+    )
+    ready = iter((False, True))
+    probed: list[str] = []
+    captured: dict[str, Any] = {}
+
+    class Process:
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.returncode = 0
+
+        def wait(self, timeout: int) -> int:
+            del timeout
+            return 0
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+    def popen(argv: list[str], **kwargs: Any) -> Process:
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return Process()
+
+    def bridge_ready(url: str) -> bool:
+        probed.append(url)
+        return next(ready)
+
+    monkeypatch.setattr(launcher, "_bridge_ready", bridge_ready)
+    monkeypatch.setattr(launcher.subprocess, "Popen", popen)
+
+    managed = launcher._start_bridge(
+        prepared=prepared,
+        runtime_env={launcher.BRIDGE_BIND_ENV: "172.18.0.1"},
+    )
+
+    assert managed is not None
+    argv = cast(list[str], captured["argv"])
+    assert argv[argv.index("--host") + 1] == "172.18.0.1"
+    assert probed == ["http://172.18.0.1:8765", "http://172.18.0.1:8765"]
+    managed.stop()
+
+
 def test_openshell_assets_expose_only_bounded_authority() -> None:
     strict = yaml.safe_load((OPEN_SHELL_ROOT / "policy.yaml").read_text(encoding="utf-8"))
     development = yaml.safe_load((OPEN_SHELL_ROOT / "policy.docker-desktop.yaml").read_text(encoding="utf-8"))
     provider = yaml.safe_load(
         (OPEN_SHELL_ROOT / "provider-profiles" / "nemo-experimentalist-harbor-bridge.yaml").read_text(encoding="utf-8")
     )
+    configure_script = (OPEN_SHELL_ROOT / "configure-providers.sh").read_text(encoding="utf-8")
     run_script = (OPEN_SHELL_ROOT / "run.sh").read_text(encoding="utf-8")
     dockerfile = (PLUGIN_ROOT / "Dockerfile").read_text(encoding="utf-8")
     docker_bake = (REPO_ROOT / "docker-bake.hcl").read_text(encoding="utf-8")
@@ -269,6 +339,10 @@ def test_openshell_assets_expose_only_bounded_authority() -> None:
     ]
     assert '--upload "$input_dir:/sandbox/input"' in run_script
     assert "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN=" not in run_script
+    assert configure_script.index("trap cleanup_failed_setup EXIT") < configure_script.index(
+        'openshell provider create \\\n  --name "$bridge_provider"'
+    )
+    assert 'openshell provider get "$bridge_provider"' in configure_script
     assert "command -v docker" in run_script
     assert "docker.sock" not in dockerfile
     assert "USER sandbox" in dockerfile

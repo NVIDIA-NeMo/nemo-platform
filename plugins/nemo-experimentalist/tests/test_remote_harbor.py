@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import httpx
+import nemo_experimentalist_plugin.harbor_bridge.dependencies as dependency_module
 import pytest
 from fastapi.testclient import TestClient
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import EvaluatorFactory
@@ -27,15 +28,18 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_har
     BRIDGE_TOKEN_ENV,
     BRIDGE_URL_ENV,
     OPEN_SHELL_RUNTIME_ENV,
+    RemoteHarborDependencyContext,
     RemoteHarborDependencyRuntime,
     RemoteHarborEvaluator,
     RemoteHarborEvaluatorConfig,
     _bridge_headers,
 )
 from nemo_experimentalist_plugin.harbor_bridge.contracts import (
+    IDENTIFIER_MAX_LENGTH,
     DependencyExecResponse,
     DependencyStartRequest,
 )
+from nemo_experimentalist_plugin.harbor_bridge.dependencies import HarborDependencySessionManager
 from nemo_experimentalist_plugin.harbor_bridge.envelopes import (
     RegisteredEnvelope,
     register_dataset_envelope,
@@ -131,6 +135,7 @@ async def test_remote_evaluator_submits_and_translates_trials(
             bridge_url="http://bridge.test",
             run_profile="smoke",
             poll_interval_sec=0.01,
+            max_archive_bytes=4096,
         ),
         experiment_dir=tmp_path / "experiment",
         transport=httpx.ASGITransport(app=app),
@@ -149,7 +154,9 @@ async def test_remote_evaluator_submits_and_translates_trials(
     assert Path(result.trials[0].trace.uri.removeprefix("file://")).read_text(encoding="utf-8") == (
         '{"resourceSpans":[]}\n'
     )
-    assert isinstance(dataset.tasks[0].dependencies, RemoteHarborDependencyRuntime)
+    runtime = dataset.tasks[0].dependencies
+    assert isinstance(runtime, RemoteHarborDependencyRuntime)
+    assert runtime.max_archive_bytes == 4096
 
 
 def test_copied_template_automatically_uses_remote_dependency_runtime(
@@ -203,6 +210,79 @@ def test_openshell_bridge_request_fails_without_provider_placeholder(monkeypatch
 
     with pytest.raises(DependencyRuntimeError, match=BRIDGE_TOKEN_ENV):
         _bridge_headers(BRIDGE_TOKEN_ENV)
+
+
+async def test_dependency_shutdown_preserves_body_error_and_clears_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(BRIDGE_TOKEN_ENV, _TOKEN)
+    registered = _registered_dataset(tmp_path)
+    dataset = HarborDataset.from_ref(DatasetRef(uri=registered.dataset_path.as_uri()))
+    evaluator = RemoteHarborEvaluator(
+        RemoteHarborEvaluatorConfig(bridge_url="http://bridge.test"),
+        transport=httpx.MockTransport(lambda _request: httpx.Response(500)),
+    )
+    evaluator.prepare_dataset(dataset)
+    runtime = dataset.tasks[0].dependencies
+    assert isinstance(runtime, RemoteHarborDependencyRuntime)
+    context = RemoteHarborDependencyContext(runtime)
+
+    runtime._session_id = "dependency-session"
+    runtime._capability = "capability"
+    body_error = RuntimeError("body failed")
+    assert await context.__aexit__(RuntimeError, body_error, None) is False
+    assert runtime._session_id is None
+    assert runtime._capability is None
+
+    runtime._session_id = "dependency-session"
+    runtime._capability = "capability"
+    with pytest.raises(DependencyRuntimeError, match="shutdown failed"):
+        await context.__aexit__(None, None, None)
+    assert runtime._session_id is None
+    assert runtime._capability is None
+
+
+async def test_dependency_session_id_is_bounded_and_runtime_is_stopped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contexts: list[Any] = []
+
+    class FakeContext:
+        def __init__(self, runtime: Any, *, temp_root: Path) -> None:
+            del runtime, temp_root
+            self.stopped = False
+            contexts.append(self)
+
+        async def __aenter__(self) -> FakeContext:
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            del args
+            self.stopped = True
+            return False
+
+    monkeypatch.setattr(dependency_module, "HarborDependencyContext", FakeContext)
+    manager = HarborDependencySessionManager()
+    request = DependencyStartRequest(
+        request_id="r" * IDENTIFIER_MAX_LENGTH,
+        envelope_id="envelope",
+        envelope_digest=f"sha256:{'0' * 64}",
+        task_id="task",
+        base_task_id="base-task",
+    )
+
+    session_id = await manager.start(
+        request,
+        task_dir=tmp_path / "task",
+        work_dir=tmp_path / "work",
+    )
+
+    assert len(session_id) == IDENTIFIER_MAX_LENGTH
+    assert session_id.startswith("r")
+    await manager.stop(session_id)
+    assert contexts[0].stopped is True
 
 
 class _FakeDependencySessions:
@@ -276,6 +356,17 @@ def test_dependency_api_uses_opaque_capability_and_rejects_authority(tmp_path: P
                 "/v1/dependencies/dependency-session/exec",
                 json={"command": "pwd"},
                 headers=auth,
+            ).status_code
+            == 403
+        )
+        assert (
+            client.post(
+                "/v1/dependencies/dependency-session/exec",
+                json={"command": "pwd"},
+                headers=[
+                    (b"Authorization", f"Bearer {_TOKEN}".encode()),
+                    (b"X-Nemo-Dependency-Capability", "café".encode("latin-1")),
+                ],
             ).status_code
             == 403
         )

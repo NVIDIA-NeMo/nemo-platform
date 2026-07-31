@@ -127,6 +127,10 @@ class ArtifactRunner:
                     attempt=0,
                     status="completed",
                     trace=ResourceRef(uri=trace.as_uri(), description="trace"),
+                    outputs={
+                        "host_path": str(work_dir / "results"),
+                        "token": _TOKEN,
+                    },
                     resources={"outside": ResourceRef(uri=Path("/etc/hosts").as_uri(), description="must not escape")},
                 )
             ],
@@ -181,6 +185,7 @@ def test_job_api_exports_only_job_owned_artifacts(tmp_path: Path) -> None:
             storage_root=tmp_path / "jobs",
             catalog_root=tmp_path / "catalog",
             token=_TOKEN,
+            sensitive_values=(_TOKEN,),
         ),
         runner=ArtifactRunner(),
     )
@@ -196,6 +201,10 @@ def test_job_api_exports_only_job_owned_artifacts(tmp_path: Path) -> None:
     trial = payload["result"]["trials"][0]
     assert trial["trace"]["uri"].startswith("nemo-harbor-bridge:///artifacts/")
     assert trial["resources"]["outside"]["uri"].startswith("nemo-harbor-bridge:///unavailable/")
+    assert trial["outputs"] == {
+        "host_path": "[HOST_PATH_REDACTED]",
+        "token": "[REDACTED]",
+    }
     assert str(tmp_path) not in str(payload)
     assert artifact_response.status_code == 200
     assert artifact_response.headers["X-Nemo-Artifact-Digest"].startswith("sha256:")
@@ -263,6 +272,21 @@ def test_job_api_rejects_digest_mismatch(tmp_path: Path) -> None:
     assert response.status_code == 422
 
 
+def test_job_api_rejects_malformed_archive_and_removes_work_dir(tmp_path: Path) -> None:
+    registered = _source_dataset(tmp_path)
+    data, files = _request_parts(tmp_path, registered)
+    files["candidate"] = ("candidate.tar.gz", b"not-a-tar-archive", "application/gzip")
+    with _client(tmp_path, RecordingRunner()) as client:
+        response = client.post(
+            "/v1/evaluations",
+            data=data,
+            files=files,
+            headers={"Authorization": f"Bearer {_TOKEN}"},
+        )
+    assert response.status_code == 422
+    assert list((tmp_path / "jobs").iterdir()) == []
+
+
 def test_job_error_does_not_expose_secret_or_host_path(tmp_path: Path) -> None:
     registered = _source_dataset(tmp_path)
     data, files = _request_parts(tmp_path, registered)
@@ -292,3 +316,10 @@ def test_job_api_requires_authentication(tmp_path: Path) -> None:
     )
     with TestClient(app) as client:
         assert client.get("/v1/evaluations/missing").status_code == 401
+        assert (
+            client.get(
+                "/v1/evaluations/missing",
+                headers=[(b"Authorization", "Bearer café".encode("latin-1"))],
+            ).status_code
+            == 401
+        )

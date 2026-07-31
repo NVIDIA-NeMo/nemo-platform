@@ -11,7 +11,11 @@ from typing import Annotated, Literal
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import EvaluationResult
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-Identifier = Annotated[str, Field(min_length=1, max_length=256, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")]
+IDENTIFIER_MAX_LENGTH = 256
+Identifier = Annotated[
+    str,
+    Field(min_length=1, max_length=IDENTIFIER_MAX_LENGTH, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$"),
+]
 Sha256Digest = Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
 
 

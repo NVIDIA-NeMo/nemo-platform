@@ -208,7 +208,7 @@ async def prepare_openshell_run(
         agent_spec_relative = None
         if inputs.agent_spec is not None:
             target = sandbox_input / "AGENT-SPEC.md"
-            _copy_file(Path(inputs.agent_spec).expanduser().resolve(), target)
+            _copy_file(Path(inputs.agent_spec).expanduser(), target)
             agent_spec_relative = target.relative_to(sandbox_input).as_posix()
 
         skills_relatives: list[str] = []

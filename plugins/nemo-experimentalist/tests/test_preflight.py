@@ -178,7 +178,7 @@ def test_openshell_environment_checks_runtime_and_candidate_credentials(tmp_path
 
     assert all(result.status == "pass" for result in results)
     assert any(result.name == "openshell" for result in results)
-    assert any(result.name == "openshell-inference-credential" for result in results)
+    assert not any(result.name == "openshell-inference-credential" for result in results)
     assert not any(result.name == "EXPERIMENTALIST_API_BASE" for result in results)
 
 

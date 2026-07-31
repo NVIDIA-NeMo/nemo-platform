@@ -76,9 +76,18 @@ export INFERENCE_API_BASE=https://inference-api.nvidia.com/v1
 export AUT_MODEL_NAME=openai/gpt-oss-120b
 ```
 
+The Experimentalist model values use NOOA's provider/routing/model identifier
+format. Provider setup removes the leading `openai/` only when deriving the
+OpenShell inference model ID.
+
 The candidate key is injected only into the candidate process inside Harbor.
 Use a spending-limited, easy-to-revoke credential. Source-control archival and
 winner publishing are intentionally unsupported by this runtime.
+
+The local bridge binds all host interfaces by default because the OpenShell
+Docker driver reaches it through the host-side gateway interface. On a trusted
+host, set `NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_BIND` to that gateway's host IP
+to restrict the listener to the interface OpenShell uses.
 
 ### Insight-driven optimization
 

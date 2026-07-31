@@ -16,12 +16,14 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
 from nemo_experimentalist_plugin.harbor_bridge.contracts import (
+    IDENTIFIER_MAX_LENGTH,
     DependencyExecRequest,
     DependencyExecResponse,
     DependencyStartRequest,
 )
 
 _OUTPUT_LIMIT = 30_000
+_SESSION_SUFFIX_LENGTH = 16
 
 
 def _truncate(value: str, stream: str) -> str:
@@ -57,11 +59,19 @@ class HarborDependencySessionManager:
             run_healthcheck=True,
         )
         context = HarborDependencyContext(runtime, temp_root=work_dir / "runtime")
+        entered = False
         try:
             await context.__aenter__()
-            session_id = f"{request.request_id}-{uuid4().hex[:16]}"
+            entered = True
+            request_prefix = request.request_id[: IDENTIFIER_MAX_LENGTH - _SESSION_SUFFIX_LENGTH - 1]
+            session_id = f"{request_prefix}-{uuid4().hex[:_SESSION_SUFFIX_LENGTH]}"
             async with self._lock:
                 self._sessions[session_id] = _Session(context)
+            entered = False
+        except BaseException:
+            if entered:
+                await context.__aexit__(None, None, None)
+            raise
         finally:
             async with self._lock:
                 self._starting -= 1

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 from collections.abc import Iterator, Sequence
@@ -65,6 +66,7 @@ from pydantic import AnyHttpUrl, ConfigDict, Field, PrivateAttr, model_validator
 OPEN_SHELL_RUNTIME_ENV = "NEMO_EXPERIMENTALIST_OPEN_SHELL_RUNTIME"
 BRIDGE_URL_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL"
 BRIDGE_TOKEN_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN"
+logger = logging.getLogger(__name__)
 
 
 def _result_resource_refs(result: EvaluationResult) -> Iterator[ResourceRef]:
@@ -119,6 +121,7 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
     bridge_url: AnyHttpUrl
     bridge_token_env: str = BRIDGE_TOKEN_ENV
     request_timeout_sec: float = 60.0
+    max_archive_bytes: int = Field(default=512 * 1024 * 1024, ge=1)
 
     _session_id: str | None = PrivateAttr(default=None)
     _capability: str | None = PrivateAttr(default=None)
@@ -214,7 +217,11 @@ class RemoteHarborDependencyContext:
             files = None
             handle = None
             if digest is not None:
-                create_directory_archive(overlay_dir, archive)
+                create_directory_archive(
+                    overlay_dir,
+                    archive,
+                    max_bytes=self.runtime.max_archive_bytes,
+                )
                 handle = archive.open("rb")
                 files = {"overlay": ("overlay.tar.gz", handle, "application/gzip")}
             try:
@@ -242,17 +249,31 @@ class RemoteHarborDependencyContext:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> bool:
-        del exc_type, exc, traceback
-        if self.runtime._session_id is not None and self.runtime._capability is not None:
-            response = await self.runtime._request(
-                "DELETE",
-                f"/v1/dependencies/{self.runtime._session_id}",
-                capability=self.runtime._capability,
+        del exc_type, traceback
+        shutdown_error: Exception | None = None
+        try:
+            if self.runtime._session_id is not None and self.runtime._capability is not None:
+                response = await self.runtime._request(
+                    "DELETE",
+                    f"/v1/dependencies/{self.runtime._session_id}",
+                    capability=self.runtime._capability,
+                )
+                if response.status_code != 204:
+                    shutdown_error = DependencyRuntimeError(
+                        f"Harbor dependency shutdown failed with HTTP {response.status_code}"
+                    )
+        except Exception as error:
+            shutdown_error = error
+        finally:
+            self.runtime._session_id = None
+            self.runtime._capability = None
+        if shutdown_error is not None:
+            if exc is None:
+                raise shutdown_error
+            logger.warning(
+                "Harbor dependency shutdown failed while preserving the active body exception",
+                exc_info=(type(shutdown_error), shutdown_error, shutdown_error.__traceback__),
             )
-            if response.status_code != 204:
-                raise DependencyRuntimeError(f"Harbor dependency shutdown failed with HTTP {response.status_code}")
-        self.runtime._session_id = None
-        self.runtime._capability = None
         return False
 
 
@@ -297,6 +318,7 @@ class RemoteHarborEvaluator(Evaluator):
                     "bridge_url": options.bridge_url,
                     "bridge_token_env": options.bridge_token_env,
                     "request_timeout_sec": options.request_timeout_sec,
+                    "max_archive_bytes": options.max_archive_bytes,
                 }
             )
             runtime._transport = self._transport

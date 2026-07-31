@@ -29,6 +29,7 @@ RUNTIME_IMAGE_API = "1"
 BRIDGE_TOKEN_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN"
 BRIDGE_URL_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL"
 BRIDGE_PROVIDER_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_PROVIDER"
+BRIDGE_BIND_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_BIND"
 DEFAULT_BRIDGE_HOST_URL = "http://127.0.0.1:8765"
 DEFAULT_BRIDGE_SANDBOX_URL = "http://host.openshell.internal:8765"
 DEFAULT_SMART_MODEL = "openai/openai/openai/gpt-5.5"
@@ -156,6 +157,15 @@ def _host_bridge_url(value: str) -> str:
     return urlunsplit((parsed.scheme, f"127.0.0.1{port_suffix}", parsed.path, parsed.query, parsed.fragment))
 
 
+def _bridge_probe_url(bind_host: str) -> str:
+    if bind_host == "0.0.0.0":
+        return DEFAULT_BRIDGE_HOST_URL
+    if bind_host == "::":
+        return "http://[::1]:8765"
+    authority = f"[{bind_host}]" if ":" in bind_host and not bind_host.startswith("[") else bind_host
+    return f"http://{authority}:8765"
+
+
 def _start_bridge(
     *,
     prepared: PreparedOpenShellRun,
@@ -163,7 +173,8 @@ def _start_bridge(
 ) -> _ManagedBridge | None:
     configured_url = runtime_env.get(BRIDGE_URL_ENV, "").strip()
     token = runtime_env.get(BRIDGE_TOKEN_ENV, "").strip()
-    host_url = _host_bridge_url(configured_url) if configured_url else DEFAULT_BRIDGE_HOST_URL
+    bind_host = runtime_env.get(BRIDGE_BIND_ENV, "").strip() or "0.0.0.0"
+    host_url = _host_bridge_url(configured_url) if configured_url else _bridge_probe_url(bind_host)
     if configured_url:
         if not token:
             raise OpenShellLaunchError(f"{BRIDGE_TOKEN_ENV} is required with an explicit {BRIDGE_URL_ENV}")
@@ -190,7 +201,7 @@ def _start_bridge(
             "-m",
             "nemo_experimentalist_plugin.harbor_bridge.service",
             "--host",
-            "0.0.0.0",
+            bind_host,
             "--port",
             "8765",
             "--storage-root",
