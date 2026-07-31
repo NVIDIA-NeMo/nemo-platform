@@ -46,15 +46,18 @@ You should now be able to navigate to `http://localhost:8080` and see the NeMo P
 
 ## 3. Run the Tau3 Airline agent with Harbor
 
-Now that NeMo Platform is running, evaluate the checked-in Tau3 NOOA example
-agent against version 1 of the
+Now that NeMo Platform is running, evaluate the
+[checked-in Tau3 NOOA example agent](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/plugins/nemo-experimentalist/examples/tau3-nooa-agent)
+against version 1 of the
 [`sierra-research/tau3-bench`](https://hub.harborframework.com/datasets/sierra-research/tau3-bench/latest)
-dataset on Harbor Hub. Tau3 simulates customer-service conversations across
-airline, retail, telecom, and banking domains. Each task gives the agent a user
-request, domain policy, and domain-specific tools, then uses a verifier to score
-the outcome. This guide selects six Airline tasks from the larger dataset. The
-Insights testbed runs them and uploads their traces and verifier rewards into
-NeMo Platform.
+dataset on Harbor Hub. The example is a customer-service agent built with
+NVIDIA-labs OO Agents (NOOA) and a CodeAct strategy. It receives the Airline
+policy at runtime and uses MCP tools to look up records, talk to the simulated
+customer, and complete permitted actions. Its `AGENT-SPEC.md` defines the
+behavior that the Experimentalist later optimizes.
+
+The Insights testbed selects six Airline tasks, runs the agent through Harbor,
+and uploads the resulting traces and verifier rewards into NeMo Platform.
 
 This can take 20 minutes or longer because Harbor builds task containers and
 runs model-backed user simulation.
