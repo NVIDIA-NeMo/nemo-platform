@@ -11,6 +11,7 @@ former, and the report must say which it used.
 import yaml
 from harbor_fixtures import write_dataset, write_job_dir, write_task, write_wrapper
 from nemo_eval_author_plugin.discovery import sources
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import _AGENT_IMPORT_ROOT
 
 
 def _job_config(dataset: str) -> dict:
@@ -55,6 +56,65 @@ def test_trial_config_is_not_mistaken_for_a_job_config(tmp_path):
 
     assert candidate is not None
     assert candidate.source.kind == "convention"
+
+
+def test_an_optimizer_job_dir_is_not_read_as_the_repo_s_own_setup(tmp_path):
+    """Experimentalist writes config.json and lock.json into its own results directory.
+
+    Harbor really did resolve and run that config, which is what makes it outrank the profile.
+    But its agent import path names a package Experimentalist synthesizes in ``sys.modules``
+    for the duration of its run, so no separate ``harbor`` process can import it: running the
+    optimizer and then discover reported "Harbor cannot run this repo's evals" about a repo
+    that had just been evaluated successfully.
+    """
+    write_dataset(tmp_path / "evals" / "validation")
+    write_job_dir(
+        tmp_path / ".nemo-optimizer" / "experiments" / "run-1" / "eval-and-optimize" / "results" / "job-1",
+        config={
+            "agents": [{"import_path": "_nemo_experimentalist_eval_agents.agent_abc123:WrappedAgent"}],
+            "datasets": [{"path": "evals/validation"}],
+        },
+    )
+
+    candidate, findings = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.source.kind == "convention"
+    assert not any(item.name == "prior-job" for item in findings)
+
+
+def test_a_synthetic_agent_import_path_is_rejected_wherever_it_is_found(tmp_path):
+    """The pruned directories are Experimentalist's defaults, not a promise about the layout."""
+    write_dataset(tmp_path / "evals" / "validation")
+    write_job_dir(
+        tmp_path / "elsewhere" / "job-1",
+        config={
+            "agents": [{"import_path": f"{_AGENT_IMPORT_ROOT}.src_agent_deadbeef:WrappedAgent"}],
+            "datasets": [{"path": "evals/validation"}],
+        },
+    )
+
+    candidate, _ = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.source.kind == "convention"
+
+
+def test_a_real_prior_job_is_still_the_stronger_source(tmp_path):
+    """The guard is about synthetic import paths, not about distrusting prior jobs."""
+    write_dataset(tmp_path / "evals" / "validation")
+    write_job_dir(
+        tmp_path / "jobs" / "run-1",
+        config={
+            "agents": [{"import_path": "harbor_wrapper:WrappedAgent"}],
+            "datasets": [{"path": "evals/validation"}],
+        },
+    )
+
+    candidate, _ = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert candidate.source.kind == "prior_job"
 
 
 def test_profile_outranks_convention_and_reads_the_validation_split(tmp_path):

@@ -23,6 +23,11 @@ from nemo_eval_author_plugin.discovery.models import Finding
 _GROUP = "repo"
 
 # Vendored and generated trees dwarf a repo's own content and never hold its eval setup.
+#
+# `eval-and-optimize` and `.nemo-optimizer` are Experimentalist's output, and pruning them is
+# what keeps discover from reading the optimizer's own results as the repo's declared setup:
+# they hold Harbor job dirs from the optimizer's runs and working copies of the agent, which
+# every probe here would otherwise treat as candidates the repo maintains.
 _PRUNE_DIR_NAMES = frozenset(
     {
         ".git",
@@ -39,6 +44,8 @@ _PRUNE_DIR_NAMES = frozenset(
         "site-packages",
         "dist",
         "build",
+        "eval-and-optimize",
+        ".nemo-optimizer",
     }
 )
 _MAX_WALK_DEPTH = 6

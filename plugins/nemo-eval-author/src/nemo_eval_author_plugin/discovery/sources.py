@@ -29,6 +29,7 @@ from nemo_eval_author_plugin.discovery.models import (
     Finding,
 )
 from nemo_eval_author_plugin.discovery.scan import display_path, walk_dirs
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import _AGENT_IMPORT_ROOT
 from nemo_insights_plugin.contracts.profile import (
     PROFILE_FILENAME,
     ProfileError,
@@ -181,7 +182,7 @@ def _from_prior_job(repo_root: Path) -> tuple[CandidateConfig | None, list[Findi
         if not config_path.is_file() or not (directory / "lock.json").is_file():
             continue
         payload = _load_mapping(config_path)
-        if payload is not None and _looks_like_job_config(payload):
+        if payload is not None and _looks_like_job_config(payload) and not _has_synthetic_agent(payload):
             job_dirs.append((config_path, payload))
 
     if not job_dirs:
@@ -444,6 +445,27 @@ def _resolve_profile_path(value: str | None, profile_dir: Path) -> Path | None:
         return resolve_profile_path(value, profile_dir)
     except ProfileError:
         return None
+
+
+def _has_synthetic_agent(payload: dict[str, Any]) -> bool:
+    """Whether a config's agent only exists inside the process that wrote the config.
+
+    Experimentalist's Harbor evaluator rewrites the agent's import path under a package it
+    synthesizes in ``sys.modules`` for the duration of its own run, so the config it leaves
+    behind names a module no separate ``harbor`` process can import. Harbor resolved and ran
+    it, which is exactly what makes it tempting: without this guard, running the optimizer
+    and then discover in the same repo reports "Harbor cannot run this repo's evals" about a
+    repo that was just evaluated successfully.
+    """
+    agents = payload.get("agents")
+    if not isinstance(agents, list):
+        return False
+    return any(
+        isinstance(agent, dict)
+        and isinstance(agent.get("import_path"), str)
+        and agent["import_path"].startswith(f"{_AGENT_IMPORT_ROOT}.")
+        for agent in agents
+    )
 
 
 def _looks_like_job_config(payload: dict[str, Any]) -> bool:

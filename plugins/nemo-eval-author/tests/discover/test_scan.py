@@ -77,6 +77,26 @@ def test_vendored_trees_are_not_searched(tmp_path):
     assert finding.path is None
 
 
+def test_the_optimizer_s_own_output_is_not_part_of_the_repo(tmp_path):
+    """Experimentalist writes into ``.nemo-optimizer`` and ``eval-and-optimize``.
+
+    What it leaves there is candidate agent copies and its own Harbor job dirs: results of
+    evaluating this repo, not declarations of how to evaluate it. Every probe that walks the
+    tree would otherwise read them as the repo's own setup.
+    """
+    for relative in (
+        Path(".nemo-optimizer") / "experiments" / "run-1" / "candidate",
+        Path("eval-and-optimize") / "results" / "job-1",
+    ):
+        (tmp_path / relative).mkdir(parents=True)
+        (tmp_path / relative / "SKILL.md").write_text("# a candidate's copy\n")
+
+    walked = list(scan.walk_dirs(tmp_path))
+
+    assert walked == [tmp_path]
+    assert scan.find_skills(tmp_path).status == "warn"
+
+
 async def test_available_traces_are_counted():
     finding = await scan.probe_traces(StubClient(trace_total=7), agent="ticket-triage", workspace="default")
 
