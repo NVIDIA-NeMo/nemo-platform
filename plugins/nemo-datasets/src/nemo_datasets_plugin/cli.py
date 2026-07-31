@@ -29,8 +29,18 @@ class DatasetsCLI(NemoCLI):
         def profile(
             path: str = typer.Argument(..., help="Path to a local directory of dataset files."),
             output: str = typer.Option("json", "--output", "-o", help="Output format: json | yaml."),
+            rows_per_file: int = typer.Option(
+                None,
+                "--rows-per-file",
+                help="Rows to read from each file (default 1000); 0 reads every row, which is exact "
+                "but scales memory with the dataset rather than the file count.",
+                min=0,
+            ),
         ) -> None:
             """Profile a local dataset directory and print its DatasetProfile."""
+            # Imported here, not at module scope: the platform calls get_cli() for every plugin at
+            # startup, and the profiler pulls in pyarrow. The row-cap default lives in the pipeline
+            # rather than being restated here, so an unspecified flag simply omits the argument.
             from nemo_datasets_plugin.profiler.file_source import LocalFileSource
             from nemo_datasets_plugin.profiler.pipeline import profile as run_profile
 
@@ -41,7 +51,10 @@ class DatasetsCLI(NemoCLI):
             except NotADirectoryError as exc:
                 raise typer.BadParameter(str(exc)) from exc
 
-            result = run_profile(source)
+            if rows_per_file is None:
+                result = run_profile(source)
+            else:
+                result = run_profile(source, row_cap=rows_per_file or None)
             if output == "yaml":
                 import yaml
 
