@@ -202,6 +202,7 @@ class TestInjectFabricGatewayUrl:
         assert result["models"]["default"]["base_url"] == "http://legacy:8080/v1"
         assert "base_url" not in result["models"]["default"]["settings"]
         assert "base_url" not in config["models"]["default"]
+        assert config["models"]["default"]["settings"]["base_url"] == "http://legacy:8080/v1"
 
 
 class TestGetInternalBaseUrl:
