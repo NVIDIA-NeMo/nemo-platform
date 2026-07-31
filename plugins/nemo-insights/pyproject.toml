@@ -22,6 +22,9 @@ dependencies = [
 [project.entry-points."nemo.cli"]
 insights = "nemo_insights_plugin.cli:InsightsCLI"
 
+[project.entry-points."nemo.cli.agents"]
+analyst = "nemo_insights_plugin.analyst.cli:AnalystCLI"
+
 [project.entry-points."nemo.services"]
 insights = "nemo_insights_plugin.service:InsightsService"
 
