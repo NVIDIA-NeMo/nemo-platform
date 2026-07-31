@@ -21,9 +21,6 @@ optimizer:
   disable_convergence_check: false
   evaluator:
     n_attempts: 2
-    # Keep at 3 or lower: each task requests 8192 MB and parallel image builds
-    # have triggered Docker Hub rate limiting and DNS failures.
-    n_concurrent_trials: 3
     quiet: true
     agent_setup_timeout_multiplier: 2.0
     # tau3 builds two images per task, and the first build clones and installs

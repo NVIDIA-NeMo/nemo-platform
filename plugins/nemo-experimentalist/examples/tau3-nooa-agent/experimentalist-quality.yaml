@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Agent-level equivalent of benchmarks/configs/tau3-quality.yaml's optimizer
+# section, for direct `nemo experimentalist run --config ...` usage.
+max_rounds: 3
+min_rounds_before_stopping: 2
+max_survivors: 2
+max_candidates: 3
+max_trajectory_tasks: 8
+max_train_batch_tasks: 16
+train_batch_seed: 20260727
+disable_trajectory_scoring: false
+disable_convergence_check: false
+evaluator:
+  n_attempts: 2
+  quiet: true
+  agent_setup_timeout_multiplier: 2.0
+  environment_build_timeout_multiplier: 3.0
+eval_author:
+  max_traces: 10
+  max_validation_repair_attempts: 5
