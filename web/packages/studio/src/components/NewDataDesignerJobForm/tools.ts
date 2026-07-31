@@ -19,7 +19,7 @@ export const generateDataDesignerJobRequestTool: ChatCompletionTool = {
   type: 'function',
   function: {
     name: 'generate_data_designer_job_request',
-    description: `Generate a Data Designer job request from the user's description. Call with job_request containing a valid spec: spec.num_records (positive integer) and spec.config (object with "columns" array, at least one column). Optional: job_request.name, job_request.description, job_request.project. ${COLUMN_TYPE_DESCRIPTION} If using LLM columns, include spec.config.model_configs: array of { "alias": string, "model": string, "provider": string (required), "inference_parameters"?: { "generation_type": "chat-completion", "max_tokens"?: number } }. Each model_config MUST have "provider": the model provider name (e.g. "openai" for openai/gpt-3.5-turbo, or "workspace/provider-name"). Keep config minimal and valid for preview.`,
+    description: `Generate a Data Designer job request from the user's description. Call with job_request containing a valid spec: spec.num_records (positive integer) and spec.config (object with "columns" array, at least one column). Optional: job_request.name, job_request.description, job_request.project. ${COLUMN_TYPE_DESCRIPTION} If using LLM columns, include spec.config.model_configs: array of { "alias": string, "model": string, "provider": string (required), "inference_parameters"?: { "generation_type": "chat-completion", "max_tokens"?: number } }. Each model_config MUST have "provider": the model provider name. Keep config minimal and valid for preview.`,
     parameters: {
       type: 'object',
       properties: {
@@ -152,12 +152,12 @@ export const generateDataDesignerJobRequestTool: ChatCompletionTool = {
                           alias: { type: 'string' },
                           model: {
                             type: 'string',
-                            description: 'Model identifier (e.g. openai/gpt-3.5-turbo).',
+                            description: 'Model identifier (e.g. workspace/model-name).',
                           },
                           provider: {
                             type: 'string',
                             description:
-                              'Model provider name. Required. Use the provider part of the model (e.g. "openai" for openai/gpt-3.5-turbo) or "workspace/provider-name" if workspace-scoped.',
+                              'Model provider name. Required. Use the provider part of the model or "workspace/provider-name" if workspace-scoped.',
                           },
                           inference_parameters: {
                             type: 'object',
