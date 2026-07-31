@@ -142,15 +142,21 @@ export const AnonymizerBuilderForm: FC = () => {
                 onValueChange={setActiveTab}
                 items={PANEL_TABS}
               />
-              <Button
-                color="brand"
-                disabled={isBusy || preview.isPreviewing}
-                kind="primary"
-                onClick={() => void preview.runPreview()}
-                type="button"
-              >
-                Preview
-              </Button>
+              {preview.isPreviewing ? (
+                <Button kind="secondary" onClick={preview.stopPreview} type="button">
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  color="brand"
+                  disabled={isBusy}
+                  kind="primary"
+                  onClick={() => void preview.runPreview()}
+                  type="button"
+                >
+                  Preview
+                </Button>
+              )}
             </Flex>
 
             {submitError ? (

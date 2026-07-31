@@ -36,7 +36,14 @@ export interface UseAnonymizerPreview {
   readonly isPreviewing: boolean;
   readonly error: string | undefined;
   readonly hasRun: boolean;
+  /** True when the last run was stopped by the user rather than finishing. */
+  readonly wasStopped: boolean;
   readonly runPreview: () => Promise<void>;
+  /**
+   * Aborts the request. The server unwinds on disconnect, but the anonymizer runs on an
+   * abandoned worker thread, so an in-flight model call finishes before it notices.
+   */
+  readonly stopPreview: () => void;
 }
 
 export const useAnonymizerPreview = ({
@@ -49,9 +56,18 @@ export const useAnonymizerPreview = ({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [hasRun, setHasRun] = useState(false);
+  const [wasStopped, setWasStopped] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // The abort rejects the in-flight read, which `runPreview`'s catch treats as a non-error and
+  // its finally clears, so this only has to record the intent.
+  const stopPreview = useCallback(() => {
+    if (!abortRef.current) return;
+    setWasStopped(true);
+    abortRef.current.abort();
+  }, []);
 
   const runPreview = useCallback(async () => {
     const request = await getRequest();
@@ -65,6 +81,7 @@ export const useAnonymizerPreview = ({
     setLogs([]);
     setError(undefined);
     setHasRun(true);
+    setWasStopped(false);
     setIsPreviewing(true);
 
     const onFrame = (frame: PreviewFrame) => {
@@ -103,5 +120,5 @@ export const useAnonymizerPreview = ({
     }
   }, [workspace, accessToken, getRequest]);
 
-  return { result, logs, isPreviewing, error, hasRun, runPreview };
+  return { result, logs, isPreviewing, error, hasRun, wasStopped, runPreview, stopPreview };
 };

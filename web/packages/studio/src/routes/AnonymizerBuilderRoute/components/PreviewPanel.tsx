@@ -61,7 +61,7 @@ interface PreviewPanelProps {
 }
 
 export const PreviewPanel: FC<PreviewPanelProps> = ({ preview, slotActions }) => {
-  const { result, logs, isPreviewing, error, hasRun } = preview;
+  const { result, logs, isPreviewing, error, hasRun, wasStopped } = preview;
   const { records, textColumn, failedRecords } = result;
   const [recordIndex, setRecordIndex] = useState(0);
   const [pagedRecords, setPagedRecords] = useState(records);
@@ -159,9 +159,11 @@ export const PreviewPanel: FC<PreviewPanelProps> = ({ preview, slotActions }) =>
         ) : error ? null : (
           <Flex align="center" className="flex-1" justify="center">
             <Text color="secondary" kind="body/regular/md">
-              {hasRun
-                ? 'The preview run returned no records.'
-                : 'Your records preview will appear here'}
+              {wasStopped
+                ? 'Preview stopped before any records arrived.'
+                : hasRun
+                  ? 'The preview run returned no records.'
+                  : 'Your records preview will appear here'}
             </Text>
           </Flex>
         )}
