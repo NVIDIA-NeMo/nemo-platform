@@ -55,3 +55,19 @@ example first when debugging evaluator or loop control flow.
 
 See the [E2E config guide](../../docs/e2e/README.md) and
 [architecture guide](../../docs/architecture.md).
+
+## Upstream benchmark content is kept verbatim
+
+`AGENT-SPEC.md` and `dataset/template/task_template/instruction.md` are copies of
+tau2-bench's airline policy and are deliberately **not** edited, including two
+things a linter will flag:
+
+- **No SPDX header.** Harbor reads `instruction.md` verbatim into the agent prompt
+  (`inputs["instruction"]`), so a header would prepend licence boilerplate to every
+  prompt. `AGENT-SPEC.md` duplicates the same policy and is read by the Coder as a
+  contract, so the two must stay byte-identical to each other.
+- **Grammar is left as-is** (e.g. "the user is should be refunded the difference").
+  It is upstream policy text. Correcting it here would fork the benchmark and make
+  scores incomparable with published tau2 results, for no behavioural gain.
+
+Treat both files as fixtures: change them only to track upstream.
