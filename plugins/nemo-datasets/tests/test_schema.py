@@ -56,6 +56,20 @@ def test_from_rows_list_of_role_content_structs_is_messages():
     assert {f.name for f in feature.items.fields} == {"role", "content"}
 
 
+def test_from_rows_sharegpt_from_value_is_messages():
+    # ShareGPT spells the same structure {from, value}. Recognizing only {role, content} left it a
+    # plain list, which then failed the messages dtype gate and profiled as `unknown` with no stats.
+    rows = [{"conversations": [{"from": "human", "value": "hi"}, {"from": "gpt", "value": "yo"}]}]
+    feature = derive_features(rows)[0]
+    assert feature.dtype == "messages"
+    assert {f.name for f in feature.items.fields} == {"from", "value"}
+
+
+def test_from_arrow_sharegpt_from_value_is_messages():
+    schema = pa.schema([("conversations", pa.list_(pa.struct([("from", pa.string()), ("value", pa.string())])))])
+    assert derive_features([], schema)[0].dtype == "messages"
+
+
 def test_from_rows_constant_length_list_records_fixed_length():
     feature = derive_features([{"e": [0.1, 0.2, 0.3]}, {"e": [0.4, 0.5, 0.6]}])[0]
     assert feature.dtype == "list"

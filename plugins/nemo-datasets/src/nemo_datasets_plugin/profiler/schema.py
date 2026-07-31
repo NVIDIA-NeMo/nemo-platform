@@ -5,9 +5,9 @@
 
 Derive the ``features`` tree (a list of :class:`FeatureSchema`) de novo from the data. Parquet
 carries a declared schema, so it is converted directly; formats without one (jsonl) are inferred
-from the sampled rows by resolving each column's dtype. A list of ``{role, content}`` structs is
-recognized as the ``messages`` dtype, and a list whose elements are all the same length records that
-length as ``fixed_length``.
+from the sampled rows by resolving each column's dtype. A list of ``{role, content}`` structs — or
+ShareGPT's ``{from, value}`` spelling of the same thing — is recognized as the ``messages`` dtype,
+and a list whose elements are all the same length records that length as ``fixed_length``.
 """
 
 from __future__ import annotations
@@ -17,8 +17,11 @@ from typing import Any
 import pyarrow as pa
 from nemo_platform_plugin.files.dataset_profile import FeatureSchema
 
-# A list element carrying at least these keys is treated as a chat message (the messages dtype).
-_MESSAGE_KEYS = {"role", "content"}
+# A list element carrying at least one of these key sets is treated as a chat message (the messages
+# dtype). ShareGPT-style data spells the same structure `{from, value}`; recognizing only
+# `{role, content}` left a large slice of public chat data typed as a plain `list`, which then failed
+# the `messages` dtype gate in classification and profiled as `unknown` with no stats at all.
+_MESSAGE_KEY_SETS = ({"role", "content"}, {"from", "value"})
 
 
 def derive_features(rows: list[dict[str, Any]], arrow_schema: pa.Schema | None = None) -> list[FeatureSchema]:
@@ -32,7 +35,10 @@ def derive_features(rows: list[dict[str, Any]], arrow_schema: pa.Schema | None =
 
 
 def _is_message_struct(item: FeatureSchema) -> bool:
-    return item.dtype == "struct" and item.fields is not None and _MESSAGE_KEYS <= {field.name for field in item.fields}
+    if item.dtype != "struct" or item.fields is None:
+        return False
+    names = {field.name for field in item.fields}
+    return any(keys <= names for keys in _MESSAGE_KEY_SETS)
 
 
 # --- from a declared arrow schema (parquet) ------------------------------------------------------
