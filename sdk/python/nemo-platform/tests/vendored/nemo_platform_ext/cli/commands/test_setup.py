@@ -781,7 +781,9 @@ class TestMaybeStartServices:
         assert "Check /tmp/services.log for details." in captured.err
         assert "Docker does not appear to be available" in captured.err
 
-    def test_readiness_timeout_does_not_hint_docker_without_evidence(self, maybe_start_preflight_mocks, capsys, tmp_path):
+    def test_readiness_timeout_does_not_hint_docker_without_evidence(
+        self, maybe_start_preflight_mocks, capsys, tmp_path
+    ):
         alive = MagicMock(pid=999)
         alive.poll.return_value = None
         log = tmp_path / "services.log"
