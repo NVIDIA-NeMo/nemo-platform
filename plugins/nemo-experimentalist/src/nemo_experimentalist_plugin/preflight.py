@@ -455,7 +455,7 @@ _ENV_SOURCES = {
     "EXPERIMENTALIST_API_KEY": "API key for EXPERIMENTALIST_API_BASE (on the gateway, INFERENCE_API_KEY fills this)",
 }
 
-_ENV_EXAMPLE_POINTER = "see examples/tau2-nooa-oo-agent/.env.example"
+_ENV_EXAMPLE_POINTER = "see examples/tau3-nooa-agent/.env.example"
 
 
 def _check_env(p: Probes, group: str, names: tuple[str, ...], profile_dir: Path | None) -> list[CheckResult]:

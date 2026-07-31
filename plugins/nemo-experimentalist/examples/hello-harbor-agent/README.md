@@ -62,7 +62,7 @@ visible.
 
 ## What a one-round run actually does
 
-Observed with `docs/e2e/experiment-debug-round.yaml`:
+Observed with a one-round Experimentalist run against this profile:
 
 1. The Analyzer reads the failing trial's trace and diagnoses it correctly —
    *"the baseline agent lacks a routing or handler capability for two-integer sum
@@ -118,38 +118,26 @@ no service needs to be running and the platform port is irrelevant.
 
 ### A/B the two evaluators (no model key)
 
-Run the same validation split through each. Every command below runs from the
-**platform root**, not this example directory:
+The live A/B is a pytest module. It needs Docker and `harbor`, and is skipped
+otherwise. Every command below runs from the **platform root**, not this example
+directory:
 
 ```bash
-uv run plugins/nemo-experimentalist/docs/e2e/run-eval-only.py --evaluator-type harbor_native --experiment-dir tmp/eval-only-plain
+uv run pytest plugins/nemo-experimentalist/tests/experimentalist/test_evaluator_harbor_ab_e2e.py -v
 ```
 
-```bash
-uv run plugins/nemo-experimentalist/docs/e2e/run-eval-only.py --evaluator-type harbor_evaluator --experiment-dir tmp/eval-only-sdk
-```
-
-Separate `--experiment-dir` values are deliberate. Both arms otherwise land in the
-same `<dir>/eval-and-optimize/results/agent-0-validation/`, and the two evaluators
-disagree about what to do with an existing job directory: plain Harbor refuses it
-(`FileExistsError: ... cannot be resumed with a different config`), while the SDK
-runner treats it as a cache. Giving each arm its own directory makes the
-comparison independent of the order you run them in.
-
-Both print the same thing (about 10 s each once the image is cached):
+Both evaluator arms should report the same aggregate (about 10 s each once the
+image is cached):
 
 ```text
-evaluation: agent-0-validation
-aggregate:  {"format_ok": 1.0, "reward": 0.5}
-  greet-universe   completed {'format_ok': 1.0, 'reward': 1.0}  trace=True
-  sum-three        completed {'format_ok': 1.0, 'reward': 0.0}  trace=True
+{"format_ok": 1.0, "reward": 0.5}
 ```
 
 That is the deliberate capability gap from the table above: `greet-universe`
 passes, `sum-three` does not, and both emit `format_ok`.
 
-Artifacts land under `<experiment-dir>/eval-and-optimize/results/agent-0-validation/`
-(`--experiment-dir` defaults to `tmp/eval-only`), one directory per trial:
+Artifacts land under the test's temporary experiment directory, one directory
+per trial:
 
 ```text
 agent-0-validation/
@@ -164,38 +152,34 @@ agent-0-validation/
 ### Caching
 
 `harbor_evaluator` treats the job directory as a **success-aware cache**.
-Re-running the same command finishes in ~3 s without touching Docker, because
+Re-running the same evaluation finishes quickly without touching Docker when
 every requested task already has `n_attempts` completed, non-errored trials. A
 run that errored, was interrupted, or is under-sampled is re-run rather than
-served from a partial cache. To force a fresh run:
-
-```bash
-uv run plugins/nemo-experimentalist/docs/e2e/run-eval-only.py --evaluator-type harbor_evaluator --experiment-dir tmp/eval-only-sdk --force-rerun
-```
+served from a partial cache.
 
 The cache only engages because the loop pins a deterministic job name
 (`<candidate>-<dataset>`). Setting a custom `job_name` per run defeats it.
 
 ### The full optimizer loop
 
-Same two configs, driven through the CLI. These **do** need a model key, because
-the loop's Coder writes `architecture.md` and the Terminator writes
-`OPTIMIZATION.md`:
+These commands **do** need a model key, because the loop's Coder writes
+`architecture.md` and the Terminator writes `OPTIMIZATION.md`:
 
 ```bash
 export INFERENCE_API_KEY=sk-...
 ```
 
 ```bash
-uv run nemo experimentalist run --profile plugins/nemo-experimentalist/examples/hello-harbor-agent/optimizer.yaml --no-insight --config plugins/nemo-experimentalist/docs/e2e/experiment-eval-only.yaml
+uv run nemo experimentalist run \
+  --profile plugins/nemo-experimentalist/examples/hello-harbor-agent/optimizer.yaml \
+  --no-insight \
+  --experiment-dir tmp/exp-hello
 ```
 
-```bash
-uv run nemo experimentalist run --profile plugins/nemo-experimentalist/examples/hello-harbor-agent/optimizer.yaml --no-insight --config plugins/nemo-experimentalist/docs/e2e/experiment-eval-only-sdk.yaml
-```
-
-The only difference between the two config files is `evaluator_type`; the
-validation aggregate is `{"reward": 0.5, "format_ok": 1.0}` either way.
+Pass a local `--config` YAML when you want to pin `evaluator_type`, round
+limits, or other loop knobs. The only difference that matters for the Harbor A/B
+is `evaluator_type`; the validation aggregate is `{"reward": 0.5, "format_ok": 1.0}`
+either way.
 
 ### Configuring the SDK evaluator
 
@@ -215,11 +199,3 @@ evaluator:
 
 `agent_dir` is not configurable: it is always the candidate being evaluated, so a
 config cannot point the run at different code.
-
-### Verifying against Docker
-
-The live A/B is also a test, skipped automatically without Docker or `harbor`:
-
-```bash
-uv run pytest plugins/nemo-experimentalist/tests/experimentalist/test_evaluator_harbor_ab_e2e.py -v
-```

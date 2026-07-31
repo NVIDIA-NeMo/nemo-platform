@@ -9,22 +9,22 @@ agents as production applications.
 
 | Example | Why it exists | What it demonstrates | How to use it |
 |---|---|---|---|
-| [`hello-harbor-agent`](hello-harbor-agent/README.md) | Small onboarding and debugger fixture. | Fully local agent, train/validation tasks, deterministic traces, two metrics, and a deliberate arithmetic gap for one optimizer round to diagnose. | Start with the [E2E config guide](../docs/e2e/README.md). No model key is needed for direct evaluator A/B runs. |
-| [`tau2-nooa-oo-agent`](tau2-nooa-oo-agent/README.md) | Realistic interactive-agent target. | NOOA CodeAct agent, Tau2 airline policy, MCP runtime sidecar, remote train/validation datasets, and inference-backed user simulation. | Run `doctor`, then pair its profile with `experiment-fast.yaml`. Requires Docker, registry access, and an inference key. |
+| [`hello-harbor-agent`](hello-harbor-agent/README.md) | Small onboarding and debugger fixture. | Fully local agent, train/validation tasks, deterministic traces, two metrics, and a deliberate arithmetic gap for one optimizer round to diagnose. | Start with its README. No model key is needed for the Docker-backed evaluator A/B pytest. |
+| [`tau3-nooa-agent`](tau3-nooa-agent/README.md) | Realistic interactive-agent target. | NOOA CodeAct agent, Tau3 airline tasks, MCP runtime sidecar, prepared train/validation datasets, and inference-backed user simulation. | Follow the [getting-started guide](../../../docs/get-started/example-agent.mdx) to prepare datasets, record traces, and run one SDK-backed Experimentalist smoke round. |
 | [`terminal-bench-agent`](terminal-bench-agent/README.md) | Canonical benchmark runtime fixture. | Locked LangChain agent installed inside unmodified Terminal-Bench task containers, with no sidecar or task-definition changes. | Use through the [canonical benchmark runner](../benchmarks/README.md), or invoke its module directly as documented in its agent spec. |
 
-Each complete optimization profile follows the same shape:
+The examples expose the same agent-to-Harbor adapter shape:
 
 ```text
-optimizer.yaml       agent source, task template, datasets, workspace
 AGENT-SPEC.md        behavior contract supplied to optimizer components
 agent.py / main.py   code under optimization and its entry point
 harbor_wrapper.py    upload, install, execute, trace, and artifact bridge
-dataset/             optional local tasks or task template
+dataset/             optional local tasks
+optimizer.yaml       optional profile for self-contained fixtures
 ```
 
 Recommended order:
 
 1. Use `hello-harbor-agent` to inspect evaluator wiring and one optimizer round.
-2. Use `tau2-nooa-oo-agent` to inspect realistic MCP and external-data behavior.
+2. Use `tau3-nooa-agent` to inspect realistic MCP and inference-backed behavior.
 3. Use `terminal-bench-agent` for reproducible benchmark runs.

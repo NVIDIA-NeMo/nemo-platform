@@ -1,20 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Defaults exposed by the reviewer-facing evaluator-only helper."""
+"""Guards checked-in Experimentalist example configs that select an evaluator."""
 
-import runpy
-import sys
 from pathlib import Path
 
-import pytest
+import yaml
+from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 
 
-def test_eval_only_helper_defaults_to_native_harbor(monkeypatch: pytest.MonkeyPatch) -> None:
-    script = Path(__file__).parents[1] / "docs" / "e2e" / "run-eval-only.py"
-    namespace = runpy.run_path(str(script))
-    monkeypatch.setattr(sys, "argv", [str(script)])
+def test_tau3_smoke_config_uses_sdk_harbor_evaluator() -> None:
+    config_path = Path(__file__).parents[1] / "examples" / "tau3-nooa-agent" / "experimentalist-smoke.yaml"
 
-    args = namespace["_parse_args"]()
+    config = EvolutionaryOptimizerConfig.model_validate(yaml.safe_load(config_path.read_text(encoding="utf-8")))
 
-    assert args.evaluator_type == "harbor_native"
+    assert config.evaluator_type == "harbor_evaluator"

@@ -30,3 +30,10 @@ uv run python benchmarks/run.py \
   --config benchmarks/configs/tau3-smoke.yaml \
   --agent examples/tau3-nooa-agent
 ```
+
+For an optimization run, follow the
+[example-agent getting-started guide](../../../../docs/get-started/example-agent.mdx).
+It prepares bounded airline train and validation splits before invoking
+Experimentalist. The checked-in `experimentalist-smoke.yaml` selects the
+SDK-backed Harbor evaluator; set `evaluator_type: harbor_native` to compare the
+original evaluator against the same tasks.

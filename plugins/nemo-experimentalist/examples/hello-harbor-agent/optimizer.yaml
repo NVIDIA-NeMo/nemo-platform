@@ -7,7 +7,7 @@
 #
 #   nemo experimentalist doctor --profile examples/hello-harbor-agent/optimizer.yaml
 #   nemo experimentalist run --profile examples/hello-harbor-agent/optimizer.yaml \
-#       --no-insight --config docs/e2e/experiment-eval-only.yaml
+#       --no-insight
 
 # Logical agent name. In Mode 1 it must match the Insight's agent; in Mode 2
 # (--no-insight) it is only a label.
