@@ -82,15 +82,28 @@ def create_deployments(
     wait: Annotated[
         bool,
         typer.Option(
-            "--wait", help="Wait for the created deployment to reach a terminal state", rich_help_panel="Wait Options"
+            "--wait", help="Wait for the created deployment to be up and running", rich_help_panel="Lifecycle Options"
+        ),
+    ] = False,
+    watch: Annotated[
+        bool,
+        typer.Option(
+            "--watch",
+            help="Watch the created deployment until it is stable while streaming status updates",
+            rich_help_panel="Lifecycle Options",
         ),
     ] = False,
     timeout: Annotated[
-        int, typer.Option("--timeout", min=1, help="Maximum time to wait in seconds", rich_help_panel="Wait Options")
+        int,
+        typer.Option(
+            "--timeout", min=1, help="Maximum time to wait or watch in seconds", rich_help_panel="Lifecycle Options"
+        ),
     ] = 1200,
     poll_interval: Annotated[
         int,
-        typer.Option("--poll-interval", min=1, help="Seconds between status checks", rich_help_panel="Wait Options"),
+        typer.Option(
+            "--poll-interval", min=1, help="Seconds between status checks", rich_help_panel="Lifecycle Options"
+        ),
     ] = 3,
 ) -> None:
     """Create a new ModelDeployment (version 1).
@@ -137,12 +150,17 @@ def create_deployments(
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
+    if wait and watch:
+        raise typer.BadParameter("Cannot combine --wait and --watch.")
+
     if handle_code_generation(
         ["inference", "deployments"],
         "create",
         all_kwargs,
         output_format,
         state,
+        watch_config={"type": "inference_deployment", "resource_label": "deployment"} if watch else None,
+        watch_options={"timeout": timeout, "poll_interval": poll_interval} if watch else None,
         wait_config={"type": "inference_deployment", "resource_label": "deployment"} if wait else None,
         wait_options={"timeout": timeout, "poll_interval": poll_interval} if wait else None,
     ):
@@ -158,11 +176,10 @@ def create_deployments(
         no_truncate=state.get_no_truncate(),
         timestamp_format=state.get_timestamp_format(),
     )
-
-    if wait:
+    if wait or watch:
         wait_name = getattr(result, "name", None) or all_kwargs.get("name")
         if not wait_name:
-            raise RuntimeError("Unable to determine created resource name for --wait")
+            raise RuntimeError("Unable to determine created resource name for --wait/--watch")
         wait_workspace = all_kwargs.get("workspace")
         if not wait_for_inference_deployment(
             client,
@@ -172,6 +189,7 @@ def create_deployments(
             poll_interval=poll_interval,
         ):
             raise typer.Exit(1)
+        return
 
 
 @app.command("delete")

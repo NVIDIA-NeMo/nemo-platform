@@ -297,6 +297,36 @@ def test_members_api_command_is_not_registered_at_top_level():
     assert "nemo_platform_ext.cli.commands.api.members" not in sys.modules
 
 
+def test_jobs_watch_command_is_registered():
+    runner = CliRunner()
+    result = runner.invoke(app, ["jobs", "watch", "--help"])
+
+    assert result.exit_code == 0
+    assert "Watch a platform job until it reaches a terminal status." in result.stdout
+    assert "--history" in result.stdout
+    assert "--no-history" in result.stdout
+
+
+def test_jobs_create_exposes_wait_and_watch_flags():
+    runner = CliRunner()
+    result = runner.invoke(app, ["jobs", "create", "--help"])
+
+    assert result.exit_code == 0
+    assert "--watch" in result.stdout
+    assert "--wait" in result.stdout
+
+
+def test_inference_deployments_create_exposes_wait_and_watch_flags():
+    runner = CliRunner()
+    result = runner.invoke(app, ["inference", "deployments", "create", "--help"])
+
+    assert result.exit_code == 0
+    assert "--watch" in result.stdout
+    assert "--wait" in result.stdout
+    assert "up and running" in result.stdout
+    assert "until it is stable" in result.stdout
+
+
 def test_root_help_excludes_hidden_commands_and_context_option():
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])

@@ -350,16 +350,16 @@ class TestGetWaitConfig:
     def test_returns_configured_wait(self):
         config = self._create_config("""
 config:
-  - resource: [customization, jobs]
+  - resource: [inference, deployments]
     methods:
       create:
         wait:
-          type: platform_job
-          resource_label: customization job
+          type: inference_deployment
+          resource_label: deployment
 """)
-        assert config.get_wait_config(["customization", "jobs"], "create") == {
-            "type": "platform_job",
-            "resource_label": "customization job",
+        assert config.get_wait_config(["inference", "deployments"], "create") == {
+            "type": "inference_deployment",
+            "resource_label": "deployment",
         }
 
     def test_returns_none_when_not_configured(self):
@@ -395,6 +395,22 @@ config:
         with pytest.raises(ValueError, match="Invalid wait config type 'unknown'"):
             config.get_wait_config(["customization", "jobs"], "create")
 
+    def test_returns_platform_job_wait_config(self):
+        config = self._create_config("""
+config:
+  - resource: [customization, jobs]
+    methods:
+      create:
+        wait:
+          type: platform_job
+          resource_label: customization job
+""")
+
+        assert config.get_wait_config(["customization", "jobs"], "create") == {
+            "type": "platform_job",
+            "resource_label": "customization job",
+        }
+
     def test_rejects_unhashable_wait_config_type(self):
         config = self._create_config("""
 config:
@@ -408,7 +424,7 @@ config:
 
         with pytest.raises(
             ValueError,
-            match=r"wait_type=\['platform_job'\].*resource_path=\['customization', 'jobs'\].*method_name='create'.*VALID_WAIT_CONFIG_TYPES",
+            match=r"type=\['platform_job'\].*resource_path=\['customization', 'jobs'\].*method_name='create'.*Expected one of:",
         ):
             config.get_wait_config(["customization", "jobs"], "create")
 
@@ -419,7 +435,7 @@ config:
     methods:
       create:
         wait:
-          type: platform_job
+          type: inference_deployment
 """)
 
         with pytest.raises(ValueError, match="Invalid wait config resource_label None"):
@@ -432,12 +448,53 @@ config:
     methods:
       create:
         wait:
-          type: platform_job
+          type: inference_deployment
           resource_label: " "
 """)
 
         with pytest.raises(ValueError, match="Invalid wait config resource_label ' '"):
             config.get_wait_config(["customization", "jobs"], "create")
+
+
+class TestGetWatchConfig:
+    """Tests for CLIConfig.get_watch_config method."""
+
+    def _create_config(self, config_yaml: str) -> CLIConfig:
+        with NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(config_yaml)
+            f.flush()
+            return CLIConfig(Path(f.name))
+
+    def test_returns_configured_watch(self):
+        config = self._create_config("""
+config:
+  - resource: [customization, jobs]
+    methods:
+      create:
+        watch:
+          type: platform_job
+          resource_label: customization job
+""")
+        assert config.get_watch_config(["customization", "jobs"], "create") == {
+            "type": "platform_job",
+            "resource_label": "customization job",
+        }
+
+    def test_returns_inference_deployment_watch_config(self):
+        config = self._create_config("""
+config:
+  - resource: [inference, deployments]
+    methods:
+      create:
+        watch:
+          type: inference_deployment
+          resource_label: deployment
+""")
+
+        assert config.get_watch_config(["inference", "deployments"], "create") == {
+            "type": "inference_deployment",
+            "resource_label": "deployment",
+        }
 
 
 class TestGetExamples:

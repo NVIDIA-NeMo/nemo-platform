@@ -93,4 +93,5 @@ class CreateContextCollector(BaseContextCollector):
             "required_fields_example": build_required_fields_example(parameters, required_fields),
             "examples": self._cli_config.get_examples(resource_path, method_name),
             "wait_config": self._cli_config.get_wait_config(resource_path, method_name),
+            "watch_config": self._cli_config.get_watch_config(resource_path, method_name),
         }

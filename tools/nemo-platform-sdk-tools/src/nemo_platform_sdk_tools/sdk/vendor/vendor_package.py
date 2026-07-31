@@ -117,7 +117,10 @@ class _ClientMethodReplacer(cst.CSTTransformer):
 
     def leave_ClassDef(self, original_node: cst.ClassDef, updated_node: cst.ClassDef) -> cst.ClassDef:
         class_name = original_node.name.value
-        replacements = self._methods.get(class_name)
+        if class_name not in _CLIENT_CLASS_NAMES:
+            return updated_node
+
+        replacements = self._methods.get(class_name, {})
         if not replacements:
             return updated_node
 
