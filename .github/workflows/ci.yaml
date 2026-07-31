@@ -1213,6 +1213,42 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  wheel-constraints-lint:
+    name: Wheel constraints lint
+    needs: [wheel-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Download nemo-platform wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nemo-platform-wheel-py3.12
+          path: ${{ runner.temp }}/wheel-constraints/nemo-platform-wheel-py3.12
+      - name: Download nemo-platform-plugin wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nemo-platform-plugin-wheel-py3.12
+          path: ${{ runner.temp }}/wheel-constraints/nemo-platform-plugin-wheel-py3.12
+      - name: Check generated wheel constraints
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n script/compile-wheel-constraints.sh
+          script/compile-wheel-constraints.sh "${RUNNER_TEMP}/wheel-constraints"
+          git diff --exit-code
+
   # Test each wheel: install from the artifact and run basic CLI /
   # import checks.
   wheel-test:
@@ -1938,6 +1974,7 @@ jobs:
       # - python-integration-test
       - require-nvskills
       - wheel-build
+      - wheel-constraints-lint
       - wheel-test
       - python-e2e-test
       - web-typecheck

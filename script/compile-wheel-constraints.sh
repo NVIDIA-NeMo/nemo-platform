@@ -21,8 +21,8 @@
 #   script/compile-wheel-constraints.sh <dir-with-both-wheels>
 #
 # Wheels come from `uv build --package nemo-platform[-plugin]` (nemo-platform
-# needs the Studio/node toolchain) or a CI "<pkg>-wheel-py3.11" artifact
-# (`gh run download <run-id> -n nemo-platform-wheel-py3.11 -D <dir>`).
+# needs the Studio/node toolchain) or a CI "<pkg>-wheel-py3.12" artifact
+# (`gh run download <run-id> -n nemo-platform-wheel-py3.12 -D <dir>`).
 set -euo pipefail
 
 WHEEL_DIR="${1:?usage: script/compile-wheel-constraints.sh <dir-with-built-wheels>}"
@@ -35,7 +35,7 @@ emit_constraints() {
   local wheel="$1" spec="$2" label="$3" out="$4" venv meta
   venv="$(mktemp -d)"
   meta="$(mktemp -d)"
-  uv venv "${venv}" --python 3.11 --quiet
+  uv venv "${venv}" --python 3.12 --quiet
   # Resolve+install once with the cap so we snapshot consistent, py3.14-safe versions.
   printf '%s\n' "${LITELLM_CAP%% *}" >"${meta}/cap.txt"
   uv pip install --python "${venv}/bin/python" --constraint "${meta}/cap.txt" "${spec}" >/dev/null
@@ -61,7 +61,7 @@ PY
     printf '# Regenerate with: script/compile-wheel-constraints.sh <dir-with-built-wheels>\n#\n'
     while read -r name; do
       [[ -n "${name}" ]] || continue
-      ver="$("${venv}/bin/python" -c "import importlib.metadata as m; print(m.version('${name}'))" 2>/dev/null || true)
+      ver="$("${venv}/bin/python" -c "import importlib.metadata as m; print(m.version('${name}'))" 2>/dev/null || true)"
       [[ -n "${ver}" ]] && printf '%s==%s\n' "${name}" "${ver}"
     done <"${meta}/names.txt" | sort
     printf '%s\n' "${LITELLM_CAP}"
