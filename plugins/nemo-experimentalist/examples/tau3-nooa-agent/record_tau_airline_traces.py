@@ -231,8 +231,8 @@ def parse_args() -> argparse.Namespace:
         "--api-base",
         default=os.environ.get("INFERENCE_API_BASE", "https://inference-api.nvidia.com/v1"),
     )
-    parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--user-model", default=DEFAULT_MODEL)
+    parser.add_argument("--model", default=os.environ.get("AUT_MODEL_NAME", DEFAULT_MODEL))
+    parser.add_argument("--user-model", default=os.environ.get("TAU2_USER_MODEL", DEFAULT_MODEL))
     parser.add_argument("--agent-name", default=DEFAULT_AGENT_NAME)
     parser.add_argument("--agent-version", default=DEFAULT_AGENT_VERSION)
     parser.add_argument("--experiment-id")
