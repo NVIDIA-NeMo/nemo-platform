@@ -330,7 +330,7 @@ def test_harbor_dataset_config_accepts_hub_ref():
         {
             "dataset_ref": "sierra-research/tau3-bench@1",
             "registry_url": "https://hub.harborframework.com",
-            "num_tasks": 6,
+            "task_names": ["tau3-bench__tau3-airline-0", "tau3-bench__tau3-airline-1"],
         },
         repo_root=Path("/repo"),
     )
@@ -338,7 +338,7 @@ def test_harbor_dataset_config_accepts_hub_ref():
     assert config.name == "sierra-research/tau3-bench"
     assert config.version == "1"
     assert config.registry_url == "https://hub.harborframework.com"
-    assert config.n_tasks == 6
+    assert config.task_names == ["tau3-bench__tau3-airline-0", "tau3-bench__tau3-airline-1"]
 
 
 def test_harbor_dataset_config_rejects_ambiguous_source():
