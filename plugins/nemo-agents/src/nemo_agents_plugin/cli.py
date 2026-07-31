@@ -426,11 +426,29 @@ def _register_package_command(app: typer.Typer) -> None:
             template=template,
             platform=platform,
         )
-        _warn_if_nat_version_unpinned(nat_version)
+
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+
+        try:
+            config_format = detect_agent_config_format(agent)
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1)
+
+        if config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+            _warn_if_nat_version_unpinned(nat_version)
+        elif config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT and nat_version is not None:
+            typer.echo(
+                "Error: --nat-version is only valid for NAT workflow packaging; "
+                "Fabric agent packaging does not use NAT_VERSION.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
 
         if no_build:
             _package_render_only(
                 agent_config=agent,
+                config_format=config_format,
                 pyproject=pyproject,
                 output=output,
                 format=format,
@@ -448,28 +466,48 @@ def _register_package_command(app: typer.Typer) -> None:
             )
             return
 
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image, build_nat_agent_image
 
         try:
-            result_tag = build_agent_image(
-                agent,
-                pyproject=pyproject,
-                dockerfile=dockerfile,
-                tag=tag,
-                nat_version=nat_version,
-                base_image_url=base_image_url,
-                base_image_tag=base_image_tag,
-                python_version=python_version,
-                uv_version=uv_version,
-                allow_root=allow_root,
-                sandbox_runtime=sandbox_runtime,
-                agent_version=agent_version,
-                agent_author=agent_author,
-                template_path=template,
-                skip_validation=skip_validation,
-                generate_ignore=generate_ignore,
-                platforms=platform,
-            )
+            if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+                result_tag = build_fabric_agent_image(
+                    agent,
+                    pyproject=pyproject,
+                    dockerfile=dockerfile,
+                    tag=tag,
+                    base_image_url=base_image_url,
+                    base_image_tag=base_image_tag,
+                    python_version=python_version,
+                    uv_version=uv_version,
+                    allow_root=allow_root,
+                    sandbox_runtime=sandbox_runtime,
+                    agent_version=agent_version,
+                    agent_author=agent_author,
+                    template_path=template,
+                    skip_validation=skip_validation,
+                    generate_ignore=generate_ignore,
+                    platforms=platform,
+                )
+            else:
+                result_tag = build_nat_agent_image(
+                    agent,
+                    pyproject=pyproject,
+                    dockerfile=dockerfile,
+                    tag=tag,
+                    nat_version=nat_version,
+                    base_image_url=base_image_url,
+                    base_image_tag=base_image_tag,
+                    python_version=python_version,
+                    uv_version=uv_version,
+                    allow_root=allow_root,
+                    sandbox_runtime=sandbox_runtime,
+                    agent_version=agent_version,
+                    agent_author=agent_author,
+                    template_path=template,
+                    skip_validation=skip_validation,
+                    generate_ignore=generate_ignore,
+                    platforms=platform,
+                )
         except ValueError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1)
@@ -570,6 +608,7 @@ def _warn_if_nat_version_unpinned(nat_version: Optional[str]) -> None:
 def _package_render_only(
     *,
     agent_config: Path,
+    config_format: str,
     pyproject: Optional[Path],
     output: Optional[Path],
     format: str,
@@ -589,6 +628,10 @@ def _package_render_only(
     # ``--format whl`` is rejected globally by ``_validate_package_flags``
     # before we get here; assert for the developer who deletes that guard.
     assert format == "docker", f"unreachable: format={format!r}"
+
+    if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        typer.echo("Error: Fabric agent packaging is not implemented yet.", err=True)
+        raise typer.Exit(code=1)
 
     from nemo_agents_plugin.container.template import render_dockerfile, render_dockerignore
 

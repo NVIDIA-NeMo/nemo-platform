@@ -843,16 +843,51 @@ class TestValidateAgentConfig:
 # ---------------------------------------------------------------------------
 
 
+class TestDetectAgentConfigFormat:
+    def test_missing_config_format_defaults_to_nat(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+        from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT
+
+        assert detect_agent_config_format(agent_config) == NAT_WORKFLOW_CONFIG_FORMAT
+
+    def test_detects_platform_agent_spec(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+        from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+
+        assert detect_agent_config_format(config) == NEMO_AGENTS_SPEC_CONFIG_FORMAT
+
+    def test_rejects_unknown_config_format(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: future-format-v99\n")
+
+        with pytest.raises(ValueError, match="Unsupported agent config format"):
+            detect_agent_config_format(config)
+
+    def test_reports_yaml_parse_errors(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: [unterminated\n")
+
+        with pytest.raises(ValueError, match="YAML parse error"):
+            detect_agent_config_format(config)
+
+
 class TestBuildAgentImage:
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_with_provided_dockerfile(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         dockerfile = agent_config.parent / "Dockerfile"
         dockerfile.write_text("FROM ubuntu")
         mock_build.return_value = "my-agent:latest"
 
-        result = build_agent_image(
+        result = build_nat_agent_image(
             agent_config,
             dockerfile=dockerfile,
             tag="my-agent:latest",
@@ -865,11 +900,11 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_renders_on_the_fly(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "config-abc123:0.0.0"
 
-        build_agent_image(agent_config, nat_version="1.4.0", agent_author="x")
+        build_nat_agent_image(agent_config, nat_version="1.4.0", agent_author="x")
 
         tag = mock_build.call_args.kwargs["tag"]
         assert tag.startswith("config-")
@@ -879,10 +914,10 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_cleans_up_dockerignore(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "config-abc:0.0.0"
-        build_agent_image(agent_config, nat_version="1.4.0", generate_ignore=True, agent_author="x")
+        build_nat_agent_image(agent_config, nat_version="1.4.0", generate_ignore=True, agent_author="x")
 
         assert not (agent_config.parent / ".dockerignore").exists()
         assert not (agent_config.parent / "Dockerfile.generated").exists()
@@ -902,7 +937,7 @@ class TestBuildAgentImage:
         deletes files this run actually *created* (file did not exist
         before the build).  Both content and existence are checked.
         """
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
         from nemo_agents_plugin.container.template import DOCKERIGNORE_SENTINEL
 
         ignore = agent_config.parent / ".dockerignore"
@@ -910,7 +945,7 @@ class TestBuildAgentImage:
         ignore.write_text(committed)
 
         mock_build.return_value = "config-abc:0.0.0"
-        build_agent_image(agent_config, nat_version="1.4.0", generate_ignore=True, agent_author="x")
+        build_nat_agent_image(agent_config, nat_version="1.4.0", generate_ignore=True, agent_author="x")
 
         assert ignore.exists(), "committed .dockerignore was deleted by build cleanup"
         # Content may have been regenerated (sentinel-marked = safe to
@@ -920,22 +955,22 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_no_ignore(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "config-abc:0.0.0"
-        build_agent_image(agent_config, nat_version="1.4.0", generate_ignore=False, agent_author="x")
+        build_nat_agent_image(agent_config, nat_version="1.4.0", generate_ignore=False, agent_author="x")
 
         assert not (agent_config.parent / ".dockerignore").exists()
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_default_tag_from_metadata(self, mock_build: MagicMock, project_dir: tuple[Path, Path]) -> None:
         """Default tag follows the ``{agent_name}-{agent_id}:{agent_version}`` convention."""
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         config, pyproject = project_dir
         mock_build.return_value = "placeholder"
 
-        build_agent_image(config, pyproject=pyproject, nat_version="1.4.0", agent_author="x")
+        build_nat_agent_image(config, pyproject=pyproject, nat_version="1.4.0", agent_author="x")
 
         tag = mock_build.call_args.kwargs["tag"]
         assert tag.startswith("test-agent-"), f"Expected tag to start with 'test-agent-', got {tag}"
@@ -946,32 +981,32 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_runs_validation_by_default(self, mock_build: MagicMock, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         bad = tmp_path / "bad.yaml"
         bad.write_text("no_workflow_here: true\n")
         mock_build.return_value = "x:latest"
 
         with pytest.raises((SystemExit, ClickExit)):
-            build_agent_image(bad, nat_version="1.0.0")
+            build_nat_agent_image(bad, nat_version="1.0.0")
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_skip_validation(self, mock_build: MagicMock, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         bad = tmp_path / "bad.yaml"
         bad.write_text("no_workflow_here: true\n")
         mock_build.return_value = "x:latest"
 
-        result = build_agent_image(bad, nat_version="1.0.0", skip_validation=True)
+        result = build_nat_agent_image(bad, nat_version="1.0.0", skip_validation=True)
         assert result == "x:latest"
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_passes_allow_root(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "x:latest"
-        build_agent_image(agent_config, nat_version="1.0.0", allow_root=True)
+        build_nat_agent_image(agent_config, nat_version="1.0.0", allow_root=True)
 
         call_kwargs = mock_build.call_args.kwargs
         dockerfile = call_kwargs["dockerfile"]
@@ -979,25 +1014,25 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_with_external_template(self, mock_build: MagicMock, agent_config: Path, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         tpl = tmp_path / "custom.j2"
         tpl.write_text("FROM scratch\nRUN echo {{ nat_version }}")
         mock_build.return_value = "x:latest"
 
-        build_agent_image(agent_config, nat_version="5.0.0", template_path=str(tpl))
+        build_nat_agent_image(agent_config, nat_version="5.0.0", template_path=str(tpl))
 
         call_kwargs = mock_build.call_args.kwargs
         assert "5.0.0" in call_kwargs["build_args"]["NAT_VERSION"]
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_cleanup_on_failure(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.side_effect = SystemExit(1)
 
         with pytest.raises((SystemExit, ClickExit)):
-            build_agent_image(agent_config, nat_version="1.0.0")
+            build_nat_agent_image(agent_config, nat_version="1.0.0")
 
         assert not (agent_config.parent / "Dockerfile.generated").exists()
         assert not (agent_config.parent / ".dockerignore").exists()
@@ -1138,7 +1173,7 @@ class TestEndToEndPipeline:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_render_then_build_then_publish(self, mock_build: MagicMock, agent_config: Path, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
         from nemo_agents_plugin.container.template import render_dockerfile, render_dockerignore
 
         rendered = render_dockerfile(
@@ -1161,7 +1196,7 @@ class TestEndToEndPipeline:
         assert ignore_path.exists()
 
         mock_build.return_value = "e2e-agent:1.0.0"
-        tag = build_agent_image(
+        tag = build_nat_agent_image(
             agent_config,
             dockerfile=dockerfile_path,
             tag="e2e-agent:1.0.0",
@@ -1190,7 +1225,7 @@ class TestEndToEndPipeline:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_full_pipeline_with_project_mode(self, mock_build: MagicMock, project_dir: tuple[Path, Path]) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
         from nemo_agents_plugin.container.validator import validate_agent_config
 
         config, pyproject = project_dir
@@ -1199,7 +1234,7 @@ class TestEndToEndPipeline:
         assert validation.valid
 
         mock_build.return_value = "placeholder"
-        build_agent_image(
+        build_nat_agent_image(
             config,
             pyproject=pyproject,
             nat_version="1.4.0",
@@ -1216,13 +1251,13 @@ class TestEndToEndPipeline:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_validation_blocks_bad_config(self, mock_build: MagicMock, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         bad = tmp_path / "bad_agent.yaml"
         bad.write_text("llms:\n  x: {}\n")
 
         with pytest.raises((SystemExit, ClickExit)):
-            build_agent_image(bad, nat_version="1.0.0")
+            build_nat_agent_image(bad, nat_version="1.0.0")
 
         mock_build.assert_not_called()
 
@@ -1250,10 +1285,10 @@ class TestEndToEndPipeline:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_allow_root_e2e(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "root-agent:latest"
-        build_agent_image(agent_config, nat_version="1.0.0", allow_root=True)
+        build_nat_agent_image(agent_config, nat_version="1.0.0", allow_root=True)
 
         generated = agent_config.parent / "Dockerfile.generated"
         content = generated.read_text() if generated.exists() else ""
@@ -1295,7 +1330,7 @@ class TestPackageCommand:
         output = tmp_path / "Dockerfile"
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             result = runner.invoke(
@@ -1412,7 +1447,7 @@ class TestPackageCommand:
         app, runner = package_cli
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             mock_build.return_value = "my-agent:1.0"
@@ -1435,12 +1470,42 @@ class TestPackageCommand:
         assert mock_build.call_args.kwargs["tag"] == "my-agent:1.0"
         mock_push.assert_not_called()
 
+    def test_fabric_config_routes_only_to_fabric_builder(self, package_cli, tmp_path: Path) -> None:
+        """Fabric configs select the Fabric builder without NAT-only arguments."""
+        app, runner = package_cli
+        agent_config = tmp_path / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+
+        with (
+            patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_nat_build,
+        ):
+            mock_fabric_build.return_value = "fabric-agent:dev"
+            result = runner.invoke(
+                app,
+                [
+                    "package",
+                    "--agent",
+                    str(agent_config),
+                    "--tag",
+                    "fabric-agent:dev",
+                ],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        assert "Image ready: fabric-agent:dev" in result.stdout
+        mock_fabric_build.assert_called_once()
+        mock_nat_build.assert_not_called()
+        assert mock_fabric_build.call_args.args == (agent_config,)
+        assert mock_fabric_build.call_args.kwargs["tag"] == "fabric-agent:dev"
+        assert "nat_version" not in mock_fabric_build.call_args.kwargs
+
     def test_publish_pushes_after_build(self, package_cli, agent_config: Path) -> None:
         """``--publish --registry`` triggers a push after a successful build."""
         app, runner = package_cli
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             mock_build.return_value = "my-agent:1.0"
@@ -1473,7 +1538,7 @@ class TestPackageCommand:
         app, runner = package_cli
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             result = runner.invoke(
@@ -1491,7 +1556,7 @@ class TestPackageCommand:
         app, runner = package_cli
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             result = runner.invoke(
@@ -1537,7 +1602,7 @@ class TestPackageCommand:
         """
         app, runner = package_cli
 
-        with patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build:
+        with patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build:
             no_build_result = runner.invoke(
                 app,
                 ["package", "--agent", str(agent_config), "--format", "whl", "--no-build"],
@@ -1717,7 +1782,7 @@ class TestPackagingSafetyRegressions:
         """
         app, runner = package_cli
 
-        with patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build:
+        with patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build:
             result = runner.invoke(
                 app,
                 [
@@ -1848,13 +1913,13 @@ class TestPackagingSafetyRegressions:
         The cleanup in ``finally`` would otherwise unlink the user's file
         once the build finishes.
         """
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         user_file = agent_config.parent / "Dockerfile.generated"
         user_file.write_text("USER OWNED — DO NOT DELETE\n")
 
         with pytest.raises((SystemExit, ClickExit)):
-            build_agent_image(agent_config, nat_version="1.4.0", agent_author="x")
+            build_nat_agent_image(agent_config, nat_version="1.4.0", agent_author="x")
 
         assert user_file.exists()
         assert "USER OWNED" in user_file.read_text()

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Docker image builder for NAT agents.
+"""Docker image builder for NeMo Platform agents.
 
 Builds a Docker image either from a pre-existing Dockerfile or by rendering
 one on-the-fly via :func:`~nemo_agents_plugin.container.template.render_dockerfile`.
@@ -18,6 +18,11 @@ import re
 from pathlib import Path
 
 import typer
+import yaml
+from nemo_agents_plugin.entities import (
+    NAT_WORKFLOW_CONFIG_FORMAT,
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +92,7 @@ def docker_build(
     return tag
 
 
-def build_agent_image(
+def build_nat_agent_image(
     agent_config: Path,
     pyproject: Path | None = None,
     dockerfile: Path | None = None,
@@ -108,7 +113,7 @@ def build_agent_image(
     platforms: list[str] | None = None,
     push: bool = False,
 ) -> str:
-    """High-level helper: validate, render (if needed), then build.
+    """High-level helper: validate, render (if needed), then build a NAT image.
 
     When *dockerfile* is ``None``, a Dockerfile is rendered via the template
     module and written into a temporary file inside the build context.
@@ -241,6 +246,69 @@ def build_agent_image(
         tmp_dockerfile.unlink(missing_ok=True)
         if ignore_file is not None and not ignore_pre_existed:
             ignore_file.unlink(missing_ok=True)
+
+
+def build_fabric_agent_image(
+    agent_config: Path,
+    pyproject: Path | None = None,
+    dockerfile: Path | None = None,
+    tag: str | None = None,
+    *,
+    base_image_url: str | None = None,
+    base_image_tag: str | None = None,
+    python_version: str | None = None,
+    uv_version: str | None = None,
+    allow_root: bool = False,
+    sandbox_runtime: str | None = None,
+    agent_version: str | None = None,
+    agent_author: str | None = None,
+    template_path: str | None = None,
+    skip_validation: bool = False,
+    generate_ignore: bool = True,
+    platforms: list[str] | None = None,
+    push: bool = False,
+) -> str:
+    """Build a Fabric-backed NeMo agent image.
+
+    This is intentionally separate from ``build_nat_agent_image`` so Fabric
+    packaging can grow without inheriting NAT-specific args such as
+    ``nat_version`` or ``NAT_CONFIG_FILE``.
+    """
+    del (
+        agent_config,
+        pyproject,
+        dockerfile,
+        tag,
+        base_image_url,
+        base_image_tag,
+        python_version,
+        uv_version,
+        allow_root,
+        sandbox_runtime,
+        agent_version,
+        agent_author,
+        template_path,
+        skip_validation,
+        generate_ignore,
+        platforms,
+        push,
+    )
+    raise ValueError("Fabric agent packaging is not implemented yet.")
+
+
+def detect_agent_config_format(agent_config: Path) -> str:
+    try:
+        data = yaml.safe_load(agent_config.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"YAML parse error in agent config {agent_config}: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError("Agent config root must be a YAML mapping.")
+
+    config_format = data.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+    if config_format not in {NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT}:
+        raise ValueError(f"Unsupported agent config format: {config_format!r}")
+    return config_format
 
 
 def _emit_refusal_error(path: Path) -> int:
