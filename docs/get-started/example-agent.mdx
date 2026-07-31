@@ -73,10 +73,8 @@ uv run --directory plugins/nemo-insights --frozen \
   --base "$NMP_BASE_URL"
 ```
 
-The testbed records the run under
-`plugins/nemo-insights/testbed/tmp/tau3-airline-harbor.run.json` and ingests it
-into the `canonical-tau3-airline` workspace. In Studio, open that workspace's
-Experiments area to inspect task results, rewards, and traces.
+In Studio, open the `canonical-tau3-airline` workspace's Experiments area to
+inspect the task results, rewards, and traces.
 
 ## 4. Run the Analyst
 
@@ -92,15 +90,14 @@ uv run --directory plugins/nemo-insights --frozen \
   python -m testbed analyze tau3-airline-harbor --live
 ```
 
-This writes
-`plugins/nemo-insights/testbed/tmp/insights_tau3-airline-harbor.yaml`. In
-Studio, open the `canonical-tau3-airline` workspace's Insights area to review
-the same persisted Insights.
+In Studio, open the `canonical-tau3-airline` workspace's Insights area to
+review the persisted Insights. Select the Insight you want to optimize and copy
+its ID for the next command.
 
 ## 5. Prepare the Tau3 Airline quality dataset
 
 The Experimentalist now improves the same checked-in Tau3 agent. It uses the
-first Insight produced above as its failure lens, generates candidate changes,
+Insight selected above as its failure lens, generates candidate changes,
 and evaluates them on explicit train and validation splits from the same Harbor
 dataset.
 
@@ -128,9 +125,10 @@ plugins/nemo-experimentalist/examples/tau3-nooa-agent/prepare-airline.sh
 Now we're ready to run the experimentalist!
 
 ```bash
+export PLATFORM_INSIGHT_ID=insight-id-from-studio
+
 uv run --frozen nemo experimentalist run \
-  --insight plugins/nemo-insights/testbed/tmp/insights_tau3-airline-harbor.yaml \
-  --insight-id 0 \
+  --insight "$PLATFORM_INSIGHT_ID" \
   --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
   --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \
   --train-dataset plugins/nemo-experimentalist/tmp/tau3-airline-smoke/train \
@@ -139,14 +137,11 @@ uv run --frozen nemo experimentalist run \
   --workspace canonical-tau3-airline \
   --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
   --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-quality.yaml \
-  --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
   --base-url "$NMP_BASE_URL"
 ```
 
-The trace records include the Experimentalist evaluation ID and Tau3 task ID.
-After the run completes, inspect `eval-and-optimize/run.json` for the selected
-winner and compare the `agent-0` and `agent-1` directories to review the code
-change that was evaluated.
+After the run completes, open the workspace's Experiments area in Studio to
+review its evaluations, compare candidates, and inspect the selected winner.
 
 ## Optimize without insights
 
@@ -169,7 +164,6 @@ uv run --frozen nemo experimentalist run \
   --workspace canonical-tau3-airline \
   --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
   --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-quality.yaml \
-  --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist-mode2 \
   --base-url "$NMP_BASE_URL"
 ```
 
