@@ -10,22 +10,18 @@ or Git-backed agent against Harbor-compatible train and validation datasets.
 
 ## Install and develop
 
-From the root of this checkout:
+This plugin lives in the `nemo-platform` monorepo and shares the root `.venv`.
+From the root of the checkout:
 
 ```bash
 uv sync
 export NEMO="$PWD/.venv/bin/nemo"
 ```
 
-For a NeMo Platform source checkout, use the
-[source-Platform installer](docs/e2e/install-experimentalist-plugin.sh), which keeps
-Platform packages editable while installing both plugins' direct runtime
-dependencies:
+Requires `uv >=0.9.14,<0.10.0`.
 
-```bash
-REPO="$PWD" PLAT=/path/to/nemo-platform bash docs/e2e/install-experimentalist-plugin.sh
-export NEMO=/path/to/nemo-platform/.venv/bin/nemo
-```
+**To verify an end-to-end run, follow
+[Get started with an example agent](../../docs/get-started/example-agent.mdx).**
 
 The source dependencies are pinned to tagged or immutable revisions in
 `pyproject.toml`. NVIDIA-labs OO Agents (NOOA) is pinned to a public GitHub
@@ -61,14 +57,29 @@ a baseline agent on Harbor-compatible train and validation datasets, proposes
 candidate mutations, and records its artifacts under the selected experiment
 directory.
 
-Configure the models before running an experiment:
+Models are configured by environment only — there is no `models:` key in the
+`--config` YAML. `nemo experimentalist doctor` reports which of these are unset.
+
+| Variable | Default | Used by |
+|---|---|---|
+| `EXPERIMENTALIST_API_BASE` | `https://inference-api.nvidia.com/v1` | all optimizer agents |
+| `EXPERIMENTALIST_API_KEY` | — (required) | all optimizer agents |
+| `EXPERIMENTALIST_SMART_MODEL_NAME` | `openai/openai/openai/gpt-5.5` | Coder, Analyzer, Proposer, Rationalizer, TraceAnalyzer |
+| `EXPERIMENTALIST_MID_MODEL_NAME` | `openai/gcp/google/gemini-3.5-flash` | trajectory scorer, architecture doc |
+| `EXPERIMENTALIST_FAST_MODEL_NAME` | `openai/openai/openai/gpt-5-mini` | Terminator, goal tree, summarizers |
 
 ```bash
-export EXPERIMENTALIST_API_BASE=https://inference-api.nvidia.com/v1
 export EXPERIMENTALIST_API_KEY=sk-...
-export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5.5
+export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5-mini
+export EXPERIMENTALIST_MID_MODEL_NAME=openai/openai/openai/gpt-5-mini
 export EXPERIMENTALIST_FAST_MODEL_NAME=openai/openai/openai/gpt-5-mini
 ```
+
+When `EXPERIMENTALIST_API_BASE` is the NVIDIA gateway (the default), a set
+`INFERENCE_API_KEY` fills `EXPERIMENTALIST_API_KEY` automatically; a custom base
+never inherits it. The agent under test is separate: it reads `AUT_MODEL_NAME`
+plus `OPENAI_API_KEY` / `OPENAI_BASE_URL`, which are the only variables forwarded
+into the evaluation container.
 
 ### Insight-driven optimization
 
@@ -116,10 +127,14 @@ $NEMO experimentalist run \
   --task-template path/to/task_template
 ```
 
-Pass one or more framework skill directories with `--framework-skills` when
-the agent needs framework-specific modification guidance. The checked-in Tau2
-profile demonstrates profile-owned datasets and task template configuration:
-[`examples/tau2-nemo-oo-agent/optimizer.yaml`](examples/tau2-nemo-oo-agent/optimizer.yaml).
+`--task-template` is only required with `--insight`; a dataset-driven run does
+not need one. Pass one or more framework skill directories with
+`--framework-skills` when the agent needs framework-specific modification
+guidance — `framework-skills/nooa` for the Tau3 example agent.
+
+Step 5 of [the example-agent guide](../../docs/get-started/example-agent.mdx) is
+a complete worked instance of this command against the checked-in Tau3 Airline
+example, including the `.env` contents and dataset preparation.
 
 Each run writes its local artifacts under `--experiment-dir`, or under
 `.nemo-optimizer/experiments/` beside the governing profile by default.

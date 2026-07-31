@@ -701,5 +701,5 @@ def test_missing_env_hint_names_source_and_env_file(tmp_path: Path) -> None:
     base = next(r for r in results if r.name == "EXPERIMENTALIST_API_BASE")
     assert "inference-api.nvidia.com" in (base.hint or "")  # names the real endpoint
     assert str(tmp_path / ".env") in (base.hint or "")  # says exactly where to save it
-    assert ".env.example" in (base.hint or "")
+    assert "example-agent.mdx" in (base.hint or "")  # points at a doc that exists
     assert "export EXPERIMENTALIST_API_BASE" in (base.hint or "")
