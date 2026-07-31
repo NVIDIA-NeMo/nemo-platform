@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Self, Sequence
 
+from docker.errors import DockerException
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.config import validate_docker_available
 from nmp.core.jobs.app.profiles import ExecutionProfileT
@@ -18,8 +19,14 @@ from nmp.core.jobs.controllers.backends.kubernetes import (
 )
 from nmp.core.jobs.controllers.backends.subprocess import SubprocessJobBackend
 from nmp.core.jobs.controllers.backends.test import TestE2ECPUJobBackend, TestE2EGPUJobBackend
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import Timeout as RequestsTimeout
 
 logger = logging.getLogger(__name__)
+
+# Soft-skip only daemon/connection failures after validate_docker_available() was True.
+# ValidationError and other programming/config errors must still fail startup.
+_DOCKER_BACKEND_INIT_SOFT_SKIP_ERRORS = (DockerException, RequestsConnectionError, RequestsTimeout, OSError)
 
 
 @dataclass(frozen=True)
@@ -140,7 +147,7 @@ class BackendRegistry:
             # config into the backend's expected format and validate it
             try:
                 registry[registry_key] = backend(nmp_sdk, executor.config, executor.profile)
-            except Exception as exc:
+            except _DOCKER_BACKEND_INIT_SOFT_SKIP_ERRORS as exc:
                 if executor.backend != "docker":
                     raise
                 logger.warning(

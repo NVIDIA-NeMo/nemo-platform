@@ -763,9 +763,10 @@ class TestMaybeStartServices:
     def test_early_exit_prints_docker_hint_when_daemon_unavailable(self, maybe_start_preflight_mocks, capsys):
         dead = MagicMock(pid=999)
         dead.poll.return_value = 3
+        wait = MagicMock(return_value=False)
         with (
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
-            patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
+            patch(f"{SETUP_MOD}._wait_for_platform", wait),
             patch(f"{SETUP_MOD}.validate_docker_available", return_value=False),
             patch(f"{SETUP_MOD}.log_path_for", return_value=MagicMock(__str__=lambda self: "/tmp/services.log")),
             patch(f"{SETUP_MOD}._pause"),
@@ -773,9 +774,48 @@ class TestMaybeStartServices:
         ):
             maybe_start_preflight_mocks.return_value = dead
             _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        wait.assert_called_once()
+        assert wait.call_args.kwargs.get("proc") is dead
         captured = capsys.readouterr()
         assert "exited early (exit code 3)" in captured.err
         assert "Check /tmp/services.log for details." in captured.err
+        assert "Docker does not appear to be available" in captured.err
+
+    def test_readiness_timeout_does_not_hint_docker_without_evidence(self, maybe_start_preflight_mocks, capsys, tmp_path):
+        alive = MagicMock(pid=999)
+        alive.poll.return_value = None
+        log = tmp_path / "services.log"
+        log.write_text("starting auth\n", encoding="utf-8")
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
+            patch(f"{SETUP_MOD}.validate_docker_available", return_value=False),
+            patch(f"{SETUP_MOD}.log_path_for", return_value=log),
+            patch(f"{SETUP_MOD}._pause"),
+            pytest.raises(ClickExit),
+        ):
+            maybe_start_preflight_mocks.return_value = alive
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        captured = capsys.readouterr()
+        assert "did not become ready" in captured.err
+        assert "Docker does not appear to be available" not in captured.err
+
+    def test_docker_hint_from_services_log_markers(self, maybe_start_preflight_mocks, capsys, tmp_path):
+        alive = MagicMock(pid=999)
+        alive.poll.return_value = None
+        log = tmp_path / "services.log"
+        log.write_text("Skipping executor 'local-docker': Docker daemon is unavailable\n", encoding="utf-8")
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
+            patch(f"{SETUP_MOD}.validate_docker_available", return_value=True),
+            patch(f"{SETUP_MOD}.log_path_for", return_value=log),
+            patch(f"{SETUP_MOD}._pause"),
+            pytest.raises(ClickExit),
+        ):
+            maybe_start_preflight_mocks.return_value = alive
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        captured = capsys.readouterr()
         assert "Docker does not appear to be available" in captured.err
 
 

@@ -465,6 +465,111 @@ def test_backend_registry_registered_profile_keys_match_constructed_backends(moc
     assert registry.registered_profile_keys() == frozenset({("subprocess", "default")})
 
 
+def test_backend_registry_soft_skips_docker_init_connection_errors(mock_nmp_client, caplog):
+    from docker.errors import DockerException
+
+    class DummyBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            self.nmp_sdk = nmp_sdk
+
+    class FailingDockerBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            raise DockerException("Error while fetching server API version")
+
+    profiles = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    caplog.set_level(logging.WARNING)
+    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=True):
+        registry = BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=profiles,
+            backends={
+                BackendKey("cpu", "docker"): FailingDockerBackend,
+                BackendKey("subprocess", "subprocess"): DummyBackend,
+            },
+        )
+
+    assert registry.registered_profile_keys() == frozenset({("subprocess", "default")})
+    assert "Docker backend initialization failed" in caplog.text
+
+
+def test_backend_registry_propagates_non_connection_errors_for_docker(mock_nmp_client):
+    class BrokenConfigDockerBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            raise ValueError("bad executor config")
+
+    profiles = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+    ]
+
+    with (
+        patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=True),
+        pytest.raises(ValueError, match="bad executor config"),
+    ):
+        BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=profiles,
+            backends={BackendKey("cpu", "docker"): BrokenConfigDockerBackend},
+        )
+
+
+def test_sync_advertised_profiles_to_registry_prunes_skipped_docker(mock_nmp_client, caplog):
+    from nmp.core.jobs.controllers import main as jobs_main
+
+    class DummyBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            self.nmp_sdk = nmp_sdk
+
+    advertised = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
+        registry = BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=advertised,
+            backends={
+                BackendKey("cpu", "docker"): DummyBackend,
+                BackendKey("subprocess", "subprocess"): DummyBackend,
+            },
+        )
+
+    with patch.object(jobs_main, "profiles", advertised):
+        caplog.set_level(logging.WARNING)
+        jobs_main._sync_advertised_profiles_to_registry(registry)
+        assert [(p.provider, p.profile, p.backend) for p in advertised] == [
+            ("subprocess", "default", "subprocess"),
+        ]
+        assert "Removed 1 execution profile" in caplog.text
+
+
 def test_subprocess_execution_profile_defaults_provider_to_subprocess():
     profile = SubprocessJobExecutionProfile(profile="default")
 

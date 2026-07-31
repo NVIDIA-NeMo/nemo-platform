@@ -836,6 +836,39 @@ def _wait_for_platform(
     return False
 
 
+_DOCKER_FAILURE_LOG_MARKERS = (
+    "Docker daemon is unavailable",
+    "Docker is unavailable",
+    "docker.from_env",
+    "Error while fetching server API version",
+)
+
+
+def _services_log_suggests_docker_failure(log_path: Path | None) -> bool:
+    """Return True when services.log contains known Docker soft-skip / daemon errors."""
+    if log_path is None or not log_path.is_file():
+        return False
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(marker in text for marker in _DOCKER_FAILURE_LOG_MARKERS)
+
+
+def _should_hint_docker_unavailable(*, exit_code: int | None, log_path: Path | None) -> bool:
+    """Decide whether to print a Docker-missing hint after a failed startup wait.
+
+    Prefer log evidence. Otherwise only hint when the process exited early and
+    a Docker ping confirms the daemon is unavailable — not on a pure readiness
+    timeout while the process is still alive.
+    """
+    if _services_log_suggests_docker_failure(log_path):
+        return True
+    if exit_code is not None and not validate_docker_available():
+        return True
+    return False
+
+
 def _kill_existing_services(base_url: str) -> None:
     """Find and kill any running ``nemo services run`` processes.
 
@@ -953,7 +986,7 @@ def _maybe_start_services(
             proc.terminate()
             console.print(f"{CROSS} Platform did not become ready within {timeout}s")
         console.print(f"  Check {log} for details.")
-        if not validate_docker_available():
+        if _should_hint_docker_unavailable(exit_code=exit_code, log_path=log):
             console.print(
                 "  Docker does not appear to be available. "
                 "Install and start Docker, or configure non-Docker executors, then retry."
