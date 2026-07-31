@@ -17,6 +17,9 @@ dependencies = [
 [project.entry-points."nemo.cli"]
 eval-author = "nemo_eval_author_plugin.cli:EvalAuthorCLI"
 
+[project.entry-points."nemo.cli.agents"]
+eval-author = "nemo_eval_author_plugin.cli:EvalAuthorCLI"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

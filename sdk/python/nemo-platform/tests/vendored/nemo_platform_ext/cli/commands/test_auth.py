@@ -1,16 +1,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 from nemo_platform.auth.helpers import decode_jwt_claims, generate_unsigned_jwt
 from nemo_platform.cli.app import app
+from nemo_platform_plugin.auth.access_keys.issuer import AccessKeyFeatureDisabledError
+from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateRequest, AccessKeyCreateResponse
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from typer.testing import CliRunner
 
@@ -60,6 +64,18 @@ def _discover_no_oidc(url: str, timeout: float = 10.0) -> SimpleNamespace:
 
 def _decode_jwt_noop(token: str) -> dict:
     return {}
+
+
+def _created_access_key(name: str | None = None) -> AccessKeyCreateResponse:
+    return AccessKeyCreateResponse(
+        jti="ak_example",
+        name=name,
+        token="signed.jwt.token",
+        token_type="Bearer",
+        principal="alice@example.com",
+        created_at=datetime(2026, 7, 28, 12, 0, tzinfo=UTC),
+        expires_at=None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +133,52 @@ def oauth_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         yaml.safe_dump(config_data, f)
     monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
     return config_path
+
+
+# ---------------------------------------------------------------------------
+# token
+# ---------------------------------------------------------------------------
+
+
+def test_auth_token_prints_raw_token(oauth_config_file: Path) -> None:
+    result = runner.invoke(app, ["--context", "foo", "auth", "token"])
+
+    assert_exit_code(result, 0)
+    assert result.output == "foo-token\n"
+
+
+def test_auth_token_decode_prints_claims_json(oauth_config_file: Path) -> None:
+    token = generate_unsigned_jwt(
+        principal_id="alice@example.com",
+        email="alice@example.com",
+        groups=["team-ml"],
+        scopes=["openid", "email"],
+        extra_claims={"iss": "https://idp.example.com"},
+    )
+    with open(oauth_config_file) as f:
+        config_data = yaml.safe_load(f)
+    for user in config_data["users"]:
+        if user["name"] == "foo":
+            user["token"] = token
+    with open(oauth_config_file, "w") as f:
+        yaml.safe_dump(config_data, f)
+
+    result = runner.invoke(app, ["--context", "foo", "auth", "token", "--decode"])
+
+    assert_exit_code(result, 0)
+    claims = json.loads(result.output)
+    assert claims["sub"] == "alice@example.com"
+    assert claims["email"] == "alice@example.com"
+    assert claims["groups"] == ["team-ml"]
+    assert claims["scope"] == "openid email"
+    assert claims["iss"] == "https://idp.example.com"
+
+
+def test_auth_token_decode_rejects_malformed_token(oauth_config_file: Path) -> None:
+    result = runner.invoke(app, ["--context", "foo", "auth", "token", "--decode"])
+
+    assert_exit_code(result, 1)
+    assert "Current access token is not a decodable JWT" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +344,136 @@ def test_auth_refresh_regenerates_unsigned_token(oauth_config_file: Path) -> Non
     assert refreshed_claims["exp"] - refreshed_claims["iat"] == 900
     assert refreshed_claims["iat"] > 1700000000
     assert refreshed_user.get("refresh_token") is None
+
+
+def test_auth_access_keys_create_prints_token(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("NMP_BASE_URL", "https://cluster.example.com")
+
+    fake_platform_client = MagicMock()
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.create_access_key.return_value.data.return_value = _created_access_key()
+
+    monkeypatch.setattr("nemo_platform.cli.core.context.CLIContext.get_client", lambda self: fake_platform_client)
+    monkeypatch.setattr(
+        "nemo_platform.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "create"])
+
+    assert_exit_code(result, 0)
+    assert result.output.strip() == "signed.jwt.token"
+    body = fake_access_keys_client.create_access_key.call_args.kwargs["body"]
+    assert body == AccessKeyCreateRequest()
+    assert "expires_in_seconds" not in body.model_fields_set
+
+
+def test_auth_access_keys_create_sends_optional_name_and_expiration(monkeypatch: pytest.MonkeyPatch):
+    fake_platform_client = MagicMock()
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.create_access_key.return_value.data.return_value = _created_access_key("short-lived")
+    monkeypatch.setattr("nemo_platform.cli.core.context.CLIContext.get_client", lambda self: fake_platform_client)
+    monkeypatch.setattr(
+        "nemo_platform.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "create", "--name", "short-lived", "--expires-in", "3600"])
+
+    assert_exit_code(result, 0)
+    fake_access_keys_client.create_access_key.assert_called_once_with(
+        body=AccessKeyCreateRequest(name="short-lived", expires_in_seconds=3600),
+    )
+
+
+def test_auth_access_keys_create_sends_explicit_null_expiration(monkeypatch: pytest.MonkeyPatch):
+    fake_platform_client = MagicMock()
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.create_access_key.return_value.data.return_value = _created_access_key("long-lived")
+    monkeypatch.setattr("nemo_platform.cli.core.context.CLIContext.get_client", lambda self: fake_platform_client)
+    monkeypatch.setattr(
+        "nemo_platform.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "create", "--name", "long-lived", "--expires-in", "none"])
+
+    assert_exit_code(result, 0)
+    body = fake_access_keys_client.create_access_key.call_args.kwargs["body"]
+    assert body == AccessKeyCreateRequest(name="long-lived", expires_in_seconds=None)
+    assert "expires_in_seconds" in body.model_fields_set
+
+
+def test_auth_access_keys_create_rejects_invalid_expiration(monkeypatch: pytest.MonkeyPatch):
+    fake_platform_client = MagicMock()
+    fake_access_keys_client = MagicMock()
+    monkeypatch.setattr("nemo_platform.cli.core.context.CLIContext.get_client", lambda self: fake_platform_client)
+    monkeypatch.setattr(
+        "nemo_platform.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "create", "--expires-in", "zero"])
+
+    assert_exit_code(result, 1)
+    assert "--expires-in must be a positive integer number of seconds" in result.output
+    assert "'none'." in result.output
+    fake_access_keys_client.create_access_key.assert_not_called()
+
+
+def test_auth_access_keys_create_reports_disabled_feature(monkeypatch: pytest.MonkeyPatch):
+    fake_platform_client = MagicMock()
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.create_access_key.side_effect = AccessKeyFeatureDisabledError(
+        "Scoped Access Keys are not enabled"
+    )
+    monkeypatch.setattr("nemo_platform.cli.core.context.CLIContext.get_client", lambda self: fake_platform_client)
+    monkeypatch.setattr(
+        "nemo_platform.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "create"])
+
+    assert result.exit_code == 1
+    assert "Scoped Access Keys are not enabled" in result.output
+
+
+def test_auth_access_keys_help_hides_unimplemented_lifecycle_commands() -> None:
+    result = runner.invoke(app, ["auth", "access-keys", "--help"])
+
+    assert_exit_code(result, 0)
+    assert "create" in result.output
+    assert "list" not in result.output
+    assert "revoke" not in result.output
+
+    create_help = runner.invoke(app, ["auth", "access-keys", "create", "--help"])
+    assert_exit_code(create_help, 0)
+    assert "Use 'none' to request no expiration" in " ".join(create_help.output.split())
+
+    list_result = runner.invoke(app, ["auth", "access-keys", "list"])
+    revoke_result = runner.invoke(app, ["auth", "access-keys", "revoke", "ak_example"])
+
+    assert list_result.exit_code != 0
+    assert revoke_result.exit_code != 0
+    assert "No such command" in list_result.output
+    assert "No such command" in revoke_result.output
+
+
+def test_auth_tokens_group_is_not_exposed() -> None:
+    result = runner.invoke(app, ["auth", "tokens", "create"])
+
+    assert result.exit_code != 0
+    assert "No such command" in result.output
+    assert "tokens" in result.output
+
+
+def test_top_level_access_keys_group_is_not_exposed() -> None:
+    result = runner.invoke(app, ["access-keys", "--help"])
+
+    assert result.exit_code != 0
+    assert "No such command" in result.output
+    assert "access-keys" in result.output
 
 
 # ---------------------------------------------------------------------------
