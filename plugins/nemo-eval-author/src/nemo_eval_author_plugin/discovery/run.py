@@ -32,6 +32,7 @@ from nemo_eval_author_plugin.discovery.validate import ValidationOutcome
 from nemo_experimentalist_plugin.client import make_client
 from nemo_insights_plugin.contracts.profile import discover_profile
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform.config.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +41,16 @@ _SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
 
 @dataclass
 class DiscoverOptions:
-    """Everything the CLI passes through, resolved."""
+    """Everything the CLI passes through, resolved.
+
+    Deliberately holds nothing about where the platform is. Which cluster, which
+    credentials and which workspace are settled by the active ``nemo`` context, and a repo's
+    Harbor environment backend is settled by its own config or Harbor's default. Accepting
+    flags for those would let one invocation contradict the config every other command obeys.
+    """
 
     repo_root: Path
     agent: str | None = None
-    workspace: str = "default"
-    base_url: str | None = None
-    env_backend: str | None = None
     fix: bool = False
     refresh: bool = False
     dry_run: bool = False
@@ -80,23 +84,36 @@ async def discover(options: DiscoverOptions) -> DiscoverResult:
     """Run discovery end to end."""
     repo_root = options.repo_root.resolve()
     agent = options.agent or _infer_agent_name(repo_root)
-    client = make_client(options.base_url)
+    workspace = _active_workspace()
+    # No base_url: the active context supplies the cluster and the credentials for it.
+    client = make_client(None)
     try:
-        return await _discover(client, options, repo_root=repo_root, agent=agent)
+        return await _discover(client, options, repo_root=repo_root, agent=agent, workspace=workspace)
     finally:
         await client.close()
 
 
+def _active_workspace() -> str:
+    """The workspace the platform context resolves to.
+
+    Read rather than accepted as a flag, so the artifact lands where every other ``nemo``
+    command in this context looks. The report records the answer, since a later agent needs
+    to name a workspace to fetch from. ``NMP_WORKSPACE`` still overrides, because that is the
+    platform's own escape hatch rather than one of ours.
+    """
+    return Config.load().resolve().workspace
+
+
 async def _discover(
-    client: AsyncNeMoPlatform, options: DiscoverOptions, *, repo_root: Path, agent: str
+    client: AsyncNeMoPlatform, options: DiscoverOptions, *, repo_root: Path, agent: str, workspace: str
 ) -> DiscoverResult:
-    prior = await memory.load_previous(client, agent=agent, workspace=options.workspace)
+    prior = await memory.load_previous(client, agent=agent, workspace=workspace)
 
     reuse = _reusable(prior, repo_root, refresh=options.refresh)
     if reuse is not None:
-        return await _reuse(client, options, agent=agent, prior=reuse)
+        return await _reuse(client, options, agent=agent, workspace=workspace, prior=reuse)
 
-    candidate, findings = sources.find_candidate(repo_root, env_backend=options.env_backend)
+    candidate, findings = sources.find_candidate(repo_root)
     outcome = ValidationOutcome()
     if candidate is not None:
         outcome = await validate.run_ladder(candidate, repo_root)
@@ -105,7 +122,7 @@ async def _discover(
             findings.extend(scout_findings)
 
     findings.extend(outcome.findings)
-    findings.extend(await _probe_repo(client, repo_root, agent=agent, workspace=options.workspace))
+    findings.extend(await _probe_repo(client, repo_root, agent=agent, workspace=workspace))
 
     # When the repo maintains the config Harbor accepted, that file is what a later run will
     # pass to -c, so it is the thing worth round-tripping and there is nothing of ours to
@@ -121,7 +138,7 @@ async def _discover(
 
     record = report.build_report(
         agent=agent,
-        workspace=options.workspace,
+        workspace=workspace,
         repo_root=repo_root,
         candidate=candidate,
         findings=findings,
@@ -140,7 +157,7 @@ async def _discover(
     persisted, memory_findings = await memory.persist(
         client,
         agent=agent,
-        workspace=options.workspace,
+        workspace=workspace,
         markdown=markdown,
         job_config=publishable,
     )
@@ -178,7 +195,7 @@ def _reusable(prior: memory.PriorRecord | None, repo_root: Path, *, refresh: boo
 
 
 async def _reuse(
-    client: AsyncNeMoPlatform, options: DiscoverOptions, *, agent: str, prior: memory.PriorRecord
+    client: AsyncNeMoPlatform, options: DiscoverOptions, *, agent: str, workspace: str, prior: memory.PriorRecord
 ) -> DiscoverResult:
     """Restamp and reupload a report whose inputs have not moved."""
     now = datetime.now(UTC)
@@ -190,13 +207,14 @@ async def _reuse(
             replace(options, refresh=True),
             repo_root=options.repo_root.resolve(),
             agent=agent,
+            workspace=workspace,
         )
 
     front = memory.parse_front_matter(restamped) or {}
     record = DiscoveryReport.model_validate(
         {
             "agent": agent,
-            "workspace": options.workspace,
+            "workspace": workspace,
             "repo_root": front.get("repo_root", str(options.repo_root)),
             "harbor_version": front.get("harbor_version", report.harbor_version()),
             "config_source": front.get("config_source"),
@@ -211,7 +229,7 @@ async def _reuse(
     persisted, memory_findings = await memory.persist(
         client,
         agent=agent,
-        workspace=options.workspace,
+        workspace=workspace,
         markdown=restamped,
         # The stored config is already correct and already uploaded; rewriting it would
         # churn the fileset to produce identical bytes.

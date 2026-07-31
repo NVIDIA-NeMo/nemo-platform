@@ -111,15 +111,6 @@ class EvalAuthorCLI(NemoCLI):
                 str | None,
                 typer.Option("--agent", help="Agent name. Defaults to optimizer.yaml, else the directory name."),
             ] = None,
-            workspace: Annotated[str, typer.Option("--workspace", help="Platform workspace.")] = "default",
-            base_url: Annotated[
-                str | None,
-                typer.Option("--base-url", help="Platform base URL. Defaults to the active context."),
-            ] = None,
-            env_backend: Annotated[
-                str | None,
-                typer.Option("--env-backend", help="Harbor environment type to assume when the repo names none."),
-            ] = None,
             fix: Annotated[
                 bool,
                 typer.Option("--fix/--no-fix", help="Let an LLM scout propose fixes for a config that failed."),
@@ -139,9 +130,6 @@ class EvalAuthorCLI(NemoCLI):
                     discovery.DiscoverOptions(
                         repo_root=repo,
                         agent=agent,
-                        workspace=workspace,
-                        base_url=base_url,
-                        env_backend=env_backend,
                         fix=fix,
                         refresh=refresh,
                         dry_run=dry_run,

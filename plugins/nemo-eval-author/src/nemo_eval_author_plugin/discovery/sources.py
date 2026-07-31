@@ -76,7 +76,7 @@ class _DiscoveryProfile(BaseModel):
     profile_dir: Path
 
 
-def find_candidate(repo_root: Path, *, env_backend: str | None = None) -> tuple[CandidateConfig | None, list[Finding]]:
+def find_candidate(repo_root: Path) -> tuple[CandidateConfig | None, list[Finding]]:
     """Return the highest-priority candidate config found in *repo_root*.
 
     Every source is attempted even once one has won, because "we also found a prior job
@@ -111,9 +111,6 @@ def find_candidate(repo_root: Path, *, env_backend: str | None = None) -> tuple[
         return None, findings
 
     winner = min(candidates, key=lambda item: item.source.rank)
-    if env_backend is not None:
-        _apply_env_backend(winner, env_backend)
-
     passed_over = [item.source.kind for item in candidates if item is not winner]
     findings.append(
         Finding(
@@ -126,25 +123,6 @@ def find_candidate(repo_root: Path, *, env_backend: str | None = None) -> tuple[
         )
     )
     return winner, findings
-
-
-def _apply_env_backend(candidate: CandidateConfig, env_backend: str) -> None:
-    """Set ``environment.type`` only when the source did not declare one.
-
-    A user who wrote ``type: daytona`` into their config meant it, and a CLI default
-    should not quietly overwrite a declaration on its way into the persisted artifact.
-
-    Filling the gap counts as adjusting the payload, because it now says something the
-    source file does not: a reader pointed at that file would run a different backend.
-    """
-    environment = candidate.data.get("environment")
-    if not isinstance(environment, dict):
-        candidate.data["environment"] = {"type": env_backend}
-    elif environment.get("type") is None:
-        environment["type"] = env_backend
-    else:
-        return
-    candidate.source.adjusted = True
 
 
 def _from_config_file(repo_root: Path) -> tuple[CandidateConfig | None, list[Finding]]:

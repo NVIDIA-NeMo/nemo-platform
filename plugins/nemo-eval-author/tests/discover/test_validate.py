@@ -306,7 +306,7 @@ async def test_the_full_pipeline_agrees_with_the_source_it_chose(tmp_path):
     write_dataset(tmp_path / "evals" / "validation")
     write_wrapper(tmp_path)
 
-    candidate, _ = sources.find_candidate(tmp_path, env_backend="docker")
+    candidate, _ = sources.find_candidate(tmp_path)
     assert candidate is not None
     outcome = await validate.run_ladder(candidate, tmp_path)
 

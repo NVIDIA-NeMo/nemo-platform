@@ -67,8 +67,10 @@ async def test_a_proposal_harbor_accepts_is_adopted_and_labelled(tmp_path):
 
     assert candidate.data["datasets"] == [{"path": str(good)}]
     assert revalidated.runnable
-    # The config's provenance has to admit a model touched it.
+    # The config's provenance has to admit a model touched it, which is also what stops the
+    # artifact from telling a later run to use the repo's own file.
     assert "adjusted by the discovery scout" in candidate.source.detail
+    assert candidate.source.adjusted is True
     assert findings[0].status == "pass"
     assert findings[0].provenance == "inference"
 

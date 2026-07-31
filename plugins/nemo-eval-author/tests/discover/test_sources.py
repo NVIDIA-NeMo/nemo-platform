@@ -8,8 +8,6 @@ offering both a config its author wrote and a layout we could guess at must reso
 former, and the report must say which it used.
 """
 
-import json
-
 import yaml
 from harbor_fixtures import write_dataset, write_job_dir, write_task, write_wrapper
 from nemo_eval_author_plugin.discovery import sources
@@ -123,51 +121,33 @@ def test_missing_wrapper_falls_back_to_the_oracle_and_says_what_that_means(tmp_p
     assert entry.hint is not None and "evaluates no agent" in entry.hint
 
 
-def test_env_backend_fills_a_gap_but_never_overrides_a_declaration(tmp_path):
+def test_a_config_file_is_read_as_written_and_stays_owned_by_the_repo(tmp_path):
+    """Nothing is injected into a config someone maintains, so the artifact can point at it.
+
+    The environment backend is the case that tempts a default: assembly leaves it alone and
+    lets Harbor apply its own, rather than writing a value into a payload the repo's file
+    does not contain.
+    """
     write_dataset(tmp_path / "evals" / "validation")
-
-    filled, _ = sources.find_candidate(tmp_path, env_backend="docker")
-    assert filled is not None
-    assert filled.data["environment"] == {"type": "docker"}
-
     (tmp_path / "configs").mkdir()
     declared = {**_job_config("evals/validation"), "environment": {"type": "daytona"}}
-    (tmp_path / "configs" / "eval.json").write_text(json.dumps(declared))
-
-    respected, _ = sources.find_candidate(tmp_path, env_backend="docker")
-    assert respected is not None
-    assert respected.data["environment"]["type"] == "daytona"
-
-
-def test_a_config_file_is_only_owned_by_the_repo_while_we_leave_it_alone(tmp_path):
-    """Ownership decides whether the artifact can point at the repo's file instead of a copy."""
-    write_dataset(tmp_path / "evals" / "validation")
-    (tmp_path / "configs").mkdir()
-    (tmp_path / "configs" / "eval.yaml").write_text(yaml.safe_dump(_job_config("evals/validation")))
-
-    untouched, _ = sources.find_candidate(tmp_path)
-    assert untouched is not None
-    assert untouched.source.owns_file is True
-
-    # Filling in a backend the file never named makes our payload the only runnable one.
-    injected, _ = sources.find_candidate(tmp_path, env_backend="docker")
-    assert injected is not None
-    assert injected.source.adjusted is True
-    assert injected.source.owns_file is False
-
-
-def test_a_declared_backend_leaves_the_config_owned_by_the_repo(tmp_path):
-    """Nothing changed, so nothing stops a run from using the file that is already there."""
-    write_dataset(tmp_path / "evals" / "validation")
-    (tmp_path / "configs").mkdir()
-    declared = {**_job_config("evals/validation"), "environment": {"type": "docker"}}
     (tmp_path / "configs" / "eval.yaml").write_text(yaml.safe_dump(declared))
 
-    candidate, _ = sources.find_candidate(tmp_path, env_backend="docker")
+    candidate, _ = sources.find_candidate(tmp_path)
 
     assert candidate is not None
+    assert candidate.data["environment"] == {"type": "daytona"}
     assert candidate.source.adjusted is False
     assert candidate.source.owns_file is True
+
+
+def test_an_undeclared_backend_is_left_for_harbor_to_default(tmp_path):
+    write_dataset(tmp_path / "evals" / "validation")
+
+    candidate, _ = sources.find_candidate(tmp_path)
+
+    assert candidate is not None
+    assert "environment" not in candidate.data
 
 
 def test_an_inferred_source_never_claims_a_file_it_could_be_run_from(tmp_path):

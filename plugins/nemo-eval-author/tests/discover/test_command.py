@@ -27,7 +27,7 @@ from harbor_fixtures import (
     write_wrapper,
 )
 from nemo_eval_author_plugin import cli
-from nemo_eval_author_plugin.discovery import memory
+from nemo_eval_author_plugin.discovery import memory, validate
 from nemo_eval_author_plugin.discovery import run as discovery
 from typer.testing import CliRunner
 
@@ -45,6 +45,16 @@ def client(monkeypatch) -> StubClient:
     stub = StubClient()
     monkeypatch.setattr(discovery, "make_client", lambda base_url: stub)
     return stub
+
+
+@pytest.fixture(autouse=True)
+def workspace(monkeypatch):
+    """Pin the workspace, which the command reads from the platform context rather than a flag.
+
+    Without this, these assertions would depend on whichever context the developer running
+    them happens to have selected.
+    """
+    monkeypatch.setenv("NMP_WORKSPACE", "default")
 
 
 @pytest.fixture
@@ -97,12 +107,23 @@ def test_a_repo_that_maintains_its_own_config_keeps_it_and_records_only_the_repo
     assert "Withheld" not in result.output, "nothing was withheld; there was nothing of ours to publish"
 
 
-def test_an_env_backend_that_the_config_omits_makes_discovery_publish_its_own(app, client, tmp_path):
-    """The payload now names a backend the repo's file does not, so that file is not what to run."""
-    write_dataset(tmp_path / "evals" / "validation")
-    write_job_config(tmp_path / "configs" / "eval.yaml", dataset="evals/validation")
+def test_a_config_the_scout_adjusted_is_published_instead_of_the_repo_file(app, client, monkeypatch, tmp_path):
+    """Once a payload diverges from the file it came from, that file is no longer what to run.
 
-    result = _invoke_named(app, tmp_path, "--env-backend", "docker")
+    Stands in for the scout so the ownership branch is exercised without a model: the repo's
+    config names a dataset that is not there, and the repair points it at the one that is.
+    """
+    write_dataset(tmp_path / "evals" / "validation")
+    write_job_config(tmp_path / "configs" / "eval.yaml", dataset="evals/missing")
+
+    async def _repair(candidate, outcome, repo_root):
+        candidate.data["datasets"] = [{"path": "evals/validation"}]
+        candidate.source.adjusted = True
+        return candidate, await validate.run_ladder(candidate, repo_root), []
+
+    monkeypatch.setattr(discovery, "_scout", _repair)
+
+    result = runner.invoke(app, ["discover", "--repo", str(tmp_path), "--agent", AGENT, "--fix"])
 
     assert result.exit_code == 0, result.output
     assert "harbor job start -c harbor-job.yaml" in result.output
