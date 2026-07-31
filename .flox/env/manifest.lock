@@ -1471,25 +1471,25 @@
       "include": {
         "environments": [
           {
-            "dir": "flox-environments/common"
+            "dir": "tools/common"
           },
           {
-            "dir": "flox-environments/helm"
+            "dir": "tools/helm"
           },
           {
-            "dir": "flox-environments/actionlint"
+            "dir": "tools/actionlint"
           },
           {
-            "dir": "flox-environments/python"
+            "dir": "tools/python"
           },
           {
-            "dir": "flox-environments/web"
+            "dir": "tools/web"
           },
           {
-            "dir": "flox-environments/osv-scanner"
+            "dir": "tools/osv-scanner"
           },
           {
-            "dir": "flox-environments/open-policy-agent"
+            "dir": "tools/open-policy-agent"
           }
         ]
       }
@@ -1532,7 +1532,7 @@
         },
         "name": "common",
         "descriptor": {
-          "dir": "flox-environments/common"
+          "dir": "tools/common"
         }
       },
       {
@@ -1565,7 +1565,7 @@
         },
         "name": "helm",
         "descriptor": {
-          "dir": "flox-environments/helm"
+          "dir": "tools/helm"
         }
       },
       {
@@ -1587,7 +1587,7 @@
         },
         "name": "actionlint",
         "descriptor": {
-          "dir": "flox-environments/actionlint"
+          "dir": "tools/actionlint"
         }
       },
       {
@@ -1619,7 +1619,7 @@
         },
         "name": "nemo-platform-python",
         "descriptor": {
-          "dir": "flox-environments/python"
+          "dir": "tools/python"
         }
       },
       {
@@ -1648,7 +1648,7 @@
         },
         "name": "nemo-platform-nodejs",
         "descriptor": {
-          "dir": "flox-environments/web"
+          "dir": "tools/web"
         }
       },
       {
@@ -1665,7 +1665,7 @@
         },
         "name": "osv-scanner",
         "descriptor": {
-          "dir": "flox-environments/osv-scanner"
+          "dir": "tools/osv-scanner"
         }
       },
       {
@@ -1682,7 +1682,7 @@
         },
         "name": "open-policy-agent",
         "descriptor": {
-          "dir": "flox-environments/open-policy-agent"
+          "dir": "tools/open-policy-agent"
         }
       }
     ],

@@ -5,7 +5,7 @@
 set -euo pipefail
 
 _python_ver="$(yq '.tool.uv.required-version' pyproject.toml)"
-_flox_ver="$(yq '.install.uv.version' flox-environments/python/.flox/env/manifest.toml)"
+_flox_ver="$(yq '.install.uv.version' tools/python/.flox/env/manifest.toml)"
 
 if [[ "${_python_ver}" != "${_flox_ver}" ]]; then
   printf "uv version constraints differ:\n\n"

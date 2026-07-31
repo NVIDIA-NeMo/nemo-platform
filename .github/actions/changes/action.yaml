@@ -90,9 +90,9 @@ runs:
             - 'uv.lock'
             - '.pre-commit-config.yaml'
             - '.flox/**'
-            - 'flox-environments/common/**'
-            - 'flox-environments/osv-scanner/**'
-            - 'flox-environments/python/**'
+            - 'tools/common/**'
+            - 'tools/osv-scanner/**'
+            - 'tools/python/**'
           fabric:
             - 'packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk/agent_eval/runtimes/fabric/**'
             - 'packages/nemo_evaluator_sdk/tests/agent_eval/test_fabric_*.py'
@@ -109,7 +109,7 @@ runs:
           web-studio:
             - 'web/**'
             - '.nvmrc'
-            - 'flox-environments/web/**'
+            - 'tools/web/**'
           docker:
             - 'docker-bake.hcl'
             - 'docker/**'
@@ -120,7 +120,7 @@ runs:
           helm:
             - 'k8s/**'
             - 'tools/lint/lint-helm.sh'
-            - 'flox-environments/helm/**'
+            - 'tools/helm/**'
             - '.github/workflows/ci.yaml'
             - '.github/actions/changes/action.yaml'
             - '.pre-commit-config.yaml'

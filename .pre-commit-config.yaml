@@ -100,7 +100,7 @@ repos:
         name: Check uv version constraints
         entry: ./tools/lint/check-uv-version.sh
         language: system
-        files: '^(pyproject\.toml|flox-environments/python/\.flox/env/manifest\.toml)$'
+        files: '^(pyproject\.toml|tools/python/\.flox/env/manifest\.toml)$'
         pass_filenames: false
       - id: copyright-fix
         name: Fix copyright headers
@@ -163,6 +163,6 @@ repos:
           bash -c 'set -e
           flox include upgrade 2>/dev/null'
         language: system
-        files: '(^\.flox/env/manifest\.toml$|^flox-environments/[^/]+/\.flox/env/manifest\.toml$)'
+        files: '(^\.flox/env/manifest\.toml$|^tools/[^/]+/\.flox/env/manifest\.toml$)'
         pass_filenames: false
         stages: [pre-commit]

@@ -77,7 +77,7 @@ jobs:
       - name: Lint GitHub workflows and actions
         uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
         with:
-          dir: ./flox-environments/actionlint
+          dir: ./tools/actionlint
           command: actionlint
 
   ngc-metadata-test:
@@ -601,7 +601,7 @@ jobs:
       - name: Lint and validate Helm chart
         uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
         with:
-          dir: ./flox-environments/helm
+          dir: ./tools/helm
           command: tools/lint/lint-helm.sh
       - name: Upload Helm lint artifacts
         if: failure()
@@ -1898,7 +1898,7 @@ jobs:
       - name: Policy Test
         uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
         with:
-          dir: ./flox-environments/open-policy-agent
+          dir: ./tools/open-policy-agent
           command: |
             opa test services/core/auth/src/nmp/core/auth/app/policies services/core/auth/src/nmp/core/auth/app/policy_tests services/core/auth/src/nmp/core/auth/assets/static-authz.yaml -v
 

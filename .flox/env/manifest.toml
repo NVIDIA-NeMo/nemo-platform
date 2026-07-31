@@ -9,11 +9,11 @@ common = '''
 
 [include]
 environments = [
-    { dir = "flox-environments/common" },
-    { dir = "flox-environments/helm" },
-    { dir = "flox-environments/actionlint" },
-    { dir = "flox-environments/python" },
-    { dir = "flox-environments/web" },
-    { dir = "flox-environments/osv-scanner" },
-    { dir = "flox-environments/open-policy-agent" },
+    { dir = "tools/common" },
+    { dir = "tools/helm" },
+    { dir = "tools/actionlint" },
+    { dir = "tools/python" },
+    { dir = "tools/web" },
+    { dir = "tools/osv-scanner" },
+    { dir = "tools/open-policy-agent" },
 ]

@@ -11,7 +11,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PYPROJECT_PATH = PROJECT_ROOT / "pyproject.toml"
-FLOX_MANIFEST_PATH = PROJECT_ROOT / "flox-environments/python/.flox/env/manifest.toml"
+FLOX_MANIFEST_PATH = PROJECT_ROOT / "tools/python/.flox/env/manifest.toml"
 
 
 def load_toml(path: Path) -> dict[str, object]:
@@ -43,7 +43,7 @@ def main() -> int:
         print(
             "uv version constraints differ: "
             f"pyproject.toml has {pyproject_version!r}, while "
-            f"flox-environments/python/.flox/env/manifest.toml has {flox_version!r}",
+            f"tools/python/.flox/env/manifest.toml has {flox_version!r}",
             file=sys.stderr,
         )
         return 1
