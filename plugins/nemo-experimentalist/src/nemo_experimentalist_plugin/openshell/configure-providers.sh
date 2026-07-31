@@ -23,6 +23,9 @@ inference_provider_type="${NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER_TYPE:-nvidia}
 inference_model="${NEMO_EXPERIMENTALIST_INFERENCE_MODEL:-}"
 if [[ -z "$inference_model" && -n "${EXPERIMENTALIST_SMART_MODEL_NAME:-}" ]]; then
   inference_model="${EXPERIMENTALIST_SMART_MODEL_NAME#openai/}"
+  while [[ "$inference_model" == openai/openai/* ]]; do
+    inference_model="${inference_model#openai/}"
+  done
 fi
 
 mkdir -p "$profile_dir"
@@ -62,7 +65,7 @@ if [[ -n "$inference_model" ]]; then
     openshell provider create \
       --name "$inference_provider" \
       --type "$inference_provider_type" \
-      --from-existing \
+      --credential NVIDIA_API_KEY \
       --config NVIDIA_BASE_URL=https://inference-api.nvidia.com/v1
   else
     openshell provider create \

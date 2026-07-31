@@ -244,16 +244,22 @@ def _apply_runtime_defaults(runtime_env: dict[str, str]) -> None:
     runtime_env.setdefault("EXPERIMENTALIST_SMART_MODEL_NAME", DEFAULT_SMART_MODEL)
     if not runtime_env.get("INFERENCE_API_KEY") and runtime_env.get("NVIDIA_API_KEY"):
         runtime_env["INFERENCE_API_KEY"] = runtime_env["NVIDIA_API_KEY"]
+    if not runtime_env.get("EXPERIMENTALIST_API_KEY"):
+        optimizer_key = runtime_env.get("INFERENCE_API_KEY") or runtime_env.get("NVIDIA_API_KEY")
+        if optimizer_key:
+            runtime_env["EXPERIMENTALIST_API_KEY"] = optimizer_key
     runtime_env.setdefault("INFERENCE_API_BASE", "https://inference-api.nvidia.com/v1")
     if not runtime_env.get("AUT_MODEL_NAME"):
         configured_model = runtime_env.get("NEMO_EXPERIMENTALIST_AUT_MODEL_NAME")
         if configured_model:
             runtime_env["AUT_MODEL_NAME"] = configured_model
     missing = [
-        name for name in ("INFERENCE_API_KEY", "INFERENCE_API_BASE", "AUT_MODEL_NAME") if not runtime_env.get(name)
+        name
+        for name in ("EXPERIMENTALIST_API_KEY", "INFERENCE_API_KEY", "INFERENCE_API_BASE", "AUT_MODEL_NAME")
+        if not runtime_env.get(name)
     ]
     if missing:
-        raise OpenShellLaunchError("Missing trusted candidate inference settings: " + ", ".join(missing))
+        raise OpenShellLaunchError("Missing trusted inference settings: " + ", ".join(missing))
     if not runtime_env.get("NVIDIA_API_KEY"):
         runtime_env["NVIDIA_API_KEY"] = runtime_env["INFERENCE_API_KEY"]
     if platform.system() == "Darwin":
@@ -264,8 +270,14 @@ def _configure_providers(prepared: PreparedOpenShellRun, runtime_env: dict[str, 
     script_path = Path(__file__).with_name("configure-providers.sh")
     if not script_path.is_file():
         raise OpenShellLaunchError(f"Packaged provider setup is missing: {script_path}")
+    provider_env = dict(runtime_env)
+    # OpenShell's NVIDIA profile resolves a credential named NVIDIA_API_KEY.
+    # Supply the already-selected optimizer key under that lookup name without
+    # exposing its value in argv or replacing the candidate's host environment.
+    provider_env["NVIDIA_API_KEY"] = runtime_env["EXPERIMENTALIST_API_KEY"]
     runtime_env["NEMO_EXPERIMENTALIST_PROVIDER_PROFILE_DIR"] = str(prepared.root / "host" / "provider-profiles")
-    completed = subprocess.run([str(script_path)], env=runtime_env, check=False)  # noqa: S603
+    provider_env["NEMO_EXPERIMENTALIST_PROVIDER_PROFILE_DIR"] = runtime_env["NEMO_EXPERIMENTALIST_PROVIDER_PROFILE_DIR"]
+    completed = subprocess.run([str(script_path)], env=provider_env, check=False)  # noqa: S603
     if completed.returncode != 0:
         raise OpenShellLaunchError("Could not configure the Experimentalist OpenShell providers")
 

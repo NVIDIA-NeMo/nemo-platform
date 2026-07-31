@@ -72,7 +72,7 @@ Install and configure OpenShell, then configure the optimizer model and the
 dedicated direct-inference credential used by candidates:
 
 ```bash
-export NVIDIA_API_KEY=nvapi-...
+export EXPERIMENTALIST_API_KEY=nvapi-optimizer-key
 export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5.5
 export EXPERIMENTALIST_FAST_MODEL_NAME=openai/openai/openai/gpt-5-mini
 export INFERENCE_API_KEY=nvapi-dedicated-experimentalist-key
@@ -81,8 +81,9 @@ export AUT_MODEL_NAME=openai/gpt-oss-120b
 ```
 
 The Experimentalist model values use NOOA's provider/routing/model identifier
-format. Provider setup removes the leading `openai/` only when deriving the
-OpenShell inference model ID.
+format. Provider setup removes NOOA's routing prefixes when deriving the
+OpenShell upstream model ID. When the optimizer and candidate share a gateway
+key, `EXPERIMENTALIST_API_KEY` defaults to `INFERENCE_API_KEY`.
 
 The candidate key is injected only into the candidate process inside Harbor.
 Use a spending-limited, easy-to-revoke credential. Source-control archival and

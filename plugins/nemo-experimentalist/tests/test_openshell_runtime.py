@@ -183,6 +183,60 @@ def test_launcher_fails_closed_when_openshell_is_missing(tmp_path: Path) -> None
         )
 
 
+def test_runtime_defaults_keep_optimizer_and_candidate_credentials_separate() -> None:
+    runtime_env = {
+        "EXPERIMENTALIST_API_KEY": "optimizer-key",
+        "INFERENCE_API_KEY": "candidate-key",
+        "NVIDIA_API_KEY": "ambient-key",
+        "AUT_MODEL_NAME": "openai/model",
+    }
+
+    launcher._apply_runtime_defaults(runtime_env)
+
+    assert runtime_env["EXPERIMENTALIST_API_KEY"] == "optimizer-key"
+    assert runtime_env["INFERENCE_API_KEY"] == "candidate-key"
+    assert runtime_env["NVIDIA_API_KEY"] == "ambient-key"
+
+    shared_key_env = {
+        "INFERENCE_API_KEY": "shared-key",
+        "AUT_MODEL_NAME": "openai/model",
+    }
+    launcher._apply_runtime_defaults(shared_key_env)
+    assert shared_key_env["EXPERIMENTALIST_API_KEY"] == "shared-key"
+
+
+def test_configure_providers_uses_optimizer_key_for_nvidia_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = PreparedOpenShellRun(
+        root=tmp_path,
+        catalog_root=tmp_path / "catalog",
+        sandbox_input=tmp_path / "input",
+        manifest_path=tmp_path / "input" / "run.json",
+    )
+    captured: dict[str, Any] = {}
+
+    def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        captured["argv"] = argv
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(launcher.subprocess, "run", run)
+    runtime_env = {
+        "EXPERIMENTALIST_API_KEY": "optimizer-key",
+        "NVIDIA_API_KEY": "ambient-key",
+    }
+
+    launcher._configure_providers(prepared, runtime_env)
+
+    provider_env = cast(dict[str, str], captured["env"])
+    assert provider_env["NVIDIA_API_KEY"] == "optimizer-key"
+    assert runtime_env["NVIDIA_API_KEY"] == "ambient-key"
+    assert "optimizer-key" not in cast(list[str], captured["argv"])
+    assert runtime_env["NEMO_EXPERIMENTALIST_PROVIDER_PROFILE_DIR"] == str(tmp_path / "host" / "provider-profiles")
+
+
 @pytest.mark.parametrize(
     "platform_url",
     [
@@ -439,6 +493,46 @@ def test_openshell_shell_assets_parse() -> None:
             env=os.environ,
         )
         assert result.returncode == 0, result.stderr
+
+
+def test_provider_setup_uses_env_optimizer_key_and_upstream_model_id(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    openshell = fake_bin / "openshell"
+    openshell.write_text(
+        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$OPENSHELL_TEST_LOG"\n',
+        encoding="utf-8",
+    )
+    openshell.chmod(0o755)
+    command_log = tmp_path / "openshell.log"
+    profile_dir = tmp_path / "profiles"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "OPENSHELL_TEST_LOG": str(command_log),
+        "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN": "bridge-token",
+        "NEMO_EXPERIMENTALIST_PROVIDER_PROFILE_DIR": str(profile_dir),
+        "EXPERIMENTALIST_SMART_MODEL_NAME": "openai/openai/openai/gpt-5-mini",
+        "NVIDIA_API_KEY": "optimizer-secret",
+    }
+
+    result = subprocess.run(
+        [str(OPEN_SHELL_ROOT / "configure-providers.sh")],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    commands = command_log.read_text(encoding="utf-8").splitlines()
+    inference_provider = next(
+        command for command in commands if "provider create --name nemo-experimentalist-inference" in command
+    )
+    assert "--credential NVIDIA_API_KEY" in inference_provider
+    assert "--from-existing" not in inference_provider
+    assert "optimizer-secret" not in "\n".join(commands)
+    assert "inference set --provider nemo-experimentalist-inference --model openai/gpt-5-mini" in commands
 
 
 def test_test_module_import_does_not_replace_real_runner() -> None:
