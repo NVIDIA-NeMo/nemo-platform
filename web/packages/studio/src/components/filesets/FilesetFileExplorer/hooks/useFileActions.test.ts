@@ -678,4 +678,121 @@ describe('useFileActions', () => {
       expect(result.current.rowContents).toEqual([]);
     });
   });
+
+  describe('expand folder subtree', () => {
+    const filesetUrlFor = (path: string) => `https://example.com/${path}`;
+    const nestedFile = (path: string, ref: string): FilesetFileOutput => ({
+      path,
+      size: 10,
+      file_ref: ref,
+      file_url: filesetUrlFor(path),
+    });
+
+    // docs/
+    //   guides/deep/intro.md
+    //   readme.md
+    // data/train.jsonl
+    const nestedFiles: FilesetFileOutput[] = [
+      nestedFile('docs/guides/deep/intro.md', 'nested-1'),
+      nestedFile('docs/readme.md', 'nested-2'),
+      nestedFile('data/train.jsonl', 'nested-3'),
+    ];
+
+    const renderNested = () =>
+      renderHook(() =>
+        useFileActions({
+          filesList: nestedFiles,
+          isUploading: false,
+          isFilesFetching: false,
+        })
+      );
+
+    it('expands a folder and every folder beneath it', () => {
+      const { result } = renderNested();
+
+      act(() => {
+        result.current.toggleFolderSubtreeExpand('docs');
+      });
+
+      expect(result.current.rowContents.map((r) => r.path)).toEqual([
+        'data',
+        'docs',
+        'docs/guides',
+        'docs/guides/deep',
+        'docs/guides/deep/intro.md',
+        'docs/readme.md',
+      ]);
+      expect(result.current.isFolderSubtreeExpanded('docs')).toBe(true);
+    });
+
+    it('leaves sibling subtrees untouched', () => {
+      const { result } = renderNested();
+
+      act(() => {
+        result.current.toggleFolderSubtreeExpand('docs');
+      });
+
+      expect(result.current.expandedFolders.has('data')).toBe(false);
+      expect(result.current.isFolderSubtreeExpanded('data')).toBe(false);
+    });
+
+    it('collapses the whole subtree when it is already fully expanded', () => {
+      const { result } = renderNested();
+
+      act(() => {
+        result.current.toggleFolderSubtreeExpand('docs');
+      });
+      act(() => {
+        result.current.toggleFolderSubtreeExpand('docs');
+      });
+
+      expect(result.current.expandedFolders.size).toBe(0);
+      expect(result.current.rowContents.map((r) => r.path)).toEqual(['data', 'docs']);
+    });
+
+    it('expands the rest of the subtree when it is only partially expanded', () => {
+      const { result } = renderNested();
+
+      act(() => {
+        result.current.toggleFolderExpand('docs');
+      });
+
+      expect(result.current.isFolderSubtreeExpanded('docs')).toBe(false);
+
+      act(() => {
+        result.current.toggleFolderSubtreeExpand('docs');
+      });
+
+      expect(result.current.expandedFolders.has('docs/guides/deep')).toBe(true);
+    });
+
+    it('reports which folders have subfolders', () => {
+      const { result } = renderNested();
+
+      expect(result.current.folderHasSubfolders('docs')).toBe(true);
+      expect(result.current.folderHasSubfolders('docs/guides')).toBe(true);
+      expect(result.current.folderHasSubfolders('docs/guides/deep')).toBe(false);
+      expect(result.current.folderHasSubfolders('data')).toBe(false);
+    });
+
+    it('does not treat a name-prefixed sibling as a descendant', () => {
+      const { result } = renderHook(() =>
+        useFileActions({
+          filesList: [
+            nestedFile('docs/readme.md', 'a'),
+            nestedFile('docs-archive/old/readme.md', 'b'),
+          ],
+          isUploading: false,
+          isFilesFetching: false,
+        })
+      );
+
+      act(() => {
+        result.current.toggleFolderSubtreeExpand('docs');
+      });
+
+      expect(result.current.expandedFolders.has('docs-archive/old')).toBe(false);
+      expect(result.current.folderHasSubfolders('docs')).toBe(false);
+    });
+  });
 });
