@@ -64,6 +64,7 @@ from nemo_agents_plugin.entities import (
     CONTAINER_DEPLOYMENT_MODES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    agent_spec_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
@@ -784,6 +785,36 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "config_format": config_format,
         }
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            try:
+                _upload_agent_spec_fileset(
+                    agent_name=name,
+                    workspace=workspace,
+                    agent_root=agent_config.parent,
+                    base_url=base_url,
+                )
+            except Exception as exc:
+                typer.echo(
+                    f"Error: failed to upload agent spec fileset for {name!r}: {exc}",
+                    err=True,
+                )
+                try:
+                    _delete_agent_and_spec_fileset(
+                        agent_name=name,
+                        workspace=workspace,
+                        base_url=base_url,
+                    )
+                except typer.Exit:
+                    logger.error(
+                        "Failed to roll back agent %r after fileset upload failure",
+                        name,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to roll back agent %r after fileset upload failure",
+                        name,
+                    )
+                raise typer.Exit(code=1) from exc
         typer.echo(json.dumps(resp, indent=2))
 
     @app.command(name="list", rich_help_panel="Agent Resources (requires running cluster)")
@@ -840,7 +871,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         base_url = _resolve_base_url(base_url)
         if not yes:
             typer.confirm(f"Delete agent '{name}'?", abort=True)
-        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents/{name}")
+        _delete_agent_and_spec_fileset(agent_name=name, workspace=workspace, base_url=base_url)
         typer.echo(f"Agent '{name}' deleted.")
 
     @app.command(rich_help_panel="Agent Resources (requires running cluster)")
@@ -1533,6 +1564,64 @@ def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, 
     except httpx.RequestError as exc:
         print_http_request_error(exc, action=f"{method} agent API")
         raise typer.Exit(code=1)
+
+
+def _platform_sdk(base_url: str) -> Any:
+    """Return an auth-aware platform SDK client for fileset upload/delete."""
+    from nemo_platform import NeMoPlatform
+
+    headers = _resolve_context_headers()
+    if headers:
+        return NeMoPlatform(base_url=base_url, default_headers=headers)
+    return NeMoPlatform(base_url=base_url)
+
+
+def _upload_agent_spec_fileset(
+    *,
+    agent_name: str,
+    workspace: str,
+    agent_root: Path,
+    base_url: str,
+) -> None:
+    """Upload *agent_root* into the conventional ``{agent}-spec`` fileset.
+
+    *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
+    Agent YAML must live in a dedicated agent root so sibling artifacts
+    (skills, prompts) upload without shipping an unrelated checkout tree.
+    """
+    from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
+
+    upload_to_fileset(
+        agent_root,
+        fileset=agent_spec_fileset_name(agent_name),
+        workspace=workspace,
+        sdk=_platform_sdk(base_url),
+    )
+
+
+def _delete_agent_spec_fileset(*, agent_name: str, workspace: str, base_url: str) -> None:
+    """Best-effort delete of the conventional ``{agent}-spec`` fileset."""
+    from nemo_platform import NotFoundError
+
+    fileset_name = agent_spec_fileset_name(agent_name)
+    try:
+        _platform_sdk(base_url).files.filesets.delete(name=fileset_name, workspace=workspace)
+    except NotFoundError:
+        logger.info("Agent spec fileset %s/%s already absent", workspace, fileset_name)
+
+
+def _delete_agent_and_spec_fileset(*, agent_name: str, workspace: str, base_url: str) -> None:
+    """Delete the agent entity, then best-effort remove its spec fileset."""
+    _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents/{agent_name}")
+    try:
+        _delete_agent_spec_fileset(agent_name=agent_name, workspace=workspace, base_url=base_url)
+    except Exception:
+        logger.warning(
+            "Agent %r deleted but failed to remove spec fileset %r",
+            agent_name,
+            agent_spec_fileset_name(agent_name),
+            exc_info=True,
+        )
 
 
 def _load_yaml(path: Path) -> dict:

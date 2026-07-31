@@ -208,6 +208,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
     with (
         _install_mock_transport(handler),
         patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
+        patch("nemo_agents_plugin.cli._upload_agent_spec_fileset") as mock_upload,
     ):
         result = CliRunner().invoke(
             app,
@@ -220,6 +221,153 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
     assert captured["validated_config"]["config_format"] == "nemo-agents-spec-v1"
     assert sent["config"] == normalized_config
     assert sent["config_format"] == "nemo-agents-spec-v1"
+    mock_upload.assert_called_once_with(
+        agent_name="fabric-agent",
+        workspace="default",
+        agent_root=tmp_path,
+        base_url="http://test",
+    )
+
+
+def test_create_fabric_uploads_agent_spec_fileset(tmp_path) -> None:
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "config_format: nemo-agents-spec-v1",
+                "name: fabric-agent",
+                "default_harness: hermes",
+                "harnesses:",
+                "  hermes:",
+                "    kind: hermes",
+                "",
+            ]
+        )
+    )
+    normalized_config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes", "settings": {}}},
+        "environment": {"provider": "local"},
+    }
+
+    async def _validate_platform_agent_config(config_dict: dict[str, Any], *, base_dir: Path):
+        del config_dict, base_dir
+        return type("ValidationResult", (), {"agent_config": _ValidatedAgentConfig(normalized_config)})()
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.method == "POST"
+        return httpx.Response(200, json={"name": "fabric-agent"})
+
+    uploaded: dict[str, Any] = {}
+
+    def fake_upload(local_dir: Path, *, fileset: str, workspace: str, sdk: Any) -> None:
+        uploaded["local_dir"] = local_dir
+        uploaded["fileset"] = fileset
+        uploaded["workspace"] = workspace
+        uploaded["sdk_base_url"] = sdk.base_url
+
+    app = AgentsCLI().get_cli()
+    with (
+        _install_mock_transport(handler),
+        patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
+        patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", fake_upload),
+        patch("nemo_agents_plugin.cli._platform_sdk") as mock_sdk,
+    ):
+        mock_sdk.return_value = type("SDK", (), {"base_url": "http://test"})()
+        result = CliRunner().invoke(
+            app,
+            ["create", "--name", "fabric-agent", "--agent-config", str(config), "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    assert uploaded["local_dir"] == tmp_path
+    assert uploaded["fileset"] == "fabric-agent-spec"
+    assert uploaded["workspace"] == "default"
+
+
+def test_create_fabric_rolls_back_agent_when_fileset_upload_fails(tmp_path) -> None:
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "config_format: nemo-agents-spec-v1",
+                "name: fabric-agent",
+                "default_harness: hermes",
+                "harnesses:",
+                "  hermes:",
+                "    kind: hermes",
+                "",
+            ]
+        )
+    )
+    normalized_config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes", "settings": {}}},
+        "environment": {"provider": "local"},
+    }
+    methods: list[str] = []
+
+    async def _validate_platform_agent_config(config_dict: dict[str, Any], *, base_dir: Path):
+        del config_dict, base_dir
+        return type("ValidationResult", (), {"agent_config": _ValidatedAgentConfig(normalized_config)})()
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        methods.append(req.method)
+        if req.method == "POST":
+            return httpx.Response(200, json={"name": "fabric-agent"})
+        if req.method == "DELETE":
+            return httpx.Response(204)
+        raise AssertionError(f"unexpected {req.method}")
+
+    app = AgentsCLI().get_cli()
+    with (
+        _install_mock_transport(handler),
+        patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
+        patch(
+            "nemo_agents_plugin.cli._upload_agent_spec_fileset",
+            side_effect=RuntimeError("upload boom"),
+        ),
+        patch("nemo_agents_plugin.cli._delete_agent_spec_fileset") as mock_delete_fileset,
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["create", "--name", "fabric-agent", "--agent-config", str(config), "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 1
+    assert "failed to upload agent spec fileset" in result.stderr
+    assert methods == ["POST", "DELETE"]
+    mock_delete_fileset.assert_called_once_with(
+        agent_name="fabric-agent",
+        workspace="default",
+        base_url="http://test",
+    )
+
+
+def test_create_nat_does_not_upload_agent_spec_fileset(tmp_path) -> None:
+    config = tmp_path / "agent.yml"
+    config.write_text("llms:\n  llm:\n    _type: openai\n    model_name: nvidia-nemotron-3-super-v3\n")
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.method == "POST"
+        return httpx.Response(200, json={"name": "calc"})
+
+    app = AgentsCLI().get_cli()
+    with (
+        _install_mock_transport(handler),
+        patch("nemo_agents_plugin.cli._upload_agent_spec_fileset") as mock_upload,
+        patch("nemo_agents_plugin.utils.get_default_model", return_value="nvidia-nemotron-3-super-v3"),
+    ):
+        result = CliRunner().invoke(
+            app, ["create", "--name", "calc", "--agent-config", str(config), "--base-url", "http://test"]
+        )
+
+    assert result.exit_code == 0, result.stderr
+    mock_upload.assert_not_called()
 
 
 def test_create_rejects_unsupported_config_format(tmp_path) -> None:
