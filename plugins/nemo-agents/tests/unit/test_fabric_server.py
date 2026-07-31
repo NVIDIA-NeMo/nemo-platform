@@ -570,7 +570,22 @@ def test_chat_completion_maps_failed_run_result(
     assert response.json() == {"detail": "adapter failed"}
 
 
-def test_chat_completion_request_translates_final_user_turn() -> None:
+def test_chat_completion_request_preserves_single_user_turn() -> None:
+    request = ChatCompletionRequest.model_validate(
+        {
+            "messages": [{"role": "user", "content": "Say hello."}],
+            "model": "test-model",
+            "stream": False,
+        }
+    )
+
+    invocation_request = server._to_fabric_invocation_request(request, session_id="session-1")
+
+    assert invocation_request.input == "Say hello."
+    assert invocation_request.caller_context == {"session_id": "session-1"}
+
+
+def test_chat_completion_request_serializes_full_transcript() -> None:
     request = ChatCompletionRequest.model_validate(
         {
             "messages": [
@@ -585,7 +600,9 @@ def test_chat_completion_request_translates_final_user_turn() -> None:
 
     invocation_request = server._to_fabric_invocation_request(request, session_id="session-1")
 
-    assert invocation_request.input == "Say hello."
+    assert invocation_request.input == (
+        "system: Be concise.\n\nassistant: How can I help?\n\nuser: Say hello."
+    )
     assert invocation_request.caller_context == {"session_id": "session-1"}
 
 
