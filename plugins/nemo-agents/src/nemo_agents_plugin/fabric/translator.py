@@ -90,7 +90,7 @@ def _model_payload(model: ModelConfig) -> dict[str, Any]:
     payload = model.model_dump(exclude_none=True)
     settings = payload.get("settings")
     if "base_url" not in payload and isinstance(settings, dict) and isinstance(settings.get("base_url"), str):
-        payload["base_url"] = settings["base_url"]
+        payload["base_url"] = settings.pop("base_url")
     return payload
 
 

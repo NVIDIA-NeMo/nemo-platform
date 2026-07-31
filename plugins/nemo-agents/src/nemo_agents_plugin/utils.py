@@ -269,7 +269,7 @@ def inject_fabric_gateway_url(
             continue
         settings = model_config.get("settings")
         if isinstance(settings, dict) and isinstance(settings.get("base_url"), str):
-            model_config["base_url"] = settings["base_url"]
+            model_config["base_url"] = settings.pop("base_url")
             continue
         provider = model_config.get("provider")
         if not isinstance(provider, str) or provider.lower() not in _FABRIC_IGW_MODEL_PROVIDERS:

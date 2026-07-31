@@ -141,6 +141,7 @@ class TestTranslateAgentConfig:
             fabric_config.models["default"].base_url
             == "http://legacy:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
         )
+        assert "base_url" not in fabric_config.models["default"].settings
 
     def test_translates_shared_capability_sections(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())

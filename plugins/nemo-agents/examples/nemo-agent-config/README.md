@@ -120,12 +120,13 @@ exporting it. The Platform service launches the agent subprocess, so exporting
 
 `agent-relay.yaml` enables Relay telemetry without Intake. It writes local ATIF
 and ATOF artifacts under the deployment artifacts directory. Use
-`agent-relay.yaml` with the invoke directions above.
+`agent-relay.yaml` with the invoke directions above; the artifact directory uses
+the deployment name you pass to `nemo agents deploy`.
 
 Confirm Relay emitted both ATIF and ATOF files:
 
 ```bash
-find ~/.local/share/nemo/agents/system/default/fabric-relay-local-test-deployment-fabric/artifacts \
+find ~/.local/share/nemo/agents/system/default/fabric-agent-deployment-fabric/artifacts \
   \( -name "*atif*" -o -name "*atof*" \) \
   -exec ls -lh {} \;
 ```

@@ -200,7 +200,7 @@ class TestInjectFabricGatewayUrl:
         result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
 
         assert result["models"]["default"]["base_url"] == "http://legacy:8080/v1"
-        assert result["models"]["default"]["settings"]["base_url"] == "http://legacy:8080/v1"
+        assert "base_url" not in result["models"]["default"]["settings"]
         assert "base_url" not in config["models"]["default"]
 
 
