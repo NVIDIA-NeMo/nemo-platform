@@ -54,21 +54,31 @@ effective inputs:
 $NEMO experimentalist doctor
 ```
 
-## Run the Experimentalist locally
+## Run the Experimentalist in OpenShell
 
-`nemo experimentalist run` runs the local Experimentalist loop. It evaluates
-a baseline agent on Harbor-compatible train and validation datasets, proposes
-candidate mutations, and records its artifacts under the selected experiment
-directory.
+`nemo experimentalist run` resolves inputs on the trusted host, runs the
+optimization loop in an OpenShell sandbox, and submits Harbor work to an
+ephemeral authenticated host bridge. The sandbox receives a run-specific input
+snapshot, not the repository or home directory, and it receives no Docker
+socket or real bridge credential. OpenShell injects an opaque bridge placeholder
+and replaces it with the host token only at the permitted network boundary.
+There is no local-execution fallback.
 
-Configure the models before running an experiment:
+Install and configure OpenShell, then configure the optimizer model and the
+dedicated direct-inference credential used by candidates:
 
 ```bash
-export EXPERIMENTALIST_API_BASE=https://inference-api.nvidia.com/v1
-export EXPERIMENTALIST_API_KEY=sk-...
+export NVIDIA_API_KEY=nvapi-...
 export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5.5
 export EXPERIMENTALIST_FAST_MODEL_NAME=openai/openai/openai/gpt-5-mini
+export INFERENCE_API_KEY=nvapi-dedicated-experimentalist-key
+export INFERENCE_API_BASE=https://inference-api.nvidia.com/v1
+export AUT_MODEL_NAME=openai/gpt-oss-120b
 ```
+
+The candidate key is injected only into the candidate process inside Harbor.
+Use a spending-limited, easy-to-revoke credential. Source-control archival and
+winner publishing are intentionally unsupported by this runtime.
 
 ### Insight-driven optimization
 

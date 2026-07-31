@@ -13,8 +13,13 @@ import pytest
 from fastapi.testclient import TestClient
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
     EvaluationResult,
+    ResourceRef,
+    TrialResult,
 )
-from nemo_experimentalist_plugin.harbor_bridge.archives import create_directory_archive
+from nemo_experimentalist_plugin.harbor_bridge.archives import (
+    create_directory_archive,
+    extract_directory_archive,
+)
 from nemo_experimentalist_plugin.harbor_bridge.contracts import (
     ArchiveReference,
     EnvelopeTask,
@@ -107,6 +112,27 @@ class RecordingRunner:
         )
 
 
+class ArtifactRunner:
+    async def run(self, *, submission, profile, candidate_dir, dataset_dir, work_dir) -> EvaluationResult:
+        del submission, profile, candidate_dir, dataset_dir
+        trace = work_dir / "results" / "trace.jsonl"
+        trace.parent.mkdir()
+        trace.write_text('{"resourceSpans":[]}\n', encoding="utf-8")
+        return EvaluationResult(
+            id="artifact-result",
+            trials=[
+                TrialResult(
+                    id="trial-task__0",
+                    task_id="trial-task",
+                    attempt=0,
+                    status="completed",
+                    trace=ResourceRef(uri=trace.as_uri(), description="trace"),
+                    resources={"outside": ResourceRef(uri=Path("/etc/hosts").as_uri(), description="must not escape")},
+                )
+            ],
+        )
+
+
 def _client(tmp_path: Path, runner: RecordingRunner) -> TestClient:
     app = create_app(
         settings=HarborBridgeSettings(
@@ -145,6 +171,39 @@ def test_job_api_maps_profile_server_side_and_sanitizes_metadata(tmp_path: Path)
     assert runner.profile.concurrency == 1
     assert runner.candidate_dir is not None and (runner.candidate_dir / "main.py").is_file()
     assert runner.dataset_dir is not None and (runner.dataset_dir / "trial-task" / "task.toml").is_file()
+
+
+def test_job_api_exports_only_job_owned_artifacts(tmp_path: Path) -> None:
+    registered = _source_dataset(tmp_path)
+    data, files = _request_parts(tmp_path, registered)
+    app = create_app(
+        settings=HarborBridgeSettings(
+            storage_root=tmp_path / "jobs",
+            catalog_root=tmp_path / "catalog",
+            token=_TOKEN,
+        ),
+        runner=ArtifactRunner(),
+    )
+    auth = {"Authorization": f"Bearer {_TOKEN}"}
+    with TestClient(app) as client:
+        response = client.post("/v1/evaluations", data=data, files=files, headers=auth)
+        payload = _wait_terminal(client, response.json()["job_id"])
+        artifact_response = client.get(
+            f"/v1/evaluations/{response.json()['job_id']}/artifacts",
+            headers=auth,
+        )
+
+    trial = payload["result"]["trials"][0]
+    assert trial["trace"]["uri"].startswith("nemo-harbor-bridge:///artifacts/")
+    assert trial["resources"]["outside"]["uri"].startswith("nemo-harbor-bridge:///unavailable/")
+    assert str(tmp_path) not in str(payload)
+    assert artifact_response.status_code == 200
+    assert artifact_response.headers["X-Nemo-Artifact-Digest"].startswith("sha256:")
+    archive = tmp_path / "downloaded-artifacts.tar.gz"
+    archive.write_bytes(artifact_response.content)
+    extracted = tmp_path / "downloaded-artifacts"
+    extract_directory_archive(archive, extracted)
+    assert next(extracted.rglob("trace.jsonl")).read_text(encoding="utf-8") == '{"resourceSpans":[]}\n'
 
 
 @pytest.mark.parametrize(

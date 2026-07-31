@@ -115,12 +115,13 @@ def check_environment(
     insight_id: str | None = None,
     base_url: str,
     enforce_insight_agent: bool = True,
+    openshell: bool = False,
     probes: Probes | None = None,
 ) -> list[CheckResult]:
     """Environment checks for Experiment and Doctor.
 
-    Checks the experimentalist credentials and model endpoint, platform
-    reachability, an optional insight file, Docker, and Harbor.
+    Checks OpenShell or direct-run credentials, platform reachability, an
+    optional insight file, Docker, and Harbor.
 
     ``enforce_insight_agent=False`` skips the local-insight agent match (an
     explicit ``--agent`` overrides the insight's agent).
@@ -128,25 +129,55 @@ def check_environment(
     p = probes or Probes()
     results: list[CheckResult] = []
     profile_dir = profile.profile_dir if profile is not None else None
-    results += _check_env(
-        p, "credentials-experiment", ("EXPERIMENTALIST_API_BASE", "EXPERIMENTALIST_API_KEY"), profile_dir
-    )
-    base = p.env.get("EXPERIMENTALIST_API_BASE")
-    if base:
-        model_url = f"{base.rstrip('/')}/models"
-        ok = p.http_ok(model_url)
-        display_model_url = f"{_redact_url(base).rstrip('/')}/models"
+    if openshell:
+        code, _ = p.run_cmd(["openshell", "--version"])
         results.append(
             make_check_result(
-                "model-endpoint",
-                "credentials-experiment",
-                ok,
-                "advisory",
-                f"{display_model_url} reachable",
-                "model endpoint unreachable",
-                hint="check EXPERIMENTALIST_API_BASE and network",
+                "openshell",
+                "runtime",
+                code == 0,
+                "required",
+                "OpenShell CLI available",
+                "OpenShell CLI unavailable",
+                hint="install and configure OpenShell before running Experimentalist",
             )
         )
+        results += _check_env(p, "credentials-candidate", ("INFERENCE_API_KEY", "AUT_MODEL_NAME"), profile_dir)
+        optimizer_credential = any(
+            p.env.get(name, "").strip()
+            for name in ("NVIDIA_API_KEY", "INFERENCE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+        )
+        results.append(
+            make_check_result(
+                "openshell-inference-credential",
+                "credentials-experiment",
+                optimizer_credential,
+                "required",
+                "OpenShell inference provider credential available",
+                "no OpenShell inference provider credential available",
+                hint="set NVIDIA_API_KEY or configure NEMO_EXPERIMENTALIST_INFERENCE_PROVIDER_TYPE",
+            )
+        )
+    else:
+        results += _check_env(
+            p, "credentials-experiment", ("EXPERIMENTALIST_API_BASE", "EXPERIMENTALIST_API_KEY"), profile_dir
+        )
+        base = p.env.get("EXPERIMENTALIST_API_BASE")
+        if base:
+            model_url = f"{base.rstrip('/')}/models"
+            ok = p.http_ok(model_url)
+            display_model_url = f"{_redact_url(base).rstrip('/')}/models"
+            results.append(
+                make_check_result(
+                    "model-endpoint",
+                    "credentials-experiment",
+                    ok,
+                    "advisory",
+                    f"{display_model_url} reachable",
+                    "model endpoint unreachable",
+                    hint="check EXPERIMENTALIST_API_BASE and network",
+                )
+            )
     ok = p.http_ok(f"{base_url.rstrip('/')}/health/ready")
     display_base_url = _redact_url(base_url)
     results.append(

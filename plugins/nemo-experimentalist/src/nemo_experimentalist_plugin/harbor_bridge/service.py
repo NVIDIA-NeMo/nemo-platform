@@ -11,12 +11,13 @@ import hmac
 import logging
 import os
 import shutil
+import stat
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal, Protocol
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 import uvicorn
@@ -29,6 +30,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
 from nemo_experimentalist_plugin.harbor_bridge.archives import (
     DEFAULT_MAX_ARCHIVE_BYTES,
     DEFAULT_MAX_ARCHIVE_FILES,
+    create_directory_archive,
     extract_directory_archive,
 )
 from nemo_experimentalist_plugin.harbor_bridge.contracts import (
@@ -50,6 +52,7 @@ from nemo_experimentalist_plugin.harbor_bridge.envelopes import (
 )
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.datastructures import FormData, UploadFile
+from starlette.responses import FileResponse
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +133,8 @@ class _Job:
     state: EvaluationState = EvaluationState.PENDING
     result: EvaluationResult | None = None
     error: str | None = None
+    artifact_archive: Path | None = None
+    artifact_digest: str | None = None
     task: asyncio.Task[None] | None = None
 
     def status(self) -> EvaluationStatus:
@@ -191,7 +196,7 @@ def _redact_value(value: DataValue, sensitive: tuple[str, ...]) -> DataValue:
         for secret in sensitive:
             if secret:
                 redacted = redacted.replace(secret, "[REDACTED]")
-        if redacted.startswith("/"):
+        if redacted.startswith("/") or urlparse(redacted).scheme == "file":
             return "[HOST_PATH_REDACTED]"
         return redacted
     if isinstance(value, list):
@@ -201,13 +206,72 @@ def _redact_value(value: DataValue, sensitive: tuple[str, ...]) -> DataValue:
     return value
 
 
-def _sanitize_result(result: EvaluationResult, *, job_id: str, sensitive: tuple[str, ...]) -> EvaluationResult:
+def _copy_result_resource(
+    source: Path,
+    destination: Path,
+    *,
+    scratch: Path,
+    max_bytes: int,
+    max_files: int,
+) -> Path:
+    mode = source.lstat().st_mode
+    if stat.S_ISLNK(mode):
+        raise ValueError("Harbor result resource must not be a symbolic link")
+    if stat.S_ISREG(mode):
+        if source.stat().st_nlink > 1:
+            raise ValueError("Harbor result resource must not be hard linked")
+        if source.stat().st_size > max_bytes:
+            raise ValueError("Harbor result resource exceeds the bridge artifact limit")
+        target = destination / source.name
+        destination.mkdir(parents=True)
+        shutil.copy2(source, target)
+        return target
+    if not stat.S_ISDIR(mode):
+        raise ValueError("Harbor result resource must be a regular file or directory")
+    archive = scratch / f"{destination.name}.tar.gz"
+    create_directory_archive(source, archive, max_bytes=max_bytes, max_files=max_files)
+    extract_directory_archive(archive, destination, max_bytes=max_bytes, max_files=max_files)
+    archive.unlink()
+    return destination
+
+
+def _export_result(
+    result: EvaluationResult,
+    *,
+    job_id: str,
+    work_dir: Path,
+    sensitive: tuple[str, ...],
+    max_bytes: int,
+    max_files: int,
+) -> tuple[EvaluationResult, Path, str]:
     sanitized = EvaluationResult.model_validate_json(result.model_dump_json())
     sanitized.metadata = {key: _redact_value(value, sensitive) for key, value in sanitized.metadata.items()}
+    export_root = work_dir / "artifacts-export"
+    scratch = work_dir / "artifacts-scratch"
+    export_root.mkdir()
+    scratch.mkdir()
     for index, resource in enumerate(_resource_refs(sanitized)):
         parsed = urlparse(resource.uri)
-        if parsed.scheme in ("", "file"):
-            resource.uri = f"nemo-harbor-bridge:///evaluations/{job_id}/artifacts/{index}"
+        raw_source = Path(unquote(parsed.path)) if parsed.scheme in ("", "file") else None
+        source = raw_source.resolve() if raw_source is not None and not raw_source.is_symlink() else None
+        if (
+            source is not None
+            and parsed.netloc in ("", "localhost")
+            and source != work_dir
+            and source.is_relative_to(work_dir)
+            and source.exists()
+        ):
+            copied = _copy_result_resource(
+                source,
+                export_root / str(index),
+                scratch=scratch,
+                max_bytes=max_bytes,
+                max_files=max_files,
+            )
+            relative = copied.relative_to(export_root).as_posix()
+            resource.uri = f"nemo-harbor-bridge:///artifacts/{relative}"
+        else:
+            resource.uri = f"nemo-harbor-bridge:///unavailable/{index}"
         resource.metadata = {key: _redact_value(value, sensitive) for key, value in resource.metadata.items()}
     for trial in sanitized.trials:
         trial.metadata = {key: _redact_value(value, sensitive) for key, value in trial.metadata.items()}
@@ -215,7 +279,15 @@ def _sanitize_result(result: EvaluationResult, *, job_id: str, sensitive: tuple[
             trial.error = {"type": "trial_failed", "message": "See retained Harbor trial logs"}
         for metric in trial.metrics.values():
             metric.metadata = {key: _redact_value(value, sensitive) for key, value in metric.metadata.items()}
-    return sanitized
+    shutil.rmtree(scratch)
+    artifact_archive = work_dir / "artifacts.tar.gz"
+    create_directory_archive(
+        export_root,
+        artifact_archive,
+        max_bytes=max_bytes,
+        max_files=max_files,
+    )
+    return sanitized, artifact_archive, transport_tree_digest(export_root)
 
 
 def _validation_detail(exc: ValidationError) -> str:
@@ -261,10 +333,13 @@ def create_app(
                     dataset_dir=job.work_dir / "dataset",
                     work_dir=job.work_dir,
                 )
-                job.result = _sanitize_result(
+                job.result, job.artifact_archive, job.artifact_digest = _export_result(
                     result,
                     job_id=job.job_id,
+                    work_dir=job.work_dir,
                     sensitive=settings.sensitive_values,
+                    max_bytes=settings.max_archive_bytes,
+                    max_files=settings.max_archive_files,
                 )
                 job.state = EvaluationState.COMPLETED
         except asyncio.CancelledError:
@@ -296,6 +371,10 @@ def create_app(
         openapi_url=None,
         lifespan=lifespan,
     )
+
+    @app.get("/health/ready")
+    async def health_ready() -> dict[str, str]:
+        return {"status": "ready"}
 
     @app.post(
         "/v1/evaluations",
@@ -380,6 +459,22 @@ def create_app(
         if job is None:
             raise HTTPException(status_code=404, detail="Evaluation not found")
         return job.status()
+
+    @app.get(
+        "/v1/evaluations/{job_id}/artifacts",
+        dependencies=[Depends(require_auth)],
+    )
+    async def get_evaluation_artifacts(job_id: str) -> FileResponse:
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+        if job.state != EvaluationState.COMPLETED or job.artifact_archive is None or job.artifact_digest is None:
+            raise HTTPException(status_code=409, detail="Evaluation artifacts are not ready")
+        return FileResponse(
+            job.artifact_archive,
+            media_type="application/gzip",
+            headers={"X-Nemo-Artifact-Digest": job.artifact_digest},
+        )
 
     @app.delete(
         "/v1/evaluations/{job_id}",

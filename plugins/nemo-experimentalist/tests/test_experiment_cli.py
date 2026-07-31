@@ -28,9 +28,15 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=lambda url: True,
-            env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"},
+            env={
+                "EXPERIMENTALIST_API_BASE": "http://llm",
+                "EXPERIMENTALIST_API_KEY": "k",
+                "INFERENCE_API_KEY": "k",
+                "AUT_MODEL_NAME": "fixture-model",
+            },
         ),
     )
+    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", True)
 
 
 @pytest.fixture(autouse=True)
@@ -328,3 +334,68 @@ def test_experiment_cli_forwards_insight_platform_id_verbatim(
     assert result.exit_code == 0
     assert runner.captured is not None
     assert runner.captured.insight == "insight-remote-123"
+
+
+def test_public_run_uses_openshell_without_local_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    paths = _make_paths(tmp_path)
+    prepared = object()
+    captured: dict[str, object] = {}
+
+    async def prepare(inputs, **kwargs):
+        captured["inputs"] = inputs
+        captured["prepare_kwargs"] = kwargs
+        return prepared
+
+    def launch(value, **kwargs):
+        captured["prepared"] = value
+        captured["launch_kwargs"] = kwargs
+        return "sandbox-summary"
+
+    async def local_runner(**kwargs):
+        raise AssertionError(f"host must not run Experimentalist: {kwargs}")
+
+    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", False)
+    monkeypatch.setattr(cli, "_OPEN_SHELL_PREPARER", prepare)
+    monkeypatch.setattr(cli, "_OPEN_SHELL_LAUNCHER", launch)
+    monkeypatch.setattr(cli, "run_experimentalist", local_runner)
+
+    result = _run_experiment(paths.args())
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "sandbox-summary"
+    assert captured["prepared"] is prepared
+    assert captured["launch_kwargs"] == {
+        "experiment_dir": paths.experiment,
+        "platform_url": "http://localhost:8080",
+    }
+
+
+def test_public_run_fails_when_openshell_is_unavailable_without_local_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    paths = _make_paths(tmp_path)
+
+    async def prepare(*args, **kwargs):
+        del args, kwargs
+        return object()
+
+    def fail_launch(*args, **kwargs):
+        del args, kwargs
+        raise cli.OpenShellLaunchError("OpenShell is unavailable")
+
+    async def local_runner(**kwargs):
+        raise AssertionError(f"host must not run Experimentalist: {kwargs}")
+
+    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", False)
+    monkeypatch.setattr(cli, "_OPEN_SHELL_PREPARER", prepare)
+    monkeypatch.setattr(cli, "_OPEN_SHELL_LAUNCHER", fail_launch)
+    monkeypatch.setattr(cli, "run_experimentalist", local_runner)
+
+    result = _run_experiment(paths.args())
+
+    assert result.exit_code == 1
+    assert "OpenShell is unavailable" in result.output

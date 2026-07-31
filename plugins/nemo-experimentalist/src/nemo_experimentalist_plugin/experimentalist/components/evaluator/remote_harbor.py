@@ -8,10 +8,11 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Literal
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 import httpx
@@ -30,10 +31,15 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
     DependencyCommandResult,
     DependencyRuntime,
     DependencyRuntimeError,
+    EvaluationResult,
+    ResourceRef,
     TrialResult,
     local_path_from_uri,
 )
-from nemo_experimentalist_plugin.harbor_bridge.archives import create_directory_archive
+from nemo_experimentalist_plugin.harbor_bridge.archives import (
+    create_directory_archive,
+    extract_directory_archive,
+)
 from nemo_experimentalist_plugin.harbor_bridge.contracts import (
     ArchiveReference,
     DependencyExecRequest,
@@ -59,6 +65,30 @@ from pydantic import AnyHttpUrl, ConfigDict, Field, PrivateAttr, model_validator
 OPEN_SHELL_RUNTIME_ENV = "NEMO_EXPERIMENTALIST_OPEN_SHELL_RUNTIME"
 BRIDGE_URL_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_URL"
 BRIDGE_TOKEN_ENV = "NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN"
+
+
+def _result_resource_refs(result: EvaluationResult) -> Iterator[ResourceRef]:
+    for trial in result.trials:
+        if trial.trace is not None:
+            yield trial.trace
+        yield from trial.resources.values()
+        for output in trial.outputs.values():
+            if isinstance(output, ResourceRef):
+                yield output
+        for metric in trial.metrics.values():
+            if metric.spec is not None and metric.spec.ref is not None:
+                yield metric.spec.ref
+
+
+def _bridge_headers(token_env: str, *, dependency_capability: str | None = None) -> dict[str, str]:
+    """Send a host token locally or an OpenShell-managed opaque placeholder."""
+    token = os.environ.get(token_env)
+    if not token:
+        raise DependencyRuntimeError(f"Missing bridge token environment variable {token_env}")
+    headers = {"Authorization": f"Bearer {token}"}
+    if dependency_capability is not None:
+        headers["X-Nemo-Dependency-Capability"] = dependency_capability
+    return headers
 
 
 class RemoteHarborEvaluatorConfig(HarborEvaluatorConfig):
@@ -144,12 +174,7 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
         capability: str | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
-        token = os.environ.get(self.bridge_token_env)
-        if not token:
-            raise DependencyRuntimeError(f"Missing bridge token environment variable {self.bridge_token_env}")
-        headers = {"Authorization": f"Bearer {token}"}
-        if capability is not None:
-            headers["X-Nemo-Dependency-Capability"] = capability
+        headers = _bridge_headers(self.bridge_token_env, dependency_capability=capability)
         async with httpx.AsyncClient(timeout=self.request_timeout_sec, transport=self._transport) as client:
             return await client.request(
                 method,
@@ -278,6 +303,55 @@ class RemoteHarborEvaluator(Evaluator):
             task.dependencies = runtime
         return dataset
 
+    async def _materialize_result_artifacts(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        job_id: str,
+        result: EvaluationResult,
+        headers: dict[str, str],
+        staging: Path,
+        options: RemoteHarborEvaluatorConfig,
+    ) -> None:
+        archive = staging / "result-artifacts.tar.gz"
+        total = 0
+        async with client.stream(
+            "GET",
+            f"{str(options.bridge_url).rstrip('/')}/v1/evaluations/{job_id}/artifacts",
+            headers=headers,
+        ) as response:
+            if response.status_code != 200:
+                raise RuntimeError(f"Harbor bridge artifact download failed with HTTP {response.status_code}")
+            expected_digest = response.headers.get("X-Nemo-Artifact-Digest")
+            if expected_digest is None:
+                raise RuntimeError("Harbor bridge artifact response omitted its digest")
+            with archive.open("xb") as output:
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > options.max_archive_bytes:
+                        raise RuntimeError("Harbor bridge artifact archive exceeds the configured limit")
+                    output.write(chunk)
+
+        artifact_root = (self.experiment_dir or Path.cwd()) / "remote-harbor-artifacts" / job_id
+        extract_directory_archive(
+            archive,
+            artifact_root,
+            max_bytes=options.max_archive_bytes,
+        )
+        if transport_tree_digest(artifact_root) != expected_digest:
+            shutil.rmtree(artifact_root, ignore_errors=True)
+            raise RuntimeError("Harbor bridge artifact digest mismatch")
+
+        for resource in _result_resource_refs(result):
+            parsed = urlparse(resource.uri)
+            if parsed.scheme != "nemo-harbor-bridge" or not parsed.path.startswith("/artifacts/"):
+                continue
+            relative = unquote(parsed.path.removeprefix("/artifacts/"))
+            local = (artifact_root / relative).resolve()
+            if not local.is_relative_to(artifact_root) or not local.exists():
+                raise RuntimeError("Harbor bridge result references a missing or unsafe artifact")
+            resource.uri = local.as_uri()
+
     async def _run(
         self,
         agent: Path,
@@ -301,9 +375,7 @@ class RemoteHarborEvaluator(Evaluator):
         if len(identities) != 1:
             raise ValueError("One evaluation may reference exactly one trusted task envelope")
         envelope_id, envelope_digest = identities.pop()
-        token = os.environ.get(options.bridge_token_env)
-        if not token:
-            raise RuntimeError(f"Missing bridge token environment variable {options.bridge_token_env}")
+        headers = _bridge_headers(options.bridge_token_env)
 
         staging = (self.experiment_dir or Path.cwd()) / "tmp" / "harbor-bridge" / uuid4().hex
         staging.mkdir(parents=True)
@@ -327,7 +399,6 @@ class RemoteHarborEvaluator(Evaluator):
                 overlay=ArchiveReference(digest=overlay_digest) if overlay_digest is not None else None,
                 run_profile=options.run_profile,
             )
-            headers = {"Authorization": f"Bearer {token}"}
             async with httpx.AsyncClient(
                 timeout=options.request_timeout_sec,
                 transport=self._transport,
@@ -365,6 +436,14 @@ class RemoteHarborEvaluator(Evaluator):
                     status = EvaluationStatus.model_validate_json(response.content)
                     if status.state == EvaluationState.COMPLETED:
                         assert status.result is not None
+                        await self._materialize_result_artifacts(
+                            client,
+                            job_id=job_id,
+                            result=status.result,
+                            headers=headers,
+                            staging=staging,
+                            options=options,
+                        )
                         return list(status.result.trials)
                     if status.state in (EvaluationState.FAILED, EvaluationState.CANCELLED):
                         raise RuntimeError(status.error or f"Harbor bridge evaluation {status.state}")
@@ -377,7 +456,7 @@ class RemoteHarborEvaluator(Evaluator):
                 ) as client:
                     await client.delete(
                         f"{str(options.bridge_url).rstrip('/')}/v1/evaluations/{job_id}",
-                        headers={"Authorization": f"Bearer {token}"},
+                        headers=headers,
                     )
             raise
         finally:

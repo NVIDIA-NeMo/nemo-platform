@@ -162,6 +162,47 @@ def test_missing_experiment_credentials_are_required(tmp_path: Path) -> None:
     assert not any(r.name == "INFERENCE_API_KEY" for r in results)
 
 
+def test_openshell_environment_checks_runtime_and_candidate_credentials(tmp_path: Path) -> None:
+    results = check_environment(
+        profile=full_profile(tmp_path),
+        insight=None,
+        base_url="http://localhost:8080",
+        openshell=True,
+        probes=make_probes(
+            env={
+                "INFERENCE_API_KEY": "dedicated-key",
+                "AUT_MODEL_NAME": "fixture-model",
+            }
+        ),
+    )
+
+    assert all(result.status == "pass" for result in results)
+    assert any(result.name == "openshell" for result in results)
+    assert any(result.name == "openshell-inference-credential" for result in results)
+    assert not any(result.name == "EXPERIMENTALIST_API_BASE" for result in results)
+
+
+def test_missing_openshell_is_a_required_failure(tmp_path: Path) -> None:
+    def runtime_probe(argv: list[str]) -> tuple[int, str]:
+        return (127, "missing") if argv == ["openshell", "--version"] else (0, "ok")
+
+    results = check_environment(
+        profile=full_profile(tmp_path),
+        insight=None,
+        base_url="http://localhost:8080",
+        openshell=True,
+        probes=Probes(
+            run_cmd=runtime_probe,
+            http_ok=lambda url: True,
+            env={"INFERENCE_API_KEY": "dedicated-key", "AUT_MODEL_NAME": "fixture-model"},
+        ),
+    )
+
+    openshell = next(result for result in results if result.name == "openshell")
+    assert openshell.status == "fail"
+    assert openshell.severity == "required"
+
+
 def test_git_source_probe_failure_is_advisory(tmp_path: Path) -> None:
     def remote_unreachable(argv: list[str]) -> tuple[int, str]:
         return (0, "git version 2") if argv == ["git", "--version"] else (1, "remote unavailable")

@@ -15,6 +15,11 @@ from urllib.parse import urlsplit
 import typer
 import yaml
 from nemo_experimentalist_plugin.client import make_client
+from nemo_experimentalist_plugin.openshell.launcher import (
+    OpenShellLaunchError,
+    launch_openshell_run,
+)
+from nemo_experimentalist_plugin.openshell.preparation import prepare_openshell_run
 from nemo_experimentalist_plugin.preflight import (
     Probes,
     check_artifacts,
@@ -45,8 +50,12 @@ from nemo_insights_plugin.contracts.profile import (
 from nemo_platform_plugin.cli import NemoCLI
 
 DEFAULT_WORKSPACE = "default"
+_CONTAINER_MARKER = Path("/etc/nemo-experimentalist-container")
 
 _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
+_CONTAINER_RUNTIME: bool | None = None
+_OPEN_SHELL_PREPARER = prepare_openshell_run
+_OPEN_SHELL_LAUNCHER = launch_openshell_run
 
 # Lazily imported in the experiment command: importing experimentalist.run reaches model
 # construction that requires EXPERIMENTALIST_API_* env at import time, and this module
@@ -55,6 +64,10 @@ _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
 run_experimentalist = None
 
 # TODO: Add remote train/validation dataset support when remote experiment mode is implemented.
+
+
+def _inside_experimentalist_container() -> bool:
+    return _CONTAINER_RUNTIME if _CONTAINER_RUNTIME is not None else _CONTAINER_MARKER.is_file()
 
 
 def _default_experiment_dir(profile: AgentProfile | None) -> Path:
@@ -94,9 +107,8 @@ class ExperimentalistCLI(NemoCLI):
                 help=(
                     "Baseline agent: a local directory or a git URL with an optional ref "
                     "(e.g. ssh://git@host/group/repo.git@main). Optional in Mode 1 (the insight "
-                    "supplies the agent) and overrides the insight's agent when given. A git "
-                    "source records provenance and enables --config storage.publish_winner to open a "
-                    "draft PR/MR for the winner against that ref."
+                    "supplies the agent) and overrides the insight's agent when given. Git sources "
+                    "are resolved on the trusted host before the credential-free snapshot enters OpenShell."
                 ),
             ),
             agent_spec: str | None = typer.Option(
@@ -203,7 +215,7 @@ class ExperimentalistCLI(NemoCLI):
                 readable=True,
             ),
         ) -> None:
-            """Run offline optimization for a baseline agent (local dir or git source)."""
+            """Run optimization inside OpenShell with Harbor execution on the trusted host."""
 
             if no_insight and (insight is not None or insight_id is not None):
                 typer.echo("--no-insight cannot be combined with --insight or --insight-id", err=True)
@@ -246,6 +258,7 @@ class ExperimentalistCLI(NemoCLI):
                         insight_id=effective_insight.selector,
                         base_url=base_url_resolved,
                         enforce_insight_agent=agent is None,
+                        openshell=not _inside_experimentalist_container(),
                         probes=_PREFLIGHT_PROBES,
                     )
                 )
@@ -293,6 +306,22 @@ class ExperimentalistCLI(NemoCLI):
                     scratch_dir=experiment_dir_resolved / "resolved",
                     plan=plan,
                 )
+                client = make_client(base_url_resolved)
+                if not _inside_experimentalist_container():
+                    try:
+                        prepared = await _OPEN_SHELL_PREPARER(
+                            inputs,
+                            experiment_dir=experiment_dir_resolved,
+                            client=client,
+                        )
+                        return await asyncio.to_thread(
+                            _OPEN_SHELL_LAUNCHER,
+                            prepared,
+                            experiment_dir=experiment_dir_resolved,
+                            platform_url=base_url_resolved,
+                        )
+                    finally:
+                        await client.close()
                 global run_experimentalist
                 if run_experimentalist is None:
                     from nemo_experimentalist_plugin.experimentalist.run import (
@@ -300,7 +329,6 @@ class ExperimentalistCLI(NemoCLI):
                     )
 
                     run_experimentalist = _run_experimentalist
-                client = make_client(base_url_resolved)
                 try:
                     return await run_experimentalist(
                         agent=inputs.agent,
@@ -321,7 +349,7 @@ class ExperimentalistCLI(NemoCLI):
 
             try:
                 output_text = asyncio.run(_flow())
-            except (OSError, ValueError, yaml.YAMLError) as exc:
+            except (OpenShellLaunchError, OSError, ValueError, yaml.YAMLError) as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from None
             typer.echo(output_text)
@@ -413,6 +441,7 @@ class ExperimentalistCLI(NemoCLI):
                 insight=effective_insight.ref if effective_insight is not None else None,
                 insight_id=effective_insight.selector if effective_insight is not None else None,
                 base_url=base_url_resolved,
+                openshell=not _inside_experimentalist_container(),
                 probes=_PREFLIGHT_PROBES,
             )
             if profile_obj is not None:

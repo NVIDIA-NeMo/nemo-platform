@@ -26,6 +26,7 @@ def quiet_probes(env: dict | None = None) -> Probes:
             "EXPERIMENTALIST_API_BASE": "http://llm",
             "EXPERIMENTALIST_API_KEY": "k",
             "INFERENCE_API_KEY": "k",
+            "AUT_MODEL_NAME": "fixture-model",
         },
     )
 
@@ -39,6 +40,7 @@ def _quiet_preflight(monkeypatch):
     """Deterministic probes for every test; tests override with their own
     monkeypatch.setattr when they exercise specific probe behavior."""
     monkeypatch.setattr(cli, "_PREFLIGHT_PROBES", quiet_probes())
+    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", True)
 
 
 @dataclass

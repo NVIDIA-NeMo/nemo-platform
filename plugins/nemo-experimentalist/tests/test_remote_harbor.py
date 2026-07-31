@@ -11,12 +11,16 @@ from pathlib import Path
 from typing import Any, cast
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import EvaluatorFactory
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
     DatasetRef,
+    DependencyRuntimeError,
     EvaluationResult,
     MetricResult,
+    ResourceRef,
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_harbor import (
@@ -26,6 +30,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.remote_har
     RemoteHarborDependencyRuntime,
     RemoteHarborEvaluator,
     RemoteHarborEvaluatorConfig,
+    _bridge_headers,
 )
 from nemo_experimentalist_plugin.harbor_bridge.contracts import (
     DependencyExecResponse,
@@ -78,8 +83,12 @@ class _RecordingRunner:
         self.calls += 1
         dataset_dir = cast(Path, kwargs["dataset_dir"])
         candidate_dir = cast(Path, kwargs["candidate_dir"])
+        work_dir = cast(Path, kwargs["work_dir"])
         assert (candidate_dir / "main.py").is_file()
         assert (dataset_dir / "base-task" / "instruction.md").read_text(encoding="utf-8") == "changed\n"
+        trace = work_dir / "results" / "trace.jsonl"
+        trace.parent.mkdir()
+        trace.write_text('{"resourceSpans":[]}\n', encoding="utf-8")
         return EvaluationResult(
             id="bridge-result",
             trials=[
@@ -88,6 +97,7 @@ class _RecordingRunner:
                     task_id="base-task",
                     attempt=0,
                     status="completed",
+                    trace=ResourceRef(uri=trace.as_uri(), description="trace"),
                     metrics={"reward": MetricResult(name="reward", value=1.0)},
                 )
             ],
@@ -102,9 +112,10 @@ async def test_remote_evaluator_submits_and_translates_trials(
     sandbox_dataset = tmp_path / "sandbox-dataset"
     shutil.copytree(registered.dataset_path, sandbox_dataset)
     (sandbox_dataset / "base-task" / "instruction.md").write_text("changed\n", encoding="utf-8")
-    candidate = tmp_path / "candidate"
-    candidate.mkdir()
-    (candidate / "main.py").write_text("raise AssertionError('host import')\n", encoding="utf-8")
+    candidates = [tmp_path / "baseline", tmp_path / "candidate"]
+    for candidate in candidates:
+        candidate.mkdir()
+        (candidate / "main.py").write_text("raise AssertionError('host import')\n", encoding="utf-8")
     runner = _RecordingRunner()
     app = create_app(
         settings=HarborBridgeSettings(
@@ -127,11 +138,17 @@ async def test_remote_evaluator_submits_and_translates_trials(
     dataset = HarborDataset.from_ref(DatasetRef(uri=sandbox_dataset.as_uri()))
     evaluator.prepare_dataset(dataset)
 
-    result = await evaluator.run(candidate, dataset)
+    baseline_result = await evaluator.run(candidates[0], dataset)
+    result = await evaluator.run(candidates[1], dataset)
 
-    assert runner.calls == 1
+    assert runner.calls == 2
+    assert baseline_result.aggregate_metrics == {"reward": 1.0}
     assert result.aggregate_metrics == {"reward": 1.0}
     assert result.trials[0].task_id == "base-task"
+    assert result.trials[0].trace is not None
+    assert Path(result.trials[0].trace.uri.removeprefix("file://")).read_text(encoding="utf-8") == (
+        '{"resourceSpans":[]}\n'
+    )
     assert isinstance(dataset.tasks[0].dependencies, RemoteHarborDependencyRuntime)
 
 
@@ -151,6 +168,41 @@ def test_copied_template_automatically_uses_remote_dependency_runtime(
     assert isinstance(runtime, RemoteHarborDependencyRuntime)
     assert runtime.base_task_id == "source"
     assert runtime.task_id == "trace-task"
+
+
+def test_factory_selects_remote_evaluator_without_local_fallback(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(OPEN_SHELL_RUNTIME_ENV, "1")
+    monkeypatch.setenv(BRIDGE_URL_ENV, "http://bridge.test")
+
+    evaluator = EvaluatorFactory().build_evaluator("harbor", {})
+
+    assert isinstance(evaluator, RemoteHarborEvaluator)
+
+
+def test_factory_fails_closed_when_bridge_url_is_missing(monkeypatch) -> None:
+    monkeypatch.setenv(OPEN_SHELL_RUNTIME_ENV, "1")
+    monkeypatch.delenv(BRIDGE_URL_ENV, raising=False)
+
+    with pytest.raises(RuntimeError, match=BRIDGE_URL_ENV):
+        EvaluatorFactory().build_evaluator("harbor", {})
+
+
+def test_openshell_bridge_request_uses_provider_placeholder(monkeypatch) -> None:
+    placeholder = "openshell:resolve:env:NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN"
+    monkeypatch.setenv(OPEN_SHELL_RUNTIME_ENV, "1")
+    monkeypatch.setenv(BRIDGE_TOKEN_ENV, placeholder)
+
+    assert _bridge_headers(BRIDGE_TOKEN_ENV) == {"Authorization": f"Bearer {placeholder}"}
+
+
+def test_openshell_bridge_request_fails_without_provider_placeholder(monkeypatch) -> None:
+    monkeypatch.setenv(OPEN_SHELL_RUNTIME_ENV, "1")
+    monkeypatch.delenv(BRIDGE_TOKEN_ENV, raising=False)
+
+    with pytest.raises(DependencyRuntimeError, match=BRIDGE_TOKEN_ENV):
+        _bridge_headers(BRIDGE_TOKEN_ENV)
 
 
 class _FakeDependencySessions:
