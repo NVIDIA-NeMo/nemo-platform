@@ -12,6 +12,10 @@ import { usePreview } from '@studio/components/NewDataDesignerJobForm/usePreview
 import { getCloneJobRequestFromState } from '@studio/components/NewDataDesignerJobForm/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import {
+  getGeneratedJobRequestFromState,
+  seedFromJobRequest,
+} from '@studio/routes/DataDesignerJobBuildRoute/aiSeed';
 import { BuilderCanvas } from '@studio/routes/DataDesignerJobBuildRoute/BuilderCanvas';
 import { BuilderConfigPane } from '@studio/routes/DataDesignerJobBuildRoute/BuilderConfigPane';
 import { BuilderDetailsPanel } from '@studio/routes/DataDesignerJobBuildRoute/BuilderDetailsPanel';
@@ -73,11 +77,18 @@ export const DataDesignerJobBuildRoute: FC = () => {
     };
   }, [locationState]);
 
+  const generatedSeed = useMemo<JobBuilderSeed | null>(() => {
+    const generatedRequest = getGeneratedJobRequestFromState(locationState);
+    return generatedRequest?.spec ? seedFromJobRequest(generatedRequest) : null;
+  }, [locationState]);
+
   const heading = cloneSeed
     ? `Clone of ${cloneSeed.name}`
-    : template
-      ? template.title
-      : 'Build from scratch';
+    : generatedSeed
+      ? 'Describe with AI'
+      : template
+        ? template.title
+        : 'Build from scratch';
 
   useBreadcrumbs({
     items: [
@@ -87,7 +98,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
     ],
   });
 
-  const builder = useJobBuilder(template, workspace, cloneSeed);
+  const builder = useJobBuilder(template, workspace, cloneSeed ?? generatedSeed);
   const { data: providersPage } = useModelsListProviders(
     workspace,
     { page_size: DEFAULT_LARGE_PAGE_SIZE },
