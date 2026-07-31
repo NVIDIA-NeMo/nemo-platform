@@ -9,19 +9,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 from nemo_insights_plugin.analyst.agent import (
     KICKOFF,
     MAX_REQUESTS,
     build_analyst_agent,
 )
-from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
+from nemo_insights_plugin.analyst.analyst_backend import AnalystBackend, make_analyst_backend
 from nemo_insights_plugin.analyst.deps import AnalystDeps
 from nemo_insights_plugin.analyst.observability import (
     ANALYST_OBSERVABILITY_ENV,
     setup_analyst_observability,
 )
 from nemo_insights_plugin.analyst.result import AnalystResult
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatformError
 from pydantic_ai import Agent, UsageLimits
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 
@@ -32,6 +33,10 @@ _VERBOSE_TRUNCATE = 2000
 
 class ClientConstructionError(Exception):
     """The analyst's NeMo Platform client could not be constructed."""
+
+
+class InsightsServiceUnavailableError(Exception):
+    """The remote Insights API failed its pre-generation availability check."""
 
 
 async def run_analyst(
@@ -69,6 +74,12 @@ async def run_analyst(
             client=client,
             insights_output=insights_output_path,
         )
+        if insights_output_path is None:
+            await _preflight_insights_service(
+                backend,
+                workspace=workspace,
+                agent=agent,
+            )
         deps = AnalystDeps(
             agent=agent,
             workspace=workspace,
@@ -97,6 +108,29 @@ async def run_analyst(
                 observability.shutdown()
         finally:
             await client.close()
+
+
+async def _preflight_insights_service(
+    backend: AnalystBackend,
+    *,
+    workspace: str,
+    agent: str,
+) -> None:
+    """Verify the remote Insight sink before any Intake reads or model work."""
+    try:
+        await backend.list_insights(
+            workspace=workspace,
+            page=1,
+            page_size=1,
+            agent=agent,
+            status=None,
+        )
+    except (NeMoPlatformError, httpx.HTTPError) as exc:
+        detail = " ".join(str(exc).splitlines()).strip() or type(exc).__name__
+        raise InsightsServiceUnavailableError(
+            f"Insights service preflight failed for workspace {workspace!r}: {detail}. "
+            "Start the Insights service and retry."
+        ) from exc
 
 
 def _analyst_observability_enabled() -> bool:
