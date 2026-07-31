@@ -356,8 +356,6 @@ curl "$NMP_BASE_URL/apis/insights/v2/workspaces/$WORKSPACE/insights?agent=$AGENT
 Or view them in Studio at
 `http://localhost:8080/studio/workspaces/default/optimizer`.
 
-![Studio Insight detail view showing the Insight description, an empty experiments panel, and a table of the Intake traces cited as evidence](_images/optimizer-insight-detail.png)
-
 **What good looks like:**
 
 at least one Insight appears for the agent, each with
@@ -443,8 +441,6 @@ winner.
 View the experiment in Studio at
 `http://localhost:8080/studio/workspaces/default/experiment`. There you can see
 the originating Insight and compare evaluation runs across all the candidates.
-
-![Studio experiment detail view showing the originating Insight description, a run summary, and an evaluations table comparing candidate agents across train and validation splits](_images/optimizer-experiment-comparison.png)
 
 The Experimenter also writes intermediate artifacts along the way. Those
 land under `<experiment-dir>/eval-and-optimize/`, which defaults to
