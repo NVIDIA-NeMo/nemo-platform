@@ -15,11 +15,11 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 AGENT_ROOT = PLUGIN_ROOT / "examples" / "tau3-nooa-agent"
-RUNNER_PATH = AGENT_ROOT / "run_airline_insights.py"
+RUNNER_PATH = AGENT_ROOT / "record_tau_airline_traces.py"
 
 
 def _load_runner() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("tau3_nooa_insights_runner", RUNNER_PATH)
+    spec = importlib.util.spec_from_file_location("tau3_airline_trace_recorder", RUNNER_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

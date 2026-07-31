@@ -61,7 +61,7 @@ Run the agent over all 20 Insights tasks:
 
 ```bash
 uv run --frozen \
-  plugins/nemo-experimentalist/examples/tau3-nooa-agent/run_airline_insights.py
+  plugins/nemo-experimentalist/examples/tau3-nooa-agent/record_tau_airline_traces.py
 ```
 
 The runner creates the `tau3-airline` workspace, uploads only agent execution
@@ -76,7 +76,7 @@ Use a fresh workspace name when repeating the run because Intake appends traces:
 
 ```bash
 uv run --frozen \
-  plugins/nemo-experimentalist/examples/tau3-nooa-agent/run_airline_insights.py \
+  plugins/nemo-experimentalist/examples/tau3-nooa-agent/record_tau_airline_traces.py \
   --workspace tau3-airline-rerun
 ```
 
@@ -84,7 +84,7 @@ For a one-task preflight:
 
 ```bash
 uv run --frozen \
-  plugins/nemo-experimentalist/examples/tau3-nooa-agent/run_airline_insights.py \
+  plugins/nemo-experimentalist/examples/tau3-nooa-agent/record_tau_airline_traces.py \
   --task-id tau3-bench__tau3-airline-0 \
   --expected-task-count 1 \
   --workspace tau3-airline-preflight
