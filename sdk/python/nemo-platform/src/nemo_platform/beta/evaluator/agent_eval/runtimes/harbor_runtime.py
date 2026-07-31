@@ -382,14 +382,22 @@ def _feed(digest: "hashlib._Hash", label: bytes, payload: bytes) -> None:
 def _safe_resolve(path: Path) -> Path:
     """``Path.resolve()`` that degrades instead of raising.
 
-    ``resolve()`` calls ``os.readlink`` internally, so a symlink that disappears
-    mid-walk propagates ``OSError`` out of it. The digest is a best-effort guard, not
-    a reason to fail a run that would otherwise succeed, so fall back to the
-    unresolved absolute path.
+    The digest is a best-effort guard, not a reason to fail a run that would
+    otherwise succeed, so fall back to the unresolved absolute path.
+
+    ``RuntimeError`` is caught alongside ``OSError`` and is the case that actually
+    fires: on CPython 3.12 — the floor this package targets — a **symlink loop**
+    surfaces as ``RuntimeError("Symlink loop from ...")``, because ``resolve()``
+    translates ``ELOOP`` before re-raising. It is not an ``OSError``, so catching
+    only that would let a loop under a task directory kill the run. A loop raises
+    deterministically, not as a race. ``OSError`` covers the narrower case of a
+    symlink that disappears mid-walk, since ``resolve()`` calls ``os.readlink``.
+
+    Both are 3.12/3.13 behaviours: 3.14 resolves a loop without raising at all.
     """
     try:
         return path.resolve()
-    except OSError:
+    except (OSError, RuntimeError):
         return path.absolute()
 
 
@@ -604,16 +612,20 @@ def _cache_stamp(
     :func:`build_trials_from_job_dir` reads back and must not cost a Docker re-run.
     """
     options = config.model_dump(exclude=set(_CACHE_IRRELEVANT_OPTIONS), mode="json")
-    excluded_roots = frozenset({config.jobs_dir.expanduser().resolve()})
+    # `_safe_resolve` throughout, matching `_task_dirs_for`: fingerprinting is
+    # best-effort, so a symlink loop or a vanished link under any of these must
+    # degrade to an unresolved path rather than raise out of `run_tasks` and fail a
+    # run that would otherwise succeed.
+    excluded_roots = frozenset({_safe_resolve(config.jobs_dir.expanduser())})
 
     agent_digest = "<none>"
     if config.agent_dir is not None:
-        agent_digest = _digest_directory(config.agent_dir.expanduser().resolve(), exclude=excluded_roots)
+        agent_digest = _digest_directory(_safe_resolve(config.agent_dir.expanduser()), exclude=excluded_roots)
 
     task_digests: dict[str, str] = {}
     for task_id, task_dir in sorted(_task_dirs_for(dataset_path, tasks).items()):
         task_digests[task_id] = (
-            "<unresolved>" if task_dir is None else _digest_directory(task_dir.resolve(), exclude=excluded_roots)
+            "<unresolved>" if task_dir is None else _digest_directory(_safe_resolve(task_dir), exclude=excluded_roots)
         )
 
     return {
