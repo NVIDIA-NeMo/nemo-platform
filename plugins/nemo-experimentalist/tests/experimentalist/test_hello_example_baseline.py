@@ -106,7 +106,19 @@ def test_every_split_keeps_one_passing_and_one_failing_task(split: str) -> None:
     greeting handler broke. Either way the example stops demonstrating what its
     README says it demonstrates.
     """
-    rewards = {task_id: _reward_for(split, task_id) for (s, task_id) in _EXPECTED_BASELINE if s == split}
+    expected_ids = {task_id for (s, task_id) in _EXPECTED_BASELINE if s == split}
+
+    # Check the split on disk before scoring it. `rewards` below only walks
+    # _EXPECTED_BASELINE, so a task added to or removed from the dataset would leave
+    # every assertion here passing while the split no longer has one pass, one
+    # failure, or the 0.5 aggregate the README documents.
+    actual_ids = {path.name for path in (_DATASET_DIR / split).iterdir() if (path / "task.toml").is_file()}
+    assert actual_ids == expected_ids, (
+        f"{split} split's task directories drifted from the documented baseline: "
+        f"missing={sorted(expected_ids - actual_ids)} unexpected={sorted(actual_ids - expected_ids)}"
+    )
+
+    rewards = {task_id: _reward_for(split, task_id) for task_id in sorted(expected_ids)}
 
     # For a two-task split this also pins the 0.5 aggregate both evaluators report.
     assert sorted(rewards.values()) == [0.0, 1.0], f"{split} split lost its one-pass/one-fail shape: {rewards}"
