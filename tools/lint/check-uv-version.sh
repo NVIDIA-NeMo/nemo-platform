@@ -4,4 +4,11 @@
 
 set -euo pipefail
 
-python3 tools/lint/check_uv_version.py
+_python_ver="$(yq '.tool.uv.required-version' pyproject.toml)"
+_flox_ver="$(yq '.install.uv.version' flox-environments/python/.flox/env/manifest.toml)"
+
+if [[ "${_python_ver}" != "${_flox_ver}" ]]; then
+  printf "uv version constraints differ:\n\n"
+  printf "pyproject.toml flox-env\n%s %s\n" "${_python_ver}" "${_flox_ver}" | column -t
+  exit 1
+fi

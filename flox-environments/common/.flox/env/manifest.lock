@@ -17,6 +17,9 @@
       },
       "gum": {
         "pkg-path": "gum"
+      },
+      "yq-go": {
+        "pkg-path": "yq-go"
       }
     },
     "vars": {
@@ -667,6 +670,126 @@
       ],
       "outputs": {
         "out": "/nix/store/w3h6fxv7jmapwcm3rxxwp83q16rnskm2-gum-0.17.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "yq-go",
+      "broken": false,
+      "derivation": "/nix/store/fizkq87xqlj4yicyxm2610qqirk29gx6-yq-go-4.53.3.drv",
+      "description": "Portable command-line YAML processor",
+      "install_id": "yq-go",
+      "license": "[ MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "yq-go-4.53.3",
+      "pname": "yq-go",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:15:55.233322Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.53.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/lpf51yzqr105clhg4c4vyn2blyai4axn-yq-go-4.53.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "yq-go",
+      "broken": false,
+      "derivation": "/nix/store/89zhpxra3dajdv5g4mi9pkf26kvff87l-yq-go-4.53.3.drv",
+      "description": "Portable command-line YAML processor",
+      "install_id": "yq-go",
+      "license": "[ MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "yq-go-4.53.3",
+      "pname": "yq-go",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:45:10.000608Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.53.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/hnn92zxywj73282qrq31ha89drv13244-yq-go-4.53.3"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "yq-go",
+      "broken": false,
+      "derivation": "/nix/store/ic6w08gsq6fhl16368y1qgpzqvhwx3if-yq-go-4.53.3.drv",
+      "description": "Portable command-line YAML processor",
+      "install_id": "yq-go",
+      "license": "[ MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "yq-go-4.53.3",
+      "pname": "yq-go",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:12:44.816982Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.53.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/agf9fyr053m3092vsmh6vih3apz0kw05-yq-go-4.53.3"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "yq-go",
+      "broken": false,
+      "derivation": "/nix/store/jfa3lz2rbba3mrnvaz0l660han5gd0xy-yq-go-4.53.3.drv",
+      "description": "Portable command-line YAML processor",
+      "install_id": "yq-go",
+      "license": "[ MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "yq-go-4.53.3",
+      "pname": "yq-go",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:44:33.209955Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.53.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/sky6728rldnq9yzvljy25d1l6k7y1saj-yq-go-4.53.3"
       },
       "system": "x86_64-linux",
       "group": "toplevel",

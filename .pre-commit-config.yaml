@@ -98,7 +98,7 @@ repos:
         verbose: true
       - id: uv-version-constraint
         name: Check uv version constraints
-        entry: python3 tools/lint/check_uv_version.py
+        entry: ./tools/lint/check-uv-version.sh
         language: system
         files: '^(pyproject\.toml|flox-environments/python/\.flox/env/manifest\.toml)$'
         pass_filenames: false
