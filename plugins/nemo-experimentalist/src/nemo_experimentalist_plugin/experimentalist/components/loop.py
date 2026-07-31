@@ -435,19 +435,17 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             task_template_ref = staged_inputs.task_template
 
         # ---- Resolve datasets to evaluator-domain objects -----------------
-        train_eval_dataset = evaluator.prepare_dataset(
-            dataset_factory.build_dataset(
-                deps.evaluator_type,
-                train_dataset_ref,
-            )
+        train_eval_dataset = dataset_factory.build_dataset(
+            deps.evaluator_type,
+            train_dataset_ref,
         )
+        evaluator.prepare_dataset(train_eval_dataset)
 
-        validation_eval_dataset = evaluator.prepare_dataset(
-            dataset_factory.build_dataset(
-                deps.evaluator_type,
-                validation_dataset_ref,
-            )
+        validation_eval_dataset = dataset_factory.build_dataset(
+            deps.evaluator_type,
+            validation_dataset_ref,
         )
+        evaluator.prepare_dataset(validation_eval_dataset)
 
         # ---- Resolve insight (Mode 1) vs local agent (Mode 2) -----------
         insight = (
@@ -493,13 +491,13 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                 validation_dataset=validation_eval_dataset,
                 client=backend.client,
             )
-            train_eval_dataset = evaluator.prepare_dataset(eval_author_result.train_dataset)
-            validation_eval_dataset = evaluator.prepare_dataset(eval_author_result.validation_dataset)
-            insight_eval_dataset = (
-                evaluator.prepare_dataset(eval_author_result.insight_suite)
-                if eval_author_result.insight_suite is not None
-                else None
-            )
+            train_eval_dataset = eval_author_result.train_dataset
+            validation_eval_dataset = eval_author_result.validation_dataset
+            insight_eval_dataset = eval_author_result.insight_suite
+            evaluator.prepare_dataset(train_eval_dataset)
+            evaluator.prepare_dataset(validation_eval_dataset)
+            if insight_eval_dataset is not None:
+                evaluator.prepare_dataset(insight_eval_dataset)
         else:
             # Mode 2: local agent directory as baseline, no insight required.
             insight = None

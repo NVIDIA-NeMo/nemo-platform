@@ -133,7 +133,17 @@ def _acquire_default_image(
         "BUILD_ARCH": selected_platform,
     }
     built = subprocess.run(  # noqa: S603
-        [docker, "buildx", "bake", "nmp-experimentalist-docker", "--load"],
+        [
+            docker,
+            "buildx",
+            "bake",
+            "-f",
+            "docker-bake.hcl",
+            "-f",
+            "plugins/nemo-experimentalist/docker-bake.hcl",
+            "nmp-experimentalist-docker",
+            "--load",
+        ],
         cwd=repo_root,
         env=build_env,
         check=False,

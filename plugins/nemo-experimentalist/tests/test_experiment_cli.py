@@ -16,7 +16,7 @@ from typer.testing import CliRunner
 
 
 @pytest.fixture(autouse=True)
-def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
+def quiet_preflight(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Auto-preflight runs inside the experiment flow; make it pass deterministically.
 
     These tests pin the CLI→runner contract, not preflight behavior (that lives
@@ -36,7 +36,9 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
             },
         ),
     )
-    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", True)
+    marker = tmp_path / "nemo-experimentalist-container"
+    marker.touch()
+    monkeypatch.setattr(cli, "_CONTAINER_MARKER", marker)
 
 
 @pytest.fixture(autouse=True)
@@ -357,7 +359,7 @@ def test_public_run_uses_openshell_without_local_fallback(
     async def local_runner(**kwargs):
         raise AssertionError(f"host must not run Experimentalist: {kwargs}")
 
-    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", False)
+    monkeypatch.setattr(cli, "_CONTAINER_MARKER", tmp_path / "outside-container")
     monkeypatch.setattr(cli, "_OPEN_SHELL_PREPARER", prepare)
     monkeypatch.setattr(cli, "_OPEN_SHELL_LAUNCHER", launch)
     monkeypatch.setattr(cli, "run_experimentalist", local_runner)
@@ -390,7 +392,7 @@ def test_public_run_fails_when_openshell_is_unavailable_without_local_fallback(
     async def local_runner(**kwargs):
         raise AssertionError(f"host must not run Experimentalist: {kwargs}")
 
-    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", False)
+    monkeypatch.setattr(cli, "_CONTAINER_MARKER", tmp_path / "outside-container")
     monkeypatch.setattr(cli, "_OPEN_SHELL_PREPARER", prepare)
     monkeypatch.setattr(cli, "_OPEN_SHELL_LAUNCHER", fail_launch)
     monkeypatch.setattr(cli, "run_experimentalist", local_runner)

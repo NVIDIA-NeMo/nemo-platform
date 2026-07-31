@@ -64,6 +64,10 @@ socket or real bridge credential. OpenShell injects an opaque bridge placeholder
 and replaces it with the host token only at the permitted network boundary.
 There is no local-execution fallback.
 
+Trusted Python callers and tests can still invoke
+`nemo_experimentalist_plugin.experimentalist.run.run_experimentalist` directly
+without OpenShell. The public CLI deliberately does not expose that bypass.
+
 Install and configure OpenShell, then configure the optimizer model and the
 dedicated direct-inference credential used by candidates:
 

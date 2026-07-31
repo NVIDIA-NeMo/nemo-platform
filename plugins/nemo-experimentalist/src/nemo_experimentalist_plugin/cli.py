@@ -53,7 +53,6 @@ DEFAULT_WORKSPACE = "default"
 _CONTAINER_MARKER = Path("/etc/nemo-experimentalist-container")
 
 _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
-_CONTAINER_RUNTIME: bool | None = None
 _OPEN_SHELL_PREPARER = prepare_openshell_run
 _OPEN_SHELL_LAUNCHER = launch_openshell_run
 
@@ -67,7 +66,7 @@ run_experimentalist = None
 
 
 def _inside_experimentalist_container() -> bool:
-    return _CONTAINER_RUNTIME if _CONTAINER_RUNTIME is not None else _CONTAINER_MARKER.is_file()
+    return _CONTAINER_MARKER.is_file()
 
 
 def _default_experiment_dir(profile: AgentProfile | None) -> Path:

@@ -257,6 +257,45 @@ def test_launcher_uses_custom_image_and_never_calls_local_runner(
     ]
 
 
+def test_default_image_build_loads_plugin_bake_definition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = PreparedOpenShellRun(
+        root=REPO_ROOT,
+        catalog_root=tmp_path / "catalog",
+        sandbox_input=tmp_path / "input",
+        manifest_path=tmp_path / "input" / "run.json",
+    )
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 1 if argv[1:3] == ["image", "inspect"] else 0, stdout="")
+
+    monkeypatch.setattr(launcher.subprocess, "run", run)
+
+    launcher._acquire_default_image(
+        docker="/bin/docker",
+        image=launcher.DEFAULT_IMAGE,
+        prepared=prepared,
+        runtime_env={launcher.PLATFORM_ENV: "linux/arm64"},
+    )
+
+    assert calls[1] == [
+        "/bin/docker",
+        "buildx",
+        "bake",
+        "-f",
+        "docker-bake.hcl",
+        "-f",
+        "plugins/nemo-experimentalist/docker-bake.hcl",
+        "nmp-experimentalist-docker",
+        "--load",
+    ]
+
+
 def test_launcher_deletes_provider_when_configuration_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -359,7 +398,8 @@ def test_openshell_assets_expose_only_bounded_authority() -> None:
     configure_script = (OPEN_SHELL_ROOT / "configure-providers.sh").read_text(encoding="utf-8")
     run_script = (OPEN_SHELL_ROOT / "run.sh").read_text(encoding="utf-8")
     dockerfile = (PLUGIN_ROOT / "Dockerfile").read_text(encoding="utf-8")
-    docker_bake = (REPO_ROOT / "docker-bake.hcl").read_text(encoding="utf-8")
+    root_docker_bake = (REPO_ROOT / "docker-bake.hcl").read_text(encoding="utf-8")
+    docker_bake = (PLUGIN_ROOT / "docker-bake.hcl").read_text(encoding="utf-8")
 
     assert strict["landlock"]["compatibility"] == "hard_requirement"
     assert development["landlock"]["compatibility"] == "best_effort"
@@ -386,6 +426,7 @@ def test_openshell_assets_expose_only_bounded_authority() -> None:
     assert "USER sandbox" in dockerfile
     assert "ENTRYPOINT" not in dockerfile
     assert 'dockerfile = "plugins/nemo-experimentalist/Dockerfile"' in docker_bake
+    assert 'target "nmp-experimentalist-docker"' not in root_docker_bake
 
 
 def test_openshell_shell_assets_parse() -> None:

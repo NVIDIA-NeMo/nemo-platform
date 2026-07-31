@@ -36,11 +36,13 @@ def write_task_toml(profile_tree: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _quiet_preflight(monkeypatch):
+def _quiet_preflight(monkeypatch, tmp_path: Path):
     """Deterministic probes for every test; tests override with their own
     monkeypatch.setattr when they exercise specific probe behavior."""
     monkeypatch.setattr(cli, "_PREFLIGHT_PROBES", quiet_probes())
-    monkeypatch.setattr(cli, "_CONTAINER_RUNTIME", True)
+    marker = tmp_path / "nemo-experimentalist-container"
+    marker.touch()
+    monkeypatch.setattr(cli, "_CONTAINER_MARKER", marker)
 
 
 @dataclass

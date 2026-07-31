@@ -294,7 +294,7 @@ class RemoteHarborEvaluator(Evaluator):
         super().__init__(options, experiment_dir)
         self._transport = transport
 
-    def prepare_dataset(self, dataset: Dataset) -> Dataset:
+    def prepare_dataset(self, dataset: Dataset) -> None:
         if not isinstance(dataset, HarborDataset) or dataset.source is None:
             raise ValueError("Remote Harbor evaluator requires a sourced Harbor dataset")
         root = local_path_from_uri(dataset.source.uri, context="Harbor dataset reference").resolve()
@@ -325,7 +325,6 @@ class RemoteHarborEvaluator(Evaluator):
             )
             runtime._transport = self._transport
             task.dependencies = runtime
-        return dataset
 
     async def _materialize_result_artifacts(
         self,

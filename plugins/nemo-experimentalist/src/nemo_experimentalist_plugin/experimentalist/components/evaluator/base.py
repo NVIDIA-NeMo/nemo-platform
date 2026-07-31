@@ -39,9 +39,8 @@ class Evaluator(ABC):
         self.options = options
         self.experiment_dir = experiment_dir
 
-    def prepare_dataset(self, dataset: Dataset) -> Dataset:
-        """Attach evaluator-specific task runtimes without changing data."""
-        return dataset
+    def prepare_dataset(self, dataset: Dataset) -> None:
+        """Attach evaluator-specific task runtimes in place when required."""
 
     async def aggregate_results(self, results: Sequence[TrialResult]) -> dict[str, float | int]:
         """
