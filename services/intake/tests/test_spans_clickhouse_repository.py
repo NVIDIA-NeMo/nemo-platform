@@ -233,8 +233,9 @@ async def test_list_span_groups_rejects_unsupported_group_field():
 
 @pytest.mark.asyncio
 async def test_get_span_prefers_external_span_id_over_numeric_internal_id():
+    started_at = datetime(2026, 1, 1, 0, 0, 0, 123456, tzinfo=timezone.utc)
     started_at_us = 1767225600123456
-    row = _span_row(internal_id=7, external_span_id="123")
+    row = _span_row(internal_id=7, external_span_id="123", started_at=started_at)
     client = _Client(
         query_results=[
             _QueryResult(
@@ -280,8 +281,7 @@ async def test_get_span_does_not_fall_back_to_internal_id_after_external_miss():
     assert client.parameters[0] == {"workspace": "workspace-a", "span_id": "123"}
 
 
-def _span_row(*, internal_id: int, external_span_id: str) -> tuple[object, ...]:
-    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+def _span_row(*, internal_id: int, external_span_id: str, started_at: datetime) -> tuple[object, ...]:
     zero_time = datetime.fromtimestamp(0, tz=timezone.utc)
     values: dict[str, object] = {
         "workspace": "workspace-a",

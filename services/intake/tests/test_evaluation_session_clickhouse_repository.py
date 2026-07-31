@@ -9,7 +9,6 @@ from typing import Any
 import pytest
 from nmp.intake.repository.clickhouse.evaluation_session import (
     _MAX_METRIC_SORT_SESSIONS,
-    _SORT_EXPR_FINAL,
     _SORT_EXPR_PAGE,
     ClickHouseEvaluationSessionRepository,
     _build_order_by,
@@ -62,12 +61,21 @@ def _session_record(session_id: str) -> dict[str, Any]:
     }
 
 
+def _page_ref(session_id: str, *, start_time_us: int = 1767225600000000) -> dict[str, Any]:
+    return {
+        "session_id": session_id,
+        "trace_id": f"trace-{session_id}",
+        "root_span_id": f"root-{session_id}",
+        "start_time_us": start_time_us,
+    }
+
+
 @pytest.mark.asyncio
 async def test_list_sessions_maps_rows_and_binds_all_request_values() -> None:
     workspace = "workspace' OR 1 = 1 --"
     evaluation_name = "evaluation'); DROP TABLE trace_index; --"
     test_case_id = "case' UNION ALL SELECT secret --"
-    executor = _Executor([[{"count()": 1}], [_session_record("session-a")]])
+    executor = _Executor([[{"count()": 1}], [_page_ref("session-a")], [_session_record("session-a")]])
 
     page = await _repository(executor).list_sessions(
         workspace=workspace,
@@ -90,7 +98,8 @@ async def test_list_sessions_maps_rows_and_binds_all_request_values() -> None:
     ]
     assert [query.name for query in executor.queries] == [
         "evaluation_sessions.count",
-        "evaluation_sessions.list",
+        "evaluation_sessions.page",
+        "evaluation_sessions.hydrate",
     ]
     for query in executor.queries:
         assert workspace not in query.statement
@@ -98,10 +107,19 @@ async def test_list_sessions_maps_rows_and_binds_all_request_values() -> None:
         assert test_case_id not in query.statement
         assert query.parameters["workspace"] == workspace
         assert query.parameters["evaluation_name"] == evaluation_name
+    for query in executor.queries[:2]:
         assert query.parameters["test_case_id"] == test_case_id
         assert query.parameters["status"] == "error"
     assert executor.queries[1].parameters["limit"] == 5
     assert executor.queries[1].parameters["offset"] == 5
+    assert "'' AS input" in executor.queries[1].statement
+    assert "'' AS output" in executor.queries[1].statement
+    assert "substringUTF8(root_input, 1, %(payload_char_limit)s) AS input" in executor.queries[2].statement
+    assert executor.queries[2].parameters["page_session_ids"] == ["session-a"]
+    assert executor.queries[2].parameters["page_trace_ids"] == ["trace-session-a"]
+    assert executor.queries[2].parameters["page_storage_keys"] == [
+        (1767225600000000, "trace-session-a", "root-session-a")
+    ]
 
 
 @pytest.mark.asyncio
@@ -109,7 +127,7 @@ async def test_metric_sort_uses_bounded_page_then_restores_hydration_order() -> 
     executor = _Executor(
         [
             [{"count()": 2}],
-            [{"session_id": "session-b"}, {"session_id": "session-a"}],
+            [_page_ref("session-b"), _page_ref("session-a")],
             [_session_record("session-a"), _session_record("session-b")],
         ]
     )
@@ -127,10 +145,10 @@ async def test_metric_sort_uses_bounded_page_then_restores_hydration_order() -> 
     assert [row.session_id for row in page.rows] == ["session-b", "session-a"]
     assert [query.name for query in executor.queries] == [
         "evaluation_sessions.count",
-        "evaluation_sessions.metric_sort.page_ids",
-        "evaluation_sessions.metric_sort.hydrate",
+        "evaluation_sessions.metric_sort.page",
+        "evaluation_sessions.hydrate",
     ]
-    assert executor.queries[2].parameters["session_ids"] == ["session-b", "session-a"]
+    assert executor.queries[2].parameters["page_session_ids"] == ["session-b", "session-a"]
 
 
 @pytest.mark.asyncio
@@ -173,11 +191,10 @@ def test_build_order_by_uses_registered_expressions_in_key_order() -> None:
     assert (
         _build_order_by(
             [("cost_total_usd", True), ("latency_ms", False)],
-            _SORT_EXPR_FINAL,
-            "sessions.root_span_id ASC",
+            _SORT_EXPR_PAGE,
+            "s.root_span_id ASC",
         )
-        == "metrics.cost_total_usd DESC NULLS LAST, sessions.latency_ms ASC NULLS LAST, "
-        "sessions.root_span_id ASC"
+        == "pm.cost_total_usd DESC NULLS LAST, latency_ms ASC NULLS LAST, s.root_span_id ASC"
     )
     assert (
         _build_order_by(
