@@ -441,7 +441,7 @@ EvaluationResult(id="agent-0-validation", aggregate_metrics={"reward": 0.5, "for
               trace=file:///.../sum-three__heunLKU/artifacts/traces/agent.jsonl)
 ```
 
-`aggregate_metrics` is a plain mean per key over non-failed trials. Two metric
+`aggregate_metrics` is a plain mean per key over `status == "completed"` trials. Two metric
 keys means candidates are compared in **2-D**, which is what makes the Pareto
 machinery meaningful rather than a scalar sort.
 
