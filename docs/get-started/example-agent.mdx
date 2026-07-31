@@ -48,7 +48,7 @@ You should now be able to navigate to `http://localhost:8080` and see the NeMo P
 
 Now that NeMo Platform is running, evaluate the
 [checked-in Tau3 NOOA example agent](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/plugins/nemo-experimentalist/examples/tau3-nooa-agent)
-against version 1 of the
+against the
 [`sierra-research/tau3-bench`](https://hub.harborframework.com/datasets/sierra-research/tau3-bench/latest)
 dataset on Harbor Hub. The example is a customer-service agent built with
 [NVIDIA-labs OO Agents (NOOA)](https://github.com/NVIDIA-NeMo/labs-OO-Agents)
@@ -92,10 +92,9 @@ uv run --frozen nemo insights analyze \
   --base-url "$NMP_BASE_URL"
 ```
 
-Because this command does not set `--insights-file-output`, it publishes the
-Insights to NeMo Platform. In Studio, open the `canonical-tau3-airline`
-workspace's Insights area to review them. Select the Insight you want to
-optimize and copy its ID for the next command.
+The Insights are published to NeMo Platform. In Studio, open the
+`canonical-tau3-airline` workspace's Insights area to review them. Select an
+Insight and copy its ID for the Experimentalist command below.
 
 ## 5. Prepare the Tau3 Airline quality dataset
 
@@ -104,8 +103,9 @@ Insight selected above as its failure lens, generates candidate changes,
 and evaluates them on explicit train and validation splits from the same Harbor
 dataset.
 
-The quality partition contains 20 training tasks and 10 validation tasks. A full
-optimization can take several hours and make many model calls. First, set your
+The partition contains 20 training tasks and 10 validation tasks. The smoke
+configuration used below runs one optimization round and samples at most four
+training tasks, keeping this getting-started run bounded. First, set your
 environment variables and prepare the dataset:
 
 ```bash
@@ -139,17 +139,17 @@ uv run --frozen nemo experimentalist run \
   --task-template plugins/nemo-experimentalist/tmp/tau3-airline-smoke/source/tau3-bench/tau3-bench__tau3-airline-0 \
   --workspace canonical-tau3-airline \
   --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
-  --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-quality.yaml \
+  --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-smoke.yaml \
   --base-url "$NMP_BASE_URL"
 ```
 
 After the run completes, open the workspace's Experiments area in Studio to
 review its evaluations, compare candidates, and inspect the selected winner.
 
-## Optimize without insights
+## 6. (Optional) Optimize without insights
 
 If your dataset already includes objective evaluation metrics, you can run the
-Experimentalist in Mode 2 without an Analyst-generated Insight. In this mode,
+Experimentalist without an Analyst-generated Insight. In this mode,
 the Harbor verifier rewards from the training dataset drive candidate
 selection, while the validation dataset measures whether the selected changes
 generalize.
@@ -166,13 +166,12 @@ uv run --frozen nemo experimentalist run \
   --validation-dataset plugins/nemo-experimentalist/tmp/tau3-airline-smoke/validation \
   --workspace canonical-tau3-airline \
   --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
-  --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-quality.yaml \
+  --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-smoke.yaml \
   --base-url "$NMP_BASE_URL"
 ```
 
-Mode 2 skips the production-issue lens provided by an Insight; it does not skip
-evaluation or failure analysis inside the optimization loop. The
+The Experimentalist skips the production-issue lens provided by an Insight; it
+does not skip evaluation or failure analysis inside the optimization loop. The
 Experimentalist still runs Harbor tasks, examines failing trajectories,
 proposes agent changes, and compares candidates using the dataset's verifier
-metrics. The quality dataset prepared above contains 20 training tasks and 10
-validation tasks.
+metrics.
