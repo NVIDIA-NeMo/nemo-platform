@@ -15,7 +15,8 @@ Eval Author still reuses Experimentalist agents.
 TODO(eval-author-standalone): drop the ``EXPERIMENTALIST_*`` fallback and the bridge once
 this plugin imports nothing from ``nemo_experimentalist_plugin``. Concretely: delete
 ``_BRIDGED_ENV_PAIRS`` and :func:`bridge_author_env_to_experimentalist`, delete
-``_env_bridge.py`` and its import in ``eval_author/agent.py``, and narrow every ``_env`` /
+the ``bridge_author_env_to_experimentalist`` call in ``eval_author/agent.py``, and
+narrow every ``_env`` /
 ``_env_or_default`` call here to its ``AUTHOR_*`` name. That is a breaking change for
 anyone running insight mode from an Experimentalist-only profile ``.env``, so it needs a
 release note. ``rg 'eval-author-standalone'`` finds the other sites.

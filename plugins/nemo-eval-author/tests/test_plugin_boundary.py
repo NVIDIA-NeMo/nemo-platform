@@ -7,9 +7,10 @@ Eval Author is meant to end up standalone, with Experimentalist depending on it 
 other way around. Until then this test pins the modules Eval Author still reaches for, so
 the coupling can only shrink. Prefer duplicating a helper over adding a row here.
 
-Emptying the allowlist is what unblocks the TODO(eval-author-standalone) cleanups: the
-``EXPERIMENTALIST_*`` credential fallback and the ``_env_bridge`` side-effect module both
-exist only to serve the imports listed below.
+Emptying the allowlist is what unblocks the remaining TODO(eval-author-standalone)
+cleanup: the ``EXPERIMENTALIST_*`` credential fallback and the
+``bridge_author_env_to_experimentalist`` call in ``EvalAuthor.__init__`` exist only to
+serve the imports listed below.
 """
 
 import ast

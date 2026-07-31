@@ -57,10 +57,8 @@ Experimentalist import, both tagged `TODO(eval-author-standalone)`:
 - unset `AUTHOR_*` variables fall back to `EXPERIMENTALIST_*`, so insight mode works
   from a single Experimentalist profile `.env`. Setting `AUTHOR_*` explicitly today
   avoids the break when the fallback is removed.
-- importing `nemo_eval_author_plugin._env_bridge` copies `AUTHOR_*` into unset
-  `EXPERIMENTALIST_*` slots, so the Experimentalist helpers Eval Author still
-  borrows see credentials during a standalone run. `eval_author.agent` imports it
-  ahead of any Experimentalist agent, because those agents read the environment when
-  their class body executes.
+- `EvalAuthor.__init__` calls `bridge_author_env_to_experimentalist()`, copying
+  `AUTHOR_*` into unset `EXPERIMENTALIST_*` slots so the Experimentalist helpers
+  Eval Author still borrows see credentials during a standalone run.
 
 A `nemo eval-author` CLI that auto-loads this `.env` is not wired yet.

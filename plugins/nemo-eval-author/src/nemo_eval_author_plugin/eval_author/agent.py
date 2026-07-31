@@ -12,12 +12,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
-# Populates EXPERIMENTALIST_* from AUTHOR_*, which the Experimentalist agent imports below
-# read when their class bodies execute. Must stay ahead of them; isort keeps it there.
-import nemo_eval_author_plugin._env_bridge  # noqa: F401
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_eval_author_plugin.model_config import get_fast_model, get_smart_model
+from nemo_eval_author_plugin.model_config import (
+    bridge_author_env_to_experimentalist,
+    get_fast_model,
+    get_smart_model,
+)
 from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
@@ -66,6 +67,10 @@ class EvalAuthor(Agent):
             config: Tuning parameters; defaults to ``EvalAuthorConfig()``.
             **kwargs: Forwarded to ``Agent.__init__``.
         """
+        # Eval Author still reuses a few Experimentalist agents (TraceAnalyzer,
+        # TraceExplorer). They read EXPERIMENTALIST_* when constructed, so bridge the
+        # AUTHOR_* credentials before any of them is built.
+        bridge_author_env_to_experimentalist()
         super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or EvalAuthorConfig()
         self.experiment_dir = experiment_dir

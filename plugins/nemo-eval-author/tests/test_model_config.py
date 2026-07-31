@@ -205,14 +205,14 @@ def test_bridge_author_env_is_a_no_op_once_applied(
     assert model_config.bridge_author_env_to_experimentalist() == []
 
 
-def test_agent_module_imports_under_author_credentials_alone() -> None:
-    """Guard the import ordering that lets an AUTHOR_*-only run build Experimentalist agents.
+def test_agent_constructs_under_author_credentials_alone() -> None:
+    """An AUTHOR_*-only run must still be able to build the Experimentalist agents.
 
-    ``TraceAnalyzer`` and friends read ``EXPERIMENTALIST_*`` while their class body runs, so
-    ``agent.py`` has to import ``_env_bridge`` before importing them. That ordering cannot be
-    checked in-process: this test suite's conftest already populates ``EXPERIMENTALIST_*``,
-    and the modules are imported once per session. Hence the subprocess with a pruned
-    environment -- it fails with ``ValueError`` if the bridge stops running early enough.
+    ``TraceAnalyzer`` and friends resolve ``EXPERIMENTALIST_*`` when they are constructed,
+    so ``EvalAuthor.__init__`` bridges the credentials first. Checked in a subprocess with a
+    pruned environment because this suite's conftest already populates ``EXPERIMENTALIST_*``
+    and modules are imported once per session -- it fails with ``ValueError`` if the bridge
+    stops running early enough.
     """
     env = {
         key: value
@@ -222,8 +222,19 @@ def test_agent_module_imports_under_author_credentials_alone() -> None:
     env["AUTHOR_API_BASE"] = "https://placeholder.invalid"
     env["AUTHOR_API_KEY"] = "placeholder-for-import"
 
+    # Importing nooa loads a .env, which can pre-populate EXPERIMENTALIST_* and mask the
+    # bridge. Clear those slots after the imports so construction is the only thing that
+    # can fill them.
+    probe = (
+        "import os, tempfile\n"
+        "from pathlib import Path\n"
+        "from nemo_eval_author_plugin.eval_author.agent import EvalAuthor\n"
+        "for k in [k for k in os.environ if k.startswith('EXPERIMENTALIST_')]: del os.environ[k]\n"
+        "EvalAuthor(experiment_dir=Path(tempfile.mkdtemp()))\n"
+        "assert os.environ['EXPERIMENTALIST_API_KEY'] == 'placeholder-for-import', os.environ.get('EXPERIMENTALIST_API_KEY')\n"
+    )
     result = subprocess.run(
-        [sys.executable, "-c", "import nemo_eval_author_plugin.eval_author.agent"],
+        [sys.executable, "-c", probe],
         env=env,
         capture_output=True,
         text=True,
