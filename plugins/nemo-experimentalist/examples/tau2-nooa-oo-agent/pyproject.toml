@@ -14,4 +14,6 @@ dependencies = [
     "orjson==3.11.9",
 ]
 [tool.uv.sources]
-nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", tag = "v0.0.6" }
+# Pinned to a commit, not a tag: tags are mutable, so a moved `v0.0.6` would
+# silently change what this example runs. Matches the repo-root pin.
+nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "bea4614a0e2a6cf88f76225466159af883da80a0" }

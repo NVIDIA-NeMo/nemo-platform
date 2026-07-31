@@ -3,7 +3,6 @@
 
 import os
 
-import requests  # noqa: F401
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.config import CodeActConfig
 from nooa.mcp import MCPManager
@@ -17,9 +16,19 @@ enable_tracing(
     ]
 )
 
+# Fail here, not deep inside the first completion. `CompletionClient` accepts
+# api_key=None and only surfaces it as an auth error mid-trial, which reads as a
+# model failure and costs a container run to diagnose.
+_API_KEY = os.environ.get("INFERENCE_API_KEY")
+if not _API_KEY:
+    raise RuntimeError(
+        "INFERENCE_API_KEY is not set. The agent cannot reach the inference gateway; "
+        "set it in the profile-directory .env or export it before running."
+    )
+
 llm = CompletionClient(
     model=os.environ.get("NEMO_AGENT_MODEL", "openai/azure/anthropic/claude-haiku-4-5"),
-    api_key=os.environ.get("INFERENCE_API_KEY"),
+    api_key=_API_KEY,
     api_base=os.environ.get("INFERENCE_BASE_URL", "https://inference-api.nvidia.com/v1"),
 )
 

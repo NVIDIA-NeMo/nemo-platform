@@ -3,15 +3,58 @@
 
 from __future__ import annotations
 
+import functools
 import inspect
 import json
+import logging
 import os
 import sys
+import tempfile
+import threading
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
 
 from fastmcp import FastMCP
+
+logger = logging.getLogger(__name__)
+
+# Serializes every MCP-exposed runtime call. FastMCP dispatches synchronous tools on a
+# thread pool, and `runtime` below is a module-level singleton driving ONE tau2
+# conversation, so concurrent calls would interleave mutations of the message history,
+# the step/error counters, and the state file. Serializing is the intended semantics
+# here rather than a throughput cost: two simultaneous turns on one conversation are
+# already meaningless. Reentrant because a domain tool re-enters the runtime through
+# `call_assistant_tool` on the same thread.
+_RUNTIME_LOCK = threading.RLock()
+
+
+def _synchronized(handler: Callable[..., str]) -> Callable[..., str]:
+    """Wrap an MCP tool handler so it holds :data:`_RUNTIME_LOCK` while it runs.
+
+    ``__signature__`` and ``__annotations__`` are copied across explicitly. FastMCP
+    derives each tool's JSON schema from them, so a wrapper that dropped them would
+    register a tool taking no arguments — the domain tools would still appear, and
+    silently ignore every argument the agent passed.
+
+    ``functools.wraps`` is not sufficient for the annotations. Python 3.14 replaced
+    ``__annotations__`` with ``__annotate__`` in ``WRAPPER_ASSIGNMENTS`` (PEP 649),
+    and :func:`make_domain_tool_handler` assigns ``__annotations__`` directly, so
+    ``wraps`` copies an ``__annotate__`` that does not describe the tool. It happens
+    to work on the 3.12 image this server runs on; copying explicitly means it does
+    not depend on that.
+    """
+
+    @functools.wraps(handler)
+    def _locked(*args: Any, **kwargs: Any) -> str:
+        with _RUNTIME_LOCK:
+            return handler(*args, **kwargs)
+
+    signature = getattr(handler, "__signature__", None)
+    if signature is not None:
+        _locked.__signature__ = signature
+    _locked.__annotations__ = dict(getattr(handler, "__annotations__", {}))
+    return _locked
 
 
 def make_domain_tool_handler(
@@ -180,6 +223,11 @@ class Tau3Runtime:
         try:
             user_tools = self.environment.get_user_tools(include=self.task.user_tools) or None
         except Exception:
+            # Keep the fallback — a domain with no user tools is legitimate — but do
+            # not swallow the reason. A genuine tau2 API break looks identical to
+            # "this domain has none" from here, and would otherwise surface only as a
+            # quietly degraded user simulator.
+            logger.exception("Could not load user tools for domain %r; continuing without them", self.domain)
             user_tools = None
 
         self.user = self.UserSimulator(
@@ -263,7 +311,19 @@ class Tau3Runtime:
             "start_tool_called": self.start_tool_called,
             "messages": [message.model_dump(mode="json") for message in self.messages],
         }
-        STATE_LOG_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # Published atomically. The Harbor wrapper collects this file as a trial
+        # artifact while the conversation is still running, so a plain write would let
+        # it capture a half-serialized JSON document and fail to parse. The temp file
+        # is in the same directory to keep `os.replace` on one filesystem, where it is
+        # guaranteed atomic.
+        handle_fd, tmp_name = tempfile.mkstemp(dir=STATE_LOG_PATH.parent, prefix=".tau3_state_", suffix=".tmp")
+        try:
+            with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
+            os.replace(tmp_name, STATE_LOG_PATH)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
 
     def _require_active(self) -> None:
         if self.termination_reason is not None:
@@ -561,6 +621,7 @@ runtime = Tau3Runtime(TASK_CONFIG_PATH)
 
 
 @mcp.tool()
+@_synchronized
 def configure_run(
     seed: int | None = None,
     max_steps: int | None = None,
@@ -577,48 +638,56 @@ def configure_run(
 
 
 @mcp.tool()
+@_synchronized
 def get_runtime_status() -> str:
     """Return tau2-style runtime step, error, seed, and termination metadata."""
     return runtime.get_runtime_status()
 
 
 @mcp.tool()
+@_synchronized
 def get_assistant_tool_schemas() -> str:
     """Return the original tau2 OpenAI tool schemas for assistant tools."""
     return runtime.get_assistant_tool_schemas()
 
 
 @mcp.tool()
+@_synchronized
 def start_conversation() -> str:
     """Start or resume the task conversation and return the current observation for the agent."""
     return runtime.start_conversation()
 
 
 @mcp.tool()
+@_synchronized
 def submit_assistant_message(message: str) -> str:
     """Record an assistant message and advance the tau2 runtime."""
     return runtime.submit_assistant_message(message)
 
 
 @mcp.tool()
+@_synchronized
 def submit_assistant_tool_calls(tool_calls_json: str, content: str | None = None) -> str:
     """Record one assistant tool-call message and execute all requested tools."""
     return runtime.submit_assistant_tool_calls(tool_calls_json, content)
 
 
 @mcp.tool()
+@_synchronized
 def send_message_to_user(message: str) -> str:
     """Send a message to the user and return the user's next message."""
     return runtime.send_message_to_user(message)
 
 
 @mcp.tool()
+@_synchronized
 def end_conversation(message: str = "###STOP###") -> str:
     """End the conversation once the user's issue has been resolved."""
     return runtime.end_conversation(message)
 
 
 @mcp.tool()
+@_synchronized
 def record_termination(reason: str) -> str:
     """Record a non-success tau2 termination reason."""
     return runtime.record_termination(reason)
@@ -626,7 +695,7 @@ def record_termination(reason: str) -> str:
 
 def _register_domain_tools() -> None:
     for tool in runtime.environment.get_tools():
-        mcp.tool()(make_domain_tool_handler(tool, runtime.call_assistant_tool))
+        mcp.tool()(_synchronized(make_domain_tool_handler(tool, runtime.call_assistant_tool)))
 
 
 _register_domain_tools()

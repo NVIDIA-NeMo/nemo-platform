@@ -14,6 +14,9 @@ datasets:
   # (tau2-bench-live-test stays untouched for final evaluation).
   train: tau2-bench-live-train@1.0
   validation: tau2-bench-live-validation@1.0
+  # NVIDIA-internal: this host is not reachable outside the corporate network.
+  # External users must point `registry_url` at a registry they can reach that
+  # serves the same schema, or replace the dataset refs above with local paths.
   registry_url: "https://gitlab-master.nvidia.com/gdilorenzo/optimization-datasets/-/raw/main/registry.json?ref_type=heads"
 # Developers: use the Platform Insights testbed's documented fixture-recovery
 # workflow to populate this workspace. Experimentalist does not vendor or invoke that
