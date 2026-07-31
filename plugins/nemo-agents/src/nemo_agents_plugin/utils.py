@@ -16,6 +16,7 @@ from typing import Any, Iterator
 
 import yaml
 from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.entities import parse_qualified_name
 
 logger = logging.getLogger(__name__)
 
@@ -317,9 +318,11 @@ def validate_llm_models(
     """Pre-flight check that every IGW-routed LLM in *config* exists as a VirtualModel.
 
     Iterates ``config["llms"]`` and, for each block whose ``_type`` is in
-    :data:`_IGW_LLM_TYPES`, calls
-    ``sdk.inference.virtual_models.retrieve(model_name, workspace=workspace)``.
-    Names are deduplicated before lookup so the same model declared under
+    :data:`_IGW_LLM_TYPES`, strips a leading ``{workspace}/`` qualifier from
+    ``model_name`` (mirroring IGW's OpenAI proxy — the VM route takes
+    workspace as its own path segment, so the bare name is what it expects)
+    then calls ``sdk.inference.virtual_models.retrieve(name, workspace=workspace)``.
+    Names are deduplicated *after* stripping so the same model declared under
     multiple LLM keys (e.g. agent + judge) costs one network call.
 
     LLM blocks whose ``model_name`` still contains an unexpanded ``$VAR`` /
@@ -349,11 +352,9 @@ def validate_llm_models(
     if not isinstance(llms, dict):
         return
 
-    # Collect (llm_key, model_name) pairs we should validate, deduped by
-    # model_name so multiple LLMs pointing at the same model only cost one
-    # retrieve call.  We keep the first llm_key we saw for each model_name
-    # so error messages can point at a concrete YAML location.
-    to_check: dict[str, str] = {}
+    # Dedup by resolved (workspace, name) so the same model under multiple LLM
+    # keys costs one retrieve; keep the first llm_key for error locations.
+    to_check: dict[tuple[str, str], str] = {}
     for llm_key, llm_cfg in llms.items():
         if not isinstance(llm_cfg, dict):
             continue
@@ -370,31 +371,33 @@ def validate_llm_models(
                 model_name,
             )
             continue
-        to_check.setdefault(model_name, llm_key)
+        # A model_name may be workspace-qualified ("prod/foo"); the VM route
+        # takes workspace as its own path segment, so resolve it here.
+        target_ws, target_name = parse_qualified_name(model_name, default_workspace=workspace)
+        if not target_name:
+            continue
+        to_check.setdefault((target_ws, target_name), llm_key)
 
     if not to_check:
         return
 
-    missing: list[tuple[str, str]] = []  # (model_name, llm_key)
-    for model_name, llm_key in to_check.items():
+    missing: list[tuple[str, str]] = []  # (qualified_name, llm_key)
+    for (target_ws, target_name), llm_key in to_check.items():
         try:
-            sdk.inference.virtual_models.retrieve(name=model_name, workspace=workspace)
+            sdk.inference.virtual_models.retrieve(name=target_name, workspace=target_ws)
         except NotFoundError:
-            missing.append((model_name, llm_key))
+            missing.append((f"{target_ws}/{target_name}", llm_key))
         except Exception as exc:  # pragma: no cover - defensive soft-fail
-            # Soft-fail: log and continue.  We don't want a transient platform
-            # outage or auth blip to gate the eval/optimize run; the
-            # subprocess will fail with the real error if the model truly
-            # isn't reachable.  ``exc_info`` preserves the traceback so a
-            # debugger looking at the warning has the full chain of context
-            # (which we'd otherwise drop by formatting ``exc`` via ``%s``).
+            # Soft-fail: a transient platform outage or auth blip shouldn't gate
+            # the run; the subprocess surfaces the real error. exc_info keeps the
+            # traceback.
             logger.warning(
-                "Could not validate LLM %r (model_name=%r) against workspace %r: %s. "
+                "Could not validate LLM %r (model=%r) against workspace %r: %s. "
                 "Continuing anyway; the underlying eval/optimize call will surface any "
                 "real error.",
                 llm_key,
-                model_name,
-                workspace,
+                target_name,
+                target_ws,
                 exc,
                 exc_info=exc,
             )
