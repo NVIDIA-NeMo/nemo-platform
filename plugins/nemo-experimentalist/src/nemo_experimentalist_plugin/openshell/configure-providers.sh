@@ -57,6 +57,7 @@ openshell provider create \
   --credential NEMO_EXPERIMENTALIST_HARBOR_BRIDGE_TOKEN
 
 if [[ -n "$inference_model" ]]; then
+  inference_set_args=(inference set --provider "$inference_provider" --model "$inference_model")
   if openshell provider get "$inference_provider" >/dev/null 2>&1; then
     openshell provider delete "$inference_provider"
   fi
@@ -66,13 +67,17 @@ if [[ -n "$inference_model" ]]; then
       --type "$inference_provider_type" \
       --credential NVIDIA_API_KEY \
       --config NVIDIA_BASE_URL=https://inference-api.nvidia.com/v1
+    # OpenShell 0.0.92's generic probe is rejected by the Inference Hub GPT-5
+    # proxy even though normal routed requests are supported. This skips only
+    # that setup probe; OpenShell still pins and enforces the runtime route.
+    inference_set_args+=(--no-verify)
   else
     openshell provider create \
       --name "$inference_provider" \
       --type "$inference_provider_type" \
       --from-existing
   fi
-  openshell inference set --provider "$inference_provider" --model "$inference_model"
+  openshell "${inference_set_args[@]}"
 fi
 
 trap - EXIT

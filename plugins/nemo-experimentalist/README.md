@@ -86,6 +86,11 @@ gateway's provider/model route when deriving the OpenShell model ID. When the
 optimizer and candidate share a gateway key, `EXPERIMENTALIST_API_KEY` defaults
 to `INFERENCE_API_KEY`.
 
+Provider setup skips OpenShell 0.0.92's generic endpoint probe for the NVIDIA
+Inference Hub route because its GPT-5 proxy rejects that probe shape. This does
+not disable the sandbox's pinned inference route or network enforcement; the
+first Experimentalist model request performs the functional endpoint check.
+
 The candidate key is injected only into the candidate process inside Harbor.
 Use a spending-limited, easy-to-revoke credential. Source-control archival and
 winner publishing are intentionally unsupported by this runtime.
