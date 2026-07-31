@@ -1,4 +1,4 @@
-schema-version = "1.11.0"
+schema-version = "1.13.0"
 
 [install]
 # Utilities
@@ -17,5 +17,3 @@ ALIGN="center"
 WIDTH="50"
 MARGIN="1 2"
 PADDING="1 2"
-
-[profile]

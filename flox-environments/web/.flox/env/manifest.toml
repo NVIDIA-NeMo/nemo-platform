@@ -1,4 +1,4 @@
-schema-version = "1.11.0"
+schema-version = "1.13.0"
 
 [install]
 fnm = { pkg-path = "fnm", pkg-group = "node" }

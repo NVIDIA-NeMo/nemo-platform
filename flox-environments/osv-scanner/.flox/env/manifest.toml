@@ -1,4 +1,4 @@
-schema-version = "1.11.0"
+schema-version = "1.13.0"
 
 [install]
 osv-scanner = { pkg-path = "osv-scanner", version = "2.3.3", pkg-group = "osv-scanner" }

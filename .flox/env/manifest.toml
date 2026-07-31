@@ -1,8 +1,4 @@
-schema-version = "1.11.0"
-
-[install]
-
-[vars]
+schema-version = "1.13.0"
 
 [profile]
 common = '''
