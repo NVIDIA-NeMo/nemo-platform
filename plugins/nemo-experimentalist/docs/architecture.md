@@ -594,7 +594,7 @@ Every command below runs from the **platform root**, not this plugin directory.
 ```bash
 uv sync --group experimentalist    # installs harbor + nooa (both 3.12-only)
 docker info                        # preflight hard-fails without a running daemon
-export NVIDIA_INFERENCE_HUB_KEY=sk-...
+export INFERENCE_API_KEY=sk-...
 bash tmp/run.sh                    # runs the eval-only config, writes tmp/debug.env
 ```
 

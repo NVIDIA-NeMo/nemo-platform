@@ -21,9 +21,9 @@ mkdir -p /logs/verifier
 OUTPUT=/app/artifacts/output.txt
 # Whole-file comparison, not just the first line: the agent under test is
 # LLM-generated code the optimizer is actively reward-maximizing, so a verifier
-# that ignores trailing output is a reward-hacking surface. Command substitution
-# strips trailing newlines on both sides, so only trailing blank lines are
-# tolerated — any extra content fails.
+# that ignores trailing output is a reward-hacking surface. The comparison is
+# byte-for-byte after end-of-line CRLF normalization: a missing, extra, or
+# duplicated trailing newline all fail.
 #
 # CRLF pairs are normalized at end-of-line only. `tr -d '\r'` would delete
 # *every* carriage return, so `sum=4<CR>2` would collapse to `sum=42` and score a
@@ -38,14 +38,21 @@ format_ok=0.0
 if [ ! -r "$EXPECTED_FILE" ]; then
   echo "FAIL: ${EXPECTED_FILE} is missing or unreadable; refusing to score"
 elif [ -f "$OUTPUT" ]; then
-  EXPECTED="$(sed 's/\r$//' "$EXPECTED_FILE")"
   format_ok=1.0
-  ACTUAL="$(sed 's/\r$//' "$OUTPUT")"
-  echo "expected: [${EXPECTED}]"
-  echo "actual:   [${ACTUAL}]"
-  if [ "$ACTUAL" = "$EXPECTED" ]; then
+  # Byte-for-byte via `cmp`, not `[ "$ACTUAL" = "$EXPECTED" ]`: command substitution
+  # strips *every* trailing newline on both sides, so an agent could append blank
+  # lines and still score 1.0. That is a reward-hacking surface, because the code
+  # under test is LLM-generated and the optimizer is actively maximizing this number.
+  EXPECTED_NORM="$(mktemp)"
+  ACTUAL_NORM="$(mktemp)"
+  sed 's/\r$//' "$EXPECTED_FILE" > "$EXPECTED_NORM"
+  sed 's/\r$//' "$OUTPUT" > "$ACTUAL_NORM"
+  echo "expected: [$(cat "$EXPECTED_NORM")]"
+  echo "actual:   [$(cat "$ACTUAL_NORM")]"
+  if cmp -s "$EXPECTED_NORM" "$ACTUAL_NORM"; then
     reward=1.0
   fi
+  rm -f "$EXPECTED_NORM" "$ACTUAL_NORM"
 else
   echo "FAIL: ${OUTPUT} was not created by the agent"
 fi

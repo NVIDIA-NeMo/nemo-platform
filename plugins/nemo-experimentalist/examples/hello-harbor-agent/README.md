@@ -82,7 +82,7 @@ first run, so the example is tuned to produce it.
 ## Running it
 
 ```bash
-export NVIDIA_INFERENCE_HUB_KEY=sk-...
+export INFERENCE_API_KEY=sk-...
 bash tmp/run.sh
 ```
 
@@ -183,7 +183,7 @@ the loop's Coder writes `architecture.md` and the Terminator writes
 `OPTIMIZATION.md`:
 
 ```bash
-export NVIDIA_INFERENCE_HUB_KEY=sk-...
+export INFERENCE_API_KEY=sk-...
 ```
 
 ```bash
