@@ -126,6 +126,24 @@ async def _ladder(candidate: CandidateConfig, repo_root: Path) -> ValidationOutc
         return outcome
 
     resolved = _resolved_local_paths(job)
+    if resolved is None:
+        # Not a `_harbor` finding: Harbor did not return this verdict, we reached for one of
+        # its attributes and found it gone. Same shape as the round trip's "no harbor
+        # executable on PATH" — the honest report is that Harbor could not be asked.
+        outcome.findings.append(
+            Finding(
+                name="compatibility",
+                group=_GROUP,
+                status="fail",
+                message="This Harbor version no longer exposes the resolved task list through Job._task_configs",
+                hint=(
+                    "Discovery reads the same private attribute Harbor's own CLI does, so this is an "
+                    "incompatibility with the installed Harbor rather than a problem with this repo."
+                ),
+            )
+        )
+        return outcome
+
     task_dirs = _rung_tasks(resolved, outcome)
     outcome.task_dirs = task_dirs
     _rung_coverage(config, resolved, outcome)
@@ -222,20 +240,29 @@ async def _rung_resolution(config: JobConfig, outcome: ValidationOutcome) -> Job
     return job
 
 
-def _resolved_local_paths(job: Job) -> list[Path]:
-    """The on-disk task directories Harbor expanded this job into.
+def _resolved_local_paths(job: Job) -> list[Path] | None:
+    """The on-disk task directories Harbor expanded this job into, or ``None`` if it cannot say.
 
     Harbor's own CLI reaches for this attribute at harbor/cli/jobs.py:93 for the same
     reason; there is no public accessor for the resolved list. Tasks that live only in a
     remote registry are skipped, since the resolution rung already spoke for whether they
     could be fetched.
 
+    A missing attribute is ``None`` rather than an empty list, because the two mean opposite
+    things. Empty is a repo Harbor found no tasks in; absent is a Harbor that no longer
+    answers the question, and collapsing them would report "the config resolves to zero
+    tasks" about a repo whose tasks are fine.
+
     Absolute on the way out. Harbor hands back whatever the config said, and a relative path
     means the repo root only while the ladder's chdir is in effect; these outlive it as the
     task list the report fingerprints.
     """
+    task_configs = getattr(job, "_task_configs", None)
+    if task_configs is None:
+        return None
+
     paths: list[Path] = []
-    for task_config in getattr(job, "_task_configs", []):
+    for task_config in task_configs:
         try:
             paths.append(task_config.get_local_path().resolve())
         except ValueError:

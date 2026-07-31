@@ -5,112 +5,70 @@ SPDX-License-Identifier: Apache-2.0
 
 # Eval Author
 
-The top-level `nemo_eval_author_plugin.eval_author` package is the canonical Eval Author
-implementation. It turns an Experimentalist Insight and its production trace refs into
+The Eval Author plugin is a NeMo OO Agent specialized in auditing and improving the
+eval suite of a target agent.
+
+It turns an Experimentalist Insight and its production trace refs into
 evaluator dataset changes, creating or augmenting regression signals that
 capture the failure mode before optimization begins.
 
 This package hard-depends on Experimentalist for evaluator, staging, and trace
 helpers. Experimentalist insight mode imports and runs this Eval Author before
-beginning optimization (both packages are installed via the `experimentalist`
-uv group).
+beginning optimization.
 
-## Current Files
+## Current state
 
-- `agent.py` defines the canonical `EvalAuthor` agent.
-- `materialization.py` stages, validates, and persists Insight suites locally.
-- `models.py` defines the lightweight `EvalAuthorConfig` and `EvalAuthorResult` models.
-- `REFERENCE.md` documents the Python return contract.
-- `run.py` defines `run_eval_author(...)`, a reusable orchestration function for
-  Python callers.
-- `config.yaml` is a default run preset for future CLI or job wiring.
+`nemo eval-author discover` is the only implemented command. It answers whether
+Harbor can run a repository's evals and records the answer, so a later run does
+not have to derive it again.
 
-## Configuration
+The command assembles a candidate Harbor `JobConfig` from the strongest source
+the repository offers: a Harbor config file it already maintains, a `config.json`
+from a prior job Harbor resolved and ran, an Experimentalist `optimizer.yaml`
+profile plus the agent wrapper, or the Harbor task directory layout alone.
 
-`config.yaml` is not loaded automatically yet. A future entrypoint should read
-the file, overlay caller-provided values, and validate the nested `eval_author`
-block with `EvalAuthorConfig`.
+It validates that candidate through a ladder of Harbor's own calls rather than
+reimplemented rules: schema, job resolution, task validity and coverage, reward
+files, required host variables, the agent class, the environment backend, and a
+round trip of the persisted bytes through `harbor job start --print-config`.
+[`discovery/validate.py`](../discovery/validate.py) names the Harbor API behind
+each rung.
 
-The preset includes the run inputs needed by `run_eval_author(...)`:
+The result is recorded to the `nemo-eval-author` fileset as
+`<agent>/discovery.md`. A `<agent>/harbor-job.yaml` is published alongside the
+report only when discovery authored or adjusted the config; when the repository
+maintains its own valid config file, the report points at that file instead.
+Nothing is written into the repository under inspection.
 
-- `insight`: local Insight file path or platform Insight id.
-- `agent`: optional agent source override. If omitted, the Insight's agent is used.
-- `train_dataset`: evaluator training dataset URI.
-- `validation_dataset`: evaluator validation dataset URI.
-- `task_template`: local or `fileset://` evaluator task template URI for production traces.
-- `experiment_dir`: local Eval Author working directory.
-- `workspace`, `base_url`, `mode`, and `evaluator_type`: platform and evaluator routing.
-- `eval_author.max_summary_tokens` and `eval_author.max_traces`: agent tuning parameters.
+Exit code 0 means a config was validated and recorded. Every other outcome exits
+non-zero, including a config Harbor accepted but that could not be uploaded,
+which is what makes the command usable as a gate.
 
-## Materialized Insight Suite
+`discover` takes these flags:
 
-For an Insight with trace references, Eval Author copies and fills one local Harbor
-task template per trace beneath its experiment working directory:
+- `--repo`: agent repository to inspect. Defaults to the current directory.
+- `--agent`: name the artifacts are stored under. Defaults to the agent named in
+  `optimizer.yaml`, else a slug of the directory name.
+- `--fix` / `--no-fix`: let an LLM scout propose fixes for a config Harbor
+  rejected. Defaults to `--no-fix`, and the scout is the only part of `discover`
+  that needs `AUTHOR_*` credentials.
+- `--refresh`: revalidate even when nothing the last report depended on moved.
+- `--dry-run`: print the findings and the config without uploading anything.
 
-```text
-eval-and-optimize/eval_author/<insight-slug>/insight-suite/
-```
+There are no flags for platform state. The workspace and cluster come from the
+active `nemo` context, `NMP_WORKSPACE` still overrides the workspace, and the
+Harbor environment backend comes from the repository's own config or Harbor's
+default.
 
-Each Eval Author invocation fills a fresh candidate suite from the current template
-and traces. The complete suite is Harbor-validated locally, promoted to the
-experiment-local working copy with backup-and-restore failure handling, and
-analyzed for the Insight's root cause. Eval Author then adds normalized
-Insight-specific verifier metric keys to every materialized task while
-preserving the template's existing task metrics. The metric authoring step is
-scoped to the Insight suite; the user's train and validation datasets remain
-unchanged. The authored verifiers must pass static Harbor validation before the
-local suite is returned to the optimization loop.
+The other verbs are registered in [`cli.py`](../cli.py) so the command tree is
+discoverable. Each one exits non-zero with a not-implemented message.
 
-After authoring and validation, Eval Author hashes every task file and verifier
-file and persists deterministic suite and scorer identities in the local suite's
-manifest. The returned dataset continues to point at the single experiment-local
-suite. Candidate Insight results persist the suite identity, and resume reuses
-those results only when the identity still matches; changed task or verifier
-content is re-evaluated.
+## Planned commands
 
-Task-template inputs may be local paths, `file://` URIs, or NeMo Platform
-`fileset://<workspace>/<fileset>` references. Fileset-backed templates are
-downloaded into the experiment-local staging directory before Harbor parses
-them. The staged template is refreshed on every invocation rather than reused.
-
-The returned Python contract is documented in the
-[Eval Author Python Reference](REFERENCE.md#evalauthorresult).
-
-Insight metrics remain adaptive development feedback. They may steer round
-analysis, goal-tree updates, and proposals, but validation remains the direct
-Pareto and winner-selection criterion. Promotion suggestions require complete
-repeated baseline-to-winner improvement evidence, remain advisory, and never
-mutate the canonical validation dataset.
-
-## Intended Invocation
-
-Until a CLI or platform job is wired, Python callers can invoke the runner
-directly:
-
-```python
-import asyncio
-from pathlib import Path
-
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
-from nemo_eval_author_plugin.eval_author.run import run_eval_author
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
-
-
-async def main() -> None:
-    result = await run_eval_author(
-        insight="insight-id",
-        train_dataset=DatasetRef(uri="path/to/train"),
-        validation_dataset=DatasetRef(uri="path/to/validation"),
-        task_template=DatasetRef(uri="path/to/template"),
-        experiment_dir=Path("tmp/eval_author"),
-        workspace="default",
-        base_url="http://localhost:8080",
-        config=EvalAuthorConfig(),
-    )
-    print(result.summary)
-
-
-asyncio.run(main())
-```
-
-No standalone Eval Author CLI is implemented yet.
+- `nemo eval-author audit`: report coverage gaps in an existing Harbor suite
+  against `ETHOS.md`, without changing the suite.
+- `nemo eval-author propose`: draft reviewable Harbor tasks and verifier patches
+  for the gaps the audit found.
+- `nemo eval-author run`: run `discover`, `audit`, and `propose` as one pipeline.
+- `nemo eval-author doctor`: check the credentials, platform access, and runtime
+  the other commands need.

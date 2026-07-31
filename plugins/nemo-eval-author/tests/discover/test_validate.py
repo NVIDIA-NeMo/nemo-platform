@@ -16,6 +16,7 @@ Tests that care about the backend assert on that finding directly.
 """
 
 import sys
+from typing import ClassVar
 
 from harbor_fixtures import (
     MENTIONS_REWARD_IN_COMMENT,
@@ -77,6 +78,57 @@ async def test_resolution_failure_reports_the_error_a_real_run_would_hit(tmp_pat
     assert resolution.status == "fail"
     assert resolution.harbor_call == "Job.create"
     assert resolution.hint is not None and "before starting any container" in resolution.hint
+
+
+async def test_a_harbor_that_stopped_exposing_its_resolved_tasks_does_not_blame_the_repo(tmp_path, monkeypatch):
+    """``Job._task_configs`` is private, so a Harbor upgrade is allowed to rename it.
+
+    Reading an absent attribute as zero tasks would report "the config resolves to zero tasks"
+    under a hint quoting a Harbor error Harbor never raised, about a repo whose tasks are fine.
+    An incompatibility of ours has to read as ours.
+    """
+    write_dataset(tmp_path / "evals" / "validation", count=1)
+    candidate = _candidate({"datasets": [{"path": str(tmp_path / "evals/validation")}]})
+
+    class _JobWithoutTaskConfigs:
+        @classmethod
+        async def create(cls, config):
+            return cls()
+
+    monkeypatch.setattr(validate, "Job", _JobWithoutTaskConfigs)
+
+    outcome = await validate.run_ladder(candidate, tmp_path)
+
+    compatibility = _finding(outcome, "compatibility")
+    assert compatibility.status == "fail"
+    assert "Job._task_configs" in compatibility.message
+    assert not any(item.name == "tasks" for item in outcome.findings), "no verdict on tasks was available"
+    assert not any("zero tasks" in item.message for item in outcome.findings)
+
+
+async def test_a_config_that_really_resolves_no_tasks_is_still_the_repo_s_failure(tmp_path, monkeypatch):
+    """The companion case: present but empty is a repo Harbor found nothing in, and it must still fail.
+
+    Absent and empty mean opposite things, so this pins the distinction from the side that
+    would be lost if the attribute check were ever relaxed back to a falsy one.
+    """
+    candidate = _candidate({"datasets": [{"path": str(write_dataset(tmp_path / "evals" / "validation", count=1))}]})
+
+    class _JobWithNoTasks:
+        _task_configs: ClassVar[list] = []
+
+        @classmethod
+        async def create(cls, config):
+            return cls()
+
+    monkeypatch.setattr(validate, "Job", _JobWithNoTasks)
+
+    outcome = await validate.run_ladder(candidate, tmp_path)
+
+    tasks = _finding(outcome, "tasks")
+    assert tasks.status == "fail"
+    assert "zero tasks" in tasks.message
+    assert not any(item.name == "compatibility" for item in outcome.findings)
 
 
 async def test_a_task_harbor_silently_skips_is_reported(tmp_path):

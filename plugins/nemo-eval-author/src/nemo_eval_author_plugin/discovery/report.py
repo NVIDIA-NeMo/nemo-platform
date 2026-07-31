@@ -191,8 +191,9 @@ def _verdict_section(report: DiscoveryReport) -> list[str]:
         source = report.config_source
         detail = source.detail if source is not None else "unknown"
         return [
-            f"Harbor can run this repo's evals. The config was {detail}, and every check below "
-            f"was answered by Harbor {report.harbor_version} rather than inferred.",
+            f"Harbor can run this repo's evals. The config was {detail}, and every check in "
+            f"*What Harbor checked* below was answered by Harbor {report.harbor_version} rather "
+            "than inferred.",
             "",
         ]
 

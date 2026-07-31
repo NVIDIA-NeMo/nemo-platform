@@ -63,4 +63,5 @@ Experimentalist import, both tagged `TODO(eval-author-standalone)`:
   ahead of any Experimentalist agent, because those agents read the environment when
   their class body executes.
 
-A `nemo eval-author` CLI that auto-loads this `.env` is not wired yet.
+The `nemo eval-author` CLI exists now, but nothing loads this `.env`: export the
+variables in your shell instead.

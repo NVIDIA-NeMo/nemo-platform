@@ -85,6 +85,22 @@ async def test_a_missing_or_unreachable_report_just_means_rediscover():
     assert await memory.load_previous(unusable, agent="ticket-triage", workspace="default") is None
 
 
+async def test_a_hand_edited_report_is_rediscovered_rather_than_raising():
+    """Nothing above this catches an exception, so a report someone edited would be a traceback.
+
+    YAML reads a bare timestamp as a ``datetime`` and a bare version as a ``float``, neither of
+    which Pydantic coerces into the strings ``PriorRecord`` declares. An unusable file is the
+    same situation as no file at all, and the answer to both is to rediscover.
+    """
+    for line in ("last_validated_at: 2026-07-31T16:32:41.123456+00:00", "harbor_version: 0.18"):
+        stored = f"---\nrunnable: true\n{line}\n---\n\n# report\n"
+        client = StubClient(files=StubFiles({"ticket-triage/discovery.md": stored.encode("utf-8")}))
+
+        prior = await memory.load_previous(client, agent="ticket-triage", workspace="default")
+
+        assert prior is None, f"`{line}` should have been declined rather than raised on"
+
+
 def test_rehashing_prior_inputs_notices_an_edited_file(tmp_path):
     path = _write(tmp_path / "task.toml", 'version = "1.0"\n')
     inputs = report.fingerprint_inputs([path], tmp_path)

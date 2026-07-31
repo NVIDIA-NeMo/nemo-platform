@@ -25,7 +25,7 @@ _PLACEHOLDER_VERBS = [
     ("audit", "ASE-676"),
     ("propose", "ASE-675"),
     ("run", "ASE-673"),
-    ("doctor", "ASE-678"),
+    ("doctor", "ASE-769"),
 ]
 
 _IMPLEMENTED_VERBS = ["discover"]

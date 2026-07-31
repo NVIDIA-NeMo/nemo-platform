@@ -43,8 +43,6 @@ _GROUP = "scout"
 # means Docker is not running, and no amount of reading the repo fixes that.
 _SCOUTABLE_RUNGS = frozenset({"schema", "resolution", "tasks", "agent", "config-source"})
 
-ProposeFn = Callable[[CandidateConfig, list[Finding], Path], Awaitable["ScoutProposal"]]
-
 
 class ScoutProposal(BaseModel):
     """A config the scout believes will validate, plus its reasoning."""
@@ -52,6 +50,9 @@ class ScoutProposal(BaseModel):
     config: dict[str, Any] = Field(description="A complete Harbor job config payload, not a patch.")
     rationale: str = Field(description="What was inspected and why this config follows from it.")
     changed: list[str] = Field(default_factory=list, description="The keys that differ from the input config.")
+
+
+ProposeFn = Callable[[CandidateConfig, list[Finding], Path], Awaitable[ScoutProposal]]
 
 
 class DiscoveryScout(Agent, llm=get_smart_model()):

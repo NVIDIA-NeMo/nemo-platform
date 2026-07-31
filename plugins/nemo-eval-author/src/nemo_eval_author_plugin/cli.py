@@ -49,6 +49,13 @@ def _report_discovery(result: discovery.DiscoverResult) -> None:
             f"Nothing the previous report depended on has changed, so its verdict still holds "
             f"(revalidated {record.last_validated_at.isoformat()})."
         )
+        # This branch is deliberately terse, but a failed re-upload is the one thing it
+        # cannot stay quiet about: without the warning, the exit code says the record was
+        # not written and nothing says why. Passes are skipped because the "Recorded to
+        # fileset ..." line below already reports them.
+        for finding in result.memory_findings:
+            if finding.status != "pass":
+                _echo_finding(finding)
     else:
         findings = [*record.findings, *result.memory_findings]
         for group in _GROUP_ORDER:
@@ -166,7 +173,7 @@ class EvalAuthorCLI(NemoCLI):
         @app.command("doctor")
         def doctor() -> None:
             """Diagnose Eval Author setup: credentials, platform, runtime."""
-            # TODO(ASE-678): report the prerequisites the other verbs gate on.
-            _not_implemented("doctor", "ASE-678")
+            # TODO(ASE-769): report the prerequisites the other verbs gate on.
+            _not_implemented("doctor", "ASE-769")
 
         return app

@@ -31,7 +31,7 @@ from nemo_eval_author_plugin.discovery.models import (
     InputFingerprint,
 )
 from nemo_eval_author_plugin.discovery.report import fingerprint_inputs
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 _GROUP = "memory"
 _FRONT_MATTER_FENCE = "---"
@@ -112,14 +112,20 @@ async def load_previous(sdk: Any, *, agent: str, workspace: str) -> PriorRecord 
         for item in front.get("inputs") or []
         if isinstance(item, dict) and "path" in item and "sha256" in item
     ]
-    return PriorRecord(
-        inputs_digest=front.get("inputs_digest"),
-        runnable=bool(front.get("runnable")),
-        harbor_version=front.get("harbor_version"),
-        last_validated_at=front.get("last_validated_at"),
-        inputs=inputs,
-        text=text,
-    )
+    try:
+        return PriorRecord(
+            inputs_digest=front.get("inputs_digest"),
+            # Identity rather than truthiness: only a real YAML boolean may switch off
+            # revalidation. An unquoted timestamp or version loads as a datetime or a float
+            # and would fail validation, so a hand-edited report is rediscovered, not trusted.
+            runnable=front.get("runnable") is True,
+            harbor_version=front.get("harbor_version"),
+            last_validated_at=front.get("last_validated_at"),
+            inputs=inputs,
+            text=text,
+        )
+    except ValidationError:
+        return None
 
 
 def restamp(text: str, *, when: datetime, harbor_version: str) -> str | None:

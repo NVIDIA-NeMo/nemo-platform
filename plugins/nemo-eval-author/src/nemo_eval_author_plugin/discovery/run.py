@@ -81,7 +81,12 @@ class DiscoverResult:
 
 
 async def discover(options: DiscoverOptions) -> DiscoverResult:
-    """Run discovery end to end."""
+    """Run discovery end to end.
+
+    One call at a time per process. The validation ladder chdirs into the repo and puts it on
+    ``sys.path``, both process-wide, so a second concurrent call would judge the wrong tree. A
+    caller that needs several repos at once has to run them in separate processes.
+    """
     repo_root = options.repo_root.resolve()
     agent = options.agent or _infer_agent_name(repo_root)
     workspace = _active_workspace()
@@ -164,7 +169,10 @@ async def _discover(
     if job_config is not None and publishable is None:
         memory_findings.append(
             Finding(
-                name="upload",
+                # Not "upload": withholding is a decision, and memory.persist uses that name
+                # for an upload that actually broke. One name for both invites a filter that
+                # silences real failures.
+                name="config-withheld",
                 group="memory",
                 status="warn",
                 message=f"Withheld {JOB_CONFIG_FILENAME}: the config did not clear every check",
@@ -218,6 +226,10 @@ async def _reuse(
             "repo_root": front.get("repo_root", str(options.repo_root)),
             "harbor_version": front.get("harbor_version", report.harbor_version()),
             "config_source": front.get("config_source"),
+            # Restored because the CLI prints "Needs: ..." from it, and a repeat run that
+            # dropped it would tell the user to start a job without naming the variables
+            # Harbor raises on. ``or []`` degrades an explicit null rather than failing.
+            "required_env_vars": front.get("required_env_vars") or [],
             "discovered_at": front.get("discovered_at", now),
             "last_validated_at": now,
             "inputs": [item.model_dump() for item in prior.inputs],
@@ -304,8 +316,21 @@ def _input_paths(repo_root: Path, candidate: CandidateConfig | None, outcome: Va
         for agent_config in outcome.config.agents:
             if agent_config.import_path:
                 module = agent_config.import_path.split(":", 1)[0].split(".", 1)[0]
-                paths.extend(sorted(repo_root.rglob(f"{module}.py")))
+                paths.extend(_module_files(repo_root, module))
     return paths
+
+
+def _module_files(repo_root: Path, module: str) -> list[Path]:
+    """Every ``{module}.py`` the repo itself holds, located the way ``sources`` finds a wrapper.
+
+    Through ``scan.walk_dirs`` rather than ``rglob`` because this list is hashed into the
+    digest that decides whether a later run may skip the ladder. An unfiltered walk would
+    fingerprint a copy inside ``.venv`` or ``node_modules``, so reinstalling a dependency
+    would invalidate a report that is still perfectly good, and the digest would quietly
+    cover bytes the repo does not own.
+    """
+    candidates = (directory / f"{module}.py" for directory in scan.walk_dirs(repo_root))
+    return sorted(path for path in candidates if path.is_file())
 
 
 def _infer_agent_name(repo_root: Path) -> str:
