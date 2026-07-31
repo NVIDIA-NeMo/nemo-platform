@@ -72,12 +72,12 @@ def test_tau3_airline_harbor_uses_checked_in_agent_and_hub_dataset() -> None:
     assert subject.config["agent_dir"] == "../nemo-experimentalist/examples/tau3-nooa-agent"
     assert subject.config["dataset_ref"] == "sierra-research/tau3-bench@1"
     assert subject.config["task_names"] == [
-        "tau3-bench__tau3-airline-0",
-        "tau3-bench__tau3-airline-1",
-        "tau3-bench__tau3-airline-4",
-        "tau3-bench__tau3-airline-5",
-        "tau3-bench__tau3-airline-9",
-        "tau3-bench__tau3-airline-10",
+        "sierra-research/tau3-bench__tau3-airline-0",
+        "sierra-research/tau3-bench__tau3-airline-1",
+        "sierra-research/tau3-bench__tau3-airline-4",
+        "sierra-research/tau3-bench__tau3-airline-5",
+        "sierra-research/tau3-bench__tau3-airline-9",
+        "sierra-research/tau3-bench__tau3-airline-10",
     ]
 
 
