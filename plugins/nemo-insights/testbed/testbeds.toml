@@ -30,6 +30,23 @@ agent = "nemo-oo-airline"
 workspace = "tau2-airline-20260710-152942-4754"
 base_url = "http://localhost:8080"
 
+[tau3-airline-harbor]
+type = "harbor"
+agent_dir = "../nemo-experimentalist/examples/tau3-nooa-agent"
+base_url = "http://localhost:8080"
+workspace = "canonical-tau3-airline"
+agent_name = "nemo-experimentalist-tau3-nooa"
+agent_version = "1.0.0"
+agent_llm = "openai/openai/openai/gpt-5-mini"
+user_llm = "openai/openai/openai/gpt-5-mini"
+verifier_llm = "openai/openai/openai/gpt-5-mini"
+dataset_ref = "sierra-research/tau3-bench@1"
+registry_url = "https://hub.harborframework.com"
+num_tasks = 6
+num_trials = 1
+max_concurrency = 6
+timeout = 3600
+
 [tau2-airline]
 type = "benchmark"
 domain = "airline"

@@ -6,8 +6,8 @@
 ``opentelemetry.proto`` ``ExportTraceServiceRequest`` and POSTs it to Intake's
 permissive OTLP route. OTLP ingest does **not** auto-create the queryable
 ``evaluator_results`` rows the Analyst reads, so :func:`post_evaluator_results`
-separately POSTs the reward (mirroring exactly the row the ATIF importer used to
-create: ``name="reward"``, ``NUMERIC``, targeting the EVALUATOR span).
+separately POSTs verifier rewards as ``NUMERIC`` evaluator rows targeting the
+relevant root span.
 
 The protobuf build mirrors nemo-platform's own
 ``services/intake/tests/integration/spans/conftest.py::make_otlp_request`` helper,
@@ -85,19 +85,20 @@ def post_evaluator_results(
     span_id: str,
     session_id: str,
     score: float,
+    name: str = "reward",
     client: httpx.Client | None = None,
 ) -> None:
     """POST the reward row the OTLP path doesn't auto-create.
 
-    Reproduces the ATIF importer's row exactly: ``name="reward"``, ``NUMERIC``,
-    targeting the EVALUATOR span — so the Analyst reads the reward unchanged.
+    ``name`` defaults to ``reward`` for Tau2 compatibility; Harbor adapters pass
+    each verifier criterion's name. The Analyst reads every value unchanged.
     Raises ``RuntimeError`` on any non-2xx.
     """
     url = f"{base_url.rstrip('/')}/apis/intake/v2/workspaces/{workspace}/evaluator-results"
     body = {
         "span_id": span_id,
         "session_id": session_id,
-        "name": "reward",
+        "name": name,
         "value": score,
         "data_type": "NUMERIC",
     }
