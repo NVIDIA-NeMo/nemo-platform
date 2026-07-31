@@ -113,8 +113,6 @@ export const AnonymizerBuilderForm: FC = () => {
     });
   }, showValidationErrors);
 
-  const handleCancel = () => navigate(getWorkspaceAnonymizerRoute(workspace));
-
   const isBusy = createJob.isPending || isLoadingModels || isLoadingEntityLabels;
 
   return (
@@ -125,18 +123,6 @@ export const AnonymizerBuilderForm: FC = () => {
           elevation="high"
           density="standard"
           attributes={{ PanelContent: { className: 'flex-1 min-h-0 overflow-auto' } }}
-          slotFooter={
-            <Flex gap="density-md" justify="end">
-              <Button
-                kind="tertiary"
-                type="button"
-                disabled={createJob.isPending}
-                onClick={handleCancel}
-              >
-                Cancel
-              </Button>
-            </Flex>
-          }
         >
           <Stack gap="density-2xl">
             <Flex align="center" gap="density-md">

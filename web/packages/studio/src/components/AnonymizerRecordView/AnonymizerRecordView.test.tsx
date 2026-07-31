@@ -23,9 +23,13 @@ const traceRow = {
   },
 };
 
-const renderRecord = (row: Record<string, unknown>, outputHeading = 'Replaced') =>
+const renderRecord = (
+  row: Record<string, unknown>,
+  outputHeading = 'Replaced',
+  initialEntry = '/'
+) =>
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <AnonymizerRecordView
         outputHeading={outputHeading}
         record={buildAnonymizerRecord(row, 'biography')}
@@ -56,6 +60,13 @@ describe('AnonymizerRecordView', () => {
     renderRecord(traceRow, 'Rewritten');
 
     expect(screen.getByText('Rewritten')).toBeInTheDocument();
+  });
+
+  it('still shows the map when the shared page param outruns a short record', () => {
+    renderRecord(traceRow, 'Replaced', '/?page=3');
+
+    expect(screen.getAllByText('Teddy').length).toBeGreaterThan(0);
+    expect(screen.queryByText('No Entries Found')).not.toBeInTheDocument();
   });
 
   it('explains when nothing was replaced', () => {

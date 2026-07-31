@@ -19,7 +19,13 @@ interface ReplacementMapTableProps {
 export const ReplacementMapTable: FC<ReplacementMapTableProps> = memo(({ replacements }) => {
   const dataViewState = useStudioDataViewState({ defaultPageSize: REPLACEMENTS_PAGE_SIZE });
 
-  const { pageIndex, pageSize } = dataViewState.pagination.state;
+  const { pageIndex: requestedPage, pageSize } = dataViewState.pagination.state;
+  // `page` is a shared URL param, so it survives paging the record pager to a shorter map —
+  // without clamping, the slice falls off the end and the table reads as empty.
+  const pageIndex = Math.min(
+    requestedPage,
+    Math.max(Math.ceil(replacements.length / pageSize) - 1, 0)
+  );
   const pageRows = useMemo(
     () => replacements.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
     [replacements, pageIndex, pageSize]
