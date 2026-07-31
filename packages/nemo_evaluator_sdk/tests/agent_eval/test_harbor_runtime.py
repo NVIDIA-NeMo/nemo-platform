@@ -564,6 +564,49 @@ def test_vanished_task_dir_is_rediscovered(tmp_path: Path) -> None:
     assert _task_dirs_for(dataset, [task])["t"] == dataset / "t"
 
 
+def test_symlink_loop_degrades_the_stamp_instead_of_killing_the_run(tmp_path: Path) -> None:
+    """A loop under a task dir must not take down a run over a best-effort fingerprint.
+
+    Deliberately a *loop*, not a dangling or vanished link. On CPython 3.12 — the
+    floor this package targets — `Path.resolve()` translates `ELOOP` into
+    ``RuntimeError``, which is **not** an ``OSError``, so catching only ``OSError``
+    leaves this crashing. It also raises deterministically rather than as a race, so
+    the failure is reproducible rather than occasional.
+
+    What this pins is :func:`_safe_resolve`'s exception set. The loop is reached
+    through :func:`_digest_directory`'s walk, which already routes every path through
+    ``_safe_resolve``. It does **not** exercise ``_cache_stamp``'s own resolve calls:
+    ``_task_dirs_for`` filters candidates with ``is_dir()``, which returns ``False``
+    for a loop, so a looping path never reaches them. Those calls use
+    ``_safe_resolve`` for consistency, not because a live crash was demonstrated.
+    """
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborRuntimeConfig, _cache_stamp, _safe_resolve
+
+    dataset = tmp_path / "ds"
+    task_dir = dataset / "t"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text('[task]\nname = "t"\n')
+    loop = task_dir / "loop"
+    loop.symlink_to(loop)
+
+    # Pin the premise: if this stops raising, the guard below is no longer load-bearing.
+    with pytest.raises(RuntimeError):
+        loop.resolve()
+    assert _safe_resolve(loop) == loop.absolute(), "_safe_resolve must swallow the loop, not just OSError"
+
+    task = AgentEvalTask(
+        id="t",
+        intent="x",
+        inputs={"instruction": "x"},
+        metadata={"harbor_task_dir": str(task_dir)},
+    )
+    config = HarborRuntimeConfig(jobs_dir=tmp_path / "jobs", job_name="pinned")
+
+    stamp = _cache_stamp(config, dataset, [task])
+
+    assert set(stamp["tasks"]) == {"t"}, "the task must still be fingerprinted, not dropped"
+
+
 @pytest.mark.asyncio
 async def test_inputs_changing_mid_run_leaves_the_job_unstamped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
