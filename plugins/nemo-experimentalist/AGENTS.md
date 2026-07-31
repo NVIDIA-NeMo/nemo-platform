@@ -13,6 +13,21 @@ Inherited from the NeMo Platform monorepo that now hosts this plugin:
 
 ## Active migrations
 
+### 2026-07-31: Command group nested under `nemo agents`
+
+The canonical path is `nemo agents experimentalist <verb>`. `ExperimentalistCLI` is
+registered under the `nemo.cli.agents` entry-point group, which the `nemo-agents`
+plugin's `AgentsCLI` discovers and mounts.
+
+The `nemo.cli` registration stays, so `nemo experimentalist <verb>` keeps working. Both
+groups point at the same class, so a new verb is written once and appears under both —
+do not add a second implementation for the legacy path. Docs, help text, and error
+messages should name the `nemo agents` form; prefer `ctx.command_path` over a hardcoded
+path when a message quotes the command back to the user.
+
+The analyst and Eval Author moved in the same change: `nemo agents analyst run` (was
+`nemo insights analyze`) and `nemo agents eval-author <verb>`.
+
 ### 2026-07-28: Eval Author extracted to its own plugin, heading for standalone
 
 `plugins/nemo-eval-author/` (`nemo-eval-author-plugin`) owns the Eval Author agent package
@@ -69,16 +84,16 @@ breaking rename with no compatibility aliases:
 Two names deliberately did **not** change. `optimizer.yaml` and the
 `.nemo-optimizer/` state directory are a shared contract with
 `nemo-insights-plugin`: `PROFILE_FILENAME` and `discover_profile()` live in
-`nemo_insights_plugin.contracts.profile`, and `nemo insights analyze` writes
+`nemo_insights_plugin.contracts.profile`, and `nemo agents analyst run` writes
 `<profile-dir>/.nemo-optimizer/insights.yaml`, which this plugin reads as the
 default insight. Rename them only in lockstep with a Platform change to that
 contract. `EvolutionaryOptimizer` and `EvolutionaryOptimizerConfig` also keep
 their names — they describe the optimization algorithm, not the product.
 
-The command group is top-level (`nemo experimentalist`) rather than the
-eventual `nemo agents experimentalist`. The platform's `nemo.cli` entry-point
-group is flat — only `nemo.jobs` and `nemo.functions` are dot-scoped — so
-nesting under `nemo agents` needs a Platform-side change first.
+At the time of this rename the command group was top-level (`nemo
+experimentalist`), because the platform's `nemo.cli` entry-point group was flat
+and nesting under `nemo agents` needed a Platform-side change first. That change
+has since landed — see the `nemo agents` entry above for the current path.
 
 ### 2026-07-21: Curator renamed to Eval Author
 
