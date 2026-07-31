@@ -627,7 +627,7 @@ def check_config_file(config_path: Path, repo_root: Path) -> Finding:
     The file is either one discovery wrote or the repo's own, whichever the artifact ends
     up pointing at; the check is the same either way.
     """
-    harbor_bin = shutil.which("harbor")
+    harbor_bin = _harbor_executable()
     if harbor_bin is None:
         return Finding(
             name="round-trip",
@@ -734,3 +734,18 @@ def _executable_lines(text: str) -> str:
         if not line.lstrip().startswith(("#", "::")) and not line.lstrip().upper().startswith("REM ")
     ]
     return "\n".join(kept)
+
+
+def _harbor_executable() -> str | None:
+    """The ``harbor`` console script from the same environment as the in-process Harbor.
+
+    ``PATH`` is not good enough here. A ``uv tool`` or ``pipx`` install shadows the
+    environment's own script, so a plain lookup can hand the round trip a different Harbor than
+    every other rung used, while the report stamps only the in-process version. The script
+    beside ``sys.executable`` is the one that imports the Harbor these verdicts came from.
+    ``PATH`` remains the fallback, for an interpreter whose scripts live elsewhere.
+    """
+    beside = Path(sys.executable).parent / "harbor"
+    if beside.is_file():
+        return str(beside)
+    return shutil.which("harbor")

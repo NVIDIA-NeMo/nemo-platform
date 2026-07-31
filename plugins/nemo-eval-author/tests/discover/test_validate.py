@@ -15,7 +15,10 @@ whether a daemon is up is a fact about the machine rather than about the repo un
 Tests that care about the backend assert on that finding directly.
 """
 
+import subprocess
 import sys
+from importlib.metadata import version
+from pathlib import Path
 from typing import ClassVar
 
 from harbor_fixtures import (
@@ -387,6 +390,20 @@ async def test_a_config_the_cli_rejects_fails_the_round_trip(tmp_path):
     if finding.status != "warn":  # warn means no harbor executable on PATH
         assert finding.status == "fail"
         assert finding.path == config_path
+
+
+async def test_the_round_trip_uses_the_harbor_that_produced_every_other_verdict(tmp_path):
+    """A ``uv tool`` or ``pipx`` install shadows the environment's own console script.
+
+    The report stamps one Harbor version, so a round trip resolved off bare ``PATH`` can
+    contradict the rest of the ladder while claiming to agree with it.
+    """
+    resolved = validate._harbor_executable()
+
+    assert resolved is not None, "the environment running these tests installs harbor"
+    assert Path(resolved).parent == Path(sys.executable).parent
+    completed = subprocess.run([resolved, "--version"], capture_output=True, text=True, check=True)
+    assert completed.stdout.strip() == version("harbor"), "the CLI and the imported package must be one Harbor"
 
 
 async def test_the_full_pipeline_agrees_with_the_source_it_chose(tmp_path):
