@@ -1428,18 +1428,17 @@ class TestValidateLLMModels:
 
         assert vms.calls == [{"name": "nvidia-nemotron", "workspace": "default"}]
 
-    def test_bare_and_inner_slash_names_are_untouched(self) -> None:
-        """Only the exact ``{workspace}/`` prefix is stripped; other slashes stay.
+    def test_qualified_name_routes_to_its_own_workspace(self) -> None:
+        """A qualified ``ws/model`` looks up ``model`` in ``ws``, not the path workspace.
 
-        A bare name and a name whose slash is not the workspace qualifier (e.g.
-        a foreign-workspace prefix or a vendor path like ``nvidia/x``) must reach
-        the SDK verbatim.
+        ``parse_qualified_name`` splits on the first ``/``: a qualifier always
+        wins over the fallback workspace, so a cross-workspace reference resolves
+        where it points. Bare names fall back to the path workspace.
         """
         config = {
             "llms": {
                 "bare": {"_type": "openai", "model_name": "plain-model"},
-                "vendor": {"_type": "nim", "model_name": "nvidia/nemotron"},
-                "other_ws": {"_type": "openai", "model_name": "otherws/foo"},
+                "other_ws": {"_type": "openai", "model_name": "prod/foo"},
             }
         }
         vms = _RecordingVirtualModels()
@@ -1447,8 +1446,8 @@ class TestValidateLLMModels:
 
         validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
 
-        names = sorted(call["name"] for call in vms.calls)
-        assert names == ["nvidia/nemotron", "otherws/foo", "plain-model"]
+        calls = sorted((c["workspace"], c["name"]) for c in vms.calls)
+        assert calls == [("default", "plain-model"), ("prod", "foo")]
 
     def test_qualified_and_bare_forms_dedupe_to_one_lookup(self) -> None:
         """``default/foo`` and ``foo`` normalize to the same name → one retrieve.
@@ -1517,7 +1516,7 @@ class TestValidateLLMModels:
         message = str(exc_info.value)
         # Names the missing model + the YAML key + the workspace, and points
         # the user at concrete recovery steps.
-        assert "'missing-model'" in message
+        assert "'default/missing-model'" in message
         assert "llms.judge_llm.model_name" in message
         assert "'default'" in message
         assert "NEMO_DEFAULT_MODEL" in message
@@ -1537,8 +1536,8 @@ class TestValidateLLMModels:
             validate_llm_models(config, workspace="default", sdk=sdk)
 
         message = str(exc_info.value)
-        assert "'missing-1'" in message
-        assert "'missing-2'" in message
+        assert "'default/missing-1'" in message
+        assert "'default/missing-2'" in message
 
     def test_non_igw_llm_types_are_skipped(self) -> None:
         """LLMs whose ``_type`` doesn't route through IGW aren't validatable here."""
@@ -1751,4 +1750,4 @@ class TestPreflightValidateLLMModels:
 
         # Sanity-check the message shape; full message coverage lives in
         # TestValidateLLMModels.
-        assert "'missing-model'" in str(exc_info.value)
+        assert "'default/missing-model'" in str(exc_info.value)
