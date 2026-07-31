@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { isAbortError, parsePreviewFrame } from '@studio/routes/AnonymizerBuilderRoute/previewApi';
+import { parsePreviewFrame } from '@studio/routes/AnonymizerBuilderRoute/previewApi';
 
 describe('parsePreviewFrame', () => {
   it('reads log frames', () => {
@@ -60,13 +60,5 @@ describe('parsePreviewFrame', () => {
     expect(parsePreviewFrame('[1,2]')).toBeUndefined();
     expect(parsePreviewFrame('{"kind":"something_new"}')).toBeUndefined();
     expect(parsePreviewFrame('{"records":[]}')).toBeUndefined();
-  });
-});
-
-describe('isAbortError', () => {
-  it('is true only for an aborted signal', () => {
-    expect(isAbortError(new DOMException('aborted', 'AbortError'))).toBe(true);
-    expect(isAbortError(new Error('oops'))).toBe(false);
-    expect(isAbortError(undefined)).toBe(false);
   });
 });

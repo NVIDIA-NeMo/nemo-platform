@@ -1,17 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flex, Skeleton, Stack } from '@nvidia/foundations-react-core';
+import { Flex, Stack } from '@nvidia/foundations-react-core';
 import { RecordSection } from '@studio/components/AnonymizerRecordView/RecordSection';
+import { StackedSkeleton } from '@studio/components/StackedSkeleton';
 import type { FC } from 'react';
 
 const SKELETON_LINES = 8;
 
-const SKELETON_ROWS = Array.from({ length: SKELETON_LINES }, (_, index) => (
-  <Skeleton key={index} />
-));
-
-const SkeletonBlock: FC = () => <Stack gap="density-sm">{SKELETON_ROWS}</Stack>;
+const SkeletonBlock: FC = () => (
+  <Stack gap="density-sm">
+    <StackedSkeleton count={SKELETON_LINES} />
+  </Stack>
+);
 
 interface AnonymizerRecordSkeletonProps {
   readonly outputHeading: string;

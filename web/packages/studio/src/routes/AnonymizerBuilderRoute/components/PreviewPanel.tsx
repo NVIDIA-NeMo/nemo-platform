@@ -12,7 +12,11 @@ import {
 } from '@nvidia/foundations-react-core';
 import { AnonymizerRecordSkeleton } from '@studio/components/AnonymizerRecordView/AnonymizerRecordSkeleton';
 import { AnonymizerRecordView } from '@studio/components/AnonymizerRecordView/AnonymizerRecordView';
-import { buildAnonymizerRecord, outputColumn } from '@studio/components/AnonymizerRecordView/parse';
+import {
+  buildAnonymizerRecord,
+  outputColumn,
+  REWRITTEN_SUFFIX,
+} from '@studio/components/AnonymizerRecordView/parse';
 import { RecordPager } from '@studio/routes/AnonymizerBuilderRoute/components/RecordPager';
 import type { UseAnonymizerPreview } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerPreview';
 import {
@@ -20,8 +24,6 @@ import {
   OUTPUT_HEADING_REWRITTEN,
 } from '@studio/routes/AnonymizerBuilderRoute/utils';
 import { useMemo, useState, type FC, type ReactNode } from 'react';
-
-const REWRITTEN_SUFFIX = '_rewritten';
 
 interface PreviewPanelProps {
   readonly preview: UseAnonymizerPreview;

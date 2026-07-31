@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { isAbortError } from '@nemo/common/src/components/AssistantChat/completionUtils';
 import type { PreviewRequest } from '@nemo/sdk/generated/anonymizer/schema';
 import {
-  isAbortError,
   streamAnonymizerPreview,
   type PreviewFrame,
 } from '@studio/routes/AnonymizerBuilderRoute/previewApi';

@@ -4,6 +4,7 @@
 import type { PreviewRequest } from '@nemo/sdk/generated/anonymizer/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { asRecord } from '@studio/util/guards';
+import { readLineDelimitedStream } from '@studio/util/lineStream';
 
 export type PreviewLogLevel = 'debug' | 'info' | 'warning' | 'error';
 
@@ -93,9 +94,6 @@ const messageFromErrorBody = (body: string): string | undefined => {
   return messages.length ? messages.join(' ') : undefined;
 };
 
-export const isAbortError = (error: unknown): boolean =>
-  error instanceof DOMException ? error.name === 'AbortError' : false;
-
 const previewPath = (workspace: string): string =>
   `/apis/anonymizer/v2/workspaces/${encodeURIComponent(workspace)}/preview`;
 
@@ -123,21 +121,8 @@ export const streamAnonymizerPreview = async (
   }
   if (!response.body) throw new Error('The preview response was empty.');
 
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = '';
-
-  const emit = (line: string) => {
+  await readLineDelimitedStream(response.body, (line) => {
     const frame = parsePreviewFrame(line);
     if (frame) onFrame(frame);
-  };
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += value;
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    lines.forEach(emit);
-  }
-  emit(buffer);
+  });
 };

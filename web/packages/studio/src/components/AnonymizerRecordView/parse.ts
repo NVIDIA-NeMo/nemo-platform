@@ -14,7 +14,9 @@ const FINAL_ENTITIES_COLUMN = 'final_entities';
 const REPLACEMENT_MAP_COLUMN = '_replacement_map';
 
 /** Rewrite writes `<column>_rewritten`; the replace strategies write `<column>_replaced`. */
-export const OUTPUT_SUFFIXES = ['_rewritten', '_replaced'] as const;
+export const REWRITTEN_SUFFIX = '_rewritten';
+export const REPLACED_SUFFIX = '_replaced';
+export const OUTPUT_SUFFIXES = [REWRITTEN_SUFFIX, REPLACED_SUFFIX] as const;
 
 /** Trace cells arrive either already decoded or as a JSON string, depending on the writer. */
 const decodeCell = (value: unknown): unknown => {
