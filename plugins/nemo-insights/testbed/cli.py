@@ -865,7 +865,7 @@ def main() -> None:
     p_doc.add_argument("name", nargs="?", help="Subject name; omit to check every subject.")
     p_run = sub.add_parser(
         "run",
-        help="Produce traces for a subject (benchmark: run tau2 + ingest), then record the run.",
+        help="Produce and ingest traces for a benchmark or Harbor subject, then record the run.",
     )
     p_run.add_argument("name", help="Subject name from testbeds.toml.")
     p_run.add_argument(
@@ -903,9 +903,14 @@ def main() -> None:
         record = asyncio.run(build_adapter(subject).produce())
         TMP.mkdir(parents=True, exist_ok=True)
         save_run(TMP / f"{args.name}.run.json", record)
-        ws_line = f"realistic ws '{record['realistic_workspace']}'"
-        if record.get("oracle_workspace"):
-            ws_line += f" + oracle ws '{record['oracle_workspace']}'"
+        if realistic_workspace := record.get("realistic_workspace"):
+            ws_line = f"realistic ws '{realistic_workspace}'"
+            if record.get("oracle_workspace"):
+                ws_line += f" + oracle ws '{record['oracle_workspace']}'"
+        elif workspace := record.get("workspace"):
+            ws_line = f"ws '{workspace}'"
+        else:
+            ws_line = "workspace not recorded"
         print(
             f"✓ recorded run '{record['agent']}' ({ws_line}) — analyze with: "
             f"uv run python -m testbed analyze {args.name} --live"

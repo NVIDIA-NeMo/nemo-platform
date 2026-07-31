@@ -35,8 +35,9 @@ def test_registry_contains_only_expected_analyzable_subjects() -> None:
         "tau2-airline",
         "tau2-retail",
         "tau2-telecom",
+        "tau3-airline-harbor",
     }
-    assert all(subject.type in ("benchmark", "intake") for subject in subjects.values())
+    assert all(subject.type in ("benchmark", "harbor", "intake") for subject in subjects.values())
     assert subjects["nvq"].config["agent"] == "content-dedup"
 
 
@@ -64,6 +65,22 @@ def test_tau2_telecom_uses_small_split() -> None:
     assert telecom.config["task_split_name"] == "small"
 
 
+def test_tau3_airline_harbor_uses_checked_in_agent_and_hub_dataset() -> None:
+    subject = load_registry(cli.REGISTRY_PATH)["tau3-airline-harbor"]
+
+    assert subject.type == "harbor"
+    assert subject.config["agent_dir"] == "../nemo-experimentalist/examples/tau3-nooa-agent"
+    assert subject.config["dataset_ref"] == "sierra-research/tau3-bench@1"
+    assert subject.config["task_names"] == [
+        "tau3-bench__tau3-airline-0",
+        "tau3-bench__tau3-airline-1",
+        "tau3-bench__tau3-airline-4",
+        "tau3-bench__tau3-airline-5",
+        "tau3-bench__tau3-airline-9",
+        "tau3-bench__tau3-airline-10",
+    ]
+
+
 def test_every_analyzable_subject_has_expected_state_pin() -> None:
     expected = {
         "glamr": "state-v8",
@@ -74,6 +91,7 @@ def test_every_analyzable_subject_has_expected_state_pin() -> None:
         "tau2-telecom": "state-v10",
     }
 
-    assert {
-        name: release.lock_ref(cli.HERE / "state.lock", name) for name in sorted(load_registry(cli.REGISTRY_PATH))
-    } == expected
+    subjects = load_registry(cli.REGISTRY_PATH)
+    reproducible = sorted(name for name, subject in subjects.items() if subject.type in ("benchmark", "intake"))
+
+    assert {name: release.lock_ref(cli.HERE / "state.lock", name) for name in reproducible} == expected

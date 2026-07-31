@@ -5,7 +5,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from testbed.adapters import BenchmarkAdapter, IntakeAdapter, build_adapter
+from testbed.adapters import (
+    BenchmarkAdapter,
+    HarborAdapter,
+    IntakeAdapter,
+    _export_harbor_trace_files,
+    _harbor_trace_context,
+    _root_values_from_trace,
+    build_adapter,
+)
 from testbed.registry import Subject
 
 _CFG = {
@@ -36,6 +44,149 @@ _SIMS = [
         "termination_reason": "done",
     },
 ]
+
+_HARBOR_OTLP_JSON = (
+    '{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"harbor"}}]},'
+    '"scopeSpans":[{"spans":[{"traceId":"AAAAAAAAAAAAAAAAAAAAAQ==","spanId":"AAAAAAAAAAE=",'
+    '"name":"agent","startTimeUnixNano":"1","endTimeUnixNano":"2",'
+    '"attributes":[{"key":"session.id","value":{"stringValue":"sess-1"}}]}]}]}]}'
+)
+
+
+def test_harbor_trace_conversion_enriches_and_exports(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "fallback-session.jsonl").write_text(f"{_HARBOR_OTLP_JSON}\n", encoding="utf-8")
+    monkeypatch.setenv("INFERENCE_API_KEY", "secret")
+    calls: list[dict[str, object]] = []
+
+    def capture_export(base_url, workspace, request, *, client=None, headers=None):
+        calls.append({"base_url": base_url, "workspace": workspace, "request": request, "headers": headers})
+
+    monkeypatch.setattr("testbed.adapters.export_trace_request", capture_export)
+
+    result = _export_harbor_trace_files(
+        "http://x",
+        "ws",
+        tmp_path,
+        "agent-0",
+        evaluation_id="evaluation-1",
+    )
+
+    assert result == (1, 0, {"sess-1"})
+    assert calls[0]["headers"] == {"Authorization": "Bearer secret"}
+    request = calls[0]["request"]
+    resource_attrs = {
+        item.key: getattr(item.value, item.value.WhichOneof("value"))
+        for item in request.resource_spans[0].resource.attributes
+    }
+    assert resource_attrs == {
+        "service.name": "harbor",
+        "gen_ai.agent.name": "agent-0",
+        "gen_ai.agent.id": "agent-0",
+        "session.id": "sess-1",
+        "gen_ai.conversation.id": "sess-1",
+        "nemo.experiment.id": "evaluation-1",
+        "nemo.optimizer.workspace": "ws",
+    }
+
+
+def test_harbor_trace_conversion_adds_task_fields_and_rewards(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    trial_dir = tmp_path / "task-1__trial"
+    trace_dir = trial_dir / "artifacts" / "logs" / "artifacts" / "traces"
+    trace_dir.mkdir(parents=True)
+    (trial_dir / "result.json").write_text(
+        json.dumps({"task_name": "task-1", "verifier_result": {"rewards": {"score": 0.75, "reward": 1.0}}}),
+        encoding="utf-8",
+    )
+    output_path = trial_dir / "artifacts" / "logs" / "artifacts" / "output.md"
+    output_path.write_text("# Final answer", encoding="utf-8")
+    body = json.loads(_HARBOR_OTLP_JSON)
+    root = body["resourceSpans"][0]["scopeSpans"][0]["spans"][0]
+    root["name"] = "method.solve"
+    root["attributes"].extend(
+        [
+            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
+            {"key": "input.value", "value": {"stringValue": "Research this topic"}},
+        ]
+    )
+    (trace_dir / "trace.jsonl").write_text(json.dumps(body), encoding="utf-8")
+    exports: list[object] = []
+    rewards: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "testbed.adapters.export_trace_request",
+        lambda base_url, workspace, request, *, client=None, headers=None: exports.append(request),
+    )
+    monkeypatch.setattr(
+        "testbed.adapters.post_evaluator_results",
+        lambda base_url, workspace, **kwargs: rewards.append(
+            {key: value for key, value in kwargs.items() if key != "client"}
+        ),
+    )
+
+    assert _export_harbor_trace_files("http://x", "ws", tmp_path, "agent-0", evaluation_id="evaluation-1") == (
+        1,
+        0,
+        {"sess-1"},
+    )
+    exported_root = exports[0].resource_spans[0].scope_spans[0].spans[0]
+    attributes = {item.key: getattr(item.value, item.value.WhichOneof("value")) for item in exported_root.attributes}
+    assert attributes["nemo.test_case.id"] == "task-1"
+    assert attributes["input.value"] == "Research this topic"
+    assert attributes["output.value"] == "# Final answer"
+    assert rewards == [
+        {"span_id": exported_root.span_id.hex(), "session_id": "sess-1", "score": 0.75, "name": "score"},
+        {"span_id": exported_root.span_id.hex(), "session_id": "sess-1", "score": 1.0, "name": "reward"},
+    ]
+
+
+def test_harbor_trace_context_drops_rewards_for_failed_trial(tmp_path: Path) -> None:
+    trial_dir = tmp_path / "task-1__trial"
+    trace_dir = trial_dir / "artifacts" / "logs" / "artifacts" / "traces"
+    trace_dir.mkdir(parents=True)
+    path = trace_dir / "trace.jsonl"
+    path.write_text("", encoding="utf-8")
+    (trial_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "task_name": "task-1",
+                "exception_info": {"exception_type": "RuntimeError"},
+                "verifier_result": {"rewards": {"reward": 1.0}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    test_case_id, _, _, rewards = _harbor_trace_context(path, tmp_path, [])
+
+    assert test_case_id == "task-1"
+    assert rewards == {}
+
+
+def test_root_values_from_trace_reads_only_root_agent_span() -> None:
+    body = json.loads(_HARBOR_OTLP_JSON)
+    spans = body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+    spans[0]["attributes"].extend(
+        [
+            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
+            {"key": "input.value", "value": {"stringValue": "root input"}},
+            {"key": "output.value", "value": {"stringValue": "root output"}},
+        ]
+    )
+    spans.append(
+        {
+            "traceId": "AAAAAAAAAAAAAAAAAAAAAQ==",
+            "spanId": "AAAAAAAAAAI=",
+            "parentSpanId": "AAAAAAAAAAE=",
+            "name": "acompletion",
+            "startTimeUnixNano": "1",
+            "endTimeUnixNano": "2",
+            "attributes": [{"key": "input.value", "value": {"stringValue": "child input"}}],
+        }
+    )
+
+    assert _root_values_from_trace([(1, body)]) == ("root input", "root output")
 
 
 def _intake_subject(**overrides) -> Subject:
@@ -167,6 +318,64 @@ async def test_intake_produce_message_says_analyze():
 def test_build_adapter_dispatches_benchmark():
     adapter = build_adapter(Subject("tau2-airline", "benchmark", _CFG))
     assert isinstance(adapter, BenchmarkAdapter)
+
+
+def test_build_adapter_dispatches_harbor():
+    adapter = build_adapter(Subject("tau3-airline-harbor", "harbor", {}))
+    assert isinstance(adapter, HarborAdapter)
+
+
+def test_harbor_dataset_config_accepts_hub_ref():
+    config = HarborAdapter._build_dataset_config(
+        {
+            "dataset_ref": "sierra-research/tau3-bench@1",
+            "registry_url": "https://hub.harborframework.com",
+            "task_names": ["tau3-bench__tau3-airline-0", "tau3-bench__tau3-airline-1"],
+        },
+        repo_root=Path("/repo"),
+    )
+
+    assert config.name == "sierra-research/tau3-bench"
+    assert config.version == "1"
+    assert config.registry_url == "https://hub.harborframework.com"
+    assert config.task_names == ["tau3-bench__tau3-airline-0", "tau3-bench__tau3-airline-1"]
+
+
+def test_harbor_dataset_config_rejects_ambiguous_source():
+    with pytest.raises(ValueError, match="exactly one"):
+        HarborAdapter._build_dataset_config(
+            {"dataset": "local", "dataset_ref": "org/data@1"},
+            repo_root=Path("/repo"),
+        )
+
+
+async def test_harbor_analyze_uses_record(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    seen: dict[str, object] = {}
+
+    async def fake_run_analyst(**kwargs: object) -> str:
+        seen.update(kwargs)
+        return "REPORT"
+
+    monkeypatch.setattr("testbed.adapters.run_analyst", fake_run_analyst)
+    monkeypatch.setattr("testbed.adapters.make_client", lambda base_url: object())
+    record = {
+        "agent": "nemo-experimentalist-tau3-nooa",
+        "workspace": "canonical-tau3-airline",
+        "base_url": "http://localhost:8080",
+        "experiment_id": "canonical-tau3-airline-20260731-120000-abcd",
+    }
+
+    report = await HarborAdapter(Subject("tau3-airline-harbor", "harbor", {})).analyze(
+        record=record,
+        since=None,
+        verbose=True,
+        out_path=tmp_path / "insights.yaml",
+    )
+
+    assert report == "REPORT"
+    assert seen["agent"] == "nemo-experimentalist-tau3-nooa"
+    assert seen["workspace"] == "canonical-tau3-airline"
+    assert seen["evaluation_id"] == record["experiment_id"]
 
 
 async def test_benchmark_preflight_lists_missing(monkeypatch):

@@ -18,6 +18,20 @@ def _optional_env(name: str, default: str) -> str:
     return os.environ.get(name, "").strip() or default
 
 
+def _completion_client(name: str, *, api_base: str, api_key: str) -> CompletionClient:
+    if "/gemini-" in name.lower():
+        # NoOA injects explicit prompt-cache breakpoints by default. Vertex AI
+        # rejects those breakpoints when the cacheable prefix is below its
+        # minimum token count, so Gemini must use provider-managed caching.
+        return CompletionClient(
+            name,
+            api_base=api_base,
+            api_key=api_key,
+            cache_control_injection_points=[],
+        )
+    return CompletionClient(name, api_base=api_base, api_key=api_key)
+
+
 @functools.cache
 def get_smart_model() -> CompletionClient:
     """Return the cached smart (high-capability) LLM client configured from environment variables.
@@ -32,7 +46,7 @@ def get_smart_model() -> CompletionClient:
     api_base = _required_env("EXPERIMENTALIST_API_BASE")
     api_key = _required_env("EXPERIMENTALIST_API_KEY")
     name = _optional_env("EXPERIMENTALIST_SMART_MODEL_NAME", "openai/openai/openai/gpt-5.5")
-    return CompletionClient(name, api_base=api_base, api_key=api_key)
+    return _completion_client(name, api_base=api_base, api_key=api_key)
 
 
 @functools.cache
@@ -49,7 +63,7 @@ def get_mid_model() -> CompletionClient:
     api_base = _required_env("EXPERIMENTALIST_API_BASE")
     api_key = _required_env("EXPERIMENTALIST_API_KEY")
     name = _optional_env("EXPERIMENTALIST_MID_MODEL_NAME", "openai/gcp/google/gemini-3.5-flash")
-    return CompletionClient(name, api_base=api_base, api_key=api_key)
+    return _completion_client(name, api_base=api_base, api_key=api_key)
 
 
 @functools.cache
@@ -66,7 +80,7 @@ def get_fast_model() -> CompletionClient:
     api_base = _required_env("EXPERIMENTALIST_API_BASE")
     api_key = _required_env("EXPERIMENTALIST_API_KEY")
     name = _optional_env("EXPERIMENTALIST_FAST_MODEL_NAME", "openai/openai/openai/gpt-5-mini")
-    return CompletionClient(name, api_base=api_base, api_key=api_key)
+    return _completion_client(name, api_base=api_base, api_key=api_key)
 
 
 def _mask_key(value: str) -> str:

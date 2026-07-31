@@ -934,6 +934,30 @@ def test_run_records_and_prints(monkeypatch, tmp_path, capsys):
     assert load_run(tmp_path / "tau2-airline.run.json")["agent"] == "tau2-airline-xyz"
 
 
+def test_run_harbor_records_and_prints_workspace(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(cli, "TMP", tmp_path)
+
+    async def fake_produce(self):
+        return {
+            "agent": "nemo-experimentalist-tau3-nooa",
+            "workspace": "canonical-tau3-airline",
+            "base_url": "http://localhost:8080",
+            "experiment_id": "eval-1",
+        }
+
+    monkeypatch.setattr("testbed.adapters.HarborAdapter.produce", fake_produce)
+    monkeypatch.setattr(sys, "argv", ["testbed", "run", "tau3-airline-harbor"])
+
+    cli.main()
+
+    out = capsys.readouterr().out
+    assert "ws 'canonical-tau3-airline'" in out
+    assert "analyze tau3-airline-harbor --live" in out
+    from testbed.runstore import load_run
+
+    assert load_run(tmp_path / "tau3-airline-harbor.run.json")["experiment_id"] == "eval-1"
+
+
 def test_analyze_live_passes_record_to_analyze(monkeypatch, tmp_path):
     from testbed.runstore import save_run
 
