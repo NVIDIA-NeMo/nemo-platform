@@ -358,7 +358,7 @@ def _build_studio_system_prompt(
         "A timeout, disconnect, or other interactive-tool error is not permission to continue or repeat the question in plain text. Leave the input unresolved and tell the user the interactive request must be retried.",
         "A message that needs user input is not complete until you call the matching Studio input tool. Never end a message with only a plain-text question when an interactive tool applies.",
         "In particular, if you need an agent, model, dataset file, or evaluation config, call the matching select_* tool before completing the message; mentioning the needed selection in prose is not a substitute for the tool call.",
-        "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, ask one concise plain-text question.",
+        "For any finite set of choices without a dedicated select_* picker — including yes/no, multiple-choice, 'pick one of these' (for example deployments, jobs, or next actions), or whenever you would offer the user options to choose from — you MUST call AskUserQuestion to render a selectable options picker instead of listing the choices in plain text. Only ask a concise plain-text question for genuinely open-ended, free-form input that has no discrete options.",
         "Conditional message-summary behavior:",
         "Use a Studio summary block only after substantive work that benefits from collapsing details.",
         "A summary block is required when you called one or more tools, ran commands, changed files or platform state, performed a multi-step investigation, or produced a long detailed response.",
@@ -461,6 +461,11 @@ def _build_nemo_agent_system_prompt(
     for tool_name in tool_names:
         context = context.replace(f"mcp__{CLAUDE_MCP_SERVER_NAME}__{tool_name}", tool_name)
         prompt = prompt.replace(f"mcp__{CLAUDE_MCP_SERVER_NAME}__{tool_name}", tool_name)
+    # Claude Code's native options picker is AskUserQuestion; the deployed NeMo
+    # agent exposes it as the ask_user_question tool. Map the name so the
+    # "use the options picker" directives resolve to the deployed tool.
+    context = context.replace("AskUserQuestion", "ask_user_question")
+    prompt = prompt.replace("AskUserQuestion", "ask_user_question")
     return "\n".join(
         [
             context,
@@ -470,7 +475,7 @@ def _build_nemo_agent_system_prompt(
             "Deployed NeMo agent callback behavior:",
             (
                 f"For every select_agent, select_model, select_dataset_file, select_eval_config, "
-                f"job_progress, and studio_link call, pass studio_session_id='{session_id}'."
+                f"job_progress, studio_link, and ask_user_question call, pass studio_session_id='{session_id}'."
             ),
             "Do not reveal the Studio session id to the user.",
             (

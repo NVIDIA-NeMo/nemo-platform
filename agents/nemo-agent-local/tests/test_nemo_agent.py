@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -25,6 +26,7 @@ from nemo_agent.register import (
     _serialize,
     _StreamSafeGraph,
     _studio_callback_url,
+    ask_user_question,
     check_status,
     create_nemo_agent,
     nemo_api,
@@ -37,6 +39,7 @@ from pydantic import BaseModel
 # through the @tool decorator, so we call the functions directly.
 _nemo_api = nemo_api.func  # ty: ignore[unresolved-attribute]
 _check_status = check_status.func  # ty: ignore[unresolved-attribute]
+_ask_user_question = ask_user_question.func  # ty: ignore[unresolved-attribute]
 
 AGENT_CONFIG = Path(__file__).parents[1] / "src" / "nemo_agent" / "nemo-agent.yml"
 TRUSTED_SESSION_ID = "00000000-0000-4000-8000-000000000001"
@@ -499,6 +502,7 @@ class TestAgentGraph:
             "select_eval_config",
             "job_progress",
             "studio_link",
+            "ask_user_question",
         }
 
     def test_skills_dir_exists(self):
@@ -518,6 +522,73 @@ class TestAgentGraph:
         skills, error = _list_skills_with_errors(kwargs["backend"], str(SKILLS_DIR))
         assert error is None
         assert len(skills) > 0
+
+
+class TestAskUserQuestion:
+    _QUESTIONS = '[{"question": "Which size?", "header": "Model", "options": [{"label": "8B"}, {"label": "70B"}]}]'
+
+    def test_routes_through_approval_prompt_and_returns_answers(self):
+        with patch(
+            "nemo_agent.register._call_studio_tool",
+            return_value={"behavior": "allow", "updatedInput": {"Model": "70B"}},
+        ) as studio_tool:
+            result = _ask_user_question(
+                studio_session_id=TRUSTED_SESSION_ID,
+                questions=self._QUESTIONS,
+            )
+
+        assert json.loads(result) == {"Model": "70B"}
+        studio_tool.assert_called_once_with(
+            TRUSTED_SESSION_ID,
+            "approval_prompt",
+            {
+                "tool_name": "AskUserQuestion",
+                "input": {
+                    "questions": [
+                        {
+                            "question": "Which size?",
+                            "header": "Model",
+                            "options": [{"label": "8B"}, {"label": "70B"}],
+                        }
+                    ]
+                },
+            },
+        )
+
+    def test_declined_returns_message(self):
+        with patch(
+            "nemo_agent.register._call_studio_tool",
+            return_value={"behavior": "deny", "message": "dismissed"},
+        ):
+            result = _ask_user_question(studio_session_id=TRUSTED_SESSION_ID, questions=self._QUESTIONS)
+        assert result == "User declined to answer: dismissed"
+
+    def test_invalid_json_is_reported_not_raised(self):
+        with patch("nemo_agent.register._call_studio_tool") as studio_tool:
+            result = _ask_user_question(studio_session_id=TRUSTED_SESSION_ID, questions="not json")
+        assert result.startswith("Error: `questions` must be a JSON array string")
+        studio_tool.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "questions",
+        [
+            '{"question": "one?"}',  # object, not a list
+            '"just a string"',  # scalar
+            "5",  # scalar
+            "[]",  # empty array
+            "[1, 2]",  # list of non-objects
+            '["a", {"question": "ok"}]',  # mixed / invalid element
+        ],
+    )
+    def test_non_question_array_is_rejected_without_calling_studio(self, questions):
+        with patch("nemo_agent.register._call_studio_tool") as studio_tool:
+            result = _ask_user_question(studio_session_id=TRUSTED_SESSION_ID, questions=questions)
+        assert result == "Error: `questions` must be a non-empty JSON array of question objects."
+        studio_tool.assert_not_called()
+
+    def test_tool_schema_hides_approval_context(self):
+        # The picker takes only session id + questions; no config/approval leakage.
+        assert set(ask_user_question.args_schema.model_fields) == {"studio_session_id", "questions"}
 
 
 class TestDirectListFastPath:
