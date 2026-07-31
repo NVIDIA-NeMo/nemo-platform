@@ -27,12 +27,6 @@ Use the Studio Agents area to review platform-managed NeMo Agent Toolkit workflo
 
 For the full workflow, see [Studio Agents](/documentation/studio/agents).
 
-### Suggestions
-
-Use **Agents \> Suggestions** to review optimizer suggestions for deployed agents. Studio groups suggestions by workspace or agent and lets you filter by type, priority, scope, and agent.
-
-For the full workflow, see [Studio Suggestions](/documentation/studio/suggestions).
-
 ### Monitor
 
 Use **Agents \> Monitor** to inspect agent telemetry stored by the platform, including recent inference logs and token usage summaries.
@@ -71,27 +65,27 @@ Keep models and data organized in dedicated workspaces.
 
 Use **Filesets** to organize files by **purpose**, which determines which metadata fields are available. Purpose is chosen at creation time and can't be changed afterward.
 
-| Purpose | Use for |
-| ------- | ------- |
-| Generic | Default. Files that don't fit the Dataset or Model categories. Doesn't add purpose-specific metadata fields. |
+| Purpose | Use for                                                                                                                                                                                      |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generic | Default. Files that don't fit the Dataset or Model categories. Doesn't add purpose-specific metadata fields.                                                                                 |
 | Dataset | Training and evaluation data. Enables dataset-specific metadata, including schema information. Use built-in tools to transform data schemas with LLM assistance or create train/test splits. |
-| Model | Model weights and checkpoints. Enables model-specific metadata, including tool-calling and model configuration fields. |
+| Model   | Model weights and checkpoints. Enables model-specific metadata, including tool-calling and model configuration fields.                                                                       |
 
 **Supported file formats:** JSON (`.json`), JSONL (`.jsonl`), CSV (`.csv`), and Parquet (`.parquet`). PDF, image, and other binary formats are not currently supported.
 
 You can upload any file type into a fileset. However, each service supports specific input file types:
 
-| Service | Supported File Types |
-| --------------------------------------------------- | ------------------------------------- |
+| Service                                               | Supported File Types                  |
+| ----------------------------------------------------- | ------------------------------------- |
 | [Data Designer](/documentation/design-synthetic-data) | `.json`, `.jsonl`, `.csv`, `.parquet` |
 
 ### Evaluations
 
 **Evaluations** appears in two separate sidebar groups because it covers two distinct scopes:
 
-| Location | What it shows |
-| -------- | ------------- |
-| **Agents \> Evaluations** | Evaluation runs scoped to a specific agent — results tied to agent deployments and versions. |
+| Location                    | What it shows                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------- |
+| **Agents \> Evaluations**   | Evaluation runs scoped to a specific agent — results tied to agent deployments and versions.   |
 | **Evaluate \> Evaluations** | All evaluation results across the workspace, regardless of which agent or model was evaluated. |
 
 Use **Agents \> Evaluations** when reviewing how a specific agent performed. Use **Evaluate \> Evaluations** for a broader view of evaluation history across the workspace.
@@ -106,18 +100,18 @@ Navigate to **Jobs** in the workspace sidebar to see all jobs in the current wor
 
 **Status tracking** — Each job displays its current status:
 
-| Status | Description |
-| ------ | ----------- |
-| Created | Job has been created but not yet scheduled |
-| Pending | Job is queued and waiting for resources |
-| Active | Job is currently running |
-| Completed | Job finished successfully |
-| Error | Job encountered an error |
-| Cancelled | Job was cancelled by a user |
-| Cancelling | Cancellation is in progress |
-| Paused | Job execution is paused |
-| Pausing | Job is transitioning to paused |
-| Resuming | Paused job is restarting |
+| Status     | Description                                |
+| ---------- | ------------------------------------------ |
+| Created    | Job has been created but not yet scheduled |
+| Pending    | Job is queued and waiting for resources    |
+| Active     | Job is currently running                   |
+| Completed  | Job finished successfully                  |
+| Error      | Job encountered an error                   |
+| Cancelled  | Job was cancelled by a user                |
+| Cancelling | Cancellation is in progress                |
+| Paused     | Job execution is paused                    |
+| Pausing    | Job is transitioning to paused             |
+| Resuming   | Paused job is restarting                   |
 
 **Service routing** — Clicking a job navigates to its service-specific detail view when one exists. Jobs from services that aren't enabled fall back to the generic job detail view.
 
