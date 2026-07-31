@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -38,6 +40,19 @@ from nemo_experimentalist_plugin.harbor_bridge.service import (
 )
 
 _TOKEN = "bridge-token-long-enough"
+
+
+def test_bridge_module_invokes_cli_entrypoint() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "nemo_experimentalist_plugin.harbor_bridge.service", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "--storage-root" in result.stdout
+    assert "--catalog-root" in result.stdout
 
 
 def _source_dataset(tmp_path: Path) -> RegisteredEnvelope:

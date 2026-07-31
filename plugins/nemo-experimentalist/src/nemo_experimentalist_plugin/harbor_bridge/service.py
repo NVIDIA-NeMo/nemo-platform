@@ -655,3 +655,7 @@ def main() -> None:
         runner=HarborBridgeRunner(inference),
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
+
+if __name__ == "__main__":
+    main()
