@@ -274,7 +274,6 @@ export const buildAnonymizerJobRequest = (
   };
 };
 
-/** Preview takes the same spec as a full run, bounded to the Preview Rows count. */
 export const buildAnonymizerPreviewRequest = (
   form: AnonymizerFormData,
   defaultEntityLabels: string[] = []

@@ -7,7 +7,7 @@ import {
   streamAnonymizerPreview,
   type PreviewFrame,
 } from '@studio/routes/AnonymizerBuilderRoute/previewApi';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 
 const DEFAULT_TEXT_COLUMN = 'text';
 
@@ -36,13 +36,9 @@ export interface UseAnonymizerPreview {
   readonly isPreviewing: boolean;
   readonly error: string | undefined;
   readonly hasRun: boolean;
-  /** True when the last run was stopped by the user rather than finishing. */
   readonly wasStopped: boolean;
   readonly runPreview: () => Promise<void>;
-  /**
-   * Aborts the request. The server unwinds on disconnect, but the anonymizer runs on an
-   * abandoned worker thread, so an in-flight model call finishes before it notices.
-   */
+  /** The server unwinds on disconnect, but an in-flight model call still finishes. */
   readonly stopPreview: () => void;
 }
 
@@ -61,8 +57,6 @@ export const useAnonymizerPreview = ({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  // The abort rejects the in-flight read, which `runPreview`'s catch treats as a non-error and
-  // its finally clears, so this only has to record the intent.
   const stopPreview = useCallback(() => {
     if (!abortRef.current) return;
     setWasStopped(true);
@@ -87,7 +81,8 @@ export const useAnonymizerPreview = ({
     const onFrame = (frame: PreviewFrame) => {
       switch (frame.kind) {
         case 'log':
-          setLogs((prev) => [...prev, frame.message]);
+          // One frame per read is too far apart for React to batch; keeps Stop responsive.
+          startTransition(() => setLogs((prev) => [...prev, frame.message]));
           break;
         case 'trace_dataset':
           setResult((prev) => ({

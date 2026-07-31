@@ -87,11 +87,8 @@ export const AnonymizerBuilderForm: FC = () => {
     setSubmitError(INCOMPLETE_FORM_MESSAGE);
   }, []);
 
-  /**
-   * Validates through `handleSubmit` rather than `trigger`, because the errors it hands back are
-   * the only ones guaranteed to be populated — `formState` is a proxy that tracks what the render
-   * body reads, and this component reads none of it.
-   */
+  // Not `trigger`: `formState` is a proxy tracking what the render body reads, so its `errors`
+  // are empty here. Only `handleSubmit` hands back a populated set.
   const getPreviewRequest = useCallback(
     () =>
       new Promise<PreviewRequest | undefined>((resolve) => {

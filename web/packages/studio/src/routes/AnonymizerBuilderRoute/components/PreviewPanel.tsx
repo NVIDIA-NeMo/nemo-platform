@@ -21,13 +21,11 @@ import { useMemo, useState, type FC, type ReactNode } from 'react';
 const SKELETON_LINES = 8;
 const REWRITTEN_SUFFIX = '_rewritten';
 
-const SkeletonBlock: FC = () => (
-  <Stack gap="density-sm">
-    {Array.from({ length: SKELETON_LINES }, (_, index) => (
-      <Skeleton key={index} />
-    ))}
-  </Stack>
-);
+const SKELETON_ROWS = Array.from({ length: SKELETON_LINES }, (_, index) => (
+  <Skeleton key={index} />
+));
+
+const SkeletonBlock: FC = () => <Stack gap="density-sm">{SKELETON_ROWS}</Stack>;
 
 const LoadingState: FC = () => (
   <Stack gap="density-2xl">
@@ -56,7 +54,6 @@ const LoadingState: FC = () => (
 
 interface PreviewPanelProps {
   readonly preview: UseAnonymizerPreview;
-  /** Rendered at the trailing end of the panel header — the Full Run submit button. */
   readonly slotActions: ReactNode;
 }
 
@@ -66,22 +63,23 @@ export const PreviewPanel: FC<PreviewPanelProps> = ({ preview, slotActions }) =>
   const [recordIndex, setRecordIndex] = useState(0);
   const [pagedRecords, setPagedRecords] = useState(records);
 
-  // Reset the pager during render rather than in an effect, so a new result set never
-  // paints the old record index first.
+  // Reset during render, not in an effect, so a new result never paints the old index first.
   if (pagedRecords !== records) {
     setPagedRecords(records);
     setRecordIndex(0);
   }
 
   const activeRow = records[recordIndex];
-  const record = useMemo(
-    () => (activeRow ? buildAnonymizerRecord(activeRow, textColumn) : undefined),
+  const { record, outputHeading } = useMemo(
+    () => ({
+      record: activeRow ? buildAnonymizerRecord(activeRow, textColumn) : undefined,
+      outputHeading:
+        activeRow && outputColumn(activeRow, textColumn)?.endsWith(REWRITTEN_SUFFIX)
+          ? 'Rewritten'
+          : 'Replaced',
+    }),
     [activeRow, textColumn]
   );
-  const outputHeading =
-    activeRow && outputColumn(activeRow, textColumn)?.endsWith(REWRITTEN_SUFFIX)
-      ? 'Rewritten'
-      : 'Replaced';
 
   return (
     <Panel

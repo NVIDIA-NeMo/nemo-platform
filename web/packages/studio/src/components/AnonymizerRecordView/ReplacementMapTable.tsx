@@ -20,8 +20,7 @@ export const ReplacementMapTable: FC<ReplacementMapTableProps> = memo(({ replace
   const dataViewState = useStudioDataViewState({ defaultPageSize: REPLACEMENTS_PAGE_SIZE });
 
   const { pageIndex: requestedPage, pageSize } = dataViewState.pagination.state;
-  // `page` is a shared URL param, so it survives paging the record pager to a shorter map —
-  // without clamping, the slice falls off the end and the table reads as empty.
+  // `page` is shared, so it outlives a record pager move to a map with fewer rows.
   const pageIndex = Math.min(
     requestedPage,
     Math.max(Math.ceil(replacements.length / pageSize) - 1, 0)
@@ -71,7 +70,6 @@ export const ReplacementMapTable: FC<ReplacementMapTableProps> = memo(({ replace
       maxTwoLines={false}
       attributes={{
         DataViewRoot: { data: pageRows, totalCount: replacements.length },
-        // A record's map is short; the pager only appears when it overflows a page.
         DataViewPagination: { showWhileEmpty: false, showWhileLessThanPageSize: false },
       }}
     />

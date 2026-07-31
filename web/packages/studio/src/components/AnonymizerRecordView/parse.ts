@@ -107,10 +107,7 @@ const buildSyntheticLookups = (replacements: readonly EntityReplacement[]): Synt
   return lookups;
 };
 
-/**
- * Resolve an entity's synthetic value, preferring an exact value+label hit and falling back
- * through value-only then case-insensitive lookups the way the library's display path does.
- */
+/** Exact value+label, then value only, then both again case-insensitively. */
 const resolveSynthetic = (entity: AnonymizerEntity, lookups: SyntheticLookups): string => {
   const lower = entity.value.toLowerCase();
   return (
@@ -122,10 +119,7 @@ const resolveSynthetic = (entity: AnonymizerEntity, lookups: SyntheticLookups): 
   );
 };
 
-/**
- * Locate each detected entity in the replaced text by searching forward for its synthetic
- * value. Replaying the original offsets drifts whenever a replacement changes length.
- */
+/** Searches forward for each synthetic value; replaying offsets drifts when lengths change. */
 export const buildReplacedEntities = (
   originalEntities: readonly AnonymizerEntity[],
   replacements: readonly EntityReplacement[],

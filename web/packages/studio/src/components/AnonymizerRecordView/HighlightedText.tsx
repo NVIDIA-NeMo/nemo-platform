@@ -4,14 +4,14 @@
 import { Badge, Text } from '@nvidia/foundations-react-core';
 import type { TextSegment } from '@studio/components/AnonymizerRecordView/types';
 import { entityTagColor } from '@studio/routes/AnonymizerBuilderRoute/constants';
-import type { FC } from 'react';
+import { memo, type FC } from 'react';
 
 interface HighlightedTextProps {
   readonly segments: readonly TextSegment[];
   readonly emptyMessage: string;
 }
 
-export const HighlightedText: FC<HighlightedTextProps> = ({ segments, emptyMessage }) =>
+export const HighlightedText: FC<HighlightedTextProps> = memo(({ segments, emptyMessage }) =>
   segments.length ? (
     <Text className="whitespace-pre-wrap break-words" kind="body/regular/md">
       {segments.map((segment, index) => {
@@ -33,4 +33,7 @@ export const HighlightedText: FC<HighlightedTextProps> = ({ segments, emptyMessa
     <Text color="secondary" kind="body/regular/md">
       {emptyMessage}
     </Text>
-  );
+  )
+);
+
+HighlightedText.displayName = 'HighlightedText';
