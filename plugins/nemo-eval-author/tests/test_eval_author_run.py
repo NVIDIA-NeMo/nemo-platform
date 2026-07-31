@@ -187,14 +187,16 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
             dest=experiment_dir / "eval_author" / "source-agent",
         )
     ]
-    # run_eval_author defaults evaluator_type to the SDK-backed runner.
+    # run_eval_author tracks the Experimentalist default (harbor_native). It only
+    # selects the dataset adapter here — both types map to HarborDataset — but the
+    # two must not drift into disagreeing about which adapter is canonical.
     assert dataset_factory.dataset_refs == [
-        ("harbor_evaluator", train_ref),
-        ("harbor_evaluator", validation_ref),
+        ("harbor_native", train_ref),
+        ("harbor_native", validation_ref),
     ]
     assert dataset_factory.template_refs == [
         (
-            "harbor_evaluator",
+            "harbor_native",
             template_ref.model_copy(update={"uri": str(experiment_dir / "dataset" / "task-template")}),
         )
     ]
@@ -258,7 +260,7 @@ async def test_run_eval_author_hydrates_fileset_task_template(
         }
     ]
     assert dataset_factory.template_refs == [
-        ("harbor_evaluator", template_ref.model_copy(update={"uri": str(staged_path)}))
+        ("harbor_native", template_ref.model_copy(update={"uri": str(staged_path)}))
     ]
     assert client.closed
 

@@ -793,7 +793,12 @@ async def resolve_harbor_run_inputs(
         dataset_path=local_path_from_uri(dataset.source.uri, context="Harbor dataset reference").resolve(),
         agent_path=agent_path,
         jobs_dir=(experiment_dir or Path.cwd()) / options.jobs_dir,
-        job_name=options.job_name or f"{agent.name}-{dataset.id}",
+        # Derived from the *resolved* directory, not the caller's spelling of it.
+        # `job_name` is the cache identity, and the SDK's scoped agent import derives
+        # its package name from the resolved dir too — the two must agree or a job dir
+        # can be reused for a different agent (`--agent .` has an empty `.name`; a
+        # symlink keeps its own name while resolving elsewhere).
+        job_name=options.job_name or f"{agent_path.name}-{dataset.id}",
     )
 
 

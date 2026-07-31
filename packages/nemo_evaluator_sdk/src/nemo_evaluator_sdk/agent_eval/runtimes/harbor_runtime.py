@@ -511,7 +511,10 @@ def _task_dirs_for(dataset_path: Path, tasks: Sequence[AgentEvalTask]) -> dict[s
     un-cacheable rather than silently omitting it from the fingerprint, which would
     be a stale-cache hole.
     """
-    dataset_root = dataset_path.resolve()
+    # `_safe_resolve`, not bare `resolve()`: this walk is a best-effort cache guard, so
+    # a symlink that vanishes mid-run must degrade to an unresolved absolute path
+    # rather than raise out of a job that would otherwise succeed.
+    dataset_root = _safe_resolve(dataset_path)
     resolved: dict[str, Path | None] = {}
     for task in tasks:
         stamped = task.metadata.get("harbor_task_dir")
@@ -522,7 +525,7 @@ def _task_dirs_for(dataset_path: Path, tasks: Sequence[AgentEvalTask]) -> dict[s
         # runs another, so anything missing or outside the active dataset is dropped
         # and re-discovered below.
         if candidate is not None:
-            candidate_resolved = candidate.resolve()
+            candidate_resolved = _safe_resolve(candidate)
             if not candidate.is_dir() or not candidate_resolved.is_relative_to(dataset_root):
                 logger.debug(
                     "Ignoring stamped harbor_task_dir %s for task %r: not a directory under the active dataset %s",
@@ -917,6 +920,14 @@ def scoped_harbor_agent_import(
     under changing directory names (the Experimentalist does) are unaffected, because
     the agent name feeds their ``job_name`` too, so a rename lands in a different job
     dir with nothing to resume.
+
+    **That last sentence only holds if the caller derives its job name from the
+    *resolved* directory, as this function does.** Deriving it from the caller's
+    spelling instead lets the two disagree: a symlink keeps its own name while
+    resolving elsewhere, so flipping it at a fixed ``job_name`` would reuse one job
+    dir for two different agents, caught only by Harbor's refusal rather than by
+    design. The Experimentalist resolves first for exactly this reason
+    (``resolve_harbor_run_inputs``).
 
     Only ``agent_dir`` (not ``sys.path``) is made importable, so a loose wrapper
     must be self-contained: a single module, or one that reaches siblings via

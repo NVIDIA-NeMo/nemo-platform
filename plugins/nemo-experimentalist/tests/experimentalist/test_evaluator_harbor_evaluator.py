@@ -10,6 +10,7 @@ types read their results from.
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import sys
@@ -214,8 +215,69 @@ async def test_retired_harbor_spelling_still_resolves_and_warns(caplog: pytest.L
 async def test_retired_spelling_is_not_extended_to_the_never_shipped_name() -> None:
     # `harbor_agent_task_runner` only ever existed on an unmerged branch, so nothing
     # can be pinned to it. Accepting it would advertise a name we never released.
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as excinfo:
         EvolutionaryOptimizerConfig.model_validate({"evaluator_type": "harbor_agent_task_runner"})
+
+    # Pin the error *location*, not just the type: a BeforeValidator that raised for
+    # some unrelated field would otherwise satisfy this test.
+    assert [error["loc"] for error in excinfo.value.errors()] == [("evaluator_type",)]
+
+
+async def test_job_name_comes_from_the_resolved_agent_dir(
+    tmp_path: Path, dataset: HarborDataset, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`job_name` is the cache identity, so it must not depend on how the path is spelled.
+
+    `Path(".").name` is empty, so deriving the name from the caller's spelling makes
+    every `--agent .` run collide on one job dir no matter which directory it points
+    at — and the SDK's scoped import derives its package name from the *resolved*
+    directory, so the two identities would disagree.
+    """
+    from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import resolve_harbor_run_inputs
+
+    job_names: list[str] = []
+    for agent_name in ("agent-a", "agent-b"):
+        agent = tmp_path / "agents" / agent_name
+        _write(agent / "harbor_wrapper.py", "class WrappedAgent: ...\n")
+        monkeypatch.chdir(agent)
+        inputs = await resolve_harbor_run_inputs(Path("."), dataset, HarborRunnerConfig(), tmp_path)
+        job_names.append(inputs.job_name)
+
+    assert job_names == [f"agent-a-{dataset.id}", f"agent-b-{dataset.id}"]
+    assert len(set(job_names)) == 2, "two different agents must not share one job dir"
+
+
+async def test_job_name_survives_a_symlinked_agent_dir(
+    tmp_path: Path, dataset: HarborDataset, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A symlink keeps its own name while resolving elsewhere. Following it keeps
+    # `job_name` in step with the scoped import package, which resolves too.
+    from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import resolve_harbor_run_inputs
+
+    real = tmp_path / "agents" / "agent-3"
+    _write(real / "harbor_wrapper.py", "class WrappedAgent: ...\n")
+    link = tmp_path / "agents" / "current"
+    link.symlink_to(real, target_is_directory=True)
+
+    inputs = await resolve_harbor_run_inputs(link, dataset, HarborRunnerConfig(), tmp_path)
+
+    assert inputs.job_name == f"agent-3-{dataset.id}", "the job dir must follow the agent, not the alias"
+    assert inputs.agent_path == real.resolve()
+
+
+async def test_eval_author_default_tracks_the_experimentalist_default() -> None:
+    """The two plugins must not disagree about which adapter is canonical.
+
+    Inert today — `run_eval_author` only consults the *dataset* half of the registry
+    and both types map to `HarborDataset` — but it silently stops being inert the day
+    the two types get different Dataset classes.
+    """
+    from nemo_eval_author_plugin.eval_author.run import run_eval_author
+
+    assert (
+        inspect.signature(run_eval_author).parameters["evaluator_type"].default
+        == EvolutionaryOptimizerConfig.model_fields["evaluator_type"].default
+    )
 
 
 async def test_optimizer_config_rejects_unknown_evaluator_type() -> None:
