@@ -199,7 +199,7 @@ exactly what to install/set (`✓ ready` or `✗ needs: …`).
 Subjects live in `testbeds.toml` — one table per subject, keyed by `type`:
 - `type = "intake"` — analyze an agent's existing Intake traces (config: `agent`, `workspace`, `base_url`, optional `since`).
 - `type = "benchmark"` — run a benchmark to produce traces, ingest them into Intake, then analyze (config: `domain`, `base_url`, `workspace`, `agent_llm`, `user_llm`, `task_split_name`, `num_trials`, `max_concurrency`, `seed`, optional `num_tasks`/`timeout`/`include_rewards`).
-- `type = "harbor"` — run a Harbor dataset against an importable agent wrapper, enrich and ingest its OTLP traces, then analyze the recorded evaluation. Use exactly one of `dataset`, `dataset_ref`, or `dataset_id`.
+- `type = "harbor"` — run a Harbor dataset against an importable agent wrapper, enrich and ingest its OTLP traces and verifier rewards, then analyze the recorded evaluation. Use exactly one of `dataset`, `dataset_ref`, or `dataset_id`; optionally select tasks with `task_names` or `num_tasks`.
 
 `--since` (analyze `--live`, snapshot) accepts `Nd`/`Nh`/`Nm` (days/hours/minutes)
 or an ISO date; `--since ''` means no lower bound (the epoch). Insights are

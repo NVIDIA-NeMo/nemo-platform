@@ -554,8 +554,23 @@ class HarborAdapter:
             raise ValueError("config keys 'registry_path' and 'registry_url' are mutually exclusive")
 
         n_tasks = int(str(cfg["num_tasks"])) if cfg.get("num_tasks") is not None else None
+        raw_task_names = cfg.get("task_names")
+        if raw_task_names is not None and (
+            not isinstance(raw_task_names, list)
+            or not all(isinstance(task_name, str) and task_name for task_name in raw_task_names)
+        ):
+            raise ValueError("config key 'task_names' must be a list of non-empty strings")
+        task_names = (
+            [task_name for task_name in raw_task_names if isinstance(task_name, str)]
+            if isinstance(raw_task_names, list)
+            else None
+        )
         if dataset_path:
-            return DatasetConfig(path=cls._repo_path(dataset_path, repo_root=repo_root), n_tasks=n_tasks)
+            return DatasetConfig(
+                path=cls._repo_path(dataset_path, repo_root=repo_root),
+                n_tasks=n_tasks,
+                task_names=task_names,
+            )
 
         registry_path = cfg.get("registry_path")
         registry_url = str(cfg["registry_url"]) if cfg.get("registry_url") else None
@@ -571,6 +586,7 @@ class HarborAdapter:
                 registry_url=registry_url,
                 registry_path=resolved_registry_path,
                 n_tasks=n_tasks,
+                task_names=task_names,
             )
         return DatasetConfig(
             name=str(dataset_id),
@@ -578,6 +594,7 @@ class HarborAdapter:
             registry_url=registry_url,
             registry_path=resolved_registry_path,
             n_tasks=n_tasks,
+            task_names=task_names,
         )
 
     @classmethod
