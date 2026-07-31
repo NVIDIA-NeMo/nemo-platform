@@ -4,10 +4,24 @@
 
 ARG NMP_PYTHON_BASE=nmp-python-base
 
-FROM ${NMP_PYTHON_BASE} AS builder
+FROM ${NMP_PYTHON_BASE} AS dependencies
+COPY --from=nmp-workspace pyproject.toml uv.lock README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --only-group experimentalist --no-install-workspace --no-editable
+
+FROM dependencies AS builder
 COPY --from=nmp-workspace . .
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --only-group experimentalist --no-editable
+    for package in \
+        nemo-eval-author-plugin \
+        nemo-experimentalist-plugin \
+        nemo-insights-plugin \
+        nemo-platform \
+        nemo-platform-plugin \
+        nemo-platform-sdk \
+        nmp-common; do \
+        uv build --wheel --package "$package" --out-dir /wheels; \
+    done
 
 FROM ${NMP_PYTHON_BASE} AS runtime
 
@@ -24,7 +38,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chown sandbox:sandbox /sandbox \
     && touch /etc/nemo-experimentalist-container
 
-COPY --from=builder /app/.venv /app/.venv
+COPY --from=dependencies /app/.venv /app/.venv
+COPY --from=builder /wheels /wheels
+RUN UV_COMPILE_BYTECODE=0 uv pip install \
+    --python /app/.venv/bin/python \
+    --no-deps \
+    /wheels/*.whl \
+    && rm -rf /wheels
 
 ENV HOME=/home/sandbox \
     PATH="/app/.venv/bin:$PATH" \

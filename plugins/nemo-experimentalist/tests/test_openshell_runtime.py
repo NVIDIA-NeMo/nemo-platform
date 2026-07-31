@@ -479,6 +479,12 @@ def test_openshell_assets_expose_only_bounded_authority() -> None:
     assert "docker.sock" not in dockerfile
     assert "USER sandbox" in dockerfile
     assert "ENTRYPOINT" not in dockerfile
+    dependency_sync = dockerfile.index("--no-install-workspace")
+    source_copy = dockerfile.index("COPY --from=nmp-workspace . .")
+    assert dependency_sync < source_copy
+    assert "COPY --from=dependencies /app/.venv /app/.venv" in dockerfile
+    assert "COPY --from=builder /wheels /wheels" in dockerfile
+    assert "COPY --from=builder /app/.venv" not in dockerfile
     assert 'dockerfile = "plugins/nemo-experimentalist/Dockerfile"' in docker_bake
     assert 'target "nmp-experimentalist-docker"' not in root_docker_bake
 
