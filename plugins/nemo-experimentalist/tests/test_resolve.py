@@ -902,3 +902,38 @@ def test_profile_storage_flags_reads_inline_and_path_forms(tmp_path: Path) -> No
     )
     path_profile = load_profile(tmp_path / "optimizer.yaml")
     assert profile_storage_flags(path_profile) == {"archive_candidates": True}
+
+
+def test_models_config_writes_only_configured_tiers() -> None:
+    """A configured tier overrides the environment; an unset tier leaves it alone."""
+    from nemo_experimentalist_plugin.config import ModelsConfig
+
+    env = {"EXPERIMENTALIST_FAST_MODEL_NAME": "from-env"}
+    written = ModelsConfig(smart="cfg/smart").apply_to_env(env)
+
+    assert written == ["smart"]
+    assert env["EXPERIMENTALIST_SMART_MODEL_NAME"] == "cfg/smart"
+    assert env["EXPERIMENTALIST_FAST_MODEL_NAME"] == "from-env"
+
+
+def test_optimizer_config_accepts_models_block() -> None:
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+
+    cfg = EvolutionaryOptimizerConfig.model_validate({"models": {"smart": "a/b", "fast": "c/d"}})
+
+    assert (cfg.models.smart, cfg.models.mid, cfg.models.fast) == ("a/b", None, "c/d")
+
+
+def test_component_configs_are_the_component_owned_classes() -> None:
+    """The tree must hold the components' own classes, not re-declared twins."""
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+    from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
+    from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
+    from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
+
+    cfg = EvolutionaryOptimizerConfig()
+    assert type(cfg.coder) is CoderConfig
+    assert type(cfg.analyzer) is AnalyzerConfig
+    assert type(cfg.proposer) is ProposerConfig
+    assert type(cfg.goal_config) is GoalTreeConfig

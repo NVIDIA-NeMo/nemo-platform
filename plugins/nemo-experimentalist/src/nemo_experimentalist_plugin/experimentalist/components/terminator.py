@@ -16,7 +16,7 @@ from typing import Any
 
 # Imported from `resolve` rather than `.loop`, which merely re-exports it: `loop` imports
 # this module, so going through it would be circular.
-from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.skills import skills_dir
 from nooa import Agent, CodeActStrategy, TextSkill, hidden, strategy
 from nooa.agentdoc import doc

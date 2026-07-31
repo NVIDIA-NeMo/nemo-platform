@@ -8,10 +8,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
-from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 
 
 def _write_tree(root: Path, content: str) -> None:

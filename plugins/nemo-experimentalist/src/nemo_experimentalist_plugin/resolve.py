@@ -22,148 +22,19 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
+from nemo_experimentalist_plugin.config import (
+    EvolutionaryOptimizerConfig,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.repository import looks_like_git
 from nemo_experimentalist_plugin.profile import AgentProfile
 from nemo_insights_plugin.contracts.insights import InsightsFileError, load_insights_document
 from nemo_insights_plugin.contracts.profile import ProfileError, resolve_agent_spec_path, resolve_profile_path
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, ValidationError
 
 
 class ResolveError(ValueError):
     """Experiment inputs could not be resolved from profile + overrides."""
-
-
-class AgentSourceConfig(BaseModel):
-    """Import-safe git/source modifiers for an experiment."""
-
-    clone_depth: int | None = None
-    source_path: str | None = None
-    entrypoint: str | None = None
-
-
-class CandidateStorageConfig(BaseModel):
-    """Import-safe candidate persistence settings."""
-
-    archive_candidates: bool = False
-    candidate_branch_prefix: str = "optimizer"
-    publish_winner: bool = False
-    pr_draft: bool = True
-    pr_base_branch: str | None = None
-    pr_title: str | None = None
-    pr_body: str | None = None
-    pr_labels: list[str] = Field(default_factory=list)
-
-
-class GoalTreeConfig(BaseModel):
-    """Import-safe goal-tree settings used by the optimizer loop."""
-
-    max_depth: int = Field(default=3, gt=0)
-    max_initial_depth: int = Field(default=2, gt=0)
-    min_initial_nodes: int = Field(default=3, gt=0)
-    max_initial_nodes: int = Field(default=4, gt=0)
-
-    @model_validator(mode="after")
-    def validate_constraints(self) -> GoalTreeConfig:
-        if self.max_initial_depth > self.max_depth:
-            raise ValueError(f"max_initial_depth ({self.max_initial_depth}) cannot exceed max_depth ({self.max_depth})")
-        if self.min_initial_nodes > self.max_initial_nodes:
-            raise ValueError(
-                f"min_initial_nodes ({self.min_initial_nodes}) cannot exceed "
-                f"max_initial_nodes ({self.max_initial_nodes})"
-            )
-        return self
-
-    def validate_tree(self, tree: Any) -> Any:
-        """Validate a runtime GoalTree without importing the agent module."""
-
-        def visit(node: Any, depth: int) -> None:
-            if depth > self.max_depth:
-                raise ValueError(f"goal tree exceeds max depth {self.max_depth} at node {node.id!r}")
-            if node.added_at_generation is None and depth > self.max_initial_depth:
-                raise ValueError(
-                    f"initial goal tree nodes exceed max depth {self.max_initial_depth} at node {node.id!r}"
-                )
-            for child in node.children:
-                visit(child, depth + 1)
-
-        visit(tree.root, 1)
-        initial_nodes = [node for node in tree._iter_nodes() if node.added_at_generation is None]
-        if not (self.min_initial_nodes <= len(initial_nodes) <= self.max_initial_nodes):
-            raise ValueError(
-                f"initial goal tree must have {self.min_initial_nodes}-"
-                f"{self.max_initial_nodes} nodes, got {len(initial_nodes)}"
-            )
-        return tree
-
-
-class CoderConfig(BaseModel):
-    """Import-safe Coder tuning settings."""
-
-    max_summary_tokens: int = 80_000
-    max_fix_attempts: int = 2
-    timeout_model_list_secs: float = 10.0
-    model_catalog_path: Path | None = None
-
-
-class RationalizerConfig(BaseModel):
-    """Import-safe Rationalizer tuning settings."""
-
-    max_summary_tokens: int = 80_000
-
-
-class TraceAnalyzerConfig(BaseModel):
-    """Import-safe trace-analysis tuning settings."""
-
-    max_summary_tokens: int = 80_000
-
-
-class AnalyzerConfig(BaseModel):
-    """Import-safe AgentAnalyzer tuning settings."""
-
-    max_summary_tokens: int = 80_000
-    max_trials: int = 5
-    max_divergent_pairs: int = 3
-    rationalizer: RationalizerConfig = Field(default_factory=RationalizerConfig)
-    trace_analyzer: TraceAnalyzerConfig = Field(default_factory=TraceAnalyzerConfig)
-
-
-class ProposerConfig(BaseModel):
-    """Import-safe Proposer tuning settings."""
-
-    max_summary_tokens: int = 80_000
-
-
-class EvolutionaryOptimizerConfig(BaseModel):
-    """Complete import-safe schema for one optimizer run."""
-
-    @model_validator(mode="before")
-    @classmethod
-    def reject_legacy_curator_config(cls, data: Any) -> Any:
-        if isinstance(data, dict) and "curator" in data:
-            raise ValueError("'curator' was renamed to 'eval_author'; update the optimizer configuration")
-        return data
-
-    max_rounds: int = 15
-    min_rounds_before_stopping: int = 3
-    max_survivors: int = 3
-    max_candidates: int = 3
-    max_trajectory_tasks: int = 8
-    max_train_batch_tasks: int | None = None
-    train_batch_seed: int = 0
-    max_summary_tokens: int = 80_000
-    model_catalog_path: Path | None = None
-    disable_trajectory_scoring: bool = False
-    disable_convergence_check: bool = False
-    source: AgentSourceConfig = Field(default_factory=AgentSourceConfig)
-    storage: CandidateStorageConfig = Field(default_factory=CandidateStorageConfig)
-    goal_config: GoalTreeConfig = Field(default_factory=GoalTreeConfig)
-    coder: CoderConfig = Field(default_factory=CoderConfig)
-    analyzer: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
-    proposer: ProposerConfig = Field(default_factory=ProposerConfig)
-    evaluator: dict[str, Any] = Field(default_factory=dict)
-    eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)
 
 
 class EffectiveInsight(BaseModel):

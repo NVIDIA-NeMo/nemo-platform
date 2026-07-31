@@ -15,6 +15,7 @@ from typing import Any, Literal, Self
 
 import yaml
 from harbor.registry.client.package import PackageDatasetClient
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
     HarborEvaluator,
@@ -26,7 +27,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
     TrialResult,
     local_path_from_uri,
 )
-from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig, resolve_dataset
+from nemo_experimentalist_plugin.resolve import resolve_dataset
 from pydantic import BaseModel, Field, model_validator
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]

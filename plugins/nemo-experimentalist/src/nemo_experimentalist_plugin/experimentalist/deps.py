@@ -13,13 +13,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
-from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 from pydantic import BaseModel, model_validator
 
 

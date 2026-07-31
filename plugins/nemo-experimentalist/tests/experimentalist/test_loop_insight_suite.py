@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
@@ -23,7 +24,6 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
     ResourceRef,
 )
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
-from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 
 
 class _StopAfterOneRound(Exception):

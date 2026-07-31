@@ -4,6 +4,7 @@
 """Reusable optimizer Experimentalist run orchestration."""
 
 import importlib
+import logging
 from pathlib import Path
 from typing import Protocol, TextIO, cast
 
@@ -16,6 +17,8 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, Verbosity
 from nemo_platform import AsyncNeMoPlatform
+
+logger = logging.getLogger(__name__)
 
 
 class _LiteLLMModule(Protocol):
@@ -79,6 +82,13 @@ async def run_experimentalist(
     # callback runs ``configure_logging`` before dispatching this subcommand),
     # so this library function leaves root logging untouched.
     _enable_litellm_drop_params()
+
+    # Apply the config's models: block before anything constructs an agent. Tiers resolve
+    # from the environment, so this is where a config-file choice becomes effective; an
+    # unset tier leaves whatever the environment already provides.
+    applied = config.models.apply_to_env()
+    if applied:
+        logger.info("Model tiers from config: %s", ", ".join(applied))
 
     experiment_dir.mkdir(parents=True, exist_ok=True)
     experiment_dir = experiment_dir.resolve()

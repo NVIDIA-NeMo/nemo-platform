@@ -24,6 +24,7 @@ from typing import Any, TypeVar, cast
 from urllib.parse import urlparse
 
 import httpx
+from nemo_experimentalist_plugin.config import CandidateStorageConfig
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
     EvaluationResult,
@@ -42,12 +43,6 @@ from nemo_experimentalist_plugin.experimentalist.components.repository import (
 from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id, spans_to_protobuf
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
-from nemo_experimentalist_plugin.resolve import (
-    AgentSourceConfig as AgentSourceConfig,
-)
-from nemo_experimentalist_plugin.resolve import (
-    CandidateStorageConfig as CandidateStorageConfig,
-)
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel

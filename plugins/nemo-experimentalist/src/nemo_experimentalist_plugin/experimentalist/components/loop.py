@@ -19,8 +19,9 @@ from pathlib import Path
 from typing import Any, Literal, cast, get_args
 
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
-from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer, AnalyzerConfig
+from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
@@ -59,7 +60,7 @@ from nemo_experimentalist_plugin.experimentalist.components.models import (
     pareto_front,
     pareto_sort,
 )
-from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer, ProposerConfig
+from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer
 from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
 from nemo_experimentalist_plugin.experimentalist.components.tools import (
     GuardedShellTools,
@@ -74,7 +75,6 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import reward_scalar
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
-from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -357,14 +357,9 @@ class EvolutionaryOptimizer(Agent):
 
     @staticmethod
     def _coder_config(config: EvolutionaryOptimizerConfig) -> CoderConfig:
-        coder_config = CoderConfig.model_validate(config.coder.model_dump())
-        if config.model_catalog_path is None or coder_config.model_catalog_path is not None:
-            return coder_config
-        return coder_config.model_copy(update={"model_catalog_path": config.model_catalog_path})
-
-    @staticmethod
-    def _goal_tree_config(config: EvolutionaryOptimizerConfig) -> GoalTreeConfig:
-        return GoalTreeConfig.model_validate(config.goal_config.model_dump())
+        if config.model_catalog_path is None or config.coder.model_catalog_path is not None:
+            return config.coder
+        return config.coder.model_copy(update={"model_catalog_path": config.model_catalog_path})
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -1532,7 +1527,7 @@ class EvolutionaryOptimizer(Agent):
         try:
             tree = await GoalTreeGenerator(
                 workspace=self.working_dir,
-                config=self._goal_tree_config(config),
+                config=config.goal_config,
                 framework_skills_dirs=self._framework_skills_dirs,
             ).generate(dataset, agent_spec=agent_spec_path)
         except Exception as exc:  # noqa: BLE001
@@ -1633,7 +1628,7 @@ class EvolutionaryOptimizer(Agent):
             *[
                 AgentAnalyzer(
                     workspace=self.working_dir,
-                    config=AnalyzerConfig.model_validate(config.analyzer.model_dump()),
+                    config=config.analyzer,
                     framework_skills_dirs=self._framework_skills_dirs,
                 ).run(
                     agent=s.label,
@@ -1670,7 +1665,7 @@ class EvolutionaryOptimizer(Agent):
         goal_tree_path = self._latest_goal_tree_path()
         if goal_tree_path is None:
             return
-        goal_config = self._goal_tree_config(config)
+        goal_config = config.goal_config
         goal_tree = self._load_goal_tree(goal_tree_path, goal_config, context="analysis")
         if goal_tree is None:
             return
@@ -1695,7 +1690,7 @@ class EvolutionaryOptimizer(Agent):
         """Run Proposer; return up to ``config.max_candidates`` Improvements."""
         proposer = Proposer(
             workspace=self.working_dir,
-            config=ProposerConfig.model_validate(config.proposer.model_dump()),
+            config=config.proposer,
             framework_skills_dirs=self._framework_skills_dirs,
         )
         return await proposer.run(
@@ -1773,7 +1768,7 @@ class EvolutionaryOptimizer(Agent):
             logger.info("[TRAJ] No goal tree found, skipping trajectory scoring")
             return {}
 
-        goal_tree = self._load_goal_tree(tree_path, self._goal_tree_config(config), context="trajectory scoring")
+        goal_tree = self._load_goal_tree(tree_path, config.goal_config, context="trajectory scoring")
         if goal_tree is None:
             logger.info("[TRAJ] Invalid goal tree, skipping trajectory scoring")
             return {}
