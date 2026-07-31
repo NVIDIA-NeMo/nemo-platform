@@ -389,6 +389,48 @@ def test_backend_registry_resolves_subprocess_default(mock_nmp_client):
     assert registry.get_backend(provider="subprocess", profile="default") is not None
 
 
+def test_backend_registry_skips_docker_when_unavailable(mock_nmp_client, caplog):
+    class DummyBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            self.nmp_sdk = nmp_sdk
+            self.execution_profile_config = execution_profile_config
+            self.profile_name = profile_name
+
+    class ExplodingDockerBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            raise AssertionError("docker backend should not be constructed when unavailable")
+
+    profiles = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    caplog.set_level(logging.WARNING)
+    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
+        registry = BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=profiles,
+            backends={
+                BackendKey("cpu", "docker"): ExplodingDockerBackend,
+                BackendKey("subprocess", "subprocess"): DummyBackend,
+            },
+        )
+
+    assert registry.get_backend(provider="subprocess", profile="default") is not None
+    with pytest.raises(KeyError):
+        registry.get_backend(provider="cpu", profile="default")
+    assert "Skipping job executor profile cpu/default" in caplog.text
+
+
 def test_subprocess_execution_profile_defaults_provider_to_subprocess():
     profile = SubprocessJobExecutionProfile(profile="default")
 
@@ -468,6 +510,34 @@ def test_merge_executor_profiles_skips_container_backends_for_none_runtime(caplo
     assert "Skipping executor profile cpu/custom-docker" in caplog.text
     assert "Skipping executor profile gpu/custom-k8s" in caplog.text
     assert "Skipping executor profile gpu_distributed/custom-volcano" in caplog.text
+
+
+def test_merge_executor_profiles_skips_docker_when_unavailable_under_docker_runtime(caplog):
+    defaults = get_default_executor_profiles_for_runtime(Runtime.DOCKER, DefaultExecutionProfileConfig())
+    custom = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="auditor",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="custom-subprocess",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    caplog.set_level(logging.WARNING)
+    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=False) as validate:
+        merged = merge_executor_profiles(custom, defaults, runtime=Runtime.DOCKER)
+
+    assert [(p.provider, p.profile, p.backend) for p in merged] == [
+        ("subprocess", "default", "subprocess"),
+        ("subprocess", "custom-subprocess", "subprocess"),
+    ]
+    validate.assert_called_once()
+    assert "because Docker is unavailable" in caplog.text
 
 
 def test_merge_executor_profiles_keeps_docker_executor_for_none_runtime_when_docker_is_available():

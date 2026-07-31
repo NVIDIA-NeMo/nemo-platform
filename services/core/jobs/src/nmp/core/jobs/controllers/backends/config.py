@@ -137,15 +137,30 @@ def merge_executor_profiles(
 
     If a custom profile has the same provider and profile as a default profile, the custom profile will override the default.
     If the custom profile matching a default profile has custom config values, those should override the default config values.
-    When runtime is NONE, Kubernetes-backed custom profiles are skipped. Docker custom profiles are skipped only when
-    Docker is unavailable, so explicit Docker executors can still run in compose/test harnesses with a mounted socket.
+    When runtime is NONE, Kubernetes- and Volcano-backed custom profiles are skipped. Docker profiles (default or custom)
+    are skipped whenever Docker is unavailable, independent of Runtime, so explicit Docker executors can still run in
+    compose/test harnesses with a mounted socket.
     """
 
     merged_executors: dict[tuple[str, str], ExecutionProfileT] = {}
     docker_available: bool | None = None
 
+    def _docker_is_available() -> bool:
+        nonlocal docker_available
+        if docker_available is None:
+            docker_available = validate_docker_available()
+        return docker_available
+
     # Add default profiles first
     for executor in default_executors:
+        if executor.backend == "docker" and not _docker_is_available():
+            logger.warning(
+                "Skipping executor profile %s/%s using backend '%s' because Docker is unavailable.",
+                executor.provider,
+                executor.profile,
+                executor.backend,
+            )
+            continue
         merged_executors[(executor.provider, executor.profile)] = executor
 
     # Override with custom profiles
@@ -158,17 +173,14 @@ def merge_executor_profiles(
                 custom_executor.backend,
             )
             continue
-        if runtime == Runtime.NONE and custom_executor.backend == "docker":
-            if docker_available is None:
-                docker_available = validate_docker_available()
-            if not docker_available:
-                logger.warning(
-                    "Skipping executor profile %s/%s using backend '%s' because platform runtime is NONE and Docker is unavailable.",
-                    custom_executor.provider,
-                    custom_executor.profile,
-                    custom_executor.backend,
-                )
-                continue
+        if custom_executor.backend == "docker" and not _docker_is_available():
+            logger.warning(
+                "Skipping executor profile %s/%s using backend '%s' because Docker is unavailable.",
+                custom_executor.provider,
+                custom_executor.profile,
+                custom_executor.backend,
+            )
+            continue
 
         key = (custom_executor.provider, custom_executor.profile)
 

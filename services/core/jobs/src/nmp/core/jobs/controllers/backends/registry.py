@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from dataclasses import dataclass
 from typing import Self, Sequence
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.config import validate_docker_available
 from nmp.core.jobs.app.profiles import ExecutionProfileT
 from nmp.core.jobs.app.schemas import BackendRef, ProfileRef, ProviderRef
 from nmp.core.jobs.controllers.backends.base import DEFAULT_PROFILE, DEFAULT_PROVIDER, JobBackend
@@ -16,6 +18,8 @@ from nmp.core.jobs.controllers.backends.kubernetes import (
 )
 from nmp.core.jobs.controllers.backends.subprocess import SubprocessJobBackend
 from nmp.core.jobs.controllers.backends.test import TestE2ECPUJobBackend, TestE2EGPUJobBackend
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -107,18 +111,45 @@ class BackendRegistry:
             ValidationError: If a profile's configuration is invalid for its backend type
         """
         registry: dict[RegistryKey, JobBackend] = {}
+        docker_available: bool | None = None
 
         for executor in profiles:
             # Execution profiles are unique with respect to the provider
             # and profile combination
             registry_key = RegistryKey(executor.provider, executor.profile)
             backend_key = BackendKey(executor.provider, executor.backend)
+            if backend_key not in backends:
+                raise KeyError(
+                    f"No backend registered for provider '{executor.provider}' and backend '{executor.backend}'"
+                )
             backend = backends[backend_key]
+
+            if executor.backend == "docker":
+                if docker_available is None:
+                    docker_available = validate_docker_available()
+                if not docker_available:
+                    logger.warning(
+                        "Skipping job executor profile %s/%s using backend 'docker' because Docker is unavailable.",
+                        executor.provider,
+                        executor.profile,
+                    )
+                    continue
 
             # The config from the execution profile hasn't been validated
             # yet. Calling the backend constructor will serialize the raw
             # config into the backend's expected format and validate it
-            registry[registry_key] = backend(nmp_sdk, executor.config, executor.profile)
+            try:
+                registry[registry_key] = backend(nmp_sdk, executor.config, executor.profile)
+            except Exception as exc:
+                if executor.backend != "docker":
+                    raise
+                logger.warning(
+                    "Skipping job executor profile %s/%s using backend 'docker' "
+                    "because Docker backend initialization failed (%s).",
+                    executor.provider,
+                    executor.profile,
+                    exc,
+                )
         return cls(registry)
 
     def get_backend(self, *, provider: str | None = None, profile: str | None = None) -> JobBackend:
