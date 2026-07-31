@@ -27,13 +27,10 @@ def _example_yaml_config() -> dict[str, Any]:
                     "provider": "nvidia",
                     "model": "nvidia/nemotron-3-nano-30b-a3b",
                     "api_key_env": "NVIDIA_API_KEY",
+                    "base_url": "https://integrate.api.nvidia.com/v1",
                     "temperature": 0.0,
                 },
-                "settings": {
-                    "python_env": "HERMES_ADAPTER_PYTHON",
-                    "base_url": "https://integrate.api.nvidia.com/v1",
-                    "system_prompt": "You are a concise assistant.",
-                },
+                "settings": {"max_tokens": 512},
             },
             "codex": {
                 "kind": "codex",
@@ -46,11 +43,17 @@ def _example_yaml_config() -> dict[str, Any]:
             "default": {
                 "provider": "openai",
                 "model": "openai/gpt-5.4",
+                "base_url": "http://platform:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
             },
         },
         "environment": {
             "workspace": "./workspace",
             "artifacts": "./artifacts",
+        },
+        "instructions": {
+            "system": {
+                "content": "You are a concise assistant.",
+            },
         },
         "telemetry": {
             "enabled": False,
@@ -77,14 +80,17 @@ class TestTranslateAgentConfig:
 
         codex_config = translate_agent_config(config, harness_name="codex")
         claude_config = translate_agent_config(config, harness_name="claude")
+        deepagents_config = translate_agent_config(config, harness_name="deepagents")
         hermes_config = translate_agent_config(config, harness_name="hermes")
 
         assert codex_config.harness.adapter_id == "nvidia.fabric.codex"
         assert "skip_git_repo_check" not in codex_config.harness.settings
         assert claude_config.harness.adapter_id == "nvidia.fabric.claude"
         assert claude_config.harness.settings["permission_mode"] == "dontAsk"
+        assert deepagents_config.harness.adapter_id == "nvidia.fabric.langchain.deepagents"
+        assert deepagents_config.harness.settings["deepagents"] == {}
         assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
-        assert hermes_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
+        assert hermes_config.harness.settings["max_tokens"] == 512
 
     def test_translates_default_harness(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
@@ -95,10 +101,12 @@ class TestTranslateAgentConfig:
         assert fabric_config.metadata.description == "Example Agent"
         assert fabric_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert fabric_config.harness.resolution == "preinstalled"
-        assert fabric_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
-        assert fabric_config.harness.settings["system_prompt"] == "You are a concise assistant."
+        assert fabric_config.harness.settings["max_tokens"] == 512
+        assert fabric_config.instructions.system.content == "You are a concise assistant."
+        assert fabric_config.instructions.system.mode == "replace"
         assert fabric_config.models["default"].provider == "nvidia"
         assert fabric_config.models["default"].model == "nvidia/nemotron-3-nano-30b-a3b"
+        assert fabric_config.models["default"].base_url == "https://integrate.api.nvidia.com/v1"
         assert fabric_config.environment.provider == "local"
         assert fabric_config.environment.workspace == "./workspace"
         assert fabric_config.environment.artifacts == "./artifacts"
@@ -113,6 +121,27 @@ class TestTranslateAgentConfig:
         assert fabric_config.harness.settings["sandbox"] == "workspace-write"
         assert fabric_config.models["default"].provider == "openai"
         assert fabric_config.models["default"].model == "openai/gpt-5.4"
+        assert (
+            fabric_config.models["default"].base_url
+            == "http://platform:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+        )
+
+    def test_promotes_legacy_model_settings_base_url(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "codex"
+        payload["models"]["default"]["base_url"] = None
+        payload["models"]["default"]["settings"] = {
+            "base_url": "http://legacy:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert (
+            fabric_config.models["default"].base_url
+            == "http://legacy:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+        )
+        assert "base_url" not in fabric_config.models["default"].settings
 
     def test_translates_shared_capability_sections(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())

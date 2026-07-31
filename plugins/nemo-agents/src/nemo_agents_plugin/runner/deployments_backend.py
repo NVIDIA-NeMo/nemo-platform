@@ -170,8 +170,9 @@ def rewrite_config_base_urls(nat_config: dict[str, Any], gateway_url: str) -> di
 def rewrite_fabric_config_base_urls(agent_config: dict[str, Any], gateway_url: str) -> dict[str, Any]:
     """Return a copy of *agent_config* with Fabric model IGW base_urls rebased onto *gateway_url*.
 
-    Rewrites ``models.*.settings.base_url`` and harness ``model.settings.base_url`` when the
-    URL points at the Inference Gateway. Third-party base URLs are left unchanged.
+    Rewrites ``models.*.base_url`` and harness ``model.base_url`` when the URL
+    points at the Inference Gateway. Legacy ``settings.base_url`` values are
+    also supported. Third-party base URLs are left unchanged.
     """
     reachable = urlsplit(gateway_url.rstrip("/"))
     reachable_origin = f"{reachable.scheme}://{reachable.netloc}"
@@ -191,6 +192,10 @@ def rewrite_fabric_config_base_urls(agent_config: dict[str, Any], gateway_url: s
     for model_config in model_configs:
         if not isinstance(model_config, dict):
             continue
+        current = model_config.get("base_url")
+        if isinstance(current, str) and "/apis/inference-gateway/" in current:
+            parts = urlsplit(current)
+            model_config["base_url"] = f"{reachable_origin}{parts.path}"
         settings = model_config.get("settings")
         if not isinstance(settings, dict):
             continue

@@ -297,6 +297,16 @@
         },
         {
           "package": {
+            "name": "bracex",
+            "version": "3.0.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "cachetools",
             "version": "7.0.5",
             "ecosystem": "PyPI"
@@ -363,6 +373,16 @@
           },
           "licenses": [
             "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "claude-agent-sdk",
+            "version": "0.2.120",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -646,6 +666,16 @@
         },
         {
           "package": {
+            "name": "deepagents",
+            "version": "0.6.12",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "defusedxml",
             "version": "0.7.1",
             "ecosystem": "PyPI"
@@ -888,6 +918,16 @@
           "package": {
             "name": "filelock",
             "version": "3.29.7",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "filetype",
+            "version": "1.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2569,6 +2609,16 @@
         },
         {
           "package": {
+            "name": "google-genai",
+            "version": "2.12.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
             "name": "googleapis-common-protos",
             "version": "1.73.1",
             "ecosystem": "PyPI"
@@ -3019,6 +3069,16 @@
         },
         {
           "package": {
+            "name": "langchain-anthropic",
+            "version": "1.4.8",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "langchain-aws",
             "version": "1.1.0",
             "ecosystem": "PyPI"
@@ -3069,6 +3129,16 @@
         },
         {
           "package": {
+            "name": "langchain-google-genai",
+            "version": "4.2.7",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "langchain-huggingface",
             "version": "1.2.2",
             "ecosystem": "PyPI"
@@ -3081,6 +3151,16 @@
           "package": {
             "name": "langchain-litellm",
             "version": "0.6.5",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "langchain-mcp-adapters",
+            "version": "0.2.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3161,6 +3241,16 @@
           "package": {
             "name": "langgraph-checkpoint",
             "version": "4.1.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "langgraph-checkpoint-sqlite",
+            "version": "3.1.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3414,7 +3504,57 @@
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "UNKNOWN"
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-adapters-claude",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-adapters-codex",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-adapters-common",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-adapters-deepagents",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "nemo-fabric-adapters-hermes",
+            "version": "0.1.0rc6",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
           ]
         },
         {
@@ -3424,7 +3564,7 @@
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "UNKNOWN"
+            "Apache-2.0"
           ]
         },
         {
@@ -3631,6 +3771,26 @@
           "package": {
             "name": "openai",
             "version": "2.35.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "openai-codex",
+            "version": "0.144.4",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "openai-codex-cli-bin",
+            "version": "0.144.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -7553,6 +7713,16 @@
         },
         {
           "package": {
+            "name": "sqlite-vec",
+            "version": "0.1.9",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
             "name": "sqlmodel",
             "version": "0.0.37",
             "ecosystem": "PyPI"
@@ -7725,6 +7895,16 @@
           "package": {
             "name": "toml",
             "version": "0.10.2",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "tomli-w",
+            "version": "1.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8137,6 +8317,16 @@
         },
         {
           "package": {
+            "name": "wcmatch",
+            "version": "11.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
             "name": "wcwidth",
             "version": "0.6.0",
             "ecosystem": "PyPI"
@@ -8257,15 +8447,15 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 145
+      "count": 155
     },
     {
       "name": "Apache-2.0",
-      "count": 85
+      "count": 95
     },
     {
       "name": "non-standard",
-      "count": 50
+      "count": 51
     },
     {
       "name": "BSD-3-Clause",
@@ -8345,7 +8535,7 @@
     },
     {
       "name": "UNKNOWN",
-      "count": 6
+      "count": 4
     }
   ]
 }

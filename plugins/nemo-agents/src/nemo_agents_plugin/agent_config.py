@@ -30,6 +30,7 @@ class ModelConfig(BaseModel):
     provider: str
     model: str
     api_key_env: str | None = None
+    base_url: str | None = None
     temperature: float | None = None
     settings: dict[str, Any] = Field(default_factory=dict)
 
@@ -60,6 +61,19 @@ class TelemetryConfig(BaseModel):
     project: str | None = None
     atif: dict[str, Any] | None = None
     atof: dict[str, Any] | None = None
+
+
+class InstructionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, pattern=r"\S")
+    mode: Literal["replace"] = "replace"
+
+
+class InstructionsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    system: InstructionConfig | None = None
 
 
 class SkillsConfig(BaseModel):
@@ -100,6 +114,7 @@ class AgentConfig(BaseModel):
     harnesses: dict[str, HarnessConfig]
     models: dict[str, ModelConfig] = Field(default_factory=dict)
     prompts: dict[str, str] = Field(default_factory=dict)
+    instructions: InstructionsConfig | None = None
     skills: SkillsConfig | None = None
     mcp: McpConfig | None = None
     tools: ToolsConfig | None = None

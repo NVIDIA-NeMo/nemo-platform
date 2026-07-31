@@ -27,6 +27,11 @@ _ENV_VAR_PATTERN = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Z
 # validatable through ``sdk.inference.virtual_models``.
 _IGW_LLM_TYPES = frozenset({"openai", "nim"})
 
+# Fabric model providers that speak through Platform's OpenAI-compatible IGW
+# endpoint. Native providers such as Anthropic should keep their own adapter
+# defaults unless the config explicitly supplies a base_url.
+_FABRIC_IGW_MODEL_PROVIDERS = frozenset({"openai", "nvidia", "openai-compatible"})
+
 # Regex used to skip LLM ``model_name`` values that still contain unexpanded
 # ``$VAR`` / ``${VAR}`` placeholders.  These were left in place by
 # :func:`expand_env_vars` because the corresponding env var was unset; the
@@ -260,9 +265,16 @@ def inject_fabric_gateway_url(
     for model_config in model_configs:
         if not isinstance(model_config, dict):
             continue
-        settings = model_config.setdefault("settings", {})
-        if isinstance(settings, dict):
-            settings.setdefault("base_url", gateway_url)
+        if model_config.get("base_url") is not None:
+            continue
+        settings = model_config.get("settings")
+        if isinstance(settings, dict) and isinstance(settings.get("base_url"), str):
+            model_config["base_url"] = settings.pop("base_url")
+            continue
+        provider = model_config.get("provider")
+        if not isinstance(provider, str) or provider.lower() not in _FABRIC_IGW_MODEL_PROVIDERS:
+            continue
+        model_config["base_url"] = gateway_url
 
     return resolved
 
