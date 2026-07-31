@@ -82,17 +82,19 @@ Now that we have data in our system, we can run the analyst agent to understand 
 
 If the analyst discovers issues in your application, it will create what we call an 'insight'. An insight is a human-readable description of a problem in your agentic system. The closest analogy is a bug report. They don't try to describe why an issue happened or the code you should change to fix it, and they should be understandable to a user of your agent.
 
-Run the testbed's live analysis command. It reads the recorded evaluation ID,
-so the Analyst only examines traces from the Harbor run above:
+Run the Analyst against the agent's traces in the dedicated workspace:
 
 ```bash
-uv run --directory plugins/nemo-insights --frozen \
-  python -m testbed analyze tau3-airline-harbor --live
+uv run --frozen nemo insights analyze \
+  --agent nemo-experimentalist-tau3-nooa \
+  --workspace canonical-tau3-airline \
+  --base-url "$NMP_BASE_URL"
 ```
 
-In Studio, open the `canonical-tau3-airline` workspace's Insights area to
-review the persisted Insights. Select the Insight you want to optimize and copy
-its ID for the next command.
+Because this command does not set `--insights-file-output`, it publishes the
+Insights to NeMo Platform. In Studio, open the `canonical-tau3-airline`
+workspace's Insights area to review them. Select the Insight you want to
+optimize and copy its ID for the next command.
 
 ## 5. Prepare the Tau3 Airline quality dataset
 
