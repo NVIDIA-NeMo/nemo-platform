@@ -323,10 +323,6 @@ def _export_harbor_trace_files(
     client: httpx.Client | None = None,
 ) -> tuple[int, int, set[str]]:
     """Enrich Harbor OTLP-JSONL traces and export them to Intake."""
-    headers: dict[str, str] = {}
-    if api_key := os.environ.get("INFERENCE_API_KEY"):
-        headers["Authorization"] = f"Bearer {api_key}"
-
     owns_client = client is None
     active_client = client or httpx.Client(timeout=30.0)
     sent = errors = 0
@@ -391,7 +387,6 @@ def _export_harbor_trace_files(
                         workspace,
                         request,
                         client=active_client,
-                        headers=headers,
                     )
                     if root_span_id is not None and not evaluator_posted:
                         for reward_name, reward_value in rewards.items():
@@ -640,8 +635,10 @@ class HarborAdapter:
             missing.append("config key 'agent_dir'")
         elif not self._repo_path(agent_dir_value, repo_root=REPO_ROOT).is_dir():
             missing.append(f"agent_dir '{self._repo_path(agent_dir_value, repo_root=REPO_ROOT)}' is not a directory")
-        if not os.environ.get("INFERENCE_API_KEY"):
-            missing.append("env INFERENCE_API_KEY")
+        if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("INFERENCE_API_KEY")):
+            missing.append("env OPENAI_API_KEY or INFERENCE_API_KEY")
+        if not (os.environ.get("OPENAI_BASE_URL") or os.environ.get("INFERENCE_API_BASE")):
+            missing.append("env OPENAI_BASE_URL or INFERENCE_API_BASE")
         try:
             self._build_job_config(cfg, run_id="preflight", repo_root=REPO_ROOT)
         except ModuleNotFoundError:
@@ -654,6 +651,14 @@ class HarborAdapter:
         cfg = self.subject.config
         if missing := self.check():
             raise SystemExit(f"harbor testbed '{self.subject.name}' is missing: " + "; ".join(missing))
+
+        # The checked-in Harbor wrapper and Tau3 sidecars use OpenAI-compatible
+        # variable names. Accept the Platform-wide inference names as the source
+        # of truth so one credential setup works for both testbed and Analyst.
+        model_api_key = os.environ.get("OPENAI_API_KEY") or os.environ["INFERENCE_API_KEY"]
+        model_api_base = os.environ.get("OPENAI_BASE_URL") or os.environ["INFERENCE_API_BASE"]
+        os.environ.setdefault("OPENAI_API_KEY", model_api_key)
+        os.environ.setdefault("OPENAI_BASE_URL", model_api_base)
 
         agent_dir = self._repo_path(cfg["agent_dir"], repo_root=REPO_ROOT)
         base_url = str(cfg["base_url"])

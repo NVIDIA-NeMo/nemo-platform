@@ -106,7 +106,7 @@ def _doctor(subjects: dict[str, Subject], name: str | None) -> None:
         unmet: list[str] = []
         if not os.environ.get("INFERENCE_API_KEY"):
             unmet.append("env INFERENCE_API_KEY (analyst key, in testbed/.env)")
-        if shutil.which("gh") is None:
+        if subject.type in ("benchmark", "intake") and shutil.which("gh") is None:
             unmet.append("gh CLI (needed for pinned/--state analyze; https://cli.github.com)")
         unmet += build_adapter(subject).check()
         if unmet:
@@ -114,7 +114,10 @@ def _doctor(subjects: dict[str, Subject], name: str | None) -> None:
             for item in unmet:
                 print(f"    - {item}")
         else:
-            print(f"✓ {subject_name} ({subject.type}) — ready: uv run python -m testbed analyze {subject_name} --live")
+            action = (
+                f"run {subject_name}" if subject.type in ("benchmark", "harbor") else f"analyze {subject_name} --live"
+            )
+            print(f"✓ {subject_name} ({subject.type}) — ready: uv run python -m testbed {action}")
 
 
 def _atomic_write_text(path: Path, contents: str) -> None:

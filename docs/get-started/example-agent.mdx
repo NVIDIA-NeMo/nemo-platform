@@ -3,7 +3,10 @@ title: "Get started with an example agent"
 description: "Run the optimization loop from end to end on τ-Bench"
 ---
 
-This provides a guide for how you can quickly load agent traces into your NeMo Platform, run the analyst agent to discover issues with that agent, and launch an experimentalist to fix those issues. This is meant as an example to show how the whole platform works. You can also jump straight to setting up your agent with NeMo Platform.
+This guide runs one Tau3 Airline agent through the full loop: Harbor evaluates
+the checked-in example agent, the Analyst discovers issues from its traces, and
+the Experimentalist improves the same agent. You can also jump straight to
+setting up your agent with NeMo Platform.
 
 ## Prerequisites
 
@@ -34,33 +37,29 @@ uv run nemo services start --config packages/nmp_platform/config/local.yaml
 
 You should now be able to navigate to `http://localhost:8080` and see the NeMo Platform web UI.
 
-## 3. Prepare Tau2 and run the airline agent
+## 3. Run the Tau3 Airline agent with Harbor
 
-Now that we have a running NeMo Platform, it's time to load up some data! This example uses the τ-Bench from Sierra. It's a great representation of a simplified agent that performs a business-critical task. Our first step will be to download the tau2 repository and install the dependencies to run it.
-
-Then, we'll run a script to go through 30 of the tasks from the Tau 2 Airline dataset. In order to make our example more realistic and representative of the kind of agent data we typically see in production, we won't record whether the tasks passed verification – we want to see if we can gain useful insights even without ground truth data. This could take up to 20 minutes, and will cost about a dollar.
+Evaluate the
+[checked-in Tau3 NOOA example agent](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/plugins/nemo-experimentalist/examples/tau3-nooa-agent)
+against the
+[`sierra-research/tau3-bench`](https://hub.harborframework.com/datasets/sierra-research/tau3-bench/latest)
+dataset on Harbor Hub. The Insights testbed selects six Airline tasks, runs the
+agent through Harbor, and uploads its traces and verifier rewards into NeMo
+Platform. This can take 20 minutes or longer because Harbor builds task
+containers and runs model-backed user simulation.
 
 ```bash
-git init tmp/tau2-bench
-git -C tmp/tau2-bench remote add origin https://github.com/sierra-research/tau2-bench.git
-git -C tmp/tau2-bench fetch --depth 1 origin 8ebb7499622fc2be9b9d510d6f7a7653461f4f29
-git -C tmp/tau2-bench checkout --detach FETCH_HEAD
-uv --directory tmp/tau2-bench sync --frozen
-uv --directory tmp/tau2-bench run --frozen tau2 check-data
-
 export NMP_BASE_URL=http://localhost:8080
+export INFERENCE_API_BASE=https://inference-api.nvidia.com/v1
 export INFERENCE_API_KEY=sk-...
-export OPENAI_API_KEY="$INFERENCE_API_KEY"
-export OPENAI_API_BASE=https://inference-api.nvidia.com/v1
 
 uv run --directory plugins/nemo-insights --frozen \
-  python -m testbed run tau2-airline \
-  --base "$NMP_BASE_URL" \
-  --set include_rewards=false \
-  --set tau2_repo="$PWD/tmp/tau2-bench"
+  python -m testbed run tau3-airline-harbor \
+  --base "$NMP_BASE_URL"
 ```
 
-The testbed runs the 30-task airline train split and ingests realistic traces into the `tau2-airline` workspace. At this point you can navigate to the traces view and see the traces from the agent.
+In Studio, open the `canonical-tau3-airline` workspace's Experiments area to
+inspect the task results, rewards, and traces.
 
 ## 4. Run the Analyst
 
@@ -68,16 +67,17 @@ Now that we have data in our system, we can run the analyst agent to understand 
 
 If the analyst discovers issues in your application, it will create what we call an 'insight'. An insight is a human-readable description of a problem in your agentic system. The closest analogy is a bug report. They don't try to describe why an issue happened or the code you should change to fix it, and they should be understandable to a user of your agent.
 
-Let's run it:
+Run the Analyst against the recorded Harbor evaluation:
 
 ```bash
-uv run --frozen nemo insights analyze \
-  --agent tau2-airline \
-  --workspace tau2-airline \
-  --base-url "$NMP_BASE_URL"
+uv run --directory plugins/nemo-insights --frozen \
+  python -m testbed analyze tau3-airline-harbor \
+  --live \
+  --base "$NMP_BASE_URL"
 ```
 
-This will take a few minutes to run. Once it's done, you can navigate to the insights page to see the issues the analyst discovered in the τ-Bench Airline Agent.
+This will take a few minutes. In Studio, open the
+`canonical-tau3-airline` workspace's Insights area to review the result.
 
 ## 5. Prepare a Tau3 Airline smoke dataset
 

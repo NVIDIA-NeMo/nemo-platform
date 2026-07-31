@@ -899,6 +899,20 @@ def test_doctor_flags_missing_gh(monkeypatch, capsys):
     assert "gh CLI (needed for pinned/--state analyze; https://cli.github.com)" in out
 
 
+def test_doctor_harbor_does_not_require_gh(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("INFERENCE_API_KEY", "sk")
+    monkeypatch.setattr("testbed.adapters.HarborAdapter.check", lambda self: [])
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(sys, "argv", ["testbed", "doctor", "tau3-airline-harbor"])
+
+    cli.main()
+
+    out = capsys.readouterr().out
+    assert "✓ tau3-airline-harbor (harbor) — ready: uv run python -m testbed run tau3-airline-harbor" in out
+    assert "gh CLI" not in out
+
+
 def test_doctor_lists_unmet(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)  # don't let .env supply the key
     monkeypatch.delenv("INFERENCE_API_KEY", raising=False)

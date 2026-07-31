@@ -55,7 +55,6 @@ _HARBOR_OTLP_JSON = (
 
 def test_harbor_trace_conversion_enriches_and_exports(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     (tmp_path / "fallback-session.jsonl").write_text(f"{_HARBOR_OTLP_JSON}\n", encoding="utf-8")
-    monkeypatch.setenv("INFERENCE_API_KEY", "secret")
     calls: list[dict[str, object]] = []
 
     def capture_export(base_url, workspace, request, *, client=None, headers=None):
@@ -72,7 +71,7 @@ def test_harbor_trace_conversion_enriches_and_exports(monkeypatch: pytest.Monkey
     )
 
     assert result == (1, 0, {"sess-1"})
-    assert calls[0]["headers"] == {"Authorization": "Bearer secret"}
+    assert calls[0]["headers"] is None
     request = calls[0]["request"]
     resource_attrs = {
         item.key: getattr(item.value, item.value.WhichOneof("value"))
@@ -347,6 +346,28 @@ def test_harbor_dataset_config_rejects_ambiguous_source():
             {"dataset": "local", "dataset_ref": "org/data@1"},
             repo_root=Path("/repo"),
         )
+
+
+def test_harbor_check_accepts_platform_inference_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("INFERENCE_API_KEY", "secret")
+    monkeypatch.setenv("INFERENCE_API_BASE", "https://inference.example/v1")
+    subject = Subject(
+        "tau3-airline-harbor",
+        "harbor",
+        {
+            "base_url": "http://localhost:8080",
+            "workspace": "canonical-tau3-airline",
+            "agent_dir": str(tmp_path),
+            "dataset_ref": "sierra-research/tau3-bench@1",
+        },
+    )
+
+    assert HarborAdapter(subject).check() == []
 
 
 async def test_harbor_analyze_uses_record(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
