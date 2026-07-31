@@ -25,6 +25,7 @@ from nemo_evaluator_sdk.values.evidence import (
     CandidateEvidence,
     EvidenceDescriptor,
 )
+from nemo_evaluator_sdk.values.results import AggregateScore
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 
@@ -139,6 +140,22 @@ def callable_identity(target: object) -> str:
     module = getattr(target, "__module__", None)
     name = getattr(target, "__qualname__", None) or type(target).__name__
     return f"{module}.{name}" if module else name
+
+
+@runtime_checkable
+class RunAggregationsProvider(Protocol):
+    """Optional companion to :class:`AgentTaskRunner`: a runner that computed its own run-level
+    aggregations (a backend's pass@k, reward profile, environment-specific metrics) exposes them here,
+    mapped onto the SDK's typed aggregate scores. The evaluator calls this after ``run_tasks``;
+    implementers stash their numbers during the run and convert them here.
+
+    Returned scores are merged into ``summary.scores``, so a backend's own figures sit alongside the
+    SDK's and are addressable by name the same way. Implementers must namespace names under
+    ``runner.<runner_name>.`` so an imported figure is never mistaken for one the SDK computed. Runners
+    with no run-level aggregations simply don't implement this protocol.
+    """
+
+    def run_aggregate_scores(self) -> Sequence[AggregateScore]: ...
 
 
 @runtime_checkable
