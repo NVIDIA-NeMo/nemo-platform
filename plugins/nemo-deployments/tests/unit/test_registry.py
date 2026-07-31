@@ -181,20 +181,50 @@ def test_registry_skips_backend_with_missing_dependency(
         registry.resolve("sandbox-local")
 
 
-def test_registry_missing_dependency_default_executor_still_fails(
+def test_registry_missing_dependency_default_executor_cleared(
     backend_classes: dict[str, type[DeploymentBackend]],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # A skipped backend is fine as a secondary executor, but if it is the
-    # configured default the registry must still fail fast.
+    # A skipped default must not take down the deployments service: clear it
+    # and boot with no default so callers must name an executor explicitly.
     sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
     classes = {**backend_classes, "sandbox": _MissingDepBackend}
-    with pytest.raises(ExecutorNotFoundError):
-        ExecutorRegistry.from_config(
+    with caplog.at_level("WARNING"):
+        registry = ExecutorRegistry.from_config(
             sdk,
             [ExecutorSpec(name="sandbox-local", backend="sandbox", config={})],
             default_executor="sandbox-local",
             backend_classes=classes,
         )
+    assert registry.registered_names() == []
+    assert "Clearing default_executor 'sandbox-local'" in caplog.text
+    with pytest.raises(ExecutorNotFoundError, match="no default_executor"):
+        registry.resolve()
+
+
+def test_registry_skips_unavailable_docker_and_keeps_other_backends(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+
+    class _UnavailableDocker(_StubBackend):
+        def init(self) -> None:
+            raise MissingBackendDependencyError("Docker daemon is unavailable")
+
+    classes = {**backend_classes, "docker": _UnavailableDocker}
+    registry = ExecutorRegistry.from_config(
+        sdk,
+        [
+            ExecutorSpec(name="local-docker", backend="docker", config={}),
+            ExecutorSpec(name="cluster-a", backend="k8s", config={}),
+        ],
+        default_executor="local-docker",
+        backend_classes=classes,
+    )
+    assert registry.registered_names() == ["cluster-a"]
+    assert registry.resolve("cluster-a") is not None
+    with pytest.raises(ExecutorNotFoundError, match="no default_executor"):
+        registry.resolve()
 
 
 def test_multiple_docker_executors_distinct_config() -> None:

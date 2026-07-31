@@ -5,13 +5,10 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any, ClassVar
 
-from nemo_platform_plugin.config import NemoConfig, Runtime, get_platform_config
+from nemo_platform_plugin.config import NemoConfig
 from pydantic import BaseModel, Field, model_validator
-
-logger = logging.getLogger(__name__)
 
 
 class ExecutorConfigEntry(BaseModel):
@@ -90,22 +87,3 @@ class DeploymentsConfig(NemoConfig):
         default=8090,
         description="Loopback port the auth-proxy sidecar listens on; workloads target it as their platform base URL.",
     )
-
-
-def runtime_compatible_executor_config(config: DeploymentsConfig) -> tuple[list[ExecutorConfigEntry], str | None]:
-    """Return deployment executor settings that can initialize under the active platform runtime."""
-    if get_platform_config().runtime != Runtime.NONE:
-        return config.executors, config.default_executor
-
-    for executor in config.executors:
-        logger.warning(
-            "Skipping deployments executor '%s' using backend '%s' because platform runtime is NONE.",
-            executor.name,
-            executor.backend,
-        )
-    if config.default_executor:
-        logger.warning(
-            "Ignoring deployments default_executor '%s' because platform runtime is NONE.",
-            config.default_executor,
-        )
-    return [], None

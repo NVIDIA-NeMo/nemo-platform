@@ -9,7 +9,7 @@ import logging
 from typing import ClassVar
 
 from nemo_deployments_plugin.backends.registry import ExecutorRegistry, ExecutorSpec
-from nemo_deployments_plugin.config import DeploymentsConfig, runtime_compatible_executor_config
+from nemo_deployments_plugin.config import DeploymentsConfig
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nemo_platform_plugin.service import NemoService, RouterSpec
@@ -71,20 +71,19 @@ class DeploymentsService(NemoService):
     async def on_startup(self) -> None:
         config = DeploymentsConfig.get()
         sdk: AsyncNeMoPlatform = get_async_platform_sdk(as_service="deployments", internal=True)
-        executors, default_executor = runtime_compatible_executor_config(config)
-        specs = [ExecutorSpec(name=e.name, backend=e.backend, config=e.config) for e in executors]
+        specs = [ExecutorSpec(name=e.name, backend=e.backend, config=e.config) for e in config.executors]
         if specs:
             self._executor_registry = ExecutorRegistry.from_config(
                 sdk,
                 specs,
-                default_executor=default_executor,
+                default_executor=config.default_executor,
             )
         else:
             self._executor_registry = ExecutorRegistry.empty()
-            if default_executor:
+            if config.default_executor:
                 logger.warning(
                     "default_executor '%s' is configured but no executors are registered.",
-                    default_executor,
+                    config.default_executor,
                 )
             logger.info("Deployments plugin started with zero registered executors.")
 

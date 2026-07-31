@@ -66,11 +66,10 @@ class ExecutorRegistry:
                 try:
                     executors[spec.name] = classes[spec.backend](sdk, spec.config)
                 except MissingBackendDependencyError as exc:
-                    # An opt-in backend whose optional extra isn't installed (e.g.
-                    # 'openshell') must not take down the whole deployments service:
-                    # skip just that executor. Resolving it later raises
-                    # ExecutorNotFoundError, and a `default_executor` that can't be
-                    # built still fails fast via the check below.
+                    # Capability missing (optional packaging extra, unreachable Docker
+                    # daemon, etc.): skip just that executor so the deployments service
+                    # can still boot. Resolving a skipped name later raises
+                    # ExecutorNotFoundError; a skipped default is cleared below.
                     logger.warning(
                         "Skipping executor '%s': backend '%s' is unavailable (%s)",
                         spec.name,
@@ -78,7 +77,12 @@ class ExecutorRegistry:
                         exc,
                     )
             if default_executor and default_executor not in executors:
-                raise ExecutorNotFoundError(f"default_executor '{default_executor}' is not registered.")
+                logger.warning(
+                    "Clearing default_executor '%s' because it is not registered "
+                    "(unavailable backend or missing from executor config).",
+                    default_executor,
+                )
+                default_executor = None
         except Exception:
             for backend in executors.values():
                 backend.shutdown()

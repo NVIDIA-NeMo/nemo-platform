@@ -14,8 +14,8 @@ from backends.docker.docker_helpers import (
     published_port_config,
     sample_config,
 )
-from docker.errors import APIError, NotFound
-from nemo_deployments_plugin.backends.base import BackendStatusUpdate
+from docker.errors import APIError, DockerException, NotFound
+from nemo_deployments_plugin.backends.base import BackendStatusUpdate, MissingBackendDependencyError
 from nemo_deployments_plugin.backends.docker import ports as ports_mod
 from nemo_deployments_plugin.backends.docker.backend import (
     _PORT_CONFLICT_ATTEMPTS,
@@ -41,6 +41,30 @@ from nemo_deployments_plugin.entities import Deployment
 from nemo_deployments_plugin.types import RestartPolicy
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
+
+
+def test_init_raises_missing_dependency_when_docker_daemon_unavailable(mock_sdk: MagicMock) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient"),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", side_effect=DockerException("Error while fetching server API version")),
+    ):
+        with pytest.raises(MissingBackendDependencyError, match="Docker daemon is unavailable"):
+            DockerDeploymentBackend(mock_sdk, {"docker_timeout": 5, "pull_images": False})
+
+
+def test_init_raises_missing_dependency_when_docker_ping_fails(mock_sdk: MagicMock) -> None:
+    client = MagicMock()
+    client.ping.side_effect = RequestsConnectionError("Connection refused")
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient"),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=client),
+    ):
+        with pytest.raises(MissingBackendDependencyError, match="Docker daemon is unavailable"):
+            DockerDeploymentBackend(mock_sdk, {"docker_timeout": 5, "pull_images": False})
 
 
 @pytest.mark.asyncio
