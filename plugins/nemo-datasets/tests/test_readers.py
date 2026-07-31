@@ -75,6 +75,7 @@ def test_parquet_reader_reads_schema_rows_and_exact_count(tmp_path):
     assert result.num_rows == 3  # exact, from the footer
     assert result.rows_scanned == 3
     assert result.rows == PARQUET_ROWS
+    assert result.arrow_schema is not None
     assert set(result.arrow_schema.names) == {"prompt", "score"}
 
 
@@ -124,3 +125,23 @@ def test_jsonl_reader_skips_non_object_lines(tmp_path):
 
     assert result.rows == [{"a": 1}, {"a": 2}]  # stray non-object lines dropped, objects kept
     assert result.num_rows == 2
+    # Not a read failure: those lines are not rows of this dataset, so the count stays exact and the
+    # file is still exhaustively scanned. Only an *unparseable* line is an error.
+    assert result.error is None
+
+
+def test_jsonl_reader_survives_an_unparseable_line(tmp_path):
+    # One truncated line must cost that line, not the file. Dropping the whole file would erase its
+    # row count and any column it was the only witness for.
+    (tmp_path / "d.jsonl").write_text('{"a": 1}\n{"a": 2\n{"a": 3}\n')
+    result = get_reader("jsonl").read(LocalFileSource(tmp_path), FileEntry("d.jsonl", 0))
+
+    assert result.rows == [{"a": 1}, {"a": 3}]  # the readable rows survive
+    assert result.rows_scanned == 2
+    assert result.error is not None
+    assert "line 2" in result.error  # self-describing: which line, and why
+
+
+def test_jsonl_reader_clean_read_reports_no_error(tmp_path):
+    (tmp_path / "d.jsonl").write_text('{"a": 1}\n{"a": 2}\n')
+    assert get_reader("jsonl").read(LocalFileSource(tmp_path), FileEntry("d.jsonl", 0)).error is None
