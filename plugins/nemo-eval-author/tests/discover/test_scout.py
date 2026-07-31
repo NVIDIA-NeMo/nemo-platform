@@ -132,4 +132,4 @@ async def test_a_scout_that_cannot_run_degrades_to_a_warning(tmp_path):
     assert candidate is broken
     assert revalidated is outcome
     assert findings[0].status == "warn"
-    assert findings[0].hint is not None and "--no-deep" in findings[0].hint
+    assert findings[0].hint is not None and "--fix" in findings[0].hint

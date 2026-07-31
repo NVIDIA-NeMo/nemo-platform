@@ -47,7 +47,7 @@ class DiscoverOptions:
     workspace: str = "default"
     base_url: str | None = None
     env_backend: str | None = None
-    deep: bool = True
+    fix: bool = False
     refresh: bool = False
     dry_run: bool = False
 
@@ -100,7 +100,7 @@ async def _discover(
     outcome = ValidationOutcome()
     if candidate is not None:
         outcome = await validate.run_ladder(candidate, repo_root)
-        if not outcome.runnable and options.deep:
+        if not outcome.runnable and options.fix:
             candidate, outcome, scout_findings = await _scout(candidate, outcome, repo_root)
             findings.extend(scout_findings)
 

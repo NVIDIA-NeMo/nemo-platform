@@ -120,10 +120,10 @@ class EvalAuthorCLI(NemoCLI):
                 str | None,
                 typer.Option("--env-backend", help="Harbor environment type to assume when the repo names none."),
             ] = None,
-            deep: Annotated[
+            fix: Annotated[
                 bool,
-                typer.Option("--deep/--no-deep", help="Let an LLM scout fill gaps that block a valid config."),
-            ] = True,
+                typer.Option("--fix/--no-fix", help="Let an LLM scout propose fixes for a config that failed."),
+            ] = False,
             refresh: Annotated[
                 bool,
                 typer.Option("--refresh", help="Revalidate even when nothing the last report depended on moved."),
@@ -142,7 +142,7 @@ class EvalAuthorCLI(NemoCLI):
                         workspace=workspace,
                         base_url=base_url,
                         env_backend=env_backend,
-                        deep=deep,
+                        fix=fix,
                         refresh=refresh,
                         dry_run=dry_run,
                     )

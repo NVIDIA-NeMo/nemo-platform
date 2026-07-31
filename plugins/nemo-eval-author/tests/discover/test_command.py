@@ -63,7 +63,9 @@ AGENT = "ticket-triage"
 
 
 def _invoke(app, repo, *extra):
-    return runner.invoke(app, ["discover", "--repo", str(repo), "--no-deep", *extra])
+    # --no-fix is the default; passed anyway so a later default flip cannot make this suite
+    # start calling a model.
+    return runner.invoke(app, ["discover", "--repo", str(repo), "--no-fix", *extra])
 
 
 def _invoke_named(app, repo, *extra):
@@ -118,6 +120,16 @@ def test_a_repo_whose_tasks_never_score_exits_one_and_withholds_the_config(app, 
     assert "Withheld harbor-job.yaml" in result.output, "an absent config has to be explained, not just missing"
     # The report still lands, so the failure is documented rather than lost.
     assert sorted(client.files.stored) == [f"{AGENT}/discovery.md"]
+
+
+def test_the_scout_is_opt_in(app, client, tmp_path, no_scout):
+    """A config Harbor rejects must not reach a model unless --fix asked for it."""
+    write_dataset(tmp_path / "evals" / "validation", test_script=MENTIONS_REWARD_IN_COMMENT)
+
+    result = runner.invoke(app, ["discover", "--repo", str(tmp_path), "--agent", AGENT])
+
+    assert result.exit_code == 1, result.output
+    assert "Harbor cannot run this repo's evals" in result.output, "the verdict was reached without a model"
 
 
 def test_a_repo_with_no_harbor_setup_at_all_exits_one(app, client, tmp_path):
