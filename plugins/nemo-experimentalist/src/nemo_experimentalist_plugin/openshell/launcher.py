@@ -304,11 +304,11 @@ def launch_openshell_run(
     runtime_env.setdefault(BRIDGE_PROVIDER_ENV, f"nemo-exp-bridge-{secrets.token_hex(4)}")
     _apply_runtime_defaults(runtime_env)
     managed_bridge = _start_bridge(prepared=prepared, runtime_env=runtime_env)
-    providers_configured = False
+    providers_attempted = False
     run_completed = False
     try:
+        providers_attempted = True
         _configure_providers(prepared, runtime_env)
-        providers_configured = True
         script_path = Path(__file__).with_name("run.sh")
         completed = subprocess.run(  # noqa: S603
             [str(script_path), str(prepared.sandbox_input), str(experiment_dir.expanduser().resolve())],
@@ -322,7 +322,7 @@ def launch_openshell_run(
         run_completed = True
         return completed.stdout.strip()
     finally:
-        provider_deleted = not providers_configured or _delete_bridge_provider(openshell, runtime_env)
+        provider_deleted = not providers_attempted or _delete_bridge_provider(openshell, runtime_env)
         if managed_bridge is not None:
             managed_bridge.stop()
         if not provider_deleted:

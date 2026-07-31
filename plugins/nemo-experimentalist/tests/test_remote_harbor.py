@@ -112,6 +112,7 @@ async def test_remote_evaluator_submits_and_translates_trials(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
     registered = _registered_dataset(tmp_path)
     sandbox_dataset = tmp_path / "sandbox-dataset"
     shutil.copytree(registered.dataset_path, sandbox_dataset)
@@ -137,7 +138,7 @@ async def test_remote_evaluator_submits_and_translates_trials(
             poll_interval_sec=0.01,
             max_archive_bytes=4096,
         ),
-        experiment_dir=tmp_path / "experiment",
+        experiment_dir=Path("experiment"),
         transport=httpx.ASGITransport(app=app),
     )
     dataset = HarborDataset.from_ref(DatasetRef(uri=sandbox_dataset.as_uri()))
@@ -157,6 +158,37 @@ async def test_remote_evaluator_submits_and_translates_trials(
     runtime = dataset.tasks[0].dependencies
     assert isinstance(runtime, RemoteHarborDependencyRuntime)
     assert runtime.max_archive_bytes == 4096
+
+
+async def test_dependency_command_extends_client_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_timeout: dict[str, float] = {}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        captured_timeout.update(request.extensions["timeout"])
+        return httpx.Response(200, json={"stdout": "", "stderr": "", "returncode": 0})
+
+    monkeypatch.setenv(BRIDGE_TOKEN_ENV, _TOKEN)
+    registered = _registered_dataset(tmp_path)
+    dataset = HarborDataset.from_ref(DatasetRef(uri=registered.dataset_path.as_uri()))
+    evaluator = RemoteHarborEvaluator(
+        RemoteHarborEvaluatorConfig(
+            bridge_url="http://bridge.test",
+            request_timeout_sec=5,
+        ),
+        transport=httpx.MockTransport(respond),
+    )
+    evaluator.prepare_dataset(dataset)
+    runtime = dataset.tasks[0].dependencies
+    assert isinstance(runtime, RemoteHarborDependencyRuntime)
+    runtime._session_id = "dependency-session"
+    runtime._capability = "capability"
+
+    await runtime.execute("pwd", timeout=120)
+
+    assert captured_timeout["read"] == 130
 
 
 def test_copied_template_automatically_uses_remote_dependency_runtime(

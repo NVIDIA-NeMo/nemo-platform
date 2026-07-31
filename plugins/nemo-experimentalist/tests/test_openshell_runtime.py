@@ -257,6 +257,44 @@ def test_launcher_uses_custom_image_and_never_calls_local_runner(
     ]
 
 
+def test_launcher_deletes_provider_when_configuration_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = PreparedOpenShellRun(
+        root=tmp_path,
+        catalog_root=tmp_path / "catalog",
+        sandbox_input=tmp_path / "input",
+        manifest_path=tmp_path / "input" / "run.json",
+    )
+    prepared.sandbox_input.mkdir()
+    deleted: list[str] = []
+
+    monkeypatch.setattr(launcher.shutil, "which", lambda name, *, path=None: f"/bin/{name}")
+    monkeypatch.setattr(launcher, "_apply_runtime_defaults", lambda env: None)
+    monkeypatch.setattr(launcher, "_start_bridge", lambda **kwargs: None)
+
+    def fail_configuration(*_args: object) -> None:
+        raise launcher.OpenShellLaunchError("configuration failed")
+
+    def delete_provider(_openshell: str, env: dict[str, str]) -> bool:
+        deleted.append(env[launcher.BRIDGE_PROVIDER_ENV])
+        return True
+
+    monkeypatch.setattr(launcher, "_configure_providers", fail_configuration)
+    monkeypatch.setattr(launcher, "_delete_bridge_provider", delete_provider)
+
+    with pytest.raises(launcher.OpenShellLaunchError, match="configuration failed"):
+        launcher.launch_openshell_run(
+            prepared,
+            experiment_dir=tmp_path / "output",
+            platform_url="http://localhost:8080",
+            env={"PATH": "/bin", launcher.IMAGE_ENV: "registry.example/experimentalist:v1"},
+        )
+
+    assert len(deleted) == 1
+
+
 def test_bridge_listener_uses_configured_host(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

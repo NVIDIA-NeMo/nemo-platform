@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from harbor.job import JobConfig
+from harbor.models.agent.context import AgentContext
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import harbor
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
@@ -33,6 +35,7 @@ from nemo_experimentalist_plugin.harbor_bridge.runner import (
     TrustedInferenceConfig,
 )
 from nemo_experimentalist_plugin.harbor_bridge.trusted_agent import (
+    CANDIDATE_RUN_TIMEOUT_SEC,
     TrustedCandidateAgent,
     candidate_agent_import,
 )
@@ -115,6 +118,33 @@ def test_candidate_adapter_rejects_links(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="symbolic link"):
         with candidate_agent_import(candidate):
             pass
+
+
+async def test_candidate_execution_has_finite_environment_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    agent = TrustedCandidateAgent(
+        logs_dir=logs_dir,
+        extra_env={"INFERENCE_API_KEY": "dedicated-key"},
+    )
+    captured: dict[str, Any] = {}
+
+    class Environment:
+        async def upload_file(self, source: Path, target: str) -> None:
+            captured["upload"] = (source, target)
+
+    async def execute(_environment: object, **kwargs: Any) -> SimpleNamespace:
+        captured.update(kwargs)
+        return SimpleNamespace(return_code=0)
+
+    monkeypatch.setattr(agent, "exec_as_agent", execute)
+
+    await agent.run("trusted prompt", Environment(), AgentContext())
+
+    assert captured["timeout_sec"] == CANDIDATE_RUN_TIMEOUT_SEC
 
 
 class _FakeEvaluator:

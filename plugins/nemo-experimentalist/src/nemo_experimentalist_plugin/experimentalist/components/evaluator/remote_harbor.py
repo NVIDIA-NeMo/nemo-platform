@@ -150,6 +150,7 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
     ) -> DependencyCommandResult:
         if self._session_id is None or self._capability is None:
             raise DependencyRuntimeError("Remote Harbor dependency session is not running")
+        command_timeout_sec = max(1, int(timeout))
         response = await self._request(
             "POST",
             f"/v1/dependencies/{self._session_id}/exec",
@@ -157,8 +158,9 @@ class RemoteHarborDependencyRuntime(DependencyRuntime):
             json=DependencyExecRequest(
                 command=command,
                 stdin=stdin,
-                timeout_sec=max(1, int(timeout)),
+                timeout_sec=command_timeout_sec,
             ).model_dump(),
+            timeout=max(self.request_timeout_sec, command_timeout_sec + 10),
         )
         if response.status_code != 200:
             raise DependencyRuntimeError(f"Harbor dependency command failed with HTTP {response.status_code}")
@@ -354,7 +356,7 @@ class RemoteHarborEvaluator(Evaluator):
                         raise RuntimeError("Harbor bridge artifact archive exceeds the configured limit")
                     output.write(chunk)
 
-        artifact_root = (self.experiment_dir or Path.cwd()) / "remote-harbor-artifacts" / job_id
+        artifact_root = ((self.experiment_dir or Path.cwd()) / "remote-harbor-artifacts" / job_id).resolve()
         extract_directory_archive(
             archive,
             artifact_root,

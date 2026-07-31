@@ -32,6 +32,7 @@ REMOTE_VENV = f"{REMOTE_ROOT}/venv"
 REMOTE_PYTHON_INSTALLS = f"{REMOTE_ROOT}/python"
 REMOTE_UV_CACHE = f"{REMOTE_ROOT}/uv-cache"
 UV_VERSION = "0.9.5"
+CANDIDATE_RUN_TIMEOUT_SEC = 3600
 UV_ASSETS: dict[str, tuple[str, str]] = {
     "aarch64": (
         "uv-aarch64-unknown-linux-musl.tar.gz",
@@ -280,6 +281,7 @@ class TrustedCandidateAgent(BaseInstalledAgent):
                 command=command,
                 env=env,
                 cwd="/app",
+                timeout_sec=CANDIDATE_RUN_TIMEOUT_SEC,
             )
             context.metadata = {
                 **(context.metadata or {}),
