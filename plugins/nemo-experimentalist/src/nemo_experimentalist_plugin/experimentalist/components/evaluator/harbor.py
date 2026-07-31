@@ -32,7 +32,6 @@ from harbor.models.job.config import AgentConfig, ArtifactConfig, RetryConfig
 from harbor.models.task.task import Task as HarborTaskModel
 from harbor.models.trial.config import ServiceVolumeConfig
 from harbor.models.trial.paths import EnvironmentPaths, TrialPaths
-from harbor.trial.hooks import TrialHookEvent
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
     Evaluator,
     EvaluatorConfig,
@@ -114,8 +113,6 @@ _TASK_TREE_RESOURCES: tuple[TreeResourceSpec, ...] = (
 _TRACE_ARTIFACT_SOURCE = "/app/traces"
 _TRACE_ARTIFACT_DESTINATION = "traces"
 _SHELL_SYNTAX_TIMEOUT_SEC = 10.0
-_DOCKER_CLEANUP_TIMEOUT_SEC = 30.0
-_DOCKER_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 _AGENT_IMPORT_ROOT = "_nemo_experimentalist_eval_agents"
 _IDENTIFIER_RE = re.compile(r"\W+")
 _TRIAL_LOG_DESCRIPTIONS = {
@@ -130,88 +127,6 @@ _TRIAL_LOG_DESCRIPTIONS = {
 }
 
 logger = logging.getLogger(__name__)
-
-
-def _sanitize_compose_project_name(name: str) -> str:
-    normalized = name.lower()
-    if not re.match(r"^[a-z0-9]", normalized):
-        normalized = f"0{normalized}"
-    return re.sub(r"[^a-z0-9_-]", "-", normalized)
-
-
-async def _docker_cleanup_command(args: Sequence[str]) -> str:
-    docker_path = shutil.which("docker", path=os.defpath)
-    if docker_path is None:
-        raise FileNotFoundError("docker executable not found on the system path")
-
-    process = await asyncio.create_subprocess_exec(
-        docker_path,
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    try:
-        stdout, _ = await asyncio.wait_for(
-            process.communicate(),
-            timeout=_DOCKER_CLEANUP_TIMEOUT_SEC,
-        )
-    except (TimeoutError, asyncio.CancelledError):
-        if process.returncode is None:
-            try:
-                process.kill()
-            except ProcessLookupError:
-                pass
-        await process.communicate()
-        raise
-
-    output = stdout.decode("utf-8", errors="replace").strip()
-    if process.returncode != 0:
-        raise RuntimeError(output or f"docker {' '.join(args)} exited with status {process.returncode}")
-    return output
-
-
-async def _cleanup_cancelled_harbor_projects(trial_names: set[str]) -> None:
-    """Remove Docker Compose resources left by cancelled Harbor trials."""
-    if not trial_names:
-        return
-
-    project_prefixes = tuple(f"{_sanitize_compose_project_name(name)}__" for name in trial_names)
-    resource_specs = (
-        ("container", ".ID", ("container", "rm", "--force")),
-        ("network", ".ID", ("network", "rm")),
-        ("volume", ".Name", ("volume", "rm", "--force")),
-    )
-
-    for resource, id_template, remove_command in resource_specs:
-        list_command = [resource, "ls"]
-        if resource == "container":
-            list_command.append("--all")
-        list_command.extend(
-            (
-                "--filter",
-                f"label={_DOCKER_COMPOSE_PROJECT_LABEL}",
-                "--format",
-                f'{{{{{id_template}}}}}\t{{{{.Label "{_DOCKER_COMPOSE_PROJECT_LABEL}"}}}}',
-            )
-        )
-        try:
-            rows = await _docker_cleanup_command(list_command)
-        except Exception as exc:
-            logger.warning("Could not list Harbor %s resources during cancellation cleanup: %s", resource, exc)
-            continue
-
-        resource_ids = []
-        for row in rows.splitlines():
-            resource_id, separator, project = row.partition("\t")
-            if separator and any(project.startswith(prefix) for prefix in project_prefixes):
-                resource_ids.append(resource_id)
-        if not resource_ids:
-            continue
-
-        try:
-            await _docker_cleanup_command((*remove_command, *resource_ids))
-        except Exception as exc:
-            logger.warning("Could not remove cancelled Harbor %s resources: %s", resource, exc)
 
 
 @dataclass(frozen=True)
@@ -1332,11 +1247,9 @@ class HarborEvaluator(Evaluator):
     def __init__(self, options: HarborEvaluatorConfig | None = None, experiment_dir: Path | None = None) -> None:
         super().__init__(options or HarborEvaluatorConfig(), experiment_dir=experiment_dir)
 
-    async def _run(self, agent: Path, dataset: Dataset, options: EvaluatorConfig) -> Sequence[TrialResult]:
+    async def _run(self, agent: Path, dataset: Dataset, options: HarborEvaluatorConfig) -> Sequence[TrialResult]:
         if not isinstance(dataset, HarborDataset):
             raise ValueError("Dataset must be a Harbor dataset")
-        if not isinstance(options, HarborEvaluatorConfig):
-            raise ValueError("Options must be a Harbor evaluator config")
 
         if dataset.source is None:
             raise ValueError("Harbor dataset source is required")
@@ -1369,18 +1282,7 @@ class HarborEvaluator(Evaluator):
 
         try:
             job = await Job.create(job_config)
-            started_trial_names: set[str] = set()
-
-            async def track_started_trial(event: TrialHookEvent) -> None:
-                started_trial_names.add(event.trial_name)
-
-            job.on_trial_started(track_started_trial)
-            try:
-                await job.run()
-            except asyncio.CancelledError:
-                cleanup_task = asyncio.create_task(_cleanup_cancelled_harbor_projects(started_trial_names))
-                await asyncio.shield(cleanup_task)
-                raise
+            await job.run()
         finally:
             _cleanup_scoped_imports(scoped_package)
 
