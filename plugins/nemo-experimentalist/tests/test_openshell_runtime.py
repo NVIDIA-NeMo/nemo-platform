@@ -542,7 +542,7 @@ fi
     assert "--credential NVIDIA_API_KEY" in inference_provider
     assert "--from-existing" not in inference_provider
     assert "optimizer-secret" not in "\n".join(commands)
-    assert "inference set --provider nemo-experimentalist-inference --model openai/gpt-5-mini" in commands
+    assert "inference set --provider nemo-experimentalist-inference --model openai/openai/gpt-5-mini" in commands
 
     missing_profile_log = tmp_path / "missing-profile.log"
     missing_profile_env = {

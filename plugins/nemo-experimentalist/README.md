@@ -81,9 +81,10 @@ export AUT_MODEL_NAME=openai/gpt-oss-120b
 ```
 
 The Experimentalist model values use NOOA's provider/routing/model identifier
-format. Provider setup removes NOOA's routing prefixes when deriving the
-OpenShell upstream model ID. When the optimizer and candidate share a gateway
-key, `EXPERIMENTALIST_API_KEY` defaults to `INFERENCE_API_KEY`.
+format. Provider setup removes NOOA's outer client prefix while preserving the
+gateway's provider/model route when deriving the OpenShell model ID. When the
+optimizer and candidate share a gateway key, `EXPERIMENTALIST_API_KEY` defaults
+to `INFERENCE_API_KEY`.
 
 The candidate key is injected only into the candidate process inside Harbor.
 Use a spending-limited, easy-to-revoke credential. Source-control archival and
