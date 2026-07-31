@@ -56,6 +56,7 @@ from pathlib import Path
 if TYPE_CHECKING:
     from .resources import (
         iam,
+        auth,
         jobs,
         files,
         intake,
@@ -67,10 +68,12 @@ if TYPE_CHECKING:
         guardrail,
         inference,
         workspaces,
+        access_keys,
         evaluations,
         experiments,
     )
     from .resources.iam.iam import IamResource, AsyncIamResource
+    from .resources.auth.auth import AuthResource, AsyncAuthResource
     from .resources.jobs.jobs import JobsResource, AsyncJobsResource
     from .filesets.resources import FilesResource, AsyncFilesResource
     from .resources.intake.intake import IntakeResource, AsyncIntakeResource
@@ -82,6 +85,7 @@ if TYPE_CHECKING:
     from .resources.guardrail.guardrail import GuardrailResource, AsyncGuardrailResource
     from .resources.inference.inference import InferenceResource, AsyncInferenceResource
     from .resources.workspaces.workspaces import WorkspacesResource, AsyncWorkspacesResource
+    from .resources.access_keys.access_keys import AccessKeysResource, AsyncAccessKeysResource
     from .resources.evaluations.evaluations import EvaluationsResource, AsyncEvaluationsResource
     from .resources.experiments.experiments import ExperimentsResource, AsyncExperimentsResource
 
@@ -335,6 +339,18 @@ class NeMoPlatform(SyncAPIClient):
         from .resources.experiments import ExperimentsResource
 
         return ExperimentsResource(self)
+
+    @cached_property
+    def auth(self) -> AuthResource:
+        from .resources.auth import AuthResource
+
+        return AuthResource(self)
+
+    @cached_property
+    def access_keys(self) -> AccessKeysResource:
+        from .resources.access_keys import AccessKeysResource
+
+        return AccessKeysResource(self)
 
     @cached_property
     def with_raw_response(self) -> NeMoPlatformWithRawResponse:
@@ -701,6 +717,18 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         return AsyncExperimentsResource(self)
 
     @cached_property
+    def auth(self) -> AsyncAuthResource:
+        from .resources.auth import AsyncAuthResource
+
+        return AsyncAuthResource(self)
+
+    @cached_property
+    def access_keys(self) -> AsyncAccessKeysResource:
+        from .resources.access_keys import AsyncAccessKeysResource
+
+        return AsyncAccessKeysResource(self)
+
+    @cached_property
     def with_raw_response(self) -> AsyncNeMoPlatformWithRawResponse:
         return AsyncNeMoPlatformWithRawResponse(self)
 
@@ -921,6 +949,18 @@ class NeMoPlatformWithRawResponse:
 
         return ExperimentsResourceWithRawResponse(self._client.experiments)
 
+    @cached_property
+    def auth(self) -> auth.AuthResourceWithRawResponse:
+        from .resources.auth import AuthResourceWithRawResponse
+
+        return AuthResourceWithRawResponse(self._client.auth)
+
+    @cached_property
+    def access_keys(self) -> access_keys.AccessKeysResourceWithRawResponse:
+        from .resources.access_keys import AccessKeysResourceWithRawResponse
+
+        return AccessKeysResourceWithRawResponse(self._client.access_keys)
+
 
 class AsyncNeMoPlatformWithRawResponse:
     _client: AsyncNeMoPlatform
@@ -1011,6 +1051,18 @@ class AsyncNeMoPlatformWithRawResponse:
         from .resources.experiments import AsyncExperimentsResourceWithRawResponse
 
         return AsyncExperimentsResourceWithRawResponse(self._client.experiments)
+
+    @cached_property
+    def auth(self) -> auth.AsyncAuthResourceWithRawResponse:
+        from .resources.auth import AsyncAuthResourceWithRawResponse
+
+        return AsyncAuthResourceWithRawResponse(self._client.auth)
+
+    @cached_property
+    def access_keys(self) -> access_keys.AsyncAccessKeysResourceWithRawResponse:
+        from .resources.access_keys import AsyncAccessKeysResourceWithRawResponse
+
+        return AsyncAccessKeysResourceWithRawResponse(self._client.access_keys)
 
 
 class NeMoPlatformWithStreamedResponse:
@@ -1103,6 +1155,18 @@ class NeMoPlatformWithStreamedResponse:
 
         return ExperimentsResourceWithStreamingResponse(self._client.experiments)
 
+    @cached_property
+    def auth(self) -> auth.AuthResourceWithStreamingResponse:
+        from .resources.auth import AuthResourceWithStreamingResponse
+
+        return AuthResourceWithStreamingResponse(self._client.auth)
+
+    @cached_property
+    def access_keys(self) -> access_keys.AccessKeysResourceWithStreamingResponse:
+        from .resources.access_keys import AccessKeysResourceWithStreamingResponse
+
+        return AccessKeysResourceWithStreamingResponse(self._client.access_keys)
+
 
 class AsyncNeMoPlatformWithStreamedResponse:
     _client: AsyncNeMoPlatform
@@ -1193,6 +1257,18 @@ class AsyncNeMoPlatformWithStreamedResponse:
         from .resources.experiments import AsyncExperimentsResourceWithStreamingResponse
 
         return AsyncExperimentsResourceWithStreamingResponse(self._client.experiments)
+
+    @cached_property
+    def auth(self) -> auth.AsyncAuthResourceWithStreamingResponse:
+        from .resources.auth import AsyncAuthResourceWithStreamingResponse
+
+        return AsyncAuthResourceWithStreamingResponse(self._client.auth)
+
+    @cached_property
+    def access_keys(self) -> access_keys.AsyncAccessKeysResourceWithStreamingResponse:
+        from .resources.access_keys import AsyncAccessKeysResourceWithStreamingResponse
+
+        return AsyncAccessKeysResourceWithStreamingResponse(self._client.access_keys)
 
 
 Client = NeMoPlatform
