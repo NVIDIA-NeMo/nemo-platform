@@ -46,7 +46,11 @@ class Evidence(BaseModel):
     """
 
     kind: str = Field(
-        description="column_name | column_dtype | content_probe | split_name | file_name | card_metadata",
+        description=(
+            "column_name | column_dtype | content_probe | split_name | file_name | card_metadata | "
+            "error — the last for when a detector could not run at all, so an absent finding is "
+            "distinguishable from a finding of absence."
+        ),
     )
     detail: str = Field(
         description="Self-describing evidence, e.g. \"answer matches '#### <number>' in 100% of 1024 sampled rows\".",
@@ -262,6 +266,14 @@ class FileRecord(BaseModel):
         default=None,
         description="Exact only (parquet footer / exhaustive scan), else None.",
     )
+    error: str | None = Field(
+        default=None,
+        description=(
+            "Why this file was not fully read, when it wasn't — unreadable, corrupt, or partially "
+            "parsed. None means a clean read. Without it a missing `num_rows` is indistinguishable "
+            "from a profiler bug, and a consumer cannot tell corrupt input from unsupported input."
+        ),
+    )
 
 
 class SplitProfile(BaseModel):
@@ -315,7 +327,13 @@ class PartitionProfile(BaseModel):
     """
 
     name: str = "default"
-    file_format: str = Field(description="jsonl | parquet | csv | arrow")
+    file_format: str = Field(
+        description=(
+            "jsonl | parquet are read today; csv | arrow are reserved vocabulary the profiler cannot "
+            "read yet — files in those formats are reported as unsupported rather than profiled, so "
+            "this value never appears without a real partition behind it."
+        ),
+    )
     splits: list[SplitProfile] = Field(description="card-declared > path-detected > single 'default' split.")
     features: list[FeatureSchema] = Field(
         description="The row schema: measured layout plus detected role markers, derived de novo (nested).",
