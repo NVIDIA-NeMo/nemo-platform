@@ -63,7 +63,7 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, Header
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from nemo_platform_plugin.authz import AuthzScope, CallerKind, path_rule
 from nemo_platform_plugin.dependencies import get_sdk_client
 from nemo_platform_plugin.function import NemoFunction, returns_async_iterator
@@ -82,6 +82,17 @@ logger = logging.getLogger(__name__)
 # ``application/x-ndjson`` is what `plan-functions.md` standardises on
 # for new functions.
 NDJSON_MEDIA_TYPE = "application/x-ndjson"
+
+
+class NdjsonFrameResponse(JSONResponse):
+    """Shapes the OpenAPI 200 block; never instantiated.
+
+    Subclasses ``JSONResponse`` because ``fastapi/openapi/utils.py`` hardcodes the
+    schema to ``{"type": "string"}`` for anything else, discarding the declared model.
+    """
+
+    media_type = NDJSON_MEDIA_TYPE
+
 
 # Default idle interval after which the route adapter emits a
 # :class:`Heartbeat` frame. Matches DD `preview`'s existing
@@ -193,15 +204,27 @@ def add_function_routes(
         # Invoking a function is a write action; the scope rides on the route via @AuthzScope.write.
         authz.write(handler)
 
-    router.post(
-        path,
-        summary=function_cls.description or f"Invoke {function_cls.name}",
-        # Streaming functions return ``StreamingResponse`` directly, so
-        # leave the response model unconstrained at the route level.
-        # Non-streaming functions get FastAPI's default JSON
-        # serialisation of whatever they return.
-        response_model=None,
-    )(handler)
+    summary = function_cls.description or f"Invoke {function_cls.name}"
+
+    if function_cls.frame_schema is None:
+        router.post(path, summary=summary, response_model=None)(handler)
+    else:
+        # Not ``responses[200]["model"]`` — that merges onto FastAPI's string default,
+        # leaving a schema that is both a string and a union.
+        router.post(
+            path,
+            summary=summary,
+            response_model=function_cls.frame_schema,
+            response_class=NdjsonFrameResponse,
+            responses={
+                200: {
+                    "description": (
+                        "Newline-delimited JSON stream. Each line is one frame; read "
+                        "them incrementally rather than buffering the whole body."
+                    )
+                }
+            },
+        )(handler)
 
     return router
 

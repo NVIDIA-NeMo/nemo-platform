@@ -28,7 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import ClassVar
+from typing import Annotated, Any, ClassVar, Literal
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -43,7 +43,7 @@ from nemo_platform_plugin.functions.routes import (
     _with_heartbeats,
     add_function_routes,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # Shared fixtures — schemas, function classes
@@ -434,3 +434,68 @@ class TestMountValidation:
         # unruled (→ DENY at bundle time), so it must raise rather than fail open.
         with pytest.raises(ValueError, match="permission_description requires authz"):
             add_function_routes(_NonStreamingGreet, permission_description="Greet someone")
+
+
+# ---------------------------------------------------------------------------
+# frame_schema -> OpenAPI
+# ---------------------------------------------------------------------------
+
+
+class GreetFrame(BaseModel):
+    kind: Literal["greeting"] = "greeting"
+    message: str
+
+
+class _FramedGreet(NemoFunction[GreetSpec]):
+    name: ClassVar[str] = "framed-greet"
+    spec_schema: ClassVar[type[BaseModel]] = GreetSpec
+    frame_schema: ClassVar[Any] = Annotated[GreetFrame | Done, Field(discriminator="kind")]
+
+    async def run(self, spec: GreetSpec) -> AsyncIterator[BaseModel]:
+        yield GreetFrame(message=f"Hello, {spec.name}!")
+        yield Done()
+
+
+def _preview_200(function_cls: type[NemoFunction]) -> dict:
+    spec = _build_app(function_cls).openapi()
+    path = f"/apis/example/v2/workspaces/{{workspace}}/{function_cls.name}"
+    return spec["paths"][path]["post"]["responses"]["200"]
+
+
+class TestFrameSchemaDocumentation:
+    def test_declared_frames_are_documented_under_the_ndjson_media_type(self) -> None:
+        content = _preview_200(_FramedGreet)["content"]
+
+        assert list(content) == [NDJSON_MEDIA_TYPE]
+
+    def test_the_frame_union_is_emitted_with_its_discriminator(self) -> None:
+        schema = _preview_200(_FramedGreet)["content"][NDJSON_MEDIA_TYPE]["schema"]
+
+        assert schema["discriminator"]["propertyName"] == "kind"
+        assert set(schema["discriminator"]["mapping"]) == {"greeting", "done"}
+        # A bare ``{"type": "string"}`` would mean the union was dropped.
+        assert "type" not in schema
+
+    def test_frame_models_land_in_components_so_clients_can_reference_them(self) -> None:
+        schemas = _build_app(_FramedGreet).openapi()["components"]["schemas"]
+
+        assert {"GreetFrame", "Done"} <= set(schemas)
+
+    def test_functions_without_a_frame_schema_are_left_alone(self) -> None:
+        content = _preview_200(_StreamingGreet).get("content", {})
+
+        assert NDJSON_MEDIA_TYPE not in content
+
+    def test_declaring_frames_does_not_change_what_is_streamed(self) -> None:
+        client = TestClient(_build_app(_FramedGreet))
+        with client.stream(
+            "POST",
+            "/apis/example/v2/workspaces/default/framed-greet",
+            json={"name": "world"},
+        ) as resp:
+            assert resp.status_code == 200
+            assert resp.headers["content-type"].startswith(NDJSON_MEDIA_TYPE)
+            frames = [json.loads(ln) for ln in resp.iter_lines() if ln]
+
+        assert frames[0]["message"] == "Hello, world!"
+        assert frames[-1]["kind"] == "done"

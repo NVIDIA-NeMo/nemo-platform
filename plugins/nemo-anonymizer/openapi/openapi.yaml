@@ -432,10 +432,31 @@ paths:
               $ref: '#/components/schemas/PreviewRequest'
       responses:
         '200':
-          description: Successful Response
+          description: Newline-delimited JSON stream. Each line is one frame; read
+            them incrementally rather than buffering the whole body.
           content:
-            application/json:
-              schema: {}
+            application/x-ndjson:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/LogFrame'
+                - $ref: '#/components/schemas/PreviewDatasetFrame'
+                - $ref: '#/components/schemas/TraceDatasetFrame'
+                - $ref: '#/components/schemas/FailedRecordsFrame'
+                - $ref: '#/components/schemas/Heartbeat'
+                - $ref: '#/components/schemas/Done'
+                - $ref: '#/components/schemas/Error'
+                discriminator:
+                  propertyName: kind
+                  mapping:
+                    log: '#/components/schemas/LogFrame'
+                    preview_dataset: '#/components/schemas/PreviewDatasetFrame'
+                    trace_dataset: '#/components/schemas/TraceDatasetFrame'
+                    failed_records: '#/components/schemas/FailedRecordsFrame'
+                    heartbeat: '#/components/schemas/Heartbeat'
+                    done: '#/components/schemas/Done'
+                    error: '#/components/schemas/Error'
+                title: Response Previewfunction  Route Apis Anonymizer V2 Workspaces  Workspace  Preview
+                  Post
         '422':
           description: Validation Error
           content:
@@ -670,6 +691,20 @@ components:
       - manual
       title: DistributionType
       description: Types of distributions for sampling inference parameters.
+    Done:
+      properties:
+        kind:
+          type: string
+          const: done
+          title: Kind
+          default: done
+      type: object
+      title: Done
+      description: "Terminator frame for a successful stream.\n\nConvention only \u2014\
+        \ yield this as the *last* frame in a stream. The\nroute adapter does not\
+        \ synthesise it; if your stream just ends\nwithout a ``Done``, callers see\
+        \ a clean EOF instead of an explicit\nsuccess marker. The marker is useful\
+        \ when the same stream may end\nwith :class:`Error` instead."
     EmbeddingInferenceParams:
       properties:
         generation_type:
@@ -719,6 +754,47 @@ components:
       - data
       title: EntityLabelsResponse
       description: The default GLiNER entity labels detected when none are supplied.
+    Error:
+      properties:
+        kind:
+          type: string
+          const: error
+          title: Kind
+          default: error
+        message:
+          type: string
+          title: Message
+        details:
+          title: Details
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - message
+      title: Error
+      description: "Terminator frame for an unsuccessful stream.\n\nConvention only\
+        \ \u2014 yield this when an error occurs mid-stream and\nyou want to surface\
+        \ a structured failure rather than letting the\nunderlying exception propagate\
+        \ (which would close the connection\nabruptly). Pair with raising the underlying\
+        \ exception for\nserver-side observability."
+    FailedRecordsFrame:
+      properties:
+        kind:
+          type: string
+          const: failed_records
+          title: Kind
+          default: failed_records
+        records:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Records
+      type: object
+      required:
+      - records
+      title: FailedRecordsFrame
+      description: Records that failed during the pipeline, with reasons.
     FileStorageType:
       type: string
       enum:
@@ -759,6 +835,20 @@ components:
       type: object
       title: Hash
       description: Replace each entity with a deterministic hash token.
+    Heartbeat:
+      properties:
+        kind:
+          type: string
+          const: heartbeat
+          title: Kind
+          default: heartbeat
+      type: object
+      title: Heartbeat
+      description: "Idle-tick frame emitted by the route adapter every ~5 s of silence.\n\
+        \nThe route adapter inserts these unconditionally on streams that go\nquiet\
+        \ \u2014 they are not produced by user code. Plugins relying on\nstrict frame\
+        \ typing on the receiving side should ignore unknown\n``kind`` values or include\
+        \ :class:`Heartbeat` in their own\ndiscriminated union."
     ImageInferenceParams:
       properties:
         generation_type:
@@ -793,6 +883,29 @@ components:
         : {\n                \"imageConfig\": {\n                    \"aspectRatio\"\
         : \"1:1\",\n                    \"imageSize\": \"1024\"\n                }\n\
         \            }\n        }\n    )\n    ```"
+    LogFrame:
+      properties:
+        kind:
+          type: string
+          const: log
+          title: Kind
+          default: log
+        level:
+          type: string
+          enum:
+          - debug
+          - info
+          - warning
+          - error
+          title: Level
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - level
+      - message
+      title: LogFrame
     ManualDistribution:
       properties:
         distribution_type:
@@ -1147,6 +1260,24 @@ components:
       - created_at
       - updated_at
       title: PlatformJobTaskStatusResponse
+    PreviewDatasetFrame:
+      properties:
+        kind:
+          type: string
+          const: preview_dataset
+          title: Kind
+          default: preview_dataset
+        records:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Records
+      type: object
+      required:
+      - records
+      title: PreviewDatasetFrame
+      description: Final user-visible dataframe produced by the preview run.
     PreviewRequest:
       properties:
         config:
@@ -1460,6 +1591,27 @@ components:
       type: object
       title: Substitute
       description: Replace entities with LLM-generated synthetic values.
+    TraceDatasetFrame:
+      properties:
+        kind:
+          type: string
+          const: trace_dataset
+          title: Kind
+          default: trace_dataset
+        records:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Records
+        original_text_column:
+          title: Original Text Column
+          type: string
+      type: object
+      required:
+      - records
+      title: TraceDatasetFrame
+      description: "Internal trace dataframe \u2014 useful for debugging detection/replacement."
     UniformDistribution:
       properties:
         distribution_type:
