@@ -1319,7 +1319,9 @@ paths:
       tags:
       - Evaluator Plugin Tasks Routes
       summary: Create Task
-      description: Store a new task, addressed by workspace/name.
+      description: "Store a new task, addressed by workspace/name, and publish it\
+        \ as revision 1.\n\nStrict create \u2014 409 if the name is taken. Use ``PUT``\
+        \ to publish a further revision of an\nexisting task."
       operationId: create_task_apis_evaluator_v2_workspaces__workspace__tasks__name__post
       parameters:
       - name: workspace
@@ -1365,11 +1367,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Evaluator Plugin Tasks Routes
+      summary: Replace Task
+      description: "Replace a task's content and publish the result, creating the\
+        \ task if it does not exist.\n\nUpsert rather than 404-on-missing so a publisher\
+        \ can issue one idempotent call without first\nchecking existence \u2014 that\
+        \ check is both an extra round trip and a race between two publishers.\n\n\
+        Idempotent in the strict sense: submitting content that matches the current\
+        \ revision publishes\nnothing and returns **200**, while a genuine change\
+        \ returns **201**. Tags in the body are\napplied either way, so re-PUTting\
+        \ unchanged content is how you tag an existing revision."
+      operationId: replace_task_apis_evaluator_v2_workspaces__workspace__tasks__name__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: project
+        in: query
+        required: false
+        schema:
+          description: Optional project to associate with the task.
+          title: Project
+          type: string
+        description: Optional project to associate with the task.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskInput'
+      responses:
+        '200':
+          description: Content already published; no new revision was cut
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '201':
+          description: A new revision was published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '409':
+          description: Concurrent write; refresh and retry
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     get:
       tags:
       - Evaluator Plugin Tasks Routes
       summary: Get Task
-      description: Get a stored task by workspace and name.
+      description: 'Get a stored task''s current content.
+
+
+        Use ``GET /tasks/{name}/revisions/{revision}`` to read it as of a specific
+        published revision.'
       operationId: get_task_apis_evaluator_v2_workspaces__workspace__tasks__name__get
       parameters:
       - name: workspace
@@ -1429,6 +1498,180 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasks/{name}/revisions:
+    get:
+      tags:
+      - Evaluator Plugin Tasks Routes
+      summary: List Task Revisions
+      description: 'List a task''s published revisions.
+
+
+        This is how a caller discovers what it can pin to: each entry carries the
+        ``content_hash`` that
+
+        goes in a reference''s ``#fragment``.'
+      operationId: list_task_revisions_apis_evaluator_v2_workspaces__workspace__tasks__name__revisions_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      responses:
+        '200':
+          description: Return the task's published revisions, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevisionsPage'
+        '404':
+          description: Task not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasks/{name}/revisions/{revision}:
+    get:
+      tags:
+      - Evaluator Plugin Tasks Routes
+      summary: Get Task Revision
+      description: "Get a task's content as of a published revision.\n\n``revision``\
+        \ is a content digest or a tag \u2014 exactly what a reference's ``#fragment``\
+        \ carries,\nso a consumer holding ``workspace/task-a#<digest>`` reads what\
+        \ was published rather than\nwhatever is current. Returns the full task DTO;\
+        \ the collection route above is a thin index of\nwhat can be pinned to."
+      operationId: get_task_revision_apis_evaluator_v2_workspaces__workspace__tasks__name__revisions__revision__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: revision
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Revision
+      responses:
+        '200':
+          description: Return the task's content as of a published revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Task or revision not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasks/{name}/tags/{tag}:
+    put:
+      tags:
+      - Evaluator Plugin Tasks Routes
+      summary: Tag Task Revision
+      description: 'Point a tag at an already-published revision.
+
+
+        Separate from publishing because blessing a revision usually happens *after*
+        it has been
+
+        evaluated. ``latest`` is reserved: it is machine-managed, always names the
+        most recent publish,
+
+        and moving it by hand would break the forward-only guarantee that keeps concurrent
+        publishes
+
+        consistent.'
+      operationId: tag_task_revision_apis_evaluator_v2_workspaces__workspace__tasks__name__tags__tag__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: tag
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Tag
+      - name: revision
+        in: query
+        required: true
+        schema:
+          type: string
+          description: "Revision to tag \u2014 a content digest, or another tag."
+          title: Revision
+        description: "Revision to tag \u2014 a content digest, or another tag."
+      responses:
+        '200':
+          description: Point a tag at an existing revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Task or revision not found
+        '422':
+          description: Tag is reserved
   /apis/evaluator/v2/workspaces/{workspace}/tasksets:
     get:
       tags:
@@ -1501,7 +1744,9 @@ paths:
       tags:
       - Evaluator Plugin Tasksets Routes
       summary: Create Taskset
-      description: Store a new taskset, addressed by workspace/name.
+      description: "Store a new taskset, addressed by workspace/name, and publish\
+        \ it as revision 1.\n\nStrict create \u2014 409 if the name is taken. Use\
+        \ ``PUT`` to publish a further revision."
       operationId: create_taskset_apis_evaluator_v2_workspaces__workspace__tasksets__name__post
       parameters:
       - name: workspace
@@ -1547,11 +1792,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Evaluator Plugin Tasksets Routes
+      summary: Replace Taskset
+      description: "Replace a taskset's membership and publish the result, creating\
+        \ it if it does not exist.\n\nMembers are re-resolved to exact revision digests\
+        \ on every write, so re-submitting the *same*\nmember names can still publish\
+        \ a new revision \u2014 if a member task published in the meantime,\nthis\
+        \ grouping now names different content and genuinely differs. A taskset's\
+        \ identity is the\nexact revisions it names, not the names alone."
+      operationId: replace_taskset_apis_evaluator_v2_workspaces__workspace__tasksets__name__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: project
+        in: query
+        required: false
+        schema:
+          description: Optional project to associate with the taskset.
+          title: Project
+          type: string
+        description: Optional project to associate with the taskset.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksetInput'
+      responses:
+        '200':
+          description: Content already published; no new revision was cut
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Taskset'
+        '201':
+          description: A new revision was published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Taskset'
+        '409':
+          description: Concurrent write; refresh and retry
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     get:
       tags:
       - Evaluator Plugin Tasksets Routes
       summary: Get Taskset
-      description: Get a stored taskset by workspace and name.
+      description: 'Get a stored taskset''s current membership.
+
+
+        Use ``GET /tasksets/{name}/revisions/{revision}`` to read it as of a published
+        revision.'
       operationId: get_taskset_apis_evaluator_v2_workspaces__workspace__tasksets__name__get
       parameters:
       - name: workspace
@@ -1611,6 +1921,162 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasksets/{name}/revisions:
+    get:
+      tags:
+      - Evaluator Plugin Tasksets Routes
+      summary: List Taskset Revisions
+      description: "List a taskset's published revisions \u2014 each entry's ``content_hash``\
+        \ is what a pinned\nreference carries."
+      operationId: list_taskset_revisions_apis_evaluator_v2_workspaces__workspace__tasksets__name__revisions_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      responses:
+        '200':
+          description: Return the taskset's published revisions, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevisionsPage'
+        '404':
+          description: Taskset not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasksets/{name}/revisions/{revision}:
+    get:
+      tags:
+      - Evaluator Plugin Tasksets Routes
+      summary: Get Taskset Revision
+      description: "Get a taskset's membership as of a published revision.\n\n``revision``\
+        \ is a content digest or a tag \u2014 what a reference's ``#fragment`` carries\
+        \ \u2014 so a\npinned consumer reads the exact grouping that was published."
+      operationId: get_taskset_revision_apis_evaluator_v2_workspaces__workspace__tasksets__name__revisions__revision__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: revision
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Revision
+      responses:
+        '200':
+          description: Return the taskset's membership as of a published revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Taskset'
+        '404':
+          description: Taskset or revision not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasksets/{name}/tags/{tag}:
+    put:
+      tags:
+      - Evaluator Plugin Tasksets Routes
+      summary: Tag Taskset Revision
+      description: Point a tag at an already-published revision. ``latest`` is reserved
+        and machine-managed.
+      operationId: tag_taskset_revision_apis_evaluator_v2_workspaces__workspace__tasksets__name__tags__tag__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: tag
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Tag
+      - name: revision
+        in: query
+        required: true
+        schema:
+          type: string
+          description: "Revision to tag \u2014 a content digest, or another tag."
+          title: Revision
+        description: "Revision to tag \u2014 a content digest, or another tag."
+      responses:
+        '200':
+          description: Point a tag at an existing revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Taskset'
+        '404':
+          description: Taskset or revision not found
+        '422':
+          description: Tag is reserved
 components:
   schemas:
     AgentEvalInputSpec:
@@ -4194,6 +4660,64 @@ components:
       - -updated_at
       title: ResultSort
       description: Sort fields for result queries (``-`` prefix sorts descending).
+    Revision:
+      properties:
+        revision:
+          type: integer
+          title: Revision
+          description: Monotonic 1-based ordinal within the record.
+        content_hash:
+          type: string
+          title: Content Hash
+          description: 'Full 64-char hex SHA-256 of the revision''s content. This
+            is what a pinned reference carries: ''workspace/name#<content_hash>''.'
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+          description: Tags currently pointing at this revision, if any.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Timestamp the revision was published.
+      type: object
+      required:
+      - revision
+      - content_hash
+      - created_at
+      title: Revision
+      description: "A published revision of a task or taskset.\n\nDeliberately thin:\
+        \ it identifies a revision and says when it was cut, without repeating the\n\
+        content. Listing a record's history is a \"what can I pin to?\" question,\
+        \ and answering it with\nfull content on every entry would make the response\
+        \ large for no benefit \u2014 fetch the record at\na specific revision to\
+        \ get its content."
+    RevisionsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Revision'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: RevisionsPage
     RubricScoreStat:
       properties:
         label:
@@ -4442,6 +4966,21 @@ components:
           type: array
           title: Metadata
           description: Key/value annotations for the task.
+        revision:
+          type: integer
+          title: Revision
+          description: "Ordinal of the published revision this content corresponds\
+            \ to. Every stored task has at least one revision \u2014 creating a task\
+            \ publishes revision 1 \u2014 so this is never 0."
+        tags:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Tags
+          description: "Tag \u2192 revision-ordinal pointers. Reading the record's\
+            \ current content returns every tag, including 'latest'. Reading a *specific*\
+            \ revision returns only the tags pointing at that revision, which may\
+            \ be none \u2014 so do not assume 'latest' is present."
         created_at:
           type: string
           format: date-time
@@ -4458,6 +4997,7 @@ components:
       - name
       - workspace
       - intent
+      - revision
       - created_at
       - updated_at
       title: Task
@@ -4521,6 +5061,13 @@ components:
           type: array
           title: Metadata
           description: Key/value annotations for the task.
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+          description: Tags to point at the revision this request publishes. 'latest'
+            is always applied server-side and need not be listed.
       additionalProperties: false
       type: object
       required:
@@ -4548,12 +5095,18 @@ components:
         runtime falls back to the task ``intent`` when it is unset.'
     TaskRef:
       type: string
-      pattern: ^[\w\-.]+(/[\w\-.]+)?$
+      pattern: ^[\w\-.]+(/[\w\-.]+)?(#[\w\-.]+)?$
       title: TaskRef
-      description: "Reference to a persisted task (format: ``workspace/name`` or ``name``).\n\
-        \nSame shape and charset as :class:`MetricRef` \u2014 a taskset points at\
-        \ its member tasks by reference\n(there are no inline tasks), so a stored\
-        \ taskset only ever holds refs."
+      description: "Reference to a persisted task (format: ``workspace/name``, ``name``,\
+        \ or either with a\n``#revision`` fragment).\n\nA taskset points at its member\
+        \ tasks by reference (there are no inline tasks), so a stored\ntaskset only\
+        \ ever holds refs. Unlike :class:`MetricRef`, a task ref may address a specific\n\
+        revision via the platform's standard ``#`` sub-entity fragment.\n\nThe fragment\
+        \ is optional *on input* and means :data:`LATEST_TAG` when absent \u2014 a\
+        \ bare\n``workspace/name`` is \"the current revision\", not \"unpinned\".\
+        \ It may name a tag or a content\ndigest. Anything **persisted** as a published\
+        \ snapshot must carry a resolved digest: tags move,\nand a stored tag fragment\
+        \ would silently re-point published membership."
     TaskSort:
       type: string
       enum:
@@ -4623,6 +5176,20 @@ components:
           type: array
           title: Metadata
           description: Key/value annotations for the taskset.
+        revision:
+          type: integer
+          title: Revision
+          description: Ordinal of the published revision this content corresponds
+            to. Every stored taskset has at least one revision, so this is never 0.
+        tags:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Tags
+          description: "Tag \u2192 revision-ordinal pointers. Reading the record's\
+            \ current content returns every tag, including 'latest'. Reading a *specific*\
+            \ revision returns only the tags pointing at that revision, which may\
+            \ be none \u2014 so do not assume 'latest' is present."
         created_at:
           type: string
           format: date-time
@@ -4638,6 +5205,7 @@ components:
       - id
       - name
       - workspace
+      - revision
       - created_at
       - updated_at
       title: Taskset
@@ -4680,12 +5248,22 @@ components:
           type: array
           title: Tasks
           description: References to the member tasks (set semantics; duplicates rejected).
+            Each may be bare, tag-pinned ('task-a#latest'), or digest-pinned; all
+            are resolved to an exact digest when stored, so the grouping cannot change
+            underneath you when a member republishes.
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'
           type: array
           title: Metadata
           description: Key/value annotations for the taskset.
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+          description: Tags to point at the revision this request publishes. 'latest'
+            is always applied server-side and need not be listed.
       additionalProperties: false
       type: object
       title: TasksetInput

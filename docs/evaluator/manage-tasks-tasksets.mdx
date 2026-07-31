@@ -18,15 +18,21 @@ metrics inline every time.
 | Concept | What it is | Members |
 |---------|------------|---------|
 | **Task** | A reusable agent-eval unit: `intent`, `inputs`, and the `metrics` that score it. | References the metrics that score it. |
-| **Taskset** | A flexible grouping of tasks with a description and metadata. | References member tasks by `workspace/name`. Membership is a **set** — order is not significant and duplicate references are rejected. |
+| **Taskset** | A flexible grouping of tasks with a description and metadata. | References member tasks by `workspace/name`, each pinned to an exact revision. Membership is a **set** — order is not significant and duplicate references are rejected. |
+| **Revision** | An immutable published snapshot of a task's or taskset's content, addressed by a content digest. | Belongs to the task or taskset it snapshots. |
 
 Both are addressed by `workspace/name`. Names are unique within a workspace, limited to 255
 characters, and must match `^[\w\-\.]+$`.
 
+Every stored task and taskset is **versioned**. Creating one publishes revision 1; replacing its
+content publishes the next revision. Earlier revisions stay readable for as long as the task or
+taskset exists — deleting it removes its revisions with it — which is what lets an evaluation be
+re-run against exactly the content it ran against the first time.
+
 <Note>
-Tasks and tasksets support **create, retrieve, list, and delete** — there is no update. To change a
-stored task or taskset, delete it and create a new one, or store a new version under a different
-name.
+Publishing is **idempotent**. Replacing a task with content identical to its current revision
+publishes nothing and returns the existing revision — so a pipeline can re-submit the same
+definition freely without accumulating versions.
 </Note>
 
 ## Initialize the SDK
@@ -89,6 +95,7 @@ print(stored.id, stored.metrics)
 | `metrics` | `list[MetricRefOrInline]` | No | The metrics that score the task, as `MetricRef` references (`workspace/name`) to stored metrics. Pre-built inline metric bundles (`MetricInline`) are also accepted and are normalized to stored metrics on create. |
 | `views` | `dict[str, SemanticView]` | No | Optional reporting views mapping metric outputs into named semantic scores. |
 | `metadata` | `list[MetadataItem]` | No | Key/value annotations. Keys must be unique. |
+| `tags` | `list[str]` | No | Tags to point at the revision this request publishes. `latest` is always applied server-side. |
 
 <Note>
 A stored task holds **metric references only**. Any inline metric bundle you pass on create is stored
@@ -99,25 +106,96 @@ why `stored.metrics` always comes back as a list of `MetricRef` references.
 ### Retrieve, list, and delete
 
 ```python
-# Retrieve one task by name
+# Retrieve one task by name (its current content)
 task = tasks.retrieve("capital-of-france")
+print(task.revision, task.tags)  # e.g. 1 {'latest': 1}
 
 # List tasks in the workspace (paginated)
 page = tasks.list(page=1, page_size=100, sort="-created_at")
 for item in page.data:
     print(item.name, item.intent)
 
-# Delete a task
+# Delete a task (this also removes all of its revisions)
 tasks.delete("capital-of-france")
 ```
 
 `sort` accepts `name`, `created_at`, or `updated_at`, each optionally prefixed with `-` for
 descending order.
 
+## Revisions
+
+### Publish a new revision
+
+Use `replace` to publish new content. It creates the task if it does not exist, so a publisher needs
+no existence check.
+
+```python
+revised_task = TaskInput(
+    intent="Answer the user's geography question with the capital city.",
+    inputs=TaskInputs(instruction="Name the capital city of France."),
+    metrics=[MetricRef("default/answer-exact-match")],
+    metadata=[MetadataItem(key="suite", value="geography")],
+)
+
+updated = tasks.replace("capital-of-france", task=revised_task)
+print(updated.revision)  # 2
+```
+
+Submitting content identical to the current revision publishes nothing and returns the existing
+revision — but any tags in the body are still applied, which is how you tag a revision after the
+fact.
+
+### List revisions
+
+Each entry carries the `content_hash` used to pin a reference.
+
+```python
+page = tasks.list_revisions("capital-of-france")
+for revision in page.data:      # newest first
+    print(revision.revision, revision.content_hash, revision.tags)
+```
+
+### Read a specific revision
+
+Pass a content digest or a tag. This returns the content **as published**, not the current content.
+
+```python
+# Revisions come back newest-first and paginated, so index by ordinal rather than by position —
+# `data[-1]` is only the oldest entry on the page you happen to have fetched.
+page = tasks.list_revisions("capital-of-france")
+digest = next(revision.content_hash for revision in page.data if revision.revision == 1)
+
+original = tasks.retrieve("capital-of-france", revision=digest)
+current = tasks.retrieve("capital-of-france")
+```
+
+### Tag a revision
+
+A tag is a mutable pointer to a revision — useful for marking one as reviewed or approved after it
+has been evaluated.
+
+```python
+tasks.tag("capital-of-france", "blessed", revision=digest)
+
+blessed = tasks.retrieve("capital-of-france", revision="blessed")
+```
+
+<Note>
+`latest` is managed automatically and always names the most recently published revision; it cannot be
+moved by hand. A tag name may not be empty, and may not look like a content digest (64 hexadecimal
+characters) — such a tag could be stored but never resolved, because a digest-shaped reference is
+looked up as a digest rather than as a tag.
+</Note>
+
 ## Manage Tasksets
 
 A taskset references existing tasks by `workspace/name`. All referenced tasks must already exist when
 the taskset is created; a missing or duplicate reference is rejected.
+
+Member references are **resolved to an exact revision when the taskset is stored**. You may submit a
+bare name (`capital-of-france`), a tag (`capital-of-france#latest`), or a digest — what gets stored
+is always `workspace/name#<digest>`. This is why a stored taskset keeps naming the same content even
+after a member task publishes something new, and it is what makes a suite reproducible.
 
 ```python
 from nemo_evaluator.api.schemas import TaskRef, TasksetInput
@@ -132,6 +210,7 @@ taskset = TasksetInput(
 
 stored = tasksets.create("geography-suite", taskset=taskset)
 print(stored.tasks)
+# ['default/capital-of-france#a1b2...', 'default/capital-of-japan#c3d4...']
 ```
 
 ### `TasksetInput` fields
@@ -139,8 +218,9 @@ print(stored.tasks)
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `description` | `str` | No | Human-readable description of the grouping. |
-| `tasks` | `list[TaskRef]` | No | References to member tasks (`workspace/name`, or bare `name` within the same workspace). Set semantics — duplicates rejected. |
+| `tasks` | `list[TaskRef]` | No | References to member tasks (`workspace/name`, or bare `name` within the same workspace), optionally pinned with `#<tag-or-digest>`. Each is resolved to an exact digest when stored. Set semantics — duplicates rejected. |
 | `metadata` | `list[MetadataItem]` | No | Key/value annotations. Keys must be unique. |
+| `tags` | `list[str]` | No | Tags to point at the revision this request publishes. `latest` is always applied server-side. |
 
 ### Retrieve, list, and delete
 
@@ -153,6 +233,23 @@ for item in page.data:
 
 tasksets.delete("geography-suite")
 ```
+
+Tasksets carry the same revision surface as tasks — `replace`, `list_revisions`, `tag`, and
+`retrieve(revision=...)`:
+
+```python
+# Re-resolving membership after a member task published new content cuts a new revision.
+tasksets.replace("geography-suite", taskset=taskset)
+
+for revision in tasksets.list_revisions("geography-suite").data:
+    print(revision.revision, revision.content_hash)
+```
+
+<Note>
+Re-submitting the *same* member names can still publish a new revision. Members are re-resolved on
+every write, so if a member task published in the meantime the grouping now names different content
+and genuinely differs. A taskset's identity is the exact revisions it names, not the names alone.
+</Note>
 
 Deleting a taskset does not delete its member tasks — a taskset only holds references.
 
@@ -178,8 +275,10 @@ input_spec = AgentEvalInputSpec(
 )
 ```
 
-When the job runs, the taskset reference is resolved: its member tasks are loaded, and each task's
-stored metric references are hydrated into runnable metrics — exactly as if you had inlined them. The
+When the job runs, the taskset reference is resolved: each member's **pinned revision** is loaded —
+not whatever that task currently contains — and its stored metric references are hydrated into
+runnable metrics, exactly as if you had inlined them. Re-running the same taskset therefore evaluates
+the same content, even if a member task has been republished since. The
 same spec is submitted as the agent-evaluate job input; see
 [Agent Evaluation](/documentation/evaluate-models/agent-eval) for the full run, target, and
 results flow.
@@ -227,17 +326,29 @@ The SDK resources are a thin client over the Evaluator plugin REST API, mounted 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/tasks` | List tasks (paginated). |
-| `POST` | `/tasks/{name}` | Create a task. |
-| `GET` | `/tasks/{name}` | Retrieve a task. |
-| `DELETE` | `/tasks/{name}` | Delete a task. |
+| `POST` | `/tasks/{name}` | Create a task and publish revision 1. |
+| `PUT` | `/tasks/{name}` | Replace a task's content and publish; creates it if absent. |
+| `GET` | `/tasks/{name}` | Retrieve a task's current content. |
+| `GET` | `/tasks/{name}/revisions` | List published revisions (paginated, newest first). |
+| `GET` | `/tasks/{name}/revisions/{revision}` | Retrieve content as of a digest or tag. |
+| `PUT` | `/tasks/{name}/tags/{tag}?revision=` | Point a tag at an existing revision. |
+| `DELETE` | `/tasks/{name}` | Delete a task and all of its revisions. |
 | `GET` | `/tasksets` | List tasksets (paginated). |
-| `POST` | `/tasksets/{name}` | Create a taskset. |
-| `GET` | `/tasksets/{name}` | Retrieve a taskset. |
-| `DELETE` | `/tasksets/{name}` | Delete a taskset. |
+| `POST` | `/tasksets/{name}` | Create a taskset and publish revision 1. |
+| `PUT` | `/tasksets/{name}` | Replace a taskset's membership and publish; creates it if absent. |
+| `GET` | `/tasksets/{name}` | Retrieve a taskset's current membership. |
+| `GET` | `/tasksets/{name}/revisions` | List published revisions (paginated, newest first). |
+| `GET` | `/tasksets/{name}/revisions/{revision}` | Retrieve membership as of a digest or tag. |
+| `PUT` | `/tasksets/{name}/tags/{tag}?revision=` | Point a tag at an existing revision. |
+| `DELETE` | `/tasksets/{name}` | Delete a taskset and all of its revisions. |
 
-Creating a name that already exists returns `409`. An invalid metric reference (task) or a missing or
-duplicate task reference (taskset) returns `422`. Retrieving or deleting a name that does not exist
-returns `404`.
+`PUT` distinguishes its two outcomes by status: **`201`** when a new revision was published, and
+**`200`** when the submitted content was already the current revision and nothing was cut.
+
+`POST` on a name that already exists returns `409`, as does a `PUT` that loses a race with a
+concurrent write. An invalid metric reference (task), a missing or duplicate task reference
+(taskset), or a reserved or malformed tag name returns `422`. Retrieving or deleting a name — or a
+revision — that does not exist returns `404`.
 
 ## Related Topics
 

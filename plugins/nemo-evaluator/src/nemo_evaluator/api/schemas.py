@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal, TypeAlias
 
+from nemo_evaluator.content_hash import DIGEST_PATTERN
 from nemo_evaluator.shared.metric_bundles.bundles import (
     BundledMetricOutputSpec,
     MetricMetadata,
@@ -138,6 +140,28 @@ class MetricInline(BaseModel):
 # empty/malformed refs are rejected at validation rather than during parsing.
 _ENTITY_REF_PATTERN = r"^[\w\-.]+(/[\w\-.]+)?$"
 
+#: The charset a ``#fragment`` may use. Exported because anything that *mints* a fragment — notably
+#: revision tag names — has to be constrained by it: a value outside this set can be stored happily
+#: and then never appear in a reference, which is a silent dead end rather than an error.
+REF_FRAGMENT_CHARSET = r"[\w\-.]+"
+
+# A *sub-entity* reference adds an optional ``#fragment``, the platform's standard way of addressing
+# something contained within an entity (filesets address a contained file the same way:
+# ``workspace/fileset#path``). For a revisioned entity the fragment selects a revision — either a tag
+# (``#latest``, ``#candidate``) or a full 64-char content digest.
+#
+# Deliberately a sibling of ``_ENTITY_REF_PATTERN`` rather than a widening of it: that constant is
+# shared by ``MetricRef`` and ``TasksetRef``, neither of which has revisions yet, and admitting a
+# fragment there would accept input nothing is built to resolve. ``TasksetRef`` moves onto this
+# pattern when taskset revisions are addressable; ``MetricRef`` when (if) metrics gain revisions.
+_SUBENTITY_REF_PATTERN = rf"^[\w\-.]+(/[\w\-.]+)?(#{REF_FRAGMENT_CHARSET})?$"
+
+#: The fragment separator for sub-entity references. Matches the fileset/job ref convention.
+REF_FRAGMENT_SEPARATOR = "#"
+
+#: The tag applied to every publish and used when a ref carries no fragment.
+LATEST_TAG = "latest"
+
 
 def parse_entity_ref(root: str, default_workspace: str) -> tuple[str, str]:
     """Split a validated ``workspace/name`` (or bare ``name``) reference into ``(workspace, name)``.
@@ -145,11 +169,27 @@ def parse_entity_ref(root: str, default_workspace: str) -> tuple[str, str]:
     The ``workspace/name`` vs bare-``name`` shape is guaranteed by the field's ``_ENTITY_REF_PATTERN``,
     so this only needs to split. Shared by every reference type (metrics, tasks); lives here — next to
     the pattern, with no entity dependency — so ref-owning modules can reuse it without cycling.
+
+    Any ``#fragment`` is stripped before splitting, so callers that don't care about revisions keep
+    working unchanged against a pinned ref. Use :func:`parse_subentity_ref` to read the fragment.
     """
-    workspace, separator, name = root.partition("/")
+    base, _, _ = root.partition(REF_FRAGMENT_SEPARATOR)
+    workspace, separator, name = base.partition("/")
     if separator:
         return workspace, name
-    return default_workspace, root
+    return default_workspace, base
+
+
+def parse_subentity_ref(root: str, default_workspace: str) -> tuple[str, str, str]:
+    """Split a reference into ``(workspace, name, fragment)``.
+
+    An absent fragment resolves to :data:`LATEST_TAG` — a bare ``workspace/name`` means "the current
+    revision", never "unpinned". The fragment is returned verbatim: it may be a tag or a content
+    digest, and telling them apart is resolution's job, not parsing's.
+    """
+    base, separator, fragment = root.partition(REF_FRAGMENT_SEPARATOR)
+    workspace, name = parse_entity_ref(base, default_workspace)
+    return workspace, name, fragment if separator and fragment else LATEST_TAG
 
 
 class MetricRef(RootModel[str]):
@@ -168,15 +208,23 @@ MetricRefOrInline: TypeAlias = MetricInline | MetricRef
 
 
 class TaskRef(RootModel[str]):
-    """Reference to a persisted task (format: ``workspace/name`` or ``name``).
+    """Reference to a persisted task (format: ``workspace/name``, ``name``, or either with a
+    ``#revision`` fragment).
 
-    Same shape and charset as :class:`MetricRef` — a taskset points at its member tasks by reference
-    (there are no inline tasks), so a stored taskset only ever holds refs.
+    A taskset points at its member tasks by reference (there are no inline tasks), so a stored
+    taskset only ever holds refs. Unlike :class:`MetricRef`, a task ref may address a specific
+    revision via the platform's standard ``#`` sub-entity fragment.
+
+    The fragment is optional *on input* and means :data:`LATEST_TAG` when absent — a bare
+    ``workspace/name`` is "the current revision", not "unpinned". It may name a tag or a content
+    digest. Anything **persisted** as a published snapshot must carry a resolved digest: tags move,
+    and a stored tag fragment would silently re-point published membership.
     """
 
     root: str = Field(
-        pattern=_ENTITY_REF_PATTERN,
-        description="Reference to a stored task (format: workspace/task-name, or task-name in the taskset workspace).",
+        pattern=_SUBENTITY_REF_PATTERN,
+        description="Reference to a stored task (format: workspace/task-name, or task-name in the "
+        "taskset workspace), optionally pinned to a revision with '#<tag-or-digest>'.",
     )
 
 
@@ -348,6 +396,16 @@ class Task(BaseModel):
         default_factory=dict, description="Optional reporting views mapping metric outputs into named semantic scores."
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
+    revision: int = Field(
+        description="Ordinal of the published revision this content corresponds to. Every stored task "
+        "has at least one revision — creating a task publishes revision 1 — so this is never 0."
+    )
+    tags: dict[str, int] = Field(
+        default_factory=dict,
+        description="Tag → revision-ordinal pointers. Reading the record's current content returns "
+        "every tag, including 'latest'. Reading a *specific* revision returns only the tags pointing "
+        "at that revision, which may be none — so do not assume 'latest' is present.",
+    )
     created_at: datetime = Field(description="Timestamp the task was created.")
     updated_at: datetime = Field(description="Timestamp the task was last updated.")
 
@@ -370,6 +428,29 @@ class TaskInput(BaseModel):
         default_factory=dict, description="Optional reporting views mapping metric outputs into named semantic scores."
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Tags to point at the revision this request publishes. 'latest' is always applied "
+        "server-side and need not be listed.",
+    )
+
+
+class Revision(BaseModel):
+    """A published revision of a task or taskset.
+
+    Deliberately thin: it identifies a revision and says when it was cut, without repeating the
+    content. Listing a record's history is a "what can I pin to?" question, and answering it with
+    full content on every entry would make the response large for no benefit — fetch the record at
+    a specific revision to get its content.
+    """
+
+    revision: int = Field(description="Monotonic 1-based ordinal within the record.")
+    content_hash: str = Field(
+        description="Full 64-char hex SHA-256 of the revision's content. This is what a pinned "
+        "reference carries: 'workspace/name#<content_hash>'."
+    )
+    tags: list[str] = Field(default_factory=list, description="Tags currently pointing at this revision, if any.")
+    created_at: datetime = Field(description="Timestamp the revision was published.")
 
 
 class TaskSort(StrEnum):
@@ -406,6 +487,35 @@ def _reject_duplicate_task_refs(refs: list[TaskRef]) -> list[TaskRef]:
 #: A list of task references with set semantics (order not significant, duplicates rejected).
 TaskRefList: TypeAlias = Annotated[list[TaskRef], AfterValidator(_reject_duplicate_task_refs)]
 
+#: Shape of a content digest in a ref fragment: full-length lowercase hex, never truncated.
+_DIGEST_FRAGMENT_PATTERN = re.compile(DIGEST_PATTERN)
+
+
+def _require_pinned_task_refs(refs: list[TaskRef]) -> list[TaskRef]:
+    """Every member of a *published* taskset revision must name an exact content digest.
+
+    Enforced on the field rather than in the publish path so it cannot be bypassed by any other
+    writer. A ref that is bare (``workspace/name``) or tag-pinned (``#latest``, ``#candidate``)
+    resolves through a mutable pointer: the moment that tag moves, the published revision's
+    membership silently changes under it, and a "reproducible" dataset stops being reproducible.
+    Tags are resolution *inputs*, resolved to digests at publish time; only digests persist.
+    """
+    for ref in refs:
+        _, _, fragment = parse_subentity_ref(ref.root, "")
+        if not _DIGEST_FRAGMENT_PATTERN.match(fragment):
+            raise ValueError(
+                f"task reference {ref.root!r} is not pinned to a content digest: a published taskset "
+                f"revision must reference an exact revision (got fragment {fragment!r}). Tags move; "
+                "resolve them to a digest before persisting."
+            )
+    return refs
+
+
+#: Member refs of a published taskset revision: set semantics *and* every ref digest-pinned.
+PinnedTaskRefList: TypeAlias = Annotated[
+    list[TaskRef], AfterValidator(_reject_duplicate_task_refs), AfterValidator(_require_pinned_task_refs)
+]
+
 
 class Taskset(BaseModel):
     """API representation of a stored taskset — a flexible grouping of tasks with metadata.
@@ -423,6 +533,16 @@ class Taskset(BaseModel):
         default_factory=list, description="References to the member tasks (set semantics; duplicates rejected)."
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
+    revision: int = Field(
+        description="Ordinal of the published revision this content corresponds to. Every stored "
+        "taskset has at least one revision, so this is never 0."
+    )
+    tags: dict[str, int] = Field(
+        default_factory=dict,
+        description="Tag → revision-ordinal pointers. Reading the record's current content returns "
+        "every tag, including 'latest'. Reading a *specific* revision returns only the tags pointing "
+        "at that revision, which may be none — so do not assume 'latest' is present.",
+    )
     created_at: datetime = Field(description="Timestamp the taskset was created.")
     updated_at: datetime = Field(description="Timestamp the taskset was last updated.")
 
@@ -438,9 +558,17 @@ class TasksetInput(BaseModel):
 
     description: str | None = Field(default=None, description="Human-readable description of the grouping.")
     tasks: TaskRefList = Field(
-        default_factory=list, description="References to the member tasks (set semantics; duplicates rejected)."
+        default_factory=list,
+        description="References to the member tasks (set semantics; duplicates rejected). Each may be "
+        "bare, tag-pinned ('task-a#latest'), or digest-pinned; all are resolved to an exact digest "
+        "when stored, so the grouping cannot change underneath you when a member republishes.",
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Tags to point at the revision this request publishes. 'latest' is always applied "
+        "server-side and need not be listed.",
+    )
 
 
 class TasksetSort(StrEnum):

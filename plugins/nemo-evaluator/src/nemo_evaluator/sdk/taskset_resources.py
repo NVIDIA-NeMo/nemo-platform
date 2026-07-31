@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from nemo_evaluator.api.schemas import Taskset, TasksetInput
+from nemo_evaluator.api.schemas import Revision, Taskset, TasksetInput
 from nemo_evaluator.sdk import http_utils
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.schema import Page
@@ -57,11 +57,57 @@ class EvaluatorTasksetsResource:
         response.raise_for_status()
         return Taskset.model_validate(response.json())
 
-    def retrieve(self, name: str, *, workspace: str | None = None) -> Taskset:
-        """Get a stored taskset by name."""
-        response = self._http_client.get(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
+    def replace(
+        self, name: str, *, taskset: TasksetInput, project: str | None = None, workspace: str | None = None
+    ) -> Taskset:
+        """Publish a revision of a taskset, creating it if absent.
+
+        Members are re-resolved to exact revision digests on every call, so identical member names
+        can still publish a new revision if a member task published in the meantime.
+
+        The response body is the same either way, so this does not report whether a revision was
+        cut — the server signals that with 201 vs 200, which is discarded here. Compare the returned
+        ``revision`` against a prior read if you need to know."""
+        response = self._http_client.put(
+            self._item_url(name, workspace),
+            json=taskset.model_dump(mode="json"),
+            params={"project": project} if project is not None else None,
+            headers=self._headers(),
+            timeout=self._platform.timeout,
         )
+        response.raise_for_status()
+        return Taskset.model_validate(response.json())
+
+    def list_revisions(
+        self, name: str, *, page: int = 1, page_size: int = 100, workspace: str | None = None
+    ) -> Page[Revision]:
+        """List a taskset's published revisions, newest first."""
+        response = self._http_client.get(
+            f"{self._item_url(name, workspace)}/revisions",
+            params={"page": page, "page_size": page_size},
+            headers=self._headers(),
+            timeout=self._platform.timeout,
+        )
+        response.raise_for_status()
+        return Page[Revision].model_validate(response.json())
+
+    def tag(self, name: str, tag: str, *, revision: str, workspace: str | None = None) -> Taskset:
+        """Point a tag at an existing revision, named by digest or by another tag."""
+        response = self._http_client.put(
+            f"{self._item_url(name, workspace)}/tags/{quote(tag, safe='')}",
+            params={"revision": revision},
+            headers=self._headers(),
+            timeout=self._platform.timeout,
+        )
+        response.raise_for_status()
+        return Taskset.model_validate(response.json())
+
+    def retrieve(self, name: str, *, revision: str | None = None, workspace: str | None = None) -> Taskset:
+        """Get a stored taskset by name, or as of a published revision (digest or tag)."""
+        url = self._item_url(name, workspace)
+        if revision is not None:
+            url = f"{url}/revisions/{quote(revision, safe='')}"
+        response = self._http_client.get(url, headers=self._headers(), timeout=self._platform.timeout)
         response.raise_for_status()
         return Taskset.model_validate(response.json())
 
@@ -118,11 +164,57 @@ class AsyncEvaluatorTasksetsResource:
         response.raise_for_status()
         return Taskset.model_validate(response.json())
 
-    async def retrieve(self, name: str, *, workspace: str | None = None) -> Taskset:
-        """Get a stored taskset by name."""
-        response = await self._http_client.get(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
+    async def replace(
+        self, name: str, *, taskset: TasksetInput, project: str | None = None, workspace: str | None = None
+    ) -> Taskset:
+        """Publish a revision of a taskset, creating it if absent.
+
+        Members are re-resolved to exact revision digests on every call, so identical member names
+        can still publish a new revision if a member task published in the meantime.
+
+        The response body is the same either way, so this does not report whether a revision was
+        cut — the server signals that with 201 vs 200, which is discarded here. Compare the returned
+        ``revision`` against a prior read if you need to know."""
+        response = await self._http_client.put(
+            self._item_url(name, workspace),
+            json=taskset.model_dump(mode="json"),
+            params={"project": project} if project is not None else None,
+            headers=self._headers(),
+            timeout=self._platform.timeout,
         )
+        response.raise_for_status()
+        return Taskset.model_validate(response.json())
+
+    async def list_revisions(
+        self, name: str, *, page: int = 1, page_size: int = 100, workspace: str | None = None
+    ) -> Page[Revision]:
+        """List a taskset's published revisions, newest first."""
+        response = await self._http_client.get(
+            f"{self._item_url(name, workspace)}/revisions",
+            params={"page": page, "page_size": page_size},
+            headers=self._headers(),
+            timeout=self._platform.timeout,
+        )
+        response.raise_for_status()
+        return Page[Revision].model_validate(response.json())
+
+    async def tag(self, name: str, tag: str, *, revision: str, workspace: str | None = None) -> Taskset:
+        """Point a tag at an existing revision, named by digest or by another tag."""
+        response = await self._http_client.put(
+            f"{self._item_url(name, workspace)}/tags/{quote(tag, safe='')}",
+            params={"revision": revision},
+            headers=self._headers(),
+            timeout=self._platform.timeout,
+        )
+        response.raise_for_status()
+        return Taskset.model_validate(response.json())
+
+    async def retrieve(self, name: str, *, revision: str | None = None, workspace: str | None = None) -> Taskset:
+        """Get a stored taskset by name, or as of a published revision (digest or tag)."""
+        url = self._item_url(name, workspace)
+        if revision is not None:
+            url = f"{url}/revisions/{quote(revision, safe='')}"
+        response = await self._http_client.get(url, headers=self._headers(), timeout=self._platform.timeout)
         response.raise_for_status()
         return Taskset.model_validate(response.json())
 
