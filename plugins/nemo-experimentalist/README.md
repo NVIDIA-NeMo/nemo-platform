@@ -61,6 +61,34 @@ a baseline agent on Harbor-compatible train and validation datasets, proposes
 candidate mutations, and records its artifacts under the selected experiment
 directory.
 
+### Recommended laptop isolation
+
+Use [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) instead of a
+privileged Docker-in-Docker container or a host Docker socket mount. The
+Experimentalist runs inside an isolated microVM, while Harbor uses that
+sandbox's private Docker daemon for task containers:
+
+```bash
+repo="$(git rev-parse --show-toplevel)"
+sbx create --name nemo-experimentalist shell "$repo"
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env EXPERIMENTALIST_API_BASE \
+  --env EXPERIMENTALIST_API_KEY \
+  --env EXPERIMENTALIST_SMART_MODEL_NAME \
+  --env EXPERIMENTALIST_MID_MODEL_NAME \
+  --env EXPERIMENTALIST_FAST_MODEL_NAME \
+  nemo-experimentalist \
+  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
+  nemo experimentalist run
+```
+
+Append the run options described below. `UV_PROJECT_ENVIRONMENT` keeps the
+sandbox's Linux environment separate from the host checkout's `.venv`. On
+Apple silicon, Harbor tasks that publish only `linux/amd64` images do not run
+in the `linux/arm64` sandbox. This currently includes the Terminal-Bench
+`fix-git` task; use an x86_64 machine or VM for that suite.
+
 Configure the models before running an experiment:
 
 ```bash

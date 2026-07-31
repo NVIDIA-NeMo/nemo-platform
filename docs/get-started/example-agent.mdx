@@ -7,7 +7,7 @@ This provides a guide for how you can quickly load agent traces into your NeMo P
 
 ## Prerequisites
 
-- Git, GNU Make, uv, pnpm, Docker
+- Git, GNU Make, uv, pnpm, Docker, and Docker Sandboxes (`sbx`)
 - An NVIDIA Inference Gateway virtual key (`sk-...`) from `inference.nvidia.com`.
 
 ## 1. Clone and bootstrap NeMo Platform
@@ -97,10 +97,31 @@ uv run --frozen nemo workspaces create canonical-tau3-airline \
   --exist-ok
 ```
 
-Now we're ready to run the experimentalist!
+Run the experimentalist in a Docker Sandbox so that both the optimization
+process and Harbor's task containers are isolated from the host. The sandbox
+uses `host.docker.internal` to reach the NeMo Platform services running on the
+host:
 
 ```bash
-uv run --frozen nemo experimentalist run \
+repo="$(git rev-parse --show-toplevel)"
+sbx create --name nemo-experimentalist shell "$repo"
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env INFERENCE_API_KEY \
+  --env INFERENCE_API_BASE \
+  --env OPENAI_API_KEY \
+  --env OPENAI_BASE_URL \
+  --env EXPERIMENTALIST_API_KEY \
+  --env EXPERIMENTALIST_API_BASE \
+  --env EXPERIMENTALIST_SMART_MODEL_NAME \
+  --env EXPERIMENTALIST_MID_MODEL_NAME \
+  --env EXPERIMENTALIST_FAST_MODEL_NAME \
+  --env TAU2_USER_MODEL \
+  --env TAU2_NL_ASSERTIONS_MODEL \
+  --env AUT_MODEL_NAME \
+  nemo-experimentalist \
+  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
+  nemo experimentalist run \
   --no-insight \
   --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
   --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \
@@ -110,7 +131,7 @@ uv run --frozen nemo experimentalist run \
   --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
   --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-smoke.yaml \
   --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
-  --base-url "$NMP_BASE_URL"
+  --base-url http://host.docker.internal:8080
 ```
 
 The trace records include the Experimentalist evaluation ID and Tau3 task ID.
