@@ -89,6 +89,16 @@ NAT_WORKFLOW_CONFIG_FORMAT = "nat-workflow-v1"
 NEMO_AGENTS_SPEC_CONFIG_FORMAT = "nemo-agents-spec-v1"
 """Canonical format tag for the Platform-owned agent.yaml spec format."""
 
+# Container deployments deliver the spec fileset through a ConfigMap (k8s) or a
+# single env var (docker), both of which cap out around 1MiB. Bound the tree at
+# both ends of the pipe so an agent root pointed at a whole checkout fails at
+# upload time with a clear message instead of at container start.
+MAX_AGENT_SPEC_STAGED_BYTES = 900_000
+"""Maximum total bytes an agent spec fileset may contribute to a deployment."""
+
+MAX_AGENT_SPEC_STAGED_FILES = 500
+"""Maximum number of files an agent spec fileset may contain."""
+
 
 def agent_spec_fileset_name(agent_name: str) -> str:
     """Return the conventional fileset name holding an agent's spec."""

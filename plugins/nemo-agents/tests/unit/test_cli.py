@@ -12,7 +12,12 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-from nemo_agents_plugin.cli import AgentsCLI
+from nemo_agents_plugin.cli import (
+    MAX_AGENT_SPEC_STAGED_BYTES,
+    MAX_AGENT_SPEC_STAGED_FILES,
+    AgentsCLI,
+    _check_agent_root_bounds,
+)
 from typer.testing import CliRunner
 
 
@@ -285,6 +290,41 @@ def test_create_fabric_uploads_agent_spec_fileset(tmp_path) -> None:
     assert uploaded["local_dir"] == tmp_path
     assert uploaded["fileset"] == "fabric-agent-spec"
     assert uploaded["workspace"] == "default"
+    assert uploaded["sdk_base_url"] == "http://test"
+
+
+def test_check_agent_root_bounds_allows_small_agent_root(tmp_path) -> None:
+    (tmp_path / "agent.yaml").write_text("name: a\n")
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "skills" / "SKILL.md").write_text("# skill\n")
+
+    _check_agent_root_bounds(tmp_path)
+
+
+def test_check_agent_root_bounds_rejects_oversized_agent_root(tmp_path) -> None:
+    (tmp_path / "big.bin").write_bytes(b"x" * (MAX_AGENT_SPEC_STAGED_BYTES + 1))
+
+    with pytest.raises(ValueError, match="byte limit for container config delivery"):
+        _check_agent_root_bounds(tmp_path)
+
+
+def test_check_agent_root_bounds_rejects_too_many_files(tmp_path) -> None:
+    for index in range(MAX_AGENT_SPEC_STAGED_FILES + 1):
+        (tmp_path / f"f{index}.txt").write_text("x")
+
+    with pytest.raises(ValueError, match="more than"):
+        _check_agent_root_bounds(tmp_path)
+
+
+def test_check_agent_root_bounds_skips_symlinks(tmp_path) -> None:
+    outside = tmp_path.parent / "outside.bin"
+    outside.write_bytes(b"x" * (MAX_AGENT_SPEC_STAGED_BYTES + 1))
+    agent_root = tmp_path / "agent"
+    agent_root.mkdir()
+    (agent_root / "agent.yaml").write_text("name: a\n")
+    (agent_root / "link.bin").symlink_to(outside)
+
+    _check_agent_root_bounds(agent_root)
 
 
 def test_create_fabric_rolls_back_agent_when_fileset_upload_fails(tmp_path) -> None:

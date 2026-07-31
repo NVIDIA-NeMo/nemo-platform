@@ -62,6 +62,8 @@ from nemo_agents_plugin.cli_context import (
 )
 from nemo_agents_plugin.entities import (
     CONTAINER_DEPLOYMENT_MODES,
+    MAX_AGENT_SPEC_STAGED_BYTES,
+    MAX_AGENT_SPEC_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     agent_spec_fileset_name,
@@ -1576,6 +1578,35 @@ def _platform_sdk(base_url: str) -> Any:
     return NeMoPlatform(base_url=base_url)
 
 
+def _check_agent_root_bounds(agent_root: Path) -> None:
+    """Reject an agent root too large to deliver into a container deployment.
+
+    The upload is recursive with no server-side filtering, so an ``agent.yaml``
+    sitting in a source checkout would ship the whole tree and then fail at
+    container start when the ConfigMap/env payload is built. Fail here instead,
+    naming the limit that was exceeded.
+    """
+    total_bytes = 0
+    file_count = 0
+    for path in agent_root.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        file_count += 1
+        total_bytes += path.stat().st_size
+        if file_count > MAX_AGENT_SPEC_STAGED_FILES:
+            raise ValueError(
+                f"agent directory {str(agent_root)!r} holds more than "
+                f"{MAX_AGENT_SPEC_STAGED_FILES} files; point --agent-config at a "
+                "directory containing only the agent's own artifacts"
+            )
+        if total_bytes > MAX_AGENT_SPEC_STAGED_BYTES:
+            raise ValueError(
+                f"agent directory {str(agent_root)!r} exceeds the "
+                f"{MAX_AGENT_SPEC_STAGED_BYTES} byte limit for container config delivery; "
+                "point --agent-config at a directory containing only the agent's own artifacts"
+            )
+
+
 def _upload_agent_spec_fileset(
     *,
     agent_name: str,
@@ -1591,6 +1622,7 @@ def _upload_agent_spec_fileset(
     """
     from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
 
+    _check_agent_root_bounds(agent_root)
     upload_to_fileset(
         agent_root,
         fileset=agent_spec_fileset_name(agent_name),

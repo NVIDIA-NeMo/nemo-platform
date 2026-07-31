@@ -14,17 +14,13 @@ import yaml
 from nemo_agents_plugin.entities import (
     AGENT_CONFIG_FILENAME,
     AGENT_SPEC_FILENAME,
+    MAX_AGENT_SPEC_STAGED_BYTES,
     agent_spec_fileset_name,
 )
 from nemo_deployments_plugin.entities import ConfigFile
 from nemo_platform import NotFoundError
 
 logger = logging.getLogger(__name__)
-
-# Staged artifacts ride to the container inside a ConfigMap (k8s) or a single env
-# var (docker); both cap out around 1MiB, so refuse oversized filesets here with a
-# clear error instead of letting the container fail to start.
-_MAX_STAGED_BYTES = 900_000
 
 
 class FabricArtifactStagingError(ValueError):
@@ -123,10 +119,10 @@ def _collect_staged_config_files(
 
 def _validate_staged_size(config_files: list[ConfigFile], fileset_name: str) -> None:
     total = sum(len(config_file.content.encode("utf-8")) for config_file in config_files)
-    if total > _MAX_STAGED_BYTES:
+    if total > MAX_AGENT_SPEC_STAGED_BYTES:
         raise FabricArtifactStagingError(
             f"Agent spec fileset {fileset_name!r} stages {total} bytes across {len(config_files)} files, "
-            f"exceeding the {_MAX_STAGED_BYTES} byte limit for container config delivery"
+            f"exceeding the {MAX_AGENT_SPEC_STAGED_BYTES} byte limit for container config delivery"
         )
 
 

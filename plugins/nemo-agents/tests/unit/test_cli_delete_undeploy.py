@@ -13,7 +13,7 @@ Verifies:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import httpx
 import pytest
@@ -57,7 +57,7 @@ class TestDeleteConfirmation:
         mock_delete.assert_called_once_with(
             agent_name="my-agent",
             workspace="default",
-            base_url=mock_delete.call_args.kwargs["base_url"],
+            base_url=ANY,
         )
         assert "deleted" in result.output.lower()
 
