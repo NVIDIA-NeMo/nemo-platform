@@ -4,7 +4,13 @@
 """Tests for classification: role assignment, format/prompt-form axes, and dataset type."""
 
 from nemo_datasets_plugin.profiler.classify import classify
-from nemo_platform_plugin.files.dataset_profile import ColumnStats, FeatureSchema, MessageStats, Quantiles
+from nemo_platform_plugin.files.dataset_profile import (
+    CategoricalStats,
+    ColumnStats,
+    FeatureSchema,
+    MessageStats,
+    Quantiles,
+)
 
 
 def _f(name, dtype):
@@ -81,9 +87,50 @@ def test_scored_response_beats_prompt_completion():
     assert classify(features, {}).dataset_type == "scored_response"
 
 
-def test_unpaired_preference_needs_boolean_label():
+def test_unpaired_preference_accepts_a_boolean_label():
     features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "bool")]
     assert classify(features, {}).dataset_type == "unpaired_preference"
+
+
+def test_unpaired_preference_accepts_a_binary_integer_label():
+    # 0/1 is the usual on-disk encoding; requiring a bool made unpaired_preference unreachable for
+    # most real datasets.
+    features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "int64")]
+    stats = {"label": ColumnStats(categorical=CategoricalStats(distinct_count=2))}
+    assert classify(features, stats).dataset_type == "unpaired_preference"
+    assert features[2].semantic_role == "label"
+
+
+def test_wide_integer_label_is_not_a_preference_label():
+    # A multi-class index or a rating is a different claim from a binary preference.
+    features = [_f("prompt", "string"), _f("completion", "string"), _f("label", "int64")]
+    stats = {"label": ColumnStats(categorical=CategoricalStats(distinct_count=7))}
+    assert classify(features, stats).dataset_type == "prompt_completion"
+    assert features[2].semantic_role is None
+
+
+# --- rank ------------------------------------------------------------------------------------
+
+
+def test_rank_needs_something_to_rank():
+    # A lone numeric column named "rank" used to short-circuit every more specific structure.
+    features = [_f("rank", "int64")]
+    assert classify(features, {}).dataset_type == "unknown"
+
+
+def test_rank_does_not_override_a_preference_pair():
+    features = [_f("chosen", "string"), _f("rejected", "string"), _f("rank", "int64")]
+    assert classify(features, {}).dataset_type == "preference_pair"
+
+
+def test_rank_does_not_override_scored_responses():
+    features = [_f("prompt", "string"), _f("response", "string"), _f("helpfulness", "int64"), _f("rank", "int64")]
+    assert classify(features, {}).dataset_type == "scored_response"
+
+
+def test_rank_alongside_a_completion_is_ranked_responses():
+    features = [_f("prompt", "string"), _f("completion", "string"), _f("rank", "int64")]
+    assert classify(features, {}).dataset_type == "ranked_responses"
 
 
 def test_messages_ending_on_assistant_is_messages_type():

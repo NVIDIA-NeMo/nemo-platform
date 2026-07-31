@@ -88,13 +88,30 @@ def _is_numeric(dtype: str) -> bool:
     return dtype.startswith(("int", "uint", "float"))
 
 
-def _role_for(feature: FeatureSchema) -> str | None:
+def _is_binary(column: ColumnStats | None) -> bool:
+    """Whether a column was observed to hold at most two distinct values."""
+    return column is not None and column.categorical is not None and column.categorical.distinct_count <= 2
+
+
+def _is_label_column(feature: FeatureSchema, stats: dict[str, ColumnStats]) -> bool:
+    """Whether a column named ``label`` really carries a binary preference label.
+
+    A bool says so outright. An integer is the more common on-disk encoding (0/1, as KTO-style sets
+    ship it), but only when the observed values really are binary — a wider integer range is a class
+    index or a rating, which is a different claim, so it stays unroled.
+    """
+    if feature.dtype == "bool":
+        return True
+    return _is_numeric(feature.dtype) and _is_binary(stats.get(feature.name))
+
+
+def _role_for(feature: FeatureSchema, stats: dict[str, ColumnStats]) -> str | None:
     name = feature.name.lower()
     dtype = feature.dtype
     if name in _SCORE_ALIASES and _is_numeric(dtype):
         return "score"
-    if name == "label" and dtype == "bool":
-        return "label"
+    if name == "label":
+        return "label" if _is_label_column(feature, stats) else None
 
     role = _ALIAS_ROLES.get(name)
     if role is None:
@@ -111,14 +128,12 @@ def _role_for(feature: FeatureSchema) -> str | None:
         return None
     if role in {"stepwise_completions", "stepwise_labels"} and dtype != "list":
         return None
-    if role == "label":  # "label" reached here only when not bool
-        return None
     return role
 
 
-def _assign_roles(features: list[FeatureSchema]) -> None:
+def _assign_roles(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -> None:
     for feature in features:
-        role = _role_for(feature)
+        role = _role_for(feature, stats)
         if role is not None:
             feature.semantic_role = role
 
@@ -167,14 +182,17 @@ def _detect_type(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -
 
     if has("prompt", "stepwise_completions", "stepwise_labels"):
         return "stepwise_supervision"
-    if has("rank"):
-        return "ranked_responses"
+    if has("chosen", "rejected"):
+        return "preference_pair"
     if has("prompt", "completion", "score"):
         return "scored_response"
     if has("prompt", "completion", "label"):
         return "unpaired_preference"
-    if has("chosen", "rejected"):
-        return "preference_pair"
+    # `rank` is only a dataset type alongside something to rank. On its own it short-circuited every
+    # more specific structure above, so a stray numeric column named `rank` — or a ranked variant of
+    # a preference set — was enough to mislabel the dataset.
+    if has("rank") and roles & {"completion", "chosen", "rejected", "stepwise_completions"}:
+        return "ranked_responses"
     if has("prompt", "completion"):
         return "prompt_completion"
     if "messages" in roles:
@@ -299,7 +317,7 @@ def classify(
     detection; role/axis/type inference needs only the schema and stats.
     """
     rows = rows or []
-    _assign_roles(features)
+    _assign_roles(features, stats)
     roles = {feature.semantic_role for feature in features if feature.semantic_role}
     dataset_type = _detect_type(features, stats)
     fmt = _detect_format(features)
