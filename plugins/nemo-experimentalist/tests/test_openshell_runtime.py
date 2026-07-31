@@ -500,7 +500,12 @@ def test_provider_setup_uses_env_optimizer_key_and_upstream_model_id(tmp_path: P
     fake_bin.mkdir()
     openshell = fake_bin / "openshell"
     openshell.write_text(
-        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$OPENSHELL_TEST_LOG"\n',
+        r"""#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$OPENSHELL_TEST_LOG"
+if [[ "$*" == provider\ profile\ export* && "${OPENSHELL_TEST_PROFILE_EXISTS:-1}" == "0" ]]; then
+  exit 1
+fi
+""",
         encoding="utf-8",
     )
     openshell.chmod(0o755)
@@ -526,6 +531,11 @@ def test_provider_setup_uses_env_optimizer_key_and_upstream_model_id(tmp_path: P
 
     assert result.returncode == 0, result.stderr
     commands = command_log.read_text(encoding="utf-8").splitlines()
+    bridge_provider_delete = commands.index("provider delete nemo-experimentalist-harbor-bridge")
+    profile_delete = commands.index("provider profile delete nemo-experimentalist-harbor-bridge")
+    profile_lint = commands.index(f"provider profile lint --from {profile_dir}")
+    profile_import = commands.index(f"provider profile import --from {profile_dir}")
+    assert bridge_provider_delete < profile_delete < profile_lint < profile_import
     inference_provider = next(
         command for command in commands if "provider create --name nemo-experimentalist-inference" in command
     )
@@ -533,6 +543,29 @@ def test_provider_setup_uses_env_optimizer_key_and_upstream_model_id(tmp_path: P
     assert "--from-existing" not in inference_provider
     assert "optimizer-secret" not in "\n".join(commands)
     assert "inference set --provider nemo-experimentalist-inference --model openai/gpt-5-mini" in commands
+
+    missing_profile_log = tmp_path / "missing-profile.log"
+    missing_profile_env = {
+        **env,
+        "OPENSHELL_TEST_LOG": str(missing_profile_log),
+        "OPENSHELL_TEST_PROFILE_EXISTS": "0",
+    }
+    missing_profile_result = subprocess.run(
+        [str(OPEN_SHELL_ROOT / "configure-providers.sh")],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=missing_profile_env,
+    )
+
+    assert missing_profile_result.returncode == 0, missing_profile_result.stderr
+    missing_profile_commands = missing_profile_log.read_text(encoding="utf-8").splitlines()
+    profile_commands = [command for command in missing_profile_commands if command.startswith("provider profile")]
+    assert profile_commands == [
+        "provider profile export nemo-experimentalist-harbor-bridge -o yaml",
+        f"provider profile lint --from {profile_dir}",
+        f"provider profile import --from {profile_dir}",
+    ]
 
 
 def test_test_module_import_does_not_replace_real_runner() -> None:

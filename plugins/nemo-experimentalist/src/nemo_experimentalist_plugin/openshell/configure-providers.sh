@@ -32,10 +32,6 @@ mkdir -p "$profile_dir"
 cp "$profile_source" "$profile_dir/"
 
 openshell settings set --global --key providers_v2_enabled --value true --yes
-openshell provider profile lint --from "$profile_dir"
-if ! openshell provider profile export "$bridge_provider_type" -o yaml >/dev/null 2>&1; then
-  openshell provider profile import --from "$profile_dir"
-fi
 
 bridge_provider_created=0
 cleanup_failed_setup() {
@@ -51,6 +47,12 @@ trap cleanup_failed_setup EXIT
 if openshell provider get "$bridge_provider" >/dev/null 2>&1; then
   openshell provider delete "$bridge_provider"
 fi
+if openshell provider profile export "$bridge_provider_type" -o yaml >/dev/null 2>&1; then
+  openshell provider profile delete "$bridge_provider_type"
+fi
+openshell provider profile lint --from "$profile_dir"
+openshell provider profile import --from "$profile_dir"
+
 bridge_provider_created=1
 openshell provider create \
   --name "$bridge_provider" \
