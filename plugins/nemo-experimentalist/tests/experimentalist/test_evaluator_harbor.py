@@ -20,6 +20,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluatorConfig,
     HarborVerifierValidationError,
     _chmod_path_chain,
+    _cleanup_cancelled_harbor_projects,
     _cleanup_scoped_imports,
     _ensure_package,
     _python_syntax_failure,
@@ -95,6 +96,7 @@ def _recording_job(job_dir: Path):
         def __init__(self, config) -> None:
             self.config = config
             self.job_dir = job_dir
+            self.started_hook = None
 
         @classmethod
         async def create(cls, config):
@@ -105,6 +107,10 @@ def _recording_job(job_dir: Path):
         async def run(self):
             type(self).run_calls += 1
             return SimpleNamespace(id="job-id", stats=None)
+
+        def on_trial_started(self, callback):
+            self.started_hook = callback
+            return self
 
     return RecordingJob
 
@@ -720,6 +726,10 @@ async def test_harbor_evaluator_runs_job_and_maps_output(tmp_path: Path, monkeyp
         async def run(self):
             return SimpleNamespace(id="job-id", stats=FakeStats())
 
+        def on_trial_started(self, callback):
+            self.started_hook = callback
+            return self
+
     monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", FakeJob)
 
     result = await evaluator.run(
@@ -973,6 +983,82 @@ async def test_harbor_evaluator_accepts_valid_python_verifier(
     assert trials == []
     assert fake_job.create_calls == 1
     assert fake_job.run_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_harbor_evaluator_cleans_started_projects_on_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    task_dir = tmp_path / "task-a"
+    _write(task_dir / "task.toml", "")
+    dataset = HarborDataset.from_path(task_dir)
+    cleaned: list[set[str]] = []
+
+    class CancelledJob:
+        def __init__(self, config) -> None:
+            self.config = config
+            self.job_dir = tmp_path / "jobs" / "cancelled"
+            self.started_hook = None
+
+        @classmethod
+        async def create(cls, config):
+            return cls(config)
+
+        def on_trial_started(self, callback):
+            self.started_hook = callback
+            return self
+
+        async def run(self):
+            assert self.started_hook is not None
+            await self.started_hook(SimpleNamespace(trial_name="task-a__abc123"))
+            raise asyncio.CancelledError
+
+    async def fake_cleanup(trial_names: set[str]) -> None:
+        cleaned.append(trial_names)
+
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", CancelledJob)
+    monkeypatch.setattr(
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor._cleanup_cancelled_harbor_projects",
+        fake_cleanup,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
+
+    assert cleaned == [{"task-a__abc123"}]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_harbor_cleanup_removes_only_matching_compose_projects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    async def fake_docker_command(args) -> str:
+        command = tuple(args)
+        calls.append(command)
+        if command[:2] == ("container", "ls"):
+            return "c1\ttask-a__abc123__env\nc2\tother-task__xyz__env"
+        if command[:2] == ("network", "ls"):
+            return "n1\ttask-a__abc123__env"
+        if command[:2] == ("volume", "ls"):
+            return "v1\ttask-a__abc123__verifier__step"
+        return ""
+
+    monkeypatch.setattr(
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor._docker_cleanup_command",
+        fake_docker_command,
+    )
+
+    await _cleanup_cancelled_harbor_projects({"task-a__abc123"})
+
+    assert ("container", "rm", "--force", "c1") in calls
+    assert ("network", "rm", "n1") in calls
+    assert ("volume", "rm", "--force", "v1") in calls
+    assert all("c2" not in command for command in calls)
 
 
 @pytest.mark.asyncio
@@ -1418,6 +1504,10 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
 
         async def run(self):
             return SimpleNamespace(id="job-id", stats=None)
+
+        def on_trial_started(self, callback):
+            self.started_hook = callback
+            return self
 
     monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", FakeJob)
 
