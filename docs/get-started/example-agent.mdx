@@ -47,9 +47,14 @@ You should now be able to navigate to `http://localhost:8080` and see the NeMo P
 ## 3. Run the Tau3 Airline agent with Harbor
 
 Now that NeMo Platform is running, evaluate the checked-in Tau3 NOOA example
-agent against `sierra-research/tau3-bench@1` from Harbor Hub. The Insights
-testbed downloads the dataset through Harbor, runs six Airline tasks, and
-uploads the resulting traces and verifier rewards into NeMo Platform.
+agent against version 1 of the
+[`sierra-research/tau3-bench`](https://hub.harborframework.com/datasets/sierra-research/tau3-bench/latest)
+dataset on Harbor Hub. Tau3 simulates customer-service conversations across
+airline, retail, telecom, and banking domains. Each task gives the agent a user
+request, domain policy, and domain-specific tools, then uses a verifier to score
+the outcome. This guide selects six Airline tasks from the larger dataset. The
+Insights testbed runs them and uploads their traces and verifier rewards into
+NeMo Platform.
 
 This can take 20 minutes or longer because Harbor builds task containers and
 runs model-backed user simulation.
