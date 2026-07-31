@@ -31,6 +31,21 @@ from typing import Any
 
 import yaml
 
+
+def read_front_matter(text: str | bytes) -> dict[str, Any]:
+    """Parse the YAML front matter of a rendered report.
+
+    Lives here rather than in the plugin because only tests read a report back; the
+    artifact's consumer is a later agent outside this codebase.
+    """
+    if isinstance(text, bytes):
+        text = text.decode("utf-8")
+    assert text.startswith("---\n"), f"no front matter in {text[:40]!r}"
+    payload = yaml.safe_load(text[4:].partition("\n---\n")[0])
+    assert isinstance(payload, dict)
+    return payload
+
+
 WRITES_REWARD = "#!/bin/bash\necho 1 > /logs/verifier/reward.txt\n"
 
 # What Harbor's own template ships: a comment telling the author to write a reward, and no

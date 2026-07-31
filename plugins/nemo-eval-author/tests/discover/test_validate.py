@@ -54,8 +54,22 @@ async def test_a_well_formed_repo_passes_every_rung(tmp_path):
     assert _finding(outcome, "tasks").message.startswith("2 of 2")
     assert _finding(outcome, "schema").harbor_call == "JobConfig.model_validate"
     assert _finding(outcome, "resolution").harbor_call == "Job.create"
-    # Every verdict must be attributable to Harbor, or the artifact is not trustworthy.
-    assert all(item.provenance == "harbor" for item in outcome.findings)
+
+
+async def test_only_a_verdict_harbor_returned_claims_a_harbor_call(tmp_path):
+    """``harbor_call`` is what tells a reader a finding is as true as the run would be.
+
+    The reward advisory reads the test scripts itself, so it must not carry one. Naming a
+    Harbor API there would dress a text search up as something Harbor vouched for.
+    """
+    write_dataset(tmp_path / "evals" / "validation", count=1)
+    candidate = _candidate({"datasets": [{"path": str(tmp_path / "evals/validation")}]})
+
+    outcome = await validate.run_ladder(candidate, tmp_path)
+
+    assert _finding(outcome, "reward").harbor_call is None
+    judged_by_harbor = [item for item in outcome.findings if item.name != "reward"]
+    assert judged_by_harbor and all(item.harbor_call for item in judged_by_harbor)
 
 
 async def test_schema_failure_names_the_harbor_validator(tmp_path):
@@ -132,8 +146,12 @@ async def test_a_config_that_really_resolves_no_tasks_is_still_the_repo_s_failur
 
 
 async def test_a_task_harbor_silently_skips_is_reported(tmp_path):
-    """Harbor drops a directory it cannot parse without raising, so a run would score fewer
-    tasks than the repo holds and nothing about the result would look incomplete."""
+    """Harbor drops a directory it cannot parse without raising.
+
+    Nothing else in the ladder catches this: the tasks rung only sees what Harbor
+    resolved, so it reports one of one valid while the repo holds two. The run would then
+    score half the suite and look complete doing it.
+    """
     dataset = tmp_path / "evals" / "validation"
     write_task(dataset / "task-0")
     write_task(dataset / "task-1", instruction=None)
@@ -141,8 +159,7 @@ async def test_a_task_harbor_silently_skips_is_reported(tmp_path):
 
     outcome = await validate.run_ladder(candidate, tmp_path)
 
-    # Harbor resolved only the good one, so the tasks rung sees nothing wrong.
-    assert _finding(outcome, "tasks").message.startswith("1 of 1")
+    assert _finding(outcome, "tasks").message.startswith("1 of 1"), "the tasks rung cannot see the dropped one"
     coverage = _finding(outcome, "coverage")
     assert coverage.status == "fail"
     assert "task-1" in coverage.message
@@ -162,17 +179,38 @@ async def test_a_dataset_that_selects_a_subset_is_not_accused_of_dropping_tasks(
     assert _repo_failures(outcome) == []
 
 
-async def test_a_scaffolded_task_that_never_writes_a_reward_is_caught(tmp_path):
-    """Harbor's own template mentions the reward file only in a comment."""
+async def test_a_scaffolded_task_that_never_names_a_reward_is_flagged_without_blocking(tmp_path):
+    """Harbor's own template mentions the reward file only in a comment.
+
+    Worth saying, because the trial would run and then raise. Not worth failing over: the
+    check is a text search, and a script that builds the path in a variable looks identical
+    to one that writes nothing.
+    """
     dataset = write_dataset(tmp_path / "evals" / "validation", count=1, test_script=MENTIONS_REWARD_IN_COMMENT)
     candidate = _candidate({"datasets": [{"path": str(dataset)}]})
 
     outcome = await validate.run_ladder(candidate, tmp_path)
 
     reward = _finding(outcome, "reward")
-    assert reward.status == "fail"
-    assert _finding(outcome, "tasks").status == "pass", "the task is structurally fine; only its scoring is broken"
+    assert reward.status == "warn"
+    assert _repo_failures(outcome) == [], "a heuristic must not block a repo Harbor accepted"
+    assert _finding(outcome, "tasks").status == "pass", "the task is structurally fine; only its scoring is doubtful"
     assert reward.hint is not None and "RewardFileNotFoundError" in reward.hint
+
+
+async def test_a_reward_written_through_a_variable_is_not_called_a_failure(tmp_path):
+    """The false negative that makes this check unfit to gate on: the script does score."""
+    dataset = write_dataset(
+        tmp_path / "evals" / "validation",
+        count=1,
+        test_script='#!/bin/bash\nOUT=/logs/verifier\nprintf 1 > "$OUT/reward.$(echo txt)"\n',
+    )
+    candidate = _candidate({"datasets": [{"path": str(dataset)}]})
+
+    outcome = await validate.run_ladder(candidate, tmp_path)
+
+    assert _finding(outcome, "reward").status == "warn"
+    assert _repo_failures(outcome) == []
 
 
 async def test_a_multi_step_task_is_valid_without_a_root_instruction(tmp_path):
@@ -209,7 +247,7 @@ async def test_a_multi_step_task_is_checked_for_a_reward_in_every_step(tmp_path)
     outcome = await validate.run_ladder(candidate, tmp_path)
 
     assert _finding(outcome, "tasks").status == "pass"
-    assert _finding(outcome, "reward").status == "fail"
+    assert _finding(outcome, "reward").status == "warn"
 
 
 async def test_a_windows_task_needing_test_bat_is_not_a_failure(tmp_path):
@@ -236,9 +274,7 @@ async def test_a_task_graded_in_a_separate_verifier_image_needs_no_host_script(t
     outcome = await validate.run_ladder(candidate, tmp_path)
 
     assert _finding(outcome, "tasks").status == "pass"
-    reward = _finding(outcome, "reward")
-    assert reward.status == "pass"
-    assert "separate verifier image" in reward.message
+    assert _finding(outcome, "reward").status == "pass", "an image-graded task ships no host script to read"
 
 
 async def test_a_task_naming_a_prebuilt_image_needs_no_dockerfile(tmp_path):

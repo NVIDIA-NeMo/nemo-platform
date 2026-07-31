@@ -24,7 +24,6 @@ from typing import Any
 
 import yaml
 from nemo_eval_author_plugin.discovery.models import (
-    SOURCE_PRIORITY,
     CandidateConfig,
     ConfigSource,
     Finding,
@@ -476,8 +475,3 @@ def read_profile_agent(profile_path: Path) -> str | None:
         return load_profile_model(profile_path, _DiscoveryProfile).agent
     except ProfileError:
         return None
-
-
-def source_priority() -> tuple[str, ...]:
-    """Exposed so the report can explain the ranking it applied."""
-    return SOURCE_PRIORITY

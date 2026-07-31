@@ -79,7 +79,7 @@ def display_path(path: Path, repo_root: Path) -> str:
         return str(path)
 
 
-def find_doctrine(repo_root: Path) -> tuple[Path | None, Finding]:
+def find_doctrine(repo_root: Path) -> Finding:
     """Locate the document describing what the agent is supposed to do.
 
     Recording which name matched makes the report double as a signal for the
@@ -88,7 +88,7 @@ def find_doctrine(repo_root: Path) -> tuple[Path | None, Finding]:
     for name in _DOCTRINE_FILENAMES:
         candidate = repo_root / name
         if candidate.is_file():
-            return candidate, Finding(
+            return Finding(
                 name="doctrine",
                 group=_GROUP,
                 status="pass",
@@ -98,7 +98,7 @@ def find_doctrine(repo_root: Path) -> tuple[Path | None, Finding]:
                     "ETHOS.md is the current name; this repo predates the rename." if name == "AGENT-SPEC.md" else None
                 ),
             )
-    return None, Finding(
+    return Finding(
         name="doctrine",
         group=_GROUP,
         status="warn",
@@ -107,7 +107,7 @@ def find_doctrine(repo_root: Path) -> tuple[Path | None, Finding]:
     )
 
 
-def find_skills(repo_root: Path) -> tuple[list[Path], Finding]:
+def find_skills(repo_root: Path) -> Finding:
     """Find Harbor skill bundles, the directories a ``SKILL.md`` marks.
 
     These are what ``harbor.skills`` resolves for ``AgentConfig.skills`` and mounts at
@@ -116,7 +116,7 @@ def find_skills(repo_root: Path) -> tuple[list[Path], Finding]:
     """
     skills = [directory for directory in walk_dirs(repo_root) if (directory / _SKILL_FILENAME).is_file()]
     if not skills:
-        return [], Finding(
+        return Finding(
             name="skills",
             group=_GROUP,
             status="warn",
@@ -126,7 +126,7 @@ def find_skills(repo_root: Path) -> tuple[list[Path], Finding]:
 
     listed = ", ".join(display_path(path, repo_root) for path in skills[:_MAX_LISTED_SKILLS])
     remainder = len(skills) - _MAX_LISTED_SKILLS
-    return skills, Finding(
+    return Finding(
         name="skills",
         group=_GROUP,
         status="pass",

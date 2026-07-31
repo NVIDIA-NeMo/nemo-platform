@@ -4,21 +4,18 @@
 """Render the two artifacts discover persists.
 
 ``harbor-job.yaml`` is the config a later agent hands to Harbor. ``discovery.md`` is the
-story around it: which source won, what every rung of the ladder concluded, what a run
+record around it: which source won, what every rung of the ladder concluded, what a run
 needs from the host, and what is blocking when something is.
 
-The markdown leads with front matter rather than prose because the first reader is a
-program. ``runnable`` and ``inputs_digest`` are what let a later run skip everything here:
-if the digest still matches and the flag is true, nothing about the repo that produced this
-verdict has moved.
+The markdown leads with front matter because the first reader is a program: ``runnable``
+and ``run_config`` are the whole machine-readable contract, and the body below them is a
+short human summary of the same thing.
 
 Paths in the persisted config are rewritten relative to the repo root. An absolute path
 would encode this machine into an artifact meant to outlive it, so the config is written to
 be run from ``repo_root``, and the front matter records where that is.
 """
 
-import hashlib
-import json
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -27,12 +24,10 @@ from typing import Any
 import yaml
 from harbor.models.job.config import JobConfig
 from nemo_eval_author_plugin.discovery.models import (
-    FILESET_NAME,
     JOB_CONFIG_FILENAME,
     CandidateConfig,
     DiscoveryReport,
     Finding,
-    InputFingerprint,
     RequiredEnvVar,
     RunTarget,
 )
@@ -53,22 +48,6 @@ def harbor_version() -> str:
         return "unknown"
 
 
-def fingerprint_inputs(paths: list[Path], repo_root: Path) -> list[InputFingerprint]:
-    """Hash every file a verdict was derived from, deduped and ordered for stability."""
-    seen: dict[str, str] = {}
-    for path in paths:
-        if not path.is_file():
-            continue
-        key = display_path(path, repo_root)
-        if key in seen:
-            continue
-        try:
-            seen[key] = hashlib.sha256(path.read_bytes()).hexdigest()
-        except OSError:
-            continue
-    return [InputFingerprint(path=key, sha256=seen[key]) for key in sorted(seen)]
-
-
 def build_report(
     *,
     agent: str,
@@ -77,11 +56,8 @@ def build_report(
     candidate: CandidateConfig | None,
     findings: list[Finding],
     required_env_vars: list[RequiredEnvVar],
-    inputs: list[InputFingerprint],
     discovered_at: datetime | None = None,
-    last_validated_at: datetime | None = None,
 ) -> DiscoveryReport:
-    now = discovered_at or datetime.now(UTC)
     return DiscoveryReport(
         agent=agent,
         workspace=workspace,
@@ -90,9 +66,7 @@ def build_report(
         config_source=candidate.source if candidate is not None else None,
         findings=findings,
         required_env_vars=required_env_vars,
-        inputs=inputs,
-        discovered_at=now,
-        last_validated_at=last_validated_at or now,
+        discovered_at=discovered_at or datetime.now(UTC),
     )
 
 
@@ -138,6 +112,7 @@ def render_markdown(report: DiscoveryReport) -> str:
 
 def _front_matter(report: DiscoveryReport) -> dict[str, Any]:
     source = report.config_source
+    target = run_target(report)
     return {
         "schema_version": report.schema_version,
         "agent": report.agent,
@@ -149,14 +124,11 @@ def _front_matter(report: DiscoveryReport) -> dict[str, Any]:
                 "kind": source.kind,
                 "detail": source.detail,
                 "path": display_path(source.path, report.repo_root) if source.path else None,
-                # Carried so a reused report resolves to the same run_config. Without it, a
-                # repo whose config we had to adjust would read back as ours to run.
-                "adjusted": source.adjusted,
             }
             if source is not None
             else None
         ),
-        "run_config": (target.model_dump() if (target := run_target(report)) is not None else None),
+        "run_config": target.model_dump() if target is not None else None,
         "validation": {finding.name: finding.status for finding in report.findings if finding.group == "validation"},
         "harbor_version": report.harbor_version,
         "required_env_vars": [
@@ -168,93 +140,43 @@ def _front_matter(report: DiscoveryReport) -> dict[str, Any]:
             for item in report.required_env_vars
         ],
         "discovered_at": report.discovered_at.isoformat(),
-        "last_validated_at": report.last_validated_at.isoformat(),
-        "inputs_digest": report.inputs_digest,
-        "inputs": [{"path": item.path, "sha256": item.sha256} for item in report.inputs],
     }
 
 
 def _body(report: DiscoveryReport) -> list[str]:
     lines = [f"# Harbor eval setup for `{report.agent}`", ""]
     lines += _verdict_section(report)
-    lines += _how_to_run_section(report)
-    lines += _validation_section(report)
+    lines += _findings_section(report)
     lines += _env_section(report)
-    lines += _repo_section(report)
-    lines += _inputs_section(report)
     return lines
 
 
 def _verdict_section(report: DiscoveryReport) -> list[str]:
     target = run_target(report)
-    if target is not None:
-        source = report.config_source
-        detail = source.detail if source is not None else "unknown"
-        return [
-            f"Harbor can run this repo's evals. The config was {detail}, and every check in "
-            f"*What Harbor checked* below was answered by Harbor {report.harbor_version} rather "
-            "than inferred.",
-            "",
-        ]
-
-    lines = ["**Harbor cannot run this repo's evals yet.** Blocking:", ""]
-    for finding in report.blocking:
-        lines.append(f"- **{finding.name}** — {finding.message}")
-        if finding.harbor_call:
-            lines.append(f"  - reported by `{finding.harbor_call}`")
-        if finding.hint:
-            lines.append(f"  - {finding.hint}")
-    lines.append("")
-    if report.config_source is None:
-        lines += [
-            "No config could be assembled at all, so there is nothing to fix incrementally. "
-            "Start with `harbor job init` and rerun discovery.",
-            "",
-        ]
-    else:
-        lines += [
-            f"`{JOB_CONFIG_FILENAME}` is not part of this record: a config is only persisted "
-            "once Harbor accepts its schema, so its absence means do not try to run one.",
-            "",
-        ]
-    return lines
-
-
-def _how_to_run_section(report: DiscoveryReport) -> list[str]:
-    target = run_target(report)
     if target is None:
-        return []
-    lines = [
-        "## Running it",
-        "",
-        "Harbor runs local task directories through `-c` and no other way: `--dataset` and "
-        "`--task` name registry packages, so a filesystem path given to either is read as a "
-        "package reference. The config below is that file.",
-        "",
-    ]
+        lines = ["**Harbor cannot run this repo's evals yet.** Blocking:", ""]
+        for finding in report.blocking:
+            lines.append(f"- **{finding.name}** — {finding.message}")
+            if finding.harbor_call:
+                lines.append(f"  - reported by `{finding.harbor_call}`")
+            if finding.hint:
+                lines.append(f"  - {finding.hint}")
+        return [*lines, ""]
+
+    source = report.config_source
     if target.location == "repo":
         config_arg = target.path
-        lines += [
-            f"This repo maintains its own config at `{config_arg}`, and that file is what Harbor "
-            f"accepted here, so run it rather than a copy of it. From `{report.repo_root}`, "
-            "because its paths are relative to the repo:",
-            "",
-        ]
+        where = f"From `{report.repo_root}`, because the config's paths are relative to it:"
     else:
         config_arg = JOB_CONFIG_FILENAME
-        lines += [
-            "Nothing in this repo declares a Harbor job config, so discovery wrote the one it "
-            f"validated. Fetch it into `{report.repo_root}`, the directory its relative paths "
-            "assume:",
-            "",
-            "```bash",
-            f"nemo files download {FILESET_NAME} --workspace {report.workspace} --remote-path {target.path} -o .",
-            "```",
-            "",
-            "Then, from that same directory:",
-            "",
-        ]
-    lines += [
+        where = f"Fetch `{target.path}` from the `{report.workspace}` workspace into `{report.repo_root}`, then:"
+
+    lines = [
+        f"Harbor {report.harbor_version} can run this repo's evals. The config was "
+        f"{source.detail if source is not None else 'unknown'}.",
+        "",
+        where,
+        "",
         "```bash",
         f"harbor job start -c {config_arg}",
         "```",
@@ -263,83 +185,39 @@ def _how_to_run_section(report: DiscoveryReport) -> list[str]:
     if report.required_env_vars:
         names = " ".join(f"{item.name}=..." for item in report.required_env_vars)
         lines += [f"Set the host variables first: `{names}`", ""]
-    lines += [
-        "To confirm the tasks are solvable before trusting any agent's score, run Harbor's "
-        "oracle, which replays each task's own solution and should score 1.0:",
-        "",
-        "```bash",
-        f"harbor run -a oracle -c {config_arg}",
-        "```",
-        "",
-        "Discovery does not run this itself, because unlike every check above it builds and starts containers.",
-        "",
-    ]
     return lines
 
 
-def _validation_section(report: DiscoveryReport) -> list[str]:
-    rungs = [finding for finding in report.findings if finding.group == "validation"]
-    if not rungs:
-        return []
-    lines = [
-        "## What Harbor checked",
-        "",
-        "Each line is a Harbor call, so a failure here is the error a real run would hit.",
-        "",
-    ]
-    for finding in rungs:
-        lines.append(f"- `{_STATUS_MARK[finding.status]}` **{finding.name}**: {finding.message}")
-        if finding.harbor_call:
-            lines.append(f"  - via `{finding.harbor_call}`")
-        if finding.hint:
-            lines.append(f"  - {finding.hint}")
-    lines.append("")
+def _findings_section(report: DiscoveryReport) -> list[str]:
+    groups = [("validation", "What Harbor checked"), ("repo", "Repo shape")]
+    lines: list[str] = []
+    for group, heading in groups:
+        items = [finding for finding in report.findings if finding.group == group]
+        if not items:
+            continue
+        lines += [f"## {heading}", ""]
+        for finding in items:
+            call = f" (`{finding.harbor_call}`)" if finding.harbor_call else ""
+            lines.append(f"- `{_STATUS_MARK[finding.status]}` **{finding.name}**: {finding.message}{call}")
+            if finding.hint:
+                lines.append(f"  - {finding.hint}")
+        lines.append("")
     return lines
 
 
 def _env_section(report: DiscoveryReport) -> list[str]:
     if not report.required_env_vars:
-        return ["## Host variables", "", "The config templates no host variables.", ""]
+        return []
     lines = [
         "## Host variables",
         "",
-        "Harbor resolves these from the environment at trial start and raises on a missing "
-        "one. Whether this machine has them is a separate question, which `nemo eval-author "
-        "doctor` answers.",
+        "Harbor resolves these from the environment at trial start and raises on a missing one.",
         "",
     ]
     for item in report.required_env_vars:
         default = f", default `{item.default}`" if item.default is not None else ", no default"
         lines.append(f"- `{item.name}`{default} — declared in `{display_path(item.declared_in, report.repo_root)}`")
-    lines.append("")
-    return lines
-
-
-def _repo_section(report: DiscoveryReport) -> list[str]:
-    probes = [finding for finding in report.findings if finding.group == "repo"]
-    if not probes:
-        return []
-    lines = [
-        "## Repo shape",
-        "",
-        "Context for authoring evals rather than running them, so nothing here blocks a run.",
-        "",
-    ]
-    for finding in probes:
-        lines.append(f"- `{_STATUS_MARK[finding.status]}` **{finding.name}**: {finding.message}")
-    lines.append("")
-    return lines
-
-
-def _inputs_section(report: DiscoveryReport) -> list[str]:
-    return [
-        "## Freshness",
-        "",
-        f"Derived from {len(report.inputs)} file(s), digest `{report.inputs_digest}`. Rerun "
-        "`nemo eval-author discover` to compare: an unchanged digest means these verdicts "
-        "still hold and the ladder can be skipped.",
-        "",
-    ]
+    return [*lines, ""]
 
 
 def _relativize(payload: Any, repo_root: Path) -> Any:
@@ -361,9 +239,3 @@ def _relativize(payload: Any, repo_root: Path) -> Any:
         if payload.startswith(prefix):
             return Path(payload).relative_to(repo_root).as_posix()
     return payload
-
-
-def canonical_digest(value: Any) -> str:
-    """Hash a structure the way the rest of this plugin does, for cross-run comparison."""
-    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"

@@ -137,7 +137,6 @@ def test_a_config_file_is_read_as_written_and_stays_owned_by_the_repo(tmp_path):
 
     assert candidate is not None
     assert candidate.data["environment"] == {"type": "daytona"}
-    assert candidate.source.adjusted is False
     assert candidate.source.owns_file is True
 
 

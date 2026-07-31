@@ -9,9 +9,8 @@ child tickets have a landing spot. The ones still unimplemented exit non-zero.
 This module imports nothing from ``eval_author``: those agents build their LLM client while
 the class body executes, so importing one here would make the whole CLI require ``AUTHOR_*``
 credentials — including the ``doctor`` verb whose job is to report that they are missing.
-``discovery.run`` is safe to import because it defers the one module that builds a client.
-Experimentalist's CLI keeps its runner behind a lazily-assigned module global for the same
-reason.
+``discovery.run`` builds no client at import, so it is safe. Experimentalist's CLI keeps its
+runner behind a lazily-assigned module global for the same reason.
 """
 
 import asyncio
@@ -28,7 +27,7 @@ _STATUS_MARK = {"pass": "  ok  ", "warn": " warn ", "fail": " FAIL "}
 
 # Order the ladder's own sequence, so the printed report reads the way validation ran
 # rather than the way findings happened to accumulate.
-_GROUP_ORDER = ("config", "validation", "repo", "scout", "memory")
+_GROUP_ORDER = ("config", "validation", "repo", "memory")
 
 
 def _not_implemented(command: str, ticket: str) -> NoReturn:
@@ -44,23 +43,10 @@ def _echo_finding(finding: Finding) -> None:
 def _report_discovery(result: discovery.DiscoverResult) -> None:
     """Print the run, then the verdict, because the verdict is what the reader came for."""
     record = result.report
-    if result.reused:
-        typer.echo(
-            f"Nothing the previous report depended on has changed, so its verdict still holds "
-            f"(revalidated {record.last_validated_at.isoformat()})."
-        )
-        # This branch is deliberately terse, but a failed re-upload is the one thing it
-        # cannot stay quiet about: without the warning, the exit code says the record was
-        # not written and nothing says why. Passes are skipped because the "Recorded to
-        # fileset ..." line below already reports them.
-        for finding in result.memory_findings:
-            if finding.status != "pass":
-                _echo_finding(finding)
-    else:
-        findings = [*record.findings, *result.memory_findings]
-        for group in _GROUP_ORDER:
-            for finding in (item for item in findings if item.group == group):
-                _echo_finding(finding)
+    findings = [*record.findings, *result.memory_findings]
+    for group in _GROUP_ORDER:
+        for finding in (item for item in findings if item.group == group):
+            _echo_finding(finding)
 
     typer.echo("")
     target = run_target(record)
@@ -118,33 +104,21 @@ class EvalAuthorCLI(NemoCLI):
                 str | None,
                 typer.Option("--agent", help="Agent name. Defaults to optimizer.yaml, else the directory name."),
             ] = None,
-            fix: Annotated[
-                bool,
-                typer.Option(
-                    "--dangerously-fix",
-                    help=(
-                        "Let an LLM scout propose fixes for a config Harbor rejected. The scout runs shell "
-                        "commands in the repo under inspection with no sandbox. Only use it on a repo you trust."
-                    ),
-                ),
-            ] = False,
-            refresh: Annotated[
-                bool,
-                typer.Option("--refresh", help="Revalidate even when nothing the last report depended on moved."),
-            ] = False,
             dry_run: Annotated[
                 bool,
                 typer.Option("--dry-run", help="Print the findings and config without uploading anything."),
             ] = False,
         ) -> None:
-            """Find and validate how this repo runs Harbor evals, then record it."""
+            """Find and validate how this repo runs Harbor evals, then record it.
+
+            Validating a config imports the repo's agent module into this process, which runs
+            that module's top level. Only point this at a repo you trust.
+            """
             result = asyncio.run(
                 discovery.discover(
                     discovery.DiscoverOptions(
                         repo_root=repo,
                         agent=agent,
-                        fix=fix,
-                        refresh=refresh,
                         dry_run=dry_run,
                     )
                 )

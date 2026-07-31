@@ -19,9 +19,9 @@ def test_ethos_is_preferred_over_the_name_it_replaced(tmp_path):
     (tmp_path / "ETHOS.md").write_text("# New\n")
     (tmp_path / "README.md").write_text("# Readme\n")
 
-    path, finding = scan.find_doctrine(tmp_path)
+    finding = scan.find_doctrine(tmp_path)
 
-    assert path == tmp_path / "ETHOS.md"
+    assert finding.path == tmp_path / "ETHOS.md"
     assert finding.status == "pass"
     assert finding.hint is None
 
@@ -31,25 +31,25 @@ def test_the_old_name_still_works_and_says_so(tmp_path):
     (tmp_path / "AGENT-SPEC.md").write_text("# Old\n")
     (tmp_path / "README.md").write_text("# Readme\n")
 
-    path, finding = scan.find_doctrine(tmp_path)
+    finding = scan.find_doctrine(tmp_path)
 
-    assert path == tmp_path / "AGENT-SPEC.md"
+    assert finding.path == tmp_path / "AGENT-SPEC.md"
     assert finding.hint is not None and "predates the rename" in finding.hint
 
 
 def test_readme_is_the_last_resort(tmp_path):
     (tmp_path / "README.md").write_text("# Readme\n")
 
-    path, finding = scan.find_doctrine(tmp_path)
+    finding = scan.find_doctrine(tmp_path)
 
-    assert path == tmp_path / "README.md"
+    assert finding.path == tmp_path / "README.md"
     assert finding.status == "pass"
 
 
 def test_no_doctrine_is_a_warning_not_a_failure(tmp_path):
-    path, finding = scan.find_doctrine(tmp_path)
+    finding = scan.find_doctrine(tmp_path)
 
-    assert path is None
+    assert finding.path is None
     assert finding.status == "warn"
 
 
@@ -58,10 +58,10 @@ def test_skill_bundles_are_found_by_their_marker_file(tmp_path):
         (tmp_path / "skills" / name).mkdir(parents=True)
         (tmp_path / "skills" / name / "SKILL.md").write_text(f"# {name}\n")
 
-    skills, finding = scan.find_skills(tmp_path)
+    finding = scan.find_skills(tmp_path)
 
-    assert len(skills) == 2
     assert finding.status == "pass"
+    assert "2 Harbor skill bundle(s)" in finding.message
     assert finding.hint is not None and "AgentConfig.skills" in finding.hint
 
 
@@ -71,10 +71,10 @@ def test_vendored_trees_are_not_searched(tmp_path):
     vendored.mkdir(parents=True)
     (vendored / "SKILL.md").write_text("# not ours\n")
 
-    skills, finding = scan.find_skills(tmp_path)
+    finding = scan.find_skills(tmp_path)
 
-    assert skills == []
     assert finding.status == "warn"
+    assert finding.path is None
 
 
 async def test_available_traces_are_counted():

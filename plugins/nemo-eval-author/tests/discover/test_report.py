@@ -9,23 +9,19 @@ machine: absolute paths, a frozen job name, or a real API key in the file would 
 the artifact wrong somewhere other than where it was produced.
 """
 
-from datetime import UTC, datetime
-
 import yaml
 from harbor.models.job.config import JobConfig
-from harbor_fixtures import write_dataset
-from nemo_eval_author_plugin.discovery import memory, report
+from harbor_fixtures import read_front_matter, write_dataset
+from nemo_eval_author_plugin.discovery import report
 from nemo_eval_author_plugin.discovery.models import (
-    FILESET_NAME,
     CandidateConfig,
     ConfigSource,
-    DiscoveryReport,
     Finding,
     RequiredEnvVar,
 )
 
 
-def _record(tmp_path, findings=(), env_vars=(), inputs=(), candidate=None):
+def _record(tmp_path, findings=(), env_vars=(), candidate=None):
     return report.build_report(
         agent="ticket-triage",
         workspace="default",
@@ -34,7 +30,6 @@ def _record(tmp_path, findings=(), env_vars=(), inputs=(), candidate=None):
         or CandidateConfig(data={}, source=ConfigSource(kind="config_file", detail="declared at configs/eval.yaml")),
         findings=list(findings),
         required_env_vars=list(env_vars),
-        inputs=list(inputs),
     )
 
 
@@ -43,30 +38,25 @@ def test_front_matter_survives_a_round_trip(tmp_path):
         tmp_path,
         findings=[Finding(name="schema", group="validation", status="pass", message="ok", harbor_call="x")],
         env_vars=[RequiredEnvVar(name="HF_TOKEN", declared_in=tmp_path / "evals/task-0/task.toml")],
-        inputs=report.fingerprint_inputs([_write(tmp_path / "ETHOS.md", "# Ethos\n")], tmp_path),
     )
 
-    front = memory.parse_front_matter(report.render_markdown(record))
+    front = read_front_matter(report.render_markdown(record))
 
-    assert front is not None
     assert front["runnable"] is True
     assert front["agent"] == "ticket-triage"
     assert front["validation"] == {"schema": "pass"}
-    assert front["inputs_digest"] == record.inputs_digest
     assert front["harbor_version"] == report.harbor_version()
     # Recorded relative, so the artifact means the same thing on another machine.
     assert front["required_env_vars"][0]["declared_in"] == "evals/task-0/task.toml"
-    assert front["inputs"] == [{"path": "ETHOS.md", "sha256": record.inputs[0].sha256}]
 
 
-def _owned_config(tmp_path, *, adjusted=False):
+def _owned_config(tmp_path):
     return CandidateConfig(
         data={},
         source=ConfigSource(
             kind="config_file",
             detail="declared at configs/eval.yaml",
             path=tmp_path / "configs" / "eval.yaml",
-            adjusted=adjusted,
         ),
     )
 
@@ -76,68 +66,28 @@ def test_a_repo_that_maintains_its_own_config_is_told_to_run_that_file(tmp_path)
     record = _record(tmp_path, candidate=_owned_config(tmp_path))
 
     markdown = report.render_markdown(record)
-    front = memory.parse_front_matter(markdown)
+    front = read_front_matter(markdown)
 
-    assert front is not None
     assert front["run_config"] == {"location": "repo", "path": "configs/eval.yaml"}
     assert "harbor job start -c configs/eval.yaml" in markdown
     assert "harbor-job.yaml" not in markdown
-    # Why a config file is involved at all, since a reader may only have task directories.
-    assert "package reference" in markdown
 
 
-def test_a_config_we_had_to_adjust_points_at_the_copy_discovery_wrote(tmp_path):
-    record = _record(tmp_path, candidate=_owned_config(tmp_path, adjusted=True))
-
-    markdown = report.render_markdown(record)
-    front = memory.parse_front_matter(markdown)
-
-    assert front is not None
-    assert front["run_config"] == {"location": "fileset", "path": "ticket-triage/harbor-job.yaml"}
-    assert "harbor job start -c harbor-job.yaml" in markdown
-    assert f"nemo files download {FILESET_NAME}" in markdown, "the config is not on disk yet"
-
-
-def test_a_reused_report_resolves_the_target_it_was_written_with(tmp_path):
-    """Reuse rebuilds the record from front matter alone, so what decided the target must be in it."""
-    record = _record(tmp_path, candidate=_owned_config(tmp_path, adjusted=True))
-    front = memory.parse_front_matter(report.render_markdown(record))
-
-    assert front is not None
-    rebuilt = DiscoveryReport.model_validate(
-        {
-            "agent": record.agent,
-            "workspace": record.workspace,
-            "repo_root": front["repo_root"],
-            "harbor_version": front["harbor_version"],
-            "config_source": front["config_source"],
-            "discovered_at": front["discovered_at"],
-            "last_validated_at": front["last_validated_at"],
-        }
+def test_a_config_discovery_authored_points_at_the_fileset_copy(tmp_path):
+    """Nothing in the repo declares a config, so the fileset is the only place it exists."""
+    record = _record(
+        tmp_path,
+        candidate=CandidateConfig(
+            data={}, source=ConfigSource(kind="convention", detail="inferred from task dirs under evals/validation")
+        ),
     )
 
-    assert report.run_target(rebuilt) == report.run_target(record)
+    markdown = report.render_markdown(record)
+    front = read_front_matter(markdown)
 
-
-def test_the_digest_is_stable_and_notices_a_changed_input(tmp_path):
-    path = _write(tmp_path / "task.toml", 'version = "1.0"\n')
-    first = _record(tmp_path, inputs=report.fingerprint_inputs([path], tmp_path))
-    again = _record(tmp_path, inputs=report.fingerprint_inputs([path], tmp_path))
-    assert first.inputs_digest == again.inputs_digest
-
-    _write(path, 'version = "1.0"\n# edited\n')
-    changed = _record(tmp_path, inputs=report.fingerprint_inputs([path], tmp_path))
-    assert changed.inputs_digest != first.inputs_digest
-
-
-def test_the_digest_ignores_the_order_inputs_were_collected_in(tmp_path):
-    first = _write(tmp_path / "a.md", "a\n")
-    second = _write(tmp_path / "b.md", "b\n")
-
-    forward = _record(tmp_path, inputs=report.fingerprint_inputs([first, second], tmp_path))
-    backward = _record(tmp_path, inputs=report.fingerprint_inputs([second, first], tmp_path))
-
-    assert forward.inputs_digest == backward.inputs_digest
+    assert front["run_config"] == {"location": "fileset", "path": "ticket-triage/harbor-job.yaml"}
+    assert "harbor job start -c harbor-job.yaml" in markdown
+    assert "Fetch `ticket-triage/harbor-job.yaml`" in markdown, "the config is not on disk yet"
 
 
 def test_the_persisted_config_carries_no_absolute_paths(tmp_path):
@@ -187,11 +137,11 @@ def test_an_unrunnable_report_says_what_blocks_it_and_offers_no_command(tmp_path
         tmp_path,
         findings=[
             Finding(
-                name="reward",
+                name="resolution",
                 group="validation",
                 status="fail",
-                message="1 task(s) have a test script that never writes a reward file",
-                harbor_call="TaskPaths.discovered_test_path_for",
+                message="Harbor could not resolve the job",
+                harbor_call="Job.create",
             )
         ],
     )
@@ -200,11 +150,11 @@ def test_an_unrunnable_report_says_what_blocks_it_and_offers_no_command(tmp_path
 
     assert record.runnable is False
     assert "cannot run" in markdown
-    assert "never writes a reward file" in markdown
+    assert "could not resolve the job" in markdown
     assert "harbor job start" not in markdown, "an unrunnable report must not hand out a run command"
 
 
-def test_a_report_with_no_config_at_all_says_where_to_start(tmp_path):
+def test_a_report_with_no_config_at_all_is_not_runnable(tmp_path):
     record = report.build_report(
         agent="ticket-triage",
         workspace="default",
@@ -212,37 +162,10 @@ def test_a_report_with_no_config_at_all_says_where_to_start(tmp_path):
         candidate=None,
         findings=[],
         required_env_vars=[],
-        inputs=[],
     )
 
-    markdown = report.render_markdown(record)
+    front = read_front_matter(report.render_markdown(record))
 
     assert record.runnable is False
-    assert "harbor job init" in markdown
-
-
-def test_restamping_moves_the_stamp_and_leaves_the_narrative_alone(tmp_path):
-    record = _record(tmp_path, inputs=report.fingerprint_inputs([_write(tmp_path / "a.md", "a\n")], tmp_path))
-    original = report.render_markdown(record)
-    later = datetime(2027, 1, 1, tzinfo=UTC)
-
-    restamped = memory.restamp(original, when=later, harbor_version="9.9.9")
-
-    assert restamped is not None
-    front = memory.parse_front_matter(restamped)
-    assert front is not None
-    assert front["last_validated_at"] == later.isoformat()
-    assert front["harbor_version"] == "9.9.9"
-    assert front["discovered_at"] == record.discovered_at.isoformat(), "discovery time is history, not a stamp"
-    assert front["inputs_digest"] == record.inputs_digest
-    assert original.split("\n---\n", 1)[1] == restamped.split("\n---\n", 1)[1]
-
-
-def test_restamping_declines_a_file_without_front_matter():
-    assert memory.restamp("# just markdown\n", when=datetime.now(UTC), harbor_version="1.0") is None
-
-
-def _write(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    return path
+    assert front["config_source"] is None
+    assert front["run_config"] is None

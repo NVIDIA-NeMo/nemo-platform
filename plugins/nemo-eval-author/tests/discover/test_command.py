@@ -19,17 +19,18 @@ files sharing a basename abort collection there.
 import pytest
 import typer
 from harbor_fixtures import (
-    MENTIONS_REWARD_IN_COMMENT,
     StubClient,
     StubFiles,
+    read_front_matter,
     write_dataset,
     write_job_config,
     write_task,
     write_wrapper,
 )
 from nemo_eval_author_plugin import cli
-from nemo_eval_author_plugin.discovery import memory, validate
+from nemo_eval_author_plugin.discovery import memory
 from nemo_eval_author_plugin.discovery import run as discovery
+from nemo_eval_author_plugin.discovery.models import JOB_CONFIG_FILENAME
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -63,24 +64,12 @@ def workspace(monkeypatch, tmp_path):
     monkeypatch.setenv("NMP_CONFIG_FILE", str(config))
 
 
-@pytest.fixture
-def no_scout(monkeypatch):
-    """Fail loudly if a test reaches the LLM scout, which would need real credentials."""
-
-    def _forbidden(*args, **kwargs):
-        raise AssertionError("the scout must not run in these tests")
-
-    monkeypatch.setattr(discovery, "_scout", _forbidden)
-
-
 # Pytest's tmp_path names would be slugged, so tests that assert on a remote path name the
 # agent outright. Defaulting is covered on its own below.
 AGENT = "ticket-triage"
 
 
 def _invoke(app, repo, *extra):
-    # The scout is opt-in and there is no way to ask for it here, so no test that goes through
-    # this helper can reach a model. test_the_scout_is_opt_in pins that default.
     return runner.invoke(app, ["discover", "--repo", str(repo), *extra])
 
 
@@ -113,50 +102,29 @@ def test_a_repo_that_maintains_its_own_config_keeps_it_and_records_only_the_repo
     assert "Withheld" not in result.output, "nothing was withheld; there was nothing of ours to publish"
 
 
-def test_a_config_the_scout_adjusted_is_published_instead_of_the_repo_file(app, client, monkeypatch, tmp_path):
-    """Once a payload diverges from the file it came from, that file is no longer what to run.
-
-    Stands in for the scout so the ownership branch is exercised without a model: the repo's
-    config names a dataset that is not there, and the repair points it at the one that is.
-    """
+def test_a_repo_harbor_rejects_exits_one_and_withholds_the_config(app, client, tmp_path):
+    """The config names a dataset that is not there, so Harbor cannot resolve the job."""
     write_dataset(tmp_path / "evals" / "validation")
     write_job_config(tmp_path / "configs" / "eval.yaml", dataset="evals/missing")
-
-    async def _repair(candidate, outcome, repo_root):
-        candidate.data["datasets"] = [{"path": "evals/validation"}]
-        candidate.source.adjusted = True
-        return candidate, await validate.run_ladder(candidate, repo_root), []
-
-    monkeypatch.setattr(discovery, "_scout", _repair)
-
-    result = runner.invoke(app, ["discover", "--repo", str(tmp_path), "--agent", AGENT, "--dangerously-fix"])
-
-    assert result.exit_code == 0, result.output
-    assert "harbor job start -c harbor-job.yaml" in result.output
-    assert sorted(client.files.stored) == [f"{AGENT}/discovery.md", f"{AGENT}/harbor-job.yaml"]
-
-
-def test_a_repo_whose_tasks_never_score_exits_one_and_withholds_the_config(app, client, tmp_path):
-    write_dataset(tmp_path / "evals" / "validation", test_script=MENTIONS_REWARD_IN_COMMENT)
 
     result = _invoke_named(app, tmp_path)
 
     assert result.exit_code == 1, result.output
     assert "Harbor cannot run this repo's evals" in result.output
-    assert "reward" in result.output
-    assert "Withheld harbor-job.yaml" in result.output, "an absent config has to be explained, not just missing"
+    assert "resolution" in result.output
     # The report still lands, so the failure is documented rather than lost.
     assert sorted(client.files.stored) == [f"{AGENT}/discovery.md"]
 
 
-def test_the_scout_is_opt_in(app, client, tmp_path, no_scout):
-    """A config Harbor rejects must not reach a model unless --dangerously-fix asked for it."""
-    write_dataset(tmp_path / "evals" / "validation", test_script=MENTIONS_REWARD_IN_COMMENT)
+def test_a_config_harbor_rejects_is_never_published(app, client, tmp_path):
+    """A config in this fileset is always one Harbor could run, so an absent one is explained."""
+    write_task(tmp_path / "evals" / "validation" / "task-0", task_toml='\n[[steps]]\nname = "nowhere"\n')
 
-    result = runner.invoke(app, ["discover", "--repo", str(tmp_path), "--agent", AGENT])
+    result = _invoke_named(app, tmp_path)
 
     assert result.exit_code == 1, result.output
-    assert "Harbor cannot run this repo's evals" in result.output, "the verdict was reached without a model"
+    assert "Withheld harbor-job.yaml" in result.output, "an absent config has to be explained, not just missing"
+    assert sorted(client.files.stored) == [f"{AGENT}/discovery.md"]
 
 
 def test_a_repo_with_no_harbor_setup_at_all_exits_one(app, client, tmp_path):
@@ -175,7 +143,7 @@ def test_dry_run_prints_the_artifacts_and_uploads_nothing(app, client, tmp_path)
 
     assert result.exit_code == 0, result.output
     assert "Dry run: nothing was uploaded." in result.output
-    assert "inputs_digest:" in result.output, "the report itself is printed"
+    assert "runnable: true" in result.output, "the report itself is printed"
     assert client.files.uploads == []
 
 
@@ -225,134 +193,31 @@ def test_an_explicit_agent_name_wins(app, client, tmp_path):
     assert "invoice-parser/discovery.md" in client.files.stored
 
 
-def test_an_unchanged_repo_is_not_revalidated(app, client, tmp_path, no_scout):
-    write_dataset(tmp_path / "evals" / "validation")
-    first = _invoke(app, tmp_path)
-    assert first.exit_code == 0, first.output
-
-    second = _invoke(app, tmp_path)
-
-    assert second.exit_code == 0, second.output
-    assert "Nothing the previous report depended on has changed" in second.output
-    assert "validation/schema" not in second.output, "the ladder should not have run again"
-
-
-def test_a_runnable_flag_that_is_not_a_boolean_does_not_switch_off_revalidation(app, client, tmp_path):
-    """Reuse skips the entire ladder, so only a real YAML ``true`` may switch revalidation off.
-
-    The string ``"false"`` is the cruel case: it is truthy, and a reused record carries no
-    findings, so the command would exit zero having validated nothing and claiming a verdict
-    the stored report explicitly denies.
-    """
-    write_dataset(tmp_path / "evals" / "validation")
-    assert _invoke_named(app, tmp_path).exit_code == 0
-    stored = client.files.stored[memory.remote_report_path(AGENT)].decode("utf-8")
-    assert "runnable: true" in stored
-    client.files.stored[memory.remote_report_path(AGENT)] = stored.replace(
-        "runnable: true", "runnable: 'false'"
-    ).encode("utf-8")
-
-    result = _invoke_named(app, tmp_path)
-
-    assert result.exit_code == 0, result.output
-    assert "validation/schema" in result.output, "the ladder had to run again"
-    assert "Nothing the previous report depended on has changed" not in result.output
-
-
-def test_a_wrapper_copy_inside_a_virtualenv_is_not_fingerprinted(app, client, tmp_path):
-    """The digest decides whether a later run may skip the ladder, so it covers the repo's own source only.
-
-    A vendored module whose basename matches the agent's import path would otherwise tie this
-    report's freshness to a dependency: reinstalling the package invalidates a verdict that
-    still holds, and the digest quietly covers bytes the repo does not own.
-    """
-    write_dataset(tmp_path / "evals" / "validation")
-    write_wrapper(tmp_path)
-    vendored = tmp_path / ".venv" / "lib" / "python3.12" / "site-packages"
-    vendored.mkdir(parents=True)
-    write_wrapper(vendored, class_name="VendoredAgent")
-
-    assert _invoke_named(app, tmp_path).exit_code == 0
-
-    front = memory.parse_front_matter(client.files.stored[memory.remote_report_path(AGENT)].decode("utf-8"))
-    assert front is not None
-    recorded = [item["path"] for item in front["inputs"]]
-    assert "harbor_wrapper.py" in recorded, "the repo's own wrapper shaped the verdict, so it is an input"
-    assert [path for path in recorded if path.startswith(".venv")] == []
-
-
-def test_a_reused_report_still_names_the_host_variables_a_run_needs(app, client, tmp_path):
-    """A repeat run is the common case, so losing ``Needs:`` there hides it nearly always.
-
-    Harbor raises on an unresolved template at trial start. A record that stops naming
-    ``HF_TOKEN`` hands out a run command that cannot work and says nothing about why.
-    """
+def test_a_run_that_needs_host_variables_names_them(app, client, tmp_path):
+    """Harbor raises on an unresolved template at trial start, so a run command that does
+    not name ``HF_TOKEN`` cannot work and says nothing about why."""
     write_task(
         tmp_path / "evals" / "validation" / "task-0",
         task_toml='\n[environment.env]\nHF_TOKEN = "${HF_TOKEN}"\n',
     )
-    first = _invoke_named(app, tmp_path)
-    assert first.exit_code == 0, first.output
-    assert "Needs: HF_TOKEN" in first.output
 
     result = _invoke_named(app, tmp_path)
 
     assert result.exit_code == 0, result.output
-    assert "Nothing the previous report depended on has changed" in result.output
     assert "Needs: HF_TOKEN" in result.output
 
 
-def test_a_reused_report_that_cannot_be_reuploaded_says_what_went_wrong(app, client, monkeypatch, tmp_path):
-    """The exit code says the record was not written; only the finding says why.
-
-    This branch prints almost nothing by design, but the upload warning carries the exception,
-    the fileset and the remote path — the whole diagnosis, and it is on every other path.
-    """
-    write_dataset(tmp_path / "evals" / "validation")
-    assert _invoke_named(app, tmp_path).exit_code == 0
-    offline = StubClient(files=StubFiles(client.files.stored, fail=True))
-    monkeypatch.setattr(discovery, "make_client", lambda base_url: offline)
-
-    result = _invoke_named(app, tmp_path)
-
-    assert result.exit_code == 1, result.output
-    assert "Nothing the previous report depended on has changed" in result.output, "this is the reuse path"
-    assert "Could not upload discovery.md" in result.output
-    assert "fileset unavailable" in result.output
-    assert "could not be recorded" in result.output
-
-
-def test_refresh_forces_the_ladder_to_run_again(app, client, tmp_path):
-    write_dataset(tmp_path / "evals" / "validation")
-    assert _invoke(app, tmp_path).exit_code == 0
-
-    result = _invoke(app, tmp_path, "--refresh")
-
-    assert result.exit_code == 0, result.output
-    assert "validation/schema" in result.output
-
-
-def test_an_edited_task_is_revalidated(app, client, tmp_path):
+def test_every_run_revalidates_from_scratch(app, client, tmp_path):
+    """No verdict is taken on trust from a previous run: the repo may have moved under it."""
     dataset = write_dataset(tmp_path / "evals" / "validation")
     assert _invoke(app, tmp_path).exit_code == 0
 
-    # Break the reward contract; the digest moves, so the prior verdict cannot be reused.
-    (dataset / "task-0" / "tests" / "test.sh").write_text(MENTIONS_REWARD_IN_COMMENT)
+    # A task Harbor cannot parse at all, added after the first run recorded a clean verdict.
+    (dataset / "task-1" / "task.toml").write_text("not = [valid\n")
     result = _invoke(app, tmp_path)
 
     assert result.exit_code == 1, result.output
-    assert "never writes a reward file" in result.output
-
-
-def test_a_previously_failing_repo_is_always_revalidated(app, client, tmp_path, no_scout):
-    """A failure may have been the machine's fault, so it is never taken on trust."""
-    write_dataset(tmp_path / "evals" / "validation", test_script=MENTIONS_REWARD_IN_COMMENT)
-    assert _invoke(app, tmp_path).exit_code == 1
-
-    result = _invoke(app, tmp_path)
-
-    assert result.exit_code == 1, result.output
-    assert "validation/reward" in result.output
+    assert "validation/schema" in result.output, "the ladder ran again"
 
 
 def test_an_unwritable_fileset_exits_one_even_though_harbor_is_happy(app, monkeypatch, tmp_path):
@@ -408,8 +273,7 @@ def test_the_uploaded_report_carries_the_verdict_that_was_printed(app, client, t
 
     assert _invoke_named(app, tmp_path).exit_code == 0
 
-    stored = client.files.stored[memory.remote_report_path(AGENT)].decode("utf-8")
-    front = memory.parse_front_matter(stored)
-    assert front is not None
+    front = read_front_matter(client.files.stored[memory.remote_report_path(AGENT)])
     assert front["runnable"] is True
     assert front["config_source"]["kind"] == "convention"
+    assert front["run_config"] == {"location": "fileset", "path": f"{AGENT}/{JOB_CONFIG_FILENAME}"}

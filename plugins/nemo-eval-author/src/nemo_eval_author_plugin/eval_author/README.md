@@ -9,10 +9,10 @@ SPDX-License-Identifier: Apache-2.0
 >
 > This plugin is incomplete and its interfaces will change without notice. It also
 > runs code from the repository you point it at: validating a config imports that
-> repository's agent module into the running process, and `--dangerously-fix` gives a
-> language model a shell in that directory with no sandbox. Treat pointing Eval Author
-> at a repository as equivalent to running that repository's code yourself, and only
-> do it for code you already trust. Sandboxing is not implemented yet.
+> repository's agent module into the running process, which executes that module's
+> top level. Treat pointing Eval Author at a repository as equivalent to running that
+> repository's code yourself, and only do it for code you already trust. Sandboxing is
+> not implemented yet.
 
 The Eval Author plugin is a NeMo OO Agent specialized in auditing and improving the
 eval suite of a target agent.
@@ -28,8 +28,7 @@ beginning optimization.
 ## Current state
 
 `nemo eval-author discover` is the only implemented command. It answers whether
-Harbor can run a repository's evals and records the answer, so a later run does
-not have to derive it again.
+Harbor can run a repository's evals and records the answer.
 
 The command assembles a candidate Harbor `JobConfig` from the strongest source
 the repository offers: a Harbor config file it already maintains, a `config.json`
@@ -37,17 +36,23 @@ from a prior job Harbor resolved and ran, an Experimentalist `optimizer.yaml`
 profile plus the agent wrapper, or the Harbor task directory layout alone.
 
 It validates that candidate through a ladder of Harbor's own calls rather than
-reimplemented rules: schema, job resolution, task validity and coverage, reward
-files, required host variables, the agent class, the environment backend, and a
-round trip of the persisted bytes through `harbor job start --print-config`.
+reimplemented rules: schema, job resolution, task validity and coverage,
+required host variables, the agent class, the environment backend, and a round
+trip of the persisted bytes through `harbor job start --print-config`.
 [`discovery/validate.py`](../discovery/validate.py) names the Harbor API behind
-each rung.
+each rung. Findings that Harbor returned carry a `harbor_call`; the one check
+that reads the repository directly — whether each test script names a reward
+file — carries none and can only warn, because a script that builds the path in
+a variable is indistinguishable from one that writes nothing.
 
 The result is recorded to the `nemo-eval-author` fileset as
 `<agent>/discovery.md`. A `<agent>/harbor-job.yaml` is published alongside the
-report only when discovery authored or adjusted the config; when the repository
-maintains its own valid config file, the report points at that file instead.
-Nothing is written into the repository under inspection.
+report only when discovery authored the config; when the repository maintains
+its own valid config file, the report points at that file instead. Nothing is
+written into the repository under inspection.
+
+Every run revalidates from scratch. The report is a record of what was true when
+it was written, not a cache that a later run consults.
 
 Exit code 0 means a config was validated and recorded. Every other outcome exits
 non-zero, including a config Harbor accepted but that could not be uploaded,
@@ -58,13 +63,6 @@ which is what makes the command usable as a gate.
 - `--repo`: agent repository to inspect. Defaults to the current directory.
 - `--agent`: name the artifacts are stored under. Defaults to the agent named in
   `optimizer.yaml`, else a slug of the directory name.
-- `--dangerously-fix`: let an LLM scout propose fixes for a config Harbor
-  rejected. Off unless passed. The scout runs shell commands in the repository
-  under inspection with no sandbox, and it decides what to run by reading files
-  from that same repository, so hostile content there can steer it. It is also
-  the only part of `discover` that needs `AUTHOR_*` credentials, which are in
-  its environment while it runs.
-- `--refresh`: revalidate even when nothing the last report depended on moved.
 - `--dry-run`: print the findings and the config without uploading anything.
 
 There are no flags for platform state. The workspace and cluster come from the

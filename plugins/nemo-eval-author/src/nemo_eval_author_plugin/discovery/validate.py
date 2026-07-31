@@ -15,11 +15,17 @@ The rungs, in order, and the Harbor API each one leans on:
 2. resolution  ``Job.create``, which resolves skills, task configs, resource policies and
                metrics, and starts no container.
 3. tasks       ``Task.is_valid_dir``, then ``Task()`` to get the reason a task failed.
-4. reward      the resolved test script must write ``/logs/verifier/reward.{json,txt}``.
+4. coverage    every task dir on disk against the set ``Job.create`` actually resolved,
+               because Harbor drops one it cannot parse without raising.
 5. credentials ``get_required_host_vars`` over the task and job env templates.
 6. agent       ``import_class(..., base=BaseAgent)`` or ``AgentFactory.get_agent_class``.
 7. backend     ``EnvironmentFactory.run_preflight``.
 8. round trip  ``harbor job start --print-config -c <file>`` against the persisted bytes.
+
+The one exception is the reward advisory, which reads the test scripts itself because
+Harbor has no API that answers the question before a trial runs. It carries no
+``harbor_call`` and can only warn, since a text search cannot tell a script that writes a
+reward through a variable from one that never writes a reward at all.
 
 A failing rung is recorded, not raised. A report listing every problem is worth more than
 one that stops at the first, and the command's whole job is to say why a repo cannot run.
@@ -75,7 +81,6 @@ class ValidationOutcome:
     config: JobConfig | None = None
     findings: list[Finding] = field(default_factory=list)
     required_env_vars: list[RequiredEnvVar] = field(default_factory=list)
-    task_dirs: list[Path] = field(default_factory=list)
 
     @property
     def runnable(self) -> bool:
@@ -83,14 +88,13 @@ class ValidationOutcome:
 
 
 def _harbor(name: str, status: Status, message: str, call: str, **kwargs) -> Finding:
-    """A finding Harbor vouches for, which is the only kind this module emits."""
+    """A finding Harbor returned, which is what ``harbor_call`` claims on the way out."""
     return Finding(
         name=name,
         group=_GROUP,
         status=status,
         message=message,
         harbor_call=call,
-        provenance="harbor",
         **kwargs,
     )
 
@@ -145,7 +149,6 @@ async def _ladder(candidate: CandidateConfig, repo_root: Path) -> ValidationOutc
         return outcome
 
     task_dirs = _rung_tasks(resolved, outcome)
-    outcome.task_dirs = task_dirs
     _rung_coverage(config, resolved, outcome)
     if not task_dirs:
         return outcome
@@ -254,8 +257,8 @@ def _resolved_local_paths(job: Job) -> list[Path] | None:
     tasks" about a repo whose tasks are fine.
 
     Absolute on the way out. Harbor hands back whatever the config said, and a relative path
-    means the repo root only while the ladder's chdir is in effect; these outlive it as the
-    task list the report fingerprints.
+    means the repo root only while the ladder's chdir is in effect, so the coverage rung
+    would compare it against the wrong directory.
     """
     task_configs = getattr(job, "_task_configs", None)
     if task_configs is None:
@@ -318,8 +321,9 @@ def _rung_coverage(config: JobConfig, resolved: list[Path], outcome: ValidationO
 
     Harbor drops a directory it cannot parse as a task without saying so: given ten task
     dirs where three are half-written, ``Job.create`` resolves seven and raises nothing.
-    The run then succeeds and reports a score over seven tasks, which is the most expensive
-    kind of wrong, because nothing about the output looks incomplete.
+    The tasks rung then reports seven of seven valid, the run scores seven, and nothing
+    about the output looks incomplete. Without this rung the whole ladder returns a clean
+    verdict on a suite that is quietly missing a third of itself.
 
     A dataset that narrows itself with ``task_names``, ``exclude_task_names`` or ``n_tasks``
     is deliberately running a subset, so its unresolved directories are reported as
@@ -372,97 +376,91 @@ def _task_failure_reason(task_dir: Path) -> str:
 
 
 def _rung_reward(task_dirs: list[Path], outcome: ValidationOutcome) -> None:
-    """Does each task's test script actually write a reward file?
+    """Advisory: does each task's test script look like it writes a reward file?
 
-    A task can be structurally valid and still score nothing, which is the most
-    expensive way to discover a problem: the trial runs, the agent works, and Harbor
-    raises ``RewardFileNotFoundError`` at the end.
+    A task can be structurally valid and still score nothing, and Harbor only says so by
+    raising ``RewardFileNotFoundError`` after a full trial. There is no Harbor API that
+    answers earlier, so this reads the scripts and searches for a reward filename.
+
+    That makes it a heuristic and it is reported as one: no ``harbor_call``, and never
+    worse than a warning. A script that builds the path in a variable writes a reward this
+    search cannot see, and failing the run over that would block a repo whose evals are
+    fine.
     """
-    missing: list[Path] = []
-    image_provided: list[Path] = []
+    silent: list[Path] = []
     reward_forms: set[str] = set()
 
     for task_dir in task_dirs:
-        scripts, graded_in_image = _test_scripts(task_dir)
-        if graded_in_image:
-            image_provided.append(task_dir)
-        for script in scripts:
+        for script in _test_scripts(task_dir):
             text = _executable_lines(_read_text(script))
             found = [name for name in _REWARD_FILENAMES if name in text]
             if found:
                 reward_forms.update(found)
-            elif task_dir not in missing:
-                missing.append(task_dir)
+            elif task_dir not in silent:
+                silent.append(task_dir)
 
-    if missing:
+    if silent:
         outcome.findings.append(
-            _harbor(
-                "reward",
-                "fail",
-                f"{len(missing)} task(s) have a test script that never writes a reward file",
-                "TaskPaths.discovered_test_path_for",
-                path=missing[0],
+            Finding(
+                name="reward",
+                group=_GROUP,
+                status="warn",
+                message=f"{len(silent)} task(s) have a test script that never names a reward file",
+                path=silent[0],
                 hint=(
                     "Harbor reads /logs/verifier/reward.json then reward.txt, and raises "
-                    "RewardFileNotFoundError when neither exists."
+                    "RewardFileNotFoundError when neither exists. Read as text, so a script that "
+                    "builds the path dynamically looks the same as one that writes nothing."
                 ),
             )
         )
         return
 
     detail = ", ".join(sorted(reward_forms)) if reward_forms else "none read"
-    message = f"Every test script writes a reward file ({detail})"
-    if image_provided:
-        message += f"; {len(image_provided)} task(s) grade from a separate verifier image"
     outcome.findings.append(
-        _harbor(
-            "reward",
-            "pass",
-            message,
-            "TaskPaths.discovered_test_path_for",
-            hint=(
-                "reward.txt yields the single key 'reward'; reward.json keys are only "
-                "known once a trial runs, and they decide what metrics can aggregate."
-            ),
+        Finding(
+            name="reward",
+            group=_GROUP,
+            status="pass",
+            message=f"Every test script names a reward file ({detail})",
         )
     )
 
 
-def _test_scripts(task_dir: Path) -> tuple[list[Path], bool]:
-    """Every host test script that has to produce a reward, and whether any grades in-image.
+def _test_scripts(task_dir: Path) -> list[Path]:
+    """Every host test script that has to produce a reward.
 
     Mirrors ``Task._validate_tests``: one script for a single-step task, and for a
     multi-step task the effective script per step, which is the step's own or the shared
     one it falls back to. Checking only the first would pass a task whose later step never
     scores, and that failure surfaces only after a full run.
 
-    ``resolve_effective_verifier_env_config`` is what decides the in-image case. Asking
-    Harbor beats inferring it from a missing file, which cannot tell a task that grades
-    from its own verifier image apart from one whose author forgot to write a test.
+    A step that grades from its own verifier image contributes no host script, which
+    ``resolve_effective_verifier_env_config`` is what decides. Asking Harbor beats
+    inferring it from a missing file, which cannot tell a task that grades from an image
+    apart from one whose author forgot to write a test.
     """
     paths = TaskPaths(task_dir)
     config = _task_config(task_dir)
     if config is None:
-        return [], False
+        return []
 
     task_os = config.environment.os
     shared = paths.discovered_test_path_for(task_os)
 
     if not config.steps:
         if resolve_effective_verifier_env_config(config, step_cfg=None) is not None:
-            return [], True
-        return ([shared] if shared is not None else []), False
+            return []
+        return [shared] if shared is not None else []
 
     scripts: list[Path] = []
-    graded_in_image = False
     for step in config.steps:
         if resolve_effective_verifier_env_config(config, step_cfg=step) is not None:
-            graded_in_image = True
             continue
         effective = paths.discovered_step_test_path_for(step.name, task_os) or shared
         if effective is not None and effective not in scripts:
             scripts.append(effective)
-    return scripts, graded_in_image
+    return scripts
 
 
 def _rung_credentials(config: JobConfig, task_dirs: list[Path], outcome: ValidationOutcome) -> None:
