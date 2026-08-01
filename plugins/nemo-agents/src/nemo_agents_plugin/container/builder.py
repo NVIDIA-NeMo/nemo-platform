@@ -274,6 +274,18 @@ def build_fabric_agent_image(
     packaging can grow without inheriting NAT-specific args such as
     ``nat_version`` or ``NAT_CONFIG_FILE``.
     """
+    if pyproject is not None and pyproject.exists():
+        context_dir = pyproject.resolve().parent
+    else:
+        context_dir = agent_config.resolve().parent
+
+    if not skip_validation:
+        import asyncio
+
+        from nemo_agents_plugin.container.fabric_validator import validate_fabric_agent_package
+
+        asyncio.run(validate_fabric_agent_package(agent_config, context_dir=context_dir))
+
     del (
         agent_config,
         pyproject,
@@ -288,10 +300,10 @@ def build_fabric_agent_image(
         agent_version,
         agent_author,
         template_path,
-        skip_validation,
         generate_ignore,
         platforms,
         push,
+        context_dir,
     )
     raise ValueError("Fabric agent packaging is not implemented yet.")
 

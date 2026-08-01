@@ -1872,6 +1872,40 @@ class TestPackageCommand:
         assert mock_fabric_build.call_args.kwargs["tag"] == "fabric-agent:dev"
         assert "nat_version" not in mock_fabric_build.call_args.kwargs
 
+    def test_fabric_validation_error_is_reported_cleanly(self, package_cli, tmp_path: Path) -> None:
+        """Fabric package validation failures are presented as CLI errors."""
+        from nemo_agents_plugin.container.fabric_validator import FabricPackageValidationError
+
+        app, runner = package_cli
+        agent_config = tmp_path / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+
+        with patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build:
+            mock_fabric_build.side_effect = FabricPackageValidationError(
+                "Fabric package validation failed: invalid harness settings"
+            )
+            result = runner.invoke(app, ["package", "--agent", str(agent_config)])
+
+        assert result.exit_code == 1
+        assert "Error: Fabric package validation failed: invalid harness settings" in (result.stderr or result.stdout)
+        assert result.exception is not None
+
+    def test_fabric_skip_validation_is_forwarded(self, package_cli, tmp_path: Path) -> None:
+        """The shared skip flag reaches the Fabric builder."""
+        app, runner = package_cli
+        agent_config = tmp_path / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+
+        with patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build:
+            mock_fabric_build.return_value = "fabric-agent:dev"
+            result = runner.invoke(
+                app,
+                ["package", "--agent", str(agent_config), "--skip-validation"],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        assert mock_fabric_build.call_args.kwargs["skip_validation"] is True
+
     def test_fabric_config_ignores_ambient_nat_version(
         self, package_cli, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

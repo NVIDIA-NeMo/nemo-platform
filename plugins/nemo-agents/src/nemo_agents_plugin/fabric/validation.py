@@ -81,18 +81,41 @@ async def validate_fabric_config(
     base_dir: Path | str,
     fabric: Any | None = None,
 ) -> FabricValidationResult:
-    """Run Fabric plan and doctor for a translated FabricConfig.
+    """Run Fabric plan and doctor for a translated FabricConfig."""
+    fabric_client = fabric or Fabric()
+    plan = await plan_fabric_config(fabric_config, base_dir=base_dir, fabric=fabric_client)
+    doctor_report = await doctor_fabric_config(fabric_config, base_dir=base_dir, fabric=fabric_client)
+    return FabricValidationResult(plan=plan, doctor_report=doctor_report)
 
-    This validates the selected harness and environment without invoking the
-    agent. Fabric is a required dependency of the ``nemo-agents`` plugin.
+
+async def plan_fabric_config(
+    fabric_config: FabricConfig,
+    *,
+    base_dir: Path | str,
+    fabric: Any | None = None,
+) -> Any:
+    """Plan a translated Fabric config without running environment preflight.
+
+    Packaging uses this narrower operation because the producer host does not
+    necessarily contain the harness binaries or Relay CLI installed by the
+    rendered image.
     """
-
     fabric_client = fabric or Fabric()
 
     try:
-        plan = await asyncio.to_thread(fabric_client.plan, fabric_config, base_dir=base_dir)
+        return await asyncio.to_thread(fabric_client.plan, fabric_config, base_dir=base_dir)
     except FabricConfigError as error:
         raise FabricValidationError(f"Fabric plan failed: {error}") from error
+
+
+async def doctor_fabric_config(
+    fabric_config: FabricConfig,
+    *,
+    base_dir: Path | str,
+    fabric: Any | None = None,
+) -> Any:
+    """Run Fabric environment preflight and require a passing report."""
+    fabric_client = fabric or Fabric()
 
     try:
         doctor_report = await asyncio.wait_for(
@@ -105,7 +128,7 @@ async def validate_fabric_config(
         raise FabricValidationError(f"Fabric doctor failed: {error}") from error
 
     _ensure_doctor_passed(_to_mapping(doctor_report))
-    return FabricValidationResult(plan=plan, doctor_report=doctor_report)
+    return doctor_report
 
 
 def _coerce_agent_config(config: AgentConfig | Mapping[str, Any]) -> AgentConfig:

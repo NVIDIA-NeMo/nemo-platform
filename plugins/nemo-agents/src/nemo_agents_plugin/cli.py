@@ -393,7 +393,7 @@ def _register_package_command(app: typer.Typer) -> None:
             True, "--ignore/--no-ignore", help="Generate a .dockerignore file alongside the Dockerfile."
         ),
         skip_validation: bool = typer.Option(
-            False, "--skip-validation", help="Bypass validate_agent_config before build."
+            False, "--skip-validation", help="Bypass agent config validation before build."
         ),
         agent_version: Optional[str] = typer.Option(None, "--agent-version", help="Override agent version OCI label."),
         agent_author: Optional[str] = typer.Option(None, "--agent-author", help="Override agent author OCI label."),
