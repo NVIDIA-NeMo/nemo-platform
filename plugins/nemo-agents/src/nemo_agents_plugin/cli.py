@@ -634,27 +634,42 @@ def _package_render_only(
     # before we get here; assert for the developer who deletes that guard.
     assert format == "docker", f"unreachable: format={format!r}"
 
-    if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-        typer.echo("Error: Fabric agent packaging is not implemented yet.", err=True)
-        raise typer.Exit(code=1)
-
-    from nemo_agents_plugin.container.template import render_dockerignore, render_nat_dockerfile
+    from nemo_agents_plugin.container.template import (
+        render_dockerignore,
+        render_fabric_dockerfile,
+        render_nat_dockerfile,
+    )
 
     try:
-        content = render_nat_dockerfile(
-            agent_config,
-            pyproject,
-            base_image_url=base_image_url,
-            base_image_tag=base_image_tag,
-            python_version=python_version,
-            nat_version=nat_version,
-            uv_version=uv_version,
-            allow_root=allow_root,
-            sandbox_runtime=sandbox_runtime,
-            agent_version=agent_version,
-            agent_author=agent_author,
-            template_path=template,
-        )
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            content = render_fabric_dockerfile(
+                agent_config,
+                pyproject,
+                base_image_url=base_image_url,
+                base_image_tag=base_image_tag,
+                python_version=python_version,
+                uv_version=uv_version,
+                allow_root=allow_root,
+                sandbox_runtime=sandbox_runtime,
+                agent_version=agent_version,
+                agent_author=agent_author,
+                template_path=template,
+            )
+        else:
+            content = render_nat_dockerfile(
+                agent_config,
+                pyproject,
+                base_image_url=base_image_url,
+                base_image_tag=base_image_tag,
+                python_version=python_version,
+                nat_version=nat_version,
+                uv_version=uv_version,
+                allow_root=allow_root,
+                sandbox_runtime=sandbox_runtime,
+                agent_version=agent_version,
+                agent_author=agent_author,
+                template_path=template,
+            )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)

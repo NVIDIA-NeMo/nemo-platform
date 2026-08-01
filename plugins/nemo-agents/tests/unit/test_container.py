@@ -72,6 +72,19 @@ class TestRenderNatDockerfile:
         assert not hasattr(shared, "nat_version")
         assert nat.nat_version == "1.8.0"
 
+    def test_fabric_params_extend_shared_contract(self) -> None:
+        from nemo_agents_plugin.container.template import FabricRenderParams, SharedRenderParams
+
+        shared = SharedRenderParams()
+        fabric = FabricRenderParams()
+
+        assert isinstance(fabric, SharedRenderParams)
+        assert not hasattr(shared, "nemo_agents_version")
+        assert not hasattr(shared, "relay_cli_version")
+        assert not hasattr(fabric, "nemo_agents_version")
+        assert not hasattr(fabric, "relay_cli_version")
+        assert not hasattr(fabric, "nat_version")
+
     def test_config_only_mode(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.template import render_nat_dockerfile
 
@@ -364,6 +377,182 @@ class TestRenderNatDockerfile:
 
         assert "FROM ubuntu" in result
         assert "echo 9.9.9" in result
+
+
+class TestFabricDockerfileTemplate:
+    """Direct contract tests for the Fabric template before its renderer is wired."""
+
+    @staticmethod
+    def _render(**overrides: object) -> str:
+        from dataclasses import asdict
+
+        from nemo_agents_plugin.container.template import (
+            FABRIC_DOCKERFILE_TEMPLATE,
+            FabricRenderParams,
+            _jinja_env,
+        )
+
+        params = FabricRenderParams(contract_version="1.2.3", **overrides)
+        return _jinja_env().from_string(FABRIC_DOCKERFILE_TEMPLATE).render(**asdict(params))
+
+    def test_installs_pinned_relay_cli_globally(self) -> None:
+        from nemo_agents_plugin.container.template import _PINNED_NEMO_RELAY_CLI_VERSION
+
+        result = self._render()
+
+        assert f"NEMO_RELAY_VERSION={_PINNED_NEMO_RELAY_CLI_VERSION}" in result
+        assert "--install-dir /usr/local/bin" in result
+        assert "nemo-relay --version" in result
+        assert "ARG NEMO_RELAY" not in result
+
+    def test_preserves_agent_bundle_and_config_path(self) -> None:
+        result = self._render(config_file_path="/workspace/configs/agent.yaml")
+
+        assert "COPY ./ /workspace" in result
+        assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in result
+        assert "COPY agent.yaml" not in result
+
+    def test_starts_fabric_server(self) -> None:
+        result = self._render()
+
+        assert "ENV PORT=8000" in result
+        assert "EXPOSE 8000" in result
+        assert (
+            'ENTRYPOINT ["sh", "-c", "exec python -m nemo_agents_plugin.fabric.server '
+            '--agent-config \\"$AGENT_CONFIG_PATH\\" --host 0.0.0.0 --port \\"$PORT\\""]'
+            in result
+        )
+
+
+class TestRenderFabricDockerfile:
+    """Tests for the public Fabric Dockerfile renderer."""
+
+    @staticmethod
+    def _write_config(directory: Path) -> Path:
+        agent_config = directory / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+        return agent_config
+
+    def test_config_only_mode(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        agent_config = self._write_config(tmp_path)
+
+        result = render_fabric_dockerfile(agent_config)
+
+        assert 'uv pip install --prerelease=allow "nemo-agents-plugin==' in result
+        install_line = next(line for line in result.splitlines() if "uv pip install --prerelease=allow" in line)
+        assert '" .' not in install_line
+        assert "ENV AGENT_CONFIG_PATH=/workspace/agent.yaml" in result
+        assert "NAT_VERSION" not in result
+
+    def test_project_mode_preserves_relative_config_path(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        configs = tmp_path / "configs"
+        configs.mkdir()
+        agent_config = self._write_config(configs)
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+
+        result = render_fabric_dockerfile(agent_config, pyproject)
+
+        assert 'uv pip install --prerelease=allow "nemo-agents-plugin==' in result
+        install_line = next(line for line in result.splitlines() if "uv pip install --prerelease=allow" in line)
+        assert '" .' in install_line
+        assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in result
+
+    def test_custom_template_uses_fabric_context(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        agent_config = self._write_config(tmp_path)
+        custom = tmp_path / "fabric.dockerfile.j2"
+        custom.write_text("FROM {{ base_image_url }}:{{ base_image_tag }}\nENV CONFIG={{ config_file_path }}\n")
+
+        result = render_fabric_dockerfile(
+            agent_config,
+            base_image_url="custom/image",
+            base_image_tag="custom-tag",
+            template_path=str(custom),
+        )
+
+        assert result == "FROM custom/image:custom-tag\nENV CONFIG=/workspace/agent.yaml\n"
+
+    def test_shared_environment_and_explicit_overrides(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        agent_config = self._write_config(tmp_path)
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_URL", "env/image")
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_TAG", "env-tag")
+        monkeypatch.setenv("NEMO_AGENTS_PYTHON_VERSION", "3.12")
+        monkeypatch.setenv("NEMO_AGENTS_UV_VERSION", "0.9.0")
+        monkeypatch.setenv("NAT_VERSION", "9.9.9")
+
+        from_environment = render_fabric_dockerfile(agent_config)
+        explicit = render_fabric_dockerfile(
+            agent_config,
+            base_image_url="flag/image",
+            base_image_tag="flag-tag",
+            python_version="3.13",
+            uv_version="0.10.0",
+        )
+
+        assert "ARG BASE_IMAGE_URL=env/image" in from_environment
+        assert "ARG BASE_IMAGE_TAG=env-tag" in from_environment
+        assert "ARG PYTHON_VERSION=3.12" in from_environment
+        assert "ghcr.io/astral-sh/uv:0.9.0" in from_environment
+        assert "ARG BASE_IMAGE_URL=flag/image" in explicit
+        assert "ARG BASE_IMAGE_TAG=flag-tag" in explicit
+        assert "ARG PYTHON_VERSION=3.13" in explicit
+        assert "ghcr.io/astral-sh/uv:0.10.0" in explicit
+        assert "9.9.9" not in from_environment + explicit
+
+    def test_allow_root_and_sandbox_profile(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+        from nemo_platform_plugin.sandbox import SandboxImageProfile, SandboxUser
+
+        agent_config = self._write_config(tmp_path)
+        profile = SandboxImageProfile(
+            name="openshell",
+            apt_packages=("iproute2", "nftables"),
+            users=(SandboxUser(name="sandbox", system=True, create_home=True),),
+        )
+
+        with patch(
+            "nemo_agents_plugin.container.sandbox.discover_sandbox_profiles",
+            return_value={"openshell": profile},
+        ):
+            result = render_fabric_dockerfile(agent_config, sandbox_runtime="openshell", allow_root=True)
+
+        assert "iproute2 nftables" in result
+        assert "groupadd --system sandbox" in result
+        assert "USER agent" not in result
+        assert "nemo_agents_plugin.fabric.server" in result
+
+    def test_config_outside_project_context_is_rejected(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        agent_dir = tmp_path / "agent"
+        project_dir = tmp_path / "project"
+        agent_dir.mkdir()
+        project_dir.mkdir()
+        agent_config = self._write_config(agent_dir)
+        pyproject = project_dir / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+
+        with pytest.raises(ValueError, match="outside the pyproject build context"):
+            render_fabric_dockerfile(agent_config, pyproject)
+
+    def test_unreadable_custom_template_is_reported_as_value_error(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        agent_config = self._write_config(tmp_path)
+        missing = tmp_path / "missing.dockerfile.j2"
+
+        with pytest.raises(ValueError, match="failed to read --template file"):
+            render_fabric_dockerfile(agent_config, template_path=str(missing))
 
 
 # ---------------------------------------------------------------------------
@@ -1369,6 +1558,108 @@ class TestPackageCommand:
         assert "Dockerfile written to" in result.stdout
         mock_build.assert_not_called()
         mock_push.assert_not_called()
+
+    def test_fabric_no_build_renders_fabric_dockerfile_and_ignore(self, package_cli, tmp_path: Path) -> None:
+        """Fabric ``--no-build`` renders without invoking either image builder."""
+        app, runner = package_cli
+        agent_config = tmp_path / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+        output = tmp_path / "Dockerfile.fabric"
+
+        with (
+            patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_nat_build,
+            patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "package",
+                    "--agent",
+                    str(agent_config),
+                    "--output",
+                    str(output),
+                    "--no-build",
+                ],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        rendered = output.read_text()
+        assert "nemo_agents_plugin.fabric.server" in rendered
+        assert "ENV AGENT_CONFIG_PATH=/workspace/agent.yaml" in rendered
+        assert "NAT_VERSION" not in rendered
+        assert (tmp_path / ".dockerignore").exists()
+        assert "Dockerfile written to" in result.stdout
+        mock_fabric_build.assert_not_called()
+        mock_nat_build.assert_not_called()
+        mock_push.assert_not_called()
+
+    def test_fabric_no_build_forwards_shared_flags(self, package_cli, tmp_path: Path) -> None:
+        """Fabric render-only mode honors shared CLI flags without NAT arguments."""
+        app, runner = package_cli
+        agent_config = tmp_path / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+        output = tmp_path / "Dockerfile.fabric"
+
+        result = runner.invoke(
+            app,
+            [
+                "package",
+                "--agent",
+                str(agent_config),
+                "--output",
+                str(output),
+                "--base-image-url",
+                "custom/image",
+                "--base-image-tag",
+                "custom-tag",
+                "--python-version",
+                "3.12",
+                "--uv-version",
+                "0.9.0",
+                "--allow-root",
+                "--no-build",
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout
+        rendered = output.read_text()
+        assert "ARG BASE_IMAGE_URL=custom/image" in rendered
+        assert "ARG BASE_IMAGE_TAG=custom-tag" in rendered
+        assert "ARG PYTHON_VERSION=3.12" in rendered
+        assert "ghcr.io/astral-sh/uv:0.9.0" in rendered
+        assert "USER agent" not in rendered
+        assert "NAT_VERSION" not in rendered
+
+    def test_fabric_no_build_project_mode_uses_project_root(self, package_cli, tmp_path: Path) -> None:
+        app, runner = package_cli
+        configs = tmp_path / "configs"
+        configs.mkdir()
+        agent_config = configs / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+
+        result = runner.invoke(
+            app,
+            [
+                "package",
+                "--agent",
+                str(agent_config),
+                "--pyproject",
+                str(pyproject),
+                "--no-build",
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout
+        output = tmp_path / "Dockerfile"
+        assert output.exists()
+        rendered = output.read_text()
+        assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in rendered
+        install_line = next(line for line in rendered.splitlines() if "uv pip install --prerelease=allow" in line)
+        assert '" .' in install_line
+        assert not (configs / "Dockerfile").exists()
 
     def test_no_build_project_mode_writes_dockerfile_next_to_pyproject(
         self, package_cli, project_dir: "tuple[Path, Path]"

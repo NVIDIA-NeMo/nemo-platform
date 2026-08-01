@@ -3,10 +3,10 @@
 
 """Jinja2-based Dockerfile rendering primitives for packaged agents.
 
-The current built-in template targets NAT agents. Shared render parameters
-are kept separate from NAT-specific parameters so Fabric packaging can reuse
-the image, project, sandbox, and metadata contract without inheriting NAT
-runtime fields.
+The built-in templates target NAT and Fabric agents. Shared render parameters
+are kept separate from runtime-specific parameters so both packaging paths can
+reuse the image, project, sandbox, and metadata contract without inheriting
+fields owned by the other runtime.
 
 Two rendering modes are supported:
 
@@ -88,6 +88,8 @@ _ENV_MAP: dict[str, str] = {
     "nat_version": "NAT_VERSION",
     "uv_version": "NEMO_AGENTS_UV_VERSION",
 }
+
+_PINNED_NEMO_RELAY_CLI_VERSION = "0.6.0"
 
 # -- Jinja2 template --------------------------------------------------------
 
@@ -188,6 +190,99 @@ ENTRYPOINT ["sh", "-c", "exec nat serve --config_file=$NAT_CONFIG_FILE --host 0.
 """
 )
 
+FABRIC_DOCKERFILE_TEMPLATE = (
+    f"""\
+{DOCKERFILE_SENTINEL}
+"""
+    + """\
+ARG BASE_IMAGE_URL={{ base_image_url }}
+ARG BASE_IMAGE_TAG={{ base_image_tag }}
+ARG PYTHON_VERSION={{ python_version }}
+FROM ${BASE_IMAGE_URL}:${BASE_IMAGE_TAG}
+ARG PYTHON_VERSION
+
+COPY --from=ghcr.io/astral-sh/uv:{{ uv_version }} /uv /uvx /bin/
+
+ENV PYTHONDONTWRITEBYTECODE=1
+
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \\
+    UV_LINK_MODE=copy
+
+RUN apt-get update && \\
+    apt-get install -y --no-install-recommends g++ gcc ca-certificates curl{% if sandbox_apt_packages %} {{ sandbox_apt_packages }}{% endif %} && \\
+    update-ca-certificates && \\
+    rm -rf /var/lib/apt/lists/*
+
+# Claude and Codex Relay integration launches this external CLI. The installer
+# verifies the checksum for the pinned release before placing it on the global
+# runtime PATH.
+RUN curl -fsSL https://raw.githubusercontent.com/NVIDIA/NeMo-Relay/main/install.sh -o /tmp/install-nemo-relay.sh && \\
+    NEMO_RELAY_VERSION={{ pinned_nemo_relay_cli_version }} sh /tmp/install-nemo-relay.sh --install-dir /usr/local/bin && \\
+    rm /tmp/install-nemo-relay.sh && \\
+    nemo-relay --version
+
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
+WORKDIR /workspace
+
+# Preserve the complete agent bundle so paths in agent.yaml continue to resolve
+# relative to the packaged config directory.
+COPY ./ /workspace
+{% if has_pyproject %}
+# Install the release-matched NeMo Agents runtime and the packaged project in
+# one resolution so incompatible project constraints fail during image build.
+RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
+    uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
+    . /workspace/.venv/bin/activate && \\
+    uv pip install --prerelease=allow "nemo-agents-plugin=={{ contract_version }}" . && \\
+    chmod -R a+rX /opt/uv /workspace/.venv
+{% else %}
+# The plugin owns the supported Fabric adapter and harness dependency set.
+RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
+    uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
+    . /workspace/.venv/bin/activate && \\
+    uv pip install --prerelease=allow "nemo-agents-plugin=={{ contract_version }}" && \\
+    chmod -R a+rX /opt/uv /workspace/.venv
+{% endif %}
+
+LABEL org.opencontainers.image.title="{{ agent_name | dockerfile_escape }}" \\
+      org.opencontainers.image.version="{{ agent_version | dockerfile_escape }}" \\
+      org.opencontainers.image.authors="{{ agent_author | dockerfile_escape }}" \\
+      org.opencontainers.image.created="{{ build_timestamp | dockerfile_escape }}" \\
+      org.opencontainers.image.description="{{ description | dockerfile_escape }}" \\
+      org.opencontainers.image.revision="{{ revision | dockerfile_escape }}" \\
+      org.opencontainers.image.source="{{ source | dockerfile_escape }}" \\
+{%- if licenses %}
+      org.opencontainers.image.licenses="{{ licenses | dockerfile_escape }}" \\
+{%- endif %}
+      com.nemo.agent.id="{{ agent_id | dockerfile_escape }}" \\
+      com.nemo.agent.framework="{{ agent_framework | dockerfile_escape }}" \\
+      com.nemo.agent.contract-version="{{ contract_version | dockerfile_escape }}"
+
+ENV AGENT_CONFIG_PATH={{ config_file_path }}
+ENV PORT=8000
+ENV PATH="/workspace/.venv/bin:$PATH"
+
+EXPOSE 8000
+
+{% if sandbox_user_setup %}
+# Sandbox-runtime compatibility ({{ sandbox_runtime }}). The supervisor resolves
+# this user by name, so the uid is not load-bearing; --system keeps it out of the
+# 1000/1001 range the agent user reclaims below.
+RUN {{ sandbox_user_setup }}
+{% endif %}
+{% if not allow_root %}
+RUN if getent passwd 1000 >/dev/null; then userdel -rf "$(getent passwd 1000 | cut -d: -f1)" 2>/dev/null || true; fi && \\
+    if getent group  1000 >/dev/null; then groupdel -f "$(getent group  1000 | cut -d: -f1)" 2>/dev/null || true; fi && \\
+    groupadd -g 1000 agent && useradd -u 1000 -g agent -m agent && \\
+    chown -R agent:agent /workspace
+USER agent
+{% endif %}
+ENTRYPOINT ["sh", "-c", "exec python -m nemo_agents_plugin.fabric.server --agent-config \\\"$AGENT_CONFIG_PATH\\\" --host 0.0.0.0 --port \\\"$PORT\\\""]
+"""
+)
+
 DOCKERIGNORE_TEMPLATE = f"""\
 {DOCKERIGNORE_SENTINEL}
 .env
@@ -246,6 +341,11 @@ class NatRenderParams(SharedRenderParams):
     """Resolved parameters specific to NAT Dockerfile rendering."""
 
     nat_version: str = ""
+
+
+@dataclass
+class FabricRenderParams(SharedRenderParams):
+    """Resolved parameters specific to Fabric Dockerfile rendering."""
 
 
 # -- Public API -------------------------------------------------------------
@@ -319,6 +419,7 @@ def _jinja_env() -> jinja2.Environment:
         undefined=jinja2.StrictUndefined,
     )
     env.filters["dockerfile_escape"] = _dockerfile_escape
+    env.globals["pinned_nemo_relay_cli_version"] = _PINNED_NEMO_RELAY_CLI_VERSION
     return env
 
 
@@ -491,6 +592,49 @@ def render_nat_dockerfile(
             raise ValueError(f"failed to read --template file {template_path}: {exc}") from exc
     else:
         template_source = NAT_DOCKERFILE_TEMPLATE
+
+    template = _jinja_env().from_string(template_source)
+    return template.render(**_render_context(params))
+
+
+def render_fabric_dockerfile(
+    agent_config: Path,
+    pyproject: Path | None = None,
+    *,
+    base_image_url: str | None = None,
+    base_image_tag: str | None = None,
+    python_version: str | None = None,
+    uv_version: str | None = None,
+    allow_root: bool = False,
+    sandbox_runtime: str | None = None,
+    agent_version: str | None = None,
+    agent_author: str | None = None,
+    template_path: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> str:
+    """Render a Dockerfile string for a Fabric-backed agent."""
+    shared = resolve_shared_render_params(
+        agent_config,
+        pyproject,
+        base_image_url=base_image_url,
+        base_image_tag=base_image_tag,
+        python_version=python_version,
+        uv_version=uv_version,
+        allow_root=allow_root,
+        sandbox_runtime=sandbox_runtime,
+        agent_version=agent_version,
+        agent_author=agent_author,
+        metadata=metadata,
+    )
+    params = FabricRenderParams(**{f.name: getattr(shared, f.name) for f in fields(shared)})
+
+    if template_path:
+        try:
+            template_source = Path(template_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ValueError(f"failed to read --template file {template_path}: {exc}") from exc
+    else:
+        template_source = FABRIC_DOCKERFILE_TEMPLATE
 
     template = _jinja_env().from_string(template_source)
     return template.render(**_render_context(params))
