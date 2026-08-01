@@ -10,6 +10,7 @@ from typing import Any
 
 import nemo_agents_plugin.container.fabric_validator as fabric_validator
 import pytest
+import typer
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.container.fabric_validator import (
     FabricPackageArtifactError,
@@ -48,6 +49,21 @@ def _write_package_config(path: Path, *skill_paths: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_agent_config(*skill_paths).model_dump_json())
     return path
+
+
+def _image_metadata() -> dict[str, str]:
+    return {
+        "agent_name": "fabric-agent",
+        "agent_id": "abc123",
+        "agent_version": "1.0.0",
+        "agent_author": "Agent Author",
+        "agent_framework": "unknown",
+        "build_timestamp": "2026-08-01T00:00:00+00:00",
+        "description": "Fabric agent",
+        "licenses": "Apache-2.0",
+        "revision": "revision",
+        "source": "https://example.com/fabric-agent.git",
+    }
 
 
 @pytest.mark.asyncio
@@ -158,6 +174,12 @@ class TestValidateFabricAgentPackage:
 
 
 class TestFabricBuilderValidationHook:
+    @pytest.fixture(autouse=True)
+    def _stub_docker_build(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import nemo_agents_plugin.container.builder as builder
+
+        monkeypatch.setattr(builder, "docker_build", lambda **kwargs: str(kwargs["tag"]))
+
     def test_validates_with_selected_build_context(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
 
@@ -172,10 +194,27 @@ class TestFabricBuilderValidationHook:
 
         monkeypatch.setattr(fabric_validator, "validate_fabric_agent_package", _validate)
 
-        with pytest.raises(ValueError, match="not implemented yet"):
-            build_fabric_agent_image(agent_config_path, pyproject=pyproject)
+        build_fabric_agent_image(agent_config_path, pyproject=pyproject)
 
         assert calls == [(agent_config_path, tmp_path.resolve())]
+
+    def test_uses_agent_config_directory_without_pyproject(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        agent_config_path = _write_package_config(tmp_path / "configs" / "agent.yaml")
+        calls: list[tuple[Path, Path]] = []
+
+        async def _validate(agent_config: Path, *, context_dir: Path) -> object:
+            calls.append((agent_config, context_dir))
+            return object()
+
+        monkeypatch.setattr(fabric_validator, "validate_fabric_agent_package", _validate)
+
+        build_fabric_agent_image(agent_config_path)
+
+        assert calls == [(agent_config_path, agent_config_path.parent.resolve())]
 
     def test_skip_validation_bypasses_hook(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
@@ -187,8 +226,336 @@ class TestFabricBuilderValidationHook:
 
         monkeypatch.setattr(fabric_validator, "validate_fabric_agent_package", _unexpected_validation)
 
-        with pytest.raises(ValueError, match="not implemented yet"):
-            build_fabric_agent_image(agent_config_path, skip_validation=True)
+        build_fabric_agent_image(agent_config_path, skip_validation=True)
+
+    def test_resolves_shared_build_settings(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_agents_plugin.container import metadata, template
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        monkeypatch.setattr(metadata, "extract_agent_metadata", lambda *args, **kwargs: _image_metadata())
+
+        agent_config_path = _write_package_config(tmp_path / "agent.yaml")
+        calls: list[tuple[str, str | None]] = []
+
+        def _resolve(name: str, explicit: str | None = None) -> str:
+            calls.append((name, explicit))
+            return f"resolved-{name}"
+
+        monkeypatch.setattr(template, "resolve_value", _resolve)
+        monkeypatch.setattr(template, "render_fabric_dockerfile", lambda *args, **kwargs: "FROM scratch\n")
+
+        build_fabric_agent_image(
+            agent_config_path,
+            tag="fabric-agent:test",
+            base_image_url="registry.example/base",
+            base_image_tag="release",
+            python_version="3.13",
+            uv_version="0.8.15",
+            skip_validation=True,
+        )
+
+        assert calls == [
+            ("base_image_url", "registry.example/base"),
+            ("base_image_tag", "release"),
+            ("python_version", "3.13"),
+            ("uv_version", "0.8.15"),
+        ]
+
+    def test_extracts_metadata_and_derives_default_tag(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import nemo_agents_plugin.container.builder as builder
+        import nemo_agents_plugin.container.metadata as metadata
+
+        agent_config_path = _write_package_config(tmp_path / "agent.yaml")
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+        extracted_meta = _image_metadata()
+        metadata_calls: list[dict[str, object]] = []
+        tag_calls: list[dict[str, str]] = []
+
+        def _extract(
+            agent_config: Path,
+            project: Path | None,
+            **kwargs: object,
+        ) -> dict[str, str]:
+            metadata_calls.append({"agent_config": agent_config, "pyproject": project, **kwargs})
+            return extracted_meta
+
+        def _default_tag(meta: dict[str, str]) -> str:
+            tag_calls.append(meta)
+            return "fabric-agent-abc123:1.0.0"
+
+        monkeypatch.setattr(metadata, "extract_agent_metadata", _extract)
+        monkeypatch.setattr(builder, "_default_tag_from_meta", _default_tag)
+
+        result = builder.build_fabric_agent_image(
+            agent_config_path,
+            pyproject=pyproject,
+            base_image_url="registry.example/base",
+            base_image_tag="release",
+            python_version="3.13",
+            uv_version="0.8.15",
+            agent_version="2.0.0",
+            agent_author="Agent Author",
+            skip_validation=True,
+        )
+
+        assert metadata_calls == [
+            {
+                "agent_config": agent_config_path,
+                "pyproject": pyproject,
+                "agent_version": "2.0.0",
+                "agent_author": "Agent Author",
+                "build_env": {
+                    "base_image_url": "registry.example/base",
+                    "base_image_tag": "release",
+                    "python_version": "3.13",
+                    "uv_version": "0.8.15",
+                },
+            }
+        ]
+        assert tag_calls == [extracted_meta]
+        assert result == "fabric-agent-abc123:1.0.0"
+
+    def test_renders_generated_dockerfile(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import nemo_agents_plugin.container.builder as builder
+        from nemo_agents_plugin.container import metadata, template
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        agent_config_path = _write_package_config(tmp_path / "configs" / "agent.yaml")
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+        image_metadata = _image_metadata()
+        render_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+        build_calls: list[dict[str, object]] = []
+
+        monkeypatch.setattr(metadata, "extract_agent_metadata", lambda *args, **kwargs: image_metadata)
+
+        def _render(*args: object, **kwargs: object) -> str:
+            render_calls.append((args, kwargs))
+            return "FROM scratch\n"
+
+        def _build(**kwargs: object) -> str:
+            dockerfile = kwargs["dockerfile"]
+            assert isinstance(dockerfile, Path)
+            assert dockerfile.read_text() == "FROM scratch\n"
+            build_calls.append(kwargs)
+            return "fabric-agent:test"
+
+        monkeypatch.setattr(template, "render_fabric_dockerfile", _render)
+        monkeypatch.setattr(builder, "docker_build", _build)
+
+        result = build_fabric_agent_image(
+            agent_config_path,
+            pyproject=pyproject,
+            tag="fabric-agent:test",
+            base_image_url="registry.example/base",
+            base_image_tag="release",
+            python_version="3.13",
+            uv_version="0.8.15",
+            allow_root=True,
+            sandbox_runtime="openshell",
+            agent_version="2.0.0",
+            agent_author="Agent Author",
+            template_path="Dockerfile.fabric.j2",
+            skip_validation=True,
+            platforms=["linux/amd64"],
+            push=True,
+        )
+
+        assert result == "fabric-agent:test"
+        assert render_calls == [
+            (
+                (agent_config_path, pyproject),
+                {
+                    "base_image_url": "registry.example/base",
+                    "base_image_tag": "release",
+                    "python_version": "3.13",
+                    "uv_version": "0.8.15",
+                    "allow_root": True,
+                    "sandbox_runtime": "openshell",
+                    "agent_version": "2.0.0",
+                    "agent_author": "Agent Author",
+                    "template_path": "Dockerfile.fabric.j2",
+                    "metadata": image_metadata,
+                },
+            )
+        ]
+        assert build_calls == [
+            {
+                "context_dir": tmp_path.resolve(),
+                "dockerfile": tmp_path / "Dockerfile.generated",
+                "tag": "fabric-agent:test",
+                "build_args": {
+                    "BASE_IMAGE_URL": "registry.example/base",
+                    "BASE_IMAGE_TAG": "release",
+                    "PYTHON_VERSION": "3.13",
+                },
+                "platforms": ["linux/amd64"],
+                "push": True,
+            }
+        ]
+        assert not (tmp_path / "Dockerfile.generated").exists()
+        assert not (tmp_path / ".dockerignore").exists()
+
+    def test_preserves_user_owned_dockerignore(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_agents_plugin.container import metadata, template
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        agent_config_path = _write_package_config(tmp_path / "agent.yaml")
+        dockerignore = tmp_path / ".dockerignore"
+        user_content = "custom-output/\n"
+        dockerignore.write_text(user_content)
+
+        monkeypatch.setattr(metadata, "extract_agent_metadata", lambda *args, **kwargs: _image_metadata())
+        monkeypatch.setattr(template, "render_fabric_dockerfile", lambda *args, **kwargs: "FROM scratch\n")
+
+        build_fabric_agent_image(
+            agent_config_path,
+            tag="fabric-agent:test",
+            skip_validation=True,
+        )
+
+        assert dockerignore.read_text() == user_content
+        assert not (tmp_path / "Dockerfile.generated").exists()
+
+    def test_skips_dockerignore_generation_when_disabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_agents_plugin.container import metadata, template
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        agent_config_path = _write_package_config(tmp_path / "agent.yaml")
+        monkeypatch.setattr(metadata, "extract_agent_metadata", lambda *args, **kwargs: _image_metadata())
+        monkeypatch.setattr(template, "render_fabric_dockerfile", lambda *args, **kwargs: "FROM scratch\n")
+
+        build_fabric_agent_image(
+            agent_config_path,
+            tag="fabric-agent:test",
+            skip_validation=True,
+            generate_ignore=False,
+        )
+
+        assert not (tmp_path / ".dockerignore").exists()
+
+    def test_cleans_transient_files_when_build_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import nemo_agents_plugin.container.builder as builder
+        from nemo_agents_plugin.container import metadata, template
+
+        agent_config_path = _write_package_config(tmp_path / "agent.yaml")
+        monkeypatch.setattr(metadata, "extract_agent_metadata", lambda *args, **kwargs: _image_metadata())
+        monkeypatch.setattr(template, "render_fabric_dockerfile", lambda *args, **kwargs: "FROM scratch\n")
+
+        def _failed_build(**kwargs: object) -> str:
+            del kwargs
+            raise RuntimeError("docker build failed")
+
+        monkeypatch.setattr(builder, "docker_build", _failed_build)
+
+        with pytest.raises(RuntimeError, match="docker build failed"):
+            builder.build_fabric_agent_image(
+                agent_config_path,
+                tag="fabric-agent:test",
+                skip_validation=True,
+            )
+
+        assert not (tmp_path / "Dockerfile.generated").exists()
+        assert not (tmp_path / ".dockerignore").exists()
+
+    def test_preserves_preexisting_managed_dockerignore(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_agents_plugin.container import metadata, template
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+        from nemo_agents_plugin.container.template import DOCKERIGNORE_SENTINEL
+
+        agent_config_path = _write_package_config(tmp_path / "agent.yaml")
+        dockerignore = tmp_path / ".dockerignore"
+        dockerignore.write_text(f"{DOCKERIGNORE_SENTINEL}\n# committed file\n")
+        monkeypatch.setattr(metadata, "extract_agent_metadata", lambda *args, **kwargs: _image_metadata())
+        monkeypatch.setattr(template, "render_fabric_dockerfile", lambda *args, **kwargs: "FROM scratch\n")
+
+        build_fabric_agent_image(
+            agent_config_path,
+            tag="fabric-agent:test",
+            skip_validation=True,
+        )
+
+        assert dockerignore.exists()
+        assert dockerignore.read_text().splitlines()[0] == DOCKERIGNORE_SENTINEL
+
+    def test_refuses_to_overwrite_generated_dockerfile(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_agents_plugin.container import metadata, template
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        agent_config_path = _write_package_config(tmp_path / "agent.yaml")
+        generated = tmp_path / "Dockerfile.generated"
+        user_content = "FROM user-owned-image\n"
+        generated.write_text(user_content)
+        monkeypatch.setattr(metadata, "extract_agent_metadata", lambda *args, **kwargs: _image_metadata())
+        monkeypatch.setattr(template, "render_fabric_dockerfile", lambda *args, **kwargs: "FROM scratch\n")
+
+        with pytest.raises(typer.Exit):
+            build_fabric_agent_image(
+                agent_config_path,
+                tag="fabric-agent:test",
+                skip_validation=True,
+            )
+
+        assert generated.read_text() == user_content
+
+    def test_builds_with_user_provided_dockerfile(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import nemo_agents_plugin.container.builder as builder
+        import nemo_agents_plugin.container.metadata as metadata
+        import nemo_agents_plugin.container.template as template
+
+        agent_config_path = _write_package_config(tmp_path / "configs" / "agent.yaml")
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+        dockerfile = tmp_path / "Dockerfile.custom"
+        dockerfile.write_text("FROM scratch\n")
+        build_calls: list[dict[str, object]] = []
+
+        monkeypatch.setattr(metadata, "extract_agent_metadata", lambda *args, **kwargs: _image_metadata())
+
+        def _unexpected_render(*args: object, **kwargs: object) -> str:
+            raise AssertionError(f"unexpected Fabric Dockerfile render: {args}, {kwargs}")
+
+        monkeypatch.setattr(template, "render_fabric_dockerfile", _unexpected_render)
+
+        def _build(**kwargs: object) -> str:
+            build_calls.append(kwargs)
+            return "fabric-agent:test"
+
+        monkeypatch.setattr(builder, "docker_build", _build)
+
+        result = builder.build_fabric_agent_image(
+            agent_config_path,
+            pyproject=pyproject,
+            dockerfile=dockerfile,
+            tag="fabric-agent:test",
+            base_image_url="registry.example/base",
+            base_image_tag="release",
+            python_version="3.13",
+            uv_version="0.8.15",
+            skip_validation=True,
+            platforms=["linux/amd64"],
+            push=True,
+        )
+
+        assert result == "fabric-agent:test"
+        assert build_calls == [
+            {
+                "context_dir": tmp_path.resolve(),
+                "dockerfile": dockerfile,
+                "tag": "fabric-agent:test",
+                "build_args": {
+                    "BASE_IMAGE_URL": "registry.example/base",
+                    "BASE_IMAGE_TAG": "release",
+                    "PYTHON_VERSION": "3.13",
+                },
+                "platforms": ["linux/amd64"],
+                "push": True,
+            }
+        ]
+        assert "NAT_VERSION" not in build_calls[0]["build_args"]
+        assert not (tmp_path / "Dockerfile.generated").exists()
+        assert not (tmp_path / ".dockerignore").exists()
 
 
 class TestValidateFabricPackageArtifacts:

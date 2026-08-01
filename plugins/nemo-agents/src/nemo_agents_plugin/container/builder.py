@@ -286,26 +286,87 @@ def build_fabric_agent_image(
 
         asyncio.run(validate_fabric_agent_package(agent_config, context_dir=context_dir))
 
-    del (
+    from nemo_agents_plugin.container.template import render_dockerignore, render_fabric_dockerfile, resolve_value
+
+    resolved_base_url = resolve_value("base_image_url", base_image_url)
+    resolved_base_tag = resolve_value("base_image_tag", base_image_tag)
+    resolved_python = resolve_value("python_version", python_version)
+    resolved_uv = resolve_value("uv_version", uv_version)
+
+    from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+    build_env_for_id = {
+        "base_image_url": resolved_base_url,
+        "base_image_tag": resolved_base_tag,
+        "python_version": resolved_python,
+        "uv_version": resolved_uv,
+    }
+    meta = extract_agent_metadata(
         agent_config,
         pyproject,
-        dockerfile,
-        tag,
-        base_image_url,
-        base_image_tag,
-        python_version,
-        uv_version,
-        allow_root,
-        sandbox_runtime,
-        agent_version,
-        agent_author,
-        template_path,
-        generate_ignore,
-        platforms,
-        push,
-        context_dir,
+        agent_version=agent_version,
+        agent_author=agent_author,
+        build_env=build_env_for_id,
     )
-    raise ValueError("Fabric agent packaging is not implemented yet.")
+    if tag is None:
+        tag = _default_tag_from_meta(meta)
+
+    build_args = {
+        "BASE_IMAGE_URL": resolved_base_url,
+        "BASE_IMAGE_TAG": resolved_base_tag,
+        "PYTHON_VERSION": resolved_python,
+    }
+
+    if dockerfile is not None:
+        return docker_build(
+            context_dir=context_dir,
+            dockerfile=dockerfile,
+            tag=tag,
+            build_args=build_args,
+            platforms=platforms,
+            push=push,
+        )
+
+    content = render_fabric_dockerfile(
+        agent_config,
+        pyproject,
+        base_image_url=resolved_base_url,
+        base_image_tag=resolved_base_tag,
+        python_version=resolved_python,
+        uv_version=resolved_uv,
+        allow_root=allow_root,
+        sandbox_runtime=sandbox_runtime,
+        agent_version=agent_version,
+        agent_author=agent_author,
+        template_path=template_path,
+        metadata=meta,
+    )
+
+    tmp_dockerfile = context_dir / "Dockerfile.generated"
+    if tmp_dockerfile.exists():
+        raise typer.Exit(_emit_refusal_error(tmp_dockerfile))
+
+    ignore_file: Path | None = None
+    ignore_path = context_dir / ".dockerignore"
+    ignore_pre_existed = ignore_path.exists()
+    try:
+        tmp_dockerfile.write_text(content, encoding="utf-8")
+
+        if generate_ignore:
+            ignore_file = render_dockerignore(context_dir)
+
+        return docker_build(
+            context_dir=context_dir,
+            dockerfile=tmp_dockerfile,
+            tag=tag,
+            build_args=build_args,
+            platforms=platforms,
+            push=push,
+        )
+    finally:
+        tmp_dockerfile.unlink(missing_ok=True)
+        if ignore_file is not None and not ignore_pre_existed:
+            ignore_file.unlink(missing_ok=True)
 
 
 def detect_agent_config_format(agent_config: Path) -> str:
