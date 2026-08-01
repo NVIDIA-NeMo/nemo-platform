@@ -443,6 +443,42 @@ class TestFabricBuilderValidationHook:
         assert not (tmp_path / "Dockerfile.generated").exists()
         assert not (tmp_path / ".dockerignore").exists()
 
+    def test_packages_nested_config_and_skill(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import nemo_agents_plugin.container.builder as builder
+
+        agent_config_path = _write_package_config(tmp_path / "configs" / "agent.yaml", "../skills/review")
+        skill = _skill(tmp_path / "skills" / "review")
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+
+        monkeypatch.setattr(fabric_validator, "translate_agent_config", lambda config: object())
+
+        async def _plan(config: object, *, base_dir: Path, fabric: Any | None = None) -> object:
+            del config, base_dir, fabric
+            return {"plan": "ok"}
+
+        def _build(**kwargs: object) -> str:
+            dockerfile = kwargs["dockerfile"]
+            assert isinstance(dockerfile, Path)
+            content = dockerfile.read_text()
+            assert "COPY ./ /workspace" in content
+            assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in content
+            assert (skill / "SKILL.md").is_file()
+            return "fabric-agent:test"
+
+        monkeypatch.setattr(fabric_validator, "plan_fabric_config", _plan)
+        monkeypatch.setattr(builder, "docker_build", _build)
+
+        result = builder.build_fabric_agent_image(
+            agent_config_path,
+            pyproject=pyproject,
+            tag="fabric-agent:test",
+        )
+
+        assert result == "fabric-agent:test"
+        assert not (tmp_path / "Dockerfile.generated").exists()
+        assert not (tmp_path / ".dockerignore").exists()
+
     def test_preserves_user_owned_dockerignore(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from nemo_agents_plugin.container import metadata, template
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
