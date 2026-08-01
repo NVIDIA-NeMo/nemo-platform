@@ -9,14 +9,20 @@ import {
   Modal,
   SelectContent,
   SelectItem,
+  SelectListbox,
   SelectRoot,
   SelectTrigger,
   Stack,
   Text,
+  Upload,
+  type UploadRootProps,
 } from '@nvidia/foundations-react-core';
 import { collectFolderPathsFromDatasetFiles } from '@studio/util/files';
-import { FolderClosed, Upload } from 'lucide-react';
+import { FolderClosed, Upload as UploadIcon } from 'lucide-react';
 import { FC, useEffect, useMemo, useRef, useState } from 'react';
+
+// `FileUploadItem` isn't re-exported from the package root, so derive it.
+type FileUploadItem = NonNullable<Extract<UploadRootProps, { multiple: true }>['value']>[number];
 
 const ROOT_VALUE = '__root__';
 
@@ -26,22 +32,27 @@ const normalizeFolderOption = (folder: string | undefined): string => {
   return t.endsWith('/') ? t.slice(0, -1) : t;
 };
 
+const toUploadItems = (files: File[]): FileUploadItem[] =>
+  files.map((file, index) => ({
+    id: `${file.name}-${file.lastModified}-${file.size}-${index}`,
+    file,
+    status: 'success',
+  }));
+
 export interface UploadToFolderModalProps {
   open: boolean;
   onClose: () => void;
-  /** Files to upload (may be empty until user picks files via Browse) */
+  /** Files staged before the modal opened (e.g. dropped onto the explorer) */
   files: File[];
   /** Default folder path from breadcrumbs (without trailing slash) */
   defaultFolder?: string;
   filesList: FilesetFileOutput[] | undefined;
   /** Called with files and folder path (undefined = dataset root) */
   onConfirm: (files: File[], destinationFolder: string | undefined) => void | Promise<void>;
-  /** Opens the native file picker (from dropzone) */
-  openFileDialog: () => void;
 }
 
 /**
- * Lets the user choose which folder files are uploaded into before starting the upload.
+ * Lets the user choose files and which folder they are uploaded into before starting the upload.
  */
 export const UploadToFolderModal: FC<UploadToFolderModalProps> = ({
   open,
@@ -50,31 +61,36 @@ export const UploadToFolderModal: FC<UploadToFolderModalProps> = ({
   defaultFolder,
   filesList,
   onConfirm,
-  openFileDialog,
 }) => {
   const folderOptions = useMemo(() => collectFolderPathsFromDatasetFiles(filesList), [filesList]);
   const [selectedFolder, setSelectedFolder] = useState<string>(ROOT_VALUE);
+  const [uploadItems, setUploadItems] = useState<FileUploadItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLockRef = useRef(false);
 
   useEffect(() => {
     if (open) {
       setSelectedFolder(normalizeFolderOption(defaultFolder));
+      setUploadItems(toUploadItems(files));
     } else {
+      setUploadItems([]);
       setIsSubmitting(false);
       submitLockRef.current = false;
     }
-  }, [open, defaultFolder]);
+  }, [open, defaultFolder, files]);
 
   const destinationLabel = selectedFolder === ROOT_VALUE ? 'dataset root' : `${selectedFolder}/`;
 
   const handleConfirm = async () => {
-    if (files.length === 0 || submitLockRef.current) return;
+    if (uploadItems.length === 0 || submitLockRef.current) return;
     const folder = selectedFolder === ROOT_VALUE ? undefined : selectedFolder;
     submitLockRef.current = true;
     setIsSubmitting(true);
     try {
-      await onConfirm(files, folder);
+      await onConfirm(
+        uploadItems.map((item) => item.file),
+        folder
+      );
     } finally {
       submitLockRef.current = false;
       setIsSubmitting(false);
@@ -89,7 +105,7 @@ export const UploadToFolderModal: FC<UploadToFolderModalProps> = ({
       }}
       slotHeading={
         <>
-          <Upload />
+          <UploadIcon />
           Upload files
         </>
       }
@@ -100,7 +116,7 @@ export const UploadToFolderModal: FC<UploadToFolderModalProps> = ({
           </Button>
           <LoadingButton
             onClick={handleConfirm}
-            disabled={files.length === 0}
+            disabled={uploadItems.length === 0}
             loading={isSubmitting}
           >
             Upload
@@ -111,7 +127,9 @@ export const UploadToFolderModal: FC<UploadToFolderModalProps> = ({
       <Stack gap="density-md">
         <Text kind="body/regular/md">
           Choose where to upload{' '}
-          {files.length > 0 ? `${files.length} file${files.length !== 1 ? 's' : ''}` : 'your files'}{' '}
+          {uploadItems.length > 0
+            ? `${uploadItems.length} file${uploadItems.length !== 1 ? 's' : ''}`
+            : 'your files'}{' '}
           (destination: {destinationLabel}).
         </Text>
         <Flex direction="col" gap="density-xs" align="stretch">
@@ -127,25 +145,24 @@ export const UploadToFolderModal: FC<UploadToFolderModalProps> = ({
               slotStart={<FolderClosed className="size-4 shrink-0" />}
             />
             <SelectContent>
-              <SelectItem value={ROOT_VALUE}>Root</SelectItem>
-              {folderOptions.map((path) => (
-                <SelectItem key={path} value={path}>
-                  {path}
-                </SelectItem>
-              ))}
+              <SelectListbox>
+                <SelectItem value={ROOT_VALUE}>Root</SelectItem>
+                {folderOptions.map((path) => (
+                  <SelectItem key={path} value={path}>
+                    {path}
+                  </SelectItem>
+                ))}
+              </SelectListbox>
             </SelectContent>
           </SelectRoot>
         </Flex>
-        <Flex gap="density-sm" align="center" wrap="wrap">
-          <Button kind="secondary" type="button" onClick={openFileDialog} disabled={isSubmitting}>
-            Select files…
-          </Button>
-          {files.length > 0 && (
-            <Text kind="body/regular/sm" className="text-muted-foreground">
-              {files.map((f) => f.name).join(', ')}
-            </Text>
-          )}
-        </Flex>
+        <Upload
+          multiple
+          disabled={isSubmitting}
+          value={uploadItems}
+          onValueChange={setUploadItems}
+          attributes={{ UploadInputElement: { 'aria-label': 'Upload files' } }}
+        />
       </Stack>
     </Modal>
   );
