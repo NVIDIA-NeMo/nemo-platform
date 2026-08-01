@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Experimentalist plugin CLI — ``nemo experimentalist ...`` subcommands."""
+"""Experimentalist plugin CLI — ``nemo agents experimentalist ...`` subcommands.
+
+The same class is registered under both ``nemo.cli.agents`` and ``nemo.cli``, so every
+verb is reachable as ``nemo agents experimentalist <verb>`` (canonical) and as ``nemo
+experimentalist <verb>`` (retained for backward compatibility).
+"""
 
 import asyncio
 import os
@@ -50,7 +55,7 @@ _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
 
 # Lazily imported in the experiment command: importing experimentalist.run reaches model
 # construction that requires EXPERIMENTALIST_API_* env at import time, and this module
-# must import env-less so `nemo experimentalist doctor` can diagnose the missing creds.
+# must import env-less so `nemo agents experimentalist doctor` can diagnose the missing creds.
 # Tests monkeypatch this global with a recorder, which bypasses the lazy import.
 run_experimentalist = None
 
@@ -74,7 +79,7 @@ def _default_experiment_dir(profile: AgentProfile | None) -> Path:
 
 
 class ExperimentalistCLI(NemoCLI):
-    """``nemo experimentalist ...`` subcommands."""
+    """``nemo agents experimentalist ...`` subcommands."""
 
     name: ClassVar[str] = "experimentalist"
     description: ClassVar[str] = "NeMo Experimentalist commands."
@@ -112,7 +117,7 @@ class ExperimentalistCLI(NemoCLI):
                     "(surfaced in Studio). A path that exists on disk is read locally; "
                     "otherwise it is fetched from the platform. Default: "
                     "<profile-dir>/.nemo-optimizer/insights.yaml when it exists (where "
-                    "`nemo insights analyze` writes by default)."
+                    "`nemo agents analyst run` writes by default)."
                 ),
             ),
             insight_id: str | None = typer.Option(
@@ -227,7 +232,7 @@ class ExperimentalistCLI(NemoCLI):
                 if no_insight:
                     typer.echo("Insight disabled: --no-insight (Mode 2)", err=True)
                 elif effective_insight.is_profile_default:
-                    # `nemo insights analyze` writes here by default: the verbs connect flag-free.
+                    # `nemo agents analyst run` writes here by default: the verbs connect flag-free.
                     typer.echo(
                         f"Insight file: {effective_insight.ref} (default; pass --insight to override)",
                         err=True,

@@ -22,14 +22,16 @@ make bootstrap
 
 ## 2. Start NeMo Platform
 
-Once you have the platform installed and configured, you can start it. Run this block from the repository root. This will start the platform in a background process:
+Agent traces are stored in ClickHouse, which runs as its own container. Start it first, from the repository root:
 
 ```bash
-set -a
-source packages/nmp_platform/config/local.env
-set +a
 services/intake/scripts/spans/run_clickhouse.sh
-uv run nemo services start --config packages/nmp_platform/config/local.yaml
+```
+
+Then run setup. This starts the platform services in the background and walks you through the configuration required to run the platform:
+
+```bash
+uv run nemo setup
 ```
 
 You should now be able to navigate to `http://localhost:8080` and see the NeMo Platform web UI.
@@ -72,7 +74,7 @@ If the analyst discovers issues in your application, it will create what we call
 Let's run it:
 
 ```bash
-uv run --frozen nemo insights analyze \
+uv run --frozen nemo agents analyst run \
   --agent nemo-experimentalist-tau3-nooa \
   --workspace tau3-airline \
   --base-url "$NMP_BASE_URL"
@@ -100,7 +102,7 @@ uv run --frozen nemo workspaces create canonical-tau3-airline \
 Now we're ready to run the experimentalist!
 
 ```bash
-uv run --frozen nemo experimentalist run \
+uv run --frozen nemo agents experimentalist run \
   --no-insight \
   --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
   --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \

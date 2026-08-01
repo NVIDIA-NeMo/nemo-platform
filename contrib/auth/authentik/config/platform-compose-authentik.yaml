@@ -12,6 +12,12 @@ auth:
   policy_data_refresh_interval: 2
   bundle_cache_seconds: 15
   admin_email: "admin@example.com"
+  token_signing:
+    issuer: "https://nemo-gateway:8080/apis/auth"
+    key_id: "nemo-platform-signing"
+    private_key_file: "/var/run/secrets/nemo-platform/workload-token-signing/private-key.pem"
+  access_keys:
+    enabled: true
   oidc:
     enabled: true
     issuer: "http://authentik-server:9000/application/o/nemo-cli/"
@@ -26,9 +32,7 @@ auth:
     workload_client_id: "nemo-platform-workload"
     workload_audience: "nemo-platform"
     workload_scope: "openid email groups"
-    workload_token_issuer: "https://nemo-gateway:8080/apis/auth"
     workload_token_endpoint: "https://nemo-gateway:8080/apis/auth/token"
-    workload_token_private_key_file: "/var/run/secrets/nemo-platform/workload-token-signing/private-key.pem"
     workload_subject_jwks_uri: "http://authentik-server:9000/application/o/nemo-workload/jwks/"
     workload_subject_issuers:
       - "http://authentik-server:9000/application/o/nemo-workload/"

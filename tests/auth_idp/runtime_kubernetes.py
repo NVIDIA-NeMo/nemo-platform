@@ -503,6 +503,8 @@ def _helm_upgrade_args(context: str, kubeconfig: Path | None = None) -> list[str
             f"nemo-platform.platformConfig.platform.image_registry={registry}",
             "--set-string",
             f"nemo-platform.platformConfig.platform.image_tag={tag}",
+            "--set-string",
+            "nemo-platform.platformConfig.auth.access_keys.enabled=true",
         ],
         kubeconfig,
     )

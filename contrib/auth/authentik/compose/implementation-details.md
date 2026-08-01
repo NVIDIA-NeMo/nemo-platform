@@ -56,9 +56,10 @@ share local keys:
 The workload-token private key is mounted into `nemo` at
 `/var/run/secrets/nemo-platform/workload-token-signing/private-key.pem`.
 `platform-compose-authentik.yaml` points
-`auth.oidc.workload_token_private_key_file` at that mounted path. The NeMo auth
-service uses the private key to sign workload-exchange access tokens, and Envoy
-validates those exchanged tokens through the NeMo auth service JWKS endpoint.
+`auth.token_signing.private_key_file` at that mounted path. The NeMo auth
+service uses the private key to sign workload-exchange access tokens and Scoped
+Access Key JWTs, and Envoy validates those tokens through the NeMo auth service
+JWKS endpoints.
 
 The gateway TLS files are copied into the `gateway-tls` named volume by
 `gateway-tls-init`. The `gateway` service uses that volume to serve HTTPS, and
@@ -117,15 +118,22 @@ Envoy is the public entrypoint for the Compose example. It routes:
   NeMo and Authentik through their upstream clusters.
 - Authentik paths to `authentik-server`.
 
-Before JWT validation, Envoy removes incoming `X-NMP-Principal-*` headers so a
-client cannot spoof identity headers. For `/apis/` requests, Envoy accepts
-either:
+Before authentication, Envoy removes incoming `X-NMP-Principal-*` and
+`X-NMP-Scopes` headers so a client cannot spoof identity or scopes. For
+protected `/apis/` requests, Envoy calls NeMo's
+`/apis/auth/authenticate` endpoint with the presented bearer token. The auth
+service validates Authentik OIDC tokens, NeMo workload-exchange access tokens,
+and NeMo Scoped Access Keys, then returns trusted `X-NMP-Principal-*` and
+`X-NMP-Scopes` headers for Envoy to forward upstream.
 
-- Authentik-issued tokens from the demo providers.
-- NeMo-issued workload-exchange tokens from `/apis/auth/token`.
-
-Envoy copies the validated `sub` and `groups` claims into NeMo's principal
-headers. NeMo then applies its normal workspace authorization checks.
+The gateway callout is required for dynamic or revocable Scoped Access Keys
+because Envoy JWKS validation can only prove token signature, issuer, audience,
+and time claims. It cannot check NeMo's access-key lifecycle state. Compose
+keeps `auth.access_keys.enabled=true` so Scoped Access Keys can be created and
+validated; Envoy performs the bearer-to-header mapping before the request
+reaches service middleware.
+Scoped Access Keys are enabled in the checked-in Compose config because the Compose
+test runtime advertises the `platform_access_keys` capability.
 
 ## Workload Token Exchange
 

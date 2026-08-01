@@ -66,6 +66,23 @@ class _GroupExpression:
     required_sql: str
 
 
+@dataclass(frozen=True)
+class _SpanStorageRef:
+    """The complete sorting key needed to read one current span efficiently."""
+
+    session_id: str
+    start_time_us: int
+    id: int
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> _SpanStorageRef:
+        return cls(
+            session_id=str(row["session_id"]),
+            start_time_us=int(row["start_time_us"]),
+            id=int(row["id"]),
+        )
+
+
 class ClickHouseSpanRepository(SpanRepository):
     def __init__(self, executor: ClickHouseExecutor) -> None:
         self._executor = executor
@@ -189,22 +206,71 @@ class ClickHouseSpanRepository(SpanRepository):
         )
 
     async def get_span(self, *, workspace: str, span_id: str) -> IntakeSpan | None:
-        columns_sql = ", ".join(SPAN_COLUMNS)
+        table = self._executor.table(ClickHouseTable.SPANS)
+        ref_rows = await self._executor.fetch_all(
+            _span_storage_ref_query(table).bind(workspace=workspace, span_id=span_id)
+        )
+        if not ref_rows:
+            return None
+
+        ref = _SpanStorageRef.from_row(ref_rows[0])
         rows = await self._executor.fetch_all(
-            ClickHouseQuery(
-                name="spans.get",
-                statement=f"""
-                SELECT {columns_sql}
-                FROM {self._executor.table(ClickHouseTable.SPANS)} FINAL
-                WHERE workspace = %(workspace)s AND external_span_id = %(span_id)s AND is_deleted = 0
-                LIMIT 1
-                """,
-                parameters={"workspace": workspace, "span_id": span_id},
+            _span_hydration_query(table).bind(
+                workspace=workspace,
+                session_id=ref.session_id,
+                start_time_us=ref.start_time_us,
+                id=ref.id,
             )
         )
         if not rows:
             return None
         return _row_to_span(rows[0])
+
+
+def _span_storage_ref_query(table: str) -> ClickHouseQuery:
+    """Resolve an external span ID to its current sorting key using only narrow columns.
+
+    ``external_span_id`` has a bloom index but is not part of the sorting key. Applying
+    ``FINAL`` directly makes ClickHouse expand the bloom-filter ranges across overlapping
+    parts before reading every payload column. Resolving the current key with ``argMax``
+    avoids that expansion; the full row can then be read by its exact sorting key.
+    """
+
+    return ClickHouseQuery(
+        name="spans.get.resolve",
+        statement=f"""
+        SELECT
+            id,
+            argMax(session_id, (event_ts, is_deleted)) AS session_id,
+            toUnixTimestamp64Micro(argMax(start_time, (event_ts, is_deleted))) AS start_time_us,
+            argMax(is_deleted, (event_ts, is_deleted)) AS current_is_deleted
+        FROM {table}
+        PREWHERE
+            workspace = %(workspace)s
+            AND external_span_id = %(span_id)s
+        GROUP BY workspace, source_format, trace_id, external_span_id, id
+        HAVING current_is_deleted = 0
+        LIMIT 1
+        """,
+    )
+
+
+def _span_hydration_query(table: str) -> ClickHouseQuery:
+    columns_sql = ", ".join(SPAN_COLUMNS)
+    return ClickHouseQuery(
+        name="spans.get.hydrate",
+        statement=f"""
+        SELECT {columns_sql}
+        FROM {table} FINAL
+        PREWHERE
+            workspace = %(workspace)s
+            AND session_id = %(session_id)s
+            AND start_time = fromUnixTimestamp64Micro(%(start_time_us)s)
+            AND id = %(id)s
+        WHERE is_deleted = 0
+        LIMIT 1
+        """,
+    )
 
 
 def _span_select_columns(*, mode: IntakeResponseMode) -> str:

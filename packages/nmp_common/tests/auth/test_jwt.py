@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
+from jwt.algorithms import RSAAlgorithm
+from nmp.common import http_clients
 from nmp.common.auth.jwt import JWTValidator, TokenClaims, UnsignedJWTRejectedError
 from nmp.common.config import AuthConfig
 from nmp.common.config.base import OIDCConfig
@@ -196,7 +199,7 @@ class TestJWTValidator:
             mock_jwks = MagicMock()
             mock_signing_key = MagicMock()
             mock_signing_key.key = "test-key"
-            mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
             mock_get_jwks.return_value = mock_jwks
 
             # Make jwt.decode raise ExpiredSignatureError
@@ -212,7 +215,7 @@ class TestJWTValidator:
             mock_jwks = MagicMock()
             mock_signing_key = MagicMock()
             mock_signing_key.key = "test-key"
-            mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
             mock_get_jwks.return_value = mock_jwks
 
             with patch("jwt.decode", side_effect=jwt.InvalidAudienceError("Invalid audience")):
@@ -227,7 +230,7 @@ class TestJWTValidator:
             mock_jwks = MagicMock()
             mock_signing_key = MagicMock()
             mock_signing_key.key = "test-key"
-            mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
             mock_get_jwks.return_value = mock_jwks
 
             with patch("jwt.decode", side_effect=jwt.InvalidIssuerError("Invalid issuer")):
@@ -371,7 +374,7 @@ class TestJWTValidator:
             mock_jwks = MagicMock()
             mock_signing_key = MagicMock()
             mock_signing_key.key = "test-key"
-            mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
             mock_get_jwks.return_value = mock_jwks
 
             with patch("jwt.decode", return_value=valid_claims):
@@ -399,7 +402,7 @@ class TestJWTValidator:
             mock_jwks = MagicMock()
             mock_signing_key = MagicMock()
             mock_signing_key.key = "test-key"
-            mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
             mock_get_jwks.return_value = mock_jwks
 
             with patch("jwt.decode", return_value=valid_claims):
@@ -424,7 +427,7 @@ class TestJWTValidator:
             mock_jwks = MagicMock()
             mock_signing_key = MagicMock()
             mock_signing_key.key = "test-key"
-            mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
             mock_get_jwks.return_value = mock_jwks
 
             with patch("jwt.decode", return_value=valid_claims):
@@ -463,7 +466,7 @@ class TestJWTValidator:
             mock_jwks = MagicMock()
             mock_signing_key = MagicMock()
             mock_signing_key.key = "test-key"
-            mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
             mock_get_jwks.return_value = mock_jwks
 
             with patch("jwt.decode", return_value=valid_claims) as mock_decode:
@@ -505,7 +508,7 @@ class TestJWTValidator:
             mock_jwks = MagicMock()
             mock_signing_key = MagicMock()
             mock_signing_key.key = "test-key"
-            mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
             mock_get_jwks.return_value = mock_jwks
 
             with patch("jwt.decode", return_value=valid_claims) as mock_decode:
@@ -537,7 +540,7 @@ class TestJWTValidator:
         auth_config.oidc.jwks_uri = "https://custom.example.com/jwks"
         validator = JWTValidator(auth_config)
 
-        with patch("nmp.common.auth.jwt.PyJWKClient") as mock_jwk_client_class:
+        with patch("nmp.common.auth.jwt.AsyncJWKSClient") as mock_jwk_client_class:
             mock_jwks = MagicMock()
             mock_jwk_client_class.return_value = mock_jwks
 
@@ -545,6 +548,63 @@ class TestJWTValidator:
 
             mock_jwk_client_class.assert_called_once_with(
                 "https://custom.example.com/jwks",
-                cache_keys=True,
                 lifespan=_JWKS_CACHE_LIFESPAN,
             )
+
+    @pytest.mark.asyncio
+    async def test_validate_token_fetches_jwks_with_async_client(self, auth_config, monkeypatch):
+        """OIDC JWKS lookup must not use sync PyJWKClient in async validation."""
+        auth_config.oidc.jwks_uri = "https://custom.example.com/jwks"
+        validator = JWTValidator(auth_config)
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        jwk = RSAAlgorithm.to_jwk(private_key.public_key(), as_dict=True)
+        jwk.update({"kid": "oidc-key", "use": "sig", "alg": "RS256"})
+        token = jwt.encode(
+            {
+                "sub": "user123",
+                "email": "user@example.com",
+                "groups": ["admin"],
+                "scope": "openid profile",
+                "exp": int(time.time()) + 3600,
+                "iat": int(time.time()),
+                "aud": "test-audience",
+                "iss": "https://sso.example.com",
+            },
+            private_key,
+            algorithm="RS256",
+            headers={"kid": "oidc-key"},
+        )
+
+        class ForbiddenPyJWKClient:
+            def __init__(self, *args, **kwargs):
+                raise AssertionError("OIDC validation should use async JWKS fetching")
+
+        class FakeResponse:
+            def raise_for_status(self) -> None:
+                pass
+
+            def json(self) -> dict:
+                return {"keys": [jwk]}
+
+        class FakeAsyncClient:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def get(self, url: str, *, timeout: float) -> FakeResponse:
+                assert url == "https://custom.example.com/jwks"
+                assert timeout == 10.0
+                self.calls += 1
+                return FakeResponse()
+
+        fake_client = FakeAsyncClient()
+        monkeypatch.setattr(http_clients, "shared_async_http_client", lambda: fake_client)
+        monkeypatch.setattr("nmp.common.auth.jwt.PyJWKClient", ForbiddenPyJWKClient, raising=False)
+
+        first_claims = await validator.validate_token(token)
+        second_claims = await validator.validate_token(token)
+
+        assert first_claims is not None
+        assert second_claims is not None
+        assert first_claims.subject == "user123"
+        assert second_claims.subject == "user123"
+        assert fake_client.calls == 1

@@ -233,8 +233,18 @@ async def test_list_span_groups_rejects_unsupported_group_field():
 
 @pytest.mark.asyncio
 async def test_get_span_prefers_external_span_id_over_numeric_internal_id():
-    row = _span_row(internal_id=7, external_span_id="123")
-    client = _Client(query_results=[_QueryResult([row], SPAN_COLUMNS)])
+    started_at = datetime(2026, 1, 1, 0, 0, 0, 123456, tzinfo=timezone.utc)
+    started_at_us = 1767225600123456
+    row = _span_row(internal_id=7, external_span_id="123", started_at=started_at)
+    client = _Client(
+        query_results=[
+            _QueryResult(
+                [(7, "session-a", started_at_us, 0)],
+                ["id", "session_id", "start_time_us", "current_is_deleted"],
+            ),
+            _QueryResult([row], SPAN_COLUMNS),
+        ]
+    )
     repository = _repository(client)
 
     span = await repository.get_span(workspace="workspace-a", span_id="123")
@@ -242,14 +252,25 @@ async def test_get_span_prefers_external_span_id_over_numeric_internal_id():
     assert span is not None
     assert span.id == 7
     assert span.external_span_id == "123"
-    assert len(client.queries) == 1
+    assert len(client.queries) == 2
+    assert "FINAL" not in client.queries[0]
     assert "external_span_id = %(span_id)s" in client.queries[0]
     assert client.parameters[0] == {"workspace": "workspace-a", "span_id": "123"}
+    assert "FROM spans FINAL" in client.queries[1]
+    assert "session_id = %(session_id)s" in client.queries[1]
+    assert "start_time = fromUnixTimestamp64Micro(%(start_time_us)s)" in client.queries[1]
+    assert "id = %(id)s" in client.queries[1]
+    assert client.parameters[1] == {
+        "workspace": "workspace-a",
+        "session_id": "session-a",
+        "start_time_us": started_at_us,
+        "id": 7,
+    }
 
 
 @pytest.mark.asyncio
 async def test_get_span_does_not_fall_back_to_internal_id_after_external_miss():
-    client = _Client(query_results=[_QueryResult([], SPAN_COLUMNS)])
+    client = _Client(query_results=[_QueryResult([], ["id", "session_id", "start_time_us", "current_is_deleted"])])
     repository = _repository(client)
 
     span = await repository.get_span(workspace="workspace-a", span_id="123")
@@ -260,8 +281,7 @@ async def test_get_span_does_not_fall_back_to_internal_id_after_external_miss():
     assert client.parameters[0] == {"workspace": "workspace-a", "span_id": "123"}
 
 
-def _span_row(*, internal_id: int, external_span_id: str) -> tuple[object, ...]:
-    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+def _span_row(*, internal_id: int, external_span_id: str, started_at: datetime) -> tuple[object, ...]:
     zero_time = datetime.fromtimestamp(0, tz=timezone.utc)
     values: dict[str, object] = {
         "workspace": "workspace-a",

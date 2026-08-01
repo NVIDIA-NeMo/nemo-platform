@@ -144,9 +144,9 @@ def _platform_env(issuer_url: str, base_url: str, data_dir: Path, extra: dict[st
             "NMP_AUTH_ENABLED": "true",
             "NMP_AUTH_ALLOW_UNSIGNED_JWT": "false",  # defaults are true; signed JWTs only
             "NMP_AUTH_POLICY_DECISION_POINT_BASE_URL": base_url,
-            "NMP_AUTH_OIDC_ENABLED": "true",
-            "NMP_AUTH_OIDC_ISSUER": issuer_url,
-            "NMP_AUTH_OIDC_AUDIENCE": DEFAULT_AUDIENCE,
+            "NMP_AUTH_OIDC__ENABLED": "true",
+            "NMP_AUTH_OIDC__ISSUER": issuer_url,
+            "NMP_AUTH_OIDC__AUDIENCE": DEFAULT_AUDIENCE,
             "NMP_AUTH_ADMIN_EMAIL": ADMIN_EMAIL,
             # bundle_cache_seconds must stay NONZERO: at 0 every PDP eval
             # rebuilds policy data, and degraded fixture plugins are never
