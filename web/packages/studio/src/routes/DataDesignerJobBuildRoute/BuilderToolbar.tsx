@@ -7,7 +7,7 @@ import { Button, Flex, SegmentedControl, Tag, Text } from '@nvidia/foundations-r
 import type { StartOptionTag } from '@studio/components/CreateFilesetStart/types';
 import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import { FileJson, ListTree, Pencil, SplinePointer } from 'lucide-react';
-import { type FC, useState } from 'react';
+import { type FC, memo, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 /** Which renderer the center pane shows: the flat schema list or the DAG canvas. */
@@ -26,7 +26,7 @@ export interface BuilderToolbarProps {
   isSubmitting: boolean;
 }
 
-export const BuilderToolbar: FC<BuilderToolbarProps> = ({
+export const BuilderToolbar: FC<BuilderToolbarProps> = memo(function BuilderToolbar({
   templateTag,
   columnCount,
   viewMode,
@@ -35,7 +35,7 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
   isPreviewing,
   onSubmit,
   isSubmitting,
-}) => {
+}) {
   const [isEditingName, setIsEditingName] = useState(false);
   const { control } = useFormContext<JobBuilderFormValues>();
   const name = useWatch({ control, name: 'name' }) ?? '';
@@ -126,4 +126,4 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
       </Flex>
     </Flex>
   );
-};
+});
