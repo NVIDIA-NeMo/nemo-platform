@@ -364,15 +364,9 @@ def _register_package_command(app: typer.Typer) -> None:
             "Defaults to 'Dockerfile' next to --pyproject when given (project root, "
             "so COPY statements resolve), otherwise next to the agent config.",
         ),
-        base_image_url: Optional[str] = typer.Option(
-            None, "--base-image-url", envvar="NEMO_AGENTS_BASE_IMAGE_URL"
-        ),
-        base_image_tag: Optional[str] = typer.Option(
-            None, "--base-image-tag", envvar="NEMO_AGENTS_BASE_IMAGE_TAG"
-        ),
-        python_version: Optional[str] = typer.Option(
-            None, "--python-version", envvar="NEMO_AGENTS_PYTHON_VERSION"
-        ),
+        base_image_url: Optional[str] = typer.Option(None, "--base-image-url", envvar="NEMO_AGENTS_BASE_IMAGE_URL"),
+        base_image_tag: Optional[str] = typer.Option(None, "--base-image-tag", envvar="NEMO_AGENTS_BASE_IMAGE_TAG"),
+        python_version: Optional[str] = typer.Option(None, "--python-version", envvar="NEMO_AGENTS_PYTHON_VERSION"),
         nat_version: Optional[str] = typer.Option(
             None,
             "--nat-version",

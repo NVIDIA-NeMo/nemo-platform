@@ -419,8 +419,7 @@ class TestFabricDockerfileTemplate:
         assert "EXPOSE 8000" in result
         assert (
             'ENTRYPOINT ["sh", "-c", "exec python -m nemo_agents_plugin.fabric.server '
-            '--agent-config \\"$AGENT_CONFIG_PATH\\" --host 0.0.0.0 --port \\"$PORT\\""]'
-            in result
+            '--agent-config \\"$AGENT_CONFIG_PATH\\" --host 0.0.0.0 --port \\"$PORT\\""]' in result
         )
 
 
@@ -478,9 +477,7 @@ class TestRenderFabricDockerfile:
 
         assert result == "FROM custom/image:custom-tag\nENV CONFIG=/workspace/agent.yaml\n"
 
-    def test_shared_environment_and_explicit_overrides(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_shared_environment_and_explicit_overrides(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from nemo_agents_plugin.container.template import render_fabric_dockerfile
 
         agent_config = self._write_config(tmp_path)
