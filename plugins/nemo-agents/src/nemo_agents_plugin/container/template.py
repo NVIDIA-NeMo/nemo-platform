@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Jinja2-based Dockerfile renderer for NAT agents.
+"""Jinja2-based Dockerfile rendering primitives for packaged agents.
 
-Renders a Dockerfile from a built-in template using values resolved from
-CLI flags, environment variables, or sensible defaults.
+The current built-in template targets NAT agents. Shared render parameters
+are kept separate from NAT-specific parameters so Fabric packaging can reuse
+the image, project, sandbox, and metadata contract without inheriting NAT
+runtime fields.
 
 Two rendering modes are supported:
 
@@ -80,16 +82,16 @@ _DEFAULTS: dict[str, str] = {
 }
 
 _ENV_MAP: dict[str, str] = {
-    "base_image_url": "NAT_BASE_IMAGE_URL",
-    "base_image_tag": "NAT_BASE_IMAGE_TAG",
-    "python_version": "NAT_PYTHON_VERSION",
+    "base_image_url": "NEMO_AGENTS_BASE_IMAGE_URL",
+    "base_image_tag": "NEMO_AGENTS_BASE_IMAGE_TAG",
+    "python_version": "NEMO_AGENTS_PYTHON_VERSION",
     "nat_version": "NAT_VERSION",
-    "uv_version": "NAT_UV_VERSION",
+    "uv_version": "NEMO_AGENTS_UV_VERSION",
 }
 
 # -- Jinja2 template --------------------------------------------------------
 
-DOCKERFILE_TEMPLATE = (
+NAT_DOCKERFILE_TEMPLATE = (
     f"""\
 {DOCKERFILE_SENTINEL}
 """
@@ -208,17 +210,16 @@ node_modules/
 """
 
 
-# -- Data class for render parameters --------------------------------------
+# -- Data classes for render parameters ------------------------------------
 
 
 @dataclass
-class RenderParams:
-    """Resolved parameters for Dockerfile rendering."""
+class SharedRenderParams:
+    """Resolved Dockerfile parameters shared by all agent runtimes."""
 
     base_image_url: str = ""
     base_image_tag: str = ""
     python_version: str = ""
-    nat_version: str = ""
     uv_version: str = ""
     has_pyproject: bool = False
     config_file_path: str = "/workspace/config.yaml"
@@ -238,6 +239,13 @@ class RenderParams:
     revision: str = ""
     source: str = ""
     extra: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class NatRenderParams(SharedRenderParams):
+    """Resolved parameters specific to NAT Dockerfile rendering."""
+
+    nat_version: str = ""
 
 
 # -- Public API -------------------------------------------------------------
@@ -314,7 +322,96 @@ def _jinja_env() -> jinja2.Environment:
     return env
 
 
-def render_dockerfile(
+def resolve_shared_render_params(
+    agent_config: Path,
+    pyproject: Path | None = None,
+    *,
+    base_image_url: str | None = None,
+    base_image_tag: str | None = None,
+    python_version: str | None = None,
+    uv_version: str | None = None,
+    allow_root: bool = False,
+    sandbox_runtime: str | None = None,
+    agent_version: str | None = None,
+    agent_author: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> SharedRenderParams:
+    """Resolve image, project, sandbox, and metadata fields shared by runtimes."""
+    from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+    has_pyproject = pyproject is not None and pyproject.exists()
+
+    if has_pyproject:
+        assert pyproject is not None
+        try:
+            relative_config = agent_config.resolve().relative_to(pyproject.resolve().parent)
+        except ValueError as exc:
+            raise ValueError(
+                f"agent config {agent_config} is outside the pyproject build "
+                f"context ({pyproject.resolve().parent}); move it into the "
+                "project tree or omit --pyproject to use the config's directory "
+                "as the build context."
+            ) from exc
+        config_file_path = f"/workspace/{relative_config.as_posix()}"
+    else:
+        config_file_path = f"/workspace/{agent_config.name}"
+
+    sandbox_runtime_name = ""
+    sandbox_apt_packages = ""
+    sandbox_user_setup = ""
+    if sandbox_runtime:
+        from nemo_agents_plugin.container.sandbox import (
+            render_apt_packages,
+            render_user_setup,
+            resolve_sandbox_profile,
+        )
+
+        profile = resolve_sandbox_profile(sandbox_runtime)
+        sandbox_runtime_name = profile.name
+        sandbox_apt_packages = render_apt_packages(profile)
+        sandbox_user_setup = render_user_setup(profile)
+
+    if metadata is None:
+        metadata = extract_agent_metadata(
+            agent_config,
+            pyproject,
+            agent_version=agent_version,
+            agent_author=agent_author,
+        )
+
+    return SharedRenderParams(
+        base_image_url=resolve_value("base_image_url", base_image_url),
+        base_image_tag=resolve_value("base_image_tag", base_image_tag),
+        python_version=resolve_value("python_version", python_version),
+        uv_version=resolve_value("uv_version", uv_version),
+        has_pyproject=has_pyproject,
+        config_file_path=config_file_path,
+        allow_root=allow_root,
+        sandbox_runtime=sandbox_runtime_name,
+        sandbox_apt_packages=sandbox_apt_packages,
+        sandbox_user_setup=sandbox_user_setup,
+        contract_version=_get_contract_version(),
+        agent_id=metadata["agent_id"],
+        agent_name=metadata["agent_name"],
+        agent_version=metadata["agent_version"],
+        agent_author=metadata["agent_author"],
+        agent_framework=metadata["agent_framework"],
+        build_timestamp=metadata["build_timestamp"],
+        description=metadata["description"],
+        licenses=metadata["licenses"],
+        revision=metadata["revision"],
+        source=metadata["source"],
+    )
+
+
+def _render_context(params: SharedRenderParams) -> dict[str, object]:
+    """Flatten shared and runtime-specific dataclass fields for Jinja."""
+    ctx = {f.name: getattr(params, f.name) for f in fields(params) if f.name != "extra"}
+    ctx.update(params.extra)
+    return ctx
+
+
+def render_nat_dockerfile(
     agent_config: Path,
     pyproject: Path | None = None,
     *,
@@ -362,79 +459,22 @@ def render_dockerfile(
             would otherwise produce an image that crashes at startup
             looking for the missing config file).
     """
-    from nemo_agents_plugin.container.metadata import extract_agent_metadata
-
-    has_pyproject = pyproject is not None and pyproject.exists()
-
-    if has_pyproject:
-        assert pyproject is not None
-        try:
-            relative_config = agent_config.resolve().relative_to(pyproject.resolve().parent)
-        except ValueError as exc:
-            # Falling back to ``Path(agent_config.name)`` here is unsafe —
-            # the rendered image would set ``NAT_CONFIG_FILE=/workspace/<name>``
-            # while the COPY of the project tree never picks up the
-            # out-of-tree config. The container would build successfully and
-            # then crash at ``nat serve`` startup with file-not-found.
-            raise ValueError(
-                f"agent config {agent_config} is outside the pyproject build "
-                f"context ({pyproject.resolve().parent}); move it into the "
-                "project tree or omit --pyproject to use the config's directory "
-                "as the build context."
-            ) from exc
-        config_file_path = f"/workspace/{relative_config.as_posix()}"
-    else:
-        config_file_path = f"/workspace/{agent_config.name}"
-
-    resolved_nat = resolve_value("nat_version", nat_version)
-    contract_version = _get_contract_version()
-
-    sandbox_runtime_name = ""
-    sandbox_apt_packages = ""
-    sandbox_user_setup = ""
-    if sandbox_runtime:
-        from nemo_agents_plugin.container.sandbox import (
-            render_apt_packages,
-            render_user_setup,
-            resolve_sandbox_profile,
-        )
-
-        profile = resolve_sandbox_profile(sandbox_runtime)
-        sandbox_runtime_name = profile.name
-        sandbox_apt_packages = render_apt_packages(profile)
-        sandbox_user_setup = render_user_setup(profile)
-
-    if metadata is None:
-        metadata = extract_agent_metadata(
-            agent_config,
-            pyproject,
-            agent_version=agent_version,
-            agent_author=agent_author,
-        )
-
-    params = RenderParams(
-        base_image_url=resolve_value("base_image_url", base_image_url),
-        base_image_tag=resolve_value("base_image_tag", base_image_tag),
-        python_version=resolve_value("python_version", python_version),
-        nat_version=resolved_nat,
-        uv_version=resolve_value("uv_version", uv_version),
-        has_pyproject=has_pyproject,
-        config_file_path=config_file_path,
+    shared = resolve_shared_render_params(
+        agent_config,
+        pyproject,
+        base_image_url=base_image_url,
+        base_image_tag=base_image_tag,
+        python_version=python_version,
+        uv_version=uv_version,
         allow_root=allow_root,
-        sandbox_runtime=sandbox_runtime_name,
-        sandbox_apt_packages=sandbox_apt_packages,
-        sandbox_user_setup=sandbox_user_setup,
-        contract_version=contract_version,
-        agent_id=metadata["agent_id"],
-        agent_name=metadata["agent_name"],
-        agent_version=metadata["agent_version"],
-        agent_author=metadata["agent_author"],
-        agent_framework=metadata["agent_framework"],
-        build_timestamp=metadata["build_timestamp"],
-        description=metadata["description"],
-        licenses=metadata["licenses"],
-        revision=metadata["revision"],
-        source=metadata["source"],
+        sandbox_runtime=sandbox_runtime,
+        agent_version=agent_version,
+        agent_author=agent_author,
+        metadata=metadata,
+    )
+    params = NatRenderParams(
+        **{f.name: getattr(shared, f.name) for f in fields(shared)},
+        nat_version=resolve_value("nat_version", nat_version),
     )
 
     if template_path:
@@ -450,12 +490,10 @@ def render_dockerfile(
         except (OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"failed to read --template file {template_path}: {exc}") from exc
     else:
-        template_source = DOCKERFILE_TEMPLATE
+        template_source = NAT_DOCKERFILE_TEMPLATE
 
     template = _jinja_env().from_string(template_source)
-    ctx = {f.name: getattr(params, f.name) for f in fields(params) if f.name != "extra"}
-    ctx.update(params.extra)
-    return template.render(**ctx)
+    return template.render(**_render_context(params))
 
 
 def _get_contract_version() -> str:

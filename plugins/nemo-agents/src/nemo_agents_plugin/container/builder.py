@@ -4,7 +4,7 @@
 """Docker image builder for NeMo Platform agents.
 
 Builds a Docker image either from a pre-existing Dockerfile or by rendering
-one on-the-fly via :func:`~nemo_agents_plugin.container.template.render_dockerfile`.
+one on-the-fly via :func:`~nemo_agents_plugin.container.template.render_nat_dockerfile`.
 
 Uses `python-on-whales <https://github.com/gabrieldemarmiesse/python-on-whales>`_
 for Docker operations so callers never need to shell out manually.
@@ -122,7 +122,7 @@ def build_nat_agent_image(
         The Docker image tag.
     """
     from nemo_agents_plugin.container.metadata import extract_agent_metadata
-    from nemo_agents_plugin.container.template import render_dockerfile, render_dockerignore, resolve_value
+    from nemo_agents_plugin.container.template import render_dockerignore, render_nat_dockerfile, resolve_value
     from nemo_agents_plugin.container.validator import validate_agent_config
 
     if not skip_validation:
@@ -189,7 +189,7 @@ def build_nat_agent_image(
             push=push,
         )
 
-    content = render_dockerfile(
+    content = render_nat_dockerfile(
         agent_config,
         pyproject,
         base_image_url=base_image_url,

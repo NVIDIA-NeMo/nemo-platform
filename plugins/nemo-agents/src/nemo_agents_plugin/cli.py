@@ -364,20 +364,25 @@ def _register_package_command(app: typer.Typer) -> None:
             "Defaults to 'Dockerfile' next to --pyproject when given (project root, "
             "so COPY statements resolve), otherwise next to the agent config.",
         ),
-        base_image_url: Optional[str] = typer.Option(None, "--base-image-url", envvar="NAT_BASE_IMAGE_URL"),
-        base_image_tag: Optional[str] = typer.Option(None, "--base-image-tag", envvar="NAT_BASE_IMAGE_TAG"),
-        python_version: Optional[str] = typer.Option(None, "--python-version", envvar="NAT_PYTHON_VERSION"),
+        base_image_url: Optional[str] = typer.Option(
+            None, "--base-image-url", envvar="NEMO_AGENTS_BASE_IMAGE_URL"
+        ),
+        base_image_tag: Optional[str] = typer.Option(
+            None, "--base-image-tag", envvar="NEMO_AGENTS_BASE_IMAGE_TAG"
+        ),
+        python_version: Optional[str] = typer.Option(
+            None, "--python-version", envvar="NEMO_AGENTS_PYTHON_VERSION"
+        ),
         nat_version: Optional[str] = typer.Option(
             None,
             "--nat-version",
-            envvar="NAT_VERSION",
             help=(
                 "NAT release to install (e.g. '1.7.0').  Strongly recommended: "
                 "pin explicitly so image tags/labels/deps are reproducible.  "
                 "When omitted, a baked-in default is used and a warning is printed."
             ),
         ),
-        uv_version: Optional[str] = typer.Option(None, "--uv-version", envvar="NAT_UV_VERSION"),
+        uv_version: Optional[str] = typer.Option(None, "--uv-version", envvar="NEMO_AGENTS_UV_VERSION"),
         allow_root: bool = typer.Option(
             False, "--allow-root", help="Disable non-root USER hardening in the rendered Dockerfile."
         ),
@@ -633,10 +638,10 @@ def _package_render_only(
         typer.echo("Error: Fabric agent packaging is not implemented yet.", err=True)
         raise typer.Exit(code=1)
 
-    from nemo_agents_plugin.container.template import render_dockerfile, render_dockerignore
+    from nemo_agents_plugin.container.template import render_dockerignore, render_nat_dockerfile
 
     try:
-        content = render_dockerfile(
+        content = render_nat_dockerfile(
             agent_config,
             pyproject,
             base_image_url=base_image_url,
