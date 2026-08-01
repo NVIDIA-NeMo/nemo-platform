@@ -196,6 +196,28 @@ uv run nemo --context "$AUTHENTIK_CONTEXT" workspaces members create \\
     assert "permission to upload workload" in tutorial
 
 
+def test_authentik_tutorial_tests_scoped_access_keys() -> None:
+    tutorial = (AUTHENTIK_DIR / "tutorial.md").read_text(encoding="utf-8")
+
+    assert "NeMo Scoped Access Keys through the Authentik gateway." in tutorial
+    assert "--set nemo-platform.platformConfig.auth.access_keys.enabled=true" in tutorial
+    assert 'ACCESS_KEY="$(uv run nemo --context "$AUTHENTIK_CONTEXT" auth access-keys create \\' in tutorial
+    assert '--name "authentik-reference-${AUTHENTIK_RUNTIME}" \\' in tutorial
+    assert "--expires-in 600" in tutorial
+    assert '"${AUTHENTIK_BASE_URL}/apis/auth/authenticate"' in tutorial
+    assert '"${AUTHENTIK_BASE_URL}/apis/entities/v2/workspaces/${WORKSPACE}"' in tutorial
+    assert 'ACCESS_KEY_CONTEXT="${AUTHENTIK_CONTEXT}-access-key"' in tutorial
+    assert "uv run nemo config set \\" in tutorial
+    assert '--context "$ACCESS_KEY_CONTEXT" \\' in tutorial
+    assert '--base-url "$AUTHENTIK_BASE_URL" \\' in tutorial
+    assert '--access-token "$ACCESS_KEY" \\' in tutorial
+    assert '--workspace "$WORKSPACE"' in tutorial
+    assert 'uv run nemo --context "$ACCESS_KEY_CONTEXT" workspaces get "$WORKSPACE"' in tutorial
+    assert 'uv run nemo config use-context "$AUTHENTIK_CONTEXT"' in tutorial
+    assert 'test "$INVALID_STATUS" = "401"' in tutorial
+    assert "unset ACCESS_KEY ACCESS_KEY_CONTEXT INVALID_ACCESS_KEY INVALID_STATUS" in tutorial
+
+
 def test_authentik_e2e_ci_requires_published_nmp_api_image() -> None:
     ci_workflow = Path(".github/workflows/ci.yaml").read_text(encoding="utf-8")
     job = _workflow_job_block(ci_workflow, "python-auth-idp-e2e-test")
@@ -319,6 +341,13 @@ def test_authentik_umbrella_values_define_one_shared_postgresql_instance() -> No
 
     nemo_database = values["nemo-platform"]["externalDatabase"]
     assert values["nemo-platform"]["postgresql"]["enabled"] is False
+    assert values["nemo-platform"]["clickhouse"]["enabled"] is False
+    assert values["nemo-platform"]["externalClickhouse"] == {
+        "host": "unused-clickhouse",
+        "existingSecret": "shared-postgresql",
+        "existingSecretPasswordKey": "nemo-password",
+    }
+    assert values["nemo-platform"]["api"]["extraArgs"] == ["--service-group=core"]
     assert nemo_database == {
         "host": "shared-postgresql",
         "port": 5432,
@@ -716,14 +745,6 @@ def test_authentik_umbrella_values_configure_nemo_envoy_as_the_only_edge_proxy()
             "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
         }
     ]
-    jwt_filter = next(
-        filter_config
-        for filter_config in http_manager["http_filters"]
-        if filter_config["name"] == "envoy.filters.http.jwt_authn"
-    )
-    jwt_providers = jwt_filter["typed_config"]["providers"]
-    clusters = {cluster["name"]: cluster for cluster in envoy_config["static_resources"]["clusters"]}
-
     assert envoy["configOverride"] == '{{ include "nemo-platform-authentik.envoyConfig" . }}'
     gateway_ready_route = next(route for route in routes if route["match"] == {"path": "/health/gateway/ready"})
     health_route = next(route for route in routes if route["match"] == {"prefix": "/health/"})
@@ -755,31 +776,68 @@ def test_authentik_umbrella_values_configure_nemo_envoy_as_the_only_edge_proxy()
         'gateway_ready_http_call(request_handle, "authentik", "authentik-server", '
         '"/application/o/nemo/.well-known/openid-configuration")'
     ) in lua_code
-    assert jwt_providers["authentik_workload"]["remote_jwks"]["http_uri"] == {
-        "uri": "https://nemo-platform-envoy:8080/application/o/nemo/jwks/",
-        "cluster": "nemo_envoy_https",
+    assert 'headers:remove("x-nmp-authorized")' in lua_code
+    assert 'headers:remove("x-nmp-scopes")' in lua_code
+
+    assert "claim_to_headers" not in yaml.safe_dump(http_manager)
+    assert all(
+        filter_config["name"] != "envoy.filters.http.jwt_authn" for filter_config in http_manager["http_filters"]
+    )
+
+    ext_authz_filter = next(
+        filter_config
+        for filter_config in http_manager["http_filters"]
+        if filter_config["name"] == "envoy.filters.http.ext_authz"
+    )
+    ext_authz = ext_authz_filter["typed_config"]
+    assert ext_authz["transport_api_version"] == "V3"
+    assert ext_authz["failure_mode_allow"] is False
+    assert ext_authz["http_service"]["path_prefix"] == "/apis/auth/authenticate"
+    assert ext_authz["http_service"]["server_uri"] == {
+        "uri": "http://nemo-platform-api:8080",
+        "cluster": "nemo",
         "timeout": "5s",
     }
-    assert jwt_providers["workload_exchange"]["remote_jwks"]["http_uri"] == {
-        "uri": "https://nemo-platform-envoy:8080/apis/auth/jwks",
-        "cluster": "nemo_envoy_https",
-        "timeout": "5s",
+    allowed_headers = ext_authz["http_service"]["authorization_response"]["allowed_upstream_headers"]["patterns"]
+    assert {"exact": "x-nmp-principal-id"} in allowed_headers
+    assert {"exact": "x-nmp-principal-email"} in allowed_headers
+    assert {"exact": "x-nmp-principal-groups"} in allowed_headers
+    assert {"exact": "x-nmp-scopes"} in allowed_headers
+
+    protected_api_route = next(route for route in routes if route["match"] == {"prefix": "/apis/"})
+    assert "typed_per_filter_config" not in protected_api_route
+
+    public_authenticate_route = next(route for route in routes if route["match"] == {"path": "/apis/auth/authenticate"})
+    assert public_authenticate_route["typed_per_filter_config"]["envoy.filters.http.ext_authz"] == {
+        "@type": "type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute",
+        "disabled": True,
     }
-    envoy_jwks_cluster = clusters["nemo_envoy_https"]
-    assert envoy_jwks_cluster["transport_socket"]["typed_config"]["common_tls_context"]["validation_context"][
-        "trusted_ca"
-    ] == {"filename": "/etc/nmp/workload-token-tls/ca.crt"}
 
     platform_config = nemo_values["platformConfig"].get("platform", {})
     assert "base_url" not in platform_config
     assert "auth" not in platform_config.get("service_discovery", {})
+    token_signing = nemo_values["platformConfig"]["auth"]["token_signing"]
+    assert token_signing == {
+        "issuer": f"{ENVOY_SERVICE_URL_TEMPLATE}/apis/auth",
+        "key_id": "nemo-platform-signing",
+        "private_key_file": "/etc/nmp/workload-token/private-key.pem",
+    }
+    assert nemo_values["platformConfig"]["auth"]["access_keys"] == {"enabled": False}
     oidc = nemo_values["platformConfig"]["auth"]["oidc"]
     assert oidc["issuer"] == f"{AUTHENTIK_SERVICE_URL_TEMPLATE}/application/o/nemo-cli/"
     assert oidc["additional_issuers"][0] == f"{AUTHENTIK_SERVICE_URL_TEMPLATE}/application/o/nemo/"
     assert oidc["additional_issuers"][1] == f"{PUBLIC_GATEWAY_URL_TEMPLATE}/application/o/nemo-cli/"
     assert oidc["additional_issuers"][2] == f"{PUBLIC_GATEWAY_URL_TEMPLATE}/application/o/nemo/"
-    assert oidc["workload_token_issuer"] == f"{ENVOY_SERVICE_URL_TEMPLATE}/apis/auth"
     assert oidc["workload_token_endpoint"] == f"{ENVOY_SERVICE_URL_TEMPLATE}/apis/auth/token"
+    assert oidc["workload_subject_jwks_uri"] == f"{AUTHENTIK_SERVICE_URL_TEMPLATE}/application/o/nemo-workload/jwks/"
+    assert oidc["workload_subject_issuers"] == [
+        f"{AUTHENTIK_SERVICE_URL_TEMPLATE}/application/o/nemo-workload/",
+        f"{ENVOY_SERVICE_URL_TEMPLATE}/application/o/nemo-workload/",
+        f"{PUBLIC_GATEWAY_URL_TEMPLATE}/application/o/nemo-workload/",
+    ]
+    assert "workload_token_issuer" not in oidc
+    assert "workload_token_key_id" not in oidc
+    assert "workload_token_private_key_file" not in oidc
     assert oidc["token_endpoint"] == f"{PUBLIC_GATEWAY_URL_TEMPLATE}/application/o/token/"
     assert oidc["device_authorization_endpoint"] == f"{PUBLIC_GATEWAY_URL_TEMPLATE}/application/o/device/"
     assert nemo_values["authentikPublicGateway"] == {
@@ -810,13 +868,16 @@ def test_authentik_umbrella_values_mount_workload_token_signing_key_as_file() ->
     values = _load_yaml(HELM_DIR / "values.yaml")
     signing_key = values["workloadTokenSigningKey"]
     nemo_values = values["nemo-platform"]
-    oidc = nemo_values["platformConfig"]["auth"]["oidc"]
+    token_signing = nemo_values["platformConfig"]["auth"]["token_signing"]
 
     assert signing_key["secretName"] == "nemo-workload-token-signing-key"
     assert signing_key["key"] == "private-key.pem"
     assert signing_key["mountPath"] == "/etc/nmp/workload-token"
     assert signing_key["privateKeyPem"] == ""
-    assert oidc["workload_token_private_key_file"] == "/etc/nmp/workload-token/private-key.pem"
+    assert token_signing["private_key_file"] == "/etc/nmp/workload-token/private-key.pem"
+    assert nemo_values["api"]["env"]["NMP_AUTH_TOKEN_SIGNING__PRIVATE_KEY_FILE"] == (
+        "/etc/nmp/workload-token/private-key.pem"
+    )
 
     assert nemo_values["api"]["extraVolumes"] == [
         {
@@ -926,6 +987,7 @@ def test_authentik_kubernetes_runner_uses_helm_not_kustomize() -> None:
     assert "NMP_AUTHENTIK_K8S_GATEWAY_PORT=${K8S_GATEWAY_PORT}" in run_sh
     assert "NMP_AUTHENTIK_K8S_GATEWAY_PORT" in runtime_impl
     assert "nemo-platform.authentikPublicGateway.port=" in runtime_impl
+    assert "nemo-platform.platformConfig.auth.access_keys.enabled=true" in runtime_impl
     assert "GITHUB_TOKEN: ${{ inputs['kind-image-pull-token'] }}" in setup_kind_action
     assert "CERT_MANAGER_CHART" not in runtime_impl
     assert "_install_cert_manager" not in runtime_impl

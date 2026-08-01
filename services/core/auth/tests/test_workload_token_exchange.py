@@ -3,16 +3,21 @@
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
 
+import nmp.common.auth.signing_keys as signing_keys_mod
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from jwt.algorithms import RSAAlgorithm
+from nmp.common.auth.signing_keys import RSASigningKeyCache
 from nmp.common.config import AuthConfig, Configuration
-from nmp.common.config.base import OIDCConfig
+from nmp.common.config.base import AccessKeyConfig, OIDCConfig, TokenSigningConfig
 from nmp.core.auth.api.v2 import workload_token_exchange as exchange
+from pydantic import ValidationError
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +42,12 @@ def _private_key_pem(private_key: rsa.RSAPrivateKey) -> str:
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     ).decode()
+
+
+def _openapi(client: TestClient) -> dict[str, Any]:
+    app = client.app
+    assert isinstance(app, FastAPI)
+    return app.openapi()
 
 
 @pytest.fixture
@@ -70,18 +81,119 @@ def client(exchange_config: AuthConfig, exchange_service: exchange.WorkloadToken
     return TestClient(app, raise_server_exceptions=False)
 
 
+def _jwks_test_client(config: AuthConfig, exchange_service: exchange.WorkloadTokenExchangeService) -> TestClient:
+    Configuration.set_override(config)
+    app = FastAPI()
+    app.dependency_overrides[exchange.get_workload_token_exchange_service] = lambda: exchange_service
+    app.include_router(exchange.router)
+    return TestClient(app, raise_server_exceptions=False)
+
+
 def test_jwks_publishes_workload_exchange_signing_key(client: TestClient) -> None:
     response = client.get("/jwks")
 
     assert response.status_code == 200
     keys = response.json()["keys"]
-    assert keys[0]["kid"] == "nemo-workload-exchange"
+    assert keys[0]["kid"] == "nemo-platform-signing"
     assert keys[0]["use"] == "sig"
     assert keys[0]["alg"] == "RS256"
 
 
+def test_jwks_returns_empty_key_set_when_workload_exchange_and_access_keys_are_disabled(
+    exchange_service: exchange.WorkloadTokenExchangeService,
+) -> None:
+    config = AuthConfig(enabled=True)
+    client = _jwks_test_client(config, exchange_service)
+
+    response = client.get("/jwks")
+
+    assert response.status_code == 200
+    assert response.json() == {"keys": []}
+
+
+def test_jwks_returns_only_access_key_signing_key_when_workload_exchange_is_disabled(
+    tmp_path: Path,
+    exchange_service: exchange.WorkloadTokenExchangeService,
+) -> None:
+    access_key_private_key_file = tmp_path / "access-key-private.pem"
+    access_key_private_key_file.write_text(
+        _private_key_pem(rsa.generate_private_key(public_exponent=65537, key_size=2048)),
+        encoding="utf-8",
+    )
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(
+            key_id="access-key-signing",
+            private_key_file=str(access_key_private_key_file),
+        ),
+        access_keys=AccessKeyConfig(enabled=True),
+    )
+    client = _jwks_test_client(config, exchange_service)
+
+    response = client.get("/jwks")
+
+    assert response.status_code == 200
+    assert [key["kid"] for key in response.json()["keys"]] == ["access-key-signing"]
+
+
+def test_jwks_includes_distinct_workload_and_access_key_signing_keys(
+    tmp_path: Path,
+    exchange_service: exchange.WorkloadTokenExchangeService,
+) -> None:
+    workload_private_key_file = tmp_path / "workload-private.pem"
+    access_key_private_key_file = tmp_path / "access-key-private.pem"
+    workload_private_key_file.write_text(
+        _private_key_pem(rsa.generate_private_key(public_exponent=65537, key_size=2048)),
+        encoding="utf-8",
+    )
+    access_key_private_key_file.write_text(
+        _private_key_pem(rsa.generate_private_key(public_exponent=65537, key_size=2048)),
+        encoding="utf-8",
+    )
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(
+            key_id="access-key-signing",
+            private_key_file=str(access_key_private_key_file),
+        ),
+        oidc=OIDCConfig(
+            enabled=True,
+            workload_token_exchange_enabled=True,
+            workload_token_key_id="workload-signing",
+            workload_token_private_key_file=str(workload_private_key_file),
+        ),
+        access_keys=AccessKeyConfig(enabled=True),
+    )
+    client = _jwks_test_client(config, exchange_service)
+
+    response = client.get("/jwks")
+
+    assert response.status_code == 200
+    assert [key["kid"] for key in response.json()["keys"]] == ["workload-signing", "access-key-signing"]
+
+
+def test_jwks_deduplicates_shared_workload_and_access_key_signing_key(
+    exchange_config: AuthConfig,
+    exchange_service: exchange.WorkloadTokenExchangeService,
+) -> None:
+    config = exchange_config.model_copy(
+        update={
+            "token_signing": exchange_config.token_signing.model_copy(
+                update={"private_key_file": exchange_config.oidc.workload_token_private_key_file}
+            ),
+            "access_keys": AccessKeyConfig(enabled=True),
+        }
+    )
+    client = _jwks_test_client(config, exchange_service)
+
+    response = client.get("/jwks")
+
+    assert response.status_code == 200
+    assert [key["kid"] for key in response.json()["keys"]] == ["nemo-platform-signing"]
+
+
 def test_jwks_openapi_documents_jwks_response(client: TestClient) -> None:
-    openapi = client.app.openapi()
+    openapi = _openapi(client)
     operation = openapi["paths"]["/jwks"]["get"]
 
     assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
@@ -101,7 +213,7 @@ def test_jwks_openapi_documents_jwks_response(client: TestClient) -> None:
 
 
 def test_token_exchange_openapi_documents_form_request_and_token_response(client: TestClient) -> None:
-    openapi = client.app.openapi()
+    openapi = _openapi(client)
     operation = openapi["paths"]["/token"]["post"]
 
     request_schema = operation["requestBody"]["content"]["application/x-www-form-urlencoded"]["schema"]
@@ -251,6 +363,165 @@ def test_validated_audience_accepts_configured_allowlist(exchange_config: AuthCo
     assert exchange._validated_audience(exchange_config, "extra-audience") == "extra-audience"
 
 
+def test_workload_signing_key_uses_shared_token_signing_when_workload_override_unset(
+    workload_signing_key: rsa.RSAPrivateKey,
+    tmp_path,
+) -> None:
+    private_key_file = tmp_path / "platform-token-private-key.pem"
+    private_key_file.write_text(_private_key_pem(workload_signing_key), encoding="utf-8")
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(
+            issuer="https://nmp.example.com/apis/auth",
+            key_id="nemo-platform-signing",
+            private_key_file=str(private_key_file),
+        ),
+        oidc=OIDCConfig(
+            enabled=True,
+            issuer="https://idp.example.com/application/o/nemo-cli/",
+            client_id="nemo-platform-cli",
+            workload_token_exchange_enabled=True,
+        ),
+    )
+
+    signing_key = exchange.WorkloadTokenExchangeService().workload_signing_key(config)
+
+    assert signing_key.kid == "nemo-platform-signing"
+
+
+def test_workload_exchange_requires_resolved_token_signing_key_id() -> None:
+    with pytest.raises(ValidationError, match="workload_token_key_id or auth.token_signing.key_id"):
+        AuthConfig(
+            enabled=True,
+            token_signing=TokenSigningConfig(key_id=""),
+            oidc=OIDCConfig(
+                enabled=True,
+                workload_token_exchange_enabled=True,
+            ),
+        )
+
+
+def test_workload_exchange_accepts_workload_key_id_when_shared_key_id_unset() -> None:
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(key_id=""),
+        oidc=OIDCConfig(
+            enabled=True,
+            workload_token_exchange_enabled=True,
+            workload_token_key_id="workload-signing",
+        ),
+    )
+
+    assert config.oidc.workload_token_key_id == "workload-signing"
+
+
+def test_workload_signing_key_specific_override_wins_over_shared_token_signing(
+    workload_signing_key: rsa.RSAPrivateKey,
+    tmp_path,
+) -> None:
+    shared_private_key_file = tmp_path / "platform-token-private-key.pem"
+    workload_private_key_file = tmp_path / "workload-token-private-key.pem"
+    shared_private_key_file.write_text(_private_key_pem(workload_signing_key), encoding="utf-8")
+    workload_private_key_file.write_text(_private_key_pem(workload_signing_key), encoding="utf-8")
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(
+            issuer="https://nmp.example.com/apis/auth",
+            key_id="nemo-platform-signing",
+            private_key_file=str(shared_private_key_file),
+        ),
+        oidc=OIDCConfig(
+            enabled=True,
+            issuer="https://idp.example.com/application/o/nemo-cli/",
+            client_id="nemo-platform-cli",
+            workload_token_exchange_enabled=True,
+            workload_token_key_id="nemo-workload-exchange",
+            workload_token_private_key_file=str(workload_private_key_file),
+        ),
+    )
+
+    signing_key = exchange.WorkloadTokenExchangeService().workload_signing_key(config)
+
+    assert signing_key.kid == "nemo-workload-exchange"
+
+
+def test_workload_signing_key_reuses_cached_private_key_file(
+    exchange_config: AuthConfig,
+    exchange_service: exchange.WorkloadTokenExchangeService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_load = signing_keys_mod._load_rsa_signing_key_async
+    load_count = 0
+
+    async def counted_load(**kwargs: Any) -> signing_keys_mod.RSASigningKey:
+        nonlocal load_count
+        load_count += 1
+        return await original_load(**kwargs)
+
+    monkeypatch.setattr(signing_keys_mod, "_load_rsa_signing_key_async", counted_load)
+
+    signing_key = exchange_service.workload_signing_key(exchange_config)
+    public_jwk = exchange_service.public_jwk(exchange_config)
+    signing_key_again = exchange_service.workload_signing_key(exchange_config)
+
+    assert signing_key_again is signing_key
+    assert public_jwk["kid"] == signing_key.kid
+    assert load_count == 1
+
+
+class _AsyncOnlySigningKeyCache(RSASigningKeyCache):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[dict[str, Any]] = []
+
+    def public_jwk_from_file(
+        self,
+        *,
+        kid: str,
+        private_key_file: str | None,
+        missing_private_key_message: str,
+        invalid_private_key_message: str,
+    ) -> dict[str, Any]:
+        raise AssertionError("sync public JWK path was called")
+
+    async def public_jwk_from_file_async(
+        self,
+        *,
+        kid: str,
+        private_key_file: str | None,
+        missing_private_key_message: str,
+        invalid_private_key_message: str,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "kid": kid,
+                "private_key_file": private_key_file,
+                "missing_private_key_message": missing_private_key_message,
+                "invalid_private_key_message": invalid_private_key_message,
+            }
+        )
+        return {"kid": kid, "use": "sig", "alg": "RS256"}
+
+
+def test_auth_jwks_response_uses_async_workload_public_jwk_path(exchange_config: AuthConfig) -> None:
+    signing_key_cache = _AsyncOnlySigningKeyCache()
+    exchange_service = exchange.WorkloadTokenExchangeService(signing_key_cache=signing_key_cache)
+
+    response = asyncio.run(exchange.auth_jwks_response(exchange_config, exchange_service))
+
+    assert [key.model_dump() for key in response.keys] == [
+        {"kid": "nemo-platform-signing", "use": "sig", "alg": "RS256"}
+    ]
+    assert signing_key_cache.calls == [
+        {
+            "kid": "nemo-platform-signing",
+            "private_key_file": exchange_config.oidc.workload_token_private_key_file,
+            "missing_private_key_message": "auth.token_signing.private_key_file must be configured for workload token exchange",
+            "invalid_private_key_message": "workload token private key must be an RSA private key",
+        }
+    ]
+
+
 class _FakeResponse:
     def __init__(self, payload: dict[str, Any]) -> None:
         self._payload = payload
@@ -287,7 +558,7 @@ def _signed_subject_token(
 
 
 def _public_jwk_for_key(private_key: rsa.RSAPrivateKey, *, key_id: str) -> dict[str, Any]:
-    jwk = json.loads(exchange.RSAAlgorithm.to_jwk(private_key.public_key()))
+    jwk = json.loads(RSAAlgorithm.to_jwk(private_key.public_key()))
     jwk.update({"kid": key_id, "use": "sig", "alg": "RS256"})
     return jwk
 
@@ -298,6 +569,7 @@ def _mock_subject_jwks_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> dict[str, Any]:
     captured: dict[str, Any] = {"request_count": 0}
+    jwks = {"keys": [exchange_service.public_jwk(config)]}
 
     class FakeAsyncClient:
         def __init__(self, *, timeout: float) -> None:
@@ -312,7 +584,7 @@ def _mock_subject_jwks_client(
         async def get(self, url: str) -> _FakeResponse:
             captured["request_count"] += 1
             captured["url"] = url
-            return _FakeResponse({"keys": [exchange_service.public_jwk(config)]})
+            return _FakeResponse(jwks)
 
     monkeypatch.setattr(exchange.httpx, "AsyncClient", FakeAsyncClient)
     return captured

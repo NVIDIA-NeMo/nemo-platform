@@ -10,17 +10,15 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 import httpx
 import jwt
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from jwt.algorithms import RSAAlgorithm
+from nmp.common.auth.access_keys import public_jwk_from_private_key_pem_async
+from nmp.common.auth.signing_keys import RSASigningKey, RSASigningKeyCache
 from nmp.common.config import AuthConfig, get_auth_config, get_platform_config
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -85,13 +83,6 @@ router = APIRouter(tags=["Workload Identity"])
 
 
 @dataclass(frozen=True)
-class _WorkloadSigningKey:
-    private_key: rsa.RSAPrivateKey
-    public_key: rsa.RSAPublicKey
-    kid: str
-
-
-@dataclass(frozen=True)
 class _SubjectJWKSCacheEntry:
     jwks: dict[str, Any]
     fetched_at: float
@@ -101,6 +92,14 @@ class _SubjectJWKSCacheEntry:
 class _SubjectTokenDecoder:
     name: str
     decode: Callable[[], Awaitable[dict[str, Any]]]
+
+
+@dataclass(frozen=True)
+class _SigningKeyLoadRequest:
+    kid: str
+    private_key_file: str | None
+    missing_private_key_message: str
+    invalid_private_key_message: str
 
 
 class WorkloadTokenExchangeResponse(BaseModel):
@@ -159,6 +158,9 @@ class HTTPValidationError(BaseModel):
 
 
 _WORKLOAD_TOKEN_EXCHANGE_SERVICE_STATE_KEY = "workload_token_exchange_service"
+_MISSING_WORKLOAD_TOKEN_KEY_ID_MESSAGE = (
+    "auth.oidc.workload_token_key_id or auth.token_signing.key_id must be configured for workload token exchange"
+)
 
 
 def _platform_base_url_from_request(request: Request | None) -> str:
@@ -178,18 +180,32 @@ def workload_jwks_url(request: Request | None = None) -> str:
 
 
 def _workload_token_issuer(config: AuthConfig, request: Request | None) -> str:
-    return config.oidc.workload_token_issuer or f"{_platform_base_url_from_request(request)}/apis/auth"
+    return (
+        config.oidc.workload_token_issuer
+        or config.token_signing.issuer
+        or f"{_platform_base_url_from_request(request)}/apis/auth"
+    )
 
 
-def _workload_private_key_pem(config: AuthConfig) -> bytes:
-    private_key_file = config.oidc.workload_token_private_key_file
-    if private_key_file:
-        try:
-            return Path(private_key_file).read_bytes()
-        except OSError as exc:
-            raise RuntimeError(f"Could not read workload token private key file: {private_key_file}") from exc
+def _workload_token_key_id(config: AuthConfig) -> str:
+    return config.oidc.workload_token_key_id or config.token_signing.key_id
 
-    raise RuntimeError("workload_token_private_key_file must be configured for workload token exchange")
+
+def _workload_private_key_file(config: AuthConfig) -> str | None:
+    return config.oidc.workload_token_private_key_file or config.token_signing.private_key_file
+
+
+def _workload_signing_key_load_request(config: AuthConfig) -> _SigningKeyLoadRequest:
+    kid = _workload_token_key_id(config)
+    if not kid:
+        raise RuntimeError(_MISSING_WORKLOAD_TOKEN_KEY_ID_MESSAGE)
+
+    return _SigningKeyLoadRequest(
+        kid=kid,
+        private_key_file=_workload_private_key_file(config),
+        missing_private_key_message="auth.token_signing.private_key_file must be configured for workload token exchange",
+        invalid_private_key_message="workload token private key must be an RSA private key",
+    )
 
 
 def _subject_token_key_id(subject_token: str) -> str:
@@ -218,34 +234,45 @@ def _validate_subject_jwks(jwks: dict[str, Any]) -> None:
 class WorkloadTokenExchangeService:
     """Stateful helpers for workload token exchange endpoints."""
 
-    def __init__(self) -> None:
-        self._workload_signing_key_cache: dict[tuple[str, str], _WorkloadSigningKey] = {}
+    def __init__(self, signing_key_cache: RSASigningKeyCache | None = None) -> None:
+        self._signing_key_cache = signing_key_cache or RSASigningKeyCache()
         self._subject_jwks_cache: dict[str, _SubjectJWKSCacheEntry] = {}
 
-    def workload_signing_key(self, config: AuthConfig) -> _WorkloadSigningKey:
-        kid = config.oidc.workload_token_key_id
-        if not kid:
-            raise RuntimeError("workload_token_key_id must be configured for workload token exchange")
+    def workload_signing_key(self, config: AuthConfig) -> RSASigningKey:
+        load_request = _workload_signing_key_load_request(config)
+        return self._signing_key_cache.get_from_file(
+            kid=load_request.kid,
+            private_key_file=load_request.private_key_file,
+            missing_private_key_message=load_request.missing_private_key_message,
+            invalid_private_key_message=load_request.invalid_private_key_message,
+        )
 
-        private_key_pem = _workload_private_key_pem(config)
-        cache_key = (kid, sha256(private_key_pem).hexdigest())
-        cached = self._workload_signing_key_cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        private_key = serialization.load_pem_private_key(private_key_pem, password=None)
-        if not isinstance(private_key, rsa.RSAPrivateKey):
-            raise RuntimeError("workload token private key must be an RSA private key")
-
-        signing_key = _WorkloadSigningKey(private_key=private_key, public_key=private_key.public_key(), kid=kid)
-        self._workload_signing_key_cache[cache_key] = signing_key
-        return signing_key
+    async def workload_signing_key_async(self, config: AuthConfig) -> RSASigningKey:
+        load_request = _workload_signing_key_load_request(config)
+        return await self._signing_key_cache.get_from_file_async(
+            kid=load_request.kid,
+            private_key_file=load_request.private_key_file,
+            missing_private_key_message=load_request.missing_private_key_message,
+            invalid_private_key_message=load_request.invalid_private_key_message,
+        )
 
     def public_jwk(self, config: AuthConfig) -> dict[str, Any]:
-        signing_key = self.workload_signing_key(config)
-        jwk = json.loads(RSAAlgorithm.to_jwk(signing_key.public_key))
-        jwk.update({"kid": signing_key.kid, "use": "sig", "alg": "RS256"})
-        return jwk
+        load_request = _workload_signing_key_load_request(config)
+        return self._signing_key_cache.public_jwk_from_file(
+            kid=load_request.kid,
+            private_key_file=load_request.private_key_file,
+            missing_private_key_message=load_request.missing_private_key_message,
+            invalid_private_key_message=load_request.invalid_private_key_message,
+        )
+
+    async def public_jwk_async(self, config: AuthConfig) -> dict[str, Any]:
+        load_request = _workload_signing_key_load_request(config)
+        return await self._signing_key_cache.public_jwk_from_file_async(
+            kid=load_request.kid,
+            private_key_file=load_request.private_key_file,
+            missing_private_key_message=load_request.missing_private_key_message,
+            invalid_private_key_message=load_request.invalid_private_key_message,
+        )
 
     async def fetch_subject_jwks(self, config: AuthConfig, *, refresh: bool = False) -> dict[str, Any]:
         jwks_uri = config.oidc.workload_subject_jwks_uri
@@ -327,6 +354,30 @@ def get_workload_token_exchange_service(request: Request) -> WorkloadTokenExchan
     service = WorkloadTokenExchangeService()
     setattr(request.app.state, _WORKLOAD_TOKEN_EXCHANGE_SERVICE_STATE_KEY, service)
     return service
+
+
+def _dedupe_public_jwks(keys: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for key in keys:
+        identity = json.dumps(key, sort_keys=True)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        deduped.append(key)
+    return deduped
+
+
+async def auth_jwks_response(
+    config: AuthConfig,
+    workload_token_exchange_service: WorkloadTokenExchangeService,
+) -> JsonWebKeySetResponse:
+    keys: list[dict[str, Any]] = []
+    if config.oidc.workload_token_exchange_enabled:
+        keys.append(await workload_token_exchange_service.public_jwk_async(config))
+    if config.access_keys.enabled:
+        keys.append(await public_jwk_from_private_key_pem_async(config))
+    return JsonWebKeySetResponse(keys=[JsonWebKey(**key) for key in _dedupe_public_jwks(keys)])
 
 
 def _oauth_error(status_code: int, error: str, description: str) -> JSONResponse:
@@ -454,7 +505,7 @@ async def jwks(
     workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
 ) -> JsonWebKeySetResponse:
     """Return workload identity exchange signing keys."""
-    return JsonWebKeySetResponse(keys=[JsonWebKey(**workload_token_exchange_service.public_jwk(get_auth_config()))])
+    return await auth_jwks_response(get_auth_config(), workload_token_exchange_service)
 
 
 @router.post(
@@ -536,7 +587,7 @@ async def token_exchange(
         if groups_claim:
             exchanged_claims["groups"] = groups_claim
 
-    signing_key = workload_token_exchange_service.workload_signing_key(config)
+    signing_key = await workload_token_exchange_service.workload_signing_key_async(config)
     access_token = jwt.encode(
         exchanged_claims,
         signing_key.private_key,

@@ -427,12 +427,30 @@ authz:
       get:
         permissions: []
         scopes: []
+    /apis/auth/authenticate:
+      get:
+        permissions: []
+        scopes: []
+      post:
+        permissions: []
+        scopes: []
     /apis/auth/jwks:
       get:
         permissions: []
         scopes: []
     /apis/auth/token:
       post:
+        permissions: []
+        scopes: []
+    /apis/auth/v2/access-keys:
+      get:
+        permissions: []
+        scopes: []
+      post:
+        permissions: []
+        scopes: []
+    /apis/auth/v2/access-keys/{jti}:
+      delete:
         permissions: []
         scopes: []
     /apis/auth/v2/iam/opa-bundle.tar.gz:

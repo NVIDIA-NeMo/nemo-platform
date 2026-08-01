@@ -102,6 +102,193 @@ nemo setup [OPTIONS]
 
 * `--help, -h`: Show this message and exit.
 
+### nemo auth
+
+Manage authentication for NeMo Platform.
+
+**Usage:**
+
+```shell
+nemo auth [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `login`: Authenticate with the NeMo Platform cluster.
+* `logout`: Remove stored credentials for the current context.
+* `refresh`: Refresh the current access token.
+* `token`: Print the current access token (for use with SDK or curl).
+* `status`: Show current authentication status.
+* `access-keys`: Manage NeMo Platform Scoped Access Keys.
+
+#### nemo auth login
+
+Authenticate with the NeMo Platform cluster.
+
+Uses device flow (browser) by default, or password grant when username and password are provided (e.g. for CI).
+
+For quickstart, use **`--unsigned-token`** to generate an unsigned JWT.
+
+**Examples:**
+
+```shell
+# Set base URL and log in
+nemo auth login --base-url https://nemo.example.com
+# Context-specific login
+nemo auth login --context dev --base-url https://nemo.dev.example.com
+# Device flow, open browser
+nemo auth login
+# Device flow, show code only
+nemo auth login --no-browser
+```
+
+**Usage:**
+
+```shell
+nemo auth login [OPTIONS]
+```
+
+**Options:**
+
+* `--context`: Context to use for this login command.
+* `--base-url`: Set cluster base URL for the selected context before login
+* `--no-browser`: Don't open browser (device flow only)
+* `--scope`: OAuth scopes to request (space-separated; quote for multiple, e.g. --scope "platform:read secrets:write")
+* `--username`: Username for password grant (CI / non-interactive)
+* `--password`: Password for password grant (prefer env NMP_OIDC_PASSWORD)
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Unsigned Token Options:**
+
+* `--unsigned-token`: Generate and save an unsigned JWT for local/testing authentication.
+* `--principal-id`: Principal ID for the unsigned token (`sub` claim). Defaults to --email.
+* `--email`: Email claim for the unsigned token (required with --unsigned-token).
+* `--group`: Group claim value for unsigned token (repeat for multiple).
+* `--expires-in <INTEGER>`: Unsigned token expiry in seconds from now. [default: 3600]
+* `--no-exp`: Omit the exp claim from the unsigned token.
+* `--audience`: Audience (`aud`) claim for unsigned token.
+* `--issuer`: Issuer (`iss`) claim for unsigned token.
+
+#### nemo auth logout
+
+Remove stored credentials for the current context.
+
+**Usage:**
+
+```shell
+nemo auth logout [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo auth refresh
+
+Refresh the current access token.
+
+This command uses the saved refresh token to obtain a new access token without requiring you to re-authenticate through the browser.
+
+**Usage:**
+
+```shell
+nemo auth refresh [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo auth token
+
+Print the current access token (for use with SDK or curl).
+
+By default this outputs the raw token to stdout, suitable for piping or capture.
+
+**Examples:**
+
+```shell
+# Print token
+nemo auth token
+# Inspect token claims
+nemo auth token --decode
+# Capture in env var
+export TOKEN=$(nemo auth token)
+curl -H "Authorization: Bearer $(nemo auth token)" ...
+```
+
+**Usage:**
+
+```shell
+nemo auth token [OPTIONS]
+```
+
+**Options:**
+
+* `--decode`: Decode the JWT payload claims as JSON. This does not verify the token signature.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo auth status
+
+Show current authentication status.
+
+**Usage:**
+
+```shell
+nemo auth status [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo auth access-keys
+
+Manage NeMo Platform Scoped Access Keys.
+
+**Usage:**
+
+```shell
+nemo auth access-keys [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a Scoped Access Key for the current authenticated...
+
+##### nemo auth access-keys create
+
+Create a Scoped Access Key for the current authenticated user.
+
+**Usage:**
+
+```shell
+nemo auth access-keys create [OPTIONS]
+```
+
+**Options:**
+
+* `--name, -n`: Optional human-readable label for the Scoped Access Key.
+* `--expires-in`: Scoped Access Key lifetime in seconds. Use 'none' to request no expiration.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
 ### nemo services
 
 Run platform services locally.

@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+from nemo_platform_plugin.auth.access_keys import endpoints
+from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateRequest
+from nemo_platform_plugin.client.types import PreparedRequest
+
+
+def test_create_access_key_endpoint_uses_gateway_path() -> None:
+    prepared = endpoints.create_access_key(body=AccessKeyCreateRequest(name="gtc-intake"))
+
+    assert isinstance(prepared, PreparedRequest)
+    assert prepared.method == "POST"
+    assert prepared.path_template == "/apis/auth/v2/access-keys"
+    assert prepared.content_type == "application/json"
+
+
+def test_create_access_key_endpoint_allows_unnamed_tokens() -> None:
+    prepared = endpoints.create_access_key(body=AccessKeyCreateRequest())
+
+    assert prepared.method == "POST"
+    assert prepared.path_template == "/apis/auth/v2/access-keys"
+    assert prepared.content == b"{}"
+
+
+def test_revoke_access_key_endpoint_uses_jti_path_param() -> None:
+    prepared = endpoints.revoke_access_key(jti="ak_example")
+
+    assert prepared.method == "DELETE"
+    assert prepared.path_template == "/apis/auth/v2/access-keys/{jti}"
+    assert prepared.path_params == {"jti": "ak_example"}
+
+
+def test_list_access_keys_endpoint_is_stable_for_future_persistence() -> None:
+    prepared = endpoints.list_access_keys()
+
+    assert prepared.method == "GET"
+    assert prepared.path_template == "/apis/auth/v2/access-keys"
