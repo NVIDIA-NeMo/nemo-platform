@@ -57,7 +57,7 @@ def _image_metadata() -> dict[str, str]:
         "agent_id": "abc123",
         "agent_version": "1.0.0",
         "agent_author": "Agent Author",
-        "agent_framework": "unknown",
+        "agent_framework": "nemo_platform_agent",
         "build_timestamp": "2026-08-01T00:00:00+00:00",
         "description": "Fabric agent",
         "licenses": "Apache-2.0",
@@ -264,6 +264,7 @@ class TestFabricBuilderValidationHook:
     def test_extracts_metadata_and_derives_default_tag(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_agents_plugin.container.builder as builder
         import nemo_agents_plugin.container.metadata as metadata
+        import nemo_agents_plugin.container.template as template
 
         agent_config_path = _write_package_config(tmp_path / "agent.yaml")
         pyproject = tmp_path / "pyproject.toml"
@@ -286,6 +287,7 @@ class TestFabricBuilderValidationHook:
 
         monkeypatch.setattr(metadata, "extract_agent_metadata", _extract)
         monkeypatch.setattr(builder, "_default_tag_from_meta", _default_tag)
+        monkeypatch.setattr(template, "get_contract_version", lambda: "1.0.0")
 
         result = builder.build_fabric_agent_image(
             agent_config_path,
@@ -306,6 +308,9 @@ class TestFabricBuilderValidationHook:
                 "agent_version": "2.0.0",
                 "agent_author": "Agent Author",
                 "build_env": {
+                    "agent_framework": "nemo_platform_agent",
+                    "contract_version": "1.0.0",
+                    "nemo_relay_cli_version": "0.6.0",
                     "base_image_url": "registry.example/base",
                     "base_image_tag": "release",
                     "python_version": "3.13",
@@ -315,6 +320,47 @@ class TestFabricBuilderValidationHook:
         ]
         assert tag_calls == [extracted_meta]
         assert result == "fabric-agent-abc123:1.0.0"
+
+    def test_default_tag_uses_fabric_name_and_runtime_identity(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+        from nemo_agents_plugin.container.metadata import (
+            NEMO_PLATFORM_AGENT_FRAMEWORK,
+            extract_agent_metadata,
+        )
+        from nemo_agents_plugin.container.template import (
+            PINNED_NEMO_RELAY_CLI_VERSION,
+            get_contract_version,
+        )
+
+        agent_config_path = _write_package_config(tmp_path / "agent.yaml")
+        build_env = {
+            "agent_framework": NEMO_PLATFORM_AGENT_FRAMEWORK,
+            "contract_version": get_contract_version(),
+            "nemo_relay_cli_version": PINNED_NEMO_RELAY_CLI_VERSION,
+            "base_image_url": "registry.example/base",
+            "base_image_tag": "release",
+            "python_version": "3.13",
+            "uv_version": "0.8.15",
+        }
+        expected_metadata = extract_agent_metadata(
+            agent_config_path,
+            agent_version="2.0.0",
+            agent_author="Agent Author",
+            build_env=build_env,
+        )
+
+        result = build_fabric_agent_image(
+            agent_config_path,
+            base_image_url="registry.example/base",
+            base_image_tag="release",
+            python_version="3.13",
+            uv_version="0.8.15",
+            agent_version="2.0.0",
+            agent_author="Agent Author",
+            skip_validation=True,
+        )
+
+        assert result == f"packaged-agent-{expected_metadata['agent_id']}:2.0.0"
 
     def test_renders_generated_dockerfile(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_agents_plugin.container.builder as builder

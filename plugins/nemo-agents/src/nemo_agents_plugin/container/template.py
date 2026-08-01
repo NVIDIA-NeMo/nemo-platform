@@ -89,7 +89,7 @@ _ENV_MAP: dict[str, str] = {
     "uv_version": "NEMO_AGENTS_UV_VERSION",
 }
 
-_PINNED_NEMO_RELAY_CLI_VERSION = "0.6.0"
+PINNED_NEMO_RELAY_CLI_VERSION = "0.6.0"
 
 # -- Jinja2 template --------------------------------------------------------
 
@@ -419,7 +419,7 @@ def _jinja_env() -> jinja2.Environment:
         undefined=jinja2.StrictUndefined,
     )
     env.filters["dockerfile_escape"] = _dockerfile_escape
-    env.globals["pinned_nemo_relay_cli_version"] = _PINNED_NEMO_RELAY_CLI_VERSION
+    env.globals["pinned_nemo_relay_cli_version"] = PINNED_NEMO_RELAY_CLI_VERSION
     return env
 
 
@@ -491,7 +491,7 @@ def resolve_shared_render_params(
         sandbox_runtime=sandbox_runtime_name,
         sandbox_apt_packages=sandbox_apt_packages,
         sandbox_user_setup=sandbox_user_setup,
-        contract_version=_get_contract_version(),
+        contract_version=get_contract_version(),
         agent_id=metadata["agent_id"],
         agent_name=metadata["agent_name"],
         agent_version=metadata["agent_version"],
@@ -640,7 +640,7 @@ def render_fabric_dockerfile(
     return template.render(**_render_context(params))
 
 
-def _get_contract_version() -> str:
+def get_contract_version() -> str:
     """Return the ``nemo-agents-plugin`` package version."""
     from importlib.metadata import PackageNotFoundError, version
 

@@ -286,16 +286,25 @@ def build_fabric_agent_image(
 
         asyncio.run(validate_fabric_agent_package(agent_config, context_dir=context_dir))
 
-    from nemo_agents_plugin.container.template import render_dockerignore, render_fabric_dockerfile, resolve_value
+    from nemo_agents_plugin.container.template import (
+        PINNED_NEMO_RELAY_CLI_VERSION,
+        get_contract_version,
+        render_dockerignore,
+        render_fabric_dockerfile,
+        resolve_value,
+    )
 
     resolved_base_url = resolve_value("base_image_url", base_image_url)
     resolved_base_tag = resolve_value("base_image_tag", base_image_tag)
     resolved_python = resolve_value("python_version", python_version)
     resolved_uv = resolve_value("uv_version", uv_version)
 
-    from nemo_agents_plugin.container.metadata import extract_agent_metadata
+    from nemo_agents_plugin.container.metadata import NEMO_PLATFORM_AGENT_FRAMEWORK, extract_agent_metadata
 
     build_env_for_id = {
+        "agent_framework": NEMO_PLATFORM_AGENT_FRAMEWORK,
+        "contract_version": get_contract_version(),
+        "nemo_relay_cli_version": PINNED_NEMO_RELAY_CLI_VERSION,
         "base_image_url": resolved_base_url,
         "base_image_tag": resolved_base_tag,
         "python_version": resolved_python,

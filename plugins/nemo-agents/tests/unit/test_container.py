@@ -396,11 +396,11 @@ class TestFabricDockerfileTemplate:
         return _jinja_env().from_string(FABRIC_DOCKERFILE_TEMPLATE).render(**asdict(params))
 
     def test_installs_pinned_relay_cli_globally(self) -> None:
-        from nemo_agents_plugin.container.template import _PINNED_NEMO_RELAY_CLI_VERSION
+        from nemo_agents_plugin.container.template import PINNED_NEMO_RELAY_CLI_VERSION
 
         result = self._render()
 
-        assert f"NEMO_RELAY_VERSION={_PINNED_NEMO_RELAY_CLI_VERSION}" in result
+        assert f"NEMO_RELAY_VERSION={PINNED_NEMO_RELAY_CLI_VERSION}" in result
         assert "--install-dir /usr/local/bin" in result
         assert "nemo-relay --version" in result
         assert "ARG NEMO_RELAY" not in result
@@ -444,6 +444,34 @@ class TestRenderFabricDockerfile:
         assert '" .' not in install_line
         assert "ENV AGENT_CONFIG_PATH=/workspace/agent.yaml" in result
         assert "NAT_VERSION" not in result
+
+    def test_renders_platform_agent_oci_labels(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+        from nemo_agents_plugin.container.template import get_contract_version, render_fabric_dockerfile
+
+        agent_config = tmp_path / "agent.yaml"
+        agent_config.write_text(
+            "config_format: nemo-agents-spec-v1\nname: research-assistant\ndescription: Researches technical topics\n"
+        )
+        metadata = extract_agent_metadata(
+            agent_config,
+            agent_version="2.0.0",
+            agent_author="Agent Author",
+        )
+
+        result = render_fabric_dockerfile(
+            agent_config,
+            agent_version="2.0.0",
+            agent_author="Agent Author",
+        )
+
+        assert 'org.opencontainers.image.title="research-assistant"' in result
+        assert 'org.opencontainers.image.version="2.0.0"' in result
+        assert 'org.opencontainers.image.authors="Agent Author"' in result
+        assert 'org.opencontainers.image.description="Researches technical topics"' in result
+        assert f'com.nemo.agent.id="{metadata["agent_id"]}"' in result
+        assert 'com.nemo.agent.framework="nemo_platform_agent"' in result
+        assert f'com.nemo.agent.contract-version="{get_contract_version()}"' in result
 
     def test_project_mode_preserves_relative_config_path(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.template import render_fabric_dockerfile
@@ -587,6 +615,14 @@ class TestRenderDockerignore:
 
 
 class TestExtractAgentMetadata:
+    def test_parses_agent_config_once(self, agent_config: Path) -> None:
+        import nemo_agents_plugin.container.metadata as metadata
+
+        with patch.object(metadata.yaml, "safe_load", wraps=metadata.yaml.safe_load) as mock_safe_load:
+            metadata.extract_agent_metadata(agent_config, agent_author="x")
+
+        mock_safe_load.assert_called_once()
+
     def test_basic_extraction(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
 
@@ -616,6 +652,38 @@ class TestExtractAgentMetadata:
 
         assert meta["agent_name"] == "test-agent"
         assert meta["agent_version"] == "2.3.0"
+
+    def test_fabric_config_name_used_without_pyproject(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\nname: research-assistant\n")
+
+        meta = extract_agent_metadata(config, agent_author="x")
+
+        assert meta["agent_name"] == "research-assistant"
+
+    def test_fabric_config_uses_platform_agent_framework(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\nname: research-assistant\n")
+
+        meta = extract_agent_metadata(config, agent_author="x")
+
+        assert meta["agent_framework"] == "nemo_platform_agent"
+
+    def test_pyproject_name_overrides_fabric_config_name(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\nname: config-name\n")
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "project-name"\nversion = "1.0.0"\n')
+
+        meta = extract_agent_metadata(config, pyproject, agent_author="x")
+
+        assert meta["agent_name"] == "project-name"
 
     def test_explicit_overrides_take_priority(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
@@ -648,6 +716,27 @@ class TestExtractAgentMetadata:
         m2 = extract_agent_metadata(c2, agent_author="x")
         assert m1["agent_id"] != m2["agent_id"]
 
+    def test_fabric_agent_id_includes_runtime_contract(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\nname: research-assistant\n")
+        baseline = {
+            "agent_framework": "nemo_platform_agent",
+            "contract_version": "1.0.0",
+            "nemo_relay_cli_version": "0.6.0",
+        }
+
+        baseline_id = extract_agent_metadata(config, agent_author="x", build_env=baseline)["agent_id"]
+
+        for key, value in (
+            ("agent_framework", "different-runtime"),
+            ("contract_version", "2.0.0"),
+            ("nemo_relay_cli_version", "0.7.0"),
+        ):
+            changed = {**baseline, key: value}
+            assert extract_agent_metadata(config, agent_author="x", build_env=changed)["agent_id"] != baseline_id
+
     def test_no_workflow_key_gives_unknown_framework(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
 
@@ -656,6 +745,20 @@ class TestExtractAgentMetadata:
 
         meta = extract_agent_metadata(config, agent_author="x")
         assert meta["agent_framework"] == "unknown"
+
+    def test_nat_metadata_ignores_platform_only_top_level_fields(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "nat-config.yaml"
+        config.write_text(
+            "name: platform-style-name\ndescription: Platform-style description\nworkflow:\n  _type: react_agent\n"
+        )
+
+        meta = extract_agent_metadata(config, agent_author="x")
+
+        assert meta["agent_name"] == "nat-config"
+        assert meta["agent_framework"] == "nemo_agent_toolkit"
+        assert meta["description"] == "react_agent agent"
 
     def test_git_failure_falls_back_to_unknown(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
@@ -686,6 +789,36 @@ class TestExtractAgentMetadata:
 
         meta = extract_agent_metadata(config, pyproject, agent_author="x")
         assert meta["description"] == "Handles math queries"
+
+    def test_description_from_fabric_config(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "agent.yaml"
+        config.write_text(
+            "config_format: nemo-agents-spec-v1\n"
+            "name: research-assistant\n"
+            "description: Researches and summarizes technical topics\n"
+        )
+
+        meta = extract_agent_metadata(config, agent_author="x")
+
+        assert meta["description"] == "Researches and summarizes technical topics"
+
+    def test_pyproject_description_overrides_fabric_config(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "agent.yaml"
+        config.write_text(
+            "config_format: nemo-agents-spec-v1\nname: research-assistant\ndescription: Config description\n"
+        )
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(
+            '[project]\nname = "research-assistant"\nversion = "1.0.0"\ndescription = "Project description"\n'
+        )
+
+        meta = extract_agent_metadata(config, pyproject, agent_author="x")
+
+        assert meta["description"] == "Project description"
 
     def test_description_fallback_to_workflow_type(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
