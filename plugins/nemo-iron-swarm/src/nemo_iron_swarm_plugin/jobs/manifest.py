@@ -169,6 +169,8 @@ def _materialize_from_bundle(
         agent["egress"] = list(data["egress"])
     if data.get("secrets"):
         agent["secrets"] = list(data["secrets"])
+    if data.get("env"):
+        agent["env"] = {**(agent.get("env") or {}), **data["env"]}
     _apply_manifest_overrides(manifest, data)
     return manifest
 

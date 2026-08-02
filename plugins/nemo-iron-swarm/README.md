@@ -321,6 +321,17 @@ uv run nemo iron-swarm init --agent react-agent --egress en.wikipedia.org
 A bare host opens **443 only**; write `host:80` for plain HTTP. Hosts can't be auto-discovered for a
 config-only agent, since its tool code lives in an installed package rather than in your project.
 
+If the agent reads non-secret environment variables — a host-backend URL, a feature flag — set them
+at init too:
+
+```bash
+uv run nemo iron-swarm init --agent react-agent --env BACKEND_URL=http://host.docker.internal:8086
+```
+
+`--env` is repeatable and only the first `=` splits, so values may contain `=`. **Keep credentials out
+of it**: `--env` values are stored in plaintext on the manifest, whereas `--secrets` stores only the
+*names* and resolves the values from the platform Secrets store when the run starts.
+
 **`synth-benign` is not optional.** The war-game validates two things: that attacks are blocked, and
 that ordinary requests still work. Those ordinary requests are the *benign suite*, and `run` is a
 pure consumer of it — it never generates one. Without a suite it fails immediately with

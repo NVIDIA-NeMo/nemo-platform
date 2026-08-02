@@ -609,3 +609,40 @@ def test_from_agent_resolution_defaults_egress_to_empty() -> None:
         name="m", workspace="ws1", agent_ref="ws1/c", manifest_yaml="", port=1, secrets=[], warnings=[]
     )
     assert manifest.egress == []
+
+
+def test_cli_init_parses_env_pairs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    posted: dict[str, Any] = {}
+
+    def _create(*, workspace: str, **body: Any) -> dict[str, Any]:
+        posted.update(body)
+        return {"name": body["name"], "agent": "default/chatbot", "port": 8000}
+
+    sdk = SimpleNamespace(iron_swarm=SimpleNamespace(manifests=SimpleNamespace(create=_create)))
+    _patch_cli_context(monkeypatch, cli_main, sdk)
+
+    result = CliRunner().invoke(
+        cli_main.IronSwarmCLI().get_cli(),
+        ["init", "--agent", "chatbot", "--env", "A=1", "--env", "B=x=y", "-o", str(tmp_path / "o.yaml")],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert posted["env"] == {"A": "1", "B": "x=y"}  # only the first '=' splits
+
+
+def test_cli_init_rejects_a_malformed_env_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A bare --env FOO would otherwise be silently dropped or crash deep in the run."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    sdk = SimpleNamespace(iron_swarm=SimpleNamespace(manifests=SimpleNamespace(create=lambda **_k: {})))
+    _patch_cli_context(monkeypatch, cli_main, sdk)
+
+    result = CliRunner().invoke(
+        cli_main.IronSwarmCLI().get_cli(),
+        ["init", "--agent", "chatbot", "--env", "FOO", "-o", str(tmp_path / "o.yaml")],
+    )
+
+    assert result.exit_code == 1
+    assert "KEY=VALUE" in result.output

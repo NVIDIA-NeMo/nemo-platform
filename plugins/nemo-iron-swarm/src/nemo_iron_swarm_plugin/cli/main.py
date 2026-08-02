@@ -53,6 +53,18 @@ def _command_context(workspace: str | None, *, preflight: bool = True) -> _Comma
     )
 
 
+def _parse_env_pairs(pairs: list[str]) -> dict[str, str]:
+    """Parse repeated ``KEY=VALUE`` flags into a dict, failing loudly on a malformed pair."""
+    env: dict[str, str] = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep or not key:
+            typer.secho(f"Error: --env expects KEY=VALUE, got {pair!r}.", fg="red")
+            raise typer.Exit(code=1)
+        env[key] = value
+    return env
+
+
 def _project_init_body(
     ctx: _CommandContext,
     project_dir: Path,
@@ -195,6 +207,12 @@ class IronSwarmCLI(NemoCLI):
             secrets: list[str] = typer.Option(
                 None, "--secrets", help="Override the derived secret names (repeatable)."
             ),
+            env: list[str] = typer.Option(
+                None,
+                "--env",
+                help="Non-secret env var for the victim as KEY=VALUE, repeatable. Credentials belong in "
+                "--secrets, which names them and resolves values from the platform Secrets store.",
+            ),
             project_dir: str | None = typer.Option(
                 None, "--project-dir", help="Local NAT project to upload and war-game (alternative to --agent)."
             ),
@@ -237,6 +255,8 @@ class IronSwarmCLI(NemoCLI):
                 body["egress"] = list(egress)
             if secrets:
                 body["secrets"] = list(secrets)
+            if env:
+                body["env"] = _parse_env_pairs(list(env))
             try:
                 manifest = ctx.sdk.iron_swarm.manifests.create(workspace=ctx.workspace, **body)
             except Exception as exc:

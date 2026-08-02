@@ -515,3 +515,35 @@ def test_delete_manifest_removes_its_bundle(client, mock_entity_client, monkeypa
 
     assert resp.status_code == 204
     assert deleted == ["default/agent-fs-1"]
+
+
+def test_env_is_persisted_and_survives_refresh(client, mock_entity_client) -> None:
+    """env is operator intent like egress — rebuilding the scaffold must not discard it."""
+    mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={"name": "m1", "source_type": "agent", "agent": "clockbot", "env": {"DEMO": "1"}},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["env"] == {"DEMO": "1"}
+
+    existing = IronSwarmManifest(
+        name="m1", workspace="default", agent="default/clockbot", agent_fileset="default/old", env={"DEMO": "1"}
+    )
+    mock_entity_client.get = AsyncMock(return_value=existing)
+    mock_entity_client.update = AsyncMock(side_effect=lambda entity: entity)
+
+    refreshed = client.post("/apis/iron-swarm/v2/workspaces/default/manifests/m1/refresh")
+
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["env"] == {"DEMO": "1"}
+
+
+def test_patch_updates_env(client, mock_entity_client) -> None:
+    mock_entity_client.get = AsyncMock(return_value=IronSwarmManifest(name="m1", workspace="default", env={"OLD": "1"}))
+    mock_entity_client.update = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.patch("/apis/iron-swarm/v2/workspaces/default/manifests/m1", json={"env": {"NEW": "2"}})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["env"] == {"NEW": "2"}

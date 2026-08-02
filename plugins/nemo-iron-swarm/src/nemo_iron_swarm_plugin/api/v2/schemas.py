@@ -72,6 +72,12 @@ class ManifestInit(BaseModel):
         description="Allow-listed egress host[:port] entries the victim may reach (external hosts the agent "
         "calls, e.g. inference-api.nvidia.com); baked into the manifest by `init --egress`.",
     )
+    env: dict[str, str] | None = Field(
+        default=None,
+        description="Non-secret environment variables for the victim (iron-swarm's `agent.env`). Stored in "
+        "plaintext on the manifest — credentials belong in `secrets`, which names them and "
+        "resolves the values from the Secrets store at run time.",
+    )
     backends: list[str] | None = Field(
         default=None,
         description="Route-only host backends the agent's tools call, each 'NAME:PORT[,PORT2]' (e.g. "
@@ -156,6 +162,12 @@ class ManifestUpdate(BaseModel):
     port: int | None = Field(default=None, description="Victim port the war-game will target.")
     egress: list[str] | None = Field(
         default=None, description="Allow-listed egress host[:port] entries the victim may reach."
+    )
+    env: dict[str, str] | None = Field(
+        default=None,
+        description="Non-secret environment variables for the victim (iron-swarm's `agent.env`). Stored in "
+        "plaintext on the manifest — credentials belong in `secrets`, which names them and "
+        "resolves the values from the Secrets store at run time.",
     )
     defenders: list[str] | None = Field(
         default=None, description="Enabled defender keys ('guardrails','openshell'); empty means iron-swarm defaults."

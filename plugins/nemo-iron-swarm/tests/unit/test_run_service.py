@@ -910,3 +910,32 @@ def test_legacy_upgrade_failure_does_not_fail_the_run(tmp_path: Path, monkeypatc
     path = manifest_mod._materialize_manifest(sdk, "clockbot-hardening", make_job_context(tmp_path))
 
     assert Path(path).exists()
+
+
+@pytest.mark.parametrize(
+    ("source", "record_extra"),
+    [
+        pytest.param("agent", {"agent_fileset": "default/agent-fs-1"}, id="agent-source"),
+        pytest.param("project", {"project_fileset": "default/proj-fs-1"}, id="project-source"),
+    ],
+)
+def test_stored_env_reaches_both_sources(
+    source: str, record_extra: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bug class this unification exists to kill: a setting honoured on one source, ignored on the other."""
+    record = SimpleNamespace(
+        data={
+            "source_type": source,
+            "manifest_yaml": "agent:\n  name: a\n  project_dir: .\n  env:\n    KEEP: me\n",
+            "env": {"BACKEND_URL": "http://host.docker.internal:8086", "KEEP": "overridden"},
+            **record_extra,
+        }
+    )
+    sdk = SimpleNamespace(entities=SimpleNamespace(get_entity_by_name=lambda **_k: record))
+    monkeypatch.setattr(manifest_mod, "download_and_extract_project", lambda *_a, **_k: tmp_path / "restored")
+
+    path = manifest_mod._materialize_manifest(sdk, "m1", make_job_context(tmp_path))
+    env = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["agent"]["env"]
+
+    assert env["BACKEND_URL"] == "http://host.docker.internal:8086"
+    assert env["KEEP"] == "overridden", "stored env wins over what was baked in at init"
