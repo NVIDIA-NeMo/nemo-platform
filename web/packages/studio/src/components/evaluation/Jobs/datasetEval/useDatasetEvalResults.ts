@@ -31,9 +31,20 @@ const downloadJson = async <T>(url: string, label: string): Promise<T> => {
   return (await response.json()) as T;
 };
 
+const downloadText = async (url: string, label: string): Promise<string> => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to download ${label}: ${response.statusText}`);
+  return response.text();
+};
+
 export const useDatasetEvalResults = (workspace: string, jobName: string, status?: string) => {
   const isPending = status === 'pending' || status === 'active';
-  const hasFailed = status === 'error' || status === 'cancelled';
+  const hasFailed =
+    status === 'error' ||
+    status === 'cancelled' ||
+    status === 'canceled' ||
+    status === 'failed' ||
+    status === 'cancelling';
   const enabled = !!workspace && !!jobName && !isPending && !hasFailed;
 
   const {

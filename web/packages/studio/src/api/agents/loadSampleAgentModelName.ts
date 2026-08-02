@@ -6,7 +6,12 @@ import YAML from 'yaml';
 
 export const loadSampleAgentModelName = async (agentConfigPath: string): Promise<string | null> => {
   const text = await fetchSampleText(agentConfigPath);
-  const config = YAML.parse(text) as Record<string, unknown> | undefined;
+  let config: Record<string, unknown> | undefined;
+  try {
+    config = YAML.parse(text) as Record<string, unknown> | undefined;
+  } catch {
+    return null;
+  }
   const llm = (config?.llms as { llm?: unknown } | undefined)?.llm;
   if (!llm || typeof llm !== 'object' || Array.isArray(llm)) return null;
 

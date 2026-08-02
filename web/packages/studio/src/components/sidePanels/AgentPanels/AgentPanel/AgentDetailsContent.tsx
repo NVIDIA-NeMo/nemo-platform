@@ -222,7 +222,7 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
                           )}
                           <Text kind="body/regular/sm" color="secondary" className="truncate">
                             {job.configLabel ? `${job.configLabel} · ` : ''}
-                            <RelativeTime datetime={job.created_at ?? ''} />
+                            {job.created_at ? <RelativeTime datetime={job.created_at} /> : '—'}
                           </Text>
                         </Flex>
                       </Stack>

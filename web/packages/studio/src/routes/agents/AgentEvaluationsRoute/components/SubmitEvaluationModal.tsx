@@ -349,11 +349,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       const created = isDatasetEvalSpec(spec)
         ? await evaluatorCreateEvaluateJob(
             workspace,
-            buildDatasetEvalRequestBody(
-              spec,
-              selections,
-              formData.judgeModel || null
-            ) as EvaluateJobRequest
+            buildDatasetEvalRequestBody(spec, selections, null) as EvaluateJobRequest
           )
         : await submitAgentEvalJob(
             workspace,

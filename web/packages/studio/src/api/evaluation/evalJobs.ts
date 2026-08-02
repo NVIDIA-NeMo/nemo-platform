@@ -96,7 +96,8 @@ const PAGE_SIZE = 50;
 
 export const fetchEvaluatorJobs = async (
   workspace: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  shouldStop?: (accumulated: PlatformJobResponse[]) => boolean
 ): Promise<PlatformJobResponse[]> => {
   const all: PlatformJobResponse[] = [];
   let page = 1;
@@ -116,6 +117,7 @@ export const fetchEvaluatorJobs = async (
     const batch = res?.data ?? [];
     all.push(...batch);
     if (batch.length < PAGE_SIZE) break;
+    if (shouldStop?.(all)) break;
     page++;
   }
   return all;

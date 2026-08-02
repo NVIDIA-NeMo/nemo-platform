@@ -64,8 +64,8 @@ async def _invoke_llm(config: Any, builder: Builder, text: str) -> str:
         response = await llm.ainvoke(config.prompt.replace("{body}", text))
         return str(response.content)
     except Exception as e:
-        logger.error(f"Error during LLM prediction: {e}")
-        return f"Error: LLM prediction failed {e}"
+        logger.error("LLM prediction failed", exc_info=e)
+        raise RuntimeError("LLM prediction failed") from e
 
 
 class ReviewMessagesConfig(FunctionBaseConfig, name="review_messages"):

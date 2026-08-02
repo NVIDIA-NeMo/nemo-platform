@@ -9,7 +9,11 @@ import {
   useAgentsListAgents,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
-import { fetchEvaluatorJobs, toEvalJobRow } from '@studio/api/evaluation/evalJobs';
+import {
+  fetchEvaluatorJobs,
+  targetNameForEvalJob,
+  toEvalJobRow,
+} from '@studio/api/evaluation/evalJobs';
 import { RECENT_EVAL_LIMIT } from '@studio/components/sidePanels/AgentPanels/AgentPanel/constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -63,7 +67,11 @@ export const useAgentPanel = ({
   // N to keep the panel scannable; the full list is on the evaluations route.
   const { data: agentEvalsData } = useQuery({
     queryKey: ['evaluator-jobs', workspace, 'panel', agentName] as const,
-    queryFn: ({ signal }) => fetchEvaluatorJobs(workspace, signal),
+    queryFn: ({ signal }) =>
+      fetchEvaluatorJobs(workspace, signal, (all) => {
+        const matched = all.filter((j) => targetNameForEvalJob(j) === agentName).length;
+        return matched >= RECENT_EVAL_LIMIT;
+      }),
     enabled: !!agentName && !!workspace,
   });
 

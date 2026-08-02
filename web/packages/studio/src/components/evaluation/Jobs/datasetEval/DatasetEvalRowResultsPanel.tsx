@@ -157,7 +157,9 @@ export const DatasetEvalRowResultsPanel: FC<DatasetEvalRowResultsPanelProps> = (
             DataViewRoot: {
               data: pageRows,
               totalCount: rows.length,
-              reactTableOptions: { getRowId: (row) => String(row.row_index ?? '') },
+              reactTableOptions: {
+                getRowId: (row, relativeIndex) => String(row.row_index ?? relativeIndex),
+              },
             },
           }}
         />
