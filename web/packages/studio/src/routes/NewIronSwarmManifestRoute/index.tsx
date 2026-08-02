@@ -46,12 +46,24 @@ const schema = z.object({
     .regex(NAME_PATTERN, 'Lowercase letters, digits and hyphens only'),
   agent: z.string().trim().optional(),
   egress: z.string().trim().optional(),
+  env: z.string().trim().optional(),
   port: z.string().trim().optional(),
   secrets: z.string().trim().optional(),
 });
 type FormData = z.infer<typeof schema>;
 
 /** Split a comma-separated field into a trimmed, non-empty list. */
+/** Parse `KEY=VALUE` pairs; only the first `=` splits, so values may contain `=`. */
+const parseEnvPairs = (value: string | undefined): Record<string, string> =>
+  Object.fromEntries(
+    splitList(value)
+      .map((entry) => {
+        const at = entry.indexOf('=');
+        return at > 0 ? [entry.slice(0, at).trim(), entry.slice(at + 1).trim()] : null;
+      })
+      .filter((pair): pair is [string, string] => pair !== null)
+  );
+
 const splitList = (value: string | undefined): string[] =>
   (value ?? '')
     .split(',')
@@ -78,7 +90,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
   });
 
   const { control, handleSubmit, watch, setError, setValue } = useForm<FormData>({
-    defaultValues: { name: '', agent: '', egress: '', port: '', secrets: '' },
+    defaultValues: { name: '', agent: '', egress: '', env: '', port: '', secrets: '' },
     resolver: zodResolver(schema),
   });
   const nameValue = watch('name').trim();
@@ -131,6 +143,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
     }
     const egress = splitList(data.egress);
     const secrets = splitList(data.secrets);
+    const env = parseEnvPairs(data.env);
     const port = data.port ? Number(data.port) : undefined;
     if (port !== undefined && !Number.isInteger(port)) {
       setError('port', { message: 'Enter a whole number' });
@@ -144,6 +157,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
         agent: data.agent,
         ...(egress.length ? { egress } : {}),
         ...(secrets.length ? { secrets } : {}),
+        ...(Object.keys(env).length ? { env } : {}),
         ...(port !== undefined ? { port } : {}),
         models,
       },
@@ -216,6 +230,15 @@ export const NewIronSwarmManifestRoute: FC = () => {
                       slotHelp: inspectAgent.isPending
                         ? 'Detecting from the agent…'
                         : 'Comma-separated; auto-detected from the agent config. Edit to override.',
+                    }}
+                  />
+                  <ControlledTextInput
+                    useControllerProps={{ control, name: 'env' }}
+                    formFieldProps={{
+                      slotLabel: 'Environment Variables (optional)',
+                      slotHelp:
+                        'Comma-separated KEY=VALUE for non-secret settings the agent reads. ' +
+                        'Credentials belong in Secret Names — values here are stored in plain text.',
                     }}
                   />
                   <AccordionRoot>

@@ -2941,7 +2941,10 @@ export function useIronSwarmGetManifestSuspense<
 }
 
 /**
- * Edit a manifest's cached benign suite and/or victim port (the agent source is immutable).
+ * Edit a manifest's cached benign suite, victim port, egress, or war-game settings.
+ *
+ * The agent source itself is immutable — re-create the manifest to point at a different agent, or
+ * `POST /manifests/{name}/refresh` to re-resolve the one it already targets.
  * @summary Update Manifest
  */
 export const ironSwarmUpdateManifest = (
@@ -3026,7 +3029,7 @@ export const useIronSwarmUpdateManifest = <
 };
 
 /**
- * Delete a saved manifest by name.
+ * Delete a saved manifest by name, along with the victim bundle it owns.
  * @summary Delete Manifest
  */
 export const ironSwarmDeleteManifest = (workspace: string, name: string, signal?: AbortSignal) => {
@@ -3101,6 +3104,91 @@ export const useIronSwarmDeleteManifest = <
   TContext
 > => {
   return useMutation(getIronSwarmDeleteManifestMutationOptions(options), queryClient);
+};
+
+/**
+ * Re-resolve an agent-source manifest against the agent as it is *now*.
+ *
+ * A manifest is a frozen target, so edits to the agent — a new model, an added tool, a redeploy —
+ * do not reach it on their own. This is how you take them, deliberately, when you want the next
+ * run to measure the current agent rather than the one you saved.
+ *
+ * Everything the operator chose is kept: egress, secrets, models, defenders, intensity, rounds, and
+ * the cached benign suite. Only the scaffold and its rendered manifest are rebuilt.
+ * @summary Refresh Manifest
+ */
+export const ironSwarmRefreshManifest = (workspace: string, name: string, signal?: AbortSignal) => {
+  return customFetch<IronSwarmManifest>({
+    url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/manifests/${encodeURIComponent(String(name))}/refresh`,
+    method: 'POST',
+    signal,
+  });
+};
+
+export const getIronSwarmRefreshManifestMutationOptions = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof ironSwarmRefreshManifest>>,
+    TError,
+    { workspace: string; name: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof ironSwarmRefreshManifest>>,
+  TError,
+  { workspace: string; name: string },
+  TContext
+> => {
+  const mutationKey = ['ironSwarmRefreshManifest'];
+  const { mutation: mutationOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof ironSwarmRefreshManifest>>,
+    { workspace: string; name: string }
+  > = (props) => {
+    const { workspace, name } = props ?? {};
+
+    return ironSwarmRefreshManifest(workspace, name);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type IronSwarmRefreshManifestMutationResult = NonNullable<
+  Awaited<ReturnType<typeof ironSwarmRefreshManifest>>
+>;
+
+export type IronSwarmRefreshManifestMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Refresh Manifest
+ */
+export const useIronSwarmRefreshManifest = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof ironSwarmRefreshManifest>>,
+      TError,
+      { workspace: string; name: string },
+      TContext
+    >;
+  },
+  queryClient?: QueryClient
+): UseMutationResult<
+  Awaited<ReturnType<typeof ironSwarmRefreshManifest>>,
+  TError,
+  { workspace: string; name: string },
+  TContext
+> => {
+  return useMutation(getIronSwarmRefreshManifestMutationOptions(options), queryClient);
 };
 
 /**
