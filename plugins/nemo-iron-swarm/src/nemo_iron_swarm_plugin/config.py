@@ -158,6 +158,30 @@ class IronSwarmConfig(NemoConfig):
             "'iron-swarm==0.0.1', or a local path/VCS URL for development)."
         ),
     )
+    index_url: str | None = Field(
+        default=None,
+        description=(
+            "Extra package index `setup` resolves iron-swarm from, passed as uv's `--index`. Additive "
+            "to PyPI rather than a replacement, and scoped to this one install so the platform's own "
+            "dependencies are never resolved against it. Accepts a bare URL or uv's named form "
+            "`<name>=<url>` — use the named form when authenticating via "
+            "UV_INDEX_<NAME>_USERNAME/PASSWORD, since those variables key off the index name and a "
+            "bare URL gets an auto-generated one they won't match (a ~/.netrc entry works with "
+            "either). Unset by default: iron-swarm installs from PyPI. Set NEMO_IRON_SWARM_INDEX_URL "
+            "to override."
+        ),
+    )
+    index_strategy: str | None = Field(
+        default=None,
+        description=(
+            "uv `--index-strategy` for the iron-swarm install; unset uses uv's default, "
+            "'first-index'. Use 'unsafe-best-match' when the extra index also carries packages that "
+            "shadow their PyPI counterparts — first-index stops at the first index containing a "
+            "package and would fail to resolve them. It relaxes uv's dependency-confusion protection "
+            "for this resolution, which is why it is opt-in and scoped to this one install. Set "
+            "NEMO_IRON_SWARM_INDEX_STRATEGY to override."
+        ),
+    )
     garak_venv_path: Path = Field(
         default_factory=_default_garak_venv_path,
         description=(
