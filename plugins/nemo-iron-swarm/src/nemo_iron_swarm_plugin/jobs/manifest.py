@@ -160,10 +160,12 @@ def _materialize_from_bundle(
     agent["secrets_file"] = str((manifest_dir / ".env").resolve())
     # The gateway route is a property of the platform we are running on, not of the frozen target, so
     # a manifest created against a platform that has since moved still reaches the current one.
+    # `backends` is top-level on iron-swarm's AgentManifest, not part of AgentSpec — nesting it under
+    # `agent` fails validation with extra_forbidden before the victim ever starts.
     gw_backend = gateway_backend(base_url())
     if gw_backend:
-        others = [b for b in (agent.get("backends") or []) if b.get("name") != gw_backend.get("name")]
-        agent["backends"] = [*others, gw_backend]
+        others = [b for b in (manifest.get("backends") or []) if b.get("name") != gw_backend.get("name")]
+        manifest["backends"] = [*others, gw_backend]
     # Edits made after freezing (PATCH /manifests) have to reach the run; the stored YAML is the base.
     if data.get("egress"):
         agent["egress"] = list(data["egress"])
