@@ -1,59 +1,110 @@
-# nemo-iron-swarm plugin
+# nemo-iron-swarm
 
-Red-team and harden a **deployed NeMo Platform NAT agent** with Iron Swarm. The plugin resolves an
-agent already registered in NeMo Platform into an Iron Swarm manifest, then runs the
-attack → defend → validate war-game against it.
+Red-team and harden a **deployed NeMo Platform agent**. Point Iron Swarm at an agent already
+registered in the platform and it runs an **attack → defend → validate** war-game against it: an
+attacker swarm probes the agent, defenders generate guardrails and sandbox policy, and validators
+check that the attacks are now blocked *and* that ordinary requests still work.
 
-iron-swarm (and garak) run in their own venvs and are invoked by subprocess — never imported —
-because their pins (`litellm → httpx>=0.28`, `torch`) conflict with the platform's deps.
-
----
-
-## Step 0 — Get iron-swarm
-
-The plugin drives **iron-swarm**, a separate red-teaming tool that ships as its own package and runs
-in its own venv (never imported — see the note above). iron-swarm is currently an NVIDIA-internal
-package and is not yet published publicly; point the plugin at your iron-swarm checkout or package
-via `NEMO_IRON_SWARM_IRON_SWARM_SPEC` (see Step 3). Everything else in this guide runs from this
-nemo-platform repo.
+Two ways to drive it — [the Studio UI](#run-it-in-the-ui) or [the CLI](#run-it-from-the-cli). Both
+need the same one-time setup below.
 
 ---
 
-## Step 1 — System prerequisites
+## What you need
 
-Install these once on your machine.
-
-### Always needed
+Two environment variables. `nemo iron-swarm setup` installs iron-swarm itself, into its own venv.
 
 ```bash
-# uv (Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# just (task runner used by iron-swarm)
-brew install just        # macOS
-# or: cargo install just
-
-# git, curl, Python 3.11 — assumed present
+export INFERENCE_API_KEY=<your-nvapi-key>
+export NMP_BASE_URL=http://localhost:8080
 ```
 
-### For the real war-game (Docker + OpenShell)
+<details>
+<summary><b>Installing iron-swarm from a private index</b> — temporary, until it's on PyPI</summary>
+
+Iron Swarm isn't on public PyPI yet, so `setup` has to be pointed at the index hosting it. Two
+steps, and the first is done once per machine.
+
+**1. Store your index credentials in `~/.netrc`.** Private indexes require authentication and the
+plugin deliberately doesn't handle it — uv reads credentials from your environment. `~/.netrc` is
+the least friction: set once, applies to every shell and every tool, and no secret ever appears in a
+command line or your shell history.
 
 ```bash
-# Docker — use Docker Desktop or Colima on macOS
-brew install colima docker
-colima start
+cat >> ~/.netrc <<'EOF'
+machine <index-host>
+  login <username>
+  password <access-token>
+EOF
+chmod 600 ~/.netrc
 ```
 
-**OpenShell — use the native installer, not `uv tool install`.**
-`uv tool install openshell` installs the CLI only; it does not install or start the local gateway
-service. The native installer installs both.
+**2. Point `setup` at the index.**
 
 ```bash
+export NEMO_IRON_SWARM_INDEX_URL="<index-url>"
+```
+
+That's all you need. The index is *additional* to PyPI, so iron-swarm resolves from it and every
+dependency still comes from PyPI. (If a dependency fails to resolve, see the troubleshooting below —
+don't set `NEMO_IRON_SWARM_INDEX_STRATEGY` pre-emptively, it weakens dependency-confusion protection.)
+
+Ask whoever publishes iron-swarm for the index host, URL, and how to get a token — or see
+iron-swarm's own README.
+
+*Alternatives to `~/.netrc`, if you can't use it:*
+
+- **`UV_INDEX_<NAME>_USERNAME` / `UV_INDEX_<NAME>_PASSWORD`** — these key off the index *name*, so
+  you must use uv's named form `NEMO_IRON_SWARM_INDEX_URL="<name>=<url>"`. With a bare URL uv
+  generates its own name and the credentials silently never apply. Needs re-exporting per shell.
+- **Credentials embedded in the URL** (`https://<user>:<token>@<host>/...`) — works, but puts your
+  token in shell history and anywhere the URL is echoed. `doctor` masks it, but prefer `~/.netrc`.
+
+| Variable | Purpose |
+|---|---|
+| `NEMO_IRON_SWARM_INDEX_URL` | Extra index to resolve iron-swarm from, `<url>` or `<name>=<url>` |
+| `NEMO_IRON_SWARM_INDEX_STRATEGY` | uv `--index-strategy`; `unsafe-best-match` when the index shadows PyPI packages |
+
+**Check access in seconds, before installing anything.** uv cannot tell you which of these is wrong —
+it reports an unauthorized index as an empty one — so ask the index directly:
+
+```bash
+curl -sS -n -o /dev/null -w '%{http_code}\n' "<index-url>/iron-swarm/"
+```
+
+| Code | Meaning |
+|---|---|
+| `200` | Ready — go run `setup`. |
+| `401` | Credentials wrong or missing. Most often a **truncated token**: registry UIs display tokens elided, so copy with the button, not by selecting text. Check with `echo "${#TOKEN} chars"`. Also confirm the `~/.netrc` machine matches the index host, and that the username is the one the registry issued (often a service account, not your own). |
+| `403` | Authenticated, but the token isn't scoped to this repository. |
+| `404` | Authenticated, but iron-swarm isn't published in this repository — check the URL. |
+
+**If `setup` still fails:**
+
+- **`iron-swarm was not found in the package registry`** — this is almost always **authentication**, not
+  a missing package. Run the `curl` check above; a `401` confirms it. It also appears when
+  `NEMO_IRON_SWARM_INDEX_URL` is unset, which is what a default `setup` reports.
+- **A dependency that exists on PyPI won't resolve** — the index carries a package shadowing its PyPI
+  counterpart. Set `NEMO_IRON_SWARM_INDEX_STRATEGY=unsafe-best-match`.
+
+> **Delete this whole section once iron-swarm is on PyPI.** Nothing else in this README, and no code,
+> refers to it — plain `nemo iron-swarm setup` already installs from PyPI with no index
+> configuration and no credentials.
+</details>
+
+**Docker + OpenShell**, which run the victim sandbox:
+
+```bash
+brew install colima docker && colima start          # or Docker Desktop
+
+# Use the native installer — `uv tool install openshell` gives you the CLI
+# without the gateway service, and the war-game needs the gateway.
 curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | sh
-openshell status   # should say "Status: Connected"
+openshell status                                     # expect "Status: Connected"
 ```
 
-On macOS, configure the Docker compute driver so sandboxes can reach the host:
+<details>
+<summary>macOS: point OpenShell at Docker so sandboxes can reach the host</summary>
 
 ```bash
 DOCKER_SOCK=$(docker context inspect --format '{{.Endpoints.docker.Host}}')
@@ -61,105 +112,41 @@ brew services stop openshell
 launchctl setenv OPENSHELL_DRIVERS docker
 launchctl setenv DOCKER_HOST "$DOCKER_SOCK"
 brew services restart openshell
-openshell status   # should say "Status: Connected"
+openshell status
 ```
-
-The `auto-defender` gateway registration is handled automatically by `nemo iron-swarm setup` (Step 4).
-
-Optional: `jq` for artifact inspection.
-
-### For the Studio UI only
-
-```bash
-# Node 22 + pnpm
-brew install node@22 pnpm
-# or use nvm: nvm install 22 && nvm use 22
-
-# Install the web dependencies (creates web/node_modules).
-# open-studio.sh does this automatically on first run; run it manually to build the FastAPI assets too.
-make bootstrap-studio
-```
+</details>
 
 ---
 
-## Quickstart
-
-Already have Steps 0–1 done and the platform bootstrapped? Three env vars and you're off:
-
-```bash
-export NMP_BASE_URL=http://localhost:8080
-export NEMO_IRON_SWARM_IRON_SWARM_SPEC=/path/to/iron-swarm   # your local checkout
-export INFERENCE_API_KEY=<your-nvapi-key>
-export HTTPS=0
-
-# Studio UI — easiest path (handles platform, venvs, provider, agent, browser):
-cd nemo-platform
-./plugins/nemo-iron-swarm/scripts/open-studio.sh [--agent <name>]
-
-# CLI war-game:
-uv run nemo iron-swarm setup && uv run nemo iron-swarm doctor
-uv run nemo iron-swarm init --agent <name>
-uv run nemo iron-swarm run --config iron-swarm.yaml
-```
-
-First time? Continue from Step 2 below.
-
----
-
-## Step 2 — Bootstrap the platform
+## One-time setup
 
 ```bash
 cd /path/to/nemo-platform
-make bootstrap-python   # creates .venv and runs uv sync --frozen --all-packages
+make bootstrap                       # Python deps + Studio assets
+
+uv run nemo iron-swarm setup         # creates ~/.iron-swarm/venv and ~/.iron-swarm/garak-venv
+uv run nemo iron-swarm doctor        # preflight — everything should be green
 ```
 
----
-
-## Step 3 — Set up your environment
-
-Set these in your shell (or add to `.zshrc` / `.envrc`):
+Start the platform:
 
 ```bash
-export NMP_BASE_URL=http://localhost:8080
-export NEMO_IRON_SWARM_IRON_SWARM_SPEC=/path/to/iron-swarm   # until iron-swarm is on PyPI
-export INFERENCE_API_KEY=<your-nvapi-key>
-```
-
-Create a `.env` file in your iron-swarm checkout with your inference key — the war-game subprocess reads it:
-
-```bash
-echo "INFERENCE_API_KEY=sk-..." > /path/to/iron-swarm/.env
-```
-
----
-
-## Step 4 — Provision iron-swarm venvs
-
-```bash
-uv run nemo iron-swarm setup    # creates ~/.iron-swarm/venv (iron-swarm) and
-                                 # ~/.iron-swarm/garak-venv (garak attacker)
-uv run nemo iron-swarm doctor   # read-only preflight — expect all green before a real run
-```
-
-Neither command needs the platform running.
-
----
-
-## Step 5 — Start the platform
-
-```bash
-# --controllers models,jobs is required:
-#   models → reconciler that discovers served models (without it providers show 0 models and 404)
-#   jobs   → job executor that runs the war-game task
-# --host 0.0.0.0 so the OpenShell sandbox can reach the Inference Gateway via host.docker.internal
+# models  → discovers served models (without it, providers show 0 models)
+# jobs    → runs the war-game
+# 0.0.0.0 → lets the sandbox reach the Inference Gateway via host.docker.internal
+# logs go to a file — backgrounding alone still prints them over your prompt
 uv run nemo services run --service-group all --controllers models,jobs \
-  --host 0.0.0.0 --port 8080 &
+  --host 0.0.0.0 --port 8080 > /tmp/nemo-platform.log 2>&1 &
 
-until curl -sf http://localhost:8080/health/ready >/dev/null; do sleep 2; done
-echo "platform ready"
+until curl -sf http://localhost:8080/health/ready >/dev/null; do sleep 2; done; echo ready
 ```
 
-Create the inference provider (idempotent — safe to re-run):
+Watch it with `tail -f /tmp/nemo-platform.log`; stop it with `uv run nemo services stop`.
+
+Register an inference provider. Both commands fail with `409 already exists` if you've run them
+before — that's harmless, skip to the next step. To start from a clean platform instead, stop it
+(`nemo services stop`), `rm -rf ~/.local/share/nemo`, and restart; the stop must come first or the
+wipe silently doesn't take effect.
 
 ```bash
 printf '%s' "$INFERENCE_API_KEY" | \
@@ -170,123 +157,180 @@ uv run nemo inference providers create nvidia-inference --workspace default \
   --api-key-secret-name nvidia-inference-key
 ```
 
-Wait a few seconds for the model controller to discover served models:
+Register an agent to attack. This example ships with the repo and needs no extra packages:
 
 ```bash
-uv run nemo inference providers get nvidia-inference --workspace default \
-  --output-format json | jq '.served_models | length'   # should be > 0
+# The config references ${NEMO_DEFAULT_MODEL}. It must be a *model entity* name the platform
+# discovered — not a provider model id. Entity names are lowercase-and-hyphens only; a slash gets
+# rejected by the Inference Gateway with "Invalid model".
+uv run nemo models list --workspace default | grep nemotron      # pick one
+export NEMO_DEFAULT_MODEL=nvidia-nvidia-nemotron-3-nano-30b-a3b  # example — use what you saw
+
+uv run nemo agents create --name react-agent \
+  --agent-config plugins/nemo-agents/examples/react-agent/react-agent.yml
 ```
+
+> **Egress.** The victim sandbox blocks outbound traffic unless the manifest allow-lists it, and
+> iron-swarm can only auto-discover hosts by scanning a project's source — a config-only agent keeps
+> its tool hosts in packaged code, so you must declare them. Entries are `host[:port]` and a bare
+> host opens **443 only**; a tool using plain HTTP needs `host:80` too. Without this the victim's
+> calls are dropped and tool-using attacks silently no-op while the run still reports success.
+>
+> `react-agent`'s `wiki_search` is a known exception: it fails even with egress open, because the
+> `wikipedia` package sends no User-Agent and Wikimedia now rejects that
+> ([T400119](https://phabricator.wikimedia.org/T400119)). Upstream, not iron-swarm. Its other tool,
+> `current_datetime`, needs no network and exercises the tool path fine.
+
+> `NEMO_DEFAULT_MODEL` must be set **when you run `agents create`** — the config references it as
+> `${NEMO_DEFAULT_MODEL}` and the platform resolves it into the stored agent. Register it unset and
+> the victim later starts with an unresolved model name. It is not needed afterwards; Iron Swarm
+> reads the already-resolved config.
 
 ---
 
-## Run the CLI war-game
+## Run it in the UI
 
 ```bash
-# Register a NAT agent in the platform (skip if you already have one).
-# Run from the nemo_platform repo root — agents/clockbot.yml is a relative path.
-uv run nemo agents create --name clockbot --agent-config agents/clockbot.yml
-
-# Resolve it into iron-swarm.yaml + scaffold:
-uv run nemo iron-swarm init --agent clockbot
-
-# Run the attack → defend → validate war-game:
-uv run nemo iron-swarm run --config iron-swarm.yaml
-
-# Optionally pass a benign suite to check false positives:
-uv run nemo iron-swarm run --config iron-swarm.yaml --benign-suite requests.csv
-
-# Show recent runs:
-uv run nemo iron-swarm status
+export STUDIO_UI_VITE_FF_IRON_SWARM_ENABLED=true
+uv run nemo services run --service-group all --controllers models,jobs \
+  --host 0.0.0.0 --port 8080
 ```
 
-`init` only needs the agent **registered** (never invokes the model), so a config-only agent is
-enough — no deploy, no active inference key. Add `--project-dir` only for agents with custom
-components.
+Open **http://localhost:8080/studio/** → **Safety → Iron Swarm**.
+
+1. **Manifests → New Manifest** — pick `react-agent`, accept the detected port and secrets, **Create**.
+2. **Run war-game** on the manifest. The run opens on its **Swarm** tab.
+3. Watch the graph light up per phase, with the live agent feed beside it. Click any node for its
+   prompts and LLM calls.
+4. When it finishes, **Harden** lists each recommended defense with the attack that motivated it.
+   Toggle the ones you want → **Sanity check** replays the attacks against just that selection and
+   reports what it blocks and any ordinary requests it breaks → **Apply to Agent** writes the
+   hardened workflow back onto the agent config.
+
+Redeploy the agent for the guardrails to take effect.
 
 ---
 
-## Open the Studio UI
-
-`scripts/open-studio.sh` handles everything from Step 4 onward automatically and opens the browser.
+## Run it from the CLI
 
 ```bash
-export IRON_SWARM_REPO=/path/to/iron-swarm   # where your local iron-swarm checkout lives
-export INFERENCE_API_KEY=<your-nvapi-key>    # read from $IRON_SWARM_REPO/.env if not set
-
-./plugins/nemo-iron-swarm/scripts/open-studio.sh [--agent <name>]
+uv run nemo iron-swarm init --agent react-agent                  # manifest + saved entity
+uv run nemo iron-swarm synth-benign --manifest-id react-agent --yes   # required, see below
+uv run nemo iron-swarm run --manifest-id react-agent             # attack → defend → validate
+uv run nemo iron-swarm status --limit 5                          # recent runs
 ```
 
-The `--agent` flag sets which agent to register and open in Studio (default: `clockbot`). It expects
-`<name>.yml` to exist next to the script (`plugins/nemo-iron-swarm/scripts/`); a `clockbot.yml` ships
-there. Point elsewhere with `AGENT_CONFIG=/path/to/agent.yml`. Also settable via `AGENT=<name>` env var.
+`init` only needs the agent **registered**, not deployed. It saves a reusable manifest named after the
+agent — that name is the `--manifest-id` every later command takes — and writes `iron-swarm.yaml` as a
+*rendering* you can read. The run re-renders it from the agent each time, so editing that file has no
+effect; change the manifest instead.
 
-What the script does, in order:
+If your agent calls the internet, allow-list the hosts at init time — the sandbox drops everything
+else, and a blocked tool usually looks like a working run because the model answers from memory:
 
-1. Reinstalls iron-swarm (editable) from `IRON_SWARM_REPO` into `~/.iron-swarm/venv` so local
-   code changes are picked up without a manual reinstall.
-2. Starts the platform on `:8080` if it isn't already running.
-3. Runs `nemo iron-swarm setup` (venvs + inference credential).
-4. Creates the `nvidia-inference` provider (idempotent).
-5. Re-creates the clockbot agent (`RESET_AGENT=1` by default, giving a clean slate each run).
-6. Clears any leftover OpenShell sandboxes from a previous crashed run.
-7. Installs `web/node_modules` if missing (first run only).
-8. Starts the Studio dev server on `:5173` with `VITE_FF_IRON_SWARM_ENABLED=true`.
-9. Opens your browser at `https://localhost:5173/workspaces/default/iron-swarm`.
+```bash
+uv run nemo iron-swarm init --agent react-agent --egress en.wikipedia.org
+```
 
-Key options (set as env vars before running):
+A bare host opens **443 only**; write `host:80` for plain HTTP. Hosts can't be auto-discovered for a
+config-only agent, since its tool code lives in an installed package rather than in your project.
 
-| Variable | Default | Effect |
-|---|---|---|
-| `HTTPS` | `1` | Set to `0` to skip mkcert / the sudo password prompt (plain http) |
-| `RESET_AGENT` | `1` | Set to `0` to keep the existing agent registration |
-| `REINSTALL_IRON_SWARM` | `1` | Set to `0` to skip the editable reinstall (faster) |
-| `STUDIO_PORT` | `5173` | Vite dev server port |
+### War-game a local NAT project
 
-`Ctrl-C` stops Studio. The platform keeps running — stop it with `uv run nemo services stop`.
+No deployed agent needed — point `init` at the project directory instead:
 
----
+```bash
+uv run nemo iron-swarm init --project-dir ~/my-nat-agent      # asks about workflow, port, secrets
+uv run nemo iron-swarm init --project-dir ~/my-nat-agent --yes  # CI: accept detected answers
+```
 
-## Environment variables reference
+This runs `iron-swarm init` in your terminal so you answer its questions directly, then uploads the
+project and saves the result as a manifest. From there it's the same `--manifest-id` flow as above.
+`--workflow`, `--port`, `--egress` and `--secrets` pre-answer individual prompts.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `NEMO_IRON_SWARM_IRON_SWARM_SPEC` | — | PyPI spec or local path used by `setup` to install iron-swarm |
-| `NEMO_IRON_SWARM_VENV_PATH` | `~/.iron-swarm/venv` | iron-swarm venv location |
-| `NEMO_IRON_SWARM_GARAK_VENV_PATH` | `~/.iron-swarm/garak-venv` | garak venv location |
-| `NEMO_IRON_SWARM_DEFAULT_WORKSPACE` | `default` | Platform workspace used by CLI commands |
-| `NEMO_IRON_SWARM_REQUIRE_SANDBOX` | `true` | Fail `run` if Docker/OpenShell are not ready |
-| `NEMO_IRON_SWARM_OPERATOR_ENV_FILE` | `$IRON_SWARM_REPO/.env` | `.env` file the war-game subprocess reads |
+Your project supplies its own dependencies, so its `pyproject.toml`/`requirements.txt` must include
+`nvidia-nat` (plus whatever your tools import).
 
-All can also be set via Helm `platformConfig.iron_swarm.*`.
+**`synth-benign` is not optional.** The war-game validates two things: that attacks are blocked, and
+that ordinary requests still work. Those ordinary requests are the *benign suite*, and `run` is a
+pure consumer of it — it never generates one. Without a suite it fails immediately with
+`smart-benign validation requires an explicit benign suite`. Generate it once and it's cached on the
+manifest for every later run:
+
+```bash
+uv run nemo iron-swarm synth-benign --manifest-id react-agent          # interview, you answer
+uv run nemo iron-swarm synth-benign --manifest-id react-agent --yes    # interview, defaults accepted
+uv run nemo iron-swarm synth-benign --manifest-id react-agent --no-interactive   # CI: rules only
+```
+
+Prefer `run --manifest-id` over `run --config`: the cached suite is looked up by manifest id, so the
+`--config` form needs you to pass `--benign-suite <csv>` yourself.
+
+After a run produces mitigations, freeze a chosen subset and replay the recorded attacks against it:
+
+```bash
+uv run nemo iron-swarm sanity-check --manifest-id react-agent \
+  --mitigations mitigations.json --replay-hitlog <fileset-ref> --keep custom_guardrail_1
+```
 
 ---
 
 ## Troubleshooting
 
-**OpenShell installed via `uv tool install` — gateway missing.**
-`uv tool install openshell` only installs the CLI binary. Uninstall it (`uv tool uninstall openshell`)
-and re-install with the native curl installer above.
+**Iron Swarm missing from the Studio side nav.** The feature flag isn't set. Export
+`STUDIO_UI_VITE_FF_IRON_SWARM_ENABLED=true` *before* starting the platform — it's read at startup.
 
-**`openshell status` says "connection refused" or "no compute driver" on macOS.**
-The gateway is running but no compute driver is configured. Follow the Docker driver setup in
-Step 1 above (`launchctl setenv OPENSHELL_DRIVERS docker …`). Once fixed, re-run
-`nemo iron-swarm setup` — it re-registers the `auto-defender` gateway automatically.
+**`Missing required secrets: <NAME>`.** The agent config references `${<NAME>}` and nothing provides
+it. Iron Swarm derives required secrets from the agent's *stored* config, so this means the variable
+was unset when the agent was registered. Export it and re-run `nemo agents create`, or supply it via
+`--env-file`.
 
-**Provider shows 0 served models / inference calls 404.**
-The model controller isn't running. Make sure you started the platform with `--controllers models`
-(and `--controllers jobs` for the job executor).
+**The victim never becomes healthy, and its log shows a pydantic `union_tag_invalid` for a
+`_type`.** The agent references a component the scaffolded victim can't resolve — it installs only
+`nvidia-nat[langchain]`, not the platform's NAT plugins. Platform telemetry (`nemo_files`) is
+stripped for you; anything else means the agent needs a real project, so pass `--project-dir` to
+`init` and let its `pyproject.toml` supply the dependency.
 
-**`INFERENCE_API_KEY` missing in the war-game subprocess.**
-The subprocess reads `NEMO_IRON_SWARM_OPERATOR_ENV_FILE` (default: `$IRON_SWARM_REPO/.env`).
-Confirm the file exists and contains `INFERENCE_API_KEY=...`.
+**The victim is healthy but every request 422s with `Invalid model`.** The workflow's `model_name`
+isn't a model entity the platform knows. Entity names are lowercase letters, digits and hyphens —
+a provider id like `nvidia/nemotron-3-nano-30b-a3b` is rejected for the slash. Check
+`nemo models list --workspace default`, then re-register the agent with that exact name (the value
+is baked in at `agents create` time).
+
+**`openshell status` says "connection refused" or "no compute driver" (macOS).** The gateway is up but
+has no driver — apply the Docker driver block above, then re-run `nemo iron-swarm setup` to
+re-register the `auto-defender` gateway.
+
+**OpenShell installed but no gateway.** You installed via `uv tool install openshell`, which is
+CLI-only. `uv tool uninstall openshell`, then use the curl installer above.
+
+
+**Provider shows 0 served models / inference 404s.** Start the platform with `--controllers models`.
 
 ---
 
-## Appendix: venvs and internals
+## Environment variables
 
-- `~/.iron-swarm/venv` — iron-swarm + deps, installed from `NEMO_IRON_SWARM_IRON_SWARM_SPEC`;
-  invoked as `bin/iron-swarm` by subprocess.
-- `~/.iron-swarm/garak-venv` — garak's `agent_breaker` attacker, isolated because of
-  `litellm → httpx>=0.28` + `torch` conflicts. `setup` delegates to `iron-swarm setup`.
-- The plugin itself never imports iron-swarm or garak — all communication is via subprocess +
-  filesystem artifacts (YAML manifests, JSON hitlogs, event logs).
+| Variable | Default | Purpose |
+|---|---|---|
+| `NEMO_IRON_SWARM_IRON_SWARM_SPEC` | `iron-swarm` | Package spec `setup` installs. Override to pin a version (`iron-swarm==0.0.2`) or to develop against a local checkout |
+| `NEMO_IRON_SWARM_VENV_PATH` | `~/.iron-swarm/venv` | iron-swarm venv |
+| `NEMO_IRON_SWARM_GARAK_VENV_PATH` | `~/.iron-swarm/garak-venv` | garak (attacker) venv |
+| `NEMO_IRON_SWARM_DEFAULT_WORKSPACE` | `default` | Workspace used by CLI commands |
+| `NEMO_IRON_SWARM_REQUIRE_SANDBOX` | `true` | Fail `run` when Docker/OpenShell aren't ready |
+| `NEMO_IRON_SWARM_OPERATOR_ENV_FILE` | `~/.iron-swarm/.env` | Dotenv the war-game subprocess reads |
+| `STUDIO_UI_VITE_FF_IRON_SWARM_ENABLED` | `false` | Shows Iron Swarm in Studio |
+
+All `NEMO_IRON_SWARM_*` values can also be set via Helm `platformConfig.iron_swarm.*`.
+
+---
+
+## How it works
+
+iron-swarm and garak run in **their own venvs**, invoked by subprocess and never imported — their
+pins (`litellm → httpx>=0.28`, `torch`) conflict with the platform's. The plugin talks to them purely
+through the filesystem: YAML manifests in, JSON hitlogs and event logs out.
+
+`init` resolves a registered agent into an Iron Swarm manifest by reading the agent registry over
+HTTP, injecting the Inference Gateway URL into its LLMs (so the sandboxed victim needs no raw model
+key), and scaffolding a minimal installable project for the victim container.
