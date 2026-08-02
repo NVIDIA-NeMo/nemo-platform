@@ -90,6 +90,8 @@ _ENV_MAP: dict[str, str] = {
 }
 
 PINNED_NEMO_RELAY_CLI_VERSION = "0.6.0"
+PINNED_NEMO_RELAY_INSTALLER_COMMIT = "40c5990361afc26ae8b901ff1f49c2b03ddd9ede"
+PINNED_NEMO_RELAY_INSTALLER_SHA256 = "ba2585a32e568643819992fa66b750004328351fce422b979d8c11cfc8bbfadb"
 
 # -- Jinja2 template --------------------------------------------------------
 
@@ -213,10 +215,11 @@ RUN apt-get update && \\
     update-ca-certificates && \\
     rm -rf /var/lib/apt/lists/*
 
-# Claude and Codex Relay integration launches this external CLI. The installer
-# verifies the checksum for the pinned release before placing it on the global
-# runtime PATH.
-RUN curl -fsSL https://raw.githubusercontent.com/NVIDIA/NeMo-Relay/main/install.sh -o /tmp/install-nemo-relay.sh && \\
+# Claude and Codex Relay integration launches this external CLI. Authenticate
+# the immutable installer before root execution; it separately verifies the
+# pinned release binary before placing it on the global runtime PATH.
+RUN curl -fsSL https://raw.githubusercontent.com/NVIDIA/NeMo-Relay/{{ pinned_nemo_relay_installer_commit }}/install.sh -o /tmp/install-nemo-relay.sh && \\
+    echo "{{ pinned_nemo_relay_installer_sha256 }}  /tmp/install-nemo-relay.sh" | sha256sum -c - && \\
     NEMO_RELAY_VERSION={{ pinned_nemo_relay_cli_version }} sh /tmp/install-nemo-relay.sh --install-dir /usr/local/bin && \\
     rm /tmp/install-nemo-relay.sh && \\
     nemo-relay --version
@@ -421,6 +424,8 @@ def _jinja_env() -> jinja2.Environment:
     )
     env.filters["dockerfile_escape"] = _dockerfile_escape
     env.globals["pinned_nemo_relay_cli_version"] = PINNED_NEMO_RELAY_CLI_VERSION
+    env.globals["pinned_nemo_relay_installer_commit"] = PINNED_NEMO_RELAY_INSTALLER_COMMIT
+    env.globals["pinned_nemo_relay_installer_sha256"] = PINNED_NEMO_RELAY_INSTALLER_SHA256
     return env
 
 
@@ -627,6 +632,11 @@ def render_fabric_dockerfile(
         agent_author=agent_author,
         metadata=metadata,
     )
+    if shared.contract_version == "0.0.0":
+        raise ValueError(
+            "Unable to resolve the installed nemo-platform contract version; "
+            "Fabric packaging requires an installed release version."
+        )
     params = FabricRenderParams(**{f.name: getattr(shared, f.name) for f in fields(shared)})
 
     if template_path:

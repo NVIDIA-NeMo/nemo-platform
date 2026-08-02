@@ -395,10 +395,17 @@ class TestFabricDockerfileTemplate:
         return _jinja_env().from_string(FABRIC_DOCKERFILE_TEMPLATE).render(**asdict(params))
 
     def test_installs_pinned_relay_cli_globally(self) -> None:
-        from nemo_agents_plugin.container.template import PINNED_NEMO_RELAY_CLI_VERSION
+        from nemo_agents_plugin.container.template import (
+            PINNED_NEMO_RELAY_CLI_VERSION,
+            PINNED_NEMO_RELAY_INSTALLER_COMMIT,
+            PINNED_NEMO_RELAY_INSTALLER_SHA256,
+        )
 
         result = self._render()
 
+        assert f"NVIDIA/NeMo-Relay/{PINNED_NEMO_RELAY_INSTALLER_COMMIT}/install.sh" in result
+        assert f'echo "{PINNED_NEMO_RELAY_INSTALLER_SHA256}  /tmp/install-nemo-relay.sh"' in result
+        assert result.index("sha256sum -c -") < result.index("NEMO_RELAY_VERSION=")
         assert f"NEMO_RELAY_VERSION={PINNED_NEMO_RELAY_CLI_VERSION}" in result
         assert "--install-dir /usr/local/bin" in result
         assert "nemo-relay --version" in result
@@ -427,11 +434,11 @@ class TestRenderFabricDockerfile:
     """Tests for the public Fabric Dockerfile renderer."""
 
     def test_config_only_mode(self, fabric_agent_config: Path) -> None:
-        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+        from nemo_agents_plugin.container.template import get_contract_version, render_fabric_dockerfile
 
         result = render_fabric_dockerfile(fabric_agent_config)
 
-        assert 'uv pip install "nemo-platform[nemo-agents-plugin]==' in result
+        assert f'uv pip install "nemo-platform[nemo-agents-plugin]=={get_contract_version()}"' in result
         install_line = next(line for line in result.splitlines() if "uv pip install" in line)
         assert "--prerelease" not in install_line
         assert '" .' not in install_line
@@ -468,7 +475,7 @@ class TestRenderFabricDockerfile:
         assert f'com.nemo.agent.contract-version="{get_contract_version()}"' in result
 
     def test_project_mode_preserves_relative_config_path(self, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+        from nemo_agents_plugin.container.template import get_contract_version, render_fabric_dockerfile
 
         configs = tmp_path / "configs"
         configs.mkdir()
@@ -479,11 +486,23 @@ class TestRenderFabricDockerfile:
 
         result = render_fabric_dockerfile(agent_config, pyproject)
 
-        assert 'uv pip install "nemo-platform[nemo-agents-plugin]==' in result
+        assert f'uv pip install "nemo-platform[nemo-agents-plugin]=={get_contract_version()}" .' in result
         install_line = next(line for line in result.splitlines() if "uv pip install" in line)
         assert "--prerelease" not in install_line
         assert '" .' in install_line
         assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in result
+
+    def test_unresolved_contract_version_is_rejected(
+        self,
+        fabric_agent_config: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import nemo_agents_plugin.container.template as template
+
+        monkeypatch.setattr(template, "get_contract_version", lambda: "0.0.0")
+
+        with pytest.raises(ValueError, match="Unable to resolve the installed nemo-platform contract version"):
+            template.render_fabric_dockerfile(fabric_agent_config)
 
     def test_custom_template_uses_fabric_context(self, tmp_path: Path, fabric_agent_config: Path) -> None:
         from nemo_agents_plugin.container.template import render_fabric_dockerfile
@@ -1183,6 +1202,17 @@ class TestDetectAgentConfigFormat:
 
         with pytest.raises(ValueError, match=error):
             detect_agent_config_format(config)
+
+    def test_wraps_read_errors(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+
+        with pytest.raises(ValueError, match="Unable to read config file"):
+            detect_agent_config_format(tmp_path / "missing.yaml")
+
+        binary = tmp_path / "binary.yaml"
+        binary.write_bytes(b"\x80\x81\x82")
+        with pytest.raises(ValueError, match="Config file is not valid UTF-8"):
+            detect_agent_config_format(binary)
 
 
 class TestBuildAgentImage:

@@ -380,7 +380,14 @@ def build_fabric_agent_image(
 
 def detect_agent_config_format(agent_config: Path) -> str:
     try:
-        data = yaml.safe_load(agent_config.read_text(encoding="utf-8"))
+        raw = agent_config.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"Unable to read config file: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Config file is not valid UTF-8: {exc}") from exc
+
+    try:
+        data = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
         raise ValueError(f"YAML parse error in agent config {agent_config}: {exc}") from exc
 
