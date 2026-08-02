@@ -604,8 +604,9 @@ paths:
       tags:
       - Iron Swarm Manifests
       summary: Update Manifest
-      description: Edit a manifest's cached benign suite and/or victim port (the agent
-        source is immutable).
+      description: "Edit a manifest's cached benign suite, victim port, egress, or\
+        \ war-game settings.\n\nThe agent source itself is immutable \u2014 re-create\
+        \ the manifest to point at a different agent."
       operationId: update_manifest_apis_iron_swarm_v2_workspaces__workspace__manifests__name__patch
       parameters:
       - name: workspace
@@ -1718,6 +1719,14 @@ components:
           type: array
           title: Secrets
           description: Secret names the victim agent requires.
+        egress:
+          items:
+            type: string
+          type: array
+          title: Egress
+          description: Allow-listed egress host[:port] entries the victim may reach.
+            Config-only agents keep tool hosts in packaged code, so egress discovery
+            can't find them; without these the victim's outbound calls are dropped.
         warnings:
           items:
             type: string
@@ -2003,6 +2012,13 @@ components:
           title: Project Fileset
           description: Fileset ref of the uploaded NAT project bundle.
           type: string
+        manifest_yaml:
+          title: Manifest Yaml
+          description: Pre-built iron-swarm manifest (project source). The CLI runs
+            iron-swarm's own interactive `init` at the operator's terminal and sends
+            the result; omit it and the server builds one with `init --yes`, which
+            is what Studio does since it has no TTY.
+          type: string
         workflow:
           title: Workflow
           description: Chosen workflow path within the project (project-relative).
@@ -2069,6 +2085,12 @@ components:
           title: Port
           description: Victim port the war-game will target.
           type: integer
+        egress:
+          title: Egress
+          description: Allow-listed egress host[:port] entries the victim may reach.
+          items:
+            type: string
+          type: array
         defenders:
           title: Defenders
           description: Enabled defender keys ('guardrails','openshell'); empty means
