@@ -80,6 +80,12 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
     manifest_yaml: str = Field(default="", description="The resolved iron-swarm.yaml content (for display).")
     port: int = Field(default=0, description="Victim port the war-game will target.")
     secrets: list[str] = Field(default_factory=list, description="Secret names the victim agent requires.")
+    egress: list[str] = Field(
+        default_factory=list,
+        description="Allow-listed egress host[:port] entries the victim may reach. Config-only agents "
+        "keep tool hosts in packaged code, so egress discovery can't find them; without these the "
+        "victim's outbound calls are dropped.",
+    )
     warnings: list[str] = Field(default_factory=list, description="Non-fatal notes from scaffolding.")
     benign_suite: list[dict[str, str]] = Field(
         default_factory=list,
@@ -123,12 +129,14 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
         port: int,
         secrets: list[str],
         warnings: list[str],
+        egress: list[str] | None = None,
         models: WarGameModels | None = None,
     ) -> IronSwarmManifest:
         """Build an ``agent``-source manifest entity from a resolved agent scaffold.
 
         Shared by the CLI ``init`` and the Studio ``POST /manifests`` handler so both persist the same
-        shape from :func:`resolve_agent_to_manifest`'s output (the run re-materializes from ``agent_ref``).
+        shape from :func:`resolve_agent_to_manifest`'s output (the run re-materializes from ``agent_ref``,
+        so anything not stored here is re-derived on the next run).
         """
         return cls(
             name=name,
@@ -138,6 +146,7 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
             manifest_yaml=manifest_yaml,
             port=port,
             secrets=secrets,
+            egress=egress or [],
             warnings=warnings,
             models=models or WarGameModels(),
         )
