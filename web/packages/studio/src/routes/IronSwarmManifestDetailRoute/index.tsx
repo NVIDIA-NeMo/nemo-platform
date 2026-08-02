@@ -8,6 +8,7 @@ import {
   useIronSwarmGetManifest,
   useIronSwarmGetModelConfigDefaults,
   useIronSwarmListRuns,
+  useIronSwarmRefreshManifest,
   useIronSwarmUpdateManifest,
 } from '@nemo/sdk/generated/iron-swarm/api';
 import type { IronSwarmRun, WarGameModels } from '@nemo/sdk/generated/iron-swarm/schema';
@@ -40,6 +41,7 @@ import { InterviewPanel } from '@studio/components/ironSwarm/InterviewPanel';
 import { ModelGroupFields } from '@studio/components/ironSwarm/ModelGroupFields';
 import { ReconChecklist } from '@studio/components/ironSwarm/ReconChecklist';
 import { ReviewPanel } from '@studio/components/ironSwarm/ReviewPanel';
+import { TargetPanel } from '@studio/components/ironSwarm/TargetPanel';
 import { useGenerateBenignSuite } from '@studio/components/ironSwarm/useGenerateBenignSuite';
 import { useRunWarGame } from '@studio/components/ironSwarm/useRunWarGame';
 import { ConfirmationModal } from '@studio/components/modals/ConfirmationModal';
@@ -182,6 +184,9 @@ export const IronSwarmManifestDetailRoute: FC = () => {
   const runWarGame = useRunWarGame(workspace);
   const clearManifest = useIronSwarmUpdateManifest();
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmRefresh, setConfirmRefresh] = useState(false);
+  const [envDialogOpen, setEnvDialogOpen] = useState(false);
+  const [envDraft, setEnvDraft] = useState('');
 
   // "Last run" replay source: the newest prior run of THIS manifest that saved a hitlog fileset.
   const { data: runsData } = useIronSwarmListRuns(
@@ -242,6 +247,50 @@ export const IronSwarmManifestDetailRoute: FC = () => {
         data: { benign_suite: [] },
       });
       setSuite([]);
+      queryClient.invalidateQueries({
+        queryKey: getIronSwarmGetManifestQueryKey(workspace, ironSwarmManifestName),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // env is stored as a map but edited as `KEY=VALUE, KEY2=VALUE2` — one text field beats a
+  // key/value grid for the handful of entries an agent actually needs.
+  const openEnvDialog = useCallback(() => {
+    setEnvDraft(
+      Object.entries(manifest?.env ?? {})
+        .map(([key, value]) => `${key}=${value}`)
+        .join(', ')
+    );
+    setEnvDialogOpen(true);
+  }, [manifest?.env]);
+
+  const saveEnv = async (): Promise<void> => {
+    const env: Record<string, string> = {};
+    for (const entry of envDraft.split(',').map((part) => part.trim())) {
+      const at = entry.indexOf('=');
+      if (at > 0) env[entry.slice(0, at).trim()] = entry.slice(at + 1).trim();
+    }
+    try {
+      await clearManifest.mutateAsync({ workspace, name: ironSwarmManifestName, data: { env } });
+      queryClient.invalidateQueries({
+        queryKey: getIronSwarmGetManifestQueryKey(workspace, ironSwarmManifestName),
+      });
+      toast.success('Environment variables saved.');
+      setEnvDialogOpen(false);
+    } catch {
+      toast.error('Failed to save the environment variables.');
+    }
+  };
+
+  const refreshManifest = useIronSwarmRefreshManifest();
+  // Manifests are frozen targets, so agent edits only land here deliberately. Confirmed because it
+  // changes what the next run attacks.
+  const refreshTarget = async (): Promise<boolean> => {
+    try {
+      await refreshManifest.mutateAsync({ workspace, name: ironSwarmManifestName });
       queryClient.invalidateQueries({
         queryKey: getIronSwarmGetManifestQueryKey(workspace, ironSwarmManifestName),
       });
@@ -410,6 +459,15 @@ export const IronSwarmManifestDetailRoute: FC = () => {
           </Panel>
         ) : null}
 
+        {manifest ? (
+          <TargetPanel
+            manifest={manifest}
+            onRefresh={() => setConfirmRefresh(true)}
+            refreshing={refreshManifest.isPending}
+            onEditEnv={openEnvDialog}
+          />
+        ) : null}
+
         <Panel>
           <Stack gap="density-lg" padding="density-lg">
             <Flex className="items-center justify-between">
@@ -479,6 +537,36 @@ export const IronSwarmManifestDetailRoute: FC = () => {
         successText="Benign requests cleared."
         errorText="Failed to clear the benign requests."
         onConfirm={clearSuite}
+      />
+
+      <FormModal
+        open={envDialogOpen}
+        title="Edit Environment Variables"
+        submitButtonText="Save"
+        loading={clearManifest.isPending}
+        onSubmit={() => void saveEnv()}
+        onClose={() => setEnvDialogOpen(false)}
+      >
+        <Stack gap="density-md">
+          <Text kind="body/regular/sm" className="text-fg-secondary">
+            Non-secret settings the agent reads, as comma-separated KEY=VALUE pairs. Credentials
+            belong in the manifest&apos;s secrets — values here are stored in plain text.
+          </Text>
+          <FormField name="env" slotLabel="Environment Variables">
+            <TextInput value={envDraft} onChange={(event) => setEnvDraft(event.target.value)} />
+          </FormField>
+        </Stack>
+      </FormModal>
+
+      <ConfirmationModal
+        open={confirmRefresh}
+        onClose={() => setConfirmRefresh(false)}
+        title={`Refresh ${ironSwarmManifestName}?`}
+        description="Re-resolves this manifest against the agent as it is now, so the next run attacks the current agent instead of the one saved here. Your egress, secrets, models, defenders and benign suite are kept."
+        submitButtonText="Refresh Target"
+        successText="Target refreshed from the agent."
+        errorText="Failed to refresh the target."
+        onConfirm={refreshTarget}
       />
 
       <FormModal

@@ -68,11 +68,37 @@ export const useGenerateBenignSuite = (
     }
   };
 
+  // Re-attach to a generation already in flight for this manifest.
+  //
+  // The HITL prompt lives on the job's status_details, but the job name lived only in this
+  // component's state — so a reload, a navigation, or a second tab left the job waiting for an
+  // answer with no UI asking for it. From the user's side the interview simply vanished, and the
+  // job held its sandbox until the HITL timeout, which then collided with the next attempt.
+  const adoptedFor = useRef('');
+  useEffect(() => {
+    if (jobName || adoptedFor.current === manifestName) return;
+    adoptedFor.current = manifestName;
+    void (async () => {
+      const { data } = await ironSwarmListRuns(workspace, {
+        sort: '-created_at',
+        page_size: 1,
+        filter: { manifest_id: manifestName, status: 'running' },
+      });
+      const run = (data as IronSwarmRun[] | undefined)?.[0];
+      // The job poll decides whether it is really still live; a stale run just resolves to terminal.
+      if (run?.job_id) {
+        setRunName(run.name ?? '');
+        setJobName(run.job_id);
+      }
+    })();
+  }, [workspace, manifestName, jobName]);
+
   const create = useIronSwarmCreateSynthBenignJob({
     mutation: {
       onSuccess: (job) => {
         setRunName('');
         completedFor.current = '';
+        adoptedFor.current = manifestName; // this session supersedes anything we might adopt
         setJobName(job.name);
         void resolveRun(job.name);
       },
