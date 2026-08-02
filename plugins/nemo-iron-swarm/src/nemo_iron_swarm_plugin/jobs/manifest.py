@@ -130,12 +130,16 @@ def _materialize_agent_manifest(
         raise IronSwarmRunError(
             CATEGORY_MANIFEST, f"manifest {manifest_id!r} has no agent reference to materialize from."
         )
+    # Stored settings must be handed back: the manifest is rebuilt from the agent ref every run, so
+    # anything omitted is silently re-derived and the operator's choice lost.
     resolved = resolve_agent_to_manifest(
         agent_ref,
         sdk=sdk,
         base_url=base_url(),
         default_workspace=ctx.workspace,
         manifest_dir=manifest_dir,
+        egress=data.get("egress") or None,
+        secrets=data.get("secrets") or None,
         model_override=_agent_model_override(data),
     )
     _apply_manifest_overrides(resolved.manifest, data)

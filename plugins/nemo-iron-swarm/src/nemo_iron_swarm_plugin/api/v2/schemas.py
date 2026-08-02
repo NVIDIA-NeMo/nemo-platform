@@ -148,6 +148,9 @@ class ManifestUpdate(BaseModel):
         default=None, description="Replace the cached benign suite (tool,payload,label,rationale,persona rows)."
     )
     port: int | None = Field(default=None, description="Victim port the war-game will target.")
+    egress: list[str] | None = Field(
+        default=None, description="Allow-listed egress host[:port] entries the victim may reach."
+    )
     defenders: list[str] | None = Field(
         default=None, description="Enabled defender keys ('guardrails','openshell'); empty means iron-swarm defaults."
     )

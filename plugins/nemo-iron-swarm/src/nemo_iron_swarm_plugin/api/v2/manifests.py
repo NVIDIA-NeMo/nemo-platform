@@ -295,6 +295,7 @@ async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarm
         manifest_yaml=yaml.safe_dump(resolved.manifest, sort_keys=False),
         port=resolved.port,
         secrets=resolved.secrets,
+        egress=body.egress or [],  # persisted, not just used for the resolve above
         warnings=resolved.warnings,
         models=body.models or WarGameModels(),
     )
@@ -405,7 +406,10 @@ async def update_manifest(
     body: ManifestUpdate,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> IronSwarmManifest:
-    """Edit a manifest's cached benign suite and/or victim port (the agent source is immutable)."""
+    """Edit a manifest's cached benign suite, victim port, egress, or war-game settings.
+
+    The agent source itself is immutable — re-create the manifest to point at a different agent.
+    """
     try:
         existing = await entity_client.get(IronSwarmManifest, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:
@@ -422,6 +426,8 @@ async def update_manifest(
         existing.rounds = body.rounds
     if body.models is not None:
         existing.models = body.models
+    if body.egress is not None:
+        existing.egress = body.egress
     if body.port is not None:
         existing.port = body.port
         existing.manifest_yaml = _yaml_with_port(existing.manifest_yaml, body.port)

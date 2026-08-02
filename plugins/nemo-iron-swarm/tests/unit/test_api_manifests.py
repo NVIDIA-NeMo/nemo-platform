@@ -344,6 +344,34 @@ def test_patch_updates_benign_suite_and_port(client, mock_entity_client) -> None
     assert updated.benign_suite[0]["payload"] == "what time"
 
 
+def test_patch_updates_egress(client, mock_entity_client) -> None:
+    """Egress is a persisted setting now, so it has to be editable after creation."""
+    existing = IronSwarmManifest(name="m1", workspace="default", agent="default/clockbot", port=8000)
+    mock_entity_client.get = AsyncMock(return_value=existing)
+    mock_entity_client.update = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.patch(
+        "/apis/iron-swarm/v2/workspaces/default/manifests/m1",
+        json={"egress": ["en.wikipedia.org", "api.example.com:443"]},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["egress"] == ["en.wikipedia.org", "api.example.com:443"]
+
+
+def test_create_agent_manifest_persists_egress(client, mock_entity_client) -> None:
+    """Passed to the resolver *and* stored: the run re-resolves and would otherwise drop it."""
+    mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={"name": "m1", "source_type": "agent", "agent": "clockbot", "egress": ["en.wikipedia.org"]},
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["egress"] == ["en.wikipedia.org"]
+
+
 def test_patch_missing_manifest_returns_404(client, mock_entity_client) -> None:
     mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
 

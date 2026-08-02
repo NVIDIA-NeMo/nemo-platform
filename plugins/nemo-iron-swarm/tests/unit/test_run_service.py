@@ -734,3 +734,48 @@ def test_seed_validation_manifest_without_policy_only_zeros_defenders(tmp_path: 
     assert seeded["overrides"]["defenders"] == []
     assert "victim_control" not in seeded["overrides"]  # no policy chosen → no policy override
     assert not (tmp_path / "composed-policy.yaml").exists()
+
+
+# ── stored manifest settings survive re-materialization ──────────────────
+
+
+def _capture_resolve(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """Record the kwargs `_materialize_agent_manifest` hands to the resolver."""
+    seen: dict[str, Any] = {}
+
+    def fake_resolve(_ref, **kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(manifest={"agent": {"name": "clockbot", "port": 8000}}, warnings=[])
+
+    monkeypatch.setattr(manifest_mod, "resolve_agent_to_manifest", fake_resolve)
+    return seen
+
+
+def test_stored_egress_and_secrets_are_reapplied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The manifest is rebuilt from the agent ref every run; omitted settings are silently re-derived.
+
+    Egress is the one that bites: without it the victim's outbound calls are dropped, so tool-using
+    attacks no-op while the run still reports success.
+    """
+    record = SimpleNamespace(
+        data={"agent": "default/clockbot", "egress": ["en.wikipedia.org"], "secrets": ["MY_TOKEN"]}
+    )
+    sdk = SimpleNamespace(entities=SimpleNamespace(get_entity_by_name=lambda **_k: record))
+    seen = _capture_resolve(monkeypatch)
+
+    manifest_mod._materialize_manifest(sdk, "clockbot-hardening", make_job_context(tmp_path))
+
+    assert seen["egress"] == ["en.wikipedia.org"]
+    assert seen["secrets"] == ["MY_TOKEN"]
+
+
+def test_unset_egress_and_secrets_still_derive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """None means 'derive', so manifests that set neither behave exactly as before."""
+    record = SimpleNamespace(data={"agent": "default/clockbot"})
+    sdk = SimpleNamespace(entities=SimpleNamespace(get_entity_by_name=lambda **_k: record))
+    seen = _capture_resolve(monkeypatch)
+
+    manifest_mod._materialize_manifest(sdk, "clockbot-hardening", make_job_context(tmp_path))
+
+    assert seen["egress"] is None
+    assert seen["secrets"] is None
