@@ -10,6 +10,7 @@ iron-swarm install is needed.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,6 +23,7 @@ from nemo_iron_swarm_plugin.agent_resolver import (
     inject_gateway_url,
     parse_agent_ref,
     resolve_agent_to_manifest,
+    strip_platform_telemetry,
 )
 
 # `list` is shadowed by the fake's own `list` method inside the class body, so the parameter type
@@ -226,3 +228,72 @@ def test_resolve_missing_agent_raises(tmp_path):
         resolve_agent_to_manifest(
             "ghost", sdk=sdk, base_url="http://h:8080", default_workspace="default", manifest_dir=tmp_path
         )
+
+
+# --------------------------------------------------------------------------- platform telemetry
+REPO_ROOT = Path(__file__).resolve().parents[4]
+REACT_AGENT = REPO_ROOT / "plugins/nemo-agents/examples/react-agent/react-agent.yml"
+
+
+def test_strip_platform_telemetry_drops_the_block_and_empty_general():
+    config = {"workflow": {"_type": "react_agent"}, "general": {"telemetry": {"tracing": {}}}}
+    assert strip_platform_telemetry(config) == {"workflow": {"_type": "react_agent"}}
+    assert "general" in config  # input untouched
+
+
+def test_strip_platform_telemetry_keeps_other_general_keys():
+    config = {"general": {"telemetry": {"tracing": {}}, "cache": {"enabled": True}}}
+    assert strip_platform_telemetry(config) == {"general": {"cache": {"enabled": True}}}
+
+
+def test_strip_platform_telemetry_is_a_noop_without_telemetry():
+    config = {"workflow": {"_type": "react_agent"}}
+    assert strip_platform_telemetry(config) == config
+
+
+def test_scaffolded_victim_workflow_has_no_platform_telemetry(tmp_path):
+    """A deployed agent carries `nemo_files` tracing, which the scaffolded victim cannot resolve.
+
+    `nemo_files` is registered by nemo-agents-plugin (a `nat.plugins` entry point), but
+    `scaffold_project` pins the victim to `nvidia-nat[langchain]` only — so leaving it in makes NAT
+    exit on config validation and the run dies at a health-check timeout. Uses the real shipped
+    example so the fixture cannot drift from what users actually register.
+    """
+    stored = yaml.safe_load(REACT_AGENT.read_text(encoding="utf-8"))
+    assert stored["general"]["telemetry"]["tracing"]["nemo_trace"]["_type"] == "nemo_files", (
+        "example no longer carries platform telemetry — this regression test needs a new fixture"
+    )
+
+    resolved = resolve_agent_to_manifest(
+        "react-agent",
+        sdk=_FakeSDK({"config": stored}, deployments=[]),
+        base_url="http://localhost:8080",
+        default_workspace="default",
+        manifest_dir=tmp_path,
+    )
+
+    written = yaml.safe_load(resolved.workflow_path.read_text(encoding="utf-8"))
+    assert "nemo_files" not in resolved.workflow_path.read_text(encoding="utf-8")
+    assert "telemetry" not in written.get("general", {})
+    # the parts the sandbox *can* serve survive
+    assert written["workflow"]["_type"] == "react_agent"
+    assert set(written["functions"]) == {"wiki", "clock"}
+
+
+def test_project_source_keeps_telemetry(tmp_path):
+    """A user-supplied project installs its own dependencies, so its telemetry is its own business."""
+    stored = yaml.safe_load(REACT_AGENT.read_text(encoding="utf-8"))
+    project = tmp_path / "my-project"
+    project.mkdir()
+
+    resolved = resolve_agent_to_manifest(
+        "react-agent",
+        sdk=_FakeSDK({"config": stored}, deployments=[]),
+        base_url="http://localhost:8080",
+        default_workspace="default",
+        manifest_dir=tmp_path,
+        project_dir=str(project),
+    )
+
+    written = yaml.safe_load(resolved.workflow_path.read_text(encoding="utf-8"))
+    assert written["general"]["telemetry"]["tracing"]["nemo_trace"]["_type"] == "nemo_files"

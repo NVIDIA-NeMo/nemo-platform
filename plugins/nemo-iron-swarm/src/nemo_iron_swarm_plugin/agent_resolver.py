@@ -108,6 +108,33 @@ def inject_gateway_url(
     return config
 
 
+def strip_platform_telemetry(config: dict[str, Any]) -> dict[str, Any]:
+    """Deep-copy *config* without ``general.telemetry`` — the victim sandbox cannot honour it.
+
+    Deployed agents carry a ``nemo_files`` tracing exporter that the platform injects at deploy time
+    (``nemo_agents_plugin.utils.inject_nemo_files_telemetry``); it is registered by
+    ``nemo-agents-plugin`` itself, via a ``nat.plugins`` entry point. The victim runs from the minimal
+    project :func:`scaffold_project` writes — ``nvidia-nat[langchain]`` only — so NAT cannot resolve the
+    ``nemo_files`` tag and exits on config validation before serving, surfacing as a health-check
+    timeout minutes into the run.
+
+    Installing ``nemo-agents-plugin`` into the sandbox to fix that would drag the platform into a
+    container the war-game deliberately isolates, so the telemetry is dropped instead: it targets the
+    platform's file service, which the victim can neither reach nor should write to. The war-game has
+    its own event stream for observability.
+
+    Only applies to the agent-source path, where this module authors the project. A project-source
+    manifest installs the user's own ``pyproject.toml``, so declaring the exporter there keeps working.
+    """
+    config = copy.deepcopy(config)
+    general = config.get("general")
+    if isinstance(general, dict) and "telemetry" in general:
+        general.pop("telemetry", None)
+        if not general:
+            config.pop("general", None)
+    return config
+
+
 def strip_gateway_url(config: dict[str, Any]) -> dict[str, Any]:
     """Reverse :func:`inject_gateway_url`: drop the Inference-Gateway ``base_url``/``api_key`` we injected.
 
@@ -360,9 +387,14 @@ def resolve_agent_to_manifest(
     injected = inject_gateway_url(agent_config, workspace, base_url, model_override)
 
     if project_dir is not None:
+        # The user's project supplies its own dependencies, so any telemetry it declares is theirs
+        # to satisfy — leave the config alone.
         project_path = Path(project_dir)
         rel_project = project_dir
     else:
+        # We author the project here, and deliberately keep it to `nvidia-nat[langchain]`, so drop
+        # the platform-only telemetry the config would otherwise ask that install to resolve.
+        injected = strip_platform_telemetry(injected)
         rel_project = str(Path(SCAFFOLD_ROOT) / name)
         project_path = manifest_dir / rel_project
         scaffold_project(project_path, name)
