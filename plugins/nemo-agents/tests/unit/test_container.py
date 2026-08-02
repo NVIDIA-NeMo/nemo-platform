@@ -94,6 +94,7 @@ class TestRenderNatDockerfile:
         assert "uv sync" not in result
         assert "NAT_CONFIG_FILE=/workspace/config.yaml" in result
         assert "ARG NAT_VERSION=1.4.0" in result
+        assert "ghcr.io/astral-sh/uv:0.9.14" in result
 
     def test_project_mode(self, project_dir: tuple[Path, Path]) -> None:
         """Project mode trusts pyproject.toml as the single source of truth.
@@ -416,6 +417,7 @@ class TestFabricDockerfileTemplate:
         result = self._render()
 
         assert "ENV PORT=8000" in result
+        assert "ENV VIRTUAL_ENV=/workspace/.venv" in result
         assert "EXPOSE 8000" in result
         assert (
             'ENTRYPOINT ["sh", "-c", "exec python -m nemo_agents_plugin.fabric.server '
@@ -439,11 +441,13 @@ class TestRenderFabricDockerfile:
 
         result = render_fabric_dockerfile(agent_config)
 
-        assert 'uv pip install --prerelease=allow "nemo-agents-plugin==' in result
-        install_line = next(line for line in result.splitlines() if "uv pip install --prerelease=allow" in line)
+        assert 'uv pip install "nemo-platform[nemo-agents-plugin]==' in result
+        install_line = next(line for line in result.splitlines() if "uv pip install" in line)
+        assert "--prerelease" not in install_line
         assert '" .' not in install_line
         assert "ENV AGENT_CONFIG_PATH=/workspace/agent.yaml" in result
         assert "NAT_VERSION" not in result
+        assert "ghcr.io/astral-sh/uv:0.9.14" in result
 
     def test_renders_platform_agent_oci_labels(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
@@ -484,8 +488,9 @@ class TestRenderFabricDockerfile:
 
         result = render_fabric_dockerfile(agent_config, pyproject)
 
-        assert 'uv pip install --prerelease=allow "nemo-agents-plugin==' in result
-        install_line = next(line for line in result.splitlines() if "uv pip install --prerelease=allow" in line)
+        assert 'uv pip install "nemo-platform[nemo-agents-plugin]==' in result
+        install_line = next(line for line in result.splitlines() if "uv pip install" in line)
+        assert "--prerelease" not in install_line
         assert '" .' in install_line
         assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in result
 
@@ -1787,7 +1792,7 @@ class TestPackageCommand:
         assert output.exists()
         rendered = output.read_text()
         assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in rendered
-        install_line = next(line for line in rendered.splitlines() if "uv pip install --prerelease=allow" in line)
+        install_line = next(line for line in rendered.splitlines() if "uv pip install" in line)
         assert '" .' in install_line
         assert not (configs / "Dockerfile").exists()
 

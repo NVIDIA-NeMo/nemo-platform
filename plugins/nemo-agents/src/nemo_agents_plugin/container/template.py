@@ -65,7 +65,7 @@ _DEFAULTS: dict[str, str] = {
     "base_image_url": "nvcr.io/nvidia/base/ubuntu",
     "base_image_tag": "noble-20260217",
     "python_version": "3.13",
-    "uv_version": "0.8.15",
+    "uv_version": "0.9.14",
     # Default NAT version — used ONLY as a last-resort fallback.  Callers are
     # expected to pass ``--nat-version`` (or set ``NAT_VERSION``) explicitly
     # so that image tags, labels, and the ``nvidia-nat[most]`` constraint
@@ -235,14 +235,14 @@ COPY ./ /workspace
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
     . /workspace/.venv/bin/activate && \\
-    uv pip install --prerelease=allow "nemo-agents-plugin=={{ contract_version }}" . && \\
+    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" . && \\
     chmod -R a+rX /opt/uv /workspace/.venv
 {% else %}
 # The plugin owns the supported Fabric adapter and harness dependency set.
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
     . /workspace/.venv/bin/activate && \\
-    uv pip install --prerelease=allow "nemo-agents-plugin=={{ contract_version }}" && \\
+    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" && \\
     chmod -R a+rX /opt/uv /workspace/.venv
 {% endif %}
 
@@ -279,6 +279,7 @@ RUN if getent passwd 1000 >/dev/null; then userdel -rf "$(getent passwd 1000 | c
     chown -R agent:agent /workspace
 USER agent
 {% endif %}
+ENV VIRTUAL_ENV=/workspace/.venv
 ENTRYPOINT ["sh", "-c", "exec python -m nemo_agents_plugin.fabric.server --agent-config \\\"$AGENT_CONFIG_PATH\\\" --host 0.0.0.0 --port \\\"$PORT\\\""]
 """
 )
@@ -641,11 +642,11 @@ def render_fabric_dockerfile(
 
 
 def get_contract_version() -> str:
-    """Return the ``nemo-agents-plugin`` package version."""
+    """Return the published ``nemo-platform`` package version."""
     from importlib.metadata import PackageNotFoundError, version
 
     try:
-        return version("nemo-agents-plugin")
+        return version("nemo-platform")
     except PackageNotFoundError:
         return "0.0.0"
 
