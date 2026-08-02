@@ -93,6 +93,13 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
         "keep tool hosts in packaged code, so egress discovery can't find them; without these the "
         "victim's outbound calls are dropped.",
     )
+    env: dict[str, str] = Field(
+        default_factory=dict,
+        description="Non-secret environment variables for the victim (iron-swarm's agent.env) — a "
+        "host-backend URL, a feature flag. Stored in plaintext on this entity, so never put "
+        "credentials here: those belong in `secrets`, which names them and resolves the values from "
+        "the platform Secrets store at run time.",
+    )
     warnings: list[str] = Field(default_factory=list, description="Non-fatal notes from scaffolding.")
     benign_suite: list[dict[str, str]] = Field(
         default_factory=list,
@@ -137,6 +144,7 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
         secrets: list[str],
         warnings: list[str],
         egress: list[str] | None = None,
+        env: dict[str, str] | None = None,
         models: WarGameModels | None = None,
         agent_fileset: str = "",
     ) -> IronSwarmManifest:
@@ -156,6 +164,7 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
             port=port,
             secrets=secrets,
             egress=egress or [],
+            env=env or {},
             warnings=warnings,
             models=models or WarGameModels(),
         )

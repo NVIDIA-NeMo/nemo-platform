@@ -117,6 +117,13 @@ Pass `--egress <host>` at `init` for every external host the agent reaches. A ba
 **443 only**; write `host:80` for plain HTTP. Hosts cannot be auto-discovered for a config-only
 agent, because its tool code lives in an installed package rather than in the project.
 
+## Environment variables vs secrets
+
+`--env KEY=VALUE` (repeatable) sets non-secret env vars on the victim; only the first `=` splits.
+Values are stored in plaintext on the manifest, so credentials must use `--secrets` instead, which
+stores only the names and resolves values from the platform Secrets store at run time. Never suggest
+putting an API key in `--env`.
+
 ## Notes
 
 - Models default to iron-swarm's built-ins and the victim's own LLM resolves through the platform

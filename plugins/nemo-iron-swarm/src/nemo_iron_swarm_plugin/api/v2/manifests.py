@@ -333,6 +333,7 @@ async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarm
         port=resolved.port,
         secrets=resolved.secrets,
         egress=body.egress or [],  # persisted, not just used for the resolve above
+        env=body.env or {},
         warnings=resolved.warnings,
         models=body.models or WarGameModels(),
     )
@@ -483,6 +484,8 @@ async def update_manifest(
         existing.models = body.models
     if body.egress is not None:
         existing.egress = body.egress
+    if body.env is not None:
+        existing.env = body.env
     if body.port is not None:
         existing.port = body.port
         existing.manifest_yaml = _yaml_with_port(existing.manifest_yaml, body.port)

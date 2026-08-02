@@ -1776,6 +1776,16 @@ components:
           description: Allow-listed egress host[:port] entries the victim may reach.
             Config-only agents keep tool hosts in packaged code, so egress discovery
             can't find them; without these the victim's outbound calls are dropped.
+        env:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env
+          description: "Non-secret environment variables for the victim (iron-swarm's\
+            \ agent.env) \u2014 a host-backend URL, a feature flag. Stored in plaintext\
+            \ on this entity, so never put credentials here: those belong in `secrets`,\
+            \ which names them and resolves the values from the platform Secrets store\
+            \ at run time."
         warnings:
           items:
             type: string
@@ -2109,6 +2119,15 @@ components:
           items:
             type: string
           type: array
+        env:
+          title: Env
+          description: "Non-secret environment variables for the victim (iron-swarm's\
+            \ `agent.env`). Stored in plaintext on the manifest \u2014 credentials\
+            \ belong in `secrets`, which names them and resolves the values from the\
+            \ Secrets store at run time."
+          additionalProperties:
+            type: string
+          type: object
         backends:
           title: Backends
           description: Route-only host backends the agent's tools call, each 'NAME:PORT[,PORT2]'
@@ -2151,6 +2170,15 @@ components:
           items:
             type: string
           type: array
+        env:
+          title: Env
+          description: "Non-secret environment variables for the victim (iron-swarm's\
+            \ `agent.env`). Stored in plaintext on the manifest \u2014 credentials\
+            \ belong in `secrets`, which names them and resolves the values from the\
+            \ Secrets store at run time."
+          additionalProperties:
+            type: string
+          type: object
         defenders:
           title: Defenders
           description: Enabled defender keys ('guardrails','openshell'); empty means
