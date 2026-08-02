@@ -26,16 +26,18 @@ def run_subprocess(
     action: str,
     env: dict[str, str] | None = None,
     *,
-    timeout: int = SUBPROCESS_TIMEOUT_SECONDS,
+    cwd: str | None = None,
+    timeout: int | None = SUBPROCESS_TIMEOUT_SECONDS,
 ) -> None:
     """Run *cmd* with its output streamed to the terminal, exiting with *action* context on failure.
 
     Output is inherited rather than captured: these are multi-minute installs, and swallowing uv's
     progress makes setup look hung. It also means both stdout and stderr reach the operator — uv
-    reports some failures on stdout.
+    reports some failures on stdout. Inherited stdio also lets an interactive child prompt the
+    operator, which is why *timeout* accepts ``None`` (a person deciding is not a hung command).
     """
     try:
-        proc = subprocess.run(cmd, check=False, env=env, timeout=timeout)
+        proc = subprocess.run(cmd, check=False, env=env, cwd=cwd, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         typer.secho(f"Timed out after {timeout}s trying to {action} — the command made no progress.", fg="red")
         raise typer.Exit(code=1) from exc

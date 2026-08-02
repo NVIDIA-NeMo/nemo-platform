@@ -150,10 +150,12 @@ def _run_one_shot(
     benign_suite: str | None = None,
     model_env: dict[str, str] | None = None,
 ) -> RunOutcome:
-    """The default path: one `iron-swarm run` (its own pre-flight synth, TTY interview if interactive).
+    """The default path: one `iron-swarm run`, which consumes a benign suite but never generates one.
 
-    A supplied ``benign_suite`` CSV is passed as ``--benign-suite`` (skips synthesis); otherwise
-    iron-swarm runs its own pre-flight synth.
+    ``iron-swarm run`` is a pure consumer (its ``_load_benign_suite`` raises ``BenignSuiteError``
+    before infrastructure startup when no suite is supplied, and never prompts). So a ``benign_suite``
+    CSV must be passed as ``--benign-suite`` — from an upload, or from the manifest's cached suite
+    written out by the caller. Generating one is ``synth-benign``'s job, not this path's.
     """
     cmd, env = _prepare_invocation(manifest, env_file, plugin_config, replay_args, benign_suite, model_env)
     log_path = ctx.storage.persistent / "iron-swarm.log"

@@ -101,13 +101,35 @@ class _RunsResource:
 
 
 class _ManifestsResource:
-    """``client.iron_swarm.manifests`` — read saved IronSwarmManifest records."""
+    """``client.iron_swarm.manifests`` — saved IronSwarmManifest records.
+
+    Reads go through the entity store; writes go through the plugin's own API so the CLI and Studio
+    share one implementation of manifest creation (resolution, persistence, validation).
+    """
 
     def __init__(self, platform: NeMoPlatform) -> None:
         self._platform = platform
 
+    @staticmethod
+    def _base(workspace: str) -> str:
+        return f"/apis/iron-swarm/v2/workspaces/{workspace}/manifests"
+
     def list(self, *, workspace: str = "default", limit: int = 20) -> Sequence[dict[str, Any]]:
         return _list_newest(self._platform, IRON_SWARM_MANIFEST_TYPE, workspace=workspace, limit=limit)
+
+    def create(self, *, workspace: str = "default", **body: Any) -> dict[str, Any]:
+        """Create a manifest (``POST /manifests``); *body* is a ``ManifestInit``."""
+        return self._platform.post(self._base(workspace), body=body, cast_to=dict[str, Any])
+
+    def update(self, name: str, *, workspace: str = "default", **body: Any) -> dict[str, Any]:
+        """Edit a saved manifest (``PATCH /manifests/{name}``); *body* is a ``ManifestUpdate``."""
+        return self._platform.patch(f"{self._base(workspace)}/{name}", body=body, cast_to=dict[str, Any])
+
+    def inspect(self, *, project_fileset: str, workspace: str = "default") -> dict[str, Any]:
+        """Detect an uploaded project's layout (``POST /manifests/inspect``) to pre-fill creation."""
+        return self._platform.post(
+            f"{self._base(workspace)}/inspect", body={"project_fileset": project_fileset}, cast_to=dict[str, Any]
+        )
 
 
 class IronSwarmPluginResource:
