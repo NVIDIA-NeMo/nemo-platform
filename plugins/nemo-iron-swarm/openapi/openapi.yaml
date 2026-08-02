@@ -606,7 +606,8 @@ paths:
       summary: Update Manifest
       description: "Edit a manifest's cached benign suite, victim port, egress, or\
         \ war-game settings.\n\nThe agent source itself is immutable \u2014 re-create\
-        \ the manifest to point at a different agent."
+        \ the manifest to point at a different agent, or\n`POST /manifests/{name}/refresh`\
+        \ to re-resolve the one it already targets."
       operationId: update_manifest_apis_iron_swarm_v2_workspaces__workspace__manifests__name__patch
       parameters:
       - name: workspace
@@ -644,7 +645,8 @@ paths:
       tags:
       - Iron Swarm Manifests
       summary: Delete Manifest
-      description: Delete a saved manifest by name.
+      description: Delete a saved manifest by name, along with the victim bundle it
+        owns.
       operationId: delete_manifest_apis_iron_swarm_v2_workspaces__workspace__manifests__name__delete
       parameters:
       - name: workspace
@@ -662,6 +664,46 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/iron-swarm/v2/workspaces/{workspace}/manifests/{name}/refresh:
+    post:
+      tags:
+      - Iron Swarm Manifests
+      summary: Refresh Manifest
+      description: "Re-resolve an agent-source manifest against the agent as it is\
+        \ *now*.\n\nA manifest is a frozen target, so edits to the agent \u2014 a\
+        \ new model, an added tool, a redeploy \u2014\ndo not reach it on their own.\
+        \ This is how you take them, deliberately, when you want the next\nrun to\
+        \ measure the current agent rather than the one you saved.\n\nEverything the\
+        \ operator chose is kept: egress, secrets, models, defenders, intensity, rounds,\
+        \ and\nthe cached benign suite. Only the scaffold and its rendered manifest\
+        \ are rebuilt."
+      operationId: refresh_manifest_apis_iron_swarm_v2_workspaces__workspace__manifests__name__refresh_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IronSwarmManifest'
         '422':
           description: Validation Error
           content:
@@ -1693,6 +1735,13 @@ components:
             'project'); the run re-downloads it to a project_dir before launching
             the victim.
           default: ''
+        agent_fileset:
+          type: string
+          title: Agent Fileset
+          description: Fileset ref holding the scaffold resolved from the agent (source_type
+            'agent'). Empty on manifests created before targets were frozen; those
+            re-resolve once, then store a ref.
+          default: ''
         workflow:
           type: string
           title: Workflow
@@ -1828,12 +1877,23 @@ components:
       - entity_id
       - parent
       title: IronSwarmManifest
-      description: "A named, reusable war-game target scaffolded via `init` (its ``name``\
-        \ is the user-defined id).\n\nTwo sources: ``agent`` re-materializes the manifest\
-        \ from a deployed agent ref (no bundle persisted);\n``project`` war-games\
-        \ an uploaded NAT project \u2014 its files are stored as ``project_fileset``\
-        \ and the\nrun re-downloads them so custom-tool agents (unregistrable as config-only\
-        \ agents) can be targeted."
+      description: 'A named, reusable war-game target scaffolded via `init` (its ``name``
+        is the user-defined id).
+
+
+        Both sources persist their victim project as a fileset the run re-downloads,
+        so a manifest is a
+
+        frozen target rather than a query re-evaluated each run: ``agent`` stores
+        the scaffold resolved
+
+        from a deployed agent ref, ``project`` stores an uploaded NAT project (which
+        is also how
+
+        custom-tool agents, unregistrable as config-only agents, are targeted). Editing
+        the agent does
+
+        not change an existing manifest until it is refreshed.'
     IronSwarmRun:
       properties:
         name:

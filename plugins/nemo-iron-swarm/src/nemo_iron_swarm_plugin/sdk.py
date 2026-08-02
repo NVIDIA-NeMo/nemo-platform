@@ -125,6 +125,10 @@ class _ManifestsResource:
         """Edit a saved manifest (``PATCH /manifests/{name}``); *body* is a ``ManifestUpdate``."""
         return self._platform.patch(f"{self._base(workspace)}/{name}", body=body, cast_to=dict[str, Any])
 
+    def refresh(self, name: str, *, workspace: str = "default") -> dict[str, Any]:
+        """Re-resolve a frozen agent-source manifest against the agent as it is now."""
+        return self._platform.post(f"{self._base(workspace)}/{name}/refresh", body={}, cast_to=dict[str, Any])
+
     def inspect(self, *, project_fileset: str, workspace: str = "default") -> dict[str, Any]:
         """Detect an uploaded project's layout (``POST /manifests/inspect``) to pre-fill creation."""
         return self._platform.post(

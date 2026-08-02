@@ -14,10 +14,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from nemo_iron_swarm_plugin.agent_resolver import resolve_agent_to_manifest
+from nemo_iron_swarm_plugin.agent_resolver import gateway_backend, resolve_agent_to_manifest
 from nemo_iron_swarm_plugin.cli.client import base_url
 from nemo_iron_swarm_plugin.entities import IRON_SWARM_MANIFEST_TYPE
-from nemo_iron_swarm_plugin.filesets import download_and_extract_project
+from nemo_iron_swarm_plugin.filesets import download_and_extract_project, upload_project_dir
 from nemo_iron_swarm_plugin.jobs.errors import CATEGORY_FILESET, CATEGORY_MANIFEST, IronSwarmRunError
 from nemo_platform_plugin.job_context import JobContext
 
@@ -95,9 +95,9 @@ def _materialize_manifest(
 ) -> str:
     """Materialize a saved manifest into an on-host ``iron-swarm.yaml``; return its path.
 
-    Fetches the ``IronSwarmManifest`` record and dispatches on its source: ``agent`` re-resolves from
-    the stored agent ref via :func:`resolve_agent_to_manifest`; ``project`` re-downloads the uploaded
-    bundle and repoints the stored manifest at it. ``sdk`` is the platform SDK (submitted jobs only).
+    Both sources store their victim project as a fileset, so materializing is one path: download the
+    bundle, load the stored manifest, repoint the paths that only exist on this host. An agent-source
+    manifest predating that (no ``agent_fileset``) re-resolves once and stores a bundle as it goes.
 
     ``config_overrides`` (per-run port/defenders/attack_intensity from the launch dialog) is overlaid
     onto the stored config so the run can deviate from the manifest without persisting the change.
@@ -112,26 +112,81 @@ def _materialize_manifest(
     data = {**(getattr(record, "data", {}) or {}), **(config_overrides or {})}
     manifest_dir = ctx.storage.persistent
     manifest_dir.mkdir(parents=True, exist_ok=True)
-    if (data.get("source_type") or "agent") == "project":
-        manifest = _materialize_project_manifest(sdk, manifest_id, data, manifest_dir)
+    is_project = (data.get("source_type") or "agent") == "project"
+    bundle = data.get("project_fileset") if is_project else data.get("agent_fileset")
+    if bundle:
+        manifest = _materialize_from_bundle(sdk, manifest_id, data, manifest_dir, bundle)
+    elif is_project:
+        raise IronSwarmRunError(CATEGORY_MANIFEST, f"project manifest {manifest_id!r} is missing its project_fileset.")
     else:
-        manifest = _materialize_agent_manifest(sdk, manifest_id, data, ctx, manifest_dir)
+        manifest = _materialize_legacy_agent_manifest(sdk, manifest_id, data, ctx, manifest_dir, record)
     manifest_path = manifest_dir / "iron-swarm.yaml"
     manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
     return str(manifest_path)
 
 
-def _materialize_agent_manifest(
-    sdk: Any, manifest_id: str, data: dict[str, Any], ctx: JobContext, manifest_dir: Path
+def _materialize_from_bundle(
+    sdk: Any, manifest_id: str, data: dict[str, Any], manifest_dir: Path, bundle: str
 ) -> dict[str, Any]:
-    """Re-resolve an agent-source manifest from its stored agent ref (regenerating the scaffold)."""
+    """Restore a manifest's stored victim bundle and repoint the parts that are host-specific.
+
+    The single materialization path for both sources. The stored ``manifest_yaml`` is authoritative —
+    nothing is re-derived from the agent — so what runs is what was frozen, and a setting cannot be
+    silently lost between runs. Only three keys are rewritten, because they describe *this* host and
+    *this* platform rather than the target: where the project landed, where its secrets were written,
+    and the current Inference-Gateway route.
+    """
+    manifest_yaml = data.get("manifest_yaml")
+    if not manifest_yaml:
+        raise IronSwarmRunError(CATEGORY_MANIFEST, f"manifest {manifest_id!r} has no manifest_yaml to restore.")
+    try:
+        project_dir = download_and_extract_project(sdk, bundle, manifest_dir)
+    except IronSwarmRunError:
+        raise
+    except Exception as exc:  # a fileset download/extract failure is a distinct, actionable class
+        raise IronSwarmRunError(
+            CATEGORY_FILESET, f"could not download or unpack the victim bundle for manifest {manifest_id!r}: {exc}"
+        ) from exc
+
+    manifest = yaml.safe_load(manifest_yaml) or {}
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("agent"), dict):
+        raise IronSwarmRunError(CATEGORY_MANIFEST, f"manifest {manifest_id!r} has malformed manifest_yaml.")
+    agent = manifest["agent"]
+    agent["project_dir"] = str(project_dir)
+    # The bundle's own .env only carries what the project shipped; the victim's secrets (incl. operator-
+    # provided ones like a host-backend URL) are materialized next to the manifest. Point secrets_file at
+    # that absolute path so iron-swarm's credential provider reads them (a relative ".env" would resolve
+    # against the task cwd, where no dotenv exists, and silently deliver nothing).
+    agent["secrets_file"] = str((manifest_dir / ".env").resolve())
+    # The gateway route is a property of the platform we are running on, not of the frozen target, so
+    # a manifest created against a platform that has since moved still reaches the current one.
+    gw_backend = gateway_backend(base_url())
+    if gw_backend:
+        others = [b for b in (agent.get("backends") or []) if b.get("name") != gw_backend.get("name")]
+        agent["backends"] = [*others, gw_backend]
+    # Edits made after freezing (PATCH /manifests) have to reach the run; the stored YAML is the base.
+    if data.get("egress"):
+        agent["egress"] = list(data["egress"])
+    if data.get("secrets"):
+        agent["secrets"] = list(data["secrets"])
+    _apply_manifest_overrides(manifest, data)
+    return manifest
+
+
+def _materialize_legacy_agent_manifest(
+    sdk: Any, manifest_id: str, data: dict[str, Any], ctx: JobContext, manifest_dir: Path, record: Any
+) -> dict[str, Any]:
+    """Re-resolve a manifest saved before targets were frozen, then freeze it so this runs once.
+
+    Upgrading here rather than in a migration keeps existing manifests working with no user action:
+    the first run after the upgrade behaves exactly as before, and every run after it is frozen.
+    """
     agent_ref = data.get("agent")
     if not agent_ref:
         raise IronSwarmRunError(
             CATEGORY_MANIFEST, f"manifest {manifest_id!r} has no agent reference to materialize from."
         )
-    # Stored settings must be handed back: the manifest is rebuilt from the agent ref every run, so
-    # anything omitted is silently re-derived and the operator's choice lost.
+    logger.info("manifest %s predates frozen targets; re-resolving and storing a bundle", manifest_id)
     resolved = resolve_agent_to_manifest(
         agent_ref,
         sdk=sdk,
@@ -142,41 +197,25 @@ def _materialize_agent_manifest(
         secrets=data.get("secrets") or None,
         model_override=_agent_model_override(data),
     )
+    _persist_upgraded_bundle(sdk, manifest_id, ctx, record, resolved)
     _apply_manifest_overrides(resolved.manifest, data)
     for warning in resolved.warnings:
         logger.warning("manifest %s: %s", manifest_id, warning)
     return resolved.manifest
 
 
-def _materialize_project_manifest(
-    sdk: Any, manifest_id: str, data: dict[str, Any], manifest_dir: Path
-) -> dict[str, Any]:
-    """Re-download the uploaded project bundle and repoint the stored manifest's ``project_dir`` at it."""
-    fileset = data.get("project_fileset")
-    manifest_yaml = data.get("manifest_yaml")
-    if not fileset or not manifest_yaml:
-        raise IronSwarmRunError(
-            CATEGORY_MANIFEST, f"project manifest {manifest_id!r} is missing its project_fileset or manifest_yaml."
-        )
+def _persist_upgraded_bundle(sdk: Any, manifest_id: str, ctx: JobContext, record: Any, resolved: Any) -> None:
+    """Store the freshly-resolved scaffold on the manifest; best-effort, the run proceeds regardless."""
     try:
-        project_dir = download_and_extract_project(sdk, fileset, manifest_dir)
-    except IronSwarmRunError:
-        raise
-    except Exception as exc:  # a fileset download/extract failure is a distinct, actionable class
-        raise IronSwarmRunError(
-            CATEGORY_FILESET, f"could not download or unpack the project bundle for manifest {manifest_id!r}: {exc}"
-        ) from exc
-    manifest = yaml.safe_load(manifest_yaml) or {}
-    if not isinstance(manifest, dict) or not isinstance(manifest.get("agent"), dict):
-        raise IronSwarmRunError(CATEGORY_MANIFEST, f"project manifest {manifest_id!r} has malformed manifest_yaml.")
-    manifest["agent"]["project_dir"] = str(project_dir)
-    # The bundle's own .env only carries what the project shipped; the victim's secrets (incl. operator-
-    # provided ones like a host-backend URL) are materialized next to the manifest. Point secrets_file at
-    # that absolute path so iron-swarm's credential provider reads them (a relative ".env" would resolve
-    # against the task cwd, where no dotenv exists, and silently deliver nothing).
-    manifest["agent"]["secrets_file"] = str((manifest_dir / ".env").resolve())
-    _apply_manifest_overrides(manifest, data)
-    return manifest
+        fileset = upload_project_dir(sdk, resolved.project_dir, workspace=ctx.workspace)
+        updated = {**(getattr(record, "data", {}) or {})}
+        updated["agent_fileset"] = fileset
+        updated["manifest_yaml"] = yaml.safe_dump(resolved.manifest, sort_keys=False)
+        sdk.entities.update_entity_by_name(
+            name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace, data=updated
+        )
+    except Exception:  # the war-game matters more than the upgrade; it retries next run
+        logger.warning("could not freeze manifest %s on this run", manifest_id, exc_info=True)
 
 
 def _seed_validation_manifest(

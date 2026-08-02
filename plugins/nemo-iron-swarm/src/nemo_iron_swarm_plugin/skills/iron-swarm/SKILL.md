@@ -10,8 +10,8 @@ description: >
 
 Iron Swarm runs a security war-game against a NAT agent: garak attackers probe a sandboxed copy
 of the agent, defenders harden it (OpenShell policy + workflow guardrails), and validators replay
-the attacks plus benign traffic to confirm the fix. Point it at an agent already deployed in NeMo
-Platform, or at a local NAT project — no manual manifest editing either way.
+the attacks plus benign traffic to confirm the fix. Point it at an agent registered in NeMo Platform
+(it does not have to be deployed) or at a local NAT project — no manual manifest editing either way.
 
 ## Prerequisites
 
@@ -45,6 +45,9 @@ nemo iron-swarm synth-benign --manifest-id <id> --yes
 # 3. Run the war-game, then inspect it
 nemo iron-swarm run --manifest-id <id>
 nemo iron-swarm status --limit 5
+
+# Later: the agent changed and you want the manifest to catch up
+nemo iron-swarm refresh --manifest-id <id>
 ```
 
 For agent source, the agent must already be registered in NeMo Platform — confirm with
@@ -85,8 +88,24 @@ nemo iron-swarm synth-benign --manifest-id <id> --no-interactive # CI: rules onl
 - **`run --config <file>`** — a hand-authored `iron-swarm.yaml` against a local project. There is no
   cache to look up, so it also needs `--benign-suite <csv>`.
 
-`init -o` writes a *rendering* of the manifest for reading. The run re-renders it from the source
-every time, so editing that file changes nothing — change the manifest instead.
+`init -o` writes a *rendering* of the manifest for reading; editing that file changes nothing, since
+the run uses the saved manifest.
+
+## Manifests are frozen targets
+
+`init` resolves the agent once and stores the result, so every run war-games the same thing — which
+is what makes two runs comparable. Editing the agent afterwards does **not** change an existing
+manifest. Take the change deliberately:
+
+```bash
+nemo iron-swarm refresh --manifest-id <id>
+```
+
+Egress, secrets, models, defenders and the cached benign suite are preserved; only the target is
+rebuilt. Not needed after `apply-mitigation`, which refreshes the manifest itself so
+`run → harden → apply → run` measures the change just applied.
+
+Do not report a manifest as picking up an agent edit without a `refresh` (or an `apply`) between them.
 
 ## Egress: the silent-failure trap
 

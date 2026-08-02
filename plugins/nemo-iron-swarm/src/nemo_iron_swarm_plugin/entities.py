@@ -63,9 +63,11 @@ class IronSwarmRun(NemoEntity, entity_type=IRON_SWARM_RUN_TYPE):
 class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
     """A named, reusable war-game target scaffolded via `init` (its ``name`` is the user-defined id).
 
-    Two sources: ``agent`` re-materializes the manifest from a deployed agent ref (no bundle persisted);
-    ``project`` war-games an uploaded NAT project — its files are stored as ``project_fileset`` and the
-    run re-downloads them so custom-tool agents (unregistrable as config-only agents) can be targeted.
+    Both sources persist their victim project as a fileset the run re-downloads, so a manifest is a
+    frozen target rather than a query re-evaluated each run: ``agent`` stores the scaffold resolved
+    from a deployed agent ref, ``project`` stores an uploaded NAT project (which is also how
+    custom-tool agents, unregistrable as config-only agents, are targeted). Editing the agent does
+    not change an existing manifest until it is refreshed.
     """
 
     agent: str = Field(default="", description="Deployed agent reference (workspace/name) this manifest targets.")
@@ -74,6 +76,11 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
         default="",
         description="Fileset ref holding the uploaded NAT project bundle (source_type 'project'); the run "
         "re-downloads it to a project_dir before launching the victim.",
+    )
+    agent_fileset: str = Field(
+        default="",
+        description="Fileset ref holding the scaffold resolved from the agent (source_type 'agent'). Empty "
+        "on manifests created before targets were frozen; those re-resolve once, then store a ref.",
     )
     workflow: str = Field(default="", description="Chosen workflow path within the project (project source, display).")
     launch_mode: str = Field(default="", description="Victim launch mode ('workflow'|'byo'; project source).")
@@ -131,12 +138,13 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
         warnings: list[str],
         egress: list[str] | None = None,
         models: WarGameModels | None = None,
+        agent_fileset: str = "",
     ) -> IronSwarmManifest:
         """Build an ``agent``-source manifest entity from a resolved agent scaffold.
 
-        Shared by the CLI ``init`` and the Studio ``POST /manifests`` handler so both persist the same
-        shape from :func:`resolve_agent_to_manifest`'s output (the run re-materializes from ``agent_ref``,
-        so anything not stored here is re-derived on the next run).
+        Shared by ``POST /manifests`` and the refresh route so both persist the same shape from
+        :func:`resolve_agent_to_manifest`'s output. ``agent_fileset`` holds the scaffold the run
+        re-downloads; without it the run has to re-resolve (legacy manifests only).
         """
         return cls(
             name=name,
@@ -144,6 +152,7 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
             agent=agent_ref,
             source_type="agent",
             manifest_yaml=manifest_yaml,
+            agent_fileset=agent_fileset,
             port=port,
             secrets=secrets,
             egress=egress or [],
