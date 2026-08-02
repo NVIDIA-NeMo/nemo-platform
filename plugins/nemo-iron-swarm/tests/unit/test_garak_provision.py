@@ -169,12 +169,12 @@ def test_index_strategy_is_omitted_without_one(tmp_path: Path, monkeypatch: pyte
     [
         # Artifactory's "Set Me Up" embeds the access token directly in the URL.
         (
-            "https://kchap:AKCp8token@artifactory.example/api/pypi/repo/simple",
+            "https://user:AKCp8token@artifactory.example/api/pypi/repo/simple",
             "https://***:***@artifactory.example/api/pypi/repo/simple",
         ),
         # uv's named form keeps its prefix.
         (
-            "nv-shared-pypi=https://kchap:AKCp8token@artifactory.example/simple",
+            "nv-shared-pypi=https://user:AKCp8token@artifactory.example/simple",
             "nv-shared-pypi=https://***:***@artifactory.example/simple",
         ),
         # Nothing to redact — left byte-for-byte alone.
@@ -191,7 +191,7 @@ def test_doctor_never_prints_an_embedded_token(tmp_path: Path) -> None:
     cfg = IronSwarmConfig(
         venv_path=tmp_path / "venv",
         garak_venv_path=tmp_path / "garak-venv",
-        index_url="https://kchap:AKCp8SUPERSECRET@artifactory.example/api/pypi/repo/simple",
+        index_url="https://user:AKCp8SUPERSECRET@artifactory.example/api/pypi/repo/simple",
     )
     _ok, detail = checks.venv_ok(cfg)
     assert "AKCp8SUPERSECRET" not in detail
