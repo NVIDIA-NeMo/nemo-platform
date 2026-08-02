@@ -324,7 +324,7 @@ async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarm
         workspace, body.agent, egress=body.egress, port=body.port, secrets=body.secrets
     )
 
-    return IronSwarmManifest.from_agent_resolution(
+    manifest = IronSwarmManifest.from_agent_resolution(
         name=body.name,
         workspace=workspace,
         agent_ref=f"{resolved.workspace}/{resolved.agent_name}",
@@ -337,6 +337,9 @@ async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarm
         warnings=resolved.warnings,
         models=body.models or WarGameModels(),
     )
+    # resolve_agent_to_manifest has no `env` parameter, so it is absent from the YAML it produced.
+    manifest.manifest_yaml = _yaml_with_agent_settings(manifest.manifest_yaml, manifest)
+    return manifest
 
 
 async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
@@ -408,7 +411,7 @@ async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwa
 
     # The manifest itself is what the run executes, so the entity's fields describe it rather than
     # the request — otherwise the two disagree whenever a client omits a field iron-swarm detected.
-    return IronSwarmManifest(
+    manifest = IronSwarmManifest(
         name=body.name,
         workspace=workspace,
         source_type="project",
@@ -419,8 +422,11 @@ async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwa
         port=body.port or int(agent_section.get("port") or port),
         secrets=body.secrets or list(agent_section.get("secrets") or []),
         egress=body.egress or list(agent_section.get("egress") or []),
+        env=body.env or dict(agent_section.get("env") or {}),
         models=body.models or WarGameModels(),
     )
+    manifest.manifest_yaml = _yaml_with_agent_settings(manifest.manifest_yaml, manifest)
+    return manifest
 
 
 def _agent_section(manifest_yaml: str) -> dict[str, Any]:
@@ -445,16 +451,32 @@ def _with_project_dir_dot(manifest_yaml: str) -> str:
     return manifest_yaml
 
 
-def _yaml_with_port(manifest_yaml: str, port: int) -> str:
-    """Return *manifest_yaml* with ``agent.port`` set to *port* (unchanged if it can't be parsed)."""
+def _yaml_with_agent_settings(manifest_yaml: str, manifest: IronSwarmManifest) -> str:
+    """Return *manifest_yaml* with the manifest's stored agent settings written into it.
+
+    The run layers these on at materialization anyway, so this is not what makes them take effect —
+    it is what makes the stored YAML *honest*. Without it the manifest we show (and that `init -o`
+    writes) is the frozen base rather than what will actually run, so an operator who sets `env` sees
+    no trace of it and reasonably concludes it was lost.
+
+    Unparseable YAML is returned untouched: a display concern must never cost someone their manifest.
+    """
     try:
         data = yaml.safe_load(manifest_yaml) or {}
     except yaml.YAMLError:
         return manifest_yaml
-    if isinstance(data, dict) and isinstance(data.get("agent"), dict):
-        data["agent"]["port"] = port
-        return yaml.safe_dump(data, sort_keys=False)
-    return manifest_yaml
+    if not (isinstance(data, dict) and isinstance(data.get("agent"), dict)):
+        return manifest_yaml
+    agent = data["agent"]
+    if manifest.port:
+        agent["port"] = manifest.port
+    if manifest.egress:
+        agent["egress"] = list(manifest.egress)
+    if manifest.secrets:
+        agent["secrets"] = list(manifest.secrets)
+    if manifest.env:
+        agent["env"] = dict(manifest.env)
+    return yaml.safe_dump(data, sort_keys=False)
 
 
 @router.patch("/manifests/{name}", response_model=IronSwarmManifest, tags=["Iron Swarm Manifests"])
@@ -488,7 +510,7 @@ async def update_manifest(
         existing.env = body.env
     if body.port is not None:
         existing.port = body.port
-        existing.manifest_yaml = _yaml_with_port(existing.manifest_yaml, body.port)
+    existing.manifest_yaml = _yaml_with_agent_settings(existing.manifest_yaml, existing)
     try:
         return await entity_client.update(existing)
     except NemoEntityNotFoundError as exc:
@@ -532,11 +554,11 @@ async def refresh_manifest(
     )
     stale = existing.agent_fileset
 
-    existing.manifest_yaml = yaml.safe_dump(resolved.manifest, sort_keys=False)
     existing.agent_fileset = fileset
     existing.port = resolved.port
     existing.secrets = resolved.secrets
     existing.warnings = resolved.warnings
+    existing.manifest_yaml = _yaml_with_agent_settings(yaml.safe_dump(resolved.manifest, sort_keys=False), existing)
     updated = await entity_client.update(existing)
 
     if stale and stale != fileset:
