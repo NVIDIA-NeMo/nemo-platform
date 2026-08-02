@@ -442,42 +442,170 @@ def test_cli_run_rejects_config_and_manifest_id(tmp_path: Path, monkeypatch: pyt
     assert "run" not in captured
 
 
-def test_cli_init_persists_manifest_entity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from nemo_iron_swarm_plugin.cli import main as cli_main
-
-    resolved = SimpleNamespace(
-        manifest={"agent": {"name": "chatbot"}},
-        workflow_path="workflow.yaml",
-        project_dir=str(tmp_path),
-        workspace="default",
-        agent_name="chatbot",
-        port=8000,
-        secrets=["OPENAI_API_KEY"],
-        warnings=[],
-    )
-    created: dict[str, Any] = {}
-    fake_entities = SimpleNamespace(
-        create=lambda entity_type, *, workspace, data, name: created.update(
-            entity_type=entity_type, workspace=workspace, data=data, name=name
-        )
-    )
+def _patch_cli_context(
+    monkeypatch: pytest.MonkeyPatch, cli_main: Any, sdk: Any, *, bin_path: Path | None = None
+) -> None:
+    """Stub the `_command_context` preamble so an init test never touches a host or a real binary."""
     monkeypatch.setattr(cli_main.checks, "require_preflight", lambda _c: None)
-    monkeypatch.setattr(cli_main, "make_sdk", lambda _u: SimpleNamespace(entities=fake_entities))
+    monkeypatch.setattr(cli_main, "make_sdk", lambda _u: sdk)
     monkeypatch.setattr(cli_main, "base_url", lambda: "http://localhost:8080")
-    monkeypatch.setattr(cli_main, "resolve_agent_to_manifest", lambda *a, **k: resolved)
     monkeypatch.setattr(
         cli_main.IronSwarmConfig,
         "get",
-        classmethod(lambda _cls: SimpleNamespace(default_workspace="default", operator_env_file=Path(".env"))),
+        classmethod(
+            lambda _cls: SimpleNamespace(
+                default_workspace="default",
+                operator_env_file=Path(".env"),
+                iron_swarm_bin=bin_path or Path("/nonexistent/iron-swarm"),
+            )
+        ),
     )
+
+
+def test_cli_init_agent_delegates_to_the_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Agent source posts to the API rather than resolving locally, so Studio and the CLI agree."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    posted: dict[str, Any] = {}
+
+    def _create(*, workspace: str, **body: Any) -> dict[str, Any]:
+        posted.update(workspace=workspace, **body)
+        return {"name": body["name"], "agent": "default/chatbot", "port": 8000, "manifest_yaml": "agent: {}\n"}
+
+    sdk = SimpleNamespace(iron_swarm=SimpleNamespace(manifests=SimpleNamespace(create=_create)))
+    _patch_cli_context(monkeypatch, cli_main, sdk)
 
     app = cli_main.IronSwarmCLI().get_cli()
     result = CliRunner().invoke(
-        app, ["init", "--agent", "chatbot", "--name", "my-target", "-o", str(tmp_path / "iron-swarm.yaml")]
+        app,
+        [
+            "init",
+            "--agent",
+            "chatbot",
+            "--name",
+            "my-target",
+            "--egress",
+            "en.wikipedia.org",
+            "-o",
+            str(tmp_path / "iron-swarm.yaml"),
+        ],
     )
 
     assert result.exit_code == 0, result.output
-    assert created["name"] == "my-target"
-    assert created["entity_type"] == "iron_swarm_manifest"
-    assert created["data"]["agent"] == "default/chatbot"
-    assert (tmp_path / "iron-swarm.yaml").exists()  # local yaml still written
+    assert posted["name"] == "my-target"
+    assert posted["source_type"] == "agent"
+    assert posted["agent"] == "chatbot"
+    assert posted["egress"] == ["en.wikipedia.org"]
+    assert (tmp_path / "iron-swarm.yaml").exists()  # a rendering for reading, not an input
+
+
+def test_cli_init_project_dir_runs_iron_swarm_then_uploads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Project source delegates to iron-swarm's own init and ships the manifest it produced."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    project = tmp_path / "my-agent"
+    project.mkdir()
+    (project / "workflow.yaml").write_text("workflow: {}\n", encoding="utf-8")
+
+    calls: dict[str, Any] = {}
+
+    def _fake_subprocess(cmd: list[str], _action: str, env: Any = None, *, cwd: str, timeout: Any) -> None:
+        calls.update(cmd=cmd, cwd=cwd, timeout=timeout)
+        Path(cmd[cmd.index("-o") + 1]).write_text("agent:\n  workflow: workflow.yaml\n", encoding="utf-8")
+
+    posted: dict[str, Any] = {}
+
+    def _create(*, workspace: str, **body: Any) -> dict[str, Any]:
+        posted.update(workspace=workspace, **body)
+        return {"name": body["name"], "project_fileset": body["project_fileset"], "port": 8000}
+
+    sdk = SimpleNamespace(iron_swarm=SimpleNamespace(manifests=SimpleNamespace(create=_create)))
+    _patch_cli_context(monkeypatch, cli_main, sdk, bin_path=tmp_path / "iron-swarm")
+    monkeypatch.setattr(cli_main.provisioning, "run_subprocess", _fake_subprocess)
+    monkeypatch.setattr(cli_main, "upload_project_dir", lambda _sdk, _dir, *, workspace: f"{workspace}/fs-1")
+
+    app = cli_main.IronSwarmCLI().get_cli()
+    result = CliRunner().invoke(app, ["init", "--project-dir", str(project), "--egress", "example.com"])
+
+    assert result.exit_code == 0, result.output
+    # Interactive: no --yes, no timeout, and cwd set so the manifest is path-independent.
+    assert "--yes" not in calls["cmd"]
+    assert calls["timeout"] is None
+    assert calls["cwd"] == str(project)
+    assert calls["cmd"][calls["cmd"].index("--project-dir") + 1] == "."
+    assert calls["cmd"][calls["cmd"].index("--egress") + 1] == "example.com"
+    assert posted["source_type"] == "project"
+    assert posted["project_fileset"] == "default/fs-1"
+    assert posted["manifest_yaml"] == "agent:\n  workflow: workflow.yaml\n"
+
+
+def test_cli_init_yes_forwards_to_iron_swarm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--yes` must reach iron-swarm, or a CI run blocks forever on its prompts."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    project = tmp_path / "my-agent"
+    project.mkdir()
+    calls: dict[str, Any] = {}
+
+    def _fake_subprocess(cmd: list[str], _action: str, env: Any = None, *, cwd: str, timeout: Any) -> None:
+        calls["cmd"] = cmd
+        Path(cmd[cmd.index("-o") + 1]).write_text("agent: {}\n", encoding="utf-8")
+
+    sdk = SimpleNamespace(
+        iron_swarm=SimpleNamespace(manifests=SimpleNamespace(create=lambda **_k: {"name": "my-agent"}))
+    )
+    _patch_cli_context(monkeypatch, cli_main, sdk, bin_path=tmp_path / "iron-swarm")
+    monkeypatch.setattr(cli_main.provisioning, "run_subprocess", _fake_subprocess)
+    monkeypatch.setattr(cli_main, "upload_project_dir", lambda _sdk, _dir, *, workspace: f"{workspace}/fs-1")
+
+    app = cli_main.IronSwarmCLI().get_cli()
+    result = CliRunner().invoke(app, ["init", "--project-dir", str(project), "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert "--yes" in calls["cmd"]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        pytest.param([], id="neither"),
+        pytest.param(["--agent", "chatbot", "--project-dir", "."], id="both"),
+    ],
+)
+def test_cli_init_requires_exactly_one_source(args: list[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    _patch_cli_context(monkeypatch, cli_main, SimpleNamespace())
+
+    result = CliRunner().invoke(cli_main.IronSwarmCLI().get_cli(), ["init", *args])
+
+    assert result.exit_code == 1
+    assert "exactly one of --agent or --project-dir" in result.output
+
+
+def test_from_agent_resolution_persists_egress() -> None:
+    """Unstored egress is re-derived as empty on the next run, dropping the victim's outbound calls."""
+    from nemo_iron_swarm_plugin.entities import IronSwarmManifest
+
+    manifest = IronSwarmManifest.from_agent_resolution(
+        name="m",
+        workspace="ws1",
+        agent_ref="ws1/chatbot",
+        manifest_yaml="agent: {}\n",
+        port=8000,
+        secrets=["INFERENCE_API_KEY"],
+        warnings=[],
+        egress=["en.wikipedia.org", "api.example.com:443"],
+    )
+
+    assert manifest.egress == ["en.wikipedia.org", "api.example.com:443"]
+    assert "egress" in manifest._get_data_fields()
+
+
+def test_from_agent_resolution_defaults_egress_to_empty() -> None:
+    from nemo_iron_swarm_plugin.entities import IronSwarmManifest
+
+    manifest = IronSwarmManifest.from_agent_resolution(
+        name="m", workspace="ws1", agent_ref="ws1/c", manifest_yaml="", port=1, secrets=[], warnings=[]
+    )
+    assert manifest.egress == []

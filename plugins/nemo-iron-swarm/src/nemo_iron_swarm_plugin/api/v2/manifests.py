@@ -17,6 +17,7 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -348,29 +349,51 @@ async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwa
             _run_iron_swarm(cmd, cwd=str(project_dir), action="init")
             return output.read_text(encoding="utf-8")
 
-    try:
-        manifest_yaml = await run_in_threadpool(_init)
-    except _SubprocessTimeout as exc:
-        raise HTTPException(status_code=504, detail=f"Failed to build manifest from project: {exc}") from exc
-    except _SubprocessError as exc:
-        raise HTTPException(status_code=400, detail=f"Failed to build manifest from project: {exc}") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Could not read the uploaded project: {exc}") from exc
+    if body.manifest_yaml:
+        # The CLI already ran iron-swarm's interactive `init` at the operator's terminal; rebuilding
+        # it here with `--yes` would silently discard the answers they gave.
+        manifest_yaml = body.manifest_yaml
+    else:
+        try:
+            manifest_yaml = await run_in_threadpool(_init)
+        except _SubprocessTimeout as exc:
+            raise HTTPException(status_code=504, detail=f"Failed to build manifest from project: {exc}") from exc
+        except _SubprocessError as exc:
+            raise HTTPException(status_code=400, detail=f"Failed to build manifest from project: {exc}") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Could not read the uploaded project: {exc}") from exc
 
     # The persisted manifest can't hold the temp project path; the run repoints it. Force project_dir='.'.
     manifest_yaml = _with_project_dir_dot(manifest_yaml)
+    agent_section = _agent_section(manifest_yaml)
+    if not agent_section:
+        raise HTTPException(status_code=422, detail="manifest_yaml has no 'agent' section; not an iron-swarm manifest.")
+
+    # The manifest itself is what the run executes, so the entity's fields describe it rather than
+    # the request — otherwise the two disagree whenever a client omits a field iron-swarm detected.
     return IronSwarmManifest(
         name=body.name,
         workspace=workspace,
         source_type="project",
         project_fileset=fileset,
-        workflow=body.workflow or "",
+        workflow=body.workflow or str(agent_section.get("workflow") or ""),
         launch_mode=body.launch_mode or "workflow",
         manifest_yaml=manifest_yaml,
-        port=port,
-        secrets=body.secrets or [],
+        port=body.port or int(agent_section.get("port") or port),
+        secrets=body.secrets or list(agent_section.get("secrets") or []),
+        egress=body.egress or list(agent_section.get("egress") or []),
         models=body.models or WarGameModels(),
     )
+
+
+def _agent_section(manifest_yaml: str) -> dict[str, Any]:
+    """Return the manifest's ``agent`` mapping, or ``{}`` if it is absent or the YAML is unparseable."""
+    try:
+        data = yaml.safe_load(manifest_yaml) or {}
+    except yaml.YAMLError:
+        return {}
+    agent = data.get("agent") if isinstance(data, dict) else None
+    return agent if isinstance(agent, dict) else {}
 
 
 def _with_project_dir_dot(manifest_yaml: str) -> str:

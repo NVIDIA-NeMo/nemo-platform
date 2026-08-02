@@ -247,6 +247,58 @@ def test_create_project_manifest(client, mock_entity_client, monkeypatch) -> Non
     assert "project_dir: ." in body["manifest_yaml"]
 
 
+def test_create_project_manifest_accepts_a_prebuilt_yaml(client, mock_entity_client, monkeypatch) -> None:
+    """A supplied manifest is stored as-is: rebuilding it with `init --yes` would discard the
+    answers the operator gave iron-swarm at their terminal."""
+    ran: list[list[str]] = []
+    monkeypatch.setattr(manifests_module, "download_and_extract_project", lambda *_a, **_k: Path("/tmp/proj"))
+    monkeypatch.setattr(manifests_module.subprocess, "run", lambda cmd, **_k: ran.append(cmd))
+    mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={
+            "name": "from-cli",
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "manifest_yaml": (
+                "agent:\n  name: research\n  project_dir: /local/path\n  workflow: wf.yaml\n"
+                "  port: 9100\n  secrets:\n  - INFERENCE_API_KEY\n  egress:\n  - en.wikipedia.org\n"
+            ),
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert ran == []  # iron-swarm was never re-run
+    assert "project_dir: ." in body["manifest_yaml"]  # still normalized off the operator's local path
+    # Entity fields describe the manifest, so the two can't disagree when the client omits them.
+    assert body["workflow"] == "wf.yaml"
+    assert body["port"] == 9100
+    assert body["secrets"] == ["INFERENCE_API_KEY"]
+    assert body["egress"] == ["en.wikipedia.org"]
+
+
+def test_create_project_manifest_rejects_a_yaml_without_an_agent_section(
+    client, mock_entity_client, monkeypatch
+) -> None:
+    monkeypatch.setattr(manifests_module, "download_and_extract_project", lambda *_a, **_k: Path("/tmp/proj"))
+    mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={
+            "name": "junk",
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "manifest_yaml": "not: a manifest\n",
+        },
+    )
+
+    assert resp.status_code == 422
+    assert "agent" in resp.json()["detail"]
+
+
 def test_create_project_manifest_forwards_egress(client, mock_entity_client, monkeypatch) -> None:
     monkeypatch.setattr(manifests_module, "download_and_extract_project", lambda *_a, **_k: Path("/tmp/proj"))
     monkeypatch.setattr(

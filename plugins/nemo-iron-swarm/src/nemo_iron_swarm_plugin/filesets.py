@@ -13,10 +13,14 @@ scanned by ``iron-swarm inspect`` and later run inside the OpenShell sandbox).
 from __future__ import annotations
 
 import stat
+import subprocess
+import tempfile
 import zipfile
+from fnmatch import fnmatch
 from pathlib import Path
 
 import fsspec.asyn
+from nemo_agents_plugin.container.template import DOCKERIGNORE_TEMPLATE
 from nemo_platform import NeMoPlatform
 from nemo_platform.filesets import FilesetFileSystem
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -25,6 +29,13 @@ from nemo_platform_plugin.files.client import FilesClient
 _MAX_ENTRIES = 10_000
 _MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 500 MB expanded — a NAT project, not a dataset.
 _IGNORED_TOP_LEVEL = frozenset({"__MACOSX"})
+
+# "What must not leave a project directory" is the same question `nemo agents package` answers for its
+# Docker build context, so reuse its answer rather than keeping a second, weaker list in sync — it
+# already covers credentials (.env, *.pem, *.key) alongside the usual caches and virtualenvs.
+_UPLOAD_EXCLUDES = tuple(
+    line.strip() for line in DOCKERIGNORE_TEMPLATE.splitlines() if line.strip() and not line.startswith("#")
+)
 
 
 def _is_absolute_member(name: str) -> bool:
@@ -57,6 +68,75 @@ def upload_file_to_fileset(sdk: NeMoPlatform, local_path: Path, *, workspace: st
         fileset_auto_create=True,  # generates a unique fileset name
     )
     return f"{workspace}/{fileset.name}"
+
+
+def _is_excluded(relative_path: Path) -> bool:
+    """Return whether *relative_path* matches an exclude pattern (``dir/`` forms match any segment)."""
+    parts = relative_path.parts
+    for pattern in _UPLOAD_EXCLUDES:
+        if pattern.endswith("/"):
+            if pattern.rstrip("/") in parts:
+                return True
+        elif any(fnmatch(part, pattern) for part in parts):
+            return True
+    return False
+
+
+def _git_listed_files(root: Path) -> list[Path] | None:
+    """Files git considers part of *root* (tracked + untracked, ignored excluded), or ``None``.
+
+    A real project's ``.gitignore`` already states what shouldn't leave the machine — datasets, build
+    output, local credentials — and knows far more than a static pattern list can. ``None`` means
+    *root* isn't a git worktree (or git is unavailable), leaving the caller on the pattern fallback.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=root,
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return [root / name for name in proc.stdout.decode(errors="replace").split("\0") if name]
+
+
+def upload_project_dir(sdk: NeMoPlatform, project_dir: Path, *, workspace: str) -> str:
+    """Zip a local NAT project and upload it as a fileset; return its ``workspace/name`` ref.
+
+    The counterpart to :func:`download_and_extract_project`: the manifest API and the war-game both
+    take a project as a single-zip fileset, so a CLI user's local directory has to become one.
+
+    Selection defers to git when the project is a repo, then applies the exclude patterns on top —
+    the patterns still matter there, since a credential file that was never gitignored would
+    otherwise be uploaded. Dotenv files are excluded deliberately and cost nothing: the run
+    overwrites ``agent.secrets_file`` with a dotenv materialized from the platform secret store
+    (``jobs/manifest.py``), so a bundled one is never read.
+    """
+    if not project_dir.is_dir():
+        raise ValueError(f"project dir {str(project_dir)!r} does not exist")
+    root = project_dir.resolve()
+
+    candidates = _git_listed_files(root)
+    if candidates is None:
+        candidates = list(root.rglob("*"))
+    files = sorted(
+        path
+        for path in candidates
+        if path.is_file() and not path.is_symlink() and not _is_excluded(path.relative_to(root))
+    )
+    if not files:
+        raise ValueError(f"project dir {str(project_dir)!r} has no files to upload")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / f"{root.name}.zip"
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
+            for path in files:
+                bundle.write(path, path.relative_to(root))
+        return upload_file_to_fileset(sdk, archive, workspace=workspace)
 
 
 def extract_zip_safely(zip_path: Path, dest: Path) -> Path:

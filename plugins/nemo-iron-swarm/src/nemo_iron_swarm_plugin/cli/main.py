@@ -11,17 +11,16 @@ each command's docstring is its ``--help`` text.
 from __future__ import annotations
 
 import json
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import typer
-import yaml
-from nemo_iron_swarm_plugin.agent_resolver import AgentResolutionError, resolve_agent_to_manifest
 from nemo_iron_swarm_plugin.cli import checks, credentials, provisioning
 from nemo_iron_swarm_plugin.cli.client import base_url, make_sdk
 from nemo_iron_swarm_plugin.config import IronSwarmConfig, missing_secrets
-from nemo_iron_swarm_plugin.entities import IRON_SWARM_MANIFEST_TYPE, IronSwarmManifest
+from nemo_iron_swarm_plugin.filesets import upload_project_dir
 from nemo_iron_swarm_plugin.jobs.defenses import defense_ids, select_defense_ids
 from nemo_platform_plugin.cli import NemoCLI
 
@@ -52,6 +51,76 @@ def _command_context(workspace: str | None, *, preflight: bool = True) -> _Comma
         base_url=url,
         workspace=workspace or config.default_workspace,
     )
+
+
+def _project_init_body(
+    ctx: _CommandContext,
+    project_dir: Path,
+    *,
+    name: str | None,
+    workflow: str | None,
+    port: int | None,
+    egress: list[str],
+    secrets: list[str],
+    assume_yes: bool,
+) -> dict[str, object]:
+    """Run iron-swarm's own ``init`` on a local project, then upload it and return the create body.
+
+    Delegating to the local binary keeps iron-swarm the single owner of both the detection and the
+    questions it asks — the operator answers them at their terminal, which the server-side path
+    (``init --yes`` behind an HTTP request) structurally cannot offer. The platform then stores the
+    manifest iron-swarm produced instead of rebuilding it.
+    """
+    if not project_dir.is_dir():
+        typer.secho(f"Error: {project_dir} is not a directory.", fg="red")
+        raise typer.Exit(code=1)
+
+    manifest_name = name or project_dir.resolve().name
+    with tempfile.TemporaryDirectory() as tmp:
+        rendered = Path(tmp) / "iron-swarm.yaml"
+        # `--project-dir .` with cwd set mirrors the server, so the stored manifest is path-independent.
+        cmd = [
+            str(ctx.config.iron_swarm_bin),
+            "init",
+            "--force",
+            "--project-dir",
+            ".",
+            "--name",
+            manifest_name,
+            "-o",
+            str(rendered),
+        ]
+        if assume_yes:
+            cmd.append("--yes")
+        if workflow:
+            cmd += ["--workflow", workflow]
+        if port:
+            cmd += ["--port", str(port)]
+        if secrets:
+            cmd += ["--secrets", ",".join(secrets)]
+        for host in egress:
+            cmd += ["--egress", host]
+        provisioning.run_subprocess(
+            cmd, "build the manifest with `iron-swarm init`", cwd=str(project_dir), timeout=None
+        )
+        if not rendered.is_file():
+            typer.secho("Error: `iron-swarm init` produced no manifest.", fg="red")
+            raise typer.Exit(code=1)
+        manifest_yaml = rendered.read_text(encoding="utf-8")
+
+    try:
+        fileset = upload_project_dir(ctx.sdk, project_dir, workspace=ctx.workspace)
+    except Exception as exc:
+        typer.secho(f"Error: could not upload {project_dir} — {exc}", fg="red")
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Uploaded {project_dir} as {fileset}")
+
+    return {
+        "name": manifest_name,
+        "source_type": "project",
+        "project_fileset": fileset,
+        "manifest_yaml": manifest_yaml,
+    }
 
 
 class IronSwarmCLI(NemoCLI):
@@ -109,73 +178,95 @@ class IronSwarmCLI(NemoCLI):
         # ── init ──────────────────────────────────────────────────────
         @app.command()
         def init(
-            agent: str = typer.Option(
-                ..., "--agent", help="Deployed NeMo Platform agent to target (name or workspace/name)."
+            agent: str | None = typer.Option(
+                None, "--agent", help="Deployed NeMo Platform agent to target (name or workspace/name)."
             ),
             name: str | None = typer.Option(
                 None, "--name", help="Saved-manifest name (the id later phases reference). Defaults to the agent name."
             ),
             workspace: str | None = typer.Option(None, "--workspace", help="Agent workspace."),
-            output: str = typer.Option("iron-swarm.yaml", "--output", "-o", help="Manifest path."),
+            output: str = typer.Option("iron-swarm.yaml", "--output", "-o", help="Where to write the rendered YAML."),
+            egress: list[str] = typer.Option(
+                None,
+                "--egress",
+                help="Host[:port] the victim may reach, repeatable. A bare host opens 443 only — add "
+                "'host:80' for plain HTTP. Config-only agents need this; their tool hosts can't be discovered.",
+            ),
+            secrets: list[str] = typer.Option(
+                None, "--secrets", help="Override the derived secret names (repeatable)."
+            ),
             project_dir: str | None = typer.Option(
-                None, "--project-dir", help="NAT project dir (required only for agents with custom components)."
+                None, "--project-dir", help="Local NAT project to upload and war-game (alternative to --agent)."
+            ),
+            workflow: str | None = typer.Option(
+                None, "--workflow", help="Workflow path within the project (project source; default: detected)."
+            ),
+            port: int | None = typer.Option(None, "--port", help="Victim port (project source; default: detected)."),
+            assume_yes: bool = typer.Option(
+                False, "--yes", "-y", help="Accept iron-swarm's detected answers instead of being prompted."
             ),
         ) -> None:
-            """Scaffold an iron-swarm manifest from a deployed agent and save it as a reusable manifest."""
+            """Save a reusable war-game target: a deployed agent (--agent) or a NAT project (--project-dir).
+
+            --agent resolves server-side, the path Studio also takes. --project-dir runs iron-swarm's
+            own interactive init here, so you answer its questions, then uploads the project and
+            stores the manifest it produced.
+            """
+            if bool(agent) == bool(project_dir):
+                typer.secho("Error: pass exactly one of --agent or --project-dir.", fg="red")
+                raise typer.Exit(code=1)
+
             ctx = _command_context(workspace)
-            sdk = ctx.sdk
-            ws = ctx.workspace
-            out_path = Path(output)
-            manifest_dir = out_path.parent
-            try:
-                resolved = resolve_agent_to_manifest(
-                    agent,
-                    sdk=sdk,
-                    base_url=ctx.base_url,
-                    default_workspace=ws,
-                    manifest_dir=manifest_dir,
-                    project_dir=project_dir,
+            body: dict[str, object]
+            if project_dir:
+                body = _project_init_body(
+                    ctx,
+                    Path(project_dir),
+                    name=name,
+                    workflow=workflow,
+                    port=port,
+                    egress=list(egress or []),
+                    secrets=list(secrets or []),
+                    assume_yes=assume_yes,
                 )
-            except AgentResolutionError as exc:
-                typer.secho(f"Error: {exc}", fg="red")
-                raise typer.Exit(code=1) from exc
-
-            manifest_yaml = yaml.safe_dump(resolved.manifest, sort_keys=False)
-            out_path.write_text(manifest_yaml, encoding="utf-8")
-            for warning in resolved.warnings:
-                typer.secho(f"  ! {warning}", fg="yellow")
-            typer.secho(f"Wrote {out_path}", fg="green")
-            typer.echo(
-                f"  agent     {resolved.workspace}/{resolved.agent_name}\n"
-                f"  victim    port {resolved.port}\n"
-                f"  workflow  {resolved.workflow_path}\n"
-                f"  secrets   {', '.join(resolved.secrets)}"
-            )
-
-            # Persist the manifest as a saved entity so `synth-benign` and `run` can reference it by name
-            # and share the cached benign suite (mirrors Studio's POST /manifests).
-            entity = IronSwarmManifest.from_agent_resolution(
-                name=name or resolved.agent_name,
-                workspace=ws,
-                agent_ref=f"{resolved.workspace}/{resolved.agent_name}",
-                manifest_yaml=manifest_yaml,
-                port=resolved.port,
-                secrets=resolved.secrets,
-                warnings=resolved.warnings,
-            )
+            else:
+                body = {"name": name or str(agent).split("/")[-1], "source_type": "agent", "agent": agent}
+                if port:
+                    body["port"] = port
+            if egress:
+                body["egress"] = list(egress)
+            if secrets:
+                body["secrets"] = list(secrets)
             try:
-                sdk.entities.create(
-                    IRON_SWARM_MANIFEST_TYPE, workspace=ws, data=entity._get_data_fields(), name=entity.name
-                )
+                manifest = ctx.sdk.iron_swarm.manifests.create(workspace=ctx.workspace, **body)
             except Exception as exc:
-                typer.secho(
-                    f"  ! could not save manifest '{entity.name}' ({exc}); "
-                    f"the local {out_path} still works with `run --config`.",
-                    fg="yellow",
-                )
+                typer.secho(f"Error: could not create manifest — {exc}", fg="red")
                 raise typer.Exit(code=1) from exc
-            typer.secho(f"Saved manifest '{entity.name}'", fg="green")
-            typer.echo(f"\nNext: nemo iron-swarm synth-benign --manifest-id {entity.name}")
+
+            for warning in manifest.get("warnings") or []:
+                typer.secho(f"  ! {warning}", fg="yellow")
+            manifest_name = str(manifest.get("name") or body["name"])
+            typer.secho(f"Saved manifest '{manifest_name}'", fg="green")
+            source = manifest.get("agent") or manifest.get("project_fileset") or "?"
+            typer.echo(
+                f"  source    {source}\n"
+                f"  victim    port {manifest.get('port', '?')}\n"
+                f"  secrets   {', '.join(manifest.get('secrets') or [])}\n"
+                f"  egress    {', '.join(manifest.get('egress') or []) or '(none — outbound calls are blocked)'}"
+            )
+
+            # A rendering, not an input: the run re-renders the manifest and workflow from the agent ref
+            # every time, so this file is for reading. `run --manifest-id` is the runnable path.
+            if manifest.get("manifest_yaml"):
+                out_path = Path(output)
+                out_path.write_text(
+                    f"# Rendered from manifest '{manifest_name}' for inspection.\n"
+                    f"# The war-game re-renders this per run — use `run --manifest-id {manifest_name}`.\n"
+                    f"{manifest['manifest_yaml']}",
+                    encoding="utf-8",
+                )
+                typer.echo(f"  rendered  {out_path}")
+            typer.echo(f"\nNext: nemo iron-swarm synth-benign --manifest-id {manifest_name}")
 
         # ── run ───────────────────────────────────────────────────────
         @app.command()

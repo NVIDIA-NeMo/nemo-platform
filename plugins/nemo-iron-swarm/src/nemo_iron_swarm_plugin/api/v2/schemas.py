@@ -54,6 +54,12 @@ class ManifestInit(BaseModel):
     agent: str | None = Field(default=None, description="Agent reference (required when source_type='agent').")
     # Project source (source_type='project') — the confirmed answers from the inspect step.
     project_fileset: str | None = Field(default=None, description="Fileset ref of the uploaded NAT project bundle.")
+    manifest_yaml: str | None = Field(
+        default=None,
+        description="Pre-built iron-swarm manifest (project source). The CLI runs iron-swarm's own "
+        "interactive `init` at the operator's terminal and sends the result; omit it and the server "
+        "builds one with `init --yes`, which is what Studio does since it has no TTY.",
+    )
     workflow: str | None = Field(
         default=None, description="Chosen workflow path within the project (project-relative)."
     )
