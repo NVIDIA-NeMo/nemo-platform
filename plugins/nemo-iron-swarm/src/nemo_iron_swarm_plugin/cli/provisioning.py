@@ -64,10 +64,16 @@ def provision_venv(config: IronSwarmConfig, *, force: bool) -> None:
     run_subprocess(["uv", "venv", "--python", "3.12", str(config.venv_path)], "create venv")
 
     typer.echo(f"Installing {config.iron_swarm_spec} into the venv ...")
-    run_subprocess(
-        ["uv", "pip", "install", "--python", str(config.venv_path / "bin" / "python"), config.iron_swarm_spec],
-        "install iron-swarm",
-    )
+    install_cmd = ["uv", "pip", "install", "--python", str(config.venv_path / "bin" / "python")]
+    # Both flags are passed on this command only, so the platform's own environment is never resolved
+    # against the extra index. Credentials are deliberately not handled here — uv picks them up from
+    # ~/.netrc or UV_INDEX_<NAME>_* in the inherited environment.
+    if config.index_url:
+        typer.echo(f"  using extra index {config.index_url}")
+        install_cmd += ["--index", config.index_url]
+    if config.index_strategy:
+        install_cmd += ["--index-strategy", config.index_strategy]
+    run_subprocess([*install_cmd, config.iron_swarm_spec], "install iron-swarm")
     if not config.iron_swarm_bin.exists():
         typer.secho(
             f"Install finished but {config.iron_swarm_bin} is missing — check the package spec "

@@ -24,6 +24,9 @@ PROBE_TIMEOUT_SECONDS = 5
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # `openshell status` prints an aligned "  Status: Connected" row (color-coded, no JSON mode).
 _STATUS_ROW = re.compile(r"^\s*Status:\s*(?P<value>.+?)\s*$", re.MULTILINE)
+# `scheme://user:password@host` in an index URL — the credentials Artifactory embeds in its
+# "Set Me Up" URLs. Group 1 keeps the scheme (and uv's optional `name=` prefix) intact.
+_URL_CREDENTIALS = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@")
 
 
 class CheckResult(NamedTuple):
@@ -87,11 +90,27 @@ def gateway_status(stdout: str) -> str:
     return match.group("value").strip() if match else ""
 
 
+def redact_index_url(index_url: str) -> str:
+    """Mask ``user:password@`` credentials in an index URL before it is displayed.
+
+    Artifactory's "Set Me Up" hands out URLs with the access token embedded, so an operator can
+    legitimately end up with a secret inside ``index_url``. Printing that verbatim would leak it into
+    terminal scrollback and any pasted ``doctor`` output.
+    """
+    return _URL_CREDENTIALS.sub(r"\1***:***@", index_url)
+
+
 def venv_ok(config: IronSwarmConfig) -> tuple[bool, str]:
-    """True if iron-swarm's dedicated venv has been provisioned."""
+    """True if iron-swarm's dedicated venv has been provisioned.
+
+    Names the extra index when one is configured, so an operator debugging a wrong/missing build can
+    see which registry `setup` resolved iron-swarm from without re-reading the config. Any embedded
+    credentials are masked — see :func:`redact_index_url`.
+    """
+    source = f" (index: {redact_index_url(config.index_url)})" if config.index_url else ""
     if config.iron_swarm_bin.exists():
-        return True, f"iron-swarm venv present at {config.venv_path}."
-    return False, (f"iron-swarm venv missing at {config.venv_path} — run `nemo iron-swarm setup`.")
+        return True, f"iron-swarm venv present at {config.venv_path}{source}."
+    return False, f"iron-swarm venv missing at {config.venv_path}{source} — run `nemo iron-swarm setup`."
 
 
 def garak_venv_ok(config: IronSwarmConfig) -> tuple[bool, str]:

@@ -83,6 +83,131 @@ def test_run_iron_swarm_setup_runs_even_when_garak_present(tmp_path: Path, monke
     assert called is True  # not gated on the garak venv — gateway is re-ensured every setup
 
 
+# ── provision_venv: package index ────────────────────────────────────────
+
+
+def _capture_provision(monkeypatch: pytest.MonkeyPatch, cfg: IronSwarmConfig) -> list[list[str]]:
+    """Record the uv commands provision_venv issues, faking a successful install."""
+    commands: list[list[str]] = []
+
+    def fake_run(cmd: list[str], action: str, env: dict[str, str] | None = None, **_k: object) -> None:
+        commands.append(cmd)
+        cfg.iron_swarm_bin.parent.mkdir(parents=True, exist_ok=True)
+        cfg.iron_swarm_bin.touch()  # simulate uv producing the binary
+
+    monkeypatch.setattr(provisioning.shutil, "which", lambda _n: "/usr/bin/uv")
+    monkeypatch.setattr(provisioning, "run_subprocess", fake_run)
+    return commands
+
+
+def test_default_install_is_a_plain_pypi_install(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The private index is a temporary workaround; the *default* must stay the public-PyPI path.
+
+    Asserted exactly rather than loosely so nobody can bake a registry into the shipped defaults —
+    when iron-swarm is published to PyPI this command must already be the whole story.
+    """
+    cfg = _config(tmp_path)
+    commands = _capture_provision(monkeypatch, cfg)
+
+    provisioning.provision_venv(cfg, force=True)
+
+    install = next(c for c in commands if "install" in c)
+    assert install == ["uv", "pip", "install", "--python", str(cfg.venv_path / "bin" / "python"), "iron-swarm"]
+
+
+def test_provision_venv_passes_configured_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--index` is additive: iron-swarm comes from the registry, its deps still from PyPI."""
+    cfg = IronSwarmConfig(
+        venv_path=tmp_path / "venv",
+        garak_venv_path=tmp_path / "garak-venv",
+        index_url="https://registry.example/simple",
+        iron_swarm_spec="iron-swarm==0.0.2",
+    )
+    commands = _capture_provision(monkeypatch, cfg)
+
+    provisioning.provision_venv(cfg, force=True)
+
+    install = next(c for c in commands if "install" in c)
+    assert install[install.index("--index") + 1] == "https://registry.example/simple"
+    assert "--default-index" not in install  # must not replace PyPI
+    assert install[-1] == "iron-swarm==0.0.2"  # spec stays the final argument
+
+
+def test_provision_venv_passes_index_strategy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Needed when the index carries packages shadowing PyPI — first-index would fail to resolve them."""
+    cfg = IronSwarmConfig(
+        venv_path=tmp_path / "venv",
+        garak_venv_path=tmp_path / "garak-venv",
+        index_url="private=https://registry.example/simple",
+        index_strategy="unsafe-best-match",
+    )
+    commands = _capture_provision(monkeypatch, cfg)
+
+    provisioning.provision_venv(cfg, force=True)
+
+    install = next(c for c in commands if "install" in c)
+    assert install[install.index("--index") + 1] == "private=https://registry.example/simple"
+    assert install[install.index("--index-strategy") + 1] == "unsafe-best-match"
+
+
+def test_index_strategy_is_omitted_without_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An index alone must not silently relax uv's dependency-confusion protection."""
+    cfg = IronSwarmConfig(
+        venv_path=tmp_path / "venv",
+        garak_venv_path=tmp_path / "garak-venv",
+        index_url="https://registry.example/simple",
+    )
+    commands = _capture_provision(monkeypatch, cfg)
+
+    provisioning.provision_venv(cfg, force=True)
+
+    assert "--index-strategy" not in next(c for c in commands if "install" in c)
+
+
+@pytest.mark.parametrize(
+    ("index_url", "expected"),
+    [
+        # Artifactory's "Set Me Up" embeds the access token directly in the URL.
+        (
+            "https://kchap:AKCp8token@artifactory.example/api/pypi/repo/simple",
+            "https://***:***@artifactory.example/api/pypi/repo/simple",
+        ),
+        # uv's named form keeps its prefix.
+        (
+            "nv-shared-pypi=https://kchap:AKCp8token@artifactory.example/simple",
+            "nv-shared-pypi=https://***:***@artifactory.example/simple",
+        ),
+        # Nothing to redact — left byte-for-byte alone.
+        ("https://artifactory.example/simple", "https://artifactory.example/simple"),
+        ("nv-shared-pypi=https://artifactory.example/simple", "nv-shared-pypi=https://artifactory.example/simple"),
+    ],
+)
+def test_redact_index_url_masks_embedded_credentials(index_url: str, expected: str) -> None:
+    assert checks.redact_index_url(index_url) == expected
+
+
+def test_doctor_never_prints_an_embedded_token(tmp_path: Path) -> None:
+    """A token in the index URL must not reach terminal scrollback or pasted doctor output."""
+    cfg = IronSwarmConfig(
+        venv_path=tmp_path / "venv",
+        garak_venv_path=tmp_path / "garak-venv",
+        index_url="https://kchap:AKCp8SUPERSECRET@artifactory.example/api/pypi/repo/simple",
+    )
+    _ok, detail = checks.venv_ok(cfg)
+    assert "AKCp8SUPERSECRET" not in detail
+    assert "artifactory.example" in detail  # host still visible for debugging
+
+
+def test_doctor_reports_the_configured_index(tmp_path: Path) -> None:
+    cfg = IronSwarmConfig(
+        venv_path=tmp_path / "venv",
+        garak_venv_path=tmp_path / "garak-venv",
+        index_url="https://registry.example/simple",
+    )
+    _ok, detail = checks.venv_ok(cfg)
+    assert "registry.example" in detail
+
+
 # ── run_subprocess: streaming + timeout ──────────────────────────────────
 
 
