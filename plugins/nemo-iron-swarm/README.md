@@ -295,8 +295,21 @@ uv run nemo iron-swarm status --limit 5                          # recent runs
 
 `init` only needs the agent **registered**, not deployed. It saves a reusable manifest named after the
 agent — that name is the `--manifest-id` every later command takes — and writes `iron-swarm.yaml` as a
-*rendering* you can read. The run re-renders it from the agent each time, so editing that file has no
-effect; change the manifest instead.
+*rendering* you can read. Editing that file has no effect; the run uses the saved manifest.
+
+**A manifest is a frozen target.** `init` resolves your agent once and stores the result, so every run
+war-games the same thing — which is what makes two runs comparable, and what a "did the hardening
+help?" answer depends on. Editing the agent afterwards (new model, new tool, redeploy) does **not**
+change an existing manifest. Take those changes deliberately:
+
+```bash
+uv run nemo iron-swarm refresh --manifest-id react-agent
+```
+
+Your egress, secrets, models, defenders and cached benign suite are all preserved; only the target
+itself is rebuilt. You don't need this after `apply-mitigation` — applying a hardened workflow
+refreshes the manifest for you, so `run → harden → apply → run again` measures the change you just
+made.
 
 If your agent calls the internet, allow-list the hosts at init time — the sandbox drops everything
 else, and a blocked tool usually looks like a working run because the model answers from memory:

@@ -4,10 +4,13 @@
 """Routes over the ``IronSwarmManifest`` entity — named, reusable war-game targets.
 
 Mounted at ``/apis/iron-swarm/v2/workspaces/{workspace}``. ``POST /manifests`` runs `init` and persists a
-named record the operator later selects to run against; list/get/delete mirror the runs routes. Two
-sources: ``agent`` resolves a deployed agent (the run re-materializes from the ref, no bundle stored);
-``project`` builds from an uploaded NAT project via ``iron-swarm init --yes`` (``POST /manifests/inspect``
-detects its layout first) and stores the bundle as a fileset the run re-downloads.
+named record the operator later selects to run against; list/get/delete mirror the runs routes.
+
+Both sources store the victim project as a fileset the run re-downloads, so a manifest is a frozen
+target rather than a query re-evaluated per run: ``agent`` resolves a deployed agent and stores the
+scaffold it produced, ``project`` builds from an uploaded NAT project via ``iron-swarm init --yes``
+(``POST /manifests/inspect`` detects its layout first). Changes to the agent reach an existing
+manifest only via ``POST /manifests/{name}/refresh`` — which ``apply-mitigation`` calls for you.
 """
 
 from __future__ import annotations
@@ -44,7 +47,7 @@ from nemo_iron_swarm_plugin.authz import scope
 from nemo_iron_swarm_plugin.cli.client import base_url
 from nemo_iron_swarm_plugin.config import IronSwarmConfig
 from nemo_iron_swarm_plugin.entities import IronSwarmManifest
-from nemo_iron_swarm_plugin.filesets import download_and_extract_project
+from nemo_iron_swarm_plugin.filesets import delete_fileset, download_and_extract_project, upload_project_dir
 from nemo_iron_swarm_plugin.model_config import ModelConfigDefaults, WarGameModels, model_config_defaults
 from nemo_iron_swarm_plugin.model_preflight import validate_choice
 from nemo_platform_plugin.authz import CallerKind, path_rule
@@ -261,39 +264,72 @@ async def create_manifest(
         raise HTTPException(status_code=500, detail="Failed to create iron-swarm manifest.") from exc
 
 
-async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
-    """Resolve a deployed agent into a manifest (the run re-materializes from the stored agent ref)."""
-    if not body.agent:
-        raise HTTPException(status_code=422, detail="source_type 'agent' requires an 'agent' reference.")
+async def _get_manifest_or_404(entity_client: NemoEntitiesClient, workspace: str, name: str) -> IronSwarmManifest:
+    """Fetch a manifest, turning a missing entity into a 404 (shared by PATCH, refresh and DELETE)."""
+    try:
+        return await entity_client.get(IronSwarmManifest, name=name, workspace=workspace)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"IronSwarmManifest '{name}' not found in workspace '{workspace}'."
+        ) from exc
 
-    agent_ref = body.agent
+
+async def _resolve_and_store_scaffold(
+    workspace: str,
+    agent_ref: str,
+    *,
+    egress: list[str] | None,
+    port: int | None,
+    secrets: list[str] | None,
+) -> tuple[ResolvedManifest, str]:
+    """Resolve *agent_ref* and persist its scaffold as a fileset; return the resolution and the ref.
+
+    Resolution *writes* an installable project (``scaffold_project`` + ``materialize_workflow``), so
+    the scaffold is an artifact, not a by-product. Storing it is what makes a manifest a frozen
+    target: the run downloads this instead of re-resolving, so nothing it depends on can be silently
+    re-derived. Shared by create and refresh — the only two ways a scaffold is produced.
+    """
     sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
 
-    # resolve_agent_to_manifest is sync + network-bound (sdk.agents.get); keep it off the event loop.
-    # The scaffold dir is only for validation/preview here — the run re-materializes from the agent ref.
-    def _resolve() -> ResolvedManifest:
+    # resolve_agent_to_manifest is sync + network-bound (sdk.agents.get), and so is the upload;
+    # keep both off the event loop. The temp dir must outlive the upload, hence one closure.
+    def _resolve_and_upload() -> tuple[ResolvedManifest, str]:
         with tempfile.TemporaryDirectory() as tmp:
-            return resolve_agent_to_manifest(
+            resolved = resolve_agent_to_manifest(
                 agent_ref,
                 sdk=sdk,
                 base_url=base_url(),
                 default_workspace=workspace,
                 manifest_dir=Path(tmp),
-                egress=body.egress,
-                port=body.port,
-                secrets=body.secrets,
+                egress=egress,
+                port=port,
+                secrets=secrets,
             )
+            return resolved, upload_project_dir(sdk, resolved.project_dir, workspace=workspace)
 
     try:
-        resolved = await run_in_threadpool(_resolve)
+        return await run_in_threadpool(_resolve_and_upload)
     except AgentResolutionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:  # empty/unreadable scaffold from upload_project_dir
+        raise HTTPException(status_code=400, detail=f"Could not store the resolved scaffold: {exc}") from exc
+
+
+async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
+    """Resolve a deployed agent into a manifest and freeze its scaffold as a fileset."""
+    if not body.agent:
+        raise HTTPException(status_code=422, detail="source_type 'agent' requires an 'agent' reference.")
+
+    resolved, fileset = await _resolve_and_store_scaffold(
+        workspace, body.agent, egress=body.egress, port=body.port, secrets=body.secrets
+    )
 
     return IronSwarmManifest.from_agent_resolution(
         name=body.name,
         workspace=workspace,
         agent_ref=f"{resolved.workspace}/{resolved.agent_name}",
         manifest_yaml=yaml.safe_dump(resolved.manifest, sort_keys=False),
+        agent_fileset=fileset,
         port=resolved.port,
         secrets=resolved.secrets,
         egress=body.egress or [],  # persisted, not just used for the resolve above
@@ -431,14 +467,10 @@ async def update_manifest(
 ) -> IronSwarmManifest:
     """Edit a manifest's cached benign suite, victim port, egress, or war-game settings.
 
-    The agent source itself is immutable — re-create the manifest to point at a different agent.
+    The agent source itself is immutable — re-create the manifest to point at a different agent, or
+    `POST /manifests/{name}/refresh` to re-resolve the one it already targets.
     """
-    try:
-        existing = await entity_client.get(IronSwarmManifest, name=name, workspace=workspace)
-    except NemoEntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"IronSwarmManifest '{name}' not found in workspace '{workspace}'."
-        ) from exc
+    existing = await _get_manifest_or_404(entity_client, workspace, name)
     if body.benign_suite is not None:
         existing.benign_suite = body.benign_suite
     if body.defenders is not None:
@@ -464,6 +496,51 @@ async def update_manifest(
         raise HTTPException(status_code=409, detail=f"Manifest '{name}' was modified concurrently.") from exc
 
 
+@router.post("/manifests/{name}/refresh", response_model=IronSwarmManifest, tags=["Iron Swarm Manifests"])
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.WRITE])
+async def refresh_manifest(
+    workspace: str,
+    name: str,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> IronSwarmManifest:
+    """Re-resolve an agent-source manifest against the agent as it is *now*.
+
+    A manifest is a frozen target, so edits to the agent — a new model, an added tool, a redeploy —
+    do not reach it on their own. This is how you take them, deliberately, when you want the next
+    run to measure the current agent rather than the one you saved.
+
+    Everything the operator chose is kept: egress, secrets, models, defenders, intensity, rounds, and
+    the cached benign suite. Only the scaffold and its rendered manifest are rebuilt.
+    """
+    existing = await _get_manifest_or_404(entity_client, workspace, name)
+    if existing.source_type != "agent" or not existing.agent:
+        raise HTTPException(
+            status_code=422,
+            detail=f"manifest '{name}' has no agent source to refresh from; re-upload the project instead.",
+        )
+
+    resolved, fileset = await _resolve_and_store_scaffold(
+        workspace,
+        existing.agent,
+        egress=existing.egress or None,
+        port=existing.port or None,
+        secrets=existing.secrets or None,
+    )
+    stale = existing.agent_fileset
+
+    existing.manifest_yaml = yaml.safe_dump(resolved.manifest, sort_keys=False)
+    existing.agent_fileset = fileset
+    existing.port = resolved.port
+    existing.secrets = resolved.secrets
+    existing.warnings = resolved.warnings
+    updated = await entity_client.update(existing)
+
+    if stale and stale != fileset:
+        await run_in_threadpool(delete_fileset, get_platform_sdk(as_service="iron-swarm", internal=True), stale)
+    return updated
+
+
 @router.delete("/manifests/{name}", status_code=204, tags=["Iron Swarm Manifests"])
 @scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.WRITE])
@@ -472,13 +549,17 @@ async def delete_manifest(
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> None:
-    """Delete a saved manifest by name."""
+    """Delete a saved manifest by name, along with the victim bundle it owns."""
+    existing = await _get_manifest_or_404(entity_client, workspace, name)
     try:
         await entity_client.delete(IronSwarmManifest, name=name, workspace=workspace)
-    except NemoEntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"IronSwarmManifest '{name}' not found in workspace '{workspace}'."
-        ) from exc
     except Exception as exc:
         logger.exception("Failed to delete iron-swarm manifest '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to delete iron-swarm manifest.") from exc
+
+    # Only after the entity is gone: a bundle with no manifest is garbage, but a manifest whose
+    # bundle we deleted early would be unrunnable if the delete above had failed.
+    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
+    for ref in (existing.agent_fileset, existing.project_fileset):
+        if ref:
+            await run_in_threadpool(delete_fileset, sdk, ref)

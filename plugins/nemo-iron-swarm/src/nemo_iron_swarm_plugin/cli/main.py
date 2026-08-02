@@ -413,6 +413,34 @@ class IronSwarmCLI(NemoCLI):
             )
             typer.echo(json.dumps(result, indent=2, default=str))
 
+        # ── refresh ───────────────────────────────────────────────────
+        @app.command()
+        def refresh(
+            manifest_id: str = typer.Option(..., "--manifest-id", help="Saved manifest to re-resolve."),
+            workspace: str | None = typer.Option(None, "--workspace", help="Workspace of the manifest."),
+        ) -> None:
+            """Re-resolve a saved manifest against its agent as it is now.
+
+            A manifest is a frozen target, so editing the agent — new model, new tool, redeploy —
+            does not change it on its own. Run this to take those changes deliberately. Your egress,
+            secrets, models, defenders and cached benign suite are kept.
+            """
+            ctx = _command_context(workspace, preflight=False)
+            try:
+                manifest = ctx.sdk.iron_swarm.manifests.refresh(manifest_id, workspace=ctx.workspace)
+            except Exception as exc:
+                typer.secho(f"Error: could not refresh manifest '{manifest_id}' — {exc}", fg="red")
+                raise typer.Exit(code=1) from exc
+
+            for warning in manifest.get("warnings") or []:
+                typer.secho(f"  ! {warning}", fg="yellow")
+            typer.secho(f"Refreshed manifest '{manifest_id}' from {manifest.get('agent', '?')}", fg="green")
+            typer.echo(
+                f"  victim    port {manifest.get('port', '?')}\n"
+                f"  secrets   {', '.join(manifest.get('secrets') or [])}\n"
+                f"  egress    {', '.join(manifest.get('egress') or []) or '(none — outbound calls are blocked)'}"
+            )
+
         # ── status ────────────────────────────────────────────────────
         @app.command()
         def status(

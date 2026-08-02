@@ -19,6 +19,7 @@ from nemo_agents_plugin.entities import Agent
 from nemo_iron_swarm_plugin._perms import IronSwarmRunPerms
 from nemo_iron_swarm_plugin.agent_resolver import parse_agent_ref, strip_gateway_url
 from nemo_iron_swarm_plugin.api.v2._filters import make_filter_dep
+from nemo_iron_swarm_plugin.api.v2.manifests import refresh_manifest
 from nemo_iron_swarm_plugin.api.v2.schemas import (
     ApplyMitigationRequest,
     ApplyMitigationResponse,
@@ -156,11 +157,35 @@ async def apply_mitigation(
         logger.exception("Failed to apply mitigation to agent '%s'", agent_name)
         raise HTTPException(status_code=500, detail="Failed to update the agent config.") from exc
 
-    return ApplyMitigationResponse(
-        applied=True,
-        agent=agent_name,
-        detail=f"Updated '{agent_name}' with the hardened workflow. Redeploy the agent to activate the guardrails.",
-    )
+    # Manifests are frozen targets, so the agent edit we just made would not reach the next run.
+    # Refresh the manifest this run came from, keeping "harden -> apply -> re-run to confirm" intact.
+    refreshed = await _refresh_source_manifest(entity_client, workspace, run.manifest_id)
+
+    detail = f"Updated '{agent_name}' with the hardened workflow. Redeploy the agent to activate the guardrails."
+    if run.manifest_id and not refreshed:
+        detail += (
+            f" Manifest '{run.manifest_id}' could not be refreshed automatically — run "
+            f"`nemo iron-swarm refresh --manifest-id {run.manifest_id}` before re-running, or it will "
+            "war-game the agent as it was before this change."
+        )
+    return ApplyMitigationResponse(applied=True, agent=agent_name, detail=detail)
+
+
+async def _refresh_source_manifest(entity_client: NemoEntitiesClient, workspace: str, manifest_id: str) -> bool:
+    """Re-freeze the manifest a run came from; return whether it happened.
+
+    Best-effort on purpose: the mitigation is already applied to the agent, so a refresh failure must
+    not fail the request — but the caller tells the operator, because a silently stale manifest would
+    make the next run measure the unhardened agent and look like the fix did nothing.
+    """
+    if not manifest_id:
+        return False
+    try:
+        await refresh_manifest(workspace=workspace, name=manifest_id, entity_client=entity_client)
+        return True
+    except Exception:
+        logger.warning("could not refresh manifest '%s' after apply-mitigation", manifest_id, exc_info=True)
+        return False
 
 
 @router.post(

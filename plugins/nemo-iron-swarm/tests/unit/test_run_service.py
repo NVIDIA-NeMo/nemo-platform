@@ -745,7 +745,12 @@ def _capture_resolve(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     def fake_resolve(_ref, **kwargs):
         seen.update(kwargs)
-        return SimpleNamespace(manifest={"agent": {"name": "clockbot", "port": 8000}}, warnings=[])
+        # project_dir is the scaffold resolution writes; the legacy-upgrade path freezes it.
+        return SimpleNamespace(
+            manifest={"agent": {"name": "clockbot", "port": 8000}},
+            warnings=[],
+            project_dir=kwargs["manifest_dir"] / ".iron-swarm-agents" / "clockbot",
+        )
 
     monkeypatch.setattr(manifest_mod, "resolve_agent_to_manifest", fake_resolve)
     return seen
@@ -779,3 +784,129 @@ def test_unset_egress_and_secrets_still_derive(tmp_path: Path, monkeypatch: pyte
 
     assert seen["egress"] is None
     assert seen["secrets"] is None
+
+
+def test_project_manifest_applies_stored_egress_and_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A project manifest is rebuilt from the stored YAML, so PATCHed settings must be applied onto it.
+
+    Without this the agent path honours an edit and the project path silently ignores it — the PATCH
+    returns 200 either way.
+    """
+    record = SimpleNamespace(
+        data={
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "manifest_yaml": "agent:\n  name: research\n  project_dir: .\n  egress:\n  - old.example\n",
+            "egress": ["en.wikipedia.org", "api.example.com:80"],
+            "secrets": ["MY_TOKEN"],
+        }
+    )
+    sdk = SimpleNamespace(entities=SimpleNamespace(get_entity_by_name=lambda **_k: record))
+    monkeypatch.setattr(manifest_mod, "download_and_extract_project", lambda *_a, **_k: tmp_path / "proj")
+
+    path = manifest_mod._materialize_manifest(sdk, "research-lab", make_job_context(tmp_path))
+    agent = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["agent"]
+
+    assert agent["egress"] == ["en.wikipedia.org", "api.example.com:80"]  # replaces the baked-in value
+    assert agent["secrets"] == ["MY_TOKEN"]
+
+
+def test_project_manifest_keeps_its_yaml_when_nothing_is_stored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No stored override leaves whatever iron-swarm's own `init` baked into the manifest."""
+    record = SimpleNamespace(
+        data={
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "manifest_yaml": "agent:\n  name: research\n  project_dir: .\n  egress:\n  - baked.example\n",
+        }
+    )
+    sdk = SimpleNamespace(entities=SimpleNamespace(get_entity_by_name=lambda **_k: record))
+    monkeypatch.setattr(manifest_mod, "download_and_extract_project", lambda *_a, **_k: tmp_path / "proj")
+
+    path = manifest_mod._materialize_manifest(sdk, "research-lab", make_job_context(tmp_path))
+    agent = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["agent"]
+
+    assert agent["egress"] == ["baked.example"]
+
+
+# ── frozen targets: one materialization path ─────────────────────────────────
+
+
+def _frozen_agent_record(**extra: Any) -> SimpleNamespace:
+    return SimpleNamespace(
+        data={
+            "agent": "default/clockbot",
+            "agent_fileset": "default/agent-fs-1",
+            "manifest_yaml": "agent:\n  name: clockbot\n  project_dir: /gone\n  port: 8000\n",
+            **extra,
+        }
+    )
+
+
+def test_frozen_agent_manifest_never_re_resolves(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The stored bundle is the target. Re-resolving would reintroduce silent drift and dropped settings."""
+    sdk = SimpleNamespace(entities=SimpleNamespace(get_entity_by_name=lambda **_k: _frozen_agent_record()))
+    monkeypatch.setattr(manifest_mod, "download_and_extract_project", lambda *_a, **_k: tmp_path / "restored")
+    seen = _capture_resolve(monkeypatch)
+
+    path = manifest_mod._materialize_manifest(sdk, "clockbot-hardening", make_job_context(tmp_path))
+    agent = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["agent"]
+
+    assert seen == {}, "a frozen manifest must not call the agent resolver"
+    assert agent["project_dir"] == str(tmp_path / "restored")  # repointed at the restored bundle
+    assert agent["secrets_file"].endswith(".env")
+
+
+def test_frozen_manifest_takes_the_current_gateway_route(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gateway belongs to the platform we run on, not to the frozen target."""
+    record = _frozen_agent_record()
+    record.data["manifest_yaml"] = (
+        "agent:\n  name: clockbot\n  project_dir: /gone\n  backends:\n"
+        "  - name: nemo-gateway\n    host: stale.invalid\n    ports: [1]\n"
+    )
+    sdk = SimpleNamespace(entities=SimpleNamespace(get_entity_by_name=lambda **_k: record))
+    monkeypatch.setattr(manifest_mod, "download_and_extract_project", lambda *_a, **_k: tmp_path / "restored")
+    monkeypatch.setattr(manifest_mod, "gateway_backend", lambda _u: {"name": "nemo-gateway", "host": "fresh.local"})
+
+    path = manifest_mod._materialize_manifest(sdk, "clockbot-hardening", make_job_context(tmp_path))
+    backends = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["agent"]["backends"]
+
+    assert [b["host"] for b in backends] == ["fresh.local"]  # replaced, not appended alongside the stale one
+
+
+def test_legacy_manifest_re_resolves_then_freezes_itself(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Manifests made before freezing keep working, and upgrade on their first run — no user action."""
+    record = SimpleNamespace(data={"agent": "default/clockbot"})  # no agent_fileset
+    updated: dict[str, Any] = {}
+    sdk = SimpleNamespace(
+        entities=SimpleNamespace(
+            get_entity_by_name=lambda **_k: record,
+            update_entity_by_name=lambda **kw: updated.update(kw),
+        )
+    )
+    seen = _capture_resolve(monkeypatch)
+    monkeypatch.setattr(manifest_mod, "upload_project_dir", lambda _s, _d, *, workspace: "default/new-fs")
+
+    manifest_mod._materialize_manifest(sdk, "clockbot-hardening", make_job_context(tmp_path))
+
+    assert seen != {}, "the legacy path still resolves"
+    assert updated["data"]["agent_fileset"] == "default/new-fs"
+    assert updated["data"]["manifest_yaml"]
+
+
+def test_legacy_upgrade_failure_does_not_fail_the_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The war-game matters more than the upgrade; a storage hiccup must not lose the run."""
+    record = SimpleNamespace(data={"agent": "default/clockbot"})
+    sdk = SimpleNamespace(entities=SimpleNamespace(get_entity_by_name=lambda **_k: record))
+    _capture_resolve(monkeypatch)
+
+    def _boom(*_a: Any, **_k: Any) -> str:
+        raise RuntimeError("storage down")
+
+    monkeypatch.setattr(manifest_mod, "upload_project_dir", _boom)
+
+    path = manifest_mod._materialize_manifest(sdk, "clockbot-hardening", make_job_context(tmp_path))
+
+    assert Path(path).exists()

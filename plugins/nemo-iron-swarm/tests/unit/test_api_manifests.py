@@ -48,6 +48,9 @@ def mock_entity_client() -> AsyncMock:
 def client(mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(manifests_module, "get_platform_sdk", lambda **_: MagicMock())
     monkeypatch.setattr(manifests_module, "resolve_agent_to_manifest", lambda *_a, **_k: _resolved())
+    # Resolution now writes a scaffold that gets frozen as a fileset; the real upload needs a real dir.
+    monkeypatch.setattr(manifests_module, "upload_project_dir", lambda _sdk, _dir, *, workspace: "default/agent-fs-1")
+    monkeypatch.setattr(manifests_module, "delete_fileset", lambda _sdk, _ref: None)
     app = FastAPI()
     app.include_router(manifests_module.router, prefix=PREFIX)
     app.dependency_overrides[get_entity_client] = lambda: mock_entity_client
@@ -368,7 +371,7 @@ def test_create_project_manifest_forwards_backends(client, mock_entity_client, m
 
 
 def test_delete_missing_manifest_returns_404(client, mock_entity_client) -> None:
-    mock_entity_client.delete = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
+    mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
 
     resp = client.delete("/apis/iron-swarm/v2/workspaces/default/manifests/ghost")
 
@@ -443,3 +446,72 @@ def test_list_returns_envelope(client, mock_entity_client) -> None:
 
     assert resp.status_code == 200, resp.text
     assert [m["name"] for m in resp.json()["data"]] == ["m1"]
+
+
+# ── frozen targets ───────────────────────────────────────────────────────────
+
+
+def test_create_agent_manifest_freezes_the_scaffold(client, mock_entity_client) -> None:
+    """Resolution writes an installable project; storing it is what makes the target reproducible."""
+    mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={"name": "m1", "source_type": "agent", "agent": "clockbot"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["agent_fileset"] == "default/agent-fs-1"
+
+
+def test_refresh_rebuilds_the_scaffold_but_keeps_operator_settings(client, mock_entity_client) -> None:
+    """Refresh is the deliberate way to take agent changes — it must not discard what the user chose."""
+    existing = IronSwarmManifest(
+        name="m1",
+        workspace="default",
+        agent="default/clockbot",
+        agent_fileset="default/old-fs",
+        egress=["en.wikipedia.org"],
+        defenders=["guardrails"],
+        benign_suite=[{"tool": "t", "payload": "p", "label": "benign", "rationale": "r", "persona": "x"}],
+    )
+    mock_entity_client.get = AsyncMock(return_value=existing)
+    mock_entity_client.update = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.post("/apis/iron-swarm/v2/workspaces/default/manifests/m1/refresh")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["agent_fileset"] == "default/agent-fs-1"  # re-frozen
+    assert body["egress"] == ["en.wikipedia.org"]
+    assert body["defenders"] == ["guardrails"]
+    assert len(body["benign_suite"]) == 1
+
+
+def test_refresh_rejects_a_project_manifest(client, mock_entity_client) -> None:
+    """There is no agent to re-resolve from; the fix is re-uploading, so say so instead of 500ing."""
+    mock_entity_client.get = AsyncMock(
+        return_value=IronSwarmManifest(
+            name="p1", workspace="default", source_type="project", project_fileset="default/proj"
+        )
+    )
+
+    resp = client.post("/apis/iron-swarm/v2/workspaces/default/manifests/p1/refresh")
+
+    assert resp.status_code == 422
+    assert "re-upload" in resp.json()["detail"]
+
+
+def test_delete_manifest_removes_its_bundle(client, mock_entity_client, monkeypatch) -> None:
+    """A bundle outliving its manifest is unreachable storage nobody will ever clean up."""
+    deleted: list[str] = []
+    monkeypatch.setattr(manifests_module, "delete_fileset", lambda _sdk, ref: deleted.append(ref))
+    mock_entity_client.get = AsyncMock(
+        return_value=IronSwarmManifest(name="m1", workspace="default", agent_fileset="default/agent-fs-1")
+    )
+    mock_entity_client.delete = AsyncMock(return_value=None)
+
+    resp = client.delete("/apis/iron-swarm/v2/workspaces/default/manifests/m1")
+
+    assert resp.status_code == 204
+    assert deleted == ["default/agent-fs-1"]

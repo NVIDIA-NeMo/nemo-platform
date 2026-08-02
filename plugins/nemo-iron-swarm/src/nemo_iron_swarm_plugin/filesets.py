@@ -12,6 +12,7 @@ scanned by ``iron-swarm inspect`` and later run inside the OpenShell sandbox).
 
 from __future__ import annotations
 
+import logging
 import stat
 import subprocess
 import tempfile
@@ -25,6 +26,8 @@ from nemo_platform import NeMoPlatform
 from nemo_platform.filesets import FilesetFileSystem
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
+
+logger = logging.getLogger(__name__)
 
 _MAX_ENTRIES = 10_000
 _MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 500 MB expanded — a NAT project, not a dataset.
@@ -80,6 +83,21 @@ def _is_excluded(relative_path: Path) -> bool:
         elif any(fnmatch(part, pattern) for part in parts):
             return True
     return False
+
+
+def delete_fileset(sdk: NeMoPlatform, ref: str) -> None:
+    """Delete a fileset by ``workspace/name`` ref; never raises.
+
+    Called when a manifest is deleted so its victim bundle doesn't outlive it. Best-effort by
+    design: a manifest the user asked to delete should go even if its bundle is already gone.
+    """
+    workspace, _, name = ref.partition("/")
+    if not workspace or not name:
+        return
+    try:
+        sdk.files.filesets.delete(name, workspace=workspace)
+    except Exception:  # already deleted, or storage unavailable — the manifest still goes
+        logger.warning("failed to delete fileset %s", ref, exc_info=True)
 
 
 def _git_listed_files(root: Path) -> list[Path] | None:
