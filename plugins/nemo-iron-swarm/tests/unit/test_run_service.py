@@ -862,18 +862,20 @@ def test_frozen_agent_manifest_never_re_resolves(tmp_path: Path, monkeypatch: py
 def test_frozen_manifest_takes_the_current_gateway_route(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The gateway belongs to the platform we run on, not to the frozen target."""
     record = _frozen_agent_record()
+    # backends is top-level on iron-swarm's AgentManifest; nesting it under `agent` is extra_forbidden.
     record.data["manifest_yaml"] = (
-        "agent:\n  name: clockbot\n  project_dir: /gone\n  backends:\n"
-        "  - name: nemo-gateway\n    host: stale.invalid\n    ports: [1]\n"
+        "agent:\n  name: clockbot\n  project_dir: /gone\n"
+        "backends:\n- name: nemo-gateway\n  host: stale.invalid\n  ports: [1]\n"
     )
     sdk = SimpleNamespace(entities=SimpleNamespace(get_entity_by_name=lambda **_k: record))
     monkeypatch.setattr(manifest_mod, "download_and_extract_project", lambda *_a, **_k: tmp_path / "restored")
     monkeypatch.setattr(manifest_mod, "gateway_backend", lambda _u: {"name": "nemo-gateway", "host": "fresh.local"})
 
     path = manifest_mod._materialize_manifest(sdk, "clockbot-hardening", make_job_context(tmp_path))
-    backends = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["agent"]["backends"]
+    rendered = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
 
-    assert [b["host"] for b in backends] == ["fresh.local"]  # replaced, not appended alongside the stale one
+    assert "backends" not in rendered["agent"], "nested backends fails AgentManifest validation"
+    assert [b["host"] for b in rendered["backends"]] == ["fresh.local"]  # replaced, not appended
 
 
 def test_legacy_manifest_re_resolves_then_freezes_itself(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
