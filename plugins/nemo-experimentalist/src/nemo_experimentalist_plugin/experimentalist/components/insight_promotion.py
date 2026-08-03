@@ -21,13 +21,13 @@ from nemo_experimentalist_plugin.entities import (
 )
 
 
-def _suite_identity(candidate: Candidate) -> str | None:
+def candidate_suite_identity(candidate: Candidate) -> str | None:
     """The Insight-suite identity this candidate's insight reward was measured against."""
     value = candidate.rewards.get("insight", RewardRecord()).metadata.get("suite_identity")
     return value if isinstance(value, str) else None
 
 
-def _metric_keys(candidate: Candidate) -> list[str]:
+def candidate_metric_keys(candidate: Candidate) -> list[str]:
     """The validated metric keys recorded alongside this candidate's insight reward."""
     value = candidate.rewards.get("insight", RewardRecord()).metadata.get("metric_keys")
     return [str(key) for key in value] if isinstance(value, list) else []
@@ -206,8 +206,10 @@ def _task_evidence(
     winner: Candidate,
     provenance: InsightSuiteProvenance,
 ) -> _TaskEvidence | None:
-    suite_candidates = [candidate for candidate in candidates if _suite_identity(candidate) == provenance.identity]
-    metric_key_sets = {tuple(sorted(_metric_keys(candidate))) for candidate in suite_candidates}
+    suite_candidates = [
+        candidate for candidate in candidates if candidate_suite_identity(candidate) == provenance.identity
+    ]
+    metric_key_sets = {tuple(sorted(candidate_metric_keys(candidate))) for candidate in suite_candidates}
     if len(metric_key_sets) != 1:
         return None
     required_metrics = set(next(iter(metric_key_sets), ()))
@@ -308,7 +310,7 @@ def select_insight_promotion_suggestions(
     evaluated_candidates = [
         candidate
         for candidate in candidates
-        if "insight" in candidate.rewards and _suite_identity(candidate) == provenance.identity
+        if "insight" in candidate.rewards and candidate_suite_identity(candidate) == provenance.identity
     ]
     if len(evaluated_candidates) < 2:
         return []
@@ -465,7 +467,7 @@ def render_insight_comparison_section(
 ) -> str:
     """Render the deterministic baseline-versus-winner Insight comparison."""
     for candidate in (baseline, winner):
-        if _suite_identity(candidate) != provenance.identity:
+        if candidate_suite_identity(candidate) != provenance.identity:
             raise ValueError(
                 f"Candidate {candidate.label!r} Insight evidence does not match finalized suite {provenance.identity}"
             )

@@ -25,7 +25,6 @@ from nemo_experimentalist_plugin.entities import (
     Dataset,
     EvaluationResult,
     ExperimentRun,
-    RewardRecord,
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
@@ -45,6 +44,8 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
     restore_heldout_splits,
 )
 from nemo_experimentalist_plugin.experimentalist.components.insight_promotion import (
+    candidate_metric_keys,
+    candidate_suite_identity,
     insight_suite_provenance,
     select_insight_promotion_suggestions,
     stamp_insight_evaluation_result,
@@ -89,21 +90,7 @@ from nooa.tools import Match
 
 from .util import load_framework_skills
 
-
-def _suite_identity(candidate: Candidate) -> str | None:
-    """The Insight-suite identity this candidate's insight reward was measured against."""
-    value = candidate.rewards.get("insight", RewardRecord()).metadata.get("suite_identity")
-    return value if isinstance(value, str) else None
-
-
-def _metric_keys(candidate: Candidate) -> list[str]:
-    """The validated metric keys recorded alongside this candidate's insight reward."""
-    value = candidate.rewards.get("insight", RewardRecord()).metadata.get("metric_keys")
-    return [str(key) for key in value] if isinstance(value, list) else []
-
-
 logger = logging.getLogger(__name__)
-
 
 _BASELINE_AGENT_LABEL = "agent-0"
 
@@ -1447,8 +1434,8 @@ class EvolutionaryOptimizer(Agent):
             for candidate in candidates
             if "insight" not in candidate.rewards
             or "insight" not in candidate.rewards
-            or _suite_identity(candidate) != provenance.identity
-            or not _metric_keys(candidate)
+            or candidate_suite_identity(candidate) != provenance.identity
+            or not candidate_metric_keys(candidate)
         ]
         evaluated = await asyncio.gather(
             *[
@@ -1486,9 +1473,9 @@ class EvolutionaryOptimizer(Agent):
         ):
             raise ValueError("Insight suite runtime metric keys have invalid metadata")
         cached_metric_key_sets = {
-            tuple(sorted(_metric_keys(candidate)))
+            tuple(sorted(candidate_metric_keys(candidate)))
             for candidate in candidates
-            if _suite_identity(candidate) == provenance.identity and _metric_keys(candidate)
+            if candidate_suite_identity(candidate) == provenance.identity and candidate_metric_keys(candidate)
         }
         if isinstance(dataset_metric_keys, list):
             cached_metric_key_sets.add(tuple(sorted(dataset_metric_keys)))
