@@ -182,6 +182,13 @@ appearing in the Platform model list. NVIDIA models may be used when Platform
 routes the exact model through an Inference Gateway endpoint that supports
 `/responses`; endpoints that expose only chat completions are not compatible.
 
+If `nemo-model-selection` reports that the chosen combination is provisional,
+show the user the exact harness, provider, model name, endpoint, and required
+invocation smoke test. Ask for explicit confirmation and stop. Do not write or
+finalize `agent.yaml` until they accept that exact provisional combination. The
+original request to create or migrate the config does not count as this
+confirmation.
+
 ## Validate and register
 
 Before registering, validate the YAML shape with the Platform create path.

@@ -83,6 +83,11 @@
     },
     {
       "type": "implicit",
+      "prompt": "The provisional Codex model failed its Responses API invocation smoke test. Exclude that combination and help me choose the next candidate.",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "implicit",
       "prompt": "I've already picked gpt-4o-mini. Tell me what I'm trading off vs alternatives.",
       "expected_skill": "nemo-model-selection"
     },

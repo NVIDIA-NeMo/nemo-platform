@@ -51,11 +51,11 @@ The cache (schema v6+) carries four things the rest of this skill reads:
 ### 2. Fetch the live model list from the running platform
 
 ```bash
-nemo models list --all-pages --output-format json 2>/dev/null || echo "PLATFORM_UNREACHABLE"
+nemo models list --all-pages --output-format json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print('\n'.join(m['name'] for m in d.get('data', []) if m.get('name')))" 2>/dev/null || echo "PLATFORM_UNREACHABLE"
 ```
 
 Interpretation:
-- **JSON model list returned** → these are the candidates the user can actually pick from. Carry their exact model ids through to Step 1+.
+- **Model names returned** → these are the candidates the user can actually pick from. Carry their exact names through to Step 1+; the JSON `id` value is a Platform entity id and must not be written to `agent.yaml` as the inference model identifier.
 - `PLATFORM_UNREACHABLE` → platform isn't up. Fall back gracefully: tell the user "I can't reach the local platform, so I'll recommend from the curated NIM set in the cache instead of your actual available models. Start the platform with `nemo services run` if you want recommendations grounded in what's deployed."
 
 Use the `nemo` CLI rather than constructing a Platform URL or calling
@@ -137,11 +137,11 @@ it is still unknown.
 - The `codex` harness requires the OpenAI Responses API. It can use native
   OpenAI or a custom provider such as NVIDIA when Platform routes that exact
   model through an Inference Gateway endpoint that supports `/responses`.
-- Verify the complete combination of harness, provider, exact model id, and
+- Verify the complete combination of harness, provider, exact model name, and
   endpoint. A known-good Platform example, provider capability contract, or a
   successful smoke test of the same combination is valid evidence. Preserve
-  the exact model id returned by Platform; do not rewrite its namespace or
-  punctuation.
+  the exact model name returned by Platform; do not substitute the Platform
+  entity `id` or rewrite the name's namespace or punctuation.
 - Do not probe an IGW `/responses` URL with an empty request or `GET`. Such a
   response only validates HTTP request shape and does not establish that the
   selected model can execute through the Responses API. For a combination not
@@ -160,6 +160,20 @@ it is still unknown.
 Record the compatibility evidence alongside the recommendation: selected
 harness, required wire API, and how support was verified. Then apply the normal
 benchmark ranking only to compatible candidates.
+
+### Confirm provisional compatibility before handoff
+
+If the best candidate is provisional, state the exact harness, provider, model
+name, endpoint, missing compatibility evidence, and required invocation smoke
+test. Then ask the user explicitly whether to proceed with that provisional
+combination.
+
+Stop and wait for their answer. Do not emit the final model block or hand the
+selection to a config-writing skill before the user confirms. A general request
+to create, migrate, or finish `agent.yaml` is not confirmation to accept an
+unverified model route. If the user confirms, label the selection provisional
+in the human-readable handoff and require `nemo agents invoke` as the
+compatibility test after deployment.
 
 ### Picking the presentation pattern
 
@@ -440,14 +454,17 @@ If `nemo-explore` invoked this skill, return control to `nemo-explore` with the 
 | `cache_missing` and user wants fresh data | Cache has never been refreshed in this checkout | Tell them the refresh command and note that the static table is still usable |
 | User picks self-hosted but the recommended model needs cloud | Hard constraint conflict | Drop the recommendation; pick the closest self-hosted-compatible model from the table |
 | Available model's harness API support is unknown | Availability was mistaken for harness compatibility | Mark it provisional and ask whether to smoke-test the exact model and endpoint or choose a verified combination |
+| Invocation smoke test fails for a provisional combination | The exact harness/provider/model/endpoint combination is incompatible in the current environment | Exclude that exact combination for the rest of the session, surface the invocation error, and rerun selection; require confirmation again before trying another provisional combination |
 
 ## Hard rules
 
 - Never name a model before all three profile questions are answered.
 - Never lead with a model name, benchmark name, or score.
 - Never recommend a cloud-only model when the user said self-hosted.
-- Never recommend a model for Platform `agent.yaml` until its provider endpoint
-  is verified to support the selected harness's wire API.
+- Never describe a provisional model route as compatible or verified.
+- Never return a provisional model to a config-writing skill until the user has
+  explicitly confirmed that exact combination and its required invocation
+  smoke test.
 - Never silently change the selected harness to accommodate an available model.
 - Never emit a model identifier without showing the plain-English reason alongside it.
 - **When the primary candidate's evidence is anything other than `direct`, the model name does not appear in your response until the user has resolved the trade-off in Pattern B.** Anchoring is the failure mode this guards against — users default to the first model named regardless of caveats. The withhold is non-negotiable.
