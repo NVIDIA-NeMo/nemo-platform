@@ -47,23 +47,33 @@ Choose the invocation mode from the user's target:
     those entries.
   - A legacy NAT config whose applicable LLMs all provide explicit `base_url`
     values may invoke those endpoints directly without Platform readiness.
-- **Deployed agent:** the user names a deployment or asks to use an already deployed agent. Confirm the Platform is up and list deployments:
+- **Deployed agent:** the user names a deployment or asks to use an already
+  deployed agent. Preserve the active CLI context and confirm the target
+  Platform is reachable by listing deployments:
 
 ```bash
-# Ground truth: anything bound to :8080?
+.venv/bin/nemo agents deployments list 2>/dev/null || { echo "PLATFORM_UNREACHABLE"; exit 1; }
+```
+
+When the user explicitly selects a local Platform, override any remote CLI
+context for the current shell and add local process and health checks before
+listing deployments:
+
+```bash
+export NMP_BASE_URL=http://127.0.0.1:8080
 lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 || { echo "PLATFORM_DOWN"; exit 1; }
-# Functional check: platform readiness endpoint answers?
-curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -q "^200$" || { echo "PLATFORM_WEDGED"; exit 1; }
+curl -sS --connect-timeout 2 --max-time 5 "$NMP_BASE_URL/health/ready" -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -q "^200$" || { echo "PLATFORM_WEDGED"; exit 1; }
 .venv/bin/nemo agents deployments list 2>/dev/null
 ```
 
-Do not use `nemo services status` for this check; it reports stale "running" from held locks after the process has died.
+Do not use `nemo services status` for the local process check; it can report
+stale "running" state from held locks after the process has died.
 
 Require these checks for a deployed invocation and for a local NAT invocation
-that depends on injected Platform IGW routing. If `PLATFORM_DOWN`, route to
-`nemo-setup` and stop. If `PLATFORM_WEDGED`, route to `nemo-status` and stop. Do
-not require the checks for Platform-owned Fabric local invocation or a NAT
-config with directly usable explicit endpoints.
+that depends on injected Platform IGW routing. If `PLATFORM_UNREACHABLE` or
+`PLATFORM_DOWN`, route to `nemo-setup` and stop. If `PLATFORM_WEDGED`, route to
+`nemo-status` and stop. Do not require the checks for Platform-owned Fabric
+local invocation or a NAT config with directly usable explicit endpoints.
 
 ## What you do
 
@@ -86,18 +96,21 @@ config with directly usable explicit endpoints.
 3. **Send the query.**
 
 ```bash
-# Local one-shot path (Platform-owned agent.yaml or legacy NAT YAML)
-.venv/bin/nemo agents invoke \
-  --agent-config <path-to-agent-yaml> \
-  --input "<user query>"
-
-# Deployed path (the same command supports Platform-spec and NAT agents)
-.venv/bin/nemo agents invoke \
-  --agent-deployment <deployment-name> \
-  --input "<user query>"
+if [ "$INVOCATION_MODE" = "local" ]; then
+  RESP=$(.venv/bin/nemo agents invoke \
+    --agent-config "$AGENT_CONFIG_PATH" \
+    --input "<user query>")
+else
+  RESP=$(.venv/bin/nemo agents invoke \
+    --agent-deployment "$DEPLOYMENT_NAME" \
+    --input "<user query>")
+fi
+RC=$?
 ```
 
-1. **Show the verbatim response.** Code block, no paraphrase. If the agent used tool calls, list which tools and their outputs before the final answer.
+1. **Show the verbatim response.** Print `RESP` in a code block without
+   paraphrasing it. If the agent used tool calls, list which tools and their
+   outputs before the final answer.
 
 2. **Offer another invocation.** Keep the same target unless the user changes it. Do not claim that separate CLI invocations preserve a conversation session.
 
@@ -106,13 +119,6 @@ config with directly usable explicit endpoints.
 A "successful" invocation requires both: (a) the CLI returns exit code 0, and (b) the response body is non-empty. An empty body on a question the spec says the agent should handle is a quality signal, not a success.
 
 ```bash
-if [ "$INVOCATION_MODE" = "local" ]; then
-  RESP=$(.venv/bin/nemo agents invoke --agent-config "$AGENT_CONFIG_PATH" --input "<query>")
-else
-  RESP=$(.venv/bin/nemo agents invoke --agent-deployment "$DEPLOYMENT_NAME" --input "<query>")
-fi
-
-RC=$?
 if [ $RC -ne 0 ]; then
   echo "INVOKE_FAILED (exit $RC)"
 elif [ -z "$RESP" ]; then
