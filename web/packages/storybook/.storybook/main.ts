@@ -15,6 +15,7 @@ const config: StorybookConfig = {
     '../../sandbox/**/*.stories.@(ts|tsx)',
   ],
   staticDirs: ['../public'],
+  addons: ['@storybook/addon-a11y'],
   framework: {
     name: '@storybook/react-vite',
     options: {},
