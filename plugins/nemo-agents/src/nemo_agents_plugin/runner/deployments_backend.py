@@ -14,7 +14,9 @@ AgentRun (Razvan RFCs), not AgentDeployment.
 from __future__ import annotations
 
 import asyncio
+import base64
 import copy
+import json
 import logging
 import shlex
 import time
@@ -34,6 +36,10 @@ from nemo_agents_plugin.entities import (
 )
 from nemo_agents_plugin.fabric.gateway_credentials import platform_gateway_credential_env
 from nemo_agents_plugin.runner.backend import DeploymentInfo, ExternalLog, LogLocation, RunnerBackend
+from nemo_agents_plugin.runner.fabric_artifact_staging import (
+    FabricArtifactStagingError,
+    stage_fabric_spec_config_files,
+)
 from nemo_agents_plugin.utils import get_base_url, get_internal_base_url
 from nemo_deployments_plugin.auth_proxy import auth_proxy_port
 from nemo_deployments_plugin.entities import (
@@ -64,6 +70,7 @@ _NAT_CONFIG_ENV = "NAT_CONFIG_PATH"
 _NAT_CONFIG_YAML_ENV = "NAT_CONFIG_YAML"
 _AGENT_CONFIG_YAML_ENV = "AGENT_CONFIG_YAML"
 _AGENT_CONFIG_PATH_ENV = "AGENT_CONFIG_PATH"
+_STAGED_CONFIG_FILES_ENV = "STAGED_CONFIG_FILES_B64_JSON"
 _FABRIC_SERVER_MODULE = "nemo_agents_plugin.fabric.server"
 _AUTH_PROXY_IDENTITY = "agents"
 
@@ -243,6 +250,18 @@ def _materialize_config_and_exec(*, config_path: str, yaml_env: str, argv: list[
     return [f'mkdir -p "$(dirname {quoted_path})" && printf "%s" "${yaml_env}" > {quoted_path} && exec {quoted_argv}']
 
 
+def _materialize_staged_config_files_and_exec(*, env_name: str, argv: list[str]) -> list[str]:
+    """Return ``sh -c`` args that write staged ``config_files`` from *env_name*, then exec *argv*."""
+    quoted_argv = " ".join(shlex.quote(arg) for arg in argv)
+    inline_python = (
+        "import base64,json,os,pathlib;"
+        f"data=json.loads(os.environ[{json.dumps(env_name)}]);"
+        "[(pathlib.Path(p).parent.mkdir(parents=True,exist_ok=True),"
+        "pathlib.Path(p).write_bytes(base64.b64decode(b))) for p,b in data.items()]"
+    )
+    return [f"python -c {shlex.quote(inline_python)} && exec {quoted_argv}"]
+
+
 def executor_for_mode(config: DeploymentsRunnerConfig, mode: DeploymentMode) -> str | None:
     """Resolve the named deployments-plugin executor for *mode*."""
     if mode == "docker":
@@ -291,6 +310,7 @@ def build_deployment_config(
     labels: dict[str, str] | None = None,
     auth_proxy_identity: str | None = None,
     auth_proxy_on_behalf_of: str | None = None,
+    config_files: list[ConfigFile] | None = None,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -314,6 +334,7 @@ def build_deployment_config(
     is_fabric = _is_fabric_agent_config(agent_config)
     config_yaml = yaml.safe_dump(agent_config, sort_keys=False)
     config_path = _fabric_config_mount_path(config_mount_path) if is_fabric else config_mount_path
+    resolved_config_files = config_files or [ConfigFile(path=config_path, content=config_yaml)]
     env = [
         EnvVar(name="NMP_WORKSPACE", value=workspace),
         EnvVar(name="NMP_AGENT_NAME", value=name),
@@ -371,14 +392,27 @@ def build_deployment_config(
         ]
 
     if mode == "docker":
-        # Docker backend does not mount config_files; materialize the YAML from env.
-        env.append(EnvVar(name=config_yaml_env, value=config_yaml))
-        command = ["sh", "-c"]
-        args = _materialize_config_and_exec(
-            config_path=config_path,
-            yaml_env=config_yaml_env,
-            argv=[*server_command, *server_args],
-        )
+        # Docker backend does not mount config_files; materialize staged files from env.
+        if len(resolved_config_files) == 1:
+            single = resolved_config_files[0]
+            env.append(EnvVar(name=config_yaml_env, value=single.content))
+            command = ["sh", "-c"]
+            args = _materialize_config_and_exec(
+                config_path=single.path,
+                yaml_env=config_yaml_env,
+                argv=[*server_command, *server_args],
+            )
+        else:
+            payload = {
+                config_file.path: base64.b64encode(config_file.content.encode("utf-8")).decode("ascii")
+                for config_file in resolved_config_files
+            }
+            env.append(EnvVar(name=_STAGED_CONFIG_FILES_ENV, value=json.dumps(payload, separators=(",", ":"))))
+            command = ["sh", "-c"]
+            args = _materialize_staged_config_files_and_exec(
+                env_name=_STAGED_CONFIG_FILES_ENV,
+                argv=[*server_command, *server_args],
+            )
     else:
         command = server_command
         args = server_args
@@ -412,9 +446,7 @@ def build_deployment_config(
     ).model_copy(
         update={
             "init_containers": init_containers,
-            "config_files": [
-                ConfigFile(path=config_path, content=config_yaml),
-            ],
+            "config_files": resolved_config_files,
             "restart_policy": "Always",
             "auth_proxy_sidecar": auth_proxy_identity is not None,
             "auth_proxy_sidecar_identity": auth_proxy_identity,
@@ -443,6 +475,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
         config: dict[str, Any],
         port: int,
         *,
+        agent: str = "",
         image: str | None = None,
         deployment_mode: DeploymentMode = "docker",
         created_by: str | None = None,
@@ -519,6 +552,22 @@ class DeploymentsRunnerBackend(RunnerBackend):
         if is_fabric:
             deployment_labels["nemo.agents/runtime"] = "fabric"
 
+        staged_config_files: list[ConfigFile] | None = None
+        if is_fabric and agent:
+            agent_yaml_path = _fabric_config_mount_path(self._config.config_mount_path)
+            try:
+                sdk = get_async_platform_sdk(as_service="agents", internal=True)
+                staged_config_files = await stage_fabric_spec_config_files(
+                    workspace=workspace,
+                    agent_name=agent,
+                    rewritten_agent_config=config,
+                    agent_yaml_path=agent_yaml_path,
+                    sdk=sdk.files,
+                )
+            except FabricArtifactStagingError as exc:
+                logger.error("Refusing to deploy Fabric agent %r: %s", name, exc)
+                return DeploymentInfo(name=name, status="failed", error=str(exc))
+
         deployment_config = build_deployment_config(
             name=name,
             workspace=workspace,
@@ -532,6 +581,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             labels=deployment_labels,
             auth_proxy_identity=auth_proxy_identity,
             auth_proxy_on_behalf_of=auth_proxy_on_behalf_of,
+            config_files=staged_config_files,
         )
         await entities.create(deployment_config)
         try:

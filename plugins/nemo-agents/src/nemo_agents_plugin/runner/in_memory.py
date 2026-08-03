@@ -219,6 +219,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         config: dict[str, Any],
         port: int,
         *,
+        agent: str = "",
         image: str | None = None,
         deployment_mode: DeploymentMode = "subprocess",
         created_by: str | None = None,
@@ -227,7 +228,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         # created_by drives on-behalf-of delegation only for container modes (via
         # the auth-proxy sidecar). Subprocess deployments run in-process on the
         # platform host and do not use the sidecar, so it does not apply here.
-        del image, deployment_mode, created_by
+        del agent, image, deployment_mode, created_by
         if config.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             return await self._create_fabric_deployment(workspace, name, config, port)
 
