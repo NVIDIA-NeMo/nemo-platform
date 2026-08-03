@@ -13,12 +13,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from nemo_experimentalist_plugin.client import make_client
+from nemo_experimentalist_plugin.entities import TrialResult, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import TrialResult, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
 
