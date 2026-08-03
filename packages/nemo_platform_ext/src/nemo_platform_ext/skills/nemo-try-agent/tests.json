@@ -18,7 +18,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "Ask my NeMo agent how to reset a Jira password.",
+      "prompt": "Ask my deployed NeMo agent how to reset a Jira password.",
       "expected_skill": "nemo-try-agent"
     },
     {
@@ -43,7 +43,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "Want to see what the support-triage agent says before the team review at 2pm. Three test prompts is enough.",
+      "prompt": "Invoke the support-triage deployment before the team review and show me the raw output for three test prompts.",
       "expected_skill": "nemo-try-agent"
     },
     {

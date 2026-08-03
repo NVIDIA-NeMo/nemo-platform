@@ -1,14 +1,23 @@
 ---
 name: nemo-try-agent
-description: Invokes a NeMo Platform agent through a named deployment or directly from a local agent YAML config. Use to try, test, or query an existing NeMo agent; do not use to build or deploy one.
+description: Invokes an existing NeMo Platform agent through a named deployment or directly from a local agent YAML config. Use to try, test, or query an agent and inspect its response.
 triggers:
+  - nemo-try-agent
   - ask my agent
+  - ask my NeMo agent
   - try the agent
   - test it out
+  - test support agent with real question
   - query my agent
   - what does my agent say
   - send to the agent
   - try my nemo agent
+  - invoke deployed agent
+  - query running deployment
+  - invoke local agent config
+  - query local agent config
+  - invoke legacy NAT workflow
+  - test agent and show raw output
 not-for:
   - nemo-build-agent (use to deploy an agent before querying)
   - nemo-skill-selection (use to dispatch when intent is unclear)
@@ -39,7 +48,7 @@ curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o 
 .venv/bin/nemo agents deployments list 2>/dev/null
 ```
 
-Do not use `nemo services status` for this check — it reports stale "running" from held locks after the process has died.
+Do not use `nemo services status` for this check; it reports stale "running" from held locks after the process has died.
 
 For a deployed invocation, if `PLATFORM_DOWN`, route to `nemo-setup` and stop. If `PLATFORM_WEDGED`, route to `nemo-status` and stop. Do not require these checks for a local one-shot invocation.
 
@@ -111,5 +120,5 @@ If `INVOKE_FAILED` or `EMPTY_RESPONSE`: surface that to the user and stop. Do no
 - **Routing must be explicit.** Silently picking a target and sending a query is the failure mode this skill exists to prevent. Announce first.
 - **Use an explicit deployment name.** `--agent-deployment` avoids ambiguity when one Agent entity has multiple deployments.
 - **Keep agent and model chat distinct.** Offer `nemo chat` only when the user explicitly chooses a raw model query.
-- **Use `curl` only for the pre-flight health probe.** The CLI is the documented interface for agent and model operations. Hand-rolled HTTP is not a substitute.
+- **Use `curl` only for the pre-flight health probe.** The CLI is the documented interface for agent operations. Hand-rolled HTTP is not a substitute.
 - **Do not promise session continuity.** Reusing a deployment target is not the same as resuming a specific multi-turn session.
