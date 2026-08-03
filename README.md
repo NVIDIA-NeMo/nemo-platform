@@ -13,7 +13,7 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Get started
 
-**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14,<0.10.0`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, and Node.js 22.18.x with `pnpm` if you want the web UI.
+**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14,<0.10.0`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, and — if you want the web UI — Node.js `>=22.23.2 <23` with `pnpm>=10.34.5`.
 
 Quick install from PyPI:
 
@@ -79,7 +79,7 @@ nemo services run
 <details>
 <summary>Studio (web UI) bootstrap troubleshooting</summary>
 
-If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Install Node 22.18.x with `pnpm env use --global 22.18.0`, then run `make bootstrap-studio` from the repo root.
+If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Install Node 22.23.x with `pnpm env use --global 22.23.2`, then run `make bootstrap-studio` from the repo root.
 
 </details>
 
