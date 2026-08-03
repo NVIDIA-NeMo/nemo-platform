@@ -3,7 +3,7 @@
 
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { Badge, Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import {
   EVAL_JOB_KIND_LABEL,
   evalJobDetailRoute,
@@ -56,22 +56,28 @@ export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, evals, onRu
                 className={`px-4 py-4 hover:bg-surface-hover ${index > 0 ? 'border-t border-base' : ''}`}
               >
                 <Stack gap="1" className="min-w-0 flex-1">
-                  <Text kind="body/semibold/md" className="truncate">
-                    {job.name}
-                  </Text>
-                  <Flex align="center" gap="2" className="min-w-0">
-                    {showKind && (
-                      <Badge kind="outline" color="gray">
-                        {EVAL_JOB_KIND_LABEL[job.kind]}
-                      </Badge>
-                    )}
-                    <Text kind="body/regular/sm" color="secondary" className="truncate">
-                      {job.configLabel ? `${job.configLabel} · ` : ''}
-                      {job.created_at ? <RelativeTime datetime={job.created_at} /> : '—'}
+                  <Flex align="baseline" gap="2" className="min-w-0">
+                    <Text kind="body/semibold/md" className="truncate">
+                      {job.name}
                     </Text>
+                    {showKind && (
+                      <Text kind="body/regular/sm" color="secondary" className="shrink-0">
+                        ({EVAL_JOB_KIND_LABEL[job.kind]})
+                      </Text>
+                    )}
                   </Flex>
+                  {job.configLabel && (
+                    <Text kind="body/regular/sm" color="secondary" className="truncate">
+                      Eval Config: {job.configLabel}
+                    </Text>
+                  )}
                 </Stack>
-                <StatusBadge status={job.status} />
+                <Stack gap="1" align="end" className="shrink-0">
+                  <StatusBadge status={job.status} />
+                  <Text kind="body/regular/sm" color="secondary">
+                    {job.created_at ? <RelativeTime datetime={job.created_at} /> : '—'}
+                  </Text>
+                </Stack>
               </Flex>
             </Link>
           ))}

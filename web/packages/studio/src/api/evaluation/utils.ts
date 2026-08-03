@@ -68,8 +68,8 @@ export const evalJobDetailRoute = (workspace: string, row: EvalJobRow): string =
     : getAgentEvaluationDetailRoute(workspace, row.name);
 
 export const EVAL_JOB_KIND_LABEL: Record<EvalJobKind, string> = {
-  task: 'Task-driven',
-  dataset: 'Dataset-driven',
+  task: 'Task-Driven',
+  dataset: 'Dataset-Driven',
 };
 
 export const toEvalJobRow = (job: PlatformJobResponse): EvalJobRow => ({
