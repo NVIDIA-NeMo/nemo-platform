@@ -1,5 +1,5 @@
 {
-  "dataset": "default/email-phishing-dataset#dataset.jsonl",
+  "dataset": "<workspace>/<fileset>#dataset.jsonl",
   "prompt_template": "Subject: {{ item.subject }}\nFrom: {{ item.sender }}\n\n{{ item.body }}",
   "metrics": [
     {
