@@ -1,23 +1,95 @@
 # nemo-agents plugin
 
-A NeMo Platform plugin that brings NVIDIA Agent Toolkit (NAT) agent workflows into
-the platform as first-class managed resources.
+A NeMo Platform plugin for building, registering, deploying, and invoking agents
+as first-class managed resources.
 
-Agents are NAT workflow YAML files. The plugin provides:
+The plugin supports two agent flows:
+
+- **Platform-backed agents** use the Platform-owned `nemo-agents-spec-v1`
+  `agent.yaml` contract. This is the recommended flow for new agents.
+- **NVIDIA Agent Toolkit (NAT) workflows** use the legacy `nat-workflow-v1`
+  configuration format and remain supported for existing agents.
+
+Both flows provide:
 
 - **CRUD** — store and version agent configs in the platform entity store
-- **Deployment** — start/stop `nat start fastapi` servers via an in-memory controller
+- **Deployment** — start/stop agent servers via an in-memory controller
   (subprocess mode, default), or as durable containers via the `nemo-deployments`
   plugin (`--mode docker`, or `--mode k8s` when a k8s executor is configured;
   k8s runtime reachability is still evolving)
 - **Gateway** — reverse-proxy agent traffic through `/apis/agents/…/-/…`
 - **CLI** — `nemo agents` subcommand for platform-managed workflows
-- **Evaluation** — delegate to `nat eval` against live agent endpoints
 - **Packaging** — containerize agents with a single `nemo agents package` command that progressively renders, builds, and publishes
 
 ---
 
-## Prerequisites
+## Platform-backed agents
+
+For new agents, use the Platform-owned configuration contract. It supports
+shared instructions, models, skills, tools, MCP servers, environment settings,
+telemetry, and a selectable harness. NeMo Agents translates that contract into
+Fabric at validation and runtime boundaries.
+
+### How this differs from legacy NAT
+
+| Area | Recommended flow | Legacy NAT workflows |
+|---|---|---|
+| Recommended use | New agents and multi-harness Platform flows | Existing NAT workflow integrations |
+| Config contract | Platform-owned `nemo-agents-spec-v1` `agent.yaml` | NAT `nat-workflow-v1` workflow YAML |
+| Runtime | Platform-managed execution through supported harness adapters | NVIDIA Agent Toolkit runtime |
+| Local execution | Invoked through the Platform agent runtime | Delegated to `nat run` |
+| Platform lifecycle | `nemo agents create`, `deploy`, and `invoke` | The same Platform lifecycle commands |
+| Packaging | Automatically selects the Platform agent image pipeline | Automatically selects the NAT image pipeline |
+| Compatibility status | First-class flow | Supported legacy flow |
+
+---
+
+### Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| Python | `>=3.11,<3.15` |
+| NeMo Platform | Installed and running with an inference provider and model configured |
+| Model credentials | Set the credentials required by the selected provider; the examples use `NVIDIA_API_KEY` |
+| Harness CLI and authentication | Install and authenticate the selected harness when required; for example, run `codex login` for Codex or complete the Claude CLI login flow |
+| NeMo Relay CLI | Required for Claude and Codex; install it with `script/dev-install-fabric.sh` after installing the plugin |
+| Hermes runtime | Required only for Hermes; use a separate Python 3.12 environment and set `ADAPTER_PYTHON` as described in the [Hermes example](examples/nemo-agent-config/README.md#hermes) |
+
+Install the plugin from the repository root, after `uv sync`. This installs
+Fabric, the Relay Python bindings, and the supported harness adapters. The NeMo
+Relay CLI and Hermes harness runtime remain separate as noted above.
+
+```bash
+uv pip install -e plugins/nemo-agents/
+```
+
+Verify it loaded:
+
+```bash
+nemo --help   # should show "agents" under Plugins
+```
+
+If you are using Claude or Codex, install and verify the NeMo Relay CLI:
+
+```bash
+script/dev-install-fabric.sh
+nemo-relay --version
+```
+
+> **Working directory:** Platform-backed examples use paths relative to the
+> repository root. Run them from there unless an example says otherwise.
+
+---
+
+## NVIDIA Agent Toolkit (NAT) workflows
+
+### Legacy NAT workflow compatibility
+
+The existing NAT workflow experience remains available for agents authored as
+`nat-workflow-v1` YAML. The material below is retained as the compatibility
+guide while the recommended flow becomes the primary user-facing walkthrough.
+
+### Prerequisites
 
 | Requirement | Notes |
 |---|---|
@@ -50,7 +122,7 @@ nat --help    # should show run, eval, optimize, start, …
 
 ---
 
-## ReAct agent demo — Wikipedia search + datetime tools
+### ReAct agent demo — Wikipedia search + datetime tools
 
 `examples/react-agent.yml` uses `meta/llama-3.1-70b-instruct` with:
 
@@ -64,7 +136,7 @@ automatically into the agent config — you only need to:
 2. Create the agent and deploy it
 3. Invoke through the gateway
 
-### Step 1 — Start the platform
+#### Step 1 — Start the platform
 
 Run this in a **dedicated terminal** — it stays in the foreground.  Use a
 separate terminal for all subsequent steps.
@@ -73,7 +145,7 @@ separate terminal for all subsequent steps.
 nemo services run
 ```
 
-### Step 2 — Create an inference provider
+#### Step 2 — Create an inference provider
 
 In a new terminal, export the base URL once so all subsequent `nemo` commands
 pick it up automatically:
@@ -104,7 +176,7 @@ entities:
 nemo wait inference provider nvidia-build
 ```
 
-### Step 3 — Create and deploy the agent
+#### Step 3 — Create and deploy the agent
 
 ```bash
 # Register the agent config with the platform
@@ -152,7 +224,7 @@ nemo agents deploy --agent react-agent --no-wait
 nemo agents deployments wait --agent react-agent
 ```
 
-### Step 4 — Invoke through the gateway
+#### Step 4 — Invoke through the gateway
 
 ```bash
 nemo agents invoke \
@@ -184,7 +256,7 @@ below, or see [Cleanup](#cleanup-optional) to tear everything down.
 
 ---
 
-## Evaluation
+### Evaluation
 
 Evaluation delegates to `nat eval`, which sends dataset questions to the
 agent's `/generate/full` endpoint and scores responses with a judge LLM.
@@ -216,7 +288,7 @@ A non-zero `Avg Score` and `Total Runtime` confirms requests reached the agent
 successfully.  (The `avg_workflow_runtime` metric reports average seconds per
 request, so the score varies with network latency.)
 
-### LLM-judge evaluation (requires a judge LLM)
+#### LLM-judge evaluation (requires a judge LLM)
 
 `examples/calculator-agent/calculator-eval.yml` uses `tunable_rag_evaluator`
 with an LLM judge. The judge's `model_name` is `${NEMO_DEFAULT_MODEL}`, which
@@ -240,7 +312,7 @@ suggesting recovery options instead of an opaque subprocess error.
 
 ---
 
-## Packaging command — containerize agents as Docker images
+### Packaging command — containerize agents as Docker images
 
 The plugin ships a single `package` command that encapsulates the render →
 validate → build → publish pipeline.  Flags control how far the pipeline
@@ -253,7 +325,7 @@ The command works locally — no running platform is required.
 | `jinja2` | `uv pip install 'nemo-agents-plugin[container]'` |
 | `python-on-whales` | included in the `[container]` extra |
 
-### Progressive pipeline
+#### Progressive pipeline
 
 | Invocation | Stages run | Output |
 |---|---|---|
@@ -264,7 +336,7 @@ The command works locally — no running platform is required.
 Validation always runs before a build unless `--skip-validation` is passed.
 `--no-build` skips the build (and therefore validation) and only emits files.
 
-### `package` — render, build, and publish in one command
+#### `package` — render, build, and publish in one command
 
 Render-only (inspect or edit the Dockerfile before building):
 
@@ -337,7 +409,7 @@ nemo agents package \
     --nat-version 1.5.0
 ```
 
-### Flag reference
+#### Flag reference
 
 **Pipeline control:**
 
@@ -382,7 +454,7 @@ nemo agents package \
 | `--agent-version` | from pyproject or `YY.MM.DD` | Override agent version label |
 | `--agent-author` | from `git config user.name` | Override agent author label |
 
-### Full example — inspect, build, publish
+#### Full example — inspect, build, publish
 
 ```bash
 # 1. Render the Dockerfile so you can review it
@@ -407,7 +479,7 @@ nemo agents package \
     --publish --registry nvcr.io/my-org
 ```
 
-### Image tagging convention
+#### Image tagging convention
 
 When `--tag` is not provided, the image tag is computed automatically as:
 
@@ -435,7 +507,7 @@ The agent ID is **content-addressable** — identical config (and pyproject) con
 always produces the same ID. Changing any line in either file produces a
 different ID, giving every build a traceable fingerprint.
 
-### OCI image labels
+#### OCI image labels
 
 Generated Dockerfiles include image labels that follow the
 [OCI Image Spec annotations](https://github.com/opencontainers/image-spec/blob/main/annotations.md).
@@ -464,7 +536,7 @@ the `com.nemo.agent.*` namespace.
 | `com.nemo.agent.nat-version` | NAT version used at build time |
 | `com.nemo.agent.contract-version` | Packaging format version (`"1.0"`) |
 
-### Agent config validation
+#### Agent config validation
 
 The `package` command validates the agent config before building (skip with
 `--skip-validation`). Validation checks:
@@ -481,7 +553,7 @@ The `package` command validates the agent config before building (skip with
 
 Multiple errors are collected and reported together rather than failing on the first.
 
-### Security defaults
+#### Security defaults
 
 Generated Dockerfiles apply several hardening measures by default:
 
@@ -492,7 +564,7 @@ Generated Dockerfiles apply several hardening measures by default:
 | `rm -rf /var/lib/apt/lists/*` after install | *(none — always applied)* |
 | `.dockerignore` excludes `.env`, `.git/`, `*.pem`, `credentials.json`, `__pycache__/`, `.venv/`, `node_modules/` | `--no-ignore` |
 
-### Rendering modes
+#### Rendering modes
 
 The Dockerfile template has two modes, selected automatically:
 
@@ -506,7 +578,7 @@ path is resolved relative to the `pyproject.toml` parent directory.
 
 ---
 
-## Inspecting agent logs
+### Inspecting agent logs
 
 Each deployed agent runs as a local `nat start fastapi` subprocess.  Its
 stdout and stderr are captured to a log file so you can debug failed
@@ -529,7 +601,7 @@ nemo agents logs --agent react-agent --follow
 nemo agents logs --agent react-agent --path
 ```
 
-### Where logs live on disk
+#### Where logs live on disk
 
 Logs and rendered NAT configs are stored under the standard NMP user-data
 directory, alongside the platform's other persistent local state:
@@ -560,7 +632,7 @@ without round-tripping through the API.
 
 ---
 
-## Cleanup (optional)
+### Cleanup (optional)
 
 To remove all resources created during the walkthrough:
 
@@ -578,7 +650,7 @@ The platform process itself can be stopped with `Ctrl-C` in its terminal.
 
 ---
 
-## Agent config format
+### Agent config format
 
 Agent configs are standard NAT workflow YAML files. The platform stores them
 as `nat-workflow-v1` entities. All NAT component types are supported.
@@ -606,7 +678,7 @@ workflow:
   parse_agent_response_max_retries: 3
 ```
 
-### Model names
+#### Model names
 
 The `model_name` field must use the IGW entity name format (normalized hyphens):
 
@@ -617,7 +689,7 @@ The `model_name` field must use the IGW entity name format (normalized hyphens):
 The models controller auto-creates entity names by normalizing slashes and dots
 to hyphens.
 
-### base_url injection
+#### base_url injection
 
 When the controller deploys an agent, it calls `inject_gateway_url()` which
 sets `base_url` via `setdefault` on each `openai`/`nim` LLM in the config.
@@ -631,9 +703,9 @@ The injected URL format:
 
 ---
 
-## Performance tips
+### Performance tips
 
-### First-deploy cold start
+#### First-deploy cold start
 
 The first `nemo agents deploy` after installing packages is noticeably slower
 than subsequent deploys because Python compiles `.pyc` bytecache files on first
@@ -648,7 +720,7 @@ This can cut 20--40 seconds off the first deploy.
 
 ---
 
-## Notes and known limitations
+### Notes and known limitations
 
 - **`tool_calling_agent`** is broken with `langchain-openai==1.1.x` due to a
   missing `_DirectlyInjectedToolArg` import. Use `react_agent` instead.
