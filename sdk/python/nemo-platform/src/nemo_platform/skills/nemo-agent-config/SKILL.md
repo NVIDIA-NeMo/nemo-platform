@@ -63,15 +63,18 @@ The canonical remote config location is derivable from workspace and agent name:
 1. Confirm the agent name and config path. Default to
    `agents/<agent-name>-spec/agent.yaml`.
 2. Start from `references/templates/agent.yaml` unless the user is editing an
-   existing file.
+   existing file. Replace every model placeholder before validation.
 3. Select one supported harness:
    - `codex`
    - `hermes`
    - `deepagents`
    - `claude`
-4. Configure `models.default` and add a harness-local `model` override only when
-   that harness should use a different provider, model, credential env var, or
-   base URL.
+   Remove the unselected harness blocks from the template.
+4. Invoke `nemo-model-selection` to select and compatibility-test the model for
+   the chosen harness. Configure `models.default` only after that skill returns
+   a verified provider and exact model name. Add a harness-local `model`
+   override only when that harness intentionally uses a different verified
+   provider, model, credential env var, or base URL.
 5. Add system instructions under `instructions.system.content`.
 6. Add optional skills, MCP servers, blocked tools, environment directories, and
    telemetry using only fields in the template.
@@ -128,9 +131,9 @@ harnesses:
 
 models:
   default:
-    provider: nvidia
-    model: nvidia/nemotron-3-nano-30b-a3b
-    api_key_env: NVIDIA_API_KEY
+    provider: <verified-provider>
+    model: <verified-platform-model-name>
+    api_key_env: <credential-env-var-if-needed>
 
 skills:
   paths: []
@@ -161,10 +164,10 @@ harnesses:
   hermes:
     kind: hermes
     model:
-      provider: nvidia
-      model: nvidia/nemotron-3-nano-30b-a3b
-      api_key_env: NVIDIA_API_KEY
-      base_url: https://integrate.api.nvidia.com/v1
+      provider: <verified-provider>
+      model: <verified-model-name>
+      api_key_env: <credential-env-var-if-needed>
+      base_url: <provider-base-url-if-needed>
       temperature: 0.0
     settings:
       max_tokens: 512
@@ -175,19 +178,14 @@ harnesses:
 If `base_url` is needed, put it directly in the model block, not under
 `settings`.
 
-Before selecting `codex` or making it the default harness, use
-`nemo-model-selection` to verify that the selected provider endpoint supports
-the OpenAI Responses API. Do not infer Codex compatibility from a model merely
-appearing in the Platform model list. NVIDIA models may be used when Platform
-routes the exact model through an Inference Gateway endpoint that supports
-`/responses`; endpoints that expose only chat completions are not compatible.
-
-If `nemo-model-selection` reports that the chosen combination is provisional,
-show the user the exact harness, provider, model name, endpoint, and required
-invocation smoke test. Ask for explicit confirmation and stop. Do not write or
-finalize `agent.yaml` until they accept that exact provisional combination. The
-original request to create or migrate the config does not count as this
-confirmation.
+Use `nemo-model-selection` for every harness. It must verify the exact model
+against that harness's model contract before returning it: Responses for
+`codex`, the selected provider's chat path for `hermes` and `deepagents`, and
+the native Anthropic provider contract for `claude`. Do not route Claude
+through Platform IGW. Do not write or finalize `agent.yaml` if model selection
+cannot establish a compatible model. For Platform-routed models, availability,
+provider metadata, config validation, and Fabric planning do not replace a
+valid inference request through the required wire API.
 
 ## Validate and register
 

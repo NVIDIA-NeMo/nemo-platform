@@ -1,10 +1,10 @@
 config_format: nemo-agents-spec-v1
-name: test-agent
-description: Test agent config
+name: replace-with-agent-name
+description: Replace with a short agent description
 
 instructions:
   system:
-    content: You are a concise test assistant.
+    content: Replace with the agent's system instructions.
 
 default_harness: codex
 
@@ -17,10 +17,10 @@ harnesses:
   hermes:
     kind: hermes
     model:
-      provider: nvidia
-      model: nvidia/nemotron-3-nano-30b-a3b
-      api_key_env: NVIDIA_API_KEY
-      base_url: https://integrate.api.nvidia.com/v1
+      provider: replace-with-verified-provider
+      model: replace-with-verified-model-name
+      api_key_env: replace-or-remove-credential-env-var
+      base_url: replace-or-remove-provider-base-url
       temperature: 0.0
     settings:
       max_tokens: 512
@@ -34,15 +34,14 @@ harnesses:
     kind: claude
     model:
       provider: anthropic
-      model: anthropic/claude-sonnet-4-5
+      model: replace-with-verified-anthropic-model-name
+      api_key_env: ANTHROPIC_API_KEY
     settings:
       permission_mode: dontAsk
-
 models:
   default:
-    provider: nvidia
-    model: nvidia/nemotron-3-nano-30b-a3b
-    api_key_env: NVIDIA_API_KEY
+    provider: replace-with-verified-provider
+    model: replace-with-verified-model-name
 
 skills:
   paths: []
@@ -61,4 +60,4 @@ telemetry:
   enabled: false
   provider: relay
   output_dir: ./artifacts/relay
-  project: test-agent
+  project: replace-with-agent-name

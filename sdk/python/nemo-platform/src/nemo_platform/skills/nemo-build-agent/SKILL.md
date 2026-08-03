@@ -135,10 +135,12 @@ agents/<agent-name>-spec/
   agent.yaml
 ```
 
-Start from `nemo-agent-config/references/templates/agent.yaml`. Translate the
-approved spec into system instructions, a supported harness, default model,
-skills, MCP servers, tools, environment paths, and telemetry. Keep every local
-path relative to the directory containing `agent.yaml`.
+Delegate authoring to `nemo-agent-config`. It selects the supported harness and
+uses `nemo-model-selection` to verify the exact model against that harness's
+model contract before writing the model block. Translate the approved spec into
+system instructions, skills, MCP servers, tools, environment paths, and
+telemetry. Keep every local path relative to the directory containing
+`agent.yaml`.
 
 ### Compatibility: existing NAT workflow YAML
 

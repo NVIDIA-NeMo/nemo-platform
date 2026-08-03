@@ -83,7 +83,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "The provisional Codex model failed its Responses API invocation smoke test. Exclude that combination and help me choose the next candidate.",
+      "prompt": "The Codex candidate failed its valid Responses API compatibility request. Exclude that combination and test the next candidate before recommending it.",
       "expected_skill": "nemo-model-selection"
     },
     {
