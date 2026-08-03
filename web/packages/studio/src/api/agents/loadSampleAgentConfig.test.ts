@@ -96,6 +96,13 @@ describe('loadSampleAgentConfig', () => {
     );
   });
 
+  it('throws on an unsupported config_format instead of falling back to NAT', async () => {
+    mockFetchText('config_format: nemo-agents-spec-v2\nworkflow:\n  _type: react_agent\n');
+    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
+      /unsupported config_format: nemo-agents-spec-v2/
+    );
+  });
+
   it('throws when the fetch fails', async () => {
     mockFetchText('', false);
     await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(

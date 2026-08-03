@@ -23,13 +23,21 @@ export const loadSampleAgentConfig = async (
   const text = await fetchSampleText(agentConfigPath);
   const config = YAML.parse(text) as Record<string, unknown>;
 
-  if (config?.config_format === 'nemo-agents-spec-v1') {
+  const configFormat = config?.config_format;
+
+  if (configFormat === 'nemo-agents-spec-v1') {
     injectFabricModel(config, modelName, agentConfigPath);
     return config;
   }
 
-  injectNatModel(config, modelName, agentConfigPath);
-  return config;
+  if (configFormat === undefined || configFormat === 'nat-workflow-v1') {
+    injectNatModel(config, modelName, agentConfigPath);
+    return config;
+  }
+
+  throw new Error(
+    `Sample agent config ${agentConfigPath} has unsupported config_format: ${String(configFormat)}`
+  );
 };
 
 /** NAT workflow config: overwrite `llms.llm.model_name`. */
