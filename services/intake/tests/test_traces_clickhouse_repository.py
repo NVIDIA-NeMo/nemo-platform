@@ -123,7 +123,7 @@ async def test_latest_trace_started_at_by_group_aggregates_all_references_in_one
 
 @pytest.mark.asyncio
 async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
-    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    started_at = datetime(2026, 1, 1, microsecond=123456, tzinfo=timezone.utc)
     page_row = _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False)
     client = _Client(
         query_results=[
@@ -159,6 +159,10 @@ async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
     assert client.external_data[2] is None
     assert client.parameters[2]["page_trace_ids"] == ["trace-a"]
     assert client.parameters[2]["page_trace_keys"] == [("otel", "trace-a")]
+    assert "root_started_at >= fromUnixTimestamp64Micro(%(page_started_at_min_us)s)" in client.queries[2]
+    assert "root_started_at <= fromUnixTimestamp64Micro(%(page_started_at_max_us)s)" in client.queries[2]
+    assert client.parameters[2]["page_started_at_min_us"] == 1767225600123456
+    assert client.parameters[2]["page_started_at_max_us"] == 1767225600123456
     assert "page_root_keys" not in client.parameters[2]
 
 

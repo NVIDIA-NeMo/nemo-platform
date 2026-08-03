@@ -80,18 +80,21 @@ _CURRENT_SPAN_VALUE_COLUMNS = (
 )
 
 _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
+_UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 @dataclass(frozen=True)
 class _TracePageRef:
     source_format: str
     trace_id: str
+    started_at_us: int
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> _TracePageRef:
         return cls(
             source_format=str(row["source_format"]),
             trace_id=str(row["id"]),
+            started_at_us=_datetime_to_unix_microseconds(row["started_at"]),
         )
 
     @property
@@ -297,6 +300,10 @@ def _page_trace_roots_sql(*, trace_index_table: str, mode: TraceMode) -> tuple[s
         FROM {trace_index_table} AS trace_roots FINAL
         WHERE trace_roots.workspace = %(workspace)s
             AND trace_roots.is_deleted = 0
+            -- The time range engages the primary key before FINAL; the flat trace ID
+            -- engages its bloom index, while the tuple preserves source-format identity.
+            AND trace_roots.root_started_at >= fromUnixTimestamp64Micro(%(page_started_at_min_us)s)
+            AND trace_roots.root_started_at <= fromUnixTimestamp64Micro(%(page_started_at_max_us)s)
             AND trace_roots.trace_id IN %(page_trace_ids)s
             AND (
                 trace_roots.source_format,
@@ -434,10 +441,20 @@ def _unique_string_attribute_aggregate(source_alias: str, *, parameter: str, ali
 
 
 def _trace_page_parameters(refs: Sequence[_TracePageRef]) -> dict[str, object]:
+    started_at_us = [ref.started_at_us for ref in refs]
     return {
         "page_trace_ids": [ref.trace_id for ref in refs],
         "page_trace_keys": [ref.trace_key for ref in refs],
+        "page_started_at_min_us": min(started_at_us),
+        "page_started_at_max_us": max(started_at_us),
     }
+
+
+def _datetime_to_unix_microseconds(value: datetime) -> int:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    delta = value.astimezone(timezone.utc) - _UNIX_EPOCH
+    return ((delta.days * 86_400 + delta.seconds) * 1_000_000) + delta.microseconds
 
 
 def _reconcile_hydrated_page(
