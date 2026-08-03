@@ -227,7 +227,7 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
         backend=backend,
         workspace="default",
         config=config,
-        evaluator_type="harbor",
+        evaluator_type="harbor_native",
         train_dataset=DatasetRef(uri="train"),
         validation_dataset=DatasetRef(uri="validation"),
         task_template=DatasetRef(uri="template"),
