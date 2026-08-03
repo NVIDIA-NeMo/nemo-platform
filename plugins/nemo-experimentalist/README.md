@@ -10,26 +10,21 @@ or Git-backed agent against Harbor-compatible train and validation datasets.
 
 ## Install and develop
 
-From the root of this checkout:
+This plugin is a workspace member of the NeMo Platform monorepo. Its agent
+framework (NOOA) and evaluator (Harbor) are both Python 3.12-only, so the whole
+plugin sits behind an optional dependency group. From the **platform root**:
 
 ```bash
-uv sync
+uv sync --group experimentalist
 export NEMO="$PWD/.venv/bin/nemo"
-```
-
-For a NeMo Platform source checkout, use the
-[source-Platform installer](docs/e2e/install-experimentalist-plugin.sh), which keeps
-Platform packages editable while installing both plugins' direct runtime
-dependencies:
-
-```bash
-REPO="$PWD" PLAT=/path/to/nemo-platform bash docs/e2e/install-experimentalist-plugin.sh
-export NEMO=/path/to/nemo-platform/.venv/bin/nemo
 ```
 
 The source dependencies are pinned to tagged or immutable revisions in
 `pyproject.toml`. NVIDIA-labs OO Agents (NOOA) is pinned to a public GitHub
 commit, currently one past `v0.0.6` that carries an MCP transport-timeout fix.
+
+Verify with `$NEMO experimentalist doctor`. Harbor evaluation also needs a
+running Docker daemon — `doctor` treats both as required checks.
 
 ## Insight-to-experiment flow
 
@@ -117,9 +112,25 @@ $NEMO experimentalist run \
 ```
 
 Pass one or more framework skill directories with `--framework-skills` when
-the agent needs framework-specific modification guidance. The checked-in Tau2
-profile demonstrates profile-owned datasets and task template configuration:
-[`examples/tau2-nemo-oo-agent/optimizer.yaml`](examples/tau2-nemo-oo-agent/optimizer.yaml).
+the agent needs framework-specific modification guidance. The checked-in
+[`tau3-nooa-agent`](examples/tau3-nooa-agent/README.md) demonstrates the
+realistic NOOA, MCP, and inference-backed path. Follow the
+[getting-started guide](../../docs/get-started/example-agent.mdx) to prepare its
+train and validation datasets before running the SDK-backed smoke config.
+
+For a first run, prefer the fully local example — no dataset registry, no
+Platform, and a validation evaluation that finishes in seconds. From the
+platform root:
+
+```bash
+$NEMO experimentalist run \
+  --profile plugins/nemo-experimentalist/examples/hello-harbor-agent/optimizer.yaml \
+  --no-insight \
+  --experiment-dir tmp/exp-hello
+```
+
+See [`examples/hello-harbor-agent/README.md`](examples/hello-harbor-agent/README.md)
+for what it contains and how to run it.
 
 Each run writes its local artifacts under `--experiment-dir`, or under
 `.nemo-optimizer/experiments/` beside the governing profile by default.
