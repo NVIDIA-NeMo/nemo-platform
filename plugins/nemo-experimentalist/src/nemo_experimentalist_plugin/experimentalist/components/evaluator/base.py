@@ -27,17 +27,7 @@ EvaluatorType: TypeAlias = Literal["harbor_native", "harbor_evaluator"]
 directly. ``harbor_evaluator`` routes orchestration through the NeMo Evaluator
 SDK's ``HarborAgentTaskRunner``, which owns the ``JobConfig``, the success-aware
 job-dir cache, and agent import scoping.
-
-**On the word "native".** Here it means *not routed through the Evaluator SDK*.
-Inside the SDK the same word means the opposite: ``_build_native_job`` and
-``HarborAgentTaskRunner``'s "native" mode are where the *SDK* builds Harbor's
-``JobConfig`` itself. The two vocabularies disagree on purpose — this one is the
-user-facing config value, named from the caller's point of view.
-
-Harbor runs the trials either way; only orchestration ownership differs. Both read
-results back off the same job directory, so the trials the loop sees are equivalent.
 """
-
 _DEPRECATED_EVALUATOR_TYPES: dict[str, EvaluatorType] = {"harbor": "harbor_native"}
 """Retired spellings still accepted on input, mapped to their current name.
 

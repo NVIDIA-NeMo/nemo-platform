@@ -16,7 +16,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborEvaluatorConfig
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import HarborEvaluatorConfig
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
     DatasetRef,
     DataValue,

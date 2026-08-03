@@ -42,7 +42,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     EvaluatorType,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    _TRACE_ARTIFACT_SOURCE,
+    DEFAULT_TRACE_ARTIFACT_SOURCE,
     HarborDataset,
     resolve_harbor_run_inputs,
     trials_from_job_dir,
@@ -101,7 +101,7 @@ class HarborRunnerConfig(EvaluatorConfig):
     quiet: bool = Field(default=False, description="Suppress Harbor's trial progress display.")
     artifacts: list[str] = Field(default=[], description="Additional Harbor artifact sources to collect per trial.")
     trace_dir: str = Field(
-        default=_TRACE_ARTIFACT_SOURCE,
+        default=DEFAULT_TRACE_ARTIFACT_SOURCE,
         description="Container path of agent traces, collected into the trial's 'traces' artifact directory.",
     )
     max_retries: int = Field(default=0, ge=0, description="Harbor per-trial retries on transient failures.")

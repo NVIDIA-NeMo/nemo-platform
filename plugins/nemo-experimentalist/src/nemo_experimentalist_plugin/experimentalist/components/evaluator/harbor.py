@@ -1,42 +1,33 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Harbor dataset adapter for evaluator-domain task objects."""
+"""Shared Harbor dataset, dependency, input, and result adapters."""
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import importlib.machinery
 import json
 import logging
 import os
 import re
 import shutil
-import sys
 import tempfile
 import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType, TracebackType
+from types import TracebackType
 from typing import Any, Protocol, TypeAlias, TypedDict
 from uuid import uuid4
 
 from harbor.constants import MAIN_SERVICE_NAME
 from harbor.environments.base import BaseEnvironment
 from harbor.environments.factory import EnvironmentFactory
-from harbor.job import DatasetConfig, Job, JobConfig
 from harbor.models.environment_type import EnvironmentType
-from harbor.models.job.config import AgentConfig, ArtifactConfig, RetryConfig
 from harbor.models.task.task import Task as HarborTaskModel
 from harbor.models.trial.config import ServiceVolumeConfig
 from harbor.models.trial.paths import EnvironmentPaths, TrialPaths
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
-    Evaluator,
-    EvaluatorConfig,
-    EvaluatorType,
-)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
     Dataset,
     DatasetRef,
@@ -52,7 +43,6 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
     run_dependency_command,
     subset_dataset_id,
 )
-from pydantic import Field
 
 
 class HarborResourceSpec(TypedDict):
@@ -110,11 +100,8 @@ _TASK_TREE_RESOURCES: tuple[TreeResourceSpec, ...] = (
     (_ORACLE_DIRNAME, "oracle_dir", ()),
     (_STEPS_DIRNAME, "steps_dir", ()),
 )
-_TRACE_ARTIFACT_SOURCE = "/app/traces"
-_TRACE_ARTIFACT_DESTINATION = "traces"
+DEFAULT_TRACE_ARTIFACT_SOURCE = "/app/traces"
 _SHELL_SYNTAX_TIMEOUT_SEC = 10.0
-_AGENT_IMPORT_ROOT = "_nemo_experimentalist_eval_agents"
-_IDENTIFIER_RE = re.compile(r"\W+")
 _TRIAL_LOG_DESCRIPTIONS = {
     "agent/oracle.txt": "Oracle-agent log captured when Harbor runs the reference solution.",
     "agent/setup/stdout.txt": "Agent setup stdout captured while Harbor uploads the agent and installs dependencies.",
@@ -127,6 +114,22 @@ _TRIAL_LOG_DESCRIPTIONS = {
 }
 
 logger = logging.getLogger(__name__)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily preserve the former native-evaluator import path."""
+    if name not in {"HarborEvaluator", "HarborEvaluatorConfig"}:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
+        HarborEvaluator,
+        HarborEvaluatorConfig,
+    )
+
+    return {
+        "HarborEvaluator": HarborEvaluator,
+        "HarborEvaluatorConfig": HarborEvaluatorConfig,
+    }[name]
 
 
 @dataclass(frozen=True)
@@ -165,29 +168,6 @@ class _VerifierSyntaxFailure:
     error: str
     line: int | None = None
     column: int | None = None
-
-
-class HarborEvaluatorConfig(EvaluatorConfig):
-    """Configuration for Harbor evaluator."""
-
-    job_name: str | None = Field(
-        default=None, description="Name of the job to run. If not provided, a default name will be generated."
-    )
-    jobs_dir: Path = Field(
-        default=Path("eval-and-optimize") / "results",
-        description="Directory to store job results, resolved relative to the experiment directory.",
-    )
-    n_attempts: int = Field(default=1)
-    n_concurrent_trials: int = Field(default=os.cpu_count() or 4)
-    quiet: bool = Field(default=False)
-    verifier_timeout_multiplier: float | None = Field(default=1.0)
-    agent_timeout_multiplier: float | None = Field(default=1.0)
-    agent_setup_timeout_multiplier: float | None = Field(default=1.0)
-    environment_build_timeout_multiplier: float | None = Field(default=1.0)
-    artifacts: list[str] = Field(default=[])
-    retry: RetryConfig = Field(default=RetryConfig(exclude_exceptions=set()))
-    import_path: str = Field(default="harbor_wrapper:WrappedAgent")
-    trace_dir: str = Field(default=_TRACE_ARTIFACT_SOURCE)
 
 
 class HarborDependencyRuntime(DependencyRuntime):
@@ -346,76 +326,6 @@ def _chmod_path_chain(path: Path, stop_at: Path) -> None:
 
 
 HarborDataValue: TypeAlias = DataValue | ResourceRef
-
-
-def _safe_identifier(value: str) -> str:
-    identifier = _IDENTIFIER_RE.sub("_", value).strip("_")
-    if not identifier:
-        identifier = "path"
-    if not identifier[0].isalpha() and identifier[0] != "_":
-        identifier = f"_{identifier}"
-    return identifier
-
-
-def _agent_import_package(agent_path: Path) -> str:
-    path_parts = [_safe_identifier(part) for part in agent_path.parts if part not in {"", agent_path.anchor}]
-    tail = path_parts[-6:] or ["agent"]
-    digest = hashlib.sha256(str(agent_path).encode("utf-8")).hexdigest()[:12]
-    tail[-1] = f"{tail[-1]}_{digest}"
-    return ".".join([_AGENT_IMPORT_ROOT, *tail])
-
-
-def _ensure_package(name: str, search_path: Path | None = None) -> None:
-    parts = name.split(".")
-    for idx in range(1, len(parts) + 1):
-        package_name = ".".join(parts[:idx])
-        package = sys.modules.get(package_name)
-        if package is None:
-            package = ModuleType(package_name)
-            package.__package__ = package_name
-            package.__spec__ = importlib.machinery.ModuleSpec(package_name, loader=None, is_package=True)
-            package.__path__ = []  # type: ignore[attr-defined]
-            sys.modules[package_name] = package
-            if idx > 1:
-                parent_name = ".".join(parts[: idx - 1])
-                setattr(sys.modules[parent_name], parts[idx - 1], package)
-        if search_path is not None and idx == len(parts):
-            package.__path__ = [str(search_path)]  # type: ignore[attr-defined]
-
-
-def _scoped_import_path(agent_path: Path, import_path: str) -> tuple[str, str]:
-    module_name, separator, attribute = import_path.partition(":")
-    module_name = module_name.strip().lstrip(".")
-    if not module_name:
-        raise ValueError("import_path module is required")
-
-    package_name = _agent_import_package(agent_path)
-    _ensure_package(package_name, search_path=agent_path)
-    scoped = f"{package_name}.{module_name}"
-    if separator:
-        scoped = f"{scoped}:{attribute}"
-    return scoped, package_name
-
-
-def _cleanup_scoped_imports(package_name: str) -> None:
-    package = sys.modules.get(package_name)
-    for module_name in list(sys.modules):
-        if module_name == package_name or module_name.startswith(f"{package_name}."):
-            sys.modules.pop(module_name, None)
-    parent_name, _, child_name = package_name.rpartition(".")
-    parent = sys.modules.get(parent_name)
-    if parent is not None and getattr(parent, child_name, None) is package:
-        delattr(parent, child_name)
-    parts = package_name.split(".")
-    for idx in range(len(parts) - 1, 0, -1):
-        module_name = ".".join(parts[:idx])
-        if any(name.startswith(f"{module_name}.") for name in sys.modules):
-            break
-        package = sys.modules.pop(module_name, None)
-        parent_name, _, child_name = module_name.rpartition(".")
-        parent = sys.modules.get(parent_name)
-        if parent is not None and getattr(parent, child_name, None) is package:
-            delattr(parent, child_name)
 
 
 def _resolve_verifier_dir(task_dir: Path, config: dict[str, Any]) -> Path:
@@ -578,18 +488,6 @@ def _is_trial_log_path(relative_path: str) -> bool:
         return True
     parts = relative_path.split("/")
     return len(parts) == 3 and parts[0] == "agent" and parts[1].startswith("command-") and parts[2] == "stdout.txt"
-
-
-def _with_trace_artifact(artifacts: Sequence[str | ArtifactConfig], trace_source: str) -> list[str | ArtifactConfig]:
-    for artifact in artifacts:
-        if isinstance(artifact, ArtifactConfig):
-            if artifact.source == trace_source or artifact.destination == _TRACE_ARTIFACT_DESTINATION:
-                return list(artifacts)
-        elif isinstance(artifact, str) and artifact in {trace_source, _TRACE_ARTIFACT_DESTINATION}:
-            return list(artifacts)
-
-    trace_artifact = ArtifactConfig(source=trace_source, destination=_TRACE_ARTIFACT_DESTINATION)
-    return [trace_artifact, *artifacts]
 
 
 def _trial_error(exception_info: Any) -> dict[str, DataValue] | None:
@@ -1397,54 +1295,3 @@ class HarborDataset(Dataset):
             tasks=tasks,
             metadata=dict(self.metadata),
         )
-
-
-class HarborEvaluator(Evaluator):
-    """Run Harbor evaluations and return parsed reward payloads."""
-
-    evaluator_type: EvaluatorType = "harbor_native"
-
-    def __init__(self, options: HarborEvaluatorConfig | None = None, experiment_dir: Path | None = None) -> None:
-        super().__init__(options or HarborEvaluatorConfig(), experiment_dir=experiment_dir)
-
-    async def _run(self, agent: Path, dataset: Dataset, options: EvaluatorConfig) -> Sequence[TrialResult]:
-        # Widened from HarborEvaluatorConfig to match the base class contract:
-        # Evaluator.run() passes an EvaluatorConfig instance through unchanged, so
-        # narrowing here would be an unsound override. The guard is defensive only —
-        # both the factory and the loop build this config via type(self.options).
-        if not isinstance(options, HarborEvaluatorConfig):
-            raise TypeError("Options must be a HarborEvaluatorConfig")
-
-        inputs = await resolve_harbor_run_inputs(agent, dataset, options, self.experiment_dir)
-        harbor_dataset = inputs.dataset
-        dataset_path = inputs.dataset_path
-        agent_path = inputs.agent_path
-
-        options_dict = options.model_dump()
-        options_dict["jobs_dir"] = inputs.jobs_dir
-        options_dict["job_name"] = inputs.job_name
-        import_path: str = options_dict.pop("import_path")
-        trace_dir: str = options_dict.pop("trace_dir", _TRACE_ARTIFACT_SOURCE)
-        options_dict["artifacts"] = _with_trace_artifact(options_dict.get("artifacts") or [], trace_dir)
-        force_rerun: bool = options_dict.pop("force_rerun", False)
-
-        scoped_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
-        agents_config = [AgentConfig(import_path=scoped_import_path)]
-        datasets_config = [DatasetConfig(path=dataset_path, task_names=[task.id for task in harbor_dataset.tasks])]
-        job_config = JobConfig(**options_dict, agents=agents_config, datasets=datasets_config)
-        if force_rerun:
-            job_dir = job_config.jobs_dir / job_config.job_name
-            if job_dir.exists():
-                shutil.rmtree(job_dir)
-
-        try:
-            job = await Job.create(job_config)
-            await job.run()
-        finally:
-            _cleanup_scoped_imports(scoped_package)
-
-        trials = await self._trials_from_dir(job.job_dir, harbor_dataset.tasks)
-        return trials
-
-    async def _trials_from_dir(self, job_dir: Path, tasks: Sequence[Task]) -> Sequence[TrialResult]:
-        return trials_from_job_dir(job_dir, tasks)

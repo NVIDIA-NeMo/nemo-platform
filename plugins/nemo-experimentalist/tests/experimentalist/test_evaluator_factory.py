@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Sequence
 
 import pytest
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import DatasetRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import harbor as harbor_contract
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
     Dataset,
     Evaluator,
@@ -14,7 +17,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory, EvaluatorFactory
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
@@ -157,6 +160,38 @@ def test_evaluator_factory_build_evaluator_with_dict():
     factory = EvaluatorFactory()
     evaluator = factory.build_evaluator("harbor_native", {"import_path": "x:Y"})
     assert isinstance(evaluator, HarborEvaluator)
+
+
+def test_harbor_orchestrators_live_outside_the_shared_harbor_module():
+    factory = EvaluatorFactory()
+
+    native = factory.build_evaluator("harbor_native", {})
+    sdk_backed = factory.build_evaluator("harbor_evaluator", {})
+
+    assert type(native).__module__ == ("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native")
+    assert type(sdk_backed).__module__ == (
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_evaluator"
+    )
+
+
+def test_shared_harbor_module_preserves_native_evaluator_imports_lazily():
+    assert harbor_contract.HarborEvaluator is HarborEvaluator
+    assert harbor_contract.HarborEvaluatorConfig is HarborEvaluatorConfig
+
+
+def test_importing_shared_harbor_module_does_not_load_native_orchestration():
+    shared_module = "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor"
+    native_module = "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native"
+    script = f"import sys; import {shared_module}; raise SystemExit({native_module!r} in sys.modules)"
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_evaluator_factory_build_evaluator_unsupported():

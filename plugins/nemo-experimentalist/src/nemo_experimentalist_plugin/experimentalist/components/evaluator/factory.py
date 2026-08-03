@@ -11,14 +11,14 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     EvaluatorConfig,
     EvaluatorType,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
-    HarborEvaluator,
-    HarborEvaluatorConfig,
-)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_evaluator import (
     HarborRunnerConfig,
     HarborRunnerEvaluator,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
+    HarborEvaluator,
+    HarborEvaluatorConfig,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Dataset, DatasetRef, Task
 

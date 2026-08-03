@@ -18,6 +18,8 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
     HarborEvaluator,
     HarborEvaluatorConfig,
 )

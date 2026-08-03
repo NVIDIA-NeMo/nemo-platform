@@ -15,8 +15,8 @@ from typing import Any, Literal, Self
 
 import yaml
 from harbor.registry.client.package import PackageDatasetClient
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
     HarborEvaluator,
     HarborEvaluatorConfig,
 )

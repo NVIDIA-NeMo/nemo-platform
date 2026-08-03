@@ -23,16 +23,16 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     _warned_evaluator_types,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import EvaluatorFactory
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
-    HarborEvaluator,
-    HarborEvaluatorConfig,
-)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_evaluator import (
     HarborRunnerConfig,
     HarborRunnerEvaluator,
     HarborTaskNameError,
     harbor_task_names,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
+    HarborEvaluator,
+    HarborEvaluatorConfig,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
@@ -584,7 +584,7 @@ async def test_both_evaluators_produce_equivalent_trials(
             self.job_dir = Path(config.jobs_dir) / config.job_name
 
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job",
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job",
         PlainJob,
     )
     PlainJob.on_run = write_results

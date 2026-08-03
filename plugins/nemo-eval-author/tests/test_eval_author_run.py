@@ -8,6 +8,7 @@ from typing import Any, Literal
 import pytest
 from nemo_eval_author_plugin.eval_author import run as eval_author_run
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Dataset, DatasetRef, Task
 from nemo_insights_plugin.entities import Insight
 
@@ -113,10 +114,12 @@ class FakeEvalAuthor:
         )
 
 
+@pytest.mark.parametrize("evaluator_type", ["harbor_native", "harbor_evaluator"])
 @pytest.mark.asyncio
 async def test_run_eval_author_builds_and_runs_complete_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    evaluator_type: EvaluatorType,
 ) -> None:
     client = ClosingClient()
     insight = Insight(
@@ -168,6 +171,7 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
         workspace="workspace-a",
         base_url="http://platform.test",
         config=config,
+        evaluator_type=evaluator_type,
         mode="local",
     )
 
@@ -187,16 +191,13 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
             dest=experiment_dir / "eval_author" / "source-agent",
         )
     ]
-    # run_eval_author tracks the Experimentalist default (harbor_native). It only
-    # selects the dataset adapter here — both types map to HarborDataset — but the
-    # two must not drift into disagreeing about which adapter is canonical.
     assert dataset_factory.dataset_refs == [
-        ("harbor_native", train_ref),
-        ("harbor_native", validation_ref),
+        (evaluator_type, train_ref),
+        (evaluator_type, validation_ref),
     ]
     assert dataset_factory.template_refs == [
         (
-            "harbor_native",
+            evaluator_type,
             template_ref.model_copy(update={"uri": str(experiment_dir / "dataset" / "task-template")}),
         )
     ]

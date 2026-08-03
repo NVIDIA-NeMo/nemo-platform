@@ -65,11 +65,6 @@ async def run_eval_author(
         config: Eval Author tuning parameters.
         agent: Optional agent source override. When absent, the Insight's agent is used.
         evaluator_type: Evaluator adapter used to parse datasets and task template.
-            Only the *dataset* half of the registry is consulted here — this function
-            never calls ``build_evaluator`` — and both types currently map to
-            ``HarborDataset``, so the choice is inert today. It still tracks the
-            Experimentalist default so the two cannot drift into disagreeing about
-            which adapter is canonical.
         mode: Backend mode. Currently uses the same backend factory as Experimentalist.
 
     Returns:
