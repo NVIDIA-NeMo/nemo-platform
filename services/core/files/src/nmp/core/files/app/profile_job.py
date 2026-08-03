@@ -38,7 +38,11 @@ _PROFILE_TASK_COMMAND = ["nemo_datasets_plugin.tasks.profile"]
 _PROFILE_STEP_NAME = "profile"
 _PROFILE_JOB_SOURCE = "files"
 _TERMINAL_JOB_STATES = frozenset(status.value for status in PlatformJobStatus.terminals())
-_FAILED_JOB_STATES = _TERMINAL_JOB_STATES - {PlatformJobStatus.COMPLETED.value}
+# Cancellation is kept apart from failure: it is a deliberate act with no error to investigate, and
+# the remedy is simply to re-run. Folding it into "failed" makes a UI badge or an alert treat a
+# user's own stop as a breakage.
+_CANCELLED_JOB_STATES = frozenset({PlatformJobStatus.CANCELLED.value})
+_FAILED_JOB_STATES = _TERMINAL_JOB_STATES - {PlatformJobStatus.COMPLETED.value} - _CANCELLED_JOB_STATES
 
 
 def _job_targets_fileset(job: PlatformJobResponse, fileset_name: str) -> bool:
@@ -58,9 +62,15 @@ def _is_active(job: PlatformJobResponse) -> bool:
 
 
 def is_failed_job(job: PlatformJobResponse) -> bool:
-    """True when a terminal job ended in error or cancellation (i.e. not completion)."""
+    """True when a terminal job ended in error. Cancellation is :func:`is_cancelled_job`, not this."""
     status = getattr(job.status, "value", job.status)
     return str(status).lower() in _FAILED_JOB_STATES
+
+
+def is_cancelled_job(job: PlatformJobResponse) -> bool:
+    """True when a terminal job was cancelled rather than erroring or completing."""
+    status = getattr(job.status, "value", job.status)
+    return str(status).lower() in _CANCELLED_JOB_STATES
 
 
 def _is_newer(job: PlatformJobResponse, other: PlatformJobResponse) -> bool:

@@ -294,6 +294,63 @@ async def test_get_fileset_profile_failed_uses_latest_terminal():
     assert resp.job_name == "new"
 
 
+@pytest.mark.asyncio
+async def test_get_fileset_profile_cancelled_is_not_failed():
+    # A deliberate stop is not a breakage: nothing needs investigating and the remedy is just to
+    # re-run, so it must not surface as "failed".
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset(profile=None)
+    cancelled = SimpleNamespace(
+        name="profile-fs1-cxl",
+        id="c",
+        status="cancelled",
+        spec={"fileset": "fs1"},
+        created_at=datetime(2026, 1, 1),
+    )
+    sdk = _sdk(jobs=(cancelled,))
+
+    resp = await get_fileset_profile("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.state == "cancelled"
+    assert resp.job_name == "profile-fs1-cxl"
+    assert resp.profile is None
+
+
+@pytest.mark.asyncio
+async def test_get_fileset_profile_latest_terminal_decides_between_cancelled_and_failed():
+    # The two terminal outcomes are distinct states, so which one wins still follows recency.
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset(profile=None)
+    old_err = SimpleNamespace(
+        name="old-err", id="o", status="error", spec={"fileset": "fs1"}, created_at=datetime(2026, 1, 1)
+    )
+    new_cancelled = SimpleNamespace(
+        name="new-cxl", id="n", status="cancelled", spec={"fileset": "fs1"}, created_at=datetime(2026, 2, 1)
+    )
+    sdk = _sdk(jobs=(old_err, new_cancelled))
+
+    resp = await get_fileset_profile("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.state == "cancelled"
+    assert resp.job_name == "new-cxl"
+
+
+@pytest.mark.asyncio
+async def test_get_fileset_profile_ready_wins_over_a_cancelled_rerun():
+    # Cancelling a re-profile must not hide an existing profile: the stored one still answers.
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset(profile=_minimal_profile())
+    cancelled = SimpleNamespace(
+        name="profile-fs1-cxl", id="c", status="cancelled", spec={"fileset": "fs1"}, created_at=datetime(2026, 1, 1)
+    )
+    sdk = _sdk(jobs=(cancelled,))
+
+    resp = await get_fileset_profile("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.state == "ready"
+    assert resp.profile is not None
+
+
 # --- payload bloat -----------------------------------------------------------
 
 
