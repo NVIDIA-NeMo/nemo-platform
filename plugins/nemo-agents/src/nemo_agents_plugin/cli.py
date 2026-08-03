@@ -62,8 +62,11 @@ from nemo_agents_plugin.cli_context import (
 )
 from nemo_agents_plugin.entities import (
     CONTAINER_DEPLOYMENT_MODES,
+    MAX_AGENT_SPEC_STAGED_BYTES,
+    MAX_AGENT_SPEC_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    agent_spec_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
@@ -784,6 +787,38 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "config_format": config_format,
         }
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            try:
+                _upload_agent_spec_fileset(
+                    agent_name=name,
+                    workspace=workspace,
+                    agent_root=agent_config.parent,
+                    base_url=base_url,
+                )
+            except Exception as exc:
+                typer.echo(
+                    f"Error: failed to upload agent spec fileset for {name!r}: {exc}",
+                    err=True,
+                )
+                try:
+                    _delete_agent_entity(
+                        agent_name=name,
+                        workspace=workspace,
+                        base_url=base_url,
+                    )
+                # ``typer.Exit`` subclasses ``Exception``, so this also covers the
+                # exit raised by ``_api_request`` on an HTTP error.
+                except Exception:
+                    logger.exception(
+                        "Failed to roll back agent %r after fileset upload failure",
+                        name,
+                    )
+                    typer.echo(
+                        f"Error: failed to roll back agent {name!r}; it may still exist on the "
+                        f"platform. Remove it with `nemo agents delete {name}`.",
+                        err=True,
+                    )
+                raise typer.Exit(code=1) from exc
         typer.echo(json.dumps(resp, indent=2))
 
     @app.command(name="list", rich_help_panel="Agent Resources (requires running cluster)")
@@ -840,7 +875,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         base_url = _resolve_base_url(base_url)
         if not yes:
             typer.confirm(f"Delete agent '{name}'?", abort=True)
-        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents/{name}")
+        _delete_agent_entity(agent_name=name, workspace=workspace, base_url=base_url)
         typer.echo(f"Agent '{name}' deleted.")
 
     @app.command(rich_help_panel="Agent Resources (requires running cluster)")
@@ -1533,6 +1568,92 @@ def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, 
     except httpx.RequestError as exc:
         print_http_request_error(exc, action=f"{method} agent API")
         raise typer.Exit(code=1)
+
+
+def _platform_sdk(base_url: str) -> Any:
+    """Return an auth-aware platform SDK client for fileset upload/delete."""
+    from nemo_platform import NeMoPlatform
+
+    headers = _resolve_context_headers()
+    if headers:
+        return NeMoPlatform(base_url=base_url, default_headers=headers)
+    return NeMoPlatform(base_url=base_url)
+
+
+def _check_agent_root_bounds(agent_root: Path) -> None:
+    """Reject an agent root too large to deliver into a container deployment.
+
+    The upload is recursive with no server-side filtering, so an ``agent.yaml``
+    sitting in a source checkout would ship the whole tree and then fail at
+    container start when the ConfigMap/env payload is built. Fail here instead,
+    naming the limit that was exceeded.
+
+    Symlinks are rejected rather than skipped: the upload enumerates them and
+    ships their target content, so skipping one here would both stage files from
+    outside *agent_root* and let them evade the limits below.
+    """
+    total_bytes = 0
+    file_count = 0
+    for path in agent_root.rglob("*"):
+        if path.is_symlink():
+            raise ValueError(
+                f"agent directory {str(agent_root)!r} contains symlink "
+                f"{path.relative_to(agent_root).as_posix()!r}; the fileset upload follows "
+                "symlinks, which would stage content from outside the agent directory. "
+                "Replace it with a regular file or move the target inside the agent directory"
+            )
+        if not path.is_file():
+            continue
+        file_count += 1
+        total_bytes += path.stat().st_size
+        if file_count > MAX_AGENT_SPEC_STAGED_FILES:
+            raise ValueError(
+                f"agent directory {str(agent_root)!r} holds more than "
+                f"{MAX_AGENT_SPEC_STAGED_FILES} files; point --agent-config at a "
+                "directory containing only the agent's own artifacts"
+            )
+        if total_bytes > MAX_AGENT_SPEC_STAGED_BYTES:
+            raise ValueError(
+                f"agent directory {str(agent_root)!r} exceeds the "
+                f"{MAX_AGENT_SPEC_STAGED_BYTES} byte limit for container config delivery; "
+                "point --agent-config at a directory containing only the agent's own artifacts"
+            )
+
+
+def _upload_agent_spec_fileset(
+    *,
+    agent_name: str,
+    workspace: str,
+    agent_root: Path,
+    base_url: str,
+) -> None:
+    """Upload *agent_root* into the conventional ``{agent}-spec`` fileset.
+
+    *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
+    Agent YAML must live in a dedicated agent root so sibling artifacts
+    (skills, prompts) upload without shipping an unrelated checkout tree.
+    """
+    from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
+
+    _check_agent_root_bounds(agent_root)
+    upload_to_fileset(
+        agent_root,
+        fileset=agent_spec_fileset_name(agent_name),
+        workspace=workspace,
+        sdk=_platform_sdk(base_url),
+    )
+
+
+def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> None:
+    """Delete the agent entity, leaving the ``{agent}-spec`` fileset in place.
+
+    The fileset outlives the agent on purpose: it is the canonical home of
+    ``AGENT-SPEC.md`` (see ``agent_spec_file_ref``), which ``nemo-spec`` writes
+    before the agent exists and ``nemo-build-agent`` reads on every rebuild.
+    Deleting the fileset here would destroy that durable contract, so the
+    executable artifacts it also carries are left behind instead.
+    """
+    _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents/{agent_name}")
 
 
 def _load_yaml(path: Path) -> dict:
