@@ -178,6 +178,8 @@ If `base_url` is needed, put it directly in the model block, not under
 ## Validate and register
 
 Before registering, validate the YAML shape with the Platform create path.
+Immediately before running `nemo agents create`, show the command to the user,
+ask for explicit confirmation, and wait for approval.
 
 ```bash
 .venv/bin/nemo agents create \
@@ -190,13 +192,18 @@ silence validation errors by moving unknown fields into `settings`.
 
 ## Deploy and invoke
 
-After create succeeds:
+After create succeeds, show the `nemo agents deploy` command to the user, ask
+for explicit confirmation, and wait for approval before running it.
 
 ```bash
 .venv/bin/nemo agents deploy \
   --agent "$AGENT_NAME" \
   --name "$AGENT_NAME-deployment"
+```
 
+After deployment begins, wait for it and invoke it without another confirmation:
+
+```bash
 .venv/bin/nemo agents deployments wait \
   --agent "$AGENT_NAME"
 
@@ -216,12 +223,13 @@ deployment path, not this local path:
   --input "<test prompt>"
 ```
 
-For a local persistent server:
+For a local persistent server, bind to loopback by default. Use an externally
+accessible host only when the user explicitly asks to expose the server:
 
 ```bash
 .venv/bin/nemo agents run \
   --agent-config "agents/$AGENT_NAME-spec/agent.yaml" \
-  --host 0.0.0.0 \
+  --host 127.0.0.1 \
   --port 8080
 ```
 
