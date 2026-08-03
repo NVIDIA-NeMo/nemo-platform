@@ -34,6 +34,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src" / "nemo_eval_author_plugin"
 #   ...trace_analyzer   -> TraceAnalyzer, TraceAnalyzerConfig, Diagnostic
 #   ...trace_explorer   -> TraceExplorer and its view models
 #   experimentalist_backend -> make_experimentalist_backend
+#   ...reporting        -> RunReporter (ASE-749: reuse Experimentalist narrator; do not duplicate)
 _ALLOWED_EXPERIMENTALIST_IMPORTS = {
     "nemo_experimentalist_plugin.client",
     "nemo_experimentalist_plugin.experimentalist.components",
@@ -47,6 +48,7 @@ _ALLOWED_EXPERIMENTALIST_IMPORTS = {
     "nemo_experimentalist_plugin.experimentalist.components.trace_analyzer",
     "nemo_experimentalist_plugin.experimentalist.components.trace_explorer",
     "nemo_experimentalist_plugin.experimentalist.experimentalist_backend",
+    "nemo_experimentalist_plugin.experimentalist.reporting",
 }
 
 

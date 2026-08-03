@@ -17,6 +17,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     make_experimentalist_backend,
 )
+from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
 
@@ -111,11 +112,16 @@ async def run_eval_author(
         await client.close()
 
 
-def build_eval_author_agent(*, experiment_dir: Path, config: EvalAuthorConfig) -> _EvalAuthorAgent:
+def build_eval_author_agent(
+    *,
+    experiment_dir: Path,
+    config: EvalAuthorConfig,
+    reporter: RunReporter | None = None,
+) -> _EvalAuthorAgent:
     """Build the LLM-backed Eval Author agent lazily."""
     from nemo_eval_author_plugin.eval_author.agent import build_eval_author_agent as _build_eval_author_agent
 
-    return _build_eval_author_agent(experiment_dir=experiment_dir, config=config)
+    return _build_eval_author_agent(experiment_dir=experiment_dir, config=config, reporter=reporter)
 
 
 def _enable_litellm_drop_params() -> None:
