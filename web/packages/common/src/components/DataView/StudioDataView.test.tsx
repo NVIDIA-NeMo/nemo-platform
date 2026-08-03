@@ -80,7 +80,9 @@ function renderCellContent(col: Record<string, unknown>, flatRow: FlatRow): Reac
 }
 
 vi.mock('@nemo/common/src/components/DataView/internal', () => ({
-  useInnerDataViewContext: () => ({ table: { getAllLeafColumns: () => [] } }),
+  useInnerDataViewContext: () => ({
+    table: { getAllLeafColumns: () => [], getSelectedRowModel: () => ({ flatRows: [] }) },
+  }),
   Toolbar: ({
     children,
     slotBulkActions,
