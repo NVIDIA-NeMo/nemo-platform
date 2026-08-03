@@ -147,6 +147,9 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
           name: buildSampleAgentName(example.namePrefix),
           description: example.description,
           config,
+          // Omitted for NAT samples (API defaults to nat-workflow-v1); set for
+          // Fabric samples so the API validates the config as nemo-agents-spec-v1.
+          ...(example.configFormat ? { config_format: example.configFormat } : {}),
         },
       });
     } catch {
