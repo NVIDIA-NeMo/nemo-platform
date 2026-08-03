@@ -78,6 +78,11 @@
     },
     {
       "type": "implicit",
+      "prompt": "Codex is my selected harness and I want to use an NVIDIA model through Platform IGW. Verify that the exact model route supports the Responses API before recommending it.",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "implicit",
       "prompt": "I've already picked gpt-4o-mini. Tell me what I'm trading off vs alternatives.",
       "expected_skill": "nemo-model-selection"
     },

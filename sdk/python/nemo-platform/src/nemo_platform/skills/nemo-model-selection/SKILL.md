@@ -51,14 +51,17 @@ The cache (schema v6+) carries four things the rest of this skill reads:
 ### 2. Fetch the live model list from the running platform
 
 ```bash
-curl -fsS http://localhost:8080/v1/models 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); names=[m.get('id') for m in d.get('data',[])]; print('\n'.join(n for n in names if n))" 2>/dev/null || echo "PLATFORM_UNREACHABLE"
+nemo models list --all-pages --output-format json 2>/dev/null || echo "PLATFORM_UNREACHABLE"
 ```
 
 Interpretation:
-- **List of model ids returned** → these are the candidates the user can actually pick from. Carry them through to Step 1+.
+- **JSON model list returned** → these are the candidates the user can actually pick from. Carry their exact model ids through to Step 1+.
 - `PLATFORM_UNREACHABLE` → platform isn't up. Fall back gracefully: tell the user "I can't reach the local platform, so I'll recommend from the curated NIM set in the cache instead of your actual available models. Start the platform with `nemo services run` if you want recommendations grounded in what's deployed."
 
-The `/v1/models` response is OpenAI-shaped (`{data: [{id, ...}, ...]}`); the parse above extracts the `id` field per entry. If the platform's response shape differs, adjust the parse but keep the failure mode (graceful fallback to closed registry, never silently steer the user).
+Use the `nemo` CLI rather than constructing a Platform URL or calling
+`/v1/models` directly. The CLI resolves `NEMO_BASE_URL`, `NMP_BASE_URL`, the
+active CLI context, authentication, and workspace consistently with subsequent
+agent commands. Do not hardcode `localhost`, `127.0.0.1`, or port `8080`.
 
 ## Step 0 — Pick the conversation direction
 
@@ -113,7 +116,7 @@ Do not propose a model before all three answers are in. Push back on "you decide
 
 The candidate set is what the user can actually pick from. It comes from three joins:
 
-1. **Start with the pre-flight model list from `/v1/models`** (or, if `PLATFORM_UNREACHABLE`, fall back to the cache's `models[]` editorial registry).
+1. **Start with the pre-flight model list from `/v1/models`** (or, if `PLATFORM_UNREACHABLE`, fall back to the cache's `models[]` editorial registry). Availability alone does not establish compatibility with an agent harness.
 2. **For each available model id, look up evidence** in this order:
    - Token-match against the editorial `models[]` entries → if hit, use the full editorial record (lineage, intent_hints, direct + inferred scores)
    - If no editorial match, token-match against `upstream_index.bfcl_v4` keys → if hit, use that BFCL score with `source: "direct_external"`
@@ -122,6 +125,41 @@ The candidate set is what the user can actually pick from. It comes from three j
 3. **Rank candidates by the user's profile** — primary capability axis determines which score field dominates.
 
 When `/v1/models` was unreachable, also tell the user the rest of this flow is operating on the curated NIM set, not their actual deployment.
+
+### Gate candidates by harness compatibility
+
+When the output targets Platform `agent.yaml`, identify the selected harness
+before ranking models. Read it from the existing config or conversation; ask if
+it is still unknown.
+
+- A model returned by `/v1/models` is available through Platform, but that does
+  not prove that its endpoint supports the wire API required by the harness.
+- The `codex` harness requires the OpenAI Responses API. It can use native
+  OpenAI or a custom provider such as NVIDIA when Platform routes that exact
+  model through an Inference Gateway endpoint that supports `/responses`.
+- Verify the complete combination of harness, provider, exact model id, and
+  endpoint. A known-good Platform example, provider capability contract, or a
+  successful smoke test of the same combination is valid evidence. Preserve
+  the exact model id returned by Platform; do not rewrite its namespace or
+  punctuation.
+- Do not probe an IGW `/responses` URL with an empty request or `GET`. Such a
+  response only validates HTTP request shape and does not establish that the
+  selected model can execute through the Responses API. For a combination not
+  covered by a known-good contract, defer the check to a valid
+  `nemo agents invoke` smoke test after the user confirms creation and
+  deployment.
+- If Responses API support cannot be established before ranking, mark the
+  candidate provisional rather than compatible. Explain that create, Fabric
+  planning, and deployment readiness do not exercise the invocation-time API.
+  Ask whether the user wants to proceed with a smoke test or choose a verified
+  combination.
+- If no compatible model remains, explain the blocker and ask whether the user
+  wants to configure a Responses-compatible provider/model or switch to a
+  compatible harness. Never switch the harness without explicit user approval.
+
+Record the compatibility evidence alongside the recommendation: selected
+harness, required wire API, and how support was verified. Then apply the normal
+benchmark ranking only to compatible candidates.
 
 ### Picking the presentation pattern
 
@@ -294,6 +332,12 @@ Use the provider identity configured on the Platform. Omit `api_key_env` and
 `base_url` when the selected provider does not require user-supplied values.
 Keep `base_url` directly in the model block, not under `settings`.
 
+Before emitting this block, confirm that the selected provider endpoint
+supports the harness's required wire API. In particular, do not pair `codex`
+with an endpoint that exposes only chat completions. A NVIDIA model routed
+through Platform IGW is valid when the exact model and IGW route support
+`/responses`.
+
 The default model applies to every harness that does not declare its own
 model. Add a harness-local override only when that harness intentionally uses
 a different model or provider:
@@ -395,12 +439,16 @@ If `nemo-explore` invoked this skill, return control to `nemo-explore` with the 
 | User wants a model not in the table | The table is curated, not exhaustive | Tell them honestly; describe the capability gap their choice would have vs the closest recommended model |
 | `cache_missing` and user wants fresh data | Cache has never been refreshed in this checkout | Tell them the refresh command and note that the static table is still usable |
 | User picks self-hosted but the recommended model needs cloud | Hard constraint conflict | Drop the recommendation; pick the closest self-hosted-compatible model from the table |
+| Available model's harness API support is unknown | Availability was mistaken for harness compatibility | Mark it provisional and ask whether to smoke-test the exact model and endpoint or choose a verified combination |
 
 ## Hard rules
 
 - Never name a model before all three profile questions are answered.
 - Never lead with a model name, benchmark name, or score.
 - Never recommend a cloud-only model when the user said self-hosted.
+- Never recommend a model for Platform `agent.yaml` until its provider endpoint
+  is verified to support the selected harness's wire API.
+- Never silently change the selected harness to accommodate an available model.
 - Never emit a model identifier without showing the plain-English reason alongside it.
 - **When the primary candidate's evidence is anything other than `direct`, the model name does not appear in your response until the user has resolved the trade-off in Pattern B.** Anchoring is the failure mode this guards against — users default to the first model named regardless of caveats. The withhold is non-negotiable.
 - When emitting the spec recommendation, always include an Evidence line naming

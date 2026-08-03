@@ -175,6 +175,13 @@ harnesses:
 If `base_url` is needed, put it directly in the model block, not under
 `settings`.
 
+Before selecting `codex` or making it the default harness, use
+`nemo-model-selection` to verify that the selected provider endpoint supports
+the OpenAI Responses API. Do not infer Codex compatibility from a model merely
+appearing in the Platform model list. NVIDIA models may be used when Platform
+routes the exact model through an Inference Gateway endpoint that supports
+`/responses`; endpoints that expose only chat completions are not compatible.
+
 ## Validate and register
 
 Before registering, validate the YAML shape with the Platform create path.
