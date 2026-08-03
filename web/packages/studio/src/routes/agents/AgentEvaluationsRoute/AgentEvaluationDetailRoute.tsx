@@ -15,6 +15,7 @@ import {
   Block,
   Button,
   Flex,
+  Badge,
   Grid,
   Modal,
   PageHeader,
@@ -163,7 +164,14 @@ export const AgentEvaluationDetailRoute: FC = () => {
     <AccessibleTitle title={`Evaluation - ${jobName}`}>
       <Stack className="w-full p-density-2xl min-h-full" gap="density-2xl">
         <PageHeader
-          slotHeading={jobName}
+          slotHeading={
+            <Flex align="center" gap="2">
+              {jobName}
+              <Badge kind="outline" color="gray">
+                Task-Driven
+              </Badge>
+            </Flex>
+          }
           slotDescription="Agent evaluation via nemo-evaluator. Scores aggregate per metric across the evaluated tasks."
         />
 

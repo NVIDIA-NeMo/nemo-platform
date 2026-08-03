@@ -6,6 +6,7 @@ import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { useEvaluatorGetEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
+  Badge,
   Block,
   Flex,
   Grid,
@@ -73,7 +74,17 @@ export const EvaluationResultDetailsRoute: FC = () => {
       <Stack className="overflow-auto" gap="density-2xl" padding="density-2xl">
         <Flex align="center" justify="center" className="w-full">
           <Stack className="w-full max-w-[1200px]" gap="density-2xl">
-            <PageHeader className="p-0" slotHeading={job?.name ?? id} />
+            <PageHeader
+              className="p-0"
+              slotHeading={
+                <Flex align="center" gap="2">
+                  {job?.name ?? id}
+                  <Badge kind="outline" color="gray">
+                    Dataset-Driven
+                  </Badge>
+                </Flex>
+              }
+            />
 
             <Grid cols={{ base: 1, xl: 2 }} gap="density-2xl">
               <DetailsPanel evaluationJob={job} error={!!error} />
