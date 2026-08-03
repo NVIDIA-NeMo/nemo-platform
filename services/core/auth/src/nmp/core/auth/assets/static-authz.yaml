@@ -23,12 +23,6 @@ authz:
       update:
         description: "Update entities"
         has_role: false
-    files:
-      filesets:
-        create:
-          description: "Profile a fileset (submit a profiling job)"
-        read:
-          description: "Read a fileset's stored profile"
     filesets:
       create:
         description: "Create filesets"
@@ -36,6 +30,11 @@ authz:
         description: "Delete filesets"
       list:
         description: "List filesets"
+      profile:
+        exec:
+          description: "Run the profiler on a fileset (re-runnable as its data changes)"
+        read:
+          description: "Read a fileset's stored profile"
       read:
         description: "Read filesets"
       update:
@@ -300,7 +299,7 @@ authz:
     Viewer:
       description: "Read-only access to workspace resources"
       permissions:
-      - files.filesets.read
+      - filesets.profile.read
       - filesets.list
       - filesets.read
       - guardrails.configs.list
@@ -344,7 +343,7 @@ authz:
       description: "Read and write access to workspace resources"
       includes: ["Viewer"]
       permissions:
-      - files.filesets.create
+      - filesets.profile.exec
       - filesets.create
       - filesets.delete
       - filesets.update
@@ -722,13 +721,13 @@ authz:
     /apis/files/v2/workspaces/{workspace}/filesets/{name}/profile:
       get:
         permissions:
-        - files.filesets.read
+        - filesets.profile.read
         scopes:
         - files:read
         - platform:read
       post:
         permissions:
-        - files.filesets.create
+        - filesets.profile.exec
         scopes:
         - files:write
         - platform:write
