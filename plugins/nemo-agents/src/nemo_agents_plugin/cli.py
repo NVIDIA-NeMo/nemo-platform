@@ -364,20 +364,19 @@ def _register_package_command(app: typer.Typer) -> None:
             "Defaults to 'Dockerfile' next to --pyproject when given (project root, "
             "so COPY statements resolve), otherwise next to the agent config.",
         ),
-        base_image_url: Optional[str] = typer.Option(None, "--base-image-url", envvar="NAT_BASE_IMAGE_URL"),
-        base_image_tag: Optional[str] = typer.Option(None, "--base-image-tag", envvar="NAT_BASE_IMAGE_TAG"),
-        python_version: Optional[str] = typer.Option(None, "--python-version", envvar="NAT_PYTHON_VERSION"),
+        base_image_url: Optional[str] = typer.Option(None, "--base-image-url", envvar="NEMO_AGENTS_BASE_IMAGE_URL"),
+        base_image_tag: Optional[str] = typer.Option(None, "--base-image-tag", envvar="NEMO_AGENTS_BASE_IMAGE_TAG"),
+        python_version: Optional[str] = typer.Option(None, "--python-version", envvar="NEMO_AGENTS_PYTHON_VERSION"),
         nat_version: Optional[str] = typer.Option(
             None,
             "--nat-version",
-            envvar="NAT_VERSION",
             help=(
                 "NAT release to install (e.g. '1.7.0').  Strongly recommended: "
                 "pin explicitly so image tags/labels/deps are reproducible.  "
                 "When omitted, a baked-in default is used and a warning is printed."
             ),
         ),
-        uv_version: Optional[str] = typer.Option(None, "--uv-version", envvar="NAT_UV_VERSION"),
+        uv_version: Optional[str] = typer.Option(None, "--uv-version", envvar="NEMO_AGENTS_UV_VERSION"),
         allow_root: bool = typer.Option(
             False, "--allow-root", help="Disable non-root USER hardening in the rendered Dockerfile."
         ),
@@ -394,7 +393,7 @@ def _register_package_command(app: typer.Typer) -> None:
             True, "--ignore/--no-ignore", help="Generate a .dockerignore file alongside the Dockerfile."
         ),
         skip_validation: bool = typer.Option(
-            False, "--skip-validation", help="Bypass validate_agent_config before build."
+            False, "--skip-validation", help="Bypass agent config validation before build."
         ),
         agent_version: Optional[str] = typer.Option(None, "--agent-version", help="Override agent version OCI label."),
         agent_author: Optional[str] = typer.Option(None, "--agent-author", help="Override agent author OCI label."),
@@ -426,11 +425,29 @@ def _register_package_command(app: typer.Typer) -> None:
             template=template,
             platform=platform,
         )
-        _warn_if_nat_version_unpinned(nat_version)
+
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+
+        try:
+            config_format = detect_agent_config_format(agent)
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1)
+
+        if config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+            _warn_if_nat_version_unpinned(nat_version)
+        elif config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT and nat_version is not None:
+            typer.echo(
+                "Error: --nat-version is only valid for NAT workflow packaging; "
+                "Fabric agent packaging does not use NAT_VERSION.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
 
         if no_build:
             _package_render_only(
                 agent_config=agent,
+                config_format=config_format,
                 pyproject=pyproject,
                 output=output,
                 format=format,
@@ -448,28 +465,48 @@ def _register_package_command(app: typer.Typer) -> None:
             )
             return
 
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image, build_nat_agent_image
 
         try:
-            result_tag = build_agent_image(
-                agent,
-                pyproject=pyproject,
-                dockerfile=dockerfile,
-                tag=tag,
-                nat_version=nat_version,
-                base_image_url=base_image_url,
-                base_image_tag=base_image_tag,
-                python_version=python_version,
-                uv_version=uv_version,
-                allow_root=allow_root,
-                sandbox_runtime=sandbox_runtime,
-                agent_version=agent_version,
-                agent_author=agent_author,
-                template_path=template,
-                skip_validation=skip_validation,
-                generate_ignore=generate_ignore,
-                platforms=platform,
-            )
+            if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+                result_tag = build_fabric_agent_image(
+                    agent,
+                    pyproject=pyproject,
+                    dockerfile=dockerfile,
+                    tag=tag,
+                    base_image_url=base_image_url,
+                    base_image_tag=base_image_tag,
+                    python_version=python_version,
+                    uv_version=uv_version,
+                    allow_root=allow_root,
+                    sandbox_runtime=sandbox_runtime,
+                    agent_version=agent_version,
+                    agent_author=agent_author,
+                    template_path=template,
+                    skip_validation=skip_validation,
+                    generate_ignore=generate_ignore,
+                    platforms=platform,
+                )
+            else:
+                result_tag = build_nat_agent_image(
+                    agent,
+                    pyproject=pyproject,
+                    dockerfile=dockerfile,
+                    tag=tag,
+                    nat_version=nat_version,
+                    base_image_url=base_image_url,
+                    base_image_tag=base_image_tag,
+                    python_version=python_version,
+                    uv_version=uv_version,
+                    allow_root=allow_root,
+                    sandbox_runtime=sandbox_runtime,
+                    agent_version=agent_version,
+                    agent_author=agent_author,
+                    template_path=template,
+                    skip_validation=skip_validation,
+                    generate_ignore=generate_ignore,
+                    platforms=platform,
+                )
         except ValueError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1)
@@ -570,6 +607,7 @@ def _warn_if_nat_version_unpinned(nat_version: Optional[str]) -> None:
 def _package_render_only(
     *,
     agent_config: Path,
+    config_format: str,
     pyproject: Optional[Path],
     output: Optional[Path],
     format: str,
@@ -590,23 +628,42 @@ def _package_render_only(
     # before we get here; assert for the developer who deletes that guard.
     assert format == "docker", f"unreachable: format={format!r}"
 
-    from nemo_agents_plugin.container.template import render_dockerfile, render_dockerignore
+    from nemo_agents_plugin.container.template import (
+        render_dockerignore,
+        render_fabric_dockerfile,
+        render_nat_dockerfile,
+    )
 
     try:
-        content = render_dockerfile(
-            agent_config,
-            pyproject,
-            base_image_url=base_image_url,
-            base_image_tag=base_image_tag,
-            python_version=python_version,
-            nat_version=nat_version,
-            uv_version=uv_version,
-            allow_root=allow_root,
-            sandbox_runtime=sandbox_runtime,
-            agent_version=agent_version,
-            agent_author=agent_author,
-            template_path=template,
-        )
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            content = render_fabric_dockerfile(
+                agent_config,
+                pyproject,
+                base_image_url=base_image_url,
+                base_image_tag=base_image_tag,
+                python_version=python_version,
+                uv_version=uv_version,
+                allow_root=allow_root,
+                sandbox_runtime=sandbox_runtime,
+                agent_version=agent_version,
+                agent_author=agent_author,
+                template_path=template,
+            )
+        else:
+            content = render_nat_dockerfile(
+                agent_config,
+                pyproject,
+                base_image_url=base_image_url,
+                base_image_tag=base_image_tag,
+                python_version=python_version,
+                nat_version=nat_version,
+                uv_version=uv_version,
+                allow_root=allow_root,
+                sandbox_runtime=sandbox_runtime,
+                agent_version=agent_version,
+                agent_author=agent_author,
+                template_path=template,
+            )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)

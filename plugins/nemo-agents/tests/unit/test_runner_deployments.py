@@ -12,6 +12,7 @@ import pytest
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, DeploymentsRunnerConfig
 from nemo_agents_plugin.entities import Endpoint
+from nemo_agents_plugin.fabric.gateway_credentials import PLATFORM_IGW_API_KEY_ENV, PLATFORM_IGW_API_KEY_PLACEHOLDER
 from nemo_agents_plugin.runner.deployments_backend import (
     DeploymentsRunnerBackend,
     UnreachableGatewayURLError,
@@ -263,7 +264,12 @@ _FABRIC_AGENT_CONFIG = {
     "harnesses": {
         "main": {
             "provider": "codex",
-            "model": {"provider": "openai", "model": "test-model", "settings": {}},
+            "model": {
+                "provider": "openai",
+                "model": "test-model",
+                "base_url": "http://platform/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                "settings": {},
+            },
         }
     },
 }
@@ -302,6 +308,9 @@ def test_build_deployment_config_fabric_docker_uses_fabric_server() -> None:
     assert not any(e.name == "NAT_CONFIG_YAML" for e in container.env)
     assert any(e.name == "AGENT_CONFIG_PATH" and e.value == "/workspace/agent.yaml" for e in container.env)
     assert next(e.value for e in container.env if e.name == "NMP_BASE_URL") == "http://host.docker.internal:8080"
+    assert next(e.value for e in container.env if e.name == PLATFORM_IGW_API_KEY_ENV) == (
+        PLATFORM_IGW_API_KEY_PLACEHOLDER
+    )
     assert "nemo_agents_plugin.fabric.server" in container.args[0]
     assert container.readiness_probe is not None
     assert container.readiness_probe.http_get is not None
@@ -328,7 +337,40 @@ def test_build_deployment_config_fabric_k8s_uses_fabric_entrypoint() -> None:
     assert "/workspace/agent.yaml" in container.args
     assert "--host" in container.args and "0.0.0.0" in container.args
     assert not any(e.name == "NAT_CONFIG_YAML" for e in container.env)
+    assert next(e.value for e in container.env if e.name == PLATFORM_IGW_API_KEY_ENV) == (
+        PLATFORM_IGW_API_KEY_PLACEHOLDER
+    )
     assert cfg.config_files[0].path == "/workspace/agent.yaml"
+
+
+def test_build_deployment_config_fabric_direct_endpoint_has_no_placeholder() -> None:
+    config = {
+        **_FABRIC_AGENT_CONFIG,
+        "harnesses": {
+            "main": {
+                "provider": "codex",
+                "model": {
+                    "provider": "openai",
+                    "model": "gpt-test",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key_env": "OPENAI_API_KEY",
+                },
+            }
+        },
+    }
+
+    cfg = build_deployment_config(
+        name="fabric-dep",
+        workspace="default",
+        image="fabric-runtime:latest",
+        port=8000,
+        agent_config=config,
+        platform_base_url="http://host.docker.internal:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="docker",
+    )
+
+    assert not any(e.name in {PLATFORM_IGW_API_KEY_ENV, "OPENAI_API_KEY"} for e in cfg.containers[0].env)
 
 
 def _backend(**deployments_kwargs: Any) -> DeploymentsRunnerBackend:

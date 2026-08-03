@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import shutil
 import socket
@@ -37,6 +38,7 @@ import httpx
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
 from nemo_agents_plugin.entities import AGENT_CONFIG_FILENAME, NEMO_AGENTS_SPEC_CONFIG_FORMAT, DeploymentMode
+from nemo_agents_plugin.fabric.gateway_credentials import platform_gateway_credential_env
 from nemo_agents_plugin.runner.backend import DeploymentInfo, LocalLog, LogLocation, NotYetAvailable, RunnerBackend
 
 # Match characters not safe for filesystem paths.  Deployment names are
@@ -274,7 +276,15 @@ class InMemoryRunnerBackend(RunnerBackend):
             config_path = await asyncio.to_thread(self._write_fabric_config, base_dir, config)
             await validate_platform_agent_config(config, base_dir=base_dir)
             log_path = self.log_path_for(workspace, name)
-            proc = await asyncio.to_thread(self._spawn_fabric, name, config_path, log_path, port)
+            credential_env = platform_gateway_credential_env(config)
+            proc = await asyncio.to_thread(
+                self._spawn_fabric,
+                name,
+                config_path,
+                log_path,
+                port,
+                credential_env,
+            )
         except Exception:
             await asyncio.to_thread(shutil.rmtree, base_dir, ignore_errors=True)
             raise
@@ -438,6 +448,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         config_path: Path,
         log_path: Path,
         port: int,
+        credential_env: dict[str, str] | None = None,
     ) -> subprocess.Popen[bytes]:
         """Spawn the Platform-owned Fabric server on a loopback port."""
         cmd = [
@@ -454,8 +465,10 @@ class InMemoryRunnerBackend(RunnerBackend):
         log_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info("Spawning: %s  (log: %s)", " ".join(cmd), log_path)
         log_file = log_path.open("w")
+        child_env = os.environ.copy()
+        child_env.update(credential_env or {})
         try:
-            return subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+            return subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT, env=child_env)
         finally:
             log_file.close()
 

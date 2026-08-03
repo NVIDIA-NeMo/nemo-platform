@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -131,6 +132,30 @@ def test_startup_loads_and_validates_agent_config(
         assert isinstance(app.state.session_manager, FabricSessionManager)
 
     assert mock_validate_agent_config == [(app.state.agent_config, tmp_path)]
+
+
+def test_main_starts_packaged_server(tmp_path: Path) -> None:
+    config_path = _write_agent_config(tmp_path)
+    app = object()
+
+    with (
+        patch("nemo_agents_plugin.fabric.server.create_fabric_serving_app", return_value=app) as create_app,
+        patch("uvicorn.run") as run,
+    ):
+        result = server.main(
+            [
+                "--agent-config",
+                str(config_path),
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000",
+            ]
+        )
+
+    assert result == 0
+    create_app.assert_called_once_with(config_path, settings=FabricServingSettings())
+    run.assert_called_once_with(app, host="0.0.0.0", port=8000, log_config=None)
 
 
 def test_shutdown_stops_all_registered_runtimes(

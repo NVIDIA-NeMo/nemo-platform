@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from nemo_agents_plugin.agent_config import AgentConfig, load_agent_config
+from nemo_agents_plugin.fabric.gateway_credentials import PLATFORM_IGW_API_KEY_ENV, PLATFORM_IGW_API_KEY_PLACEHOLDER
 from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
 
 
@@ -125,6 +126,9 @@ class TestTranslateAgentConfig:
             fabric_config.models["default"].base_url
             == "http://platform:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
         )
+        assert fabric_config.models["default"].api_key_env == PLATFORM_IGW_API_KEY_ENV
+        assert fabric_config.environment.env == {PLATFORM_IGW_API_KEY_ENV: PLATFORM_IGW_API_KEY_PLACEHOLDER}
+        assert config.models["default"].api_key_env is None
 
     def test_promotes_legacy_model_settings_base_url(self) -> None:
         payload = _example_yaml_config()

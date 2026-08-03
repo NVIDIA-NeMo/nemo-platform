@@ -32,6 +32,7 @@ from nemo_agents_plugin.entities import (
     DeploymentStatus,
     Endpoint,
 )
+from nemo_agents_plugin.fabric.gateway_credentials import platform_gateway_credential_env
 from nemo_agents_plugin.runner.backend import DeploymentInfo, ExternalLog, LogLocation, RunnerBackend
 from nemo_agents_plugin.utils import get_base_url, get_internal_base_url
 from nemo_deployments_plugin.auth_proxy import auth_proxy_port
@@ -320,6 +321,10 @@ def build_deployment_config(
     ]
     if is_fabric:
         env.append(EnvVar(name=_AGENT_CONFIG_PATH_ENV, value=config_path))
+        env.extend(
+            EnvVar(name=env_name, value=env_value)
+            for env_name, env_value in platform_gateway_credential_env(agent_config).items()
+        )
     else:
         env.append(EnvVar(name=_NAT_CONFIG_ENV, value=config_mount_path))
     volume_mounts: list[VolumeMount] = []
@@ -460,9 +465,9 @@ class DeploymentsRunnerBackend(RunnerBackend):
             )
 
         entities = self._entity_client()
-        # The base_url injected into the agent config at agent-create time is the
-        # platform's own base URL, which is not necessarily reachable from inside
-        # the agent container. Rebase it onto a container-reachable address.
+        # Deployment resolution injects the platform's own base URL, which is not
+        # necessarily reachable from inside the agent container. Rebase it onto a
+        # container-reachable address.
         try:
             internal_base_url = self._config.k8s_internal_base_url or get_internal_base_url()
             gateway = resolve_agent_gateway_url(
