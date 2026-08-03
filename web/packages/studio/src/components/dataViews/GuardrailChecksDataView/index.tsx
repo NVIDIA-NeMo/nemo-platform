@@ -59,8 +59,9 @@ export const GuardrailChecksDataView: FC<GuardrailChecksDataViewProps> = ({ chec
 
   const filteredRows = useMemo(() => {
     const search = debouncedSearchBar.trim().toLowerCase();
-    const resultFilter = debouncedColumnFilters.find((filter) => filter.id === RESULT_COLUMN_ID)
-      ?.value as string | undefined;
+    const resultFilter = debouncedColumnFilters.find(
+      (filter) => filter.id === RESULT_COLUMN_ID
+    )?.value;
 
     return rows.filter((row) => {
       if (search) {

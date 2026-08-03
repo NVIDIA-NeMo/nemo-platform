@@ -23,8 +23,6 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-// The tab only ever renders under GuardrailDetailRoute, so exercise it through the real parent —
-// that is what decides whether a config failure ever reaches the tab at all.
 const routes = [
   {
     path: ROUTES.workspace.guardrailDetail,
@@ -54,7 +52,6 @@ describe('GuardrailChecksTab', () => {
     expect(
       await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT })
     ).toBeInTheDocument();
-    // One card per check in the mock page, and the batch-run button reflects the same count.
     expect(screen.getByText('Test 1')).toBeInTheDocument();
     expect(screen.getByText('Test 2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Run 2 Tests/ })).toBeInTheDocument();
@@ -70,8 +67,6 @@ describe('GuardrailChecksTab', () => {
     expect(
       await screen.findByText('Result Summary', undefined, { timeout: XL_SELECTOR_TIMEOUT })
     ).toBeInTheDocument();
-    // Both mock checks appear, each carrying its own verdict: chk-1 ran and was blocked, chk-2
-    // has never run.
     expect(screen.getByRole('row', { name: /My SSN is 123-45-6789/ })).toHaveTextContent('Guarded');
     expect(screen.getByRole('row', { name: /Hello there/ })).toHaveTextContent('Not run');
   });
@@ -86,15 +81,11 @@ describe('GuardrailChecksTab', () => {
         timeout: XL_SELECTOR_TIMEOUT,
       })
     ).toBeInTheDocument();
-    // A failed fetch must not degrade into an empty editor — that reads as "this config has no
-    // test cases", which is how a user ends up recreating checks they still have.
     expect(screen.queryByText('Guardrail Test Cases')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Run 0 Tests/ })).not.toBeInTheDocument();
   });
 
   it('shows the config error instead of the checks UI when the config cannot be loaded', async () => {
-    // The default configs handler 404s unknown names; the parent route owns this error state and
-    // never renders the tab, so the tab must not paint a competing error of its own.
     renderChecks('does-not-exist');
 
     expect(

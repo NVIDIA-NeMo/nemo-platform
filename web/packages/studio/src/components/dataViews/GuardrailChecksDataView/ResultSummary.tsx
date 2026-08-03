@@ -72,15 +72,15 @@ export const ResultSummary: FC<ResultSummaryProps> = ({ checks }) => {
     <Panel slotHeading="Result Summary">
       <Stack gap="density-lg">
         {/* Left → right: guarded (purple), allowed (green), not-run (gray) at the end. */}
-        <div
-          className="flex h-2 w-full overflow-hidden rounded-full bg-surface-sunken"
+        <Flex
+          className=" h-2 overflow-hidden rounded-full bg-surface-sunken"
           role="img"
           aria-label={`${guarded} guarded, ${allowed} allowed, ${notRun} not run`}
         >
           <BarSegment colorClassName={GUARDED_BG} pct={pct(guarded)} />
           <BarSegment colorClassName={ALLOWED_BG} pct={pct(allowed)} />
           <BarSegment colorClassName={NOTRUN_BG} pct={pct(notRun)} />
-        </div>
+        </Flex>
         <Stack gap="density-sm">
           <LegendRow dotClassName={GUARDED_BG} label="Guarded" value={guarded} />
           <LegendRow dotClassName={ALLOWED_BG} label="Allowed" value={allowed} />
