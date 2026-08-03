@@ -23,6 +23,7 @@ members = [
     "models",
     "nemo-agents-example-calculator",
     "nemo-agents-example-email-phishing",
+    "nemo-agents-example-email-security",
     "nemo-agents-plugin",
     "nemo-anonymizer-plugin",
     "nemo-auditor-plugin",
@@ -3816,6 +3817,17 @@ dependencies = [
 requires-dist = [{ name = "nvidia-nat-core", specifier = ">=1.8.0,<1.9" }]
 
 [[package]]
+name = "nemo-agents-example-email-security"
+version = "0.1.0"
+source = { editable = "plugins/nemo-agents/examples/email-security-analyst" }
+dependencies = [
+    { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "nvidia-nat-core", specifier = ">=1.8.0,<1.9" }]
+
+[[package]]
 name = "nemo-agents-plugin"
 version = "0.0.0"
 source = { editable = "plugins/nemo-agents" }
@@ -3827,6 +3839,7 @@ dependencies = [
     { name = "langchain-aws", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-email-phishing", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agents-example-email-security", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-deployments-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric", extra = ["claude", "codex", "deepagents", "relay"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric-adapters-hermes", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -3865,6 +3878,7 @@ requires-dist = [
     { name = "langchain-aws", specifier = "==1.1.0" },
     { name = "nemo-agents-example-calculator", editable = "plugins/nemo-agents/examples/calculator-agent" },
     { name = "nemo-agents-example-email-phishing", editable = "plugins/nemo-agents/examples/email-phishing-analyzer" },
+    { name = "nemo-agents-example-email-security", editable = "plugins/nemo-agents/examples/email-security-analyst" },
     { name = "nemo-deployments-plugin", editable = "plugins/nemo-deployments" },
     { name = "nemo-fabric", extras = ["claude", "codex", "deepagents", "relay"], specifier = ">=0.1.0,<0.2.0" },
     { name = "nemo-fabric-adapters-hermes", marker = "python_full_version < '3.14'", specifier = ">=0.1.0,<0.2.0" },
