@@ -25,6 +25,12 @@ const GuardrailConfigTab = lazy(() =>
   }))
 );
 
+const GuardrailChecksTab = lazy(() =>
+  import('@studio/routes/guardrails/GuardrailChecksTab').then((m) => ({
+    default: m.GuardrailChecksTab,
+  }))
+);
+
 export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
   {
     path: ROUTES.workspace.guardrails,
@@ -43,6 +49,10 @@ export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
       {
         path: ROUTES.workspace.guardrailConfig,
         element: <GuardrailConfigTab />,
+      },
+      {
+        path: ROUTES.workspace.guardrailChecks,
+        element: <GuardrailChecksTab />,
       },
     ],
   },
