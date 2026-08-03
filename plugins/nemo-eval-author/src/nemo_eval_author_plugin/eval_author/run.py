@@ -5,7 +5,7 @@
 
 import importlib
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Protocol, cast
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.client import make_client
@@ -49,7 +49,6 @@ async def run_eval_author(
     config: EvalAuthorConfig,
     agent: Path | str | None = None,
     evaluator_type: EvaluatorType = "harbor",
-    mode: Literal["local", "remote"] = "local",
 ) -> EvalAuthorResult:
     """Build and run the Eval Author against an Insight and evaluator datasets.
 
@@ -64,7 +63,6 @@ async def run_eval_author(
         config: Eval Author tuning parameters.
         agent: Optional agent source override. When absent, the Insight's agent is used.
         evaluator_type: Evaluator adapter used to parse datasets and task template.
-        mode: Backend mode. Currently uses the same backend factory as Experimentalist.
 
     Returns:
         Typed Eval Author output containing the train dataset, validation dataset, and summary.
@@ -80,7 +78,6 @@ async def run_eval_author(
         backend = make_experimentalist_backend(
             client=client,
             experiments_output=str(experiment_dir),
-            mode=mode,
         )
         resolved_insight = await backend.get_insight(workspace=workspace, insight_id=str(insight))
         agent_ref = agent if agent is not None else resolved_insight.agent

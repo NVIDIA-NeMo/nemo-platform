@@ -3,7 +3,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import pytest
 from nemo_eval_author_plugin.eval_author import run as eval_author_run
@@ -25,7 +25,6 @@ class ClosingClient:
 class BackendFactoryCall:
     client: ClosingClient
     experiments_output: str
-    mode: Literal["local", "remote"]
 
 
 @dataclass
@@ -137,9 +136,8 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
         *,
         client: ClosingClient,
         experiments_output: str,
-        mode: Literal["local", "remote"],
     ) -> FakeBackend:
-        backend_calls.append(BackendFactoryCall(client=client, experiments_output=experiments_output, mode=mode))
+        backend_calls.append(BackendFactoryCall(client=client, experiments_output=experiments_output))
         return backend
 
     def build_eval_author_agent(*, experiment_dir: Path, config: EvalAuthorConfig) -> FakeEvalAuthor:
@@ -168,7 +166,6 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
         workspace="workspace-a",
         base_url="http://platform.test",
         config=config,
-        mode="local",
     )
 
     experiment_dir = (tmp_path / "eval_author").resolve()
@@ -177,7 +174,7 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
     assert result.validation_dataset is dataset_factory.validation
     assert litellm_calls == [True]
     assert backend_calls == [
-        BackendFactoryCall(client=client, experiments_output=str(experiment_dir), mode="local"),
+        BackendFactoryCall(client=client, experiments_output=str(experiment_dir)),
     ]
     assert backend.insight_calls == [{"workspace": "workspace-a", "insight_id": "insight-remote-123"}]
     assert backend.agent_code_calls == [
