@@ -26,7 +26,6 @@ import {
 import {
   aggregateScoresOf,
   agentNameForJob,
-  cancelAgentEvalJob,
   evalConfigName,
   fetchAgentEvalBundle,
   fetchAgentEvalJob,
@@ -47,7 +46,7 @@ import {
   getFilesetDetailRoute,
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleX, ClipboardList, FlaskConical, ScrollText } from 'lucide-react';
 import { type FC, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -103,6 +102,7 @@ export const AgentEvaluationDetailRoute: FC = () => {
       await evaluatorCancelAgentEvaluateJob(workspace, jobName);
       toast.success('Job cancelled');
       setCancelModalOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['agent-eval-job', workspace, jobName] });
     } catch {
       toast.error('Failed to cancel job. Please try again.');
     } finally {
@@ -128,19 +128,6 @@ export const AgentEvaluationDetailRoute: FC = () => {
     queryFn: ({ signal }) => fetchAgentEvalBundle(workspace, result?.bundle_ref, signal),
     enabled: !!workspace && isJobTerminal && !!result?.bundle_ref,
     refetchInterval: (query) => (query.state.data == null ? 5_000 : false),
-  });
-
-  const cancelMutation = useMutation({
-    mutationFn: () => cancelAgentEvalJob(workspace, jobName, new AbortController().signal),
-    onSuccess: () => {
-      toast.success(`Cancellation requested for "${jobName}"`);
-      void queryClient.invalidateQueries({
-        queryKey: ['agent-eval-job', workspace, jobName] as const,
-      });
-    },
-    onError: (err: Error) => {
-      toast.error(`Failed to cancel: ${err.message}`);
-    },
   });
 
   if (isLoadingJob && !job) {
@@ -178,17 +165,6 @@ export const AgentEvaluationDetailRoute: FC = () => {
         <PageHeader
           slotHeading={jobName}
           slotDescription="Agent evaluation via nemo-evaluator. Scores aggregate per metric across the evaluated tasks."
-          slotActions={
-            !isJobTerminal && (
-              <Button
-                kind="secondary"
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending}
-              >
-                {cancelMutation.isPending ? 'Cancelling…' : 'Cancel'}
-              </Button>
-            )
-          }
         />
 
         <Grid cols={{ base: 1, xl: 2 }} gap="density-2xl">

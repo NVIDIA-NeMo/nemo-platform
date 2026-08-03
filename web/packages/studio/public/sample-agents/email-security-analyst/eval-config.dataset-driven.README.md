@@ -36,7 +36,7 @@ short, or duplicated a subject were filtered out.
 
 `prompt_template` renders each row into a question plus the message:
 
-```
+```text
 Is this legit?
 
 Subject: {{ item.subject }}
