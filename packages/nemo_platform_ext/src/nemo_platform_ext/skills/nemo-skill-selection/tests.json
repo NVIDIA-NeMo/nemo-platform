@@ -48,6 +48,16 @@
     },
     {
       "type": "negative-control",
+      "prompt": "Write and validate agent.yaml with Codex as the default harness.",
+      "expected_skill_not": "nemo-skill-selection"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Convert this existing NAT workflow YAML to nemo-agents-spec-v1 without deploying it.",
+      "expected_skill_not": "nemo-skill-selection"
+    },
+    {
+      "type": "negative-control",
       "prompt": "Design a system for routing customer queries across three different teams. Help me think through the tradeoffs.",
       "expected_skill_not": "nemo-skill-selection"
     },
