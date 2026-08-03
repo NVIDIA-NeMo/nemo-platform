@@ -1,6 +1,6 @@
 ---
 name: nemo-model-selection
-description: Recommends an LLM for a NeMo Platform agent based on what the agent actually has to do, explained in plain English before any benchmark name appears. Use when the user is choosing a model for a new agent, asking which model to use, or unsure what to put in their spec or NAT workflow YAML. Invoked by nemo-explore at the model question; also runs standalone when the user starts mid-flow.
+description: Recommends an LLM for a NeMo Platform agent based on what the agent actually has to do, explained in plain English before any benchmark name appears. Use when the user is choosing a model for a new agent, assessing a model they already selected, or deciding what belongs in AGENT-SPEC.md or Platform agent.yaml. Invoked by nemo-explore at the model question; also runs standalone when the user starts mid-flow.
 triggers:
   - which model should I use
   - what model is best for this
@@ -22,7 +22,11 @@ allowed-tools: [Read, Bash]
 
 # NeMo Platform model selection
 
-Recommends a model for a new agent (NIM or any other provider configured on the running platform). Plain-English first, benchmark numbers second, never the other way around. Output: one recommended model with a one-sentence reason, ready to drop into a spec or NAT workflow YAML.
+Recommend a model for a new agent from NIM or another provider configured on
+the running Platform. Explain the capability fit first and benchmark evidence
+second. Return the model choice in a form suitable for `AGENT-SPEC.md` and the
+Platform-owned `agent.yaml`. Preserve NAT model configuration only when the
+user is explicitly maintaining a legacy NAT workflow.
 
 ## Pre-flight
 
@@ -41,7 +45,7 @@ python scripts/refresh-benchmark-cache.py
 The cache (schema v6+) carries four things the rest of this skill reads:
 - `models[]` — editorial entries for a curated set of NIMs with `strong_at`, `watch_out_for`, `intent_hints`, `derived_from` lineage, and direct/inferred scores.
 - `upstream_index.bfcl_v4` and `upstream_index.arena_elo` — full BFCL and per-category Arena Elo tables for ~84 and ~360 models respectively. Use these to look up scores for ANY model name, not just the registered ones.
-- `namespace_to_type[]` — namespace-prefix → NAT `_type` value mapping for the YAML emitter.
+- `namespace_to_type[]` — namespace-prefix → NAT `_type` mapping used only for legacy NAT workflow output.
 - `name_decomposition_rules[]` — pattern→hint rules for synthesizing `intent_hints` when an unknown model name lands.
 
 ### 2. Fetch the live model list from the running platform
@@ -257,7 +261,11 @@ If the user asks what benchmark was used or wants the raw number, tell them. Do 
 
 ## Step 4 — Output
 
-Two ready-to-paste blocks. Show whichever fits the user's stage. **When the chosen model's primary-axis score has `source: "inferred_from_ancestor"` or the model relies on `intent_hints` only, include an explicit evidence caveat in the output** — don't let the spec or YAML carry the recommendation forward without surfacing the inference.
+Show the blocks that fit the user's stage. Default machine-readable output to
+Platform `agent.yaml`. **When the chosen model's primary-axis score has
+`source: "inferred_from_ancestor"` or the model relies on `intent_hints` only,
+include an explicit evidence caveat in the human-readable recommendation.** Do
+not encode benchmark commentary as unsupported config fields.
 
 If they're authoring an agent spec for `nemo-spec`:
 
@@ -271,7 +279,39 @@ If they're authoring an agent spec for `nemo-spec`:
 - **Deployment:** <cloud | self-hosted (VRAM)>
 ```
 
-If they're editing a NAT workflow YAML directly (e.g. tweaking the `agent.yml` `nemo-build-agent` produced):
+If they are authoring Platform `agent.yaml`, emit a default model block:
+
+```yaml
+models:
+  default:
+    provider: <configured-provider>
+    model: <model-string>
+    api_key_env: <credential-env-var-if-needed>
+    base_url: <provider-base-url-if-needed>
+```
+
+Use the provider identity configured on the Platform. Omit `api_key_env` and
+`base_url` when the selected provider does not require user-supplied values.
+Keep `base_url` directly in the model block, not under `settings`.
+
+The default model applies to every harness that does not declare its own
+model. Add a harness-local override only when that harness intentionally uses
+a different model or provider:
+
+```yaml
+harnesses:
+  <harness-name>:
+    kind: <harness-kind>
+    model:
+      provider: <configured-provider>
+      model: <model-string>
+```
+
+Do not emit raw Fabric SDK model objects. `nemo-agent-config` owns final YAML
+placement and validation.
+
+If they are explicitly maintaining a legacy NAT workflow YAML, emit the NAT
+compatibility block:
 
 ```yaml
 llms:
@@ -288,9 +328,10 @@ workflow:
   tool_names: []
 ```
 
-### Picking the right `_type`
+### Picking the right legacy NAT `_type`
 
-Match the chosen model's namespace prefix against `namespace_to_type[]` from the cache:
+Only for NAT workflow output, match the chosen model's namespace prefix against
+`namespace_to_type[]` from the cache:
 
 ```txt
 For each rule in cache.namespace_to_type:
@@ -307,9 +348,15 @@ If no rule matches:
 
 Common mappings the cache carries today: `nim/*`, `openai/*`, `anthropic/*`, `bedrock/*`, plus vendor-published NIM names (`qwen/*`, `meta/*`, `nvidia/*`, `microsoft/*`, `mistralai/*`) that route through the NIM provider when served by the platform. Ollama's local endpoint maps to `_type: openai` since it exposes an OpenAI-compatible API.
 
-When the chosen model is non-NIM, also remind the user to set `base_url` and `api_key` (or the equivalent env vars) in the LLM block — those are mandatory for non-NIM providers and aren't auto-filled like they are for the platform's NIM defaults.
+For Platform `agent.yaml`, represent credentials with `api_key_env` and put
+`base_url` directly in the model block. For a legacy NAT workflow, use the
+provider fields required by that NAT LLM component.
 
-### Pair the model with the right agent type
+### Pair a legacy NAT model with the right workflow type
+
+Use this table only when maintaining NAT workflow YAML. Harness selection for
+`nemo-agents-spec-v1` belongs to `nemo-agent-config` and must not be inferred
+from a NAT workflow type.
 
 | What the agent needs to do | Use |
 |---|---|
@@ -354,13 +401,19 @@ If `nemo-explore` invoked this skill, return control to `nemo-explore` with the 
 - Never name a model before all three profile questions are answered.
 - Never lead with a model name, benchmark name, or score.
 - Never recommend a cloud-only model when the user said self-hosted.
-- Never write `model_name` (YAML) or "NIM model id" (spec) without showing the plain-English reason alongside it.
+- Never emit a model identifier without showing the plain-English reason alongside it.
 - **When the primary candidate's evidence is anything other than `direct`, the model name does not appear in your response until the user has resolved the trade-off in Pattern B.** Anchoring is the failure mode this guards against — users default to the first model named regardless of caveats. The withhold is non-negotiable.
-- When emitting the spec or YAML block, always include an Evidence line/comment naming the source quality. Inferred or name-only choices that propagate downstream without that signal mislead the build skill and the user both.
+- When emitting the spec recommendation, always include an Evidence line naming
+  the source quality. For `agent.yaml`, present the evidence next to the YAML
+  rather than inventing a config field.
 
 ## Gotchas
 
 - **"You decide" needs a committed default, not a silent fill-in.** Same rule as `nemo-explore`. Pick something, name it, tell the user.
 - **The platform default is `nvidia/llama-3.3-nemotron-super-49b-v1`.** If `nemo-explore` already captured "cloud, no preference", you can route there without re-profiling — but still explain *why* in plain English instead of just naming it.
-- **Two model name formats coexist.** Entity-name with hyphens for NAT YAML / `nemo chat` / `nemo agents`. API-Catalog format with slashes for Data Designer. Use the slashed form (`qwen/qwen3-235b-a22b`) in NAT YAML for cloud NIMs; the build skill converts when needed.
+- **Do not transform model IDs by punctuation convention.** Use the identifier
+  returned by the selected live provider or Platform model listing and pair it
+  with the correct `provider`. Legacy NAT components and Data Designer may use
+  different provider-specific identifiers; preserve the identifier required by
+  that consumer instead of assuming the build skill converts it.
 - **Watch the deployment column.** A 235B cloud-API recommendation aimed at a self-hoster with a 24 GB GPU is the most common mismatch and the easiest to catch by re-reading Step 1.

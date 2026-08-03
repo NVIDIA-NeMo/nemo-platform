@@ -67,9 +67,24 @@
       "expected_skill": "nemo-model-selection"
     },
     {
+      "type": "implicit",
+      "prompt": "Which model should go in models.default for this Platform agent.yaml?",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Should this Hermes harness override the agent's default model or reuse it?",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
       "type": "contextual",
       "prompt": "I've already picked gpt-4o-mini. Tell me what I'm trading off vs alternatives.",
       "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Validate the completed agent.yaml and finish its harness configuration.",
+      "expected_skill_not": "nemo-model-selection"
     },
     {
       "type": "negative-control",
