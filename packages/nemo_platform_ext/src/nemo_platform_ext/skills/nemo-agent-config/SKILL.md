@@ -62,24 +62,47 @@ The canonical remote config location is derivable from workspace and agent name:
 
 1. Confirm the agent name and config path. Default to
    `agents/<agent-name>-spec/agent.yaml`.
-2. Start from `references/templates/agent.yaml` unless the user is editing an
-   existing file. Replace every model placeholder before validation.
-3. Select one supported harness:
+2. Select one supported harness:
    - `codex`
    - `hermes`
    - `deepagents`
    - `claude`
-   Remove the unselected harness blocks from the template.
-4. Invoke `nemo-model-selection` to select and compatibility-test the model for
+3. Invoke `nemo-model-selection` to select and compatibility-test the model for
    the chosen harness. Configure `models.default` only after that skill returns
    a verified provider and exact model name. Add a harness-local `model`
    override only when that harness intentionally uses a different verified
    provider, model, credential env var, or base URL.
-5. Add system instructions under `instructions.system.content`.
-6. Add optional skills, MCP servers, blocked tools, environment directories, and
+4. Start from `references/templates/agent.yaml` unless the user is editing an
+   existing file. Write only the verified model fields returned in Step 3.
+5. Remove every unselected harness block and every remaining placeholder. Keep
+   an additional harness only when the user explicitly requests it and its
+   model configuration has been separately verified.
+6. Add system instructions under `instructions.system.content`.
+7. Add optional skills, MCP servers, blocked tools, environment directories, and
    telemetry using only fields in the template.
-7. Keep all local file paths relative to the directory containing `agent.yaml`.
-8. Validate by running `nemo agents create` against the config.
+8. Keep all local file paths relative to the directory containing `agent.yaml`.
+9. Validate by running `nemo agents create` against the config. Do not treat a
+   successful create as validation of an unused or untested harness.
+
+For the standard subprocess or default-image deployment path, keep
+`skills.paths` empty. Registration validates relative skill paths against the
+authoring directory, but these deployment paths currently materialize only
+`agent.yaml` and do not stage the referenced directories.
+
+When non-empty `skills.paths` are required, each path must be relative to
+`agent.yaml`, remain inside its packaging context, and contain `SKILL.md`.
+Require the explicit image-packaging path before deployment:
+
+```bash
+IMAGE_TAG="${AGENT_NAME}:local"
+.venv/bin/nemo agents package \
+  --agent "agents/$AGENT_NAME-spec/agent.yaml" \
+  --tag "$IMAGE_TAG"
+```
+
+Deploy that image with `--mode docker --image "$IMAGE_TAG"`; publish it first
+and use the published tag for Kubernetes. Do not use a subprocess or
+default-image deployment for an agent with relative `skills.paths`.
 
 ## Migrating from legacy NAT workflow YAML
 
@@ -104,7 +127,7 @@ workflow fields into `harnesses.codex.settings`:
 |---|---|
 | `working_directory` | `environment.workspace` |
 | `sandbox_mode` | `harnesses.codex.settings.sandbox` |
-| `approval_policy: never` | `harnesses.codex.settings.approval_mode: deny_all` |
+| `approval_policy: never` | `harnesses.codex.settings.approval_mode: deny_all` when the installed descriptor declares it; otherwise omit |
 | `relay_atof_output_dir` | `environment.artifacts`, `telemetry.output_dir`, and `telemetry.atof` |
 | `skip_git_repo_check` | Omit; removed CLI-only setting |
 | `timeout_seconds` | Omit unless the installed Codex adapter settings schema declares it |
@@ -115,7 +138,8 @@ Treat the installed Fabric adapter descriptor's `settings_schema` as
 authoritative. Only place keys declared under its `properties` in
 `harnesses.<name>.settings`; do not preserve an unsupported NAT setting merely
 because it existed in the source workflow. Surface omitted behavior in the
-migration summary.
+migration summary. For Codex, map `never` to `deny_all` only when
+`settings_schema.properties.approval_mode.enum` includes `deny_all`.
 
 If behavior does not map cleanly, say so directly and choose one:
 
@@ -233,12 +257,10 @@ for explicit confirmation, and wait for approval before running it.
   --name "$AGENT_NAME-deployment"
 ```
 
-After deployment begins, wait for it and invoke it without another confirmation:
+The deploy command waits for `running` by default. After it succeeds, invoke the
+same explicitly named deployment without another confirmation:
 
 ```bash
-.venv/bin/nemo agents deployments wait \
-  --agent "$AGENT_NAME"
-
 .venv/bin/nemo agents invoke \
   --agent-deployment "$AGENT_NAME-deployment" \
   --input "<test prompt>"
@@ -273,7 +295,7 @@ accessible host only when the user explicitly asks to expose the server:
 | `extra fields not permitted` | Unknown Platform config field | Remove it or map it into a supported field |
 | `default_harness must reference one of harnesses` | `default_harness` does not match a key under `harnesses` | Rename one side so they match |
 | `Unsupported harness kind` | Harness kind is not supported by the Platform translator | Pick `codex`, `hermes`, `deepagents`, or `claude` |
-| Local file path missing in deployment | Referenced prompts, skills, or assets were not staged | Keep paths relative and ensure referenced files are present in the agent package or fileset before deployment |
+| Local file path missing in deployment | Referenced prompts, skills, or assets were not staged | Keep paths relative and package the complete agent bundle into the deployed image |
 | Adapter import or binary missing | Selected harness dependency is not installed in the runtime | Install the selected adapter/runtime dependency or choose a harness already available |
 
 ## Hard rules

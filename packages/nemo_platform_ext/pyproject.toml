@@ -88,10 +88,11 @@ package_root = "packages/nemo_platform_ext"
 # Globs are evaluated per top-level module (e.g. `skills/`, `cli/`, `quickstart/`).
 # `**/*.md` recursively includes SKILL.md plus any companion markdown files
 # skills ship under `resources/` (e.g. notes, sub-docs, prompts). Add further
-# extension globs here as new companion file types are needed (`.json`,
-# `.yaml`, `.txt`, ...); we avoid `**/*` because dev environments leave
+# extension globs here as new companion file types are needed. Runtime JSON
+# assets live under `references/`; skill `tests.json` manifests remain
+# source-only. We avoid `**/*` because dev environments leave
 # `__pycache__/*.pyc` in source modules, which the vendor tool doesn't filter.
-included_paths = ["**/*.py", "**/*.md", "**/*.yaml"]
+included_paths = ["**/*.py", "**/*.md", "**/*.yaml", "**/*.yml", "**/references/**/*.json"]
 replace_client_inits_from = "client/enhanced.py"
 vendor_tests = true
 tests_path = "tests"

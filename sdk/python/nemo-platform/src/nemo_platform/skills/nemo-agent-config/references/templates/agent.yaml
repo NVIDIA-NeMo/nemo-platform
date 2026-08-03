@@ -48,6 +48,12 @@ skills:
 
 mcp:
   servers: {}
+  # To configure a server, replace `servers: {}` with:
+  # servers:
+  #   github:
+  #     transport: streamable-http
+  #     url: ${GITHUB_MCP_URL}
+  #     exposure: harness_native
 
 tools:
   blocked: []

@@ -38,9 +38,15 @@ Invoke an existing NeMo agent through a deployment or directly from a local YAML
 Choose the invocation mode from the user's target:
 
 - **Local one-shot:** the user provides an `agent.yaml` or legacy NAT workflow
-  YAML path. No deployment is required, but the selected model must already
-  have a directly usable endpoint and credentials because this path does not
-  apply Platform IGW normalization.
+  YAML path. Read the config format and model settings before deciding whether
+  Platform readiness is required:
+  - A Platform-owned `nemo-agents-spec-v1` config invokes Fabric directly and
+    does not require Platform readiness.
+  - A legacy NAT config requires Platform readiness when any `openai` or `nim`
+    LLM omits `base_url`; local invocation injects the Platform IGW URL for
+    those entries.
+  - A legacy NAT config whose applicable LLMs all provide explicit `base_url`
+    values may invoke those endpoints directly without Platform readiness.
 - **Deployed agent:** the user names a deployment or asks to use an already deployed agent. Confirm the Platform is up and list deployments:
 
 ```bash
@@ -53,15 +59,23 @@ curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o 
 
 Do not use `nemo services status` for this check; it reports stale "running" from held locks after the process has died.
 
-For a deployed invocation, if `PLATFORM_DOWN`, route to `nemo-setup` and stop. If `PLATFORM_WEDGED`, route to `nemo-status` and stop. Do not require these checks for a local one-shot invocation.
+Require these checks for a deployed invocation and for a local NAT invocation
+that depends on injected Platform IGW routing. If `PLATFORM_DOWN`, route to
+`nemo-setup` and stop. If `PLATFORM_WEDGED`, route to `nemo-status` and stop. Do
+not require the checks for Platform-owned Fabric local invocation or a NAT
+config with directly usable explicit endpoints.
 
 ## What you do
 
 1. **Find the target.**
-   - Local YAML path supplied: use that config.
-   - Deployment named: confirm it is `running` and use it.
-   - One running deployment and no target named: use it.
-   - Multiple running deployments: list their names and ask the user which one.
+   - Local YAML path supplied: set `INVOCATION_MODE=local` and
+     `AGENT_CONFIG_PATH` to that config.
+   - Deployment named: confirm it is `running`, set
+     `INVOCATION_MODE=deployed`, and set `DEPLOYMENT_NAME` to its name.
+   - One running deployment and no target named: use it and set the deployed
+     mode variables above.
+   - Multiple running deployments: list their names, ask the user which one,
+     then set the deployed mode variables above.
    - No running deployments: report that no deployed agent is available. Do not silently replace an agent invocation with `nemo chat`.
 
 2. **Announce.** Say one of:
@@ -92,7 +106,12 @@ For a deployed invocation, if `PLATFORM_DOWN`, route to `nemo-setup` and stop. I
 A "successful" invocation requires both: (a) the CLI returns exit code 0, and (b) the response body is non-empty. An empty body on a question the spec says the agent should handle is a quality signal, not a success.
 
 ```bash
-RESP=$(.venv/bin/nemo agents invoke --agent-deployment <deployment-name> --input "<query>")
+if [ "$INVOCATION_MODE" = "local" ]; then
+  RESP=$(.venv/bin/nemo agents invoke --agent-config "$AGENT_CONFIG_PATH" --input "<query>")
+else
+  RESP=$(.venv/bin/nemo agents invoke --agent-deployment "$DEPLOYMENT_NAME" --input "<query>")
+fi
+
 RC=$?
 if [ $RC -ne 0 ]; then
   echo "INVOKE_FAILED (exit $RC)"
@@ -102,6 +121,8 @@ else
   echo "OK"
 fi
 ```
+
+Do not switch targets for verification.
 
 If `INVOKE_FAILED` or `EMPTY_RESPONSE`: surface that to the user and stop. Do not claim the invocation succeeded.
 

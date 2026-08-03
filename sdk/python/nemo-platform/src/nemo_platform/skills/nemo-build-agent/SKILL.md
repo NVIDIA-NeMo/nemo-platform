@@ -142,6 +142,24 @@ system instructions, skills, MCP servers, tools, environment paths, and
 telemetry. Keep every local path relative to the directory containing
 `agent.yaml`.
 
+Before registration, inspect `skills.paths`:
+
+- If it is empty, continue with the normal deployment lifecycle below.
+- If it is non-empty, verify every relative directory is inside the agent
+  packaging context and contains `SKILL.md`. Package the complete bundle before
+  deployment:
+
+  ```bash
+  IMAGE_TAG="${AGENT_NAME}:local"
+  .venv/bin/nemo agents package \
+    --agent "agents/$AGENT_NAME-spec/agent.yaml" \
+    --tag "$IMAGE_TAG"
+  ```
+
+  Use the packaged-image deploy command below. Do not use subprocess deployment
+  or the default container image because those paths materialize only
+  `agent.yaml` and do not stage relative skill directories.
+
 ### Compatibility: existing NAT workflow YAML
 
 If the user selected migration, preserve the original YAML. If a workflow,
@@ -174,6 +192,20 @@ confirmation immediately before running it:
   --agent "$AGENT_NAME" \
   --name "$DEPLOYMENT_NAME"
 ```
+
+If `skills.paths` is non-empty, show this command instead and ask for explicit
+confirmation immediately before running it:
+
+```bash
+.venv/bin/nemo agents deploy \
+  --agent "$AGENT_NAME" \
+  --name "$DEPLOYMENT_NAME" \
+  --mode docker \
+  --image "$IMAGE_TAG"
+```
+
+For Kubernetes, publish the packaged image and replace `docker` and
+`$IMAGE_TAG` with `k8s` and the published image tag.
 
 These commands assume the Agent and deployment are absent. If pre-flight found
 existing resources, complete the selected lifecycle branch before running them.
@@ -315,19 +347,35 @@ Poll until the job reaches `completed` or `failed`, then download aggregate
 scores. Show the score table and compare it with the success bar in
 `AGENT-SPEC.md`.
 
+```bash
+for i in $(seq 1 24); do
+  status=$(.venv/bin/nemo evaluation benchmark-jobs get-status "$AGENT_NAME-eval" 2>/dev/null)
+  echo "$status"
+  echo "$status" | grep -qE "completed|failed" && break
+  sleep 10
+done
+
+.venv/bin/nemo evaluation benchmark-jobs results aggregate-scores download \
+  "$AGENT_NAME-eval"
+```
+
 ## Step 5: Guardrails (optional)
 
-If the spec defines safety or policy constraints, invoke `nemo-guardrails` for
-the `nemo-agents-spec-v1` path. Apply the resulting Platform guardrail
-integration without adding unsupported fields to `agent.yaml`. Follow the
-confirmed replacement branch before creating and deploying the changed Agent.
+For `nemo-agents-spec-v1`, `AgentConfig` has no guardrail field and the current
+skills do not define a supported composition between an Agent and an IGW
+guardrailed VirtualModel. Do not add guardrail fields to `agent.yaml` or claim
+that guardrails are attached. If the spec requires guardrails, report this as an
+unmet requirement and stop before sign-off. `nemo-guardrails` may be used to
+configure IGW VirtualModel middleware as a separate workflow, but do not treat
+it as integrated with the Agent until its model routing has been explicitly
+configured and validated.
 
 For a legacy NAT workflow, keep the NAT compatibility behavior: add supported
 guardrail `intercepts` to the NAT workflow YAML, then follow the confirmed
 replacement branch before creating and deploying it again. Never add NAT
 `intercepts` to a `nemo-agents-spec-v1` config.
 
-For either path, test one adversarial prompt and one legitimate prompt. Report
+For the NAT path, test one adversarial prompt and one legitimate prompt. Report
 both responses and do not continue to sign-off until the expected policy is
 enforced without blocking the legitimate request.
 
@@ -345,7 +393,7 @@ the sign-off returns an actual model response.
 | Agents plugin unavailable | `plugins/nemo-agents` is not installed | Route to `nemo-setup` |
 | Config validation fails | Config does not match its declared format | Use `nemo-agent-config` for `nemo-agents-spec-v1`; use NAT schema rules only for NAT YAML |
 | Deployment reaches `failed` | Runtime, adapter, image, or config startup failure | Run `.venv/bin/nemo agents deployments get "$DEPLOYMENT_NAME"` and `.venv/bin/nemo agents logs "$DEPLOYMENT_NAME"` |
-| Referenced file is missing | Path is outside or absent from the staged agent directory | Keep paths relative to the config and ensure the file is in the agent package |
+| Referenced file is missing | Path is outside or absent from the staged agent directory | Keep paths relative to the config and package the complete agent bundle into the deployed image |
 | Adapter or binary is missing | Selected harness dependency is not installed | Install the matching adapter/runtime package or select an available harness |
 | Empty response | Runtime invocation failed or the selected configuration is incomplete | Inspect deployment logs and the returned structured error |
 | Eval job fails | Dataset reference or model ID is invalid | Get the benchmark job details and correct the named input |
