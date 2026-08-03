@@ -67,6 +67,7 @@ from nmp.core.files.app.external_hosts import (
 from nmp.core.files.app.file_lock import FileLockManager
 from nmp.core.files.app.profile_job import (
     find_active_profile_job,
+    is_cancelled_job,
     is_failed_job,
     scan_profile_jobs,
     submit_profile_job,
@@ -425,10 +426,11 @@ async def get_fileset_profile(
     Get the stored dataset profile for a fileset, with the current profiling state.
 
     ``state`` is ``ready`` (a profile is available), ``running`` (a job is in flight),
-    ``failed`` (the last job errored or was cancelled and no profile exists), or ``absent``
-    (never profiled). A stored profile short-circuits to ``ready`` without querying the Jobs
-    service, so a re-profile running over an existing profile still reads ``ready`` (with the
-    current profile) and GET stays resilient to a Jobs-service outage.
+    ``cancelled`` (the last job was stopped deliberately and no profile exists), ``failed`` (the
+    last job errored and no profile exists), or ``absent`` (never profiled). A stored profile
+    short-circuits to ``ready`` without querying the Jobs service, so a re-profile running over an
+    existing profile still reads ``ready`` (with the current profile) and GET stays resilient to a
+    Jobs-service outage.
     """
     logger.info(f"GET /filesets/{name}/profile - workspace={workspace}")
     fileset = await get_fileset(workspace, name, entity_store)
@@ -442,8 +444,11 @@ async def get_fileset_profile(
     jobs = await scan_profile_jobs(sdk, workspace=workspace, fileset_name=name)
     if jobs.active is not None:
         return FilesetProfileResponse(state="running", job_name=jobs.active.name)
-    if jobs.latest_terminal is not None and is_failed_job(jobs.latest_terminal):
-        return FilesetProfileResponse(state="failed", job_name=jobs.latest_terminal.name)
+    if jobs.latest_terminal is not None:
+        if is_cancelled_job(jobs.latest_terminal):
+            return FilesetProfileResponse(state="cancelled", job_name=jobs.latest_terminal.name)
+        if is_failed_job(jobs.latest_terminal):
+            return FilesetProfileResponse(state="failed", job_name=jobs.latest_terminal.name)
     return FilesetProfileResponse(state="absent")
 
 

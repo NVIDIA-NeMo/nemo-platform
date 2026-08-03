@@ -47,15 +47,21 @@ class SubmitProfileJobResponse(BaseModel):
 class FilesetProfileResponse(BaseModel):
     """The stored dataset profile plus the status of profiling for this fileset."""
 
-    state: Literal["ready", "running", "failed", "absent"] = Field(
+    state: Literal["ready", "running", "cancelled", "failed", "absent"] = Field(
         description=(
             "ready (a profile exists) | running (a job is in flight) | "
-            "failed (the last job errored or was cancelled and no profile exists) | absent (never profiled)."
+            "cancelled (the last job was stopped deliberately and no profile exists; just re-run) | "
+            "failed (the last job errored and no profile exists; worth investigating) | "
+            "absent (never profiled). `cancelled` is kept apart from `failed` because nothing is "
+            "broken and the remedy differs; callers that do not care can treat the two alike."
         )
     )
     job_name: Optional[str] = Field(
         default=None,
-        description="Name of the profiling job behind the state: the in-flight job when running, the failed job when failed.",
+        description=(
+            "Name of the profiling job behind the state: the in-flight job when running, and the "
+            "job that ended when cancelled or failed."
+        ),
     )
     profile: Optional[DatasetProfile] = Field(default=None, description="The stored profile, present when ready.")
 
