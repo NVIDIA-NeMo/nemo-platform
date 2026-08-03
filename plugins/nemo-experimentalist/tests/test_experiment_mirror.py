@@ -105,7 +105,12 @@ async def test_project_candidate_upserts_experiment_per_evaluated_split():
     assert kwargs["name"] == "opt-run-1-agent-0-train"
     assert kwargs["status"] == "baseline"
     # metadata is identity-only — reward/trials are NOT copied (§4.3)
-    assert kwargs["metadata"] == {"generation": "0", "candidate_id": "agent-0", "split": "train"}
+    assert kwargs["metadata"] == {
+        "generation": "0",
+        "candidate_id": "id-agent-0",
+        "candidate_label": "agent-0",
+        "split": "train",
+    }
     assert "aggregate_metrics" not in kwargs["metadata"] and "trials" not in kwargs["metadata"]
     # validation not evaluated → not created
     assert experiments.create.await_count == 1
@@ -129,7 +134,12 @@ async def test_project_candidate_creates_insight_experiment_when_evaluated():
     kwargs = experiments.create.await_args.kwargs
     assert kwargs["name"] == "opt-run-1-agent-0-insight"
     assert kwargs["dataset_name"] == "insight"
-    assert kwargs["metadata"] == {"generation": "0", "candidate_id": "agent-0", "split": "insight"}
+    assert kwargs["metadata"] == {
+        "generation": "0",
+        "candidate_id": "id-agent-0",
+        "candidate_label": "agent-0",
+        "split": "insight",
+    }
 
 
 async def test_project_candidate_conflict_updates_experiment():
@@ -145,7 +155,12 @@ async def test_project_candidate_conflict_updates_experiment():
     # update is a full-replace: dataset_version must be re-supplied (symmetric with create)
     kwargs = experiments.update.await_args.kwargs
     assert kwargs["dataset_version"] == "v1"
-    assert kwargs["metadata"] == {"generation": "0", "candidate_id": "agent-0", "split": "train"}
+    assert kwargs["metadata"] == {
+        "generation": "0",
+        "candidate_id": "id-agent-0",
+        "candidate_label": "agent-0",
+        "split": "train",
+    }
 
 
 async def test_parent_experiment_id_cache_hit():
@@ -161,7 +176,7 @@ async def test_parent_experiment_id_cache_hit():
     await mirror.project_candidate(ancestor)
     child = _cand(
         label="agent-1",
-        ancestor="agent-0",
+        ancestor="id-agent-0",
         generation=1,
         rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])},
     )
@@ -171,23 +186,28 @@ async def test_parent_experiment_id_cache_hit():
     experiments.retrieve.assert_not_awaited()  # resolved from cache, no lookup
 
 
-async def test_parent_experiment_id_fallback_retrieve():
+async def test_parent_experiment_id_omits_the_link_for_an_unprojected_ancestor():
+    """``ancestor`` is an id and Experiment names are built from labels.
+
+    Without having projected the ancestor, this mirror cannot name its Experiment, so it
+    omits the lineage link rather than composing a name from an id that was never used
+    to build one. Projection is best-effort and one-way, so a missing link is the
+    honest outcome.
+    """
     groups = AsyncMock()
     groups.retrieve.return_value = SimpleNamespace(id="grp-1", name="opt-run-1")
     experiments = AsyncMock()
-    experiments.retrieve.return_value = SimpleNamespace(id="exp-ancestor-train")
     experiments.create.return_value = SimpleNamespace(id="exp-child-train")
     mirror = ExperimentMirror(_client(groups, experiments), workspace="default")
     child = _cand(
         label="agent-1",
-        ancestor="agent-0",
+        ancestor="id-agent-0",
         generation=1,
         rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])},
     )
     await mirror.project_candidate(child)
-    experiments.retrieve.assert_awaited()
-    kwargs = experiments.create.await_args.kwargs
-    assert kwargs["parent_evaluation_id"] == "exp-ancestor-train"
+    experiments.retrieve.assert_not_awaited()
+    assert isinstance(experiments.create.await_args.kwargs["parent_evaluation_id"], type(omit))
 
 
 async def test_parent_experiment_id_not_found_omits():
@@ -199,7 +219,7 @@ async def test_parent_experiment_id_not_found_omits():
     mirror = ExperimentMirror(_client(groups, experiments), workspace="default")
     child = _cand(
         label="agent-1",
-        ancestor="agent-0",
+        ancestor="id-agent-0",
         generation=1,
         rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])},
     )

@@ -73,8 +73,14 @@ def test_group_metadata_omits_winner_until_present():
 
 def test_experiment_metadata_is_identity_only():
     md = m.experiment_metadata(_cand(generation=1), "train")
-    # generation stringified for dict[str, str] metadata; no reward/trials copied
-    assert md == {"generation": "1", "candidate_id": "agent-0", "split": "train"}
+    # generation stringified for dict[str, str] metadata; no reward/trials copied.
+    # Both id and label: ancestor references are ids, Experiment names use labels.
+    assert md == {
+        "generation": "1",
+        "candidate_id": "id-agent-0",
+        "candidate_label": "agent-0",
+        "split": "train",
+    }
 
 
 def test_pseudo_source_link_is_a_url():
