@@ -59,15 +59,23 @@ describe('bareName', () => {
 });
 
 describe('buildAgentTarget', () => {
-  it('targets the non-streaming /generate endpoint of the agent', () => {
+  it('targets the streaming NAT /generate/full endpoint of the agent', () => {
     const target = buildAgentTarget('ws-a', 'support-bot');
     expect(target.kind).toBe('agent');
-    expect(target.agent.format).toBe('generic');
-    expect(target.agent.stream).toBe(false);
-    expect(target.agent.response_path).toBe('$.value');
-    expect(target.agent.body).toEqual({ input_message: '{{ instruction }}' });
-    expect(target.agent.url).toContain('/agents/support-bot/-/generate');
-    expect(target.agent.url).not.toContain('/generate/full');
+    expect(target.agent.format).toBe('nemo_agent_toolkit');
+    if (target.agent.format !== 'nemo_agent_toolkit') {
+      throw new Error('expected a NeMo Agent Toolkit target');
+    }
+    expect(target.agent.name).toBe('support-bot');
+    expect(target.agent.url).toContain('/agents/support-bot/-');
+    expect(target.agent.url).not.toContain('/generate');
+    expect(target.agent.nat).toEqual({
+      endpoint: '/generate/full',
+      request_mode: 'input_message',
+      query_params: { filter_steps: 'none' },
+      response_path: '$.value',
+      response_aggregation: 'concat',
+    });
   });
 });
 

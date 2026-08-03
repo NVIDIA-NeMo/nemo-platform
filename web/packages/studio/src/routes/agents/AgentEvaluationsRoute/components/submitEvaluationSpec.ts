@@ -3,6 +3,7 @@
 
 import { FILESET_NAME_MAX_LENGTH, toValidFilesetName } from '@nemo/common/src/utils/filesetName';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
+import type { AgentTargetInput } from '@nemo/sdk/generated/evaluator/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 
 /** Sentinel ``evalConfig`` value that switches the form into create mode. */
@@ -75,7 +76,7 @@ export interface PersistedEvalSpec {
 
 export interface SubmitSelections {
   workspace: string;
-  /** Agent (bare name) to evaluate; used to build the generic target. */
+  /** Agent (bare name) to evaluate; used to build the NAT target. */
   agent: string;
   /** Eval-config fileset name, stored under spec.benchmark.eval_config_fileset for display. */
   filesetName?: string;
@@ -85,18 +86,25 @@ export interface SubmitSelections {
 export const bareName = (value: string): string =>
   value.includes('/') ? (value.split('/').pop() ?? value) : value;
 
-/** The generic agent target: the deployed agent's non-streaming ``/generate``. */
-export const buildAgentTarget = (workspace: string, agent: string) => ({
-  kind: 'agent' as const,
-  agent: {
-    format: 'generic' as const,
-    url: `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/agents/${encodeURIComponent(bareName(agent))}/-/generate`,
-    name: bareName(agent),
-    body: { input_message: '{{ instruction }}' },
-    response_path: '$.value',
-    stream: false,
-  },
-});
+/** The NAT agent target: the evaluator streams the deployed agent's ``/generate/full``. */
+export const buildAgentTarget = (workspace: string, agent: string): AgentTargetInput => {
+  const name = bareName(agent);
+  return {
+    kind: 'agent',
+    agent: {
+      format: 'nemo_agent_toolkit',
+      url: `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/agents/${encodeURIComponent(name)}/-`,
+      name,
+      nat: {
+        endpoint: '/generate/full',
+        request_mode: 'input_message',
+        query_params: { filter_steps: 'none' },
+        response_path: '$.value',
+        response_aggregation: 'concat',
+      },
+    },
+  };
+};
 
 /** Set the metric's judge model to a ``workspace/name`` ModelRef (resolved to a
  *  reachable Model server-side). Does not mutate input. */
