@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Badge, Stack, Text } from '@nvidia/foundations-react-core';
-import { formatScore, scoreColor } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
+import { formatScore, scoreColor } from '@studio/components/evaluation/utils';
 import { type FC } from 'react';
 
 interface MetricScoreChipProps {

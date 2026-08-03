@@ -36,11 +36,17 @@ import {
 } from '@studio/util/buildSuggestedModelOptions';
 import { loadSampleAgentModelName } from '@studio/util/sampleAgents';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { type FC, useEffect, useRef, useState } from 'react';
+import { type FC, useEffect, useMemo, useState } from 'react';
 import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 
-export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
+// Since useForm is called in the component itself, key-based remount needs a thin outer wrapper
+// otherwise there's nothing to put the key on
+export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = (props) => (
+  <CreateExampleAgentModalInner key={props.open ? props.workspace : 'closed'} {...props} />
+);
+
+const CreateExampleAgentModalInner: FC<CreateExampleAgentModalProps> = ({
   open,
   onClose,
   workspace,
@@ -55,7 +61,7 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
     { page_size: DEFAULT_LARGE_PAGE_SIZE },
     { query: { enabled: open && !!workspace } }
   );
-  const models = modelsPage?.data ?? [];
+  const models = useMemo(() => modelsPage?.data ?? [], [modelsPage?.data]);
   const modelOptions = buildSuggestedModelOptions(models);
   const exampleItems = SAMPLE_AGENTS.map((example) => ({
     value: example.key,
@@ -93,7 +99,6 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
 
   const {
     control,
-    reset: resetForm,
     setValue,
     handleSubmit,
     formState: { errors },
@@ -113,35 +118,21 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
     staleTime: Infinity,
   });
 
-  const seededRef = useRef(false);
-  useEffect(() => {
-    if (!open) {
-      seededRef.current = false;
-      resetForm({ exampleKey: DEFAULT_SAMPLE_AGENT_KEY, modelName: '' });
-      return;
-    }
-    if (seededRef.current) return;
-    const defaultModel = pickModelNameForExample(models, preferredModel);
-    if (defaultModel) {
-      resetForm({ exampleKey: DEFAULT_SAMPLE_AGENT_KEY, modelName: defaultModel });
-      seededRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, modelsPage, preferredModel, resetForm]);
+  const defaultModel = useMemo(
+    () => pickModelNameForExample(models, preferredModel),
+    [models, preferredModel]
+  );
 
   useEffect(() => {
-    if (!open || !seededRef.current) return;
-    const nextModel = pickModelNameForExample(models, preferredModel);
-    if (nextModel) setValue('modelName', nextModel, { shouldValidate: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exampleKey, preferredModel]);
+    if (!defaultModel) return;
+    setValue('modelName', defaultModel, { shouldValidate: true });
+  }, [defaultModel, setValue]);
 
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
 
   const reset = () => {
     resetMutation();
     setLoadError(undefined);
-    resetForm({ exampleKey: DEFAULT_SAMPLE_AGENT_KEY, modelName: '' });
   };
 
   const resetAndClose = () => {

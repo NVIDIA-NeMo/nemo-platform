@@ -17,6 +17,7 @@ import {
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
+import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
 import { ChatPlaygroundContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ChatPlaygroundContent';
 import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
@@ -27,7 +28,6 @@ import { DeploymentsTab } from '@studio/routes/agents/AgentDetailRoute/Deploymen
 import { DetailsTab } from '@studio/routes/agents/AgentDetailRoute/DetailsTab';
 import { EvaluationsTab } from '@studio/routes/agents/AgentDetailRoute/EvaluationsTab';
 import { useAgentDetails } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
-import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
 import { getAgentMonitorRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { Activity, ClipboardCheck, Dot, Rocket } from 'lucide-react';
 import { type FC, useRef, useState } from 'react';

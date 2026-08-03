@@ -35,12 +35,12 @@ import {
   parseBundleRef,
 } from '@studio/api/evaluation/agent-evaluations';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { AgentEvalTaskResultsPanel } from '@studio/components/evaluation/AgentEvalTaskResultsPanel';
+import { EvalAggregateScoresTable } from '@studio/components/evaluation/EvalAggregateScoresTable';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { AgentEvalScoresPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/AgentEvalScoresPanel';
-import { AgentEvalTaskResultsPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/AgentEvalTaskResultsPanel';
 import {
   getAgentEvaluationsListRoute,
   getAgentsListRoute,
@@ -283,7 +283,14 @@ export const AgentEvaluationDetailRoute: FC = () => {
                 <Spinner size="small" aria-label="Loading scores..." />
               </Flex>
             )}
-            {isJobTerminal && !isLoadingResult && <AgentEvalScoresPanel scores={scores} />}
+            {isJobTerminal && !isLoadingResult && (
+              <EvalAggregateScoresTable
+                scores={[
+                  ...scores.filter((s) => s.name.startsWith('view.')),
+                  ...scores.filter((s) => !s.name.startsWith('view.')),
+                ]}
+              />
+            )}
           </Panel>
         </Grid>
 

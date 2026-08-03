@@ -4,7 +4,7 @@
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Badge, Block, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import { formatScore, scoreColor } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
+import { formatScore, scoreColor } from '@studio/components/evaluation/utils';
 import { type ComponentProps, type FC, useCallback } from 'react';
 
 export interface EvalAggregateScoreRow {
