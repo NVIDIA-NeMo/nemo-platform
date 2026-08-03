@@ -334,7 +334,7 @@ async def test_persist_result_writes_run_summary(tmp_path: Path) -> None:
     run._id = "run-1"  # type: ignore[attr-defined]
     (backend._eo / "run.json").write_text(run.model_dump_json(indent=2))
 
-    result = ExperimentalistResult(summary="the real run summary", run_id="run-1", rounds_completed=2, winner=None)
+    result = ExperimentalistResult(summary="the real run summary", run_id="run-1", progress_completed=2, winner=None)
     await backend.persist_result(workspace="w", result=result)
 
     saved = json.loads((backend._eo / "run.json").read_text())
@@ -349,7 +349,7 @@ async def test_persist_result_preserves_generated_optimization_report(tmp_path: 
     report_path = backend._eo / "OPTIMIZATION.md"
     report_path.write_text("# Full optimization report\n\nInsight Suite Metrics")
 
-    result = ExperimentalistResult(summary="compact run summary", run_id="run-1", rounds_completed=2, winner=None)
+    result = ExperimentalistResult(summary="compact run summary", run_id="run-1", progress_completed=2, winner=None)
     await backend.persist_result(workspace="w", result=result)
 
     assert report_path.read_text() == "# Full optimization report\n\nInsight Suite Metrics"

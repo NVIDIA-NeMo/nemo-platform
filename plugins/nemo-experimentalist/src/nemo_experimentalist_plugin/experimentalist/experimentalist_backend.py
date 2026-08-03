@@ -735,7 +735,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         if run_path.exists():
             run: ExperimentRun = _load_entity(ExperimentRun, run_path)
             run.status = "completed"
-            run.rounds_completed = result.rounds_completed
+            run.progress_completed = result.progress_completed
             run.summary = result.summary  # so publish_candidate's _compose_pr_body reads the real summary
             if result.winner is not None:
                 run.winner_agent = result.winner.id

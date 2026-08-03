@@ -32,17 +32,21 @@ def test_group_metadata_carries_run_fields():
         insight=None,
         config_snapshot={"k": 1},
         status="running",
-        rounds_completed=2,
+        progress_completed=2,
+        progress_total=5,
+        progress_unit="round",
         winner_agent="agent-3",
     )
     md = m.group_metadata(run)
     # Platform metadata is dict[str, str]: config_snapshot is JSON-serialized and the
-    # round counter is stringified, so the create/update body passes server validation.
+    # progress counter is stringified, so the create/update body passes server validation.
     assert md == {
         "agent": "a",
         "config_snapshot": '{"k": 1}',
         "status": "running",
-        "rounds_completed": "2",
+        "progress_completed": "2",
+        "progress_total": "5",
+        "progress_unit": "round",
         "winner_candidate": "agent-3",
     }
 
@@ -54,7 +58,7 @@ def test_group_metadata_omits_winner_until_present():
         insight=None,
         config_snapshot={"k": 1},
         status="running",
-        rounds_completed=0,
+        progress_completed=0,
         winner_agent=None,
     )
     md = m.group_metadata(run)

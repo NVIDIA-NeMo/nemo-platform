@@ -3,8 +3,6 @@
 
 import math
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 from nemo_experimentalist_plugin.entities import (
@@ -28,7 +26,7 @@ from nemo_experimentalist_plugin.experimentalist.components.insight_promotion im
     write_insight_promotion_section,
 )
 from nemo_experimentalist_plugin.experimentalist.components.loop import AnalysisSkill, EvolutionaryOptimizer
-from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree
+from nemo_experimentalist_plugin.experimentalist.runner import _render_summary as render_summary
 
 _SUITE_IDENTITY = f"sha256:{'a' * 64}"
 _SUITE_PATH = Path("/experiment/eval-and-optimize/eval_author/insight-1/insight-suite")
@@ -113,9 +111,7 @@ def test_terminal_summary_includes_baseline_and_winner_insight_metrics() -> None
             "validation": RewardRecord(metrics={"reward": 0.75}),
         },
     )
-    optimizer = object.__new__(EvolutionaryOptimizer)
-
-    summary = optimizer._render_summary(rounds_completed=1, baseline=baseline, winner=winner)
+    summary = render_summary(1, "round", baseline, winner)
 
     assert "validation_reward={'reward': 0.75}" in summary
     assert "insight_suite=(baseline={'uses_required_tool': 0.0}" in summary
@@ -125,9 +121,7 @@ def test_terminal_summary_includes_baseline_and_winner_insight_metrics() -> None
 def test_terminal_summary_omits_insight_comparison_when_unavailable() -> None:
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1, rewards={"validation": RewardRecord(metrics={"reward": 0.75})})
-    optimizer = object.__new__(EvolutionaryOptimizer)
-
-    summary = optimizer._render_summary(rounds_completed=1, baseline=baseline, winner=winner)
+    summary = render_summary(1, "round", baseline, winner)
 
     assert "insight_suite" not in summary
 
@@ -162,7 +156,7 @@ def test_insight_promotion_suggestions_are_stable_discriminative_and_diverse(
         Task(id="task-flat", uri=(tmp_path / "task-flat").as_uri()),
     ]
     baseline = _candidate("agent-0", round_num=0)
-    baseline.record_reward(
+    baseline.set_reward(
         "insight",
         trials=[
             _insight_trial("task-a", 0.0, attempt=1),
@@ -178,10 +172,10 @@ def test_insight_promotion_suggestions_are_stable_discriminative_and_diverse(
         ],
     )
     winner = _candidate("agent-1", round_num=1)
-    winner.record_reward(
+    winner.set_reward(
         "insight", metadata={**winner.rewards["insight"].metadata, "metric_keys": ["uses_required_tool", "reward"]}
     )
-    winner.record_reward(
+    winner.set_reward(
         "insight",
         trials=[
             _insight_trial("task-a", 1.0, attempt=1),
@@ -227,11 +221,9 @@ def test_task_evidence_excludes_candidates_from_other_suites(tmp_path: Path) -> 
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
     stale = _candidate("agent-stale", round_num=1)
-    stale.record_reward(
-        "insight", metadata={**stale.rewards["insight"].metadata, "suite_identity": f"sha256:{'e' * 64}"}
-    )
+    stale.set_reward("insight", metadata={**stale.rewards["insight"].metadata, "suite_identity": f"sha256:{'e' * 64}"})
     for candidate, score in ((baseline, 0.0), (winner, 1.0), (stale, 0.5)):
-        candidate.record_reward(
+        candidate.set_reward(
             "insight",
             trials=[
                 _insight_trial(task.id, score, attempt=1),
@@ -340,7 +332,7 @@ def test_invalid_runtime_metrics_cannot_be_promotion_evidence(
     task = Task(id="task-a")
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
-    baseline.record_reward(
+    baseline.set_reward(
         "insight",
         trials=[
             _insight_trial("task-a", 0.0, attempt=1),
@@ -350,7 +342,7 @@ def test_invalid_runtime_metrics_cannot_be_promotion_evidence(
     invalid_trial = _insight_trial("task-a", invalid_score, attempt=1)
     if missing_key:
         invalid_trial.metrics.pop("uses_required_tool")
-    winner.record_reward(
+    winner.set_reward(
         "insight",
         trials=[
             invalid_trial,
@@ -372,8 +364,8 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
     task = Task(id="task-a")
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
-    baseline.record_reward("insight", trials=[_insight_trial("task-a", 0.0)])
-    winner.record_reward("insight", trials=[_insight_trial("task-a", 1.0)])
+    baseline.set_reward("insight", trials=[_insight_trial("task-a", 0.0)])
+    winner.set_reward("insight", trials=[_insight_trial("task-a", 1.0)])
 
     assert (
         select_insight_promotion_suggestions(
@@ -395,7 +387,7 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
         == []
     )
 
-    winner.record_reward("insight", trials=[])
+    winner.set_reward("insight", trials=[])
     assert (
         select_insight_promotion_suggestions(
             _insight_dataset([task]),
@@ -423,14 +415,14 @@ def test_promotion_requires_baseline_to_winner_improvement(
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
     candidates = [baseline, winner]
-    baseline.record_reward(
+    baseline.set_reward(
         "insight",
         trials=[
             _insight_trial("task-a", baseline_score, attempt=1),
             _insight_trial("task-a", baseline_score, attempt=2),
         ],
     )
-    winner.record_reward(
+    winner.set_reward(
         "insight",
         trials=[
             _insight_trial("task-a", winner_score, attempt=1),
@@ -439,7 +431,7 @@ def test_promotion_requires_baseline_to_winner_improvement(
     )
     if bad_score is not None:
         bad = _candidate("agent-bad", round_num=1)
-        bad.record_reward(
+        bad.set_reward(
             "insight",
             trials=[
                 _insight_trial("task-a", bad_score, attempt=1),
@@ -481,127 +473,3 @@ def test_deterministic_insight_comparison_section_uses_local_suite_identity(
     assert str(_SUITE_PATH) in report
     assert _SUITE_IDENTITY in report
     assert "| `uses_required_tool` | 0.000 | 1.000 | +1.000 |" in report
-
-
-@pytest.mark.asyncio
-async def test_final_report_failure_preserves_compact_summary_and_deterministic_sections(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    baseline = _candidate(
-        "agent-0",
-        round_num=0,
-        rewards={
-            "insight": RewardRecord(metrics={"reward": 0.5, "uses_required_tool": 0.0}),
-            "validation": RewardRecord(metrics={"reward": 0.5}),
-        },
-    )
-    winner = _candidate(
-        "agent-1",
-        round_num=1,
-        rewards={
-            "insight": RewardRecord(metrics={"reward": 0.75, "uses_required_tool": 1.0}),
-            "validation": RewardRecord(metrics={"reward": 0.75}),
-        },
-    )
-    tree = EvolutionTree()
-    tree.add(baseline)
-    tree.add(winner)
-    optimizer = object.__new__(EvolutionaryOptimizer)
-    optimizer.working_dir = tmp_path
-    (tmp_path / "eval-and-optimize").mkdir()
-    monkeypatch.setattr(optimizer, "_copy_best_to_workspace", lambda best_id: None)
-    original_report_writer = EvolutionaryOptimizer.write_final_report
-    type.__setattr__(
-        EvolutionaryOptimizer,
-        "write_final_report",
-        AsyncMock(side_effect=RuntimeError("LLM report failed")),
-    )
-    run = SimpleNamespace(status="running", winner_agent=None, rounds_completed=1)
-    backend = SimpleNamespace(update_run=AsyncMock())
-
-    try:
-        finalized = await optimizer._finalize(
-            workspace="default",
-            backend=backend,
-            agents_dir=tmp_path / "eval-and-optimize" / "agents",
-            run_entity=run,
-            evolution_tree=tree,
-            agent_name="agent",
-            insight_dataset=_insight_dataset([Task(id="task-a")]),
-        )
-    finally:
-        type.__setattr__(
-            EvolutionaryOptimizer,
-            "write_final_report",
-            original_report_writer,
-        )
-
-    report = (tmp_path / "eval-and-optimize" / "OPTIMIZATION.md").read_text()
-    assert finalized is winner
-    assert "## Compact Run Summary" in report
-    assert "Optimization complete: 1 round(s) completed" in report
-    assert "## Deterministic Insight Suite Comparison" in report
-    assert "## Insight Suite Promotion Suggestions" in report
-
-
-@pytest.mark.asyncio
-async def test_insight_report_mismatch_does_not_fail_completed_run(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    baseline = _candidate(
-        "agent-0",
-        round_num=0,
-        rewards={
-            "insight": RewardRecord(metrics={"reward": 0.5, "uses_required_tool": 0.0}),
-            "validation": RewardRecord(metrics={"reward": 0.5}),
-        },
-    )
-    winner = _candidate(
-        "agent-1",
-        round_num=1,
-        rewards={
-            "insight": RewardRecord(metrics={"reward": 0.75, "uses_required_tool": 1.0}),
-            "validation": RewardRecord(metrics={"reward": 0.75}),
-        },
-    )
-    winner.record_reward(
-        "insight", metadata={**winner.rewards["insight"].metadata, "suite_identity": f"sha256:{'e' * 64}"}
-    )
-    tree = EvolutionTree()
-    tree.add(baseline)
-    tree.add(winner)
-    optimizer = object.__new__(EvolutionaryOptimizer)
-    optimizer.working_dir = tmp_path
-    (tmp_path / "eval-and-optimize").mkdir()
-    monkeypatch.setattr(optimizer, "_copy_best_to_workspace", lambda best_id: None)
-    original_report_writer = EvolutionaryOptimizer.write_final_report
-    type.__setattr__(EvolutionaryOptimizer, "write_final_report", AsyncMock())
-    run = SimpleNamespace(status="running", winner_agent=None, rounds_completed=1)
-    backend = SimpleNamespace(update_run=AsyncMock())
-
-    try:
-        with caplog.at_level("WARNING"):
-            finalized = await optimizer._finalize(
-                workspace="default",
-                backend=backend,
-                agents_dir=tmp_path / "eval-and-optimize" / "agents",
-                run_entity=run,
-                evolution_tree=tree,
-                agent_name="agent",
-                insight_dataset=_insight_dataset([Task(id="task-a")]),
-            )
-    finally:
-        type.__setattr__(
-            EvolutionaryOptimizer,
-            "write_final_report",
-            original_report_writer,
-        )
-
-    assert finalized is winner
-    assert run.status == "completed"
-    assert run.winner_agent == winner.label
-    backend.update_run.assert_awaited_once()
-    assert "Skipping Insight Suite report sections" in caplog.text

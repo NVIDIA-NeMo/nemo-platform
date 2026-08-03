@@ -11,11 +11,11 @@ from typing import Protocol, TextIO, cast
 from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.agent import build_experimentalist_agent
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     make_experimentalist_backend,
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, Verbosity
+from nemo_experimentalist_plugin.experimentalist.runner import ExperimentRunner
 from nemo_platform import AsyncNeMoPlatform
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ def build_run_reporter(
 
 async def run_experimentalist(
     *,
-    agent: str | None = None,
+    agent: str | Path | None = None,
     agent_spec: str | None = None,
     insight: Path | str | None,
     train_dataset: DatasetRef,
@@ -58,7 +58,7 @@ async def run_experimentalist(
 
     Args:
         agent: Optional baseline agent for Mode 2, or an override for the agent
-            referenced by ``insight``. A local directory or a git ``url@ref``; a git
+            referenced by ``insight``. A local directory path or a git ``url@ref``; a git
             source is fetched by the backend and enables opening a draft PR/MR for
             the winner against that ref.
         agent_spec: Optional URI of a markdown file describing the agent under test.
@@ -101,24 +101,24 @@ async def run_experimentalist(
         experiments_output=str(experiment_dir),
         storage=config.storage,
     )
-    deps = ExperimentalistDeps(
+    result = await ExperimentRunner(
+        backend=backend,
+        strategy=build_experimentalist_agent(
+            working_dir=experiment_dir,
+            config=config,
+            framework_skills_dirs=framework_skills_dirs,
+        ),
+        config=config,
         workspace=workspace,
+        root=experiment_dir,
         agent=agent,
         agent_spec=agent_spec,
         insight=insight,
         train_dataset=train_dataset,
         validation_dataset=validation_dataset,
         task_template=task_template,
-        backend=backend,
         reporter=reporter,
-        config=config,
-    )
-    experimentalist = build_experimentalist_agent(
-        working_dir=experiment_dir,
-        config=config,
-        framework_skills_dirs=framework_skills_dirs,
-    )
-    result = await experimentalist.run(deps)
+    ).run()
     winner = result.winner
     reporter.run_finished(
         winner=winner.label if winner is not None else None,

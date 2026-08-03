@@ -377,9 +377,25 @@ class ExperimentRun(NemoEntity, entity_type="experiment_run"):
         default="running",
         description="Lifecycle status of this optimization run.",
     )
-    rounds_completed: int = Field(
+    progress_completed: int = Field(
         default=0,
-        description="Number of full optimization rounds completed so far.",
+        description="Units of work the strategy reports finished so far. Display only.",
+    )
+    progress_total: int | None = Field(
+        default=None,
+        description=(
+            "Units of work expected in total, when the strategy can say. None means it "
+            "cannot — an opaque strategy has no honest denominator, so consumers show a "
+            "counter rather than a bar."
+        ),
+    )
+    progress_unit: str = Field(
+        default="step",
+        description="What one unit of progress is: 'round' for the evolutionary loop, 'trial' for a search.",
+    )
+    progress_note: str | None = Field(
+        default=None,
+        description="What the strategy is currently doing, for strategies with no meaningful total.",
     )
     winner_agent: str | None = Field(
         default=None,

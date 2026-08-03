@@ -16,22 +16,18 @@ import random
 import shutil
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Literal, cast, get_args
+from typing import Any, ClassVar, Literal, cast, get_args
 
-from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import (
     Candidate,
     Dataset,
     EvaluationResult,
-    ExperimentRun,
+    RewardRecord,
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
-from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory, EvaluatorFactory
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import (
     GoalTree,
     GoalTreeConfig,
@@ -47,11 +43,8 @@ from nemo_experimentalist_plugin.experimentalist.components.insight_promotion im
     candidate_metric_keys,
     candidate_suite_identity,
     insight_suite_provenance,
-    select_insight_promotion_suggestions,
     stamp_insight_evaluation_result,
     validate_insight_evaluation_result,
-    write_insight_comparison_section,
-    write_insight_promotion_section,
 )
 from nemo_experimentalist_plugin.experimentalist.components.model_config import (
     get_fast_model,
@@ -72,12 +65,7 @@ from nemo_experimentalist_plugin.experimentalist.components.tools import (
 from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import (
     GroupLeafScorer,
 )
-from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
-from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
-    ExperimentalistBackend,
-)
-from nemo_experimentalist_plugin.experimentalist.reporting import reward_scalar
-from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
+from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -107,16 +95,6 @@ _EXCLUDE_DIRS = {
     "scratch",
 }
 _EXCLUDE_GLOBS = {"*traces*", "*eval-and-optimize_*"}
-
-
-def _warn_persistence_failure(operation: Literal["archive", "publish"], candidate: str, exc: Exception) -> None:
-    """Log best-effort persistence failure context."""
-    logger.warning(
-        "[PERSISTENCE] %s failed for candidate %s; continuing: %s",
-        operation,
-        candidate,
-        exc,
-    )
 
 
 def _ignore_patterns(directory: str, contents: list[str]) -> set[str]:
@@ -328,6 +306,10 @@ class EvolutionaryOptimizer(Agent):
     rounds, mirroring the AAD ``EvolutionaryOptimizer``.
     """
 
+    #: This loop resumes from its own round-analysis files plus ``ctx.candidates()``,
+    #: so the runner may re-open an existing run and hand it back.
+    supports_resume: ClassVar[bool] = True
+
     def __init__(
         self,
         working_dir: Path,
@@ -367,246 +349,68 @@ class EvolutionaryOptimizer(Agent):
     # Public entry point
     # ------------------------------------------------------------------
 
-    async def run(self, deps: ExperimentalistDeps) -> ExperimentalistResult:
+    async def run(self, ctx: ExperimentContext) -> Candidate | None:
         """Run optimization and always close the owned shell session."""
         try:
-            return await self._run(deps)
+            return await self._run(ctx)
         finally:
             await self.shell.close()
 
-    async def _run(self, deps: ExperimentalistDeps) -> ExperimentalistResult:
+    async def _run(self, ctx: ExperimentContext) -> Candidate | None:
         """Run the Pareto evolutionary optimization loop.
 
         Args:
-            deps: Per-run dependencies (workspace, insight_id, dataset,
-                backend, optional config override).
+            ctx: The run's context — its datasets, its candidates, and the verbs for
+                measuring and recording them. Nothing else is reachable from here.
 
         Returns:
-            An :class:`ExperimentalistResult` committed to the entity store
-            via ``backend.persist_result()``.
+            The winning Candidate, or None when no candidate was ever scored. The
+            runner turns that into the run's terminal result.
         """
-        if deps.backend is None:
-            raise ValueError("deps.backend must be set before calling run()")
-        backend = deps.backend
-        workspace = deps.workspace
-        config = deps.config if deps.config is not None else self.config
-        reporter = getattr(deps, "reporter", None)
-
-        # ---- Preflight: fail fast when persistence is enabled but git is missing.
-        if (config.storage.archive_candidates or config.storage.publish_winner) and shutil.which("git") is None:
-            raise ValueError(
-                "Candidate persistence is enabled (storage.archive_candidates/publish_winner) "
-                "but 'git' is not on PATH, so nothing can be persisted. Install git, or disable "
-                "storage to run without persistence."
-            )
-
-        # ---- Working directory structure ---------------------------------
-        agents_dir, analysis_dir, results_dir = self._init_structure()
-        evaluator_factory = EvaluatorFactory()
-        evaluator = evaluator_factory.build_evaluator(
-            deps.evaluator_type,
-            config.evaluator,
-            experiment_dir=self.working_dir,
-        )
-        dataset_factory = DatasetFactory()
-
-        train_dataset_ref = deps.train_dataset
-        validation_dataset_ref = deps.validation_dataset
-        task_template_ref = deps.task_template
-        insight_eval_dataset: Dataset | None = None
-        if deps.insight is not None:
-            if task_template_ref is None:
-                raise ValueError("Task template is required for insight trace analysis")
-            if backend.client is None:
-                raise ValueError("Platform client is required for insight task template loading")
-            staged_inputs = await stage_eval_author_inputs(
-                self.working_dir,
-                train_dataset=train_dataset_ref,
-                validation_dataset=validation_dataset_ref,
-                task_template=task_template_ref,
-                client=backend.client,
-                workspace=workspace,
-            )
-            train_dataset_ref = staged_inputs.train_dataset
-            validation_dataset_ref = staged_inputs.validation_dataset
-            task_template_ref = staged_inputs.task_template
-
-        # ---- Resolve datasets to evaluator-domain objects -----------------
-        train_eval_dataset = dataset_factory.build_dataset(
-            deps.evaluator_type,
-            train_dataset_ref,
-        )
-
-        validation_eval_dataset = dataset_factory.build_dataset(
-            deps.evaluator_type,
-            validation_dataset_ref,
-        )
-
-        # ---- Resolve insight (Mode 1) vs local agent (Mode 2) -----------
-        insight = (
-            await backend.get_insight(workspace=workspace, insight_id=str(deps.insight))
-            if deps.insight is not None
-            else None
-        )
-        agent_ref: str | Path | None = deps.agent
-        if agent_ref is None and insight is not None:
-            agent_ref = insight.agent
-        if agent_ref is None:
-            raise ValueError("Insight or agent is required")
-
-        agent_path = self.working_dir / "eval-and-optimize" / "source-agent"
-        await backend.get_agent_code(
-            workspace=workspace,
-            agent=agent_ref,
-            dest=agent_path,
-            clone_depth=config.source.clone_depth,
-        )
-        agent_name = str(agent_ref)
-
-        agent_spec_path: Path | None = None
-        if deps.agent_spec is not None:
-            agent_spec_path = await backend.get_agent_spec(
-                workspace=workspace,
-                spec=deps.agent_spec,
-                dest=self.working_dir / "AGENT-SPEC.md",
-            )
-
-        if insight is not None:
-            insight_ref: str = str(deps.insight)
-            # run the eval_author
-            if backend.client is None:
-                raise ValueError("Platform client is required for insight trace loading")
-            assert task_template_ref is not None
-            eval_author = EvalAuthor(
-                experiment_dir=self.working_dir,
-                config=config.eval_author,
-                reporter=reporter,
-            )
-            eval_author_result = await eval_author.run(
-                insight=insight,
-                agent_path=agent_path,
-                task_template=dataset_factory.build_task_template(deps.evaluator_type, task_template_ref),
-                train_dataset=train_eval_dataset,
-                validation_dataset=validation_eval_dataset,
-                client=backend.client,
-            )
-            train_eval_dataset = eval_author_result.train_dataset
-            validation_eval_dataset = eval_author_result.validation_dataset
-            insight_eval_dataset = eval_author_result.insight_suite
-        else:
-            # Mode 2: local agent directory as baseline, no insight required.
-            insight = None
-            insight_ref = ""
+        config = self.config
+        agents_dir, analysis_dir, _ = self._init_structure()
+        train_eval_dataset = ctx.datasets["train"]
+        validation_eval_dataset = ctx.datasets["validation"]
+        insight_eval_dataset = ctx.datasets.get("insight")
+        agent_spec_path = ctx.agent_spec
 
         # ---- Resume or fresh start ---------------------------------------
+        # Round analysis files are this strategy's own private state, so detecting the
+        # last round is its own business; ``ctx.resuming`` only tells it that the runner
+        # re-opened an existing run.
         if (round_num := self._detect_last_round()) is not None:
             logger.info(f"[RESUME] round {round_num}")
             self._delete_all_artifacts(from_round=round_num)
             evolution_tree = EvolutionTree.from_dir(agents_dir)
             candidates: list[Candidate] = list(evolution_tree.survivors(round_num))
-            if reporter:
-                # agent-0 is not re-evaluated on resume; seed the delta baseline
-                # from its cached validation reward so later deltas are correct.
-                baseline_node = next(
-                    (n for n in evolution_tree.nodes.values() if n.label == _BASELINE_AGENT_LABEL),
-                    None,
-                )
-                if baseline_node is not None and baseline_node.val_reward:
-                    reporter.seed_baseline(reward_scalar(baseline_node.val_reward))
-            run_entity = self._load_run_entity() or await self._create_experiment_run(
-                workspace=workspace,
-                backend=backend,
-                agent_name=agent_name or None,
-                agent_path=agent_path,
-                insight_ref=insight_ref or None,
-                config=config,
-            )
         else:
             round_num = 0
             logger.info("phase=baseline round=0")
-            if reporter:
-                reporter.progress(phase="baseline", completed=0, total=config.max_rounds)
-            run_entity = await self._create_experiment_run(
-                workspace=workspace,
-                backend=backend,
-                agent_name=agent_name or None,
-                agent_path=agent_path,
-                insight_ref=insight_ref or None,
-                config=config,
+            await ctx.report_progress(completed=0, total=config.max_rounds, unit="round", note="baseline")
+
+            # ---- Fetch + build baseline agent (agent-0) ------------------
+            baseline = await self._create_baseline_agent(ctx=ctx, agents_dir=agents_dir, config=config)
+            await ctx.save_candidate(baseline)
+            evolution_tree = EvolutionTree.from_dir(agents_dir)
+            candidates = list(evolution_tree.survivors(0))
+
+            # ---- Baseline validation evaluation (round 0) ----------------
+            validation_candidate_results = await self._evaluate_validation_candidates(
+                ctx=ctx,
+                candidates=candidates,
+            )
+            await ctx.record_reward(
+                candidates[0],
+                channel="validation",
+                result=validation_candidate_results[candidates[0].label],
             )
 
-            try:
-                # ---- Fetch + build baseline agent (agent-0) --------------
-                baseline = await self._create_baseline_agent(
-                    workspace=workspace,
-                    backend=backend,
-                    agents_dir=agents_dir,
-                    agent_name=agent_name,
-                    agent_path=agent_path,
-                    run_id=run_entity.id or "",
-                    config=config,
-                )
-                await self._update_candidate(
-                    baseline,
-                    workspace=workspace,
-                    backend=backend,
-                    run_id=run_entity.id or "",
-                )
-                evolution_tree = EvolutionTree.from_dir(agents_dir)
-                candidates = list(evolution_tree.survivors(0))
-
-                # ---- Baseline validation evaluation (round 0) ------------
-                validation_candidate_results = await self._evaluate_validation_candidates(
-                    dataset=validation_eval_dataset,
-                    evaluator=evaluator,
-                    candidates=candidates,
-                )
-                validation_result = validation_candidate_results[candidates[0].label]
-                await backend.persist_evaluation(
-                    workspace=workspace,
-                    result=validation_result,
-                    candidate=candidates[0],
-                    split="validation",
-                )
-                candidates[0].record_reward(
-                    "validation",
-                    metrics=validation_result.aggregate_metrics,
-                    trials=validation_result.trials,
-                )
-                await self._update_candidate(
-                    candidates[0],
-                    workspace=workspace,
-                    backend=backend,
-                    run_id=run_entity.id or "",
-                )
-                if reporter:
-                    reporter.candidate_evaluated(
-                        label=candidates[0].label,
-                        split="validation",
-                        reward=reward_scalar(validation_result.aggregate_metrics),
-                        artifacts=self._results_dir(validation_result.id),
-                    )
-            except Exception:
-                run_entity.status = "failed"
-                await backend.update_run(workspace=workspace, run=run_entity)
-                raise
-
-        run_id = run_entity.id or ""
-
         if insight_eval_dataset is not None:
-            try:
-                await self._evaluate_and_persist_insight_candidates(
-                    dataset=insight_eval_dataset,
-                    evaluator=evaluator,
-                    candidates=candidates,
-                    workspace=workspace,
-                    backend=backend,
-                    run_id=run_entity.id or "",
-                )
-            except Exception:
-                run_entity.status = "failed"
-                await backend.update_run(workspace=workspace, run=run_entity)
-                raise
+            await self._evaluate_and_persist_insight_candidates(
+                ctx=ctx,
+                dataset=insight_eval_dataset,
+                candidates=candidates,
+            )
 
         # ---- Initial goal tree (idempotent) ------------------------------
         await self._generate_initial_goal_tree(
@@ -619,278 +423,149 @@ class EvolutionaryOptimizer(Agent):
         phase: Literal["exploration", "exploitation"] = "exploration" if round_num % 2 == 0 else "exploitation"
 
         # ---- Pareto optimization loop (shared by fresh start and resume) --
-        try:
-            while True:
-                prior_analysis = (
-                    await self._load_round_analysis(analysis_dir=analysis_dir, round_num=round_num - 1)
-                    if round_num > 0
-                    else None
-                )
-                decision = await self.terminator.run(
-                    round_num=round_num,
-                    evolution_tree=evolution_tree,
-                    prior_analysis=prior_analysis,
-                    config=config,
-                )
-                if decision.stop:
-                    logger.info(f"phase=terminate reason={decision.reason}")
-                    break
+        while True:
+            prior_analysis = (
+                await self._load_round_analysis(analysis_dir=analysis_dir, round_num=round_num - 1)
+                if round_num > 0
+                else None
+            )
+            decision = await self.terminator.run(
+                round_num=round_num,
+                evolution_tree=evolution_tree,
+                prior_analysis=prior_analysis,
+                config=config,
+            )
+            if decision.stop:
+                logger.info(f"phase=terminate reason={decision.reason}")
+                break
 
-                survivors = (
-                    await self._select_survivors([c.slim() for c in candidates], k=config.max_survivors)
-                    if len(candidates) > 1
-                    else list(candidates)
-                )
-                survivor_labels = {s.label for s in survivors}
-                killed = [c for c in candidates if c.label not in survivor_labels]
-                for candidate in killed:
-                    await self._update_candidate(
-                        candidate,
-                        workspace=workspace,
-                        backend=backend,
-                        run_id=run_id,
-                        updates={"killed_round": round_num},
-                    )
+            survivors = (
+                await self._select_survivors([c.slim() for c in candidates], k=config.max_survivors)
+                if len(candidates) > 1
+                else list(candidates)
+            )
+            survivor_labels = {s.label for s in survivors}
+            for candidate in [c for c in candidates if c.label not in survivor_labels]:
+                await ctx.save_candidate(candidate, updates={"killed_round": round_num})
 
-                train_candidate_results = await self._evaluate_train_candidates(
-                    dataset=train_eval_dataset,
-                    evaluator=evaluator,
-                    survivors=survivors,
-                    round_num=round_num,
-                    max_train_batch_tasks=config.max_train_batch_tasks,
-                    train_batch_seed=config.train_batch_seed,
-                )
-                for survivor in survivors:
-                    if survivor.label in train_candidate_results:
-                        await backend.persist_evaluation(
-                            workspace=workspace,
-                            result=train_candidate_results[survivor.label],
-                            candidate=survivor,
-                            split="train",
-                        )
-                        survivor.record_reward(
-                            "train",
-                            metrics=train_candidate_results[survivor.label].aggregate_metrics,
-                            trials=train_candidate_results[survivor.label].trials,
-                        )
-                        await self._update_candidate(
-                            survivor,
-                            workspace=workspace,
-                            backend=backend,
-                            run_id=run_id,
-                        )
-                        if reporter:
-                            reporter.candidate_evaluated(
-                                label=survivor.label,
-                                split="train",
-                                reward=reward_scalar(train_candidate_results[survivor.label].aggregate_metrics),
-                                artifacts=self._results_dir(train_candidate_results[survivor.label].id),
-                            )
-                analysis = await self._analyze_round(
-                    analysis_dir=analysis_dir,
-                    dataset=train_eval_dataset,
-                    evaluations=train_candidate_results,
-                    survivors=[c.slim() for c in survivors],
-                    round_num=round_num,
-                    config=config,
-                    client=backend.client,
-                    nmp_workspace=workspace,
-                    agent_spec_path=agent_spec_path,
-                )
-                await self._update_goal_tree(
-                    analysis_dir=analysis_dir,
-                    round_num=round_num,
-                    analysis=analysis,
-                    dataset=train_eval_dataset,
-                    config=config,
-                    agent_spec_path=agent_spec_path,
-                )
+            train_candidate_results = await self._evaluate_train_candidates(
+                ctx=ctx,
+                survivors=survivors,
+                round_num=round_num,
+                max_train_batch_tasks=config.max_train_batch_tasks,
+                train_batch_seed=config.train_batch_seed,
+            )
+            for survivor in survivors:
+                if survivor.label in train_candidate_results:
+                    await ctx.record_reward(
+                        survivor,
+                        channel="train",
+                        result=train_candidate_results[survivor.label],
+                    )
+            analysis = await self._analyze_round(
+                analysis_dir=analysis_dir,
+                dataset=train_eval_dataset,
+                evaluations=train_candidate_results,
+                survivors=[c.slim() for c in survivors],
+                round_num=round_num,
+                config=config,
+                client=ctx.client,
+                nmp_workspace=ctx.workspace,
+                agent_spec_path=agent_spec_path,
+            )
+            await self._update_goal_tree(
+                analysis_dir=analysis_dir,
+                round_num=round_num,
+                analysis=analysis,
+                dataset=train_eval_dataset,
+                config=config,
+                agent_spec_path=agent_spec_path,
+            )
 
-                improvements = await self._propose_improvements(
-                    workspace=workspace,
-                    backend=backend,
-                    analysis=analysis,
-                    evolution_tree=evolution_tree,
-                    round_num=round_num,
-                    phase=phase,
-                    config=config,
+            improvements = await self._propose_improvements(
+                analysis=analysis,
+                evolution_tree=evolution_tree,
+                round_num=round_num,
+                phase=phase,
+                config=config,
+            )
+            new_candidates = [
+                self._create_agent(
+                    agents_dir=agents_dir,
+                    improvement=imp,
+                    round_num=round_num + 1,
+                    run_id=ctx.run_id,
                 )
-                new_candidates = [
-                    self._create_agent(
-                        agents_dir=agents_dir,
-                        improvement=imp,
-                        round_num=round_num + 1,
-                        run_id=run_entity.id or "",
-                    )
-                    for imp in improvements
-                ]
-                # Persist metadata.json before Coder runs so snapshot can read it.
-                for candidate in new_candidates:
-                    await self._update_candidate(
-                        candidate,
-                        workspace=workspace,
-                        backend=backend,
-                        run_id=run_entity.id or "",
-                    )
-                new_candidates = await self._implement_candidates(
-                    workspace=workspace,
-                    backend=backend,
-                    dataset=train_eval_dataset,
-                    evaluator=evaluator,
+                for imp in improvements
+            ]
+            # Persist metadata.json before Coder runs so snapshot can read it.
+            for candidate in new_candidates:
+                await ctx.save_candidate(candidate)
+            new_candidates = await self._implement_candidates(
+                ctx=ctx,
+                dataset=train_eval_dataset,
+                candidates=new_candidates,
+                config=config,
+            )
+            for candidate in new_candidates:
+                await ctx.save_candidate(candidate)
+            if insight_eval_dataset is not None:
+                await self._evaluate_and_persist_insight_candidates(
+                    ctx=ctx,
+                    dataset=insight_eval_dataset,
                     candidates=new_candidates,
-                    config=config,
                 )
-                for candidate in new_candidates:
-                    await self._update_candidate(
+            for c in new_candidates:
+                evolution_tree.add(c)
+
+            candidates = survivors + new_candidates
+            round_num += 1
+            phase = "exploration" if round_num % 2 == 0 else "exploitation"
+            await ctx.report_progress(
+                completed=round_num,
+                total=config.max_rounds,
+                unit="round",
+                note="evaluating candidates",
+            )
+            # Announce candidates before the (batched) validation eval, so the narration
+            # reports work beginning, not completed. Mirror
+            # _evaluate_validation_candidates' own filter so we only announce candidates
+            # that will actually be evaluated (cached survivors already carry one).
+            pending_validation = [c for c in candidates if "validation" not in c.rewards]
+            for i, candidate in enumerate(pending_validation, start=1):
+                ctx.note(f"{candidate.label} ({i}/{len(pending_validation)}): {candidate.optimization}")
+
+            validation_candidate_results = await self._evaluate_validation_candidates(
+                ctx=ctx,
+                candidates=candidates,
+            )
+            for candidate in candidates:
+                if candidate.label in validation_candidate_results:
+                    await ctx.record_reward(
                         candidate,
-                        workspace=workspace,
-                        backend=backend,
-                        run_id=run_id,
+                        channel="validation",
+                        result=validation_candidate_results[candidate.label],
                     )
-                if insight_eval_dataset is not None:
-                    await self._evaluate_and_persist_insight_candidates(
-                        dataset=insight_eval_dataset,
-                        evaluator=evaluator,
-                        candidates=new_candidates,
-                        workspace=workspace,
-                        backend=backend,
-                        run_id=run_id,
-                    )
-                for c in new_candidates:
-                    evolution_tree.add(c)
-
-                candidates = survivors + new_candidates
-                round_num += 1
-                phase = "exploration" if round_num % 2 == 0 else "exploitation"
-                if reporter:
-                    reporter.progress(
-                        phase="evaluating candidates",
-                        completed=round_num,
-                        total=config.max_rounds,
-                    )
-                    # Announce candidates before the (batched) validation eval,
-                    # so the narration reports work beginning, not completed.
-                    # Mirror _evaluate_validation_candidates' own filter so we
-                    # only announce candidates that will actually be evaluated
-                    # (cached survivors already carry a validation_reward).
-                    pending_validation = [c for c in candidates if "validation" not in c.rewards]
-                    for i, candidate in enumerate(pending_validation, start=1):
-                        reporter.candidate_started(
-                            label=candidate.label,
-                            optimization=candidate.optimization,
-                            i=i,
-                            n=len(pending_validation),
-                        )
-
-                validation_candidate_results = await self._evaluate_validation_candidates(
+            if not config.disable_trajectory_scoring:
+                trajectory_results = await self._reward_trajectories(
+                    ctx=ctx,
                     dataset=validation_eval_dataset,
-                    evaluator=evaluator,
                     candidates=candidates,
+                    config=config,
                 )
                 for candidate in candidates:
-                    if candidate.label in validation_candidate_results:
-                        await backend.persist_evaluation(
-                            workspace=workspace,
-                            result=validation_candidate_results[candidate.label],
-                            candidate=candidate,
-                            split="validation",
-                        )
-                        candidate.record_reward(
-                            "validation",
-                            metrics=validation_candidate_results[candidate.label].aggregate_metrics,
-                            trials=validation_candidate_results[candidate.label].trials,
-                        )
-                        await self._update_candidate(
+                    if candidate.label in trajectory_results:
+                        candidate.trajectory_detail = trajectory_results[candidate.label]["details"]
+                        await ctx.record_reward(
                             candidate,
-                            workspace=workspace,
-                            backend=backend,
-                            run_id=run_id,
+                            channel="validation-trajectory",
+                            result=RewardRecord(metrics=trajectory_results[candidate.label]["reward"]),
                         )
-                        if reporter:
-                            reporter.candidate_evaluated(
-                                label=candidate.label,
-                                split="validation",
-                                reward=reward_scalar(validation_candidate_results[candidate.label].aggregate_metrics),
-                                artifacts=self._results_dir(validation_candidate_results[candidate.label].id),
-                            )
-                if not config.disable_trajectory_scoring:
-                    trajectory_results = await self._reward_trajectories(
-                        workspace=workspace,
-                        backend=backend,
-                        dataset=validation_eval_dataset,
-                        candidates=candidates,
-                        config=config,
-                        client=backend.client,
-                    )
-                    for candidate in candidates:
-                        if candidate.label in trajectory_results:
-                            candidate.record_reward(
-                                "validation-trajectory",
-                                metrics=trajectory_results[candidate.label]["reward"],
-                            )
-                            await self._update_candidate(
-                                candidate,
-                                workspace=workspace,
-                                backend=backend,
-                                run_id=run_id,
-                                updates={
-                                    "trajectory_detail": trajectory_results[candidate.label]["details"],
-                                },
-                            )
 
-                if config.storage.archive_candidates:
-                    for candidate in new_candidates:
-                        try:
-                            await backend.archive_candidate(workspace=workspace, candidate=candidate)
-                        except Exception as exc:  # noqa: BLE001 - archival must never fail the run
-                            _warn_persistence_failure("archive", candidate.label, exc)
+            for candidate in new_candidates:
+                await ctx.archive_candidate(candidate)
 
-                run_entity.rounds_completed = round_num
-                await backend.update_run(workspace=workspace, run=run_entity)
-
-        except Exception:
-            run_entity.status = "failed"
-            await backend.update_run(workspace=workspace, run=run_entity)
-            raise
-
-        # ---- Finalize ----------------------------------------------------
-        winner_entity = await self._finalize(
-            workspace=workspace,
-            backend=backend,
-            agents_dir=agents_dir,
-            run_entity=run_entity,
-            evolution_tree=evolution_tree,
-            agent_name=agent_name,
-            insight_dataset=insight_eval_dataset,
-        )
-
-        baseline_entity = next(
-            (node.candidate for node in evolution_tree.nodes.values() if node.round == 0),
-            None,
-        )
-        result = ExperimentalistResult(
-            summary=self._render_summary(
-                rounds_completed=round_num,
-                baseline=baseline_entity,
-                winner=winner_entity,
-            ),
-            run_id=run_id,
-            rounds_completed=round_num,
-            winner=winner_entity,
-        )
-
-        # Persist the terminal result
-        await backend.persist_result(workspace=workspace, result=result)
-
-        # Publish the winner as a draft PR/MR
-        if config.storage.publish_winner and winner_entity is not None and winner_entity.round != 0:
-            try:
-                url = await backend.publish_candidate(workspace=workspace, candidate=winner_entity)
-                if url:
-                    logger.info(f"[TERMINATOR] opened draft PR/MR for winner {winner_entity.label}: {url}")
-            except Exception as exc:  # noqa: BLE001 - publishing must never fail the run
-                _warn_persistence_failure("publish", winner_entity.label, exc)
-        return result
+        return await self._finalize(evolution_tree=evolution_tree)
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, cell_timeout=3600.0)))
     async def select_diverse_survivors(self, ranked: list[Candidate], k: int) -> list[Candidate]:  # pyright: ignore[reportReturnType]
@@ -973,7 +648,7 @@ class EvolutionaryOptimizer(Agent):
         Trial Analysis; Complementary Failures; Failure Patterns; Root Causes;
         Mechanical/Infrastructure Errors).
 
-        If at least one agent has a non-empty `insight_rewards` entry, the round analysis must name
+        If at least one agent has a non-empty `insight_reward`, the round analysis must name
         every available Insight Suite dimension and show its values in the separate Insight
         Suite Reward table. Never blend those metrics into train/validation rewards or imply
         that they affected ranking. These metrics may steer this analysis, the goal tree, and
@@ -1033,19 +708,6 @@ class EvolutionaryOptimizer(Agent):
         analysis_dir.mkdir(parents=True, exist_ok=True)
         results_dir.mkdir(parents=True, exist_ok=True)
         return agents_dir, analysis_dir, results_dir
-
-    def _load_run_entity(self) -> ExperimentRun | None:
-        """Read run.json from the workspace; return None if absent or unparseable."""
-        run_path = self.working_dir / "eval-and-optimize" / "run.json"
-        if not run_path.exists():
-            return None
-        try:
-            data = json.loads(run_path.read_text())
-            # ExperimentRun._restore_id_from_json validator handles id restoration
-            return ExperimentRun.model_validate(data)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"[RESUME] Could not parse run.json: {exc}")
-            return None
 
     def _detect_last_round(self) -> int | None:
         """Return the last completed round by scanning analysis files, or None if starting fresh."""
@@ -1127,38 +789,28 @@ class EvolutionaryOptimizer(Agent):
     async def _create_baseline_agent(
         self,
         *,
-        workspace: str,
-        backend: ExperimentalistBackend,
+        ctx: ExperimentContext,
         agents_dir: Path,
-        agent_name: str | None,
-        agent_path: Path | None,
-        run_id: str,
         config: EvolutionaryOptimizerConfig,
     ) -> Candidate:
-        """Materialize the source agent into ``agents_dir/agent-0`` and return the baseline candidate.
+        """Fork the agent under test into ``agents_dir/agent-0`` and return the baseline.
 
-        An explicit ``--agent`` (``agent_path``, a local dir or a git clone) takes
-        precedence and is copied directly; otherwise the code is fetched by the
-        insight's agent name via ``backend.get_agent_code``. Skips the copy when the
-        directory already exists (resume case).
+        The runner has already materialized ``ctx.agent_dir``, whatever the source was;
+        this only copies it in. Skips the copy when the directory already exists (resume).
         """
         baseline_dir = agents_dir / _BASELINE_AGENT_LABEL
         if not baseline_dir.exists():
-            if agent_path is not None:
-                shutil.copytree(agent_path, baseline_dir, ignore=_ignore_patterns)
-            elif agent_name:
-                await backend.get_agent_code(workspace=workspace, agent=agent_name, dest=baseline_dir)
+            shutil.copytree(ctx.agent_dir, baseline_dir, ignore=_ignore_patterns)
         await self._generate_architecture_doc(agent_dir=baseline_dir, config=config)
-        candidate = Candidate(
+        return Candidate(
             name=_BASELINE_AGENT_LABEL,
             label=_BASELINE_AGENT_LABEL,
-            workspace=workspace,
-            run_id=run_id,
+            workspace=ctx.workspace,
+            run_id=ctx.run_id,
             ancestor=None,
             round=0,
             optimization="baseline",
         )
-        return candidate
 
     def _create_agent(
         self,
@@ -1218,33 +870,6 @@ class EvolutionaryOptimizer(Agent):
         path = analysis_dir / f"round-{round_num}.md"
         return path.read_text() if path.exists() else None
 
-    async def _update_candidate(
-        self,
-        candidate: Candidate,
-        *,
-        workspace: str,
-        backend: ExperimentalistBackend,
-        run_id: str,
-        updates: dict[str, Any] | None = None,
-    ) -> None:
-        """Sync candidates to the entity store.
-
-        Fills in ``workspace`` and ``run_id`` from the call-site context
-        (which is authoritative) before persisting.  On first persist the
-        backend assigns a store id (``_id``); on subsequent calls it updates
-        the existing record.
-        """
-        candidate.workspace = workspace
-        candidate.run_id = run_id
-        if updates is not None:
-            for key, value in updates.items():
-                setattr(candidate, key, value)
-        if candidate.id:
-            await backend.update_candidate(workspace=workspace, candidate=candidate)
-        else:
-            result = await backend.create_candidate(workspace=workspace, candidate=candidate)
-            candidate._id = result._id  # type: ignore[attr-defined]
-
     def _goal_tree_path(self, round_num: int) -> Path:
         return self.working_dir / "eval-and-optimize" / "analysis" / f"round-{round_num}-goal.json"
 
@@ -1280,25 +905,6 @@ class EvolutionaryOptimizer(Agent):
             return "(none yet — this is the first round)"
         return evolution_tree.to_markdown_table()
 
-    def _copy_best_to_workspace(self, agent_id: str) -> None:
-        src = self.working_dir / "eval-and-optimize" / "agents" / agent_id
-        skip_names = {
-            "metadata.json",
-            "harbor_wrapper.py",
-            "dind_environment.py",
-            "architecture.md",
-        }
-        for entry in src.iterdir():
-            if entry.name in skip_names:
-                continue
-            dst = self.working_dir / entry.name
-            if entry.is_dir():
-                if dst.exists():
-                    shutil.rmtree(dst)
-                shutil.copytree(entry, dst)
-            else:
-                shutil.copy2(entry, dst)
-
     def _snapshot_metadata(self, candidate_name: str) -> str | None:
         """Read and return the metadata.json content for a candidate, or None if absent."""
         path = self.working_dir / "eval-and-optimize" / "agents" / candidate_name / "metadata.json"
@@ -1319,55 +925,24 @@ class EvolutionaryOptimizer(Agent):
 
     async def _evaluate_agent(
         self,
+        ctx: ExperimentContext,
         candidate: Candidate,
-        dataset: Dataset,
-        evaluator: Evaluator,
+        split: str,
         task_ids: list[str] | None = None,
         minimum_attempts: int | None = None,
     ) -> tuple[Candidate, EvaluationResult]:
-        """Run evaluator for one candidate and return the candidate/result pair."""
-        eval_dataset = dataset.subset(task_ids) if task_ids is not None else dataset
-        # Force a unique job name per candidate so concurrent candidates don't
-        # collide on the same results directory when the user sets a fixed job_name.
-        options_dict = evaluator.options.model_dump()
-        options_dict["job_name"] = f"{candidate.label}-{eval_dataset.id}"
-        if minimum_attempts is not None:
-            configured_attempts = options_dict.get("n_attempts")
-            if not isinstance(configured_attempts, int):
-                raise ValueError("Insight evaluator options must define integer n_attempts")
-            options_dict["n_attempts"] = max(configured_attempts, minimum_attempts)
-        per_candidate_options = type(evaluator.options).model_validate(options_dict)
-        result = await evaluator.run(
-            agent=self.working_dir / "eval-and-optimize" / "agents" / candidate.label,
-            dataset=eval_dataset,
-            options=per_candidate_options,
+        """Evaluate one candidate and return the candidate/result pair, for ``gather``."""
+        result = await ctx.evaluate(
+            candidate,
+            split=split,
+            task_ids=task_ids,
+            minimum_attempts=minimum_attempts,
         )
         return (candidate, result)
 
     # ------------------------------------------------------------------
     # Private step methods — implementations
     # ------------------------------------------------------------------
-
-    async def _create_experiment_run(
-        self,
-        *,
-        workspace: str,
-        backend: ExperimentalistBackend,
-        agent_name: str | None,
-        agent_path: Path | None,
-        insight_ref: str | None,
-        config: EvolutionaryOptimizerConfig,
-    ) -> ExperimentRun:
-        """Create an ExperimentRun entity; return it with its store-assigned id."""
-        run = ExperimentRun(
-            workspace=workspace,
-            agent=agent_name or str(agent_path or ""),
-            insight=insight_ref,
-            config_snapshot=config.model_dump(mode="json"),
-            status="running",
-            rounds_completed=0,
-        )
-        return await backend.create_run(workspace=workspace, run=run)
 
     async def _generate_architecture_doc(
         self,
@@ -1392,41 +967,26 @@ class EvolutionaryOptimizer(Agent):
     async def _evaluate_validation_candidates(
         self,
         *,
-        dataset: Dataset,
-        evaluator: Evaluator,
+        ctx: ExperimentContext,
         candidates: list[Candidate],
     ) -> dict[str, EvaluationResult]:
         """Evaluate candidates on the validation split; skip any that already have a reward."""
         pending = [c for c in candidates if "validation" not in c.rewards]
         if not pending:
             return {}
-        if pending:
-            splits = frozenset({"validation"})
-            restore_heldout_splits(self.working_dir, splits=splits)
-            try:
-                candidate_results = await asyncio.gather(
-                    *[
-                        self._evaluate_agent(
-                            c,
-                            dataset,
-                            evaluator,
-                        )
-                        for c in pending
-                    ]
-                )
-            finally:
-                ensure_heldout_hidden(self.working_dir, splits=splits)
-        return {
-            candidate_result[0].label: candidate_result[1]
-            for candidate_result in candidate_results
-            if candidate_result is not None
-        }
+        splits = frozenset({"validation"})
+        restore_heldout_splits(self.working_dir, splits=splits)
+        try:
+            candidate_results = await asyncio.gather(*[self._evaluate_agent(ctx, c, "validation") for c in pending])
+        finally:
+            ensure_heldout_hidden(self.working_dir, splits=splits)
+        return {candidate.label: result for candidate, result in candidate_results}
 
     async def _evaluate_insight_candidates(
         self,
         *,
+        ctx: ExperimentContext,
         dataset: Dataset,
-        evaluator: Evaluator,
         candidates: list[Candidate],
     ) -> dict[str, EvaluationResult]:
         """Evaluate candidates that do not yet have metrics for this Insight suite."""
@@ -1444,33 +1004,22 @@ class EvolutionaryOptimizer(Agent):
             or not candidate_metric_keys(candidate)
         ]
         evaluated = await asyncio.gather(
-            *[
-                self._evaluate_agent(
-                    candidate,
-                    dataset,
-                    evaluator,
-                    minimum_attempts=2,
-                )
-                for candidate in pending
-            ]
+            *[self._evaluate_agent(ctx, candidate, "insight", minimum_attempts=2) for candidate in pending]
         )
         return {candidate.label: result for candidate, result in evaluated}
 
     async def _evaluate_and_persist_insight_candidates(
         self,
         *,
+        ctx: ExperimentContext,
         dataset: Dataset,
-        evaluator: Evaluator,
         candidates: list[Candidate],
-        workspace: str,
-        backend: ExperimentalistBackend,
-        run_id: str,
     ) -> None:
         """Evaluate and persist Insight-suite metrics for the supplied candidates."""
         provenance = insight_suite_provenance(dataset)
         results = await self._evaluate_insight_candidates(
+            ctx=ctx,
             dataset=dataset,
-            evaluator=evaluator,
             candidates=candidates,
         )
         dataset_metric_keys = dataset.metadata.get("insight_metric_keys")
@@ -1501,23 +1050,11 @@ class EvolutionaryOptimizer(Agent):
             if expected_metric_keys is None:
                 expected_metric_keys = metric_keys
             result = stamp_insight_evaluation_result(result, provenance)
-            await backend.persist_evaluation(
-                workspace=workspace,
-                result=result,
-                candidate=candidate,
-                split="insight",
-            )
-            candidate.record_reward(
-                "insight",
-                metrics=result.aggregate_metrics,
-                trials=result.trials,
-                metadata={"suite_identity": provenance.identity, "metric_keys": list(metric_keys)},
-            )
-            await self._update_candidate(
+            await ctx.record_reward(
                 candidate,
-                workspace=workspace,
-                backend=backend,
-                run_id=run_id,
+                channel="insight",
+                result=result,
+                metadata={"suite_identity": provenance.identity, "metric_keys": list(metric_keys)},
             )
         if expected_metric_keys is not None:
             dataset.metadata["insight_metric_keys"] = list(expected_metric_keys)
@@ -1560,8 +1097,7 @@ class EvolutionaryOptimizer(Agent):
     async def _evaluate_train_candidates(
         self,
         *,
-        dataset: Dataset,
-        evaluator: Evaluator,
+        ctx: ExperimentContext,
         max_train_batch_tasks: int | None,
         train_batch_seed: int,
         survivors: list[Candidate],
@@ -1575,13 +1111,14 @@ class EvolutionaryOptimizer(Agent):
         changes per round, so cached rewards are not comparable within a round: every
         survivor is re-evaluated on the same freshly sampled batch.
         """
+        dataset = ctx.datasets["train"]
         if max_train_batch_tasks is None:
             # Full-dataset mode: the eval set is identical every round, so evaluate only
             # survivors that lack a reward and reuse each survivor's cached train reward.
             pending = [s for s in survivors if "train" not in s.rewards]
             evaluated: list[tuple[Candidate, EvaluationResult]] = []
             if pending:
-                evaluated = await asyncio.gather(*[self._evaluate_agent(c, dataset, evaluator) for c in pending])
+                evaluated = await asyncio.gather(*[self._evaluate_agent(ctx, c, "train") for c in pending])
             results = {candidate.label: result for candidate, result in evaluated}
             for survivor in survivors:
                 if survivor.label in results:
@@ -1606,9 +1143,7 @@ class EvolutionaryOptimizer(Agent):
         rng = random.Random(train_batch_seed + round_num)
         batch_size = min(max_train_batch_tasks, len(all_task_ids))
         task_ids = sorted(rng.sample(all_task_ids, batch_size))
-        evaluated = await asyncio.gather(
-            *[self._evaluate_agent(c, dataset, evaluator, task_ids=task_ids) for c in survivors]
-        )
+        evaluated = await asyncio.gather(*[self._evaluate_agent(ctx, c, "train", task_ids=task_ids) for c in survivors])
         return {candidate.label: result for candidate, result in evaluated}
 
     async def _analyze_round(
@@ -1691,8 +1226,6 @@ class EvolutionaryOptimizer(Agent):
     async def _propose_improvements(
         self,
         *,
-        workspace: str,
-        backend: ExperimentalistBackend,
         analysis: str,
         evolution_tree: EvolutionTree,
         round_num: int,
@@ -1717,10 +1250,8 @@ class EvolutionaryOptimizer(Agent):
     async def _implement_candidates(
         self,
         *,
-        workspace: str,
-        backend: ExperimentalistBackend,
+        ctx: ExperimentContext,
         dataset: Dataset,
-        evaluator: Evaluator,
         candidates: list[Candidate],
         config: EvolutionaryOptimizerConfig,
     ) -> list[Candidate]:
@@ -1736,7 +1267,7 @@ class EvolutionaryOptimizer(Agent):
                     ).run(
                         c,
                         dataset,
-                        evaluator,
+                        ctx.evaluation,
                         source_path=config.source.source_path,
                         entrypoint=config.source.entrypoint,
                     )
@@ -1747,50 +1278,24 @@ class EvolutionaryOptimizer(Agent):
         finally:
             for c in candidates:
                 self._restore_metadata(c.name, snapshots[c.name])
-        # `return_exceptions=True` above means a build failure arrives as a value, not a
-        # raise, so the reason is only ever seen if we log it here. Keep the exception
-        # itself: "Impl failed: agent-1" with no cause is not diagnosable after the fact,
-        # and a killed candidate is the one thing a run cannot reproduce cheaply.
-        # Cancellation is not a build failure and must not be swallowed as one:
-        # `CancelledError` derives from BaseException, so the `Exception` filter below
-        # would let a cancelled candidate through as if it had built, and it would go on
-        # to be evaluated and ranked. Re-raise so the whole round unwinds instead.
-        for result in results:
-            if isinstance(result, asyncio.CancelledError):
-                raise result
-        failures = {c.name: r for c, r in zip(candidates, results, strict=True) if isinstance(r, Exception)}
+        failed = {c.name for c, r in zip(candidates, results, strict=True) if isinstance(r, Exception)}
         # Persist a killed marker on failed candidates so a later resume via
         # EvolutionTree.from_dir does not resurrect them as active survivors
         # (a node is a survivor exactly when killed_round is None).
         for candidate in candidates:
-            if candidate.name not in failures:
+            if candidate.name not in failed:
                 continue
-            error = failures[candidate.name]
-            logger.warning(
-                "Impl failed: %s — %s: %s",
-                candidate.name,
-                type(error).__name__,
-                error,
-                exc_info=error,
-            )
-            await self._update_candidate(
-                candidate,
-                workspace=workspace,
-                backend=backend,
-                run_id=candidate.run_id,
-                updates={"killed_round": candidate.round},
-            )
-        return [c for c in candidates if c.name not in failures]
+            logger.warning(f"Impl failed: {candidate.name}")
+            await ctx.save_candidate(candidate, updates={"killed_round": candidate.round})
+        return [c for c in candidates if c.name not in failed]
 
     async def _reward_trajectories(
         self,
         *,
-        workspace: str,
-        backend: ExperimentalistBackend,
+        ctx: ExperimentContext,
         dataset: Dataset,
         candidates: list[Candidate],
         config: EvolutionaryOptimizerConfig,
-        client: AsyncNeMoPlatform | None = None,
     ) -> dict[str, dict[str, Any]]:
         """Score candidates against the goal tree; return trajectory results keyed by candidate label."""
         tree_path = self._latest_goal_tree_path()
@@ -1852,7 +1357,7 @@ class EvolutionaryOptimizer(Agent):
         keys = [(node.id, task_id) for node in nodes for task_id in traces_by_task]
         logger.info(f"[TRAJ] Starting {len(keys)} GRA scoring tasks...")
 
-        scorer = GroupLeafScorer(workspace=self.working_dir, client=client, nmp_workspace=workspace)
+        scorer = GroupLeafScorer(workspace=self.working_dir, client=ctx.client, nmp_workspace=ctx.workspace)
         scoring_results = await asyncio.gather(
             *[scorer.run(node, traces_by_task[task_id], dataset) for node in nodes for task_id in traces_by_task]
         )
@@ -1887,99 +1392,24 @@ class EvolutionaryOptimizer(Agent):
 
         return trajectory_results
 
-    async def _finalize(
-        self,
-        *,
-        workspace: str,
-        backend: ExperimentalistBackend,
-        agents_dir: Path,
-        run_entity: ExperimentRun,
-        evolution_tree: EvolutionTree,
-        agent_name: str,
-        insight_dataset: Dataset | None,
-    ) -> Candidate | None:
-        """Select the winner, copy to workspace root, write final report."""
+    async def _finalize(self, *, evolution_tree: EvolutionTree) -> Candidate | None:
+        """Pick the winner and write this strategy's own report; return the winner.
+
+        Everything host-owned that used to happen here — restoring the held-out splits,
+        copying the winner into the workspace, closing out the run entity, and the
+        Insight-suite report sections — belongs to the runner now.
+        """
         # Only survivors that actually have a validation reward are eligible winners.
         scored = [n for n in evolution_tree.nodes.values() if n.is_survivor and n.val_reward]
         front = pareto_front(scored, lambda n: n.val_reward) if scored else []
         best_id = front[0].label if front else None
-
-        restore_heldout_splits(self.working_dir)
-
         if best_id is None:
             logger.warning("[FINAL] no candidates to finalize")
-            run_entity.status = "completed"
-            await backend.update_run(workspace=workspace, run=run_entity)
             return None
 
         evolution_tree.mark_best(best_id)
-        self._copy_best_to_workspace(best_id)
-
-        winner = evolution_tree.nodes[best_id].candidate
-        baseline = next(
-            (node.candidate for node in evolution_tree.nodes.values() if node.round == 0),
-            None,
-        )
-        report_path = self.working_dir / "eval-and-optimize" / "OPTIMIZATION.md"
-        final_report_failed = False
         try:
             await self.write_final_report(best_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - the runner falls back to a compact summary
             logger.warning(f"[FINAL] Failed to write final report: {exc}")
-            final_report_failed = True
-        if not report_path.exists() or not report_path.read_text().strip():
-            final_report_failed = True
-        if final_report_failed:
-            summary = self._render_summary(
-                rounds_completed=run_entity.rounds_completed,
-                baseline=baseline,
-                winner=winner,
-            )
-            report_path.write_text(f"# Optimization Report\n\n## Compact Run Summary\n\n{summary}\n")
-
-        if insight_dataset is not None:
-            try:
-                provenance = insight_suite_provenance(insight_dataset)
-                if baseline is not None:
-                    write_insight_comparison_section(
-                        report_path,
-                        baseline,
-                        winner,
-                        provenance,
-                    )
-                suggestions = select_insight_promotion_suggestions(
-                    insight_dataset,
-                    [node.candidate for node in evolution_tree.nodes.values()],
-                    winner=winner,
-                )
-                write_insight_promotion_section(
-                    report_path,
-                    suggestions,
-                )
-            except ValueError as exc:
-                logger.warning(f"[FINAL] Skipping Insight Suite report sections: {exc}")
-
-        run_entity.status = "completed"
-        run_entity.winner_agent = best_id
-        await backend.update_run(workspace=workspace, run=run_entity)
-
-        return winner
-
-    def _render_summary(
-        self,
-        rounds_completed: int,
-        baseline: Candidate | None,
-        winner: Candidate | None,
-    ) -> str:
-        """Render a human-readable summary of the run outcome."""
-        winner_str = winner.name if winner else "none"
-        details: list[str] = []
-        if winner:
-            if winner.reward("validation").metrics:
-                details.append(f"validation_reward={winner.reward('validation').metrics}")
-            if baseline is not None and baseline.reward("insight").metrics and winner.reward("insight").metrics:
-                details.append(
-                    f"insight_suite=(baseline={baseline.reward('insight').metrics}, winner={winner.reward('insight').metrics})"
-                )
-        suffix = f", {', '.join(details)}" if details else ""
-        return f"Optimization complete: {rounds_completed} round(s) completed, winner={winner_str}{suffix}"
+        return evolution_tree.nodes[best_id].candidate

@@ -8,6 +8,8 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
+import pytest
+from doubles import make_context
 from nemo_experimentalist_plugin.experimentalist.reporting import (
     RunReporter,
     Verbosity,
@@ -199,17 +201,37 @@ def test_build_run_reporter_emits_header_and_is_reusable() -> None:
     assert "baseline" in sink.getvalue()
 
 
-def test_deps_accepts_a_reporter() -> None:
-    from nemo_experimentalist_plugin.entities import DatasetRef
-    from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
+@pytest.mark.asyncio
+async def test_report_progress_narrates_and_records_the_counter(tmp_path: Path) -> None:
+    """One verb feeds both the human narration and the run entity."""
+    sink = io.StringIO()
+    ctx = make_context(root=tmp_path, reporter=RunReporter(sink=sink))
 
-    reporter = RunReporter(sink=io.StringIO())
-    deps = ExperimentalistDeps(
-        workspace="w",
-        reporter=reporter,
-        insight=Path("/test/insight"),
-        train_dataset=DatasetRef(uri="test-train"),
-        validation_dataset=DatasetRef(uri="test-val"),
-        task_template=DatasetRef(uri="test-task"),
-    )
-    assert deps.reporter is reporter
+    await ctx.report_progress(completed=7, total=15, unit="round", note="evaluating candidates")
+
+    assert "round 7/≤15" in sink.getvalue()
+    assert "evaluating candidates" in sink.getvalue()
+    assert (ctx._run.progress_completed, ctx._run.progress_total, ctx._run.progress_unit) == (7, 15, "round")
+
+
+@pytest.mark.asyncio
+async def test_report_progress_without_a_total_is_still_honest(tmp_path: Path) -> None:
+    """An opaque strategy has no denominator, so it reports a bare counter."""
+    sink = io.StringIO()
+    ctx = make_context(root=tmp_path, reporter=RunReporter(sink=sink))
+
+    await ctx.report_progress(completed=340, unit="trial", note="bootstrapping demos")
+
+    assert "trial 340" in sink.getvalue()
+    assert "≤" not in sink.getvalue()
+    assert ctx._run.progress_total is None
+
+
+def test_note_narrates_without_touching_the_run(tmp_path: Path) -> None:
+    sink = io.StringIO()
+    ctx = make_context(root=tmp_path, reporter=RunReporter(sink=sink))
+
+    ctx.note("agent-3 (1/2): add a retrieval step")
+
+    assert "agent-3 (1/2): add a retrieval step" in sink.getvalue()
+    assert ctx._run.progress_completed == 0

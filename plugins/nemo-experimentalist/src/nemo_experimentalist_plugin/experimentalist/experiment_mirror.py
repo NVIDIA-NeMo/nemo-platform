@@ -70,15 +70,21 @@ def group_metadata(run: ExperimentRun) -> dict[str, str]:
     """The ExperimentRun fields with no first-class ExperimentGroup home (spec §4.1).
 
     Platform ``metadata`` is ``dict[str, str]``: every value must be a string. Non-string
-    fields are serialized (``config_snapshot`` as JSON, ``rounds_completed`` via ``str``);
+    fields are serialized (``config_snapshot`` as JSON, the progress counter via ``str``);
     ``winner_candidate`` is omitted until a winner exists rather than sent as ``None``.
+
+    Progress is reported as a counter with its unit, not a fraction, because the
+    strategies that most need reporting are exactly the ones that cannot compute one.
     """
     md = {
         "agent": run.agent,
         "config_snapshot": json.dumps(run.config_snapshot, sort_keys=True),
         "status": run.status,
-        "rounds_completed": str(run.rounds_completed),
+        "progress_completed": str(run.progress_completed),
+        "progress_unit": run.progress_unit,
     }
+    if run.progress_total is not None:
+        md["progress_total"] = str(run.progress_total)
     if run.winner_agent is not None:
         md["winner_candidate"] = run.winner_agent
     return md

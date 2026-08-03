@@ -1,17 +1,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import logging
-from dataclasses import dataclass
+"""``run_experimentalist`` wires the CLI's inputs into one :class:`ExperimentRunner`.
+
+What the runner then does with them is covered by the runner's own tests; these check
+the hand-off, and that the caller keeps ownership of its platform client.
+"""
+
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist import run as experimentalist_run
-from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_platform import AsyncNeMoPlatform
@@ -46,24 +49,17 @@ class AgentFactoryCall:
 
 
 @dataclass
-class FakeExperimentalist:
-    deps: ExperimentalistDeps | None = None
+class RecordingRunner:
+    """Stands in for the real runner and keeps the kwargs it was constructed with."""
 
-    async def run(self, deps: ExperimentalistDeps) -> ExperimentalistResult:
-        self.deps = deps
-        return ExperimentalistResult(summary="optimization complete", run_id="run-1", rounds_completed=1)
+    calls: list[dict[str, Any]] = field(default_factory=list)
 
+    def __call__(self, **kwargs: Any) -> "RecordingRunner":
+        self.calls.append(kwargs)
+        return self
 
-def test_persistence_warning_includes_exception_message(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    caplog.set_level(logging.WARNING, logger=loop_module.__name__)
-
-    loop_module._warn_persistence_failure("archive", "agent-2", RuntimeError("push rejected by remote"))
-
-    assert "archive" in caplog.text
-    assert "agent-2" in caplog.text
-    assert "push rejected by remote" in caplog.text
+    async def run(self) -> ExperimentalistResult:
+        return ExperimentalistResult(summary="optimization complete", run_id="run-1", progress_completed=1)
 
 
 def _make_run_paths(tmp_path: Path) -> ExperimentRunPaths:
@@ -89,7 +85,8 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     client = ClosingClient()
     backend = LocalExperimentalistBackend(path=tmp_path / "backend")
     optimizer_config = EvolutionaryOptimizerConfig(max_rounds=2)
-    experimentalist = FakeExperimentalist()
+    strategy = object()
+    runner = RecordingRunner()
     backend_calls: list[BackendFactoryCall] = []
     agent_calls: list[AgentFactoryCall] = []
     litellm_calls: list[bool] = []
@@ -100,23 +97,19 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
         experiments_output: str,
         storage: object = None,
     ) -> LocalExperimentalistBackend:
-        backend_calls.append(
-            BackendFactoryCall(
-                client=client,
-                experiments_output=experiments_output,
-            )
-        )
+        backend_calls.append(BackendFactoryCall(client=client, experiments_output=experiments_output))
         return backend
 
     def build_agent(
         *, working_dir: Path, config: EvolutionaryOptimizerConfig, framework_skills_dirs: list[Path] | None
-    ) -> FakeExperimentalist:
+    ) -> object:
         assert framework_skills_dirs is None
         agent_calls.append(AgentFactoryCall(working_dir=working_dir, config=config))
-        return experimentalist
+        return strategy
 
     monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", make_backend)
     monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", build_agent)
+    monkeypatch.setattr(experimentalist_run, "ExperimentRunner", runner)
     monkeypatch.setattr(experimentalist_run, "_enable_litellm_drop_params", lambda: litellm_calls.append(True))
 
     train_dataset = DatasetRef(uri=str(paths.train))
@@ -135,25 +128,23 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
 
     assert summary == "optimization complete"
     assert paths.experiment.is_dir()
-    assert backend_calls == [
-        BackendFactoryCall(
-            client=client,
-            experiments_output=str(paths.experiment.resolve()),
-        )
-    ]
+    assert backend_calls == [BackendFactoryCall(client=client, experiments_output=str(paths.experiment.resolve()))]
     assert agent_calls == [AgentFactoryCall(working_dir=paths.experiment.resolve(), config=optimizer_config)]
     assert litellm_calls == [True]
     assert not client.closed
-    assert experimentalist.deps is not None
-    assert experimentalist.deps.workspace == "workspace-a"
-    # ``agent`` is forwarded verbatim (it may be a git url@ref); the loop resolves it.
-    assert experimentalist.deps.agent == paths.agent
-    assert experimentalist.deps.insight is None
-    assert experimentalist.deps.train_dataset == train_dataset
-    assert experimentalist.deps.validation_dataset == validation_dataset
-    assert experimentalist.deps.backend is backend
-    assert experimentalist.deps.config is optimizer_config
-    assert experimentalist.deps.agent_spec is None
+
+    (call,) = runner.calls
+    assert call["backend"] is backend
+    assert call["strategy"] is strategy
+    assert call["config"] is optimizer_config
+    assert call["workspace"] == "workspace-a"
+    assert call["root"] == paths.experiment.resolve()
+    # ``agent`` is forwarded verbatim (it may be a git url@ref); the runner resolves it.
+    assert call["agent"] == paths.agent
+    assert call["insight"] is None
+    assert call["train_dataset"] == train_dataset
+    assert call["validation_dataset"] == validation_dataset
+    assert call["agent_spec"] is None
 
 
 @pytest.mark.asyncio
@@ -162,20 +153,11 @@ async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
     tmp_path: Path,
 ) -> None:
     paths = _make_run_paths(tmp_path)
-    client = ClosingClient()
-    backend = LocalExperimentalistBackend(path=tmp_path / "backend")
-    experimentalist = FakeExperimentalist()
+    runner = RecordingRunner()
 
-    monkeypatch.setattr(
-        experimentalist_run,
-        "make_experimentalist_backend",
-        lambda **_: backend,
-    )
-    monkeypatch.setattr(
-        experimentalist_run,
-        "build_experimentalist_agent",
-        lambda **_: experimentalist,
-    )
+    monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", lambda **_: object())
+    monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", lambda **_: object())
+    monkeypatch.setattr(experimentalist_run, "ExperimentRunner", runner)
     monkeypatch.setattr(experimentalist_run, "_enable_litellm_drop_params", lambda: None)
 
     await experimentalist_run.run_experimentalist(
@@ -185,26 +167,25 @@ async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
         task_template=DatasetRef(uri=str(paths.train)),
         experiment_dir=paths.experiment,
         workspace="workspace-a",
-        client=cast(AsyncNeMoPlatform, client),
+        client=cast(AsyncNeMoPlatform, ClosingClient()),
         config=EvolutionaryOptimizerConfig(),
     )
 
-    assert experimentalist.deps is not None
     # A str id is not resolved to a Path — it flows through untouched to the backend.
-    assert experimentalist.deps.insight == "insight-remote-123"
+    assert runner.calls[0]["insight"] == "insight-remote-123"
 
 
 @pytest.mark.asyncio
-async def test_run_experimentalist_forwards_agent_spec_uri_to_deps(
+async def test_run_experimentalist_forwards_agent_spec_uri(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     paths = _make_run_paths(tmp_path)
-    backend = LocalExperimentalistBackend(path=tmp_path / "backend")
-    experimentalist = FakeExperimentalist()
+    runner = RecordingRunner()
 
-    monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", lambda **_: backend)
-    monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", lambda **_: experimentalist)
+    monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", lambda **_: object())
+    monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", lambda **_: object())
+    monkeypatch.setattr(experimentalist_run, "ExperimentRunner", runner)
     monkeypatch.setattr(experimentalist_run, "_enable_litellm_drop_params", lambda: None)
 
     spec_uri = "/path/to/AGENT-SPEC.md"
@@ -220,8 +201,7 @@ async def test_run_experimentalist_forwards_agent_spec_uri_to_deps(
         config=EvolutionaryOptimizerConfig(),
     )
 
-    assert experimentalist.deps is not None
-    assert experimentalist.deps.agent_spec == spec_uri
+    assert runner.calls[0]["agent_spec"] == spec_uri
 
 
 @pytest.mark.asyncio

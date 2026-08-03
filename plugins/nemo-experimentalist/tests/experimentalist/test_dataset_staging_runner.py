@@ -1,17 +1,27 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Loop integration: Experimentalist stages Eval Author inputs before calling Eval Author."""
+"""The runner stages Eval Author's inputs before calling it, so the source is untouched."""
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
+from doubles import FakeBackend, fake_client
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import DatasetRef
-from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
+from nemo_experimentalist_plugin.experimentalist import runner as runner_module
+from nemo_experimentalist_plugin.experimentalist.runner import ExperimentRunner
+from nemo_insights_plugin.entities import Insight
+
+
+class _UnreachedStrategy:
+    """Never runs: Eval Author raises while the runner is still preparing inputs."""
+
+    supports_resume = True
+
+    async def run(self, ctx: object) -> None:
+        raise AssertionError("the strategy must not start when input preparation fails")
 
 
 def _write_tree(root: Path, content: str) -> None:
@@ -62,45 +72,34 @@ async def test_insight_run_stages_inputs_before_eval_author(
             raise RuntimeError("stop after eval_author")
 
     monkeypatch.setattr(
-        loop_module,
+        runner_module,
         "EvaluatorFactory",
         lambda: SimpleNamespace(build_evaluator=lambda *args, **kwargs: object()),
     )
-    monkeypatch.setattr(loop_module, "DatasetFactory", RecordingDatasetFactory)
-    monkeypatch.setattr(loop_module, "EvalAuthor", MutatingEvalAuthor)
-    monkeypatch.setattr(
-        EvolutionaryOptimizer,
-        "_init_structure",
-        lambda self: (experiment / "agents", experiment / "analysis", experiment / "results"),
-    )
+    monkeypatch.setattr(runner_module, "DatasetFactory", RecordingDatasetFactory)
+    monkeypatch.setattr("nemo_eval_author_plugin.eval_author.agent.EvalAuthor", MutatingEvalAuthor)
 
-    backend = SimpleNamespace(
-        client=object(),
-        get_insight=AsyncMock(return_value=SimpleNamespace(agent=str(tmp_path / "agent"))),
-        get_agent_code=AsyncMock(),
-    )
-    config = EvolutionaryOptimizerConfig()
-    optimizer = object.__new__(EvolutionaryOptimizer)
-    optimizer.working_dir = experiment
-    optimizer.config = config
-    optimizer.shell = SimpleNamespace(close=AsyncMock())
-    deps = SimpleNamespace(
-        backend=backend,
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    runner = ExperimentRunner(
+        backend=FakeBackend(
+            client=fake_client(),
+            insight=Insight(workspace="default", agent=str(agent_dir), title="t", description="d"),
+        ),
+        strategy=_UnreachedStrategy(),
+        config=EvolutionaryOptimizerConfig(),
         workspace="default",
-        config=config,
-        evaluator_type="harbor",
+        root=experiment,
+        agent=agent_dir,
+        insight="insight-1",
         train_dataset=DatasetRef(uri=str(train)),
         validation_dataset=DatasetRef(uri=str(validation)),
         task_template=DatasetRef(uri=str(template)),
-        insight="insight-1",
-        agent=tmp_path / "agent",
-        agent_spec=None,
     )
 
     with pytest.raises(RuntimeError, match="stop after eval_author"):
-        await optimizer.run(deps)
+        await runner.run()
 
-    optimizer.shell.close.assert_awaited_once()
     assert captured == {
         "train": experiment / "dataset" / "train",
         "validation": experiment / "dataset" / "validation",

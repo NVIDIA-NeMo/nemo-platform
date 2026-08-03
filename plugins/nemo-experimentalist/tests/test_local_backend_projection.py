@@ -20,7 +20,7 @@ pytestmark = pytest.mark.asyncio
 
 
 def _run() -> ExperimentRun:
-    return ExperimentRun(workspace="default", agent="a", config_snapshot={}, status="running", rounds_completed=0)
+    return ExperimentRun(workspace="default", agent="a", config_snapshot={}, status="running", progress_completed=0)
 
 
 async def test_no_projection_without_client(tmp_path: Path) -> None:
@@ -56,7 +56,7 @@ async def test_persist_result_projects_finalize(tmp_path: Path) -> None:
     be._mirrors["default"] = AsyncMock()
     await be.persist_result(
         workspace="default",
-        result=ExperimentalistResult(summary="done", run_id="run-1", rounds_completed=1, winner=None),
+        result=ExperimentalistResult(summary="done", run_id="run-1", progress_completed=1, winner=None),
     )
     be._mirrors["default"].finalize.assert_awaited_once()
 
