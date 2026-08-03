@@ -189,7 +189,7 @@ appears. Nothing else on that line. Explain what gave it away on the lines after
 analyze_headers_prompt = f"""
 
 You are an email security analyst reading raw SMTP headers. Check the sender authentication
-results: SPF, DKIM, and DMARC. Exactly one of them has failed.
+results: SPF, DKIM, and DMARC.
 
 {_GUARDRAIL_HEADERS}
 
