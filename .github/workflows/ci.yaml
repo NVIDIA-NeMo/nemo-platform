@@ -755,6 +755,10 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
+      - name: Install Flox
+        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0 
+        with:
+          disable-metrics: "true"
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
@@ -773,14 +777,14 @@ jobs:
       - name: Install web dependencies
         working-directory: web
         run: pnpm install --frozen-lockfile
-      - name: Install scanner dependencies
-        shell: bash
-        run: script/install_osv_scanner.sh
       - name: Run Lint
-        run: tools/lint/lint-all.sh
-        shell: bash
+        uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
         env:
           CI_PROJECT_DIR: ${{ github.workspace }}
+        with:
+          dir: ./tools/lint
+          command: |
+            tools/lint/lint-all.sh
       - name: Upload lint artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -805,7 +809,15 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-      - uses: ./.github/actions/build-policy-wasm
+      - name: Install Flox
+        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0
+        with:
+          disable-metrics: "true"
+      - name: Build policy WASM
+        uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
+        with:
+          dir: ./tools/open-policy-agent
+          command: ./script/build_policy_wasm.sh
       - name: Upload policy WASM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
