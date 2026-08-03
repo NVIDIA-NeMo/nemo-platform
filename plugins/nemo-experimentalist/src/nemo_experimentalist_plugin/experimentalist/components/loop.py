@@ -1743,14 +1743,25 @@ class EvolutionaryOptimizer(Agent):
         finally:
             for c in candidates:
                 self._restore_metadata(c.name, snapshots[c.name])
-        failed = {c.name for c, r in zip(candidates, results, strict=True) if isinstance(r, Exception)}
+        # `return_exceptions=True` above means a build failure arrives as a value, not a
+        # raise, so the reason is only ever seen if we log it here. Keep the exception
+        # itself: "Impl failed: agent-1" with no cause is not diagnosable after the fact,
+        # and a killed candidate is the one thing a run cannot reproduce cheaply.
+        failures = {c.name: r for c, r in zip(candidates, results, strict=True) if isinstance(r, Exception)}
         # Persist a killed marker on failed candidates so a later resume via
         # EvolutionTree.from_dir does not resurrect them as active survivors
         # (a node is a survivor exactly when killed_round is None).
         for candidate in candidates:
-            if candidate.name not in failed:
+            if candidate.name not in failures:
                 continue
-            logger.warning(f"Impl failed: {candidate.name}")
+            error = failures[candidate.name]
+            logger.warning(
+                "Impl failed: %s — %s: %s",
+                candidate.name,
+                type(error).__name__,
+                error,
+                exc_info=error,
+            )
             await self._update_candidate(
                 candidate,
                 workspace=workspace,
@@ -1758,7 +1769,7 @@ class EvolutionaryOptimizer(Agent):
                 run_id=candidate.run_id,
                 updates={"killed_round": candidate.round},
             )
-        return [c for c in candidates if c.name not in failed]
+        return [c for c in candidates if c.name not in failures]
 
     async def _reward_trajectories(
         self,
