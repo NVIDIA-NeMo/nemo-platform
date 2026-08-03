@@ -702,7 +702,6 @@ def stop_instance(
             _LOCK_RELEASE_TIMEOUT,
             pid,
         )
-
     _reap_stopped_pid(pid, timeout=min(_REAP_PID_TIMEOUT, timeout))
     lock_released = _wait_until_instance_lock_released(
         scope,
@@ -722,7 +721,6 @@ def stop_instance(
         )
     else:
         remove_descriptor(scope, base_dir=base_dir)
-
     return StopResult(stopped_pids=[pid], swept_children=swept)
 
 
