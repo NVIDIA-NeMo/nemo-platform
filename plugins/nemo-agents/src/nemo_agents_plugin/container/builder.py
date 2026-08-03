@@ -4,7 +4,8 @@
 """Docker image builder for NeMo Platform agents.
 
 Builds a Docker image either from a pre-existing Dockerfile or by rendering
-one on-the-fly via :func:`~nemo_agents_plugin.container.template.render_nat_dockerfile`.
+one on-the-fly via :func:`~nemo_agents_plugin.container.template.render_nat_dockerfile`
+or :func:`~nemo_agents_plugin.container.template.render_fabric_dockerfile`.
 
 Uses `python-on-whales <https://github.com/gabrieldemarmiesse/python-on-whales>`_
 for Docker operations so callers never need to shell out manually.
