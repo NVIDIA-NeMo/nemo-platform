@@ -904,24 +904,32 @@ def test_profile_storage_flags_reads_inline_and_path_forms(tmp_path: Path) -> No
     assert profile_storage_flags(path_profile) == {"archive_candidates": True}
 
 
-def test_models_config_writes_only_configured_tiers() -> None:
-    """A configured tier overrides the environment; an unset tier leaves it alone."""
-    from nemo_experimentalist_plugin.config import ModelsConfig
+def test_run_config_rejects_a_models_block() -> None:
+    """Model tiers are a deployment setting, not a per-run one.
 
-    env = {"EXPERIMENTALIST_FAST_MODEL_NAME": "from-env"}
-    written = ModelsConfig(smart="cfg/smart").apply_to_env(env)
-
-    assert written == ["smart"]
-    assert env["EXPERIMENTALIST_SMART_MODEL_NAME"] == "cfg/smart"
-    assert env["EXPERIMENTALIST_FAST_MODEL_NAME"] == "from-env"
-
-
-def test_optimizer_config_accepts_models_block() -> None:
+    Silently ignoring the key would be worse than failing: a run config that names models
+    reads as though it chose them, while the run would actually use whatever the install
+    is configured with.
+    """
+    import pytest
     from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 
-    cfg = EvolutionaryOptimizerConfig.model_validate({"models": {"smart": "a/b", "fast": "c/d"}})
+    with pytest.raises(ValueError, match="NEMO_EXPERIMENTALIST_MODELS"):
+        EvolutionaryOptimizerConfig.model_validate({"models": {"smart": "a/b"}})
 
-    assert (cfg.models.smart, cfg.models.mid, cfg.models.fast) == ("a/b", None, "c/d")
+
+def test_run_config_takes_no_environment_override(monkeypatch) -> None:
+    """``--config`` is the whole story for run parameters.
+
+    An ambient variable truncating a run whose config file says otherwise would make
+    ``config_snapshot`` a dishonest record of what ran, so the run config deliberately has
+    no environment binding at all.
+    """
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_MAX_ROUNDS", "1")
+
+    assert EvolutionaryOptimizerConfig.model_validate({"max_rounds": 15}).max_rounds == 15
 
 
 def test_component_configs_are_the_component_owned_classes() -> None:

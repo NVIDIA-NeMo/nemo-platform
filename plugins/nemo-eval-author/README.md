@@ -54,11 +54,11 @@ from Experimentalist. When the API base is the NVIDIA Inference Gateway over HTT
 Two pieces of that module are transitional and disappear with the last
 Experimentalist import, both tagged `TODO(eval-author-standalone)`:
 
-- unset `AUTHOR_*` variables fall back to `EXPERIMENTALIST_*`, so insight mode works
+- unset `AUTHOR_*` variables fall back to `NEMO_EXPERIMENTALIST_*`, so insight mode works
   from a single Experimentalist profile `.env`. Setting `AUTHOR_*` explicitly today
   avoids the break when the fallback is removed.
 - `EvalAuthor.__init__` calls `bridge_author_env_to_experimentalist()`, copying
-  `AUTHOR_*` into unset `EXPERIMENTALIST_*` slots so the Experimentalist helpers
+  `AUTHOR_*` into unset `NEMO_EXPERIMENTALIST_*` slots so the Experimentalist helpers
   Eval Author still borrows see credentials during a standalone run.
 
 A `nemo eval-author` CLI that auto-loads this `.env` is not wired yet.

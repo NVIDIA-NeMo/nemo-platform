@@ -129,9 +129,9 @@ def check_environment(
     results: list[CheckResult] = []
     profile_dir = profile.profile_dir if profile is not None else None
     results += _check_env(
-        p, "credentials-experiment", ("EXPERIMENTALIST_API_BASE", "EXPERIMENTALIST_API_KEY"), profile_dir
+        p, "credentials-experiment", ("NEMO_EXPERIMENTALIST_API_BASE", "NEMO_EXPERIMENTALIST_API_KEY"), profile_dir
     )
-    base = p.env.get("EXPERIMENTALIST_API_BASE")
+    base = p.env.get("NEMO_EXPERIMENTALIST_API_BASE")
     if base:
         model_url = f"{base.rstrip('/')}/models"
         ok = p.http_ok(model_url)
@@ -144,7 +144,7 @@ def check_environment(
                 "advisory",
                 f"{display_model_url} reachable",
                 "model endpoint unreachable",
-                hint="check EXPERIMENTALIST_API_BASE and network",
+                hint="check NEMO_EXPERIMENTALIST_API_BASE and network",
             )
         )
     ok = p.http_ok(f"{base_url.rstrip('/')}/health/ready")
@@ -449,10 +449,10 @@ def _check_agent_source(
 # Where each credential comes from — surfaced in the missing-var hint so the
 # fix is actionable without hunting through the README.
 _ENV_SOURCES = {
-    "EXPERIMENTALIST_API_BASE": (
+    "NEMO_EXPERIMENTALIST_API_BASE": (
         "OpenAI-compatible LLM endpoint for the experimentalist (defaults to https://inference-api.nvidia.com/v1)"
     ),
-    "EXPERIMENTALIST_API_KEY": "API key for EXPERIMENTALIST_API_BASE (on the gateway, INFERENCE_API_KEY fills this)",
+    "NEMO_EXPERIMENTALIST_API_KEY": "API key for NEMO_EXPERIMENTALIST_API_BASE (on the gateway, INFERENCE_API_KEY fills this)",
 }
 
 _ENV_EXAMPLE_POINTER = "see docs/get-started/example-agent.mdx"

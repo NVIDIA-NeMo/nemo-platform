@@ -83,13 +83,6 @@ async def run_experimentalist(
     # so this library function leaves root logging untouched.
     _enable_litellm_drop_params()
 
-    # Apply the config's models: block before anything constructs an agent. Tiers resolve
-    # from the environment, so this is where a config-file choice becomes effective; an
-    # unset tier leaves whatever the environment already provides.
-    applied = config.models.apply_to_env()
-    if applied:
-        logger.info("Model tiers from config: %s", ", ".join(applied))
-
     experiment_dir.mkdir(parents=True, exist_ok=True)
     experiment_dir = experiment_dir.resolve()
     # Leave ``agent`` unresolved: it may be a git ``url@ref`` (not a filesystem path).

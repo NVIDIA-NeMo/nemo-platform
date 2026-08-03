@@ -28,7 +28,7 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=lambda url: True,
-            env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"},
+            env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
 

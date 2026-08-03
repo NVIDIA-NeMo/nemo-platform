@@ -45,9 +45,9 @@ def _experiment_id() -> str:
 
 
 def _configure_models(*, model: str, user_model: str, api_base: str) -> None:
-    api_key = os.environ.get("INFERENCE_API_KEY") or os.environ.get("EXPERIMENTALIST_API_KEY")
+    api_key = os.environ.get("INFERENCE_API_KEY") or os.environ.get("NEMO_EXPERIMENTALIST_API_KEY")
     if not api_key:
-        raise RuntimeError("INFERENCE_API_KEY or EXPERIMENTALIST_API_KEY is required")
+        raise RuntimeError("INFERENCE_API_KEY or NEMO_EXPERIMENTALIST_API_KEY is required")
 
     normalized_base = api_base.rstrip("/")
     openai_base = normalized_base if normalized_base.endswith("/v1") else f"{normalized_base}/v1"

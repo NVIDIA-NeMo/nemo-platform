@@ -30,7 +30,7 @@ def test_api_base_prefers_eval_author_over_experimentalist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
-    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://experimentalist.example/v1")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://experimentalist.example/v1")
     monkeypatch.setenv("AUTHOR_API_KEY", "eval-key")
 
     assert model_config._api_base() == "https://eval-author.example/v1"
@@ -40,15 +40,15 @@ def test_api_base_falls_back_to_experimentalist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("AUTHOR_API_BASE", raising=False)
-    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://experimentalist.example/v1")
-    monkeypatch.setenv("EXPERIMENTALIST_API_KEY", "exp-key")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://experimentalist.example/v1")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "exp-key")
 
     assert model_config._api_base() == "https://experimentalist.example/v1"
 
 
 def test_api_base_requires_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AUTHOR_API_BASE", raising=False)
-    monkeypatch.delenv("EXPERIMENTALIST_API_BASE", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_BASE", raising=False)
 
     with pytest.raises(ValueError, match="AUTHOR_API_BASE"):
         model_config._api_base()
@@ -56,7 +56,7 @@ def test_api_base_requires_configuration(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_whitespace_only_values_count_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "   ")
-    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "  https://experimentalist.example/v1  ")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "  https://experimentalist.example/v1  ")
 
     assert model_config._api_base() == "https://experimentalist.example/v1"
 
@@ -66,7 +66,7 @@ def test_api_key_accepts_inference_key_on_gateway(
 ) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://inference-api.nvidia.com/v1")
     monkeypatch.delenv("AUTHOR_API_KEY", raising=False)
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
     monkeypatch.setenv("INFERENCE_API_KEY", "sk-gateway")
 
     assert model_config._api_key() == "sk-gateway"
@@ -77,7 +77,7 @@ def test_api_key_refuses_to_forward_inference_key_over_plain_http(
 ) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "http://inference-api.nvidia.com/v1")
     monkeypatch.delenv("AUTHOR_API_KEY", raising=False)
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
     monkeypatch.setenv("INFERENCE_API_KEY", "sk-gateway")
 
     with pytest.raises(ValueError, match="AUTHOR_API_KEY"):
@@ -89,7 +89,7 @@ def test_api_key_refuses_to_forward_inference_key_to_a_lookalike_host(
 ) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://inference-api.nvidia.com.attacker.example/v1")
     monkeypatch.delenv("AUTHOR_API_KEY", raising=False)
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
     monkeypatch.setenv("INFERENCE_API_KEY", "sk-gateway")
 
     with pytest.raises(ValueError, match="AUTHOR_API_KEY"):
@@ -101,7 +101,7 @@ def test_api_key_requires_credentials_when_missing(
 ) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://custom.example/v1")
     monkeypatch.delenv("AUTHOR_API_KEY", raising=False)
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
     monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
 
     with pytest.raises(ValueError, match="AUTHOR_API_KEY"):
@@ -116,7 +116,7 @@ def test_model_name_prefers_author_then_experimentalist_then_default(
     getter = {"SMART": model_config.get_smart_model, "FAST": model_config.get_fast_model}[tier]
     default = {"SMART": model_config._SMART_MODEL_DEFAULT, "FAST": model_config._FAST_MODEL_DEFAULT}[tier]
     author_var = f"AUTHOR_{tier}_MODEL_NAME"
-    experimentalist_var = f"EXPERIMENTALIST_{tier}_MODEL_NAME"
+    experimentalist_var = f"NEMO_EXPERIMENTALIST_MODELS_{tier}"
 
     monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
     monkeypatch.setenv("AUTHOR_API_KEY", "eval-key")
@@ -159,14 +159,14 @@ def test_bridge_author_env_fills_unset_experimentalist_slots(
 ) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
     monkeypatch.setenv("AUTHOR_API_KEY", "eval-key")
-    monkeypatch.delenv("EXPERIMENTALIST_API_BASE", raising=False)
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_BASE", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
 
     applied = model_config.bridge_author_env_to_experimentalist()
 
-    assert applied == ["EXPERIMENTALIST_API_BASE", "EXPERIMENTALIST_API_KEY"]
-    assert os.environ["EXPERIMENTALIST_API_BASE"] == "https://eval-author.example/v1"
-    assert os.environ["EXPERIMENTALIST_API_KEY"] == "eval-key"
+    assert applied == ["NEMO_EXPERIMENTALIST_API_BASE", "NEMO_EXPERIMENTALIST_API_KEY"]
+    assert os.environ["NEMO_EXPERIMENTALIST_API_BASE"] == "https://eval-author.example/v1"
+    assert os.environ["NEMO_EXPERIMENTALIST_API_KEY"] == "eval-key"
 
 
 def test_bridge_author_env_covers_every_declared_pair(
@@ -187,51 +187,51 @@ def test_bridge_author_env_does_not_overwrite_existing_experimentalist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
-    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://experimentalist.example/v1")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://experimentalist.example/v1")
 
     applied = model_config.bridge_author_env_to_experimentalist()
 
     assert applied == []
-    assert os.environ["EXPERIMENTALIST_API_BASE"] == "https://experimentalist.example/v1"
+    assert os.environ["NEMO_EXPERIMENTALIST_API_BASE"] == "https://experimentalist.example/v1"
 
 
 def test_bridge_author_env_is_a_no_op_once_applied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
-    monkeypatch.delenv("EXPERIMENTALIST_API_BASE", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_BASE", raising=False)
 
-    assert model_config.bridge_author_env_to_experimentalist() == ["EXPERIMENTALIST_API_BASE"]
+    assert model_config.bridge_author_env_to_experimentalist() == ["NEMO_EXPERIMENTALIST_API_BASE"]
     assert model_config.bridge_author_env_to_experimentalist() == []
 
 
 def test_agent_constructs_under_author_credentials_alone() -> None:
     """An AUTHOR_*-only run must still be able to build the Experimentalist agents.
 
-    ``TraceAnalyzer`` and friends resolve ``EXPERIMENTALIST_*`` when they are constructed,
-    so ``EvalAuthor.__init__`` bridges the credentials first. Checked in a subprocess with a
-    pruned environment because this suite's conftest already populates ``EXPERIMENTALIST_*``
-    and modules are imported once per session -- it fails with ``ValueError`` if the bridge
-    stops running early enough.
+    ``TraceAnalyzer`` and friends resolve ``NEMO_EXPERIMENTALIST_*`` when they are
+    constructed, so ``EvalAuthor.__init__`` bridges the credentials first. Checked in a
+    subprocess with a pruned environment because this suite's conftest already populates
+    ``NEMO_EXPERIMENTALIST_*`` and modules are imported once per session -- it fails with
+    ``ValueError`` if the bridge stops running early enough.
     """
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith(("AUTHOR_", "EXPERIMENTALIST_", "INFERENCE_API_KEY"))
+        if not key.startswith(("AUTHOR_", "NEMO_EXPERIMENTALIST_", "INFERENCE_API_KEY"))
     }
     env["AUTHOR_API_BASE"] = "https://placeholder.invalid"
     env["AUTHOR_API_KEY"] = "placeholder-for-import"
 
-    # Importing nooa loads a .env, which can pre-populate EXPERIMENTALIST_* and mask the
+    # Importing nooa loads a .env, which can pre-populate NEMO_EXPERIMENTALIST_* and mask the
     # bridge. Clear those slots after the imports so construction is the only thing that
     # can fill them.
     probe = (
         "import os, tempfile\n"
         "from pathlib import Path\n"
         "from nemo_eval_author_plugin.eval_author.agent import EvalAuthor\n"
-        "for k in [k for k in os.environ if k.startswith('EXPERIMENTALIST_')]: del os.environ[k]\n"
+        "for k in [k for k in os.environ if k.startswith('NEMO_EXPERIMENTALIST_')]: del os.environ[k]\n"
         "EvalAuthor(experiment_dir=Path(tempfile.mkdtemp()))\n"
-        "assert os.environ['EXPERIMENTALIST_API_KEY'] == 'placeholder-for-import', os.environ.get('EXPERIMENTALIST_API_KEY')\n"
+        "assert os.environ['NEMO_EXPERIMENTALIST_API_KEY'] == 'placeholder-for-import', os.environ.get('NEMO_EXPERIMENTALIST_API_KEY')\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", probe],

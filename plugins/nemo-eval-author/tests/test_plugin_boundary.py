@@ -12,7 +12,7 @@ would fork the contract and break comparability in Studio. This list does not sh
 ``_BORROWED_BEHAVIOUR`` is debt: Harbor, tools, trace analysis, the backend factory. Eval
 Author is meant to end up standalone, so this list can only shrink, and duplicating a
 helper beats adding a row. Emptying it is what unblocks the remaining
-TODO(eval-author-standalone) cleanup — the ``EXPERIMENTALIST_*`` credential fallback and
+TODO(eval-author-standalone) cleanup — the ``NEMO_EXPERIMENTALIST_*`` credential fallback and
 the ``bridge_author_env_to_experimentalist`` call in ``EvalAuthor.__init__``.
 """
 

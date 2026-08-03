@@ -57,24 +57,27 @@ a baseline agent on Harbor-compatible train and validation datasets, proposes
 candidate mutations, and records its artifacts under the selected experiment
 directory.
 
-Model tiers come from the environment, or from a `models:` block in the `--config`
-YAML which is applied to the environment before any agent is built. Credentials are
-environment-only and never read from config. `nemo experimentalist doctor` reports
-which are unset.
+### Endpoint and model settings
 
-| Variable | Default | Used by |
-|---|---|---|
-| `EXPERIMENTALIST_API_BASE` | `https://inference-api.nvidia.com/v1` | all optimizer agents |
-| `EXPERIMENTALIST_API_KEY` | — (required) | all optimizer agents |
-| `EXPERIMENTALIST_SMART_MODEL_NAME` | — (required) | Coder, Analyzer, Proposer, Rationalizer, TraceAnalyzer |
-| `EXPERIMENTALIST_MID_MODEL_NAME` | — (required) | trajectory scorer, architecture doc |
-| `EXPERIMENTALIST_FAST_MODEL_NAME` | — (required) | Terminator, goal tree, summarizers |
+Which endpoint the Experimentalist talks to, and with which models, is a *deployment*
+setting: one per install, not per experiment. Like every other NeMo plugin it is a
+`NemoConfig`, so it can be set either in the `experimentalist:` section of the platform
+config file or through the environment, and **the environment wins**.
+`nemo experimentalist doctor` reports what is unset.
+
+| Variable | Config key | Default | Used by |
+|---|---|---|---|
+| `NEMO_EXPERIMENTALIST_API_BASE` | `api_base` | `https://inference-api.nvidia.com/v1` | all optimizer agents |
+| `NEMO_EXPERIMENTALIST_API_KEY` | `api_key` | — (required) | all optimizer agents |
+| `NEMO_EXPERIMENTALIST_MODELS_SMART` | `models.smart` | — (required) | Coder, Analyzer, Proposer, Rationalizer, TraceAnalyzer |
+| `NEMO_EXPERIMENTALIST_MODELS_MID` | `models.mid` | — (required) | trajectory scorer, architecture doc |
+| `NEMO_EXPERIMENTALIST_MODELS_FAST` | `models.fast` | — (required) | Terminator, goal tree, summarizers |
 
 ```bash
-export EXPERIMENTALIST_API_KEY=sk-...
-export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5-mini
-export EXPERIMENTALIST_MID_MODEL_NAME=openai/openai/openai/gpt-5-mini
-export EXPERIMENTALIST_FAST_MODEL_NAME=openai/openai/openai/gpt-5-mini
+export NEMO_EXPERIMENTALIST_API_KEY=sk-...
+export NEMO_EXPERIMENTALIST_MODELS_SMART=openai/openai/openai/gpt-5-mini
+export NEMO_EXPERIMENTALIST_MODELS_MID=openai/openai/openai/gpt-5-mini
+export NEMO_EXPERIMENTALIST_MODELS_FAST=openai/openai/openai/gpt-5-mini
 ```
 
 Model names have no default: a name is only meaningful against a specific endpoint, so
@@ -82,9 +85,13 @@ an unset tier fails before the run starts rather than at the first LLM call. Nam
 as *your* endpoint does — `openai/openai/openai/gpt-5-mini` on the NVIDIA gateway,
 `gpt-5-mini` against OpenAI directly.
 
-Credentials are the one place a default applies: when `EXPERIMENTALIST_API_BASE` is the
-NVIDIA gateway, a set `INFERENCE_API_KEY` fills `EXPERIMENTALIST_API_KEY`. A custom base
-never inherits it, so a key scoped to the gateway is not forwarded elsewhere.
+Credentials are the one place a default applies: when the API base is the NVIDIA gateway,
+a set `INFERENCE_API_KEY` fills `NEMO_EXPERIMENTALIST_API_KEY`. A custom base never
+inherits it, so a key scoped to the gateway is not forwarded elsewhere.
+
+The `--config` YAML is the other kind of configuration: it holds what *one experiment*
+does (`max_rounds`, `max_survivors`, per-component tuning) and takes no environment
+override, so the file is an accurate record of the run.
 
 The agent under test is separate: it reads `AUT_MODEL_NAME`
 plus `OPENAI_API_KEY` / `OPENAI_BASE_URL`, which are the only variables forwarded

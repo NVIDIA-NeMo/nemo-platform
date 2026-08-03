@@ -54,7 +54,7 @@ DEFAULT_WORKSPACE = "default"
 _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
 
 # Lazily imported in the experiment command: importing experimentalist.run reaches model
-# construction that requires EXPERIMENTALIST_API_* env at import time, and this module
+# construction that requires NEMO_EXPERIMENTALIST_API_* env at import time, and this module
 # must import env-less so `nemo agents experimentalist doctor` can diagnose the missing creds.
 # Tests monkeypatch this global with a recorder, which bypasses the lazy import.
 run_experimentalist = None
@@ -233,7 +233,7 @@ class ExperimentalistCLI(NemoCLI):
                 # Phase 1 — cheap environment checks BEFORE resolution: certain failures
                 # (missing creds, docker down, harbor absent) surface as the grouped
                 # report before any dataset download or the loop-chain import (which
-                # itself requires EXPERIMENTALIST_API_* env) can preempt them. check_profile is
+                # itself requires NEMO_EXPERIMENTALIST_API_* env) can preempt them. check_profile is
                 # doctor-only on purpose: flags may fully specify the run, and resolution
                 # reports missing inputs with the skeleton.
                 _preflight_or_exit(
@@ -477,20 +477,25 @@ def _is_gateway_base(value: str) -> bool:
 def _apply_credential_defaults(env: MutableMapping[str, str] = os.environ) -> list[str]:
     """Fill gateway-shaped credential gaps; returns what was applied.
 
-    ``EXPERIMENTALIST_API_BASE`` defaults to the NVIDIA Inference Gateway, and when
+    ``NEMO_EXPERIMENTALIST_API_BASE`` defaults to the NVIDIA Inference Gateway, and when
     the effective base IS the gateway, ``INFERENCE_API_KEY`` can power the
     experimentalist too. A custom base never inherits the gateway key.
+
+    This still writes to the environment rather than to
+    :class:`~nemo_experimentalist_plugin.settings.ExperimentalistConfig`, because the
+    environment is the highest-precedence source and this runs before anything resolves
+    the config. Whether the copy should exist at all is a separate open question.
     """
     applied: list[str] = []
-    if not env.get("EXPERIMENTALIST_API_BASE", "").strip():
-        env["EXPERIMENTALIST_API_BASE"] = _GATEWAY_BASE
-        applied.append(f"EXPERIMENTALIST_API_BASE={_GATEWAY_BASE}")
-    if _is_gateway_base(env["EXPERIMENTALIST_API_BASE"]):
+    if not env.get("NEMO_EXPERIMENTALIST_API_BASE", "").strip():
+        env["NEMO_EXPERIMENTALIST_API_BASE"] = _GATEWAY_BASE
+        applied.append(f"NEMO_EXPERIMENTALIST_API_BASE={_GATEWAY_BASE}")
+    if _is_gateway_base(env["NEMO_EXPERIMENTALIST_API_BASE"]):
         inference = env.get("INFERENCE_API_KEY", "").strip()
-        optimizer = env.get("EXPERIMENTALIST_API_KEY", "").strip()
+        optimizer = env.get("NEMO_EXPERIMENTALIST_API_KEY", "").strip()
         if inference and not optimizer:
-            env["EXPERIMENTALIST_API_KEY"] = inference
-            applied.append("EXPERIMENTALIST_API_KEY=INFERENCE_API_KEY")
+            env["NEMO_EXPERIMENTALIST_API_KEY"] = inference
+            applied.append("NEMO_EXPERIMENTALIST_API_KEY=INFERENCE_API_KEY")
     return applied
 
 

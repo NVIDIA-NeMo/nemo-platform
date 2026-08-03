@@ -29,13 +29,13 @@ def _has_real_llm_credentials() -> bool:
     time, which means a plain "is it set?" check always passes. These canaries call a live
     model, so they have to look past the stand-ins.
     """
-    base = os.environ.get("AUTHOR_API_BASE") or os.environ.get("EXPERIMENTALIST_API_BASE") or ""
-    key = os.environ.get("AUTHOR_API_KEY") or os.environ.get("EXPERIMENTALIST_API_KEY") or ""
+    base = os.environ.get("AUTHOR_API_BASE") or os.environ.get("NEMO_EXPERIMENTALIST_API_BASE") or ""
+    key = os.environ.get("AUTHOR_API_KEY") or os.environ.get("NEMO_EXPERIMENTALIST_API_KEY") or ""
     return bool(base and key) and "placeholder" not in base and "placeholder" not in key
 
 
 _HAS_LLM = _has_real_llm_credentials()
-_CREDENTIALS_HINT = "AUTHOR_API_BASE and AUTHOR_API_KEY (or their EXPERIMENTALIST_* equivalents)"
+_CREDENTIALS_HINT = "AUTHOR_API_BASE and AUTHOR_API_KEY (or their NEMO_EXPERIMENTALIST_* equivalents)"
 _RUN_EVAL_AUTHOR_REPAIR_E2E = os.environ.get("RUN_EVAL_AUTHOR_REPAIR_E2E") == "1"
 _RUN_EVAL_AUTHOR_HARBOR_E2E = os.environ.get("RUN_EVAL_AUTHOR_HARBOR_E2E") == "1"
 _MALFORMED_VERIFIER = """\
@@ -222,9 +222,9 @@ async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
     assert "SyntaxError: expected 'except' or 'finally' block" in validation_feedback
 
     llm = get_fast_model()
-    # Construction must not need EXPERIMENTALIST_API_KEY: Eval Author owns AUTHOR_* and only
+    # Construction must not need NEMO_EXPERIMENTALIST_API_KEY: Eval Author owns AUTHOR_* and only
     # bridges into the Experimentalist slots, which are already resolved by this point.
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
     eval_author = EvalAuthor(
         experiment_dir=tmp_path,
         config=EvalAuthorConfig(),
@@ -285,8 +285,8 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
 
     llm = get_fast_model()
     llm.config["temperature"] = 0.0
-    # See the repair canary above: construction must not need EXPERIMENTALIST_API_KEY.
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
+    # See the repair canary above: construction must not need NEMO_EXPERIMENTALIST_API_KEY.
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
     eval_author = EvalAuthor(
         experiment_dir=tmp_path,
         config=EvalAuthorConfig(),

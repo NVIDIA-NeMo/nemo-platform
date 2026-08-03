@@ -3,12 +3,29 @@
 
 import subprocess
 import sys
+import textwrap
 
+import pytest
 from nemo_experimentalist_plugin.experimentalist.components.model_config import (
     _client,
+    api_base,
+    api_key,
     log_model_config,
     model_name,
 )
+from nemo_experimentalist_plugin.settings import ExperimentalistConfig
+from nemo_platform_plugin.config import NMP_CONFIG_FILE_PATH_ENV_VAR, Configuration
+
+TIER_ENV = {
+    "smart": "NEMO_EXPERIMENTALIST_MODELS_SMART",
+    "mid": "NEMO_EXPERIMENTALIST_MODELS_MID",
+    "fast": "NEMO_EXPERIMENTALIST_MODELS_FAST",
+}
+
+
+def _credentials(monkeypatch, base: str = "https://llm.example/v1", key: str = "k") -> None:
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", base)
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", key)
 
 
 def test_model_name_is_required_per_tier(monkeypatch) -> None:
@@ -18,32 +35,43 @@ def test_model_name_is_required_per_tier(monkeypatch) -> None:
     other, surfacing as an opaque provider error at the first LLM call instead of a
     configuration error before the run starts.
     """
-    import pytest
+    _credentials(monkeypatch, base="https://inference-api.nvidia.com/v1")
+    monkeypatch.delenv(TIER_ENV["smart"], raising=False)
 
-    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://inference-api.nvidia.com/v1")
-    monkeypatch.setenv("EXPERIMENTALIST_API_KEY", "k")
-    monkeypatch.delenv("EXPERIMENTALIST_SMART_MODEL_NAME", raising=False)
-
-    with pytest.raises(ValueError, match="EXPERIMENTALIST_SMART_MODEL_NAME"):
+    with pytest.raises(ValueError, match=TIER_ENV["smart"]):
         model_name("smart")
 
 
 def test_model_name_reads_its_tier(monkeypatch) -> None:
-    monkeypatch.setenv("EXPERIMENTALIST_SMART_MODEL_NAME", "vendor/smart-1")
-    monkeypatch.setenv("EXPERIMENTALIST_FAST_MODEL_NAME", "vendor/fast-1")
+    monkeypatch.setenv(TIER_ENV["smart"], "vendor/smart-1")
+    monkeypatch.setenv(TIER_ENV["fast"], "vendor/fast-1")
 
     assert model_name("smart") == "vendor/smart-1"
     assert model_name("fast") == "vendor/fast-1"
 
 
+def test_unknown_tier_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown model tier"):
+        model_name("enormous")
+
+
 def test_log_model_config_tolerates_unset_tiers(monkeypatch) -> None:
     """A display helper must not be the thing that fails."""
-    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://llm.example/v1")
-    monkeypatch.setenv("EXPERIMENTALIST_API_KEY", "k")
-    for tier in ("SMART", "MID", "FAST"):
-        monkeypatch.delenv(f"EXPERIMENTALIST_{tier}_MODEL_NAME", raising=False)
+    _credentials(monkeypatch)
+    for name in TIER_ENV.values():
+        monkeypatch.delenv(name, raising=False)
 
     assert "(unset)" in log_model_config()
+
+
+def test_log_model_config_masks_the_key(monkeypatch) -> None:
+    """The banner is printed to logs, so it must never carry the whole credential."""
+    _credentials(monkeypatch, key="sk-abcdefghijkl")
+
+    rendered = log_model_config()
+
+    assert "sk-abcdefghijkl" not in rendered
+    assert "ijkl" in rendered
 
 
 def test_model_tiers_cache_on_full_identity() -> None:
@@ -81,23 +109,88 @@ def test_importing_components_resolves_no_model() -> None:
 
 
 def test_lazy_model_defers_construction_until_first_use(monkeypatch) -> None:
-    """The ``@strategy(llm=...)`` proxy must not touch the environment until used."""
+    """The ``@strategy(llm=...)`` proxy must not touch settings until used."""
     from nemo_experimentalist_plugin.experimentalist.components.model_config import LazyModel
 
-    monkeypatch.delenv("EXPERIMENTALIST_API_BASE", raising=False)
-    monkeypatch.delenv("EXPERIMENTALIST_API_KEY", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_BASE", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
     proxy = LazyModel("fast")  # constructing it with no credentials must not raise
     assert "unresolved" in repr(proxy)
 
-    monkeypatch.setenv("EXPERIMENTALIST_API_BASE", "https://example.test/v1")
-    monkeypatch.setenv("EXPERIMENTALIST_API_KEY", "test-key")
-    monkeypatch.setenv("EXPERIMENTALIST_FAST_MODEL_NAME", "vendor/fast-1")
+    _credentials(monkeypatch, base="https://example.test/v1", key="test-key")
+    monkeypatch.setenv(TIER_ENV["fast"], "vendor/fast-1")
+    Configuration.clear_cache()
     _client.cache_clear()
     try:
         assert proxy.model == "vendor/fast-1"  # forwards to the real client
         assert "unresolved" not in repr(proxy)
     finally:
         _client.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Where settings come from
+# ---------------------------------------------------------------------------
+
+
+def _write_platform_config(tmp_path, monkeypatch, body: str):
+    path = tmp_path / "config.yaml"
+    path.write_text(textwrap.dedent(body))
+    monkeypatch.setenv(NMP_CONFIG_FILE_PATH_ENV_VAR, str(path))
+    Configuration.clear_cache()
+    return path
+
+
+def test_settings_come_from_the_platform_config_file(tmp_path, monkeypatch) -> None:
+    """Model tiers and endpoint are deployment settings, so the config file can supply them."""
+    for name in (*TIER_ENV.values(), "NEMO_EXPERIMENTALIST_API_BASE", "NEMO_EXPERIMENTALIST_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    _write_platform_config(
+        tmp_path,
+        monkeypatch,
+        """
+        experimentalist:
+          api_base: https://from-file.example/v1
+          api_key: file-key
+          models:
+            smart: vendor/from-file
+        """,
+    )
+
+    assert api_base() == "https://from-file.example/v1"
+    assert api_key() == "file-key"
+    assert model_name("smart") == "vendor/from-file"
+
+
+def test_environment_overrides_the_config_file(tmp_path, monkeypatch) -> None:
+    """The platform's precedence, which this plugin now follows: env beats file beats default.
+
+    This is the inverse of the old behaviour, where a config block was written into the
+    environment and so silently won over anything the operator had exported.
+    """
+    _write_platform_config(
+        tmp_path,
+        monkeypatch,
+        """
+        experimentalist:
+          api_base: https://from-file.example/v1
+          models:
+            smart: vendor/from-file
+        """,
+    )
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://from-env.example/v1")
+    monkeypatch.setenv(TIER_ENV["smart"], "vendor/from-env")
+    Configuration.clear_cache()
+
+    assert api_base() == "https://from-env.example/v1"
+    assert model_name("smart") == "vendor/from-env"
+
+
+def test_api_key_is_not_exposed_by_repr(monkeypatch) -> None:
+    """A settings object gets logged; the credential inside it must not come along."""
+    _credentials(monkeypatch, key="sk-not-in-the-logs")
+
+    assert "sk-not-in-the-logs" not in repr(ExperimentalistConfig.get())
 
 
 def test_reward_summary_is_separate_from_the_dimensions() -> None:

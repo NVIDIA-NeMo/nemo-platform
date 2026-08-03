@@ -3,7 +3,6 @@
 
 import ast  # noqa: D100, F401
 import json
-import os  # noqa: F401
 import random
 import re  # noqa: F401
 import shutil
@@ -26,7 +25,7 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .model_config import get_fast_model, get_smart_model, lazy_model
+from .model_config import api_base, api_key, get_fast_model, get_smart_model, lazy_model
 from .tools import GuardedShellTools
 from .util import load_framework_skills
 
@@ -618,7 +617,7 @@ class Coder(Agent):
             list[str]: model ID strings as returned by the API.
 
         Raises:
-            ValueError: if EXPERIMENTALIST_API_BASE or EXPERIMENTALIST_API_KEY is not set.
+            ValueError: if the endpoint or its credential is configured nowhere.
             httpx.HTTPStatusError: if the API returned a non-2xx response.
             httpx.RequestError: if there was a network or connection failure.
 
@@ -626,15 +625,11 @@ class Coder(Agent):
         if self._models_cache is not None:
             return self._models_cache
 
+        base, key = api_base(), api_key()
         async with httpx.AsyncClient() as client:
-            api_base = os.environ.get("EXPERIMENTALIST_API_BASE")
-            api_key = os.environ.get("EXPERIMENTALIST_API_KEY")
-            if api_base is None or api_key is None:
-                raise ValueError("EXPERIMENTALIST_API_BASE and EXPERIMENTALIST_API_KEY must be set")
-
             resp = await client.get(
-                f"{api_base}/models",
-                headers={"Authorization": f"Bearer {api_key}"},
+                f"{base}/models",
+                headers={"Authorization": f"Bearer {key}"},
                 timeout=self._config.timeout_model_list_secs,
             )
             resp.raise_for_status()

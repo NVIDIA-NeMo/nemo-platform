@@ -56,11 +56,11 @@ with the last `nemo_experimentalist_plugin` import, and both are tagged
 `TODO(eval-author-standalone)` — `rg 'eval-author-standalone'` lists every site:
 
 - `EvalAuthor.__init__` calls `bridge_author_env_to_experimentalist()`, copying `AUTHOR_*`
-  into unset `EXPERIMENTALIST_*` slots so the Experimentalist agents Eval Author borrows
+  into unset `NEMO_EXPERIMENTALIST_*` slots so the Experimentalist agents Eval Author borrows
   resolve their models. This was a `_env_bridge.py` side-effect import until agents stopped
   binding their LLM in the class body; an ordinary call in `__init__` now suffices because
   those agents resolve when constructed, not when imported.
-- `AUTHOR_*` falls back to `EXPERIMENTALIST_*` in `model_config`. `AUTHOR_*` is the real
+- `AUTHOR_*` falls back to `NEMO_EXPERIMENTALIST_*` in `model_config`. `AUTHOR_*` is the real
   contract; the fallback only keeps one credential set working in insight mode.
 
 ### 2026-07-24: Optimizer renamed to Experimentalist
@@ -77,7 +77,7 @@ breaking rename with no compatibility aliases:
 - the `experiment` verb is now `run`: `nemo experimentalist run`
 - `OPTIMIZER_API_BASE`, `OPTIMIZER_API_KEY`, `OPTIMIZER_{SMART,MID,FAST}_MODEL_NAME`,
   `OPTIMIZER_MODEL`, `NEMO_OPTIMIZER_E2E`, and `NEMO_OPTIMIZER_RUNTIME_CACHE` are
-  now `EXPERIMENTALIST_*` / `NEMO_EXPERIMENTALIST_*`
+  now `NEMO_EXPERIMENTALIST_*` / `NEMO_EXPERIMENTALIST_*`
 - the dataset cache moved from `~/.cache/nemo-optimizer/` to
   `~/.cache/nemo-experimentalist/`, so cached datasets re-download once
 

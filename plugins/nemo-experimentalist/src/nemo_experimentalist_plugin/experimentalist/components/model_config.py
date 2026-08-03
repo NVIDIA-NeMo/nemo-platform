@@ -1,22 +1,28 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import functools
-import os
 from typing import Any, cast
 from urllib.parse import urlparse
 
+from nemo_experimentalist_plugin.settings import TIERS, ExperimentalistConfig
 from nooa.unifiedllm import CompletionClient
 
-
-def _required_env(name: str) -> str:
-    value = os.environ.get(name, "").strip()
-    if not value:
-        raise ValueError(f"{name} must be set")
-    return value
+_ENV_PREFIX = "NEMO_EXPERIMENTALIST_"
 
 
-def _optional_env(name: str, default: str) -> str:
-    return os.environ.get(name, "").strip() or default
+def _settings() -> ExperimentalistConfig:
+    """Return the resolved deployment settings.
+
+    ``NemoConfig.get()`` caches, so this is cheap to call per lookup and picks up a
+    ``Configuration.clear_cache()`` in tests.
+    """
+    return ExperimentalistConfig.get()
+
+
+def _required(value: str | None, env_name: str) -> str:
+    if not value or not value.strip():
+        raise ValueError(f"{env_name} must be set")
+    return value.strip()
 
 
 def model_name(tier: str) -> str:
@@ -27,12 +33,13 @@ def model_name(tier: str) -> str:
     minutes into a run.
 
     Raises:
-        ValueError: if the tier's environment variable is unset or empty.
+        ValueError: if the tier is unknown, or is configured nowhere.
 
     """
-    if tier not in ("smart", "mid", "fast"):
+    if tier not in TIERS:
         raise ValueError(f"unknown model tier {tier!r}")
-    return _required_env(f"EXPERIMENTALIST_{tier.upper()}_MODEL_NAME")
+    configured = getattr(_settings().models, tier)
+    return _required(configured, f"{_ENV_PREFIX}MODELS_{tier.upper()}")
 
 
 @functools.cache
@@ -42,19 +49,36 @@ def _client(name: str, api_base: str, api_key: str) -> CompletionClient:
     return CompletionClient(name, api_base=api_base, api_key=api_key)
 
 
-def get_model(tier: str) -> CompletionClient:
-    """Build (or reuse) the client for *tier*, reading credentials at call time.
+def api_base() -> str:
+    """Return the configured endpoint base URL.
 
     Raises:
-        ValueError: if ``EXPERIMENTALIST_API_BASE`` or ``EXPERIMENTALIST_API_KEY``
-            are unset or empty.
+        ValueError: if it is configured nowhere.
 
     """
-    return _client(
-        model_name(tier),
-        _required_env("EXPERIMENTALIST_API_BASE"),
-        _required_env("EXPERIMENTALIST_API_KEY"),
-    )
+    return _required(_settings().api_base, f"{_ENV_PREFIX}API_BASE")
+
+
+def api_key() -> str:
+    """Return the configured endpoint credential.
+
+    Raises:
+        ValueError: if it is configured nowhere.
+
+    """
+    secret = _settings().api_key
+    return _required(secret.get_secret_value() if secret else None, f"{_ENV_PREFIX}API_KEY")
+
+
+def get_model(tier: str) -> CompletionClient:
+    """Build (or reuse) the client for *tier*, resolving settings at call time.
+
+    Raises:
+        ValueError: if the endpoint, the credential, or the tier's model name is
+            configured nowhere.
+
+    """
+    return _client(model_name(tier), api_base(), api_key())
 
 
 class LazyModel:
@@ -137,14 +161,12 @@ def log_model_config() -> str:
         except ValueError:
             return "(unset)"
 
-    smart, mid, fast = (_shown(tier) for tier in ("smart", "mid", "fast"))
-    api_base = _required_env("EXPERIMENTALIST_API_BASE")
-    api_key = _required_env("EXPERIMENTALIST_API_KEY")
+    smart, mid, fast = (_shown(tier) for tier in TIERS)
     return (
         "Experimentalist model config:\n"
         f"  smart model: {smart}\n"
         f"  mid model:   {mid}\n"
         f"  fast model:  {fast}\n"
-        f"  api base:    {_sanitize_url(api_base)}\n"
-        f"  api key:     {_mask_key(api_key)}"
+        f"  api base:    {_sanitize_url(api_base())}\n"
+        f"  api key:     {_mask_key(api_key())}"
     )

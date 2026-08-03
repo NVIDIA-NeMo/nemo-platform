@@ -3,13 +3,22 @@
 
 """The run-config tree for one Experimentalist run.
 
-One home for the whole tree. Component-owned slices (``CoderConfig``, ``AnalyzerConfig``,
-...) are imported from the components that consume them rather than redeclared here --
-``resolve.py`` used to carry a second copy of each because importing a component module
-required credentials, which it no longer does.
+:class:`EvolutionaryOptimizerConfig` holds *run* parameters -- what one experiment does.
+There is one per invocation, named explicitly with ``--config``, and nothing overrides it:
+a stale ``NEMO_EXPERIMENTALIST_MAX_ROUNDS`` silently truncating a run whose config file
+says otherwise would be a bad failure, and it would make ``config_snapshot`` a dishonest
+record of what ran. It is therefore a plain ``BaseModel`` with no environment binding.
+
+The other half of the configuration -- which endpoint this install talks to and with which
+models -- is a deployment setting, lives in ``settings.py`` as a :class:`NemoConfig` like
+every other plugin's, and *does* let the environment win over the config file.
+
+Component-owned slices (``CoderConfig``, ``AnalyzerConfig``, ...) are imported from the
+components that consume them rather than redeclared here -- ``resolve.py`` used to carry a
+second copy of each because importing a component module required credentials, which it no
+longer does.
 """
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -42,39 +51,29 @@ class CandidateStorageConfig(BaseModel):
     pr_labels: list[str] = Field(default_factory=list)
 
 
-class ModelsConfig(BaseModel):
-    """Model name per tier, mirroring the ``models:`` key in the benchmark configs.
-
-    Environment remains the mechanism -- :func:`apply_to_env` writes the configured names
-    into ``EXPERIMENTALIST_*_MODEL_NAME`` before any agent is constructed, and an unset
-    tier keeps whatever the environment already provides. Credentials stay environment-only
-    and are never accepted here.
-    """
-
-    smart: str | None = Field(default=None, description="Model for the smart tier, as your endpoint names it.")
-    mid: str | None = Field(default=None, description="Model for the mid tier, as your endpoint names it.")
-    fast: str | None = Field(default=None, description="Model for the fast tier, as your endpoint names it.")
-
-    def apply_to_env(self, env: dict[str, str] | None = None) -> list[str]:
-        """Write the configured tiers into the environment; return the names written."""
-        target = os.environ if env is None else env
-        written: list[str] = []
-        for tier in ("smart", "mid", "fast"):
-            value = getattr(self, tier)
-            if value:
-                target[f"EXPERIMENTALIST_{tier.upper()}_MODEL_NAME"] = value
-                written.append(tier)
-        return written
-
-
 class EvolutionaryOptimizerConfig(BaseModel):
-    """Complete schema for one optimizer run."""
+    """Parameters for one optimizer run, read from ``--config`` and nothing else.
+
+    Deliberately not a :class:`NemoConfig`: these values describe a single experiment, are
+    named explicitly on the command line, and are recorded in ``config_snapshot`` as the
+    account of what ran. Letting an ambient environment variable override them would make
+    that account wrong. Endpoint and model settings live in
+    :class:`~nemo_experimentalist_plugin.settings.ExperimentalistConfig`.
+    """
 
     @model_validator(mode="before")
     @classmethod
     def reject_legacy_curator_config(cls, data: Any) -> Any:
-        if isinstance(data, dict) and "curator" in data:
+        if not isinstance(data, dict):
+            return data
+        if "curator" in data:
             raise ValueError("'curator' was renamed to 'eval_author'; update the optimizer configuration")
+        if "models" in data:
+            raise ValueError(
+                "'models' is no longer a run-config key; model tiers are deployment settings. "
+                "Set them under the 'experimentalist:' config section or as "
+                "NEMO_EXPERIMENTALIST_MODELS_{SMART,MID,FAST}."
+            )
         return data
 
     max_rounds: int = Field(default=15, description="Hard ceiling on optimization rounds.")
@@ -98,7 +97,6 @@ class EvolutionaryOptimizerConfig(BaseModel):
     disable_convergence_check: bool = Field(
         default=False, description="Stop only on max_rounds, never on the terminator's convergence judgement."
     )
-    models: ModelsConfig = Field(default_factory=ModelsConfig)
     source: AgentSourceConfig = Field(default_factory=AgentSourceConfig)
     storage: CandidateStorageConfig = Field(default_factory=CandidateStorageConfig)
     goal_config: GoalTreeConfig = Field(default_factory=GoalTreeConfig)

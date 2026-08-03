@@ -62,7 +62,7 @@ class EvalAuthor(Agent):
             **kwargs: Forwarded to ``Agent.__init__``.
         """
         # Eval Author still reuses a few Experimentalist agents (TraceAnalyzer,
-        # TraceExplorer). They read EXPERIMENTALIST_* when constructed, so bridge the
+        # TraceExplorer). They read NEMO_EXPERIMENTALIST_* when constructed, so bridge the
         # AUTHOR_* credentials before any of them is built.
         bridge_author_env_to_experimentalist()
         super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
