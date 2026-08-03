@@ -83,9 +83,9 @@ For a deployed invocation, if `PLATFORM_DOWN`, route to `nemo-setup` and stop. I
   --input "<user query>"
 ```
 
-4. **Show the verbatim response.** Code block, no paraphrase. If the agent used tool calls, list which tools and their outputs before the final answer.
+1. **Show the verbatim response.** Code block, no paraphrase. If the agent used tool calls, list which tools and their outputs before the final answer.
 
-5. **Offer another invocation.** Keep the same target unless the user changes it. Do not claim that separate CLI invocations preserve a conversation session.
+2. **Offer another invocation.** Keep the same target unless the user changes it. Do not claim that separate CLI invocations preserve a conversation session.
 
 ## Verification
 
@@ -111,7 +111,7 @@ If `INVOKE_FAILED` or `EMPTY_RESPONSE`: surface that to the user and stop. Do no
 |---|---|---|
 | 404 "deployment not found" | Deployment was removed or the wrong name was used | Re-run `.venv/bin/nemo agents deployments list`; ask the user to pick from the new list |
 | Deployment is not `running` | Deployment is still starting or failed | Inspect it with `.venv/bin/nemo agents deployments get <name>`; do not invoke until it is running |
-| Config validation error | Local YAML is invalid or references missing artifacts | Surface the validation details; route to `nemo-build-agent` when changes are needed |
+| Config validation error | Local YAML is invalid or references missing artifacts | Surface the validation details; route local YAML fixes or migrations to `nemo-agent-config`; use `nemo-build-agent` only when the user explicitly requests redeployment |
 | Adapter or runtime error | Required harness package or runtime dependency is unavailable | Surface the structured invocation error and required dependency; do not substitute model chat |
 | 5xx or platform error | Platform or deployed runtime is unhealthy | Route to `nemo-status` to surface the underlying error |
 | Empty response on a spec-handled question | Quality issue, not invocation issue | Stop and report; do not loop until the user decides next step |

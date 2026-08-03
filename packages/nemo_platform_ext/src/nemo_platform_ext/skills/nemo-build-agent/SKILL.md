@@ -65,8 +65,8 @@ NAT_WORKFLOW_PATH=<path-to-workflow-yaml>
    .venv/bin/nemo agents --help 2>&1 | grep -q "create"
    ```
 
-3. Check for existing Agent entities and deployments before replacing either.
-   Ask whether to reuse, update, or replace an existing deployment.
+3. Check for existing Agent entities and deployments. Ask whether to reuse or
+   replace them. Follow the lifecycle branches below before create or deploy.
 4. For an unchanged NAT-only run, confirm `$NAT_WORKFLOW_PATH` exists and read
    it before continuing. Do not require `AGENT-SPEC.md` or a spec fileset.
 5. For the default Platform-owned path, confirm
@@ -85,6 +85,43 @@ NAT_WORKFLOW_PATH=<path-to-workflow-yaml>
 
 Steps 5 through 7 apply only to the default Platform-owned path or an explicit
 NAT migration.
+
+### Existing-resource lifecycle
+
+- **Reuse:** Do not run `agents create` for an existing Agent. If a deployment
+  already exists, set `DEPLOYMENT_NAME` to its name, do not run `agents deploy`,
+  and continue to the smoke test. If only the Agent exists, skip create and run
+  only the deploy command in Step 1.
+- **Replace:** Show each destructive command and require explicit confirmation
+  immediately before running it. Use `--yes` only after that confirmation. If
+  the resource does not exist, skip its command.
+
+For a confirmed replacement, undeploy first:
+
+```bash
+.venv/bin/nemo agents undeploy "$DEPLOYMENT_NAME" --yes
+```
+
+Wait until this command reports that the deployment is absent before
+continuing:
+
+```bash
+.venv/bin/nemo agents deployments get "$DEPLOYMENT_NAME"
+```
+
+Then show the Agent deletion command and require explicit confirmation before
+running it:
+
+```bash
+.venv/bin/nemo agents delete "$AGENT_NAME" --yes
+```
+
+Verify this command reports that the Agent is absent before running the create
+and deploy commands in Step 1:
+
+```bash
+.venv/bin/nemo agents get "$AGENT_NAME"
+```
 
 ## Prepare the selected config
 
@@ -126,9 +163,8 @@ For the default path:
   --name "$DEPLOYMENT_NAME"
 ```
 
-These commands assume a new Agent entity. If preflight found an existing Agent
-or deployment, do not delete it silently. Follow the reuse or replacement choice
-the user approved before creating a replacement.
+These commands assume the Agent and deployment are absent. If pre-flight found
+existing resources, complete the selected lifecycle branch before running them.
 
 `nemo agents deploy` waits for `running` by default. If the user passed
 `--no-wait`, wait explicitly:
@@ -181,27 +217,32 @@ user asks to create a spec and continue through the spec-driven evaluation flow.
 Use Data Designer for every synthetic dataset. Do not hand-author evaluation,
 knowledge-base, benchmark, persona, or training data.
 
-1. Read `agents/$AGENT_NAME-spec/AGENT-SPEC.md` and list the plausible data
-   purposes: knowledge/RAG corpus, evaluation, benchmark, personas/adversarial
-   inputs, training, or another user-requested purpose.
-2. Wait for the user to choose. If they delegate the decision, default to an
-   evaluation dataset, add a knowledge base when the spec requires retrieval,
-   and add adversarial personas when it contains safety constraints.
+1. Always select evaluation as a required data purpose. Read
+   `agents/$AGENT_NAME-spec/AGENT-SPEC.md` and list any additional plausible
+   purposes: knowledge/RAG corpus, benchmark, personas/adversarial inputs,
+   training, or another user-requested purpose.
+2. Wait for the user to choose any additional purposes. Evaluation cannot be
+   omitted. If they delegate the decision, add a knowledge base when the spec
+   requires retrieval and adversarial personas when it contains safety
+   constraints.
 3. Invoke `data-designer` once per selected purpose, passing the agent name,
    purpose, and spec path.
 4. Require every generated config to read product context from
    `AGENT-SPEC.md`; do not duplicate that context inline.
-5. Run each generated config and verify the resulting fileset exists.
+5. Run each generated config. For evaluation, validate the generated records,
+   verify the resulting fileset exists, and record its exact dataset reference
+   as `EVAL_DATASET_REF`.
 6. Show 3 to 5 sample records per purpose and ask for approval.
 
-At least one `$AGENT_NAME-eval-*` fileset must exist before evaluation.
+A validated `$AGENT_NAME-eval-*` fileset and its exact `EVAL_DATASET_REF` must
+exist before evaluation proceeds.
 
 ## Step 3.5: Connect runtime data
 
 If the generated data must be available during invocation, connect it through
 the selected harness's supported skills, MCP, or tool configuration. Update
-`agents/$AGENT_NAME-spec/agent.yaml` through `nemo-agent-config`, then recreate
-and redeploy the Agent.
+`agents/$AGENT_NAME-spec/agent.yaml` through `nemo-agent-config`, then follow the
+confirmed replacement branch before creating and deploying the Agent again.
 
 Do not invent a generic retriever field. If the selected harness cannot consume
 the required data, surface that limitation and choose a supported integration,
@@ -210,10 +251,32 @@ the NAT compatibility path, or a custom adapter.
 For a legacy NAT workflow, NAT-specific retrievers may be wired into its
 `functions` and `workflow` blocks using the matching NAT RAG integration.
 
-After redeployment, invoke a question that requires the data and verify the
-expected tool or retrieval path was actually used.
+After the replacement deployment, invoke a question that requires the data and
+verify the expected tool or retrieval path was actually used.
 
 ## Step 4: Evaluate
+
+Select the actual Platform model reference as `EVAL_MODEL`. Create
+`agents/$AGENT_NAME.eval-job.json` from `references/templates/eval-job.json` and
+replace every placeholder. Its `model` must equal `EVAL_MODEL`, and its
+`dataset` must equal the recorded `EVAL_DATASET_REF` from Step 3.
+
+Validate the rendered file before creating the benchmark job:
+
+```bash
+.venv/bin/python -m json.tool "agents/$AGENT_NAME.eval-job.json" >/dev/null
+if grep -Eq '<[^>]+>' "agents/$AGENT_NAME.eval-job.json"; then
+  echo "eval job still contains template placeholders" >&2
+  exit 1
+fi
+```
+
+Also read the validated payload back and confirm its `model` and `dataset`
+values match `EVAL_MODEL` and `EVAL_DATASET_REF`. Do not invoke
+`benchmark-jobs create` if JSON validation, model validation, dataset
+validation, or fileset validation fails.
+
+After all validation succeeds:
 
 ```bash
 .venv/bin/nemo evaluation benchmarks list
@@ -221,20 +284,21 @@ expected tool or retrieval path was actually used.
   --input-file "agents/$AGENT_NAME.eval-job.json"
 ```
 
-Use `references/templates/eval-job.json` for the job payload. Poll until the
-job reaches `completed` or `failed`, then download aggregate scores. Show the
-score table and compare it with the success bar in `AGENT-SPEC.md`.
+Poll until the job reaches `completed` or `failed`, then download aggregate
+scores. Show the score table and compare it with the success bar in
+`AGENT-SPEC.md`.
 
 ## Step 5: Guardrails (optional)
 
 If the spec defines safety or policy constraints, invoke `nemo-guardrails` for
 the `nemo-agents-spec-v1` path. Apply the resulting Platform guardrail
-integration without adding unsupported fields to `agent.yaml`. Recreate and
-redeploy the Agent after the guardrail configuration changes.
+integration without adding unsupported fields to `agent.yaml`. Follow the
+confirmed replacement branch before creating and deploying the changed Agent.
 
 For a legacy NAT workflow, keep the NAT compatibility behavior: add supported
-guardrail `intercepts` to the NAT workflow YAML, then recreate and redeploy the
-Agent. Never add NAT `intercepts` to a `nemo-agents-spec-v1` config.
+guardrail `intercepts` to the NAT workflow YAML, then follow the confirmed
+replacement branch before creating and deploying it again. Never add NAT
+`intercepts` to a `nemo-agents-spec-v1` config.
 
 For either path, test one adversarial prompt and one legitimate prompt. Report
 both responses and do not continue to sign-off until the expected policy is
@@ -271,4 +335,5 @@ the sign-off returns an actual model response.
 - Do not put Platform `agent.yaml` fields into NAT workflow YAML.
 - Use a named deployment and invoke it with `--agent-deployment`.
 - Keep local artifact paths relative to the config directory.
-- Recreate and redeploy after changing the persisted Agent config.
+- After changing persisted Agent config, use the confirmed replacement branch
+  before creating and deploying it again.
