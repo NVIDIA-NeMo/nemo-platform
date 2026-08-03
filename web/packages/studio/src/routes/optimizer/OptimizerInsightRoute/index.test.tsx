@@ -15,7 +15,7 @@ import { getOptimizerInsightRoute } from '@studio/routes/utils';
 import { renderRoute, screen, waitFor, within } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 const WORKSPACE = 'workspace-a';
 const INSIGHT_ID = 'insight-a';

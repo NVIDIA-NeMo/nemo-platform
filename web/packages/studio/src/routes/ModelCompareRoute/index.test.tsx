@@ -7,7 +7,7 @@ import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { ModelCompareRoute } from '@studio/routes/ModelCompareRoute';
 import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
 import { fireEvent, renderRoute, screen, waitFor } from '@studio/tests/util/render';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 vi.mock('@nemo/common/src/api/models/useModelSearch', async (importOriginal) => {
   const actual =

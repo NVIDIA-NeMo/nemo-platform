@@ -14,7 +14,7 @@ import {
 import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
 import { getClaudeCodeHistoryMessages } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { type FC, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 interface ClaudeCodeChatProviderProps {
   children: ReactNode;

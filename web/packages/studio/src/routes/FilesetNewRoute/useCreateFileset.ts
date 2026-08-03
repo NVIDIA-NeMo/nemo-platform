@@ -32,7 +32,7 @@ import { storageConfigFromUrl } from '@studio/util/storageConfigFromUrl';
 import { QueryObserverResult, useQueryClient } from '@tanstack/react-query';
 import { MutableRefObject, useCallback } from 'react';
 import { UseFormGetValues } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface UseCreateFilesetParams {
   workspace: string;

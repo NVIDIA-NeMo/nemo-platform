@@ -23,7 +23,7 @@ import {
 } from '@studio/components/CustomizeModelModal/constants';
 import { getNewCustomizationJobRoute, getPromptTuningFormRoute } from '@studio/routes/utils';
 import { FC, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface CustomizeModelModalProps {
   open: boolean;

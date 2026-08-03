@@ -80,7 +80,6 @@
     "react-hook-form": "catalog:",
     "react-oidc-context": "catalog:",
     "react-router": "catalog:",
-    "react-router-dom": "catalog:",
     "recharts": "catalog:",
     "seedrandom": "^3.0.5",
     "use-debounce": "catalog:",

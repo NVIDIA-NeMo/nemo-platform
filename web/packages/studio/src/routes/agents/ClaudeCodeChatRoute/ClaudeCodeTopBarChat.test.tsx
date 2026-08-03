@@ -6,7 +6,7 @@ import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 
 const mocks = vi.hoisted(() => ({
   chat: {

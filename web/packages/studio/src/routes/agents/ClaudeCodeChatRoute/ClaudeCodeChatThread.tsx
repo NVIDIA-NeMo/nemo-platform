@@ -14,7 +14,7 @@ import { ClaudeCodeStudioLink } from '@studio/routes/agents/ClaudeCodeChatRoute/
 import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
 import type { ClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
 import { type FC, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const MESSAGE_CONTENT_PROPS = { markdownLinkComponent: ClaudeCodeStudioLink };
 

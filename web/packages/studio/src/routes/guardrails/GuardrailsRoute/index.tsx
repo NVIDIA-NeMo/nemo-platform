@@ -24,7 +24,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getGuardrailDetailRoute, getGuardrailsRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const GuardrailsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

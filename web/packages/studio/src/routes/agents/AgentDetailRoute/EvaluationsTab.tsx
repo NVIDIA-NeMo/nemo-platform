@@ -8,7 +8,7 @@ import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
 import { getAgentEvaluationDetailRoute, getAgentEvaluationsListRoute } from '@studio/routes/utils';
 import type { FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface EvaluationsTabProps {
   workspace: string;

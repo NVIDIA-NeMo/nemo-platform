@@ -7,7 +7,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { INTAKE_FILTER_ACTION_TARGET_ID } from '@studio/routes/IntakeLayout';
 import { gateIntakeRoutes } from '@studio/routes/utils';
 import { FC, lazy } from 'react';
-import { Navigate, RouteObject } from 'react-router-dom';
+import { Navigate, RouteObject } from 'react-router';
 
 const IntakeLayout = lazy(() =>
   import('@studio/routes/IntakeLayout').then((module) => ({ default: module.IntakeLayout }))

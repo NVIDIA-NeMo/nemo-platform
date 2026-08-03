@@ -8,7 +8,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getSafeSynthesizerJobReportRoute } from '@studio/routes/utils';
 import { File } from 'lucide-react';
 import { FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface ReportSummaryPanelProps {
   jobId: string;

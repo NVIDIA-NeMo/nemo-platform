@@ -16,7 +16,7 @@ import {
 } from '@studio/routes/utils';
 
 describe('Evaluation route helpers', () => {
-  const workspace = 'test-namespace/test-project';
+  const workspace = 'test-workspace';
 
   describe('getEvaluationMetricDetailsRoute', () => {
     it('should generate correct evaluation metric details URL', () => {
@@ -24,14 +24,14 @@ describe('Evaluation route helpers', () => {
 
       const result = getEvaluationMetricDetailsRoute(workspace, jobId);
 
-      expect(result).toBe('/workspaces/test-namespace/test-project/evaluation/metrics/job-123');
+      expect(result).toBe('/workspaces/test-workspace/evaluation/metrics/job-123');
     });
   });
 
   describe('getEvaluationMetricsRunRoute', () => {
     it('appends an encoded model query param when a model is provided', () => {
       expect(getEvaluationMetricsRunRoute(workspace, { model: 'test-namespace/model-a' })).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/metrics/run?model=test-namespace%2Fmodel-a'
+        '/workspaces/test-workspace/evaluation/metrics/run?model=test-namespace%2Fmodel-a'
       );
     });
   });
@@ -43,7 +43,7 @@ describe('Evaluation route helpers', () => {
           model: 'test-namespace/model-a',
         })
       ).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/metrics/toxicity/run?model=test-namespace%2Fmodel-a'
+        '/workspaces/test-workspace/evaluation/metrics/toxicity/run?model=test-namespace%2Fmodel-a'
       );
     });
   });
@@ -51,7 +51,7 @@ describe('Evaluation route helpers', () => {
   describe('getEvaluationBenchmarkListRoute', () => {
     it('should generate the benchmarks list URL', () => {
       expect(getEvaluationBenchmarkListRoute(workspace)).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/benchmarks'
+        '/workspaces/test-workspace/evaluation/benchmarks'
       );
     });
   });
@@ -59,24 +59,24 @@ describe('Evaluation route helpers', () => {
   describe('getEvaluationBenchmarkDetailsRoute', () => {
     it('should generate a benchmark details URL', () => {
       expect(getEvaluationBenchmarkDetailsRoute(workspace, 'my-benchmark')).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/benchmarks/my-benchmark'
+        '/workspaces/test-workspace/evaluation/benchmarks/my-benchmark'
       );
     });
   });
 });
 
 describe('getWorkspaceInferenceProvidersRoute', () => {
-  const workspace = 'test-namespace/test-project';
+  const workspace = 'test-workspace';
 
   it('returns base inference providers path when no options are given', () => {
     expect(getWorkspaceInferenceProvidersRoute(workspace)).toBe(
-      '/workspaces/test-namespace/test-project/inference-providers'
+      '/workspaces/test-workspace/inference-providers'
     );
   });
 
   it('appends create=true and preset query params when a preset is provided', () => {
     expect(getWorkspaceInferenceProvidersRoute(workspace, { preset: 'build' })).toBe(
-      '/workspaces/test-namespace/test-project/inference-providers?create=true&preset=build'
+      '/workspaces/test-workspace/inference-providers?create=true&preset=build'
     );
   });
 });

@@ -35,8 +35,7 @@ import { RootLayout } from '@studio/routes/RootLayout';
 import { RootRedirect } from '@studio/routes/RootRedirect';
 import { gatePluginRoutes } from '@studio/routes/utils';
 import { lazy, Suspense } from 'react';
-import { Outlet } from 'react-router';
-import type { RouteObject } from 'react-router-dom';
+import { Outlet, type RouteObject } from 'react-router';
 
 const NoMatchRoute = lazy(() =>
   import('@studio/routes/NoMatchRoute').then((module) => ({ default: module.NoMatchRoute }))

@@ -45,7 +45,7 @@ catalog:
   classnames: ^2.5.1
   concurrently: ^10.0.3
   date-fns: ^4.1.0
-  jsdom: ^29.0.2
+  jsdom: ^29.1.1
   handlebars: ^4.7.9
   happy-dom: ^20.10.6
   hyparquet: ^1.8.1
@@ -62,8 +62,7 @@ catalog:
   react-dropzone: ^14.3.5
   react-hook-form: ^7.58.1
   react-oidc-context: ^3.3.0
-  react-router: ^6.30.4
-  react-router-dom: ^6.30.4
+  react-router: ^7.18.2
   recharts: ^2.15.1
   storybook: ^10.5.5
   tailwindcss: ^4.1.11

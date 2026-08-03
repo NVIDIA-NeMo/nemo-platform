@@ -27,7 +27,7 @@ import {
   type FC,
   type ReactNode,
 } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 type FileRow = FilesetFileOutput & { id: string };
 

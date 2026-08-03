@@ -24,7 +24,7 @@ import { NoHealthyDeploymentsBanner } from '@studio/components/sidePanels/AgentP
 import type { WalkthroughStep } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
 import { getAgentEvaluationDetailRoute, getAgentEvaluationsListRoute } from '@studio/routes/utils';
 import type { FC, RefObject } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface AgentDetailsContentProps {
   workspace: string;

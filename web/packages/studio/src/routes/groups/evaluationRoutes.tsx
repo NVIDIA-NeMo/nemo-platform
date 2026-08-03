@@ -5,7 +5,7 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { ROUTES } from '@studio/constants/routes';
 import { gateEvaluationBenchmarksRoutes, gateEvaluationRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import { Navigate, RouteObject } from 'react-router-dom';
+import { Navigate, RouteObject } from 'react-router';
 
 const EvaluationLayout = lazy(() =>
   import('@studio/routes/evaluation/EvaluationLayout').then((module) => ({

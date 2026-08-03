@@ -18,7 +18,7 @@ import { CreateExampleAgentModal } from '@studio/routes/agents/AgentsListRoute/C
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { CircleAlert } from 'lucide-react';
 import { type FC, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const AgentsListRoute: FC = () => {
   const pluginsLoaded = usePluginsLoaded();

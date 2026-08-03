@@ -7,7 +7,7 @@ import { server } from '@studio/mocks/node';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 const LocationProbe = () => {
   const location = useLocation();

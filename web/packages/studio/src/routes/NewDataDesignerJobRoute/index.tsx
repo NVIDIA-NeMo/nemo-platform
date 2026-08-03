@@ -8,7 +8,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getDataDesignerJobBuildRoute, getDataDesignerJobListRoute } from '@studio/routes/utils';
 import type { FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const NewDataDesignerJobRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

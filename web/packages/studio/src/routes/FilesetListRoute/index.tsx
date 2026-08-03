@@ -20,7 +20,7 @@ import {
   getWorkspaceFilesetsRoute,
 } from '@studio/routes/utils';
 import { FC, useCallback } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useNavigate } from 'react-router';
 
 export const FilesetListRoute: FC = () => {
   const navigate = useNavigate();
