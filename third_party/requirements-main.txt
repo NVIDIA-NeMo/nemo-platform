@@ -30,6 +30,7 @@
     #   nemo-experimentalist-plugin
     #   nemo-guardrails-plugin
     #   nemo-insights-plugin
+    #   nemo-rl-plugin
     #   nemo-safe-synthesizer-plugin
     #   nemo-unsloth-plugin
     #   nemoplatform
@@ -52,6 +53,7 @@
     #   nemo-platform
     #   nemo-platform-ext
     #   nemo-platform-sdk
+    #   nemo-rl-plugin
     #   nemo-safe-synthesizer-plugin
     #   nemo-switchyard
     #   nemo-unsloth-plugin
@@ -62,6 +64,7 @@
     #   nmp-models
     #   nmp-platform
     #   nmp-platform-runner
+    #   nmp-rl
     #   nmp-unsloth
 -e ./packages/nmp_common ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
@@ -82,14 +85,17 @@
     #   nmp-platform
     #   nmp-platform-runner
     #   nmp-platform-seed
+    #   nmp-rl
     #   nmp-secrets
     #   nmp-studio
     #   nmp-unsloth
 -e ./packages/nmp_customization_common ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
     #   nemo-automodel-plugin
+    #   nemo-rl-plugin
     #   nemo-unsloth-plugin
     #   nmp-automodel
+    #   nmp-rl
     #   nmp-unsloth
 -e ./packages/nmp_platform ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemoplatform
@@ -120,6 +126,7 @@
     # via
     #   nemo-eval-author-plugin
     #   nemo-experimentalist-plugin
+-e ./plugins/nemo-rl ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-safe-synthesizer ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-switchyard ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-switchyard/vendor/switchyard ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
@@ -138,6 +145,7 @@
     #   nmp-core-mcp
     #   nmp-customization-common
     #   nmp-entities
+    #   nmp-rl
     #   nmp-unsloth
 -e ./services/automodel ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemo-automodel-plugin
@@ -183,6 +191,8 @@
     # via nemoplatform
 -e ./services/platform-seed ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemoplatform
+-e ./services/rl ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+    # via nemo-rl-plugin
 -e ./services/studio ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemoplatform
 -e ./services/unsloth ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
@@ -1068,6 +1078,7 @@ httpx==0.28.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nmp-automodel
     #   nmp-customization-common
     #   nmp-guardrails
+    #   nmp-rl
     #   nmp-unsloth
     #   nooa
     #   nvidia-nat-core
@@ -2431,6 +2442,7 @@ pydantic==2.12.5 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   nemo-platform-ext
     #   nemo-platform-plugin
     #   nemo-platform-sdk
+    #   nemo-rl-plugin
     #   nemo-safe-synthesizer
     #   nemo-safe-synthesizer-plugin
     #   nemo-unsloth-plugin
@@ -2446,6 +2458,7 @@ pydantic==2.12.5 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   nmp-intake
     #   nmp-jobs
     #   nmp-models
+    #   nmp-rl
     #   nmp-unsloth
     #   nooa
     #   nvidia-nat-atif
@@ -2539,6 +2552,7 @@ pydantic-settings==2.14.2 ; (platform_machine == 'arm64' and sys_platform == 'da
     #   nemo-anonymizer
     #   nemo-automodel-plugin
     #   nemo-platform-plugin
+    #   nemo-rl-plugin
     #   nemo-safe-synthesizer
     #   nemo-safe-synthesizer-plugin
     #   nemo-unsloth-plugin
@@ -2553,6 +2567,7 @@ pydantic-settings==2.14.2 ; (platform_machine == 'arm64' and sys_platform == 'da
     #   nmp-intake
     #   nmp-jobs
     #   nmp-models
+    #   nmp-rl
     #   nmp-unsloth
 pygments==2.20.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f \
@@ -3145,6 +3160,7 @@ tenacity==9.1.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     #   nmp-automodel
     #   nmp-customization-common
     #   nmp-models
+    #   nmp-rl
     #   nmp-unsloth
 tiktoken==0.12.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:01d99484dc93b129cd0964f9d34eee953f2737301f18b3c7257bf368d7615baa \
@@ -3252,6 +3268,7 @@ typer==0.24.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nemo-platform-ext
     #   nemo-platform-plugin
     #   nemo-platform-sdk
+    #   nemo-rl-plugin
     #   nemo-safe-synthesizer-plugin
     #   nemo-unsloth-plugin
     #   nemoguardrails
