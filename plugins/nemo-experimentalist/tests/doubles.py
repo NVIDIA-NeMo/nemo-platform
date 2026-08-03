@@ -163,6 +163,7 @@ def make_candidate(
     ancestor: str | None = None,
     optimization_type: str | None = None,
     artifact: str | None = None,
+    candidate_id: str | None = None,
     rewards: Mapping[str, RewardRecord] | None = None,
     killed_generation: int | None = None,
     workspace: str = "default",
@@ -197,7 +198,9 @@ def make_candidate(
         killed_generation=killed_generation,
         workspace=workspace,
     )
-    candidate._id = label  # type: ignore[attr-defined]
+    # Distinct from the label by default: identity and the display handle are different
+    # strings in a real run, and a double that conflates them hides that class of bug.
+    candidate._id = candidate_id or f"id-{label}"  # type: ignore[attr-defined]
     return candidate
 
 

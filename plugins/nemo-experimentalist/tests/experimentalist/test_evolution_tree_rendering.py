@@ -9,6 +9,7 @@ crashed in `to_markdown_table`. `EvolutionNode` is not a `Candidate`: it exposes
 `Candidate` accessors on a node raises `AttributeError`.
 """
 
+import pytest
 from doubles import make_candidate
 from nemo_experimentalist_plugin.entities import RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionNode, EvolutionTree
@@ -68,3 +69,25 @@ def test_rendering_picks_up_an_unknown_channel_without_code_changes() -> None:
     assert "some-new-channel[" in node.reward_str
     assert "some-new-channel:score" in tree.to_markdown_table()
     assert "0.90" in tree.to_markdown_table()
+
+
+def test_the_tree_is_keyed_by_candidate_id_not_by_display_label() -> None:
+    """Identity and the display handle are different strings, and only one is a key."""
+    baseline = make_candidate(label="agent-0", generation=0)
+    child = make_candidate(label="agent-1", ancestor=baseline.id, generation=1)
+    tree = EvolutionTree.from_candidates([baseline, child])
+
+    assert set(tree.nodes) == {baseline.id, child.id}
+    assert tree.nodes[child.id].candidate is child
+
+
+def test_marking_the_best_by_display_label_fails_loudly() -> None:
+    """A silent no-op here surfaced one line later as an unrelated KeyError."""
+    baseline = make_candidate(label="agent-0", generation=0)
+    tree = EvolutionTree.from_candidates([baseline])
+
+    tree.mark_best(baseline.id)
+    assert tree.nodes[baseline.id].is_best
+
+    with pytest.raises(KeyError, match="keys are candidate ids"):
+        tree.mark_best("agent-0-that-is-a-label")

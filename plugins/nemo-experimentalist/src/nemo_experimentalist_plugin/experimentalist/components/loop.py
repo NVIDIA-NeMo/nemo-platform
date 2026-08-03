@@ -1315,14 +1315,16 @@ class EvolutionaryOptimizer(Agent):
         # Only survivors that actually have a validation reward are eligible winners.
         scored = [n for n in evolution_tree.nodes.values() if n.is_survivor and n.val_reward]
         front = pareto_front(scored, lambda n: n.val_reward) if scored else []
-        best_id = front[0].label if front else None
-        if best_id is None:
+        if not front:
             logger.warning("[FINAL] no candidates to finalize")
             return None
 
-        evolution_tree.mark_best(best_id)
+        best = front[0]
+        # The tree is keyed by candidate id; the report writer reads the workspace, which
+        # is keyed by display handle. Neither substitutes for the other.
+        evolution_tree.mark_best(best.candidate.id or best.label)
         try:
-            await self.write_final_report(best_id)
+            await self.write_final_report(best.label)
         except Exception as exc:  # noqa: BLE001 - the runner falls back to a compact summary
             logger.warning(f"[FINAL] Failed to write final report: {exc}")
-        return evolution_tree.nodes[best_id].candidate
+        return best.candidate

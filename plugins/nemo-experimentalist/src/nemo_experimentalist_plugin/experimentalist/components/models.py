@@ -215,12 +215,21 @@ class EvolutionTree:
         self._children.setdefault(candidate.ancestor or "__root__", []).append(key)
         return node
 
-    def mark_best(self, label: str) -> None:
-        """Designate the node with *label* as the best, clearing all other best flags."""
+    def mark_best(self, key: str) -> None:
+        """Designate the node under *key* as the best, clearing all other best flags.
+
+        *key* is a candidate id, which is what :meth:`add` files nodes under — passing a
+        display label used to no-op silently, so a caller that confused the two only
+        found out at the next lookup.
+
+        Raises:
+            KeyError: if no node is filed under *key*.
+        """
+        if key not in self.nodes:
+            raise KeyError(f"No candidate {key!r} in the evolution tree; keys are candidate ids")
         for node in self.nodes.values():
             node.is_best = False
-        if label in self.nodes:
-            self.nodes[label].is_best = True
+        self.nodes[key].is_best = True
 
     def get_best(self) -> list[EvolutionNode]:
         """Return the Pareto-optimal nodes by validation reward."""

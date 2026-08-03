@@ -27,6 +27,7 @@ from nemo_experimentalist_plugin.experimentalist.components.insight_promotion im
     write_insight_promotion_section,
 )
 from nemo_experimentalist_plugin.experimentalist.components.loop import AnalysisSkill, EvolutionaryOptimizer
+from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree
 from nemo_experimentalist_plugin.experimentalist.runner import _render_summary as render_summary
 
 _SUITE_IDENTITY = f"sha256:{'a' * 64}"
@@ -479,3 +480,35 @@ def test_deterministic_insight_comparison_section_uses_local_suite_identity(
     assert str(_SUITE_PATH) in report
     assert _SUITE_IDENTITY in report
     assert "| `uses_required_tool` | 0.000 | 1.000 | +1.000 |" in report
+
+
+@pytest.mark.asyncio
+async def test_finalize_returns_the_winner_when_its_label_is_not_its_id() -> None:
+    """The tree is keyed by candidate id; a label lookup used to KeyError at the last step."""
+    baseline = make_candidate(label="agent-0", generation=0, rewards={"validation": RewardRecord(metrics={"r": 0.5})})
+    loser = make_candidate(
+        label="agent-1",
+        ancestor=baseline.id,
+        generation=1,
+        rewards={"validation": RewardRecord(metrics={"r": 0.0})},
+    )
+    assert baseline.id != baseline.label  # a real run's ids are UUIDs
+    tree = EvolutionTree.from_candidates([baseline, loser])
+
+    optimizer = object.__new__(EvolutionaryOptimizer)
+    original = EvolutionaryOptimizer.write_final_report
+    reports: list[str] = []
+
+    async def _record_report(self: EvolutionaryOptimizer, best_agent_id: str) -> None:
+        reports.append(best_agent_id)
+
+    type.__setattr__(EvolutionaryOptimizer, "write_final_report", _record_report)
+    try:
+        winner = await optimizer._finalize(evolution_tree=tree)
+    finally:
+        type.__setattr__(EvolutionaryOptimizer, "write_final_report", original)
+
+    assert winner is baseline
+    assert tree.nodes[baseline.id].is_best
+    # The report writer reads the label-keyed workspace, so it gets the handle.
+    assert reports == ["agent-0"]
