@@ -37,7 +37,10 @@ Invoke an existing NeMo agent through a deployment or directly from a local YAML
 
 Choose the invocation mode from the user's target:
 
-- **Local one-shot:** the user provides an `agent.yaml` or legacy NAT workflow YAML path. No deployment is required.
+- **Local one-shot:** the user provides an `agent.yaml` or legacy NAT workflow
+  YAML path. No deployment is required, but the selected model must already
+  have a directly usable endpoint and credentials because this path does not
+  apply Platform IGW normalization.
 - **Deployed agent:** the user names a deployment or asks to use an already deployed agent. Confirm the Platform is up and list deployments:
 
 ```bash

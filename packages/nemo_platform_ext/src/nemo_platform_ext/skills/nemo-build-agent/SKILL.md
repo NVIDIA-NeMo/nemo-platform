@@ -104,7 +104,6 @@ For the default path:
 AGENT_NAME=<agent-name>
 DEPLOYMENT_NAME="${AGENT_NAME}-deployment"
 
-.venv/bin/nemo agents delete "$AGENT_NAME" --yes 2>/dev/null || true
 .venv/bin/nemo agents create \
   --name "$AGENT_NAME" \
   --agent-config "agents/$AGENT_NAME-spec/agent.yaml"
@@ -112,6 +111,10 @@ DEPLOYMENT_NAME="${AGENT_NAME}-deployment"
   --agent "$AGENT_NAME" \
   --name "$DEPLOYMENT_NAME"
 ```
+
+These commands assume a new Agent entity. If preflight found an existing Agent
+or deployment, do not delete it silently. Follow the reuse or replacement choice
+the user approved before creating a replacement.
 
 `nemo agents deploy` waits for `running` by default. If the user passed
 `--no-wait`, wait explicitly:

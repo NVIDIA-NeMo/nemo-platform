@@ -205,7 +205,10 @@ After create succeeds:
   --input "<test prompt>"
 ```
 
-For local one-shot validation without registering an Agent entity:
+For local one-shot validation without registering an Agent entity, use this
+only when the selected model already has a directly usable provider endpoint
+and credentials. Platform IGW normalization is applied by the registered
+deployment path, not this local path:
 
 ```bash
 .venv/bin/nemo agents invoke \
@@ -230,7 +233,7 @@ For a local persistent server:
 | `extra fields not permitted` | Unknown Platform config field | Remove it or map it into a supported field |
 | `default_harness must reference one of harnesses` | `default_harness` does not match a key under `harnesses` | Rename one side so they match |
 | `Unsupported harness kind` | Harness kind is not supported by the Platform translator | Pick `codex`, `hermes`, `deepagents`, or `claude` |
-| Local file path missing in deployment | Referenced prompts, skills, or assets were not staged | Keep paths relative and ensure the agent directory is uploaded with create |
+| Local file path missing in deployment | Referenced prompts, skills, or assets were not staged | Keep paths relative and ensure referenced files are present in the agent package or fileset before deployment |
 | Adapter import or binary missing | Selected harness dependency is not installed in the runtime | Install the selected adapter/runtime dependency or choose a harness already available |
 
 ## Hard rules
