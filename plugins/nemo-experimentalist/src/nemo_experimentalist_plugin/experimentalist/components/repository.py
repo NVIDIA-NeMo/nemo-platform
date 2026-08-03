@@ -90,8 +90,9 @@ def split_agent_spec(spec: str) -> tuple[str, str]:
 
 # Glob patterns for files never copied into the published branch: generated/run-local
 # files, VCS/tool dirs, and build artifacts. Matched with fnmatch against each name.
+# ``harbor_wrapper.py``/``dind_environment.py`` are the evaluator's scaffolding, which
+# the registered evaluation component will own once it exists.
 _EXCLUDE_GLOBS = (
-    "metadata.json",
     "harbor_wrapper.py",
     "dind_environment.py",
     "architecture.md",

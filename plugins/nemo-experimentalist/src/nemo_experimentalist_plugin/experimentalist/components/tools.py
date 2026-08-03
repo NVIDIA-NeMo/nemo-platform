@@ -152,7 +152,7 @@ class WorkspaceTool:
 
         Args:
             agent_id:      e.g. "agent-2"
-            relative_path: e.g. "main.py", "metadata.json"
+            relative_path: e.g. "main.py", "agent.py"
             limit:         max characters (default 8000, None = no truncation)
 
         Returns:

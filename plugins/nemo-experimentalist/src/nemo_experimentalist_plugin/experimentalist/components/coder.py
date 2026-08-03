@@ -740,9 +740,9 @@ class Coder(Agent):
         ## Pre-staged destination — DO NOT re-copy from the ancestor
         The destination directory ``agents/{candidate.id}/`` has ALREADY been
         populated by the framework with a copy of the ancestor's source files
-        (everything except generated framework artifacts: ``metadata.json`` and
-        ``architecture.md``). Runtime harness files are inherited when present
-        but are not part of the agent behavior being optimized.
+        (everything except ``architecture.md``, which the framework regenerates).
+        Runtime harness files are inherited when present but are not part of the
+        agent behavior being optimized.
         Open and modify files in place. You do NOT need to copy anything in.
 
         ## Required reading before editing
@@ -763,8 +763,6 @@ class Coder(Agent):
         - NEVER read from, copy from, or overwrite files in any OTHER agent
           directory (``agents/agent-N/`` for N != candidate.id). The pre-staged
           files in your own directory are the only source you should edit.
-        - NEVER modify ``metadata.json`` in any agent directory. It is owned by
-          the framework and carries the correct agent id, lineage, and scores.
         - VERIFY INTEGRATION: In the integration test, check traces to confirm new code is actually
           called by the agent. Code that exists but isn't invoked is useless.
         - If the change involves editing an LLM model id, call
@@ -993,7 +991,6 @@ class Coder(Agent):
 
         ## Constraints
 
-        - Do NOT modify `metadata.json`.
         - Do NOT touch optimizer infrastructure: `init_structure.py`,
           `optimize_agent.py`, anything under `.claude/skills/`.
         - Do NOT call `run_smoke_eval` — the orchestrator re-runs it after you finish.

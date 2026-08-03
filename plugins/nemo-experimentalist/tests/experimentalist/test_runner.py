@@ -174,17 +174,20 @@ async def test_the_winner_is_copied_out_without_any_owners_scaffolding(monkeypat
         artifact=winner_dir.as_uri(),
     )
     (winner_dir / "main.py").write_text("print('hello')\n")
-    (winner_dir / "metadata.json").write_text("{}")  # the backend's
     (winner_dir / "architecture.md").write_text("# arch")  # the strategy's
     (winner_dir / "harbor_wrapper.py").write_text("# harness")  # the evaluator's
+    (winner_dir / "metadata.json").write_text("{}")  # a third-party strategy's real output
     runner, _ = _make_runner(tmp_path, strategy=RecordingStrategy(winner=winner), monkeypatch=monkeypatch)
 
     await runner.run()
 
     root = tmp_path / "experiment"
     assert (root / "main.py").read_text() == "print('hello')\n"
-    for scaffolding in ("metadata.json", "architecture.md", "harbor_wrapper.py"):
+    for scaffolding in ("architecture.md", "harbor_wrapper.py"):
         assert not (root / scaffolding).exists(), scaffolding
+    # Candidate metadata lives in its own store, so this name is no longer the host's
+    # to strip — a strategy that writes one has produced real output.
+    assert (root / "metadata.json").exists()
 
 
 @pytest.mark.asyncio

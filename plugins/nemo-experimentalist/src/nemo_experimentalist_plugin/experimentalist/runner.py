@@ -51,11 +51,10 @@ from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistRe
 
 logger = logging.getLogger(__name__)
 
-#: Host-owned names the winner's directory must not carry into the user's workspace.
-#: Composed from three owners, because the skip list has three: the backend's entity
-#: metadata, the strategy's generated documentation, and the evaluator's harness
-#: scaffolding. A third-party strategy's real output must survive this.
-_BACKEND_ARTIFACTS = frozenset({"metadata.json"})
+#: Names the winner's artifact must not carry into the user's workspace, named by the
+#: owner that generates them rather than as one flat list — a third-party strategy's
+#: real output has to survive this, and it cannot if the reason for each entry is lost.
+#: The backend contributes nothing: candidate metadata lives in its own store now.
 _STRATEGY_ARTIFACTS = frozenset({"architecture.md"})
 _EVALUATOR_ARTIFACTS = frozenset({"harbor_wrapper.py", "dind_environment.py"})
 
@@ -378,7 +377,7 @@ class ExperimentRunner:
 
     def _copy_winner_to_workspace(self, winner_dir: Path) -> None:
         """Copy the winner's artifact to the workspace root, minus every owner's scaffolding."""
-        skip = _BACKEND_ARTIFACTS | _STRATEGY_ARTIFACTS | _EVALUATOR_ARTIFACTS
+        skip = _STRATEGY_ARTIFACTS | _EVALUATOR_ARTIFACTS
         if not winner_dir.is_dir():
             logger.warning("[FINAL] winner artifact %s is not a directory; skipping workspace copy", winner_dir)
             return

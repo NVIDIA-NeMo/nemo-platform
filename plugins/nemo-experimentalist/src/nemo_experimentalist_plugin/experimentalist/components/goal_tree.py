@@ -431,7 +431,7 @@ class GoalTreeGenerator(Agent):
         # IDs
 
         Use kebab-case identifiers stable across the run (e.g. "parse-input",
-        "reason-about-cues", "emit-schema"). They appear in metadata.json and selection logs,
+        "reason-about-cues", "emit-schema"). They appear in trajectory rewards and selection logs,
         so prefer descriptive over short.
 
         # Output
@@ -464,7 +464,7 @@ class GoalTreeGenerator(Agent):
         analysis: str,
         round_num: int,
         agent_spec: Path | None = None,
-    ) -> GoalTree:  # pyright: ignore[reportReturnType]
+    ) -> GoalTree:  # ty: ignore[invalid-return-type]  # pyright: ignore[reportReturnType]
         """Propose a reweighted goal tree informed by a round of agent analysis.
 
         # What you receive

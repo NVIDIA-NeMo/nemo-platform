@@ -160,7 +160,7 @@ def _winner(tmp_path: Path) -> Path:
     w = tmp_path / "winner"
     w.mkdir()
     (w / "main.py").write_text("print('improved')\n")
-    (w / "metadata.json").write_text("{}")  # must be skipped
+    (w / "architecture.md").write_text("# generated")  # must be skipped
     return w
 
 
@@ -198,7 +198,7 @@ def test_publish_gitlab_opens_draft_mr(tmp_path: Path) -> None:
     assert ["git", "push", "--force-with-lease", "-u", "origin", "optimizer/run-1-agent-2"] in pub.calls
     assert ["git", "ls-remote", "--heads", "origin", "main"] in pub.calls
     # Generated file was not committed (overlay skipped it).
-    assert not (agent_dir / "metadata.json").exists()
+    assert not (agent_dir / "architecture.md").exists()
     assert (agent_dir / "main.py").read_text() == "print('improved')\n"
 
 
@@ -568,7 +568,7 @@ def test_push_branch_archives_candidate(tmp_path: Path) -> None:
         "pkg/agent",
     ] in pub.calls
     assert (agent_dir / "pkg" / "agent" / "main.py").read_text() == "print('improved')\n"
-    assert not (agent_dir / "pkg" / "agent" / "metadata.json").exists()  # generated file excluded
+    assert not (agent_dir / "pkg" / "agent" / "architecture.md").exists()  # generated file excluded
 
 
 def test_snapshot_subtree_recreates_removed_nested_destination_with_real_git(tmp_path: Path) -> None:
@@ -582,13 +582,13 @@ def test_snapshot_subtree_recreates_removed_nested_destination_with_real_git(tmp
     _git(checkout, "add", "pkg/agent/old.py")
     stale = checkout / "pkg" / "agent" / "local-secret.txt"
     stale.write_text("must not survive\n", encoding="utf-8")
-    (checkout / "pkg" / "agent" / "metadata.json").write_text("must not survive\n", encoding="utf-8")
+    (checkout / "pkg" / "agent" / "architecture.md").write_text("must not survive\n", encoding="utf-8")
 
     PRPublisher(agent_dir=checkout)._snapshot_subtree(_winner(tmp_path), "pkg/agent")
 
     assert not old_file.exists()
     assert not stale.exists()
-    assert not (checkout / "pkg" / "agent" / "metadata.json").exists()
+    assert not (checkout / "pkg" / "agent" / "architecture.md").exists()
     assert (checkout / "pkg" / "agent" / "main.py").read_text(encoding="utf-8") == "print('improved')\n"
     assert _git(checkout, "ls-files") == ["pkg/agent/main.py"]
 
