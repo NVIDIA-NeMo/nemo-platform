@@ -4,6 +4,7 @@
 from pathlib import Path
 from typing import Any, Literal, get_args
 
+from nemo_experimentalist_plugin.entities import Proposal
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
     OptimizationType,
@@ -21,25 +22,25 @@ from .model_config import get_fast_model, get_smart_model
 from .tools import WorkspaceTool
 from .util import load_framework_skills
 
+#: What this Proposer produces and the built-in Coder accepts. An opaque
+#: discriminator, not a global enumeration — it only has to match a Builder.
+CODE_CHANGE = "code-change"
 
-class Improvement(BaseModel):
-    """A proposed single-change improvement for a specific ancestor agent."""
 
-    ancestor: str
+class CodeChange(BaseModel):
+    """The ``code-change`` payload schema, owned by this Proposer and the Coder.
+
+    Nothing here belongs on ``Candidate``: it is what the Builder was *asked* to
+    produce, which the committed Candidate keeps as ``generated_from`` provenance
+    alongside the artifact it actually produced.
+    """
+
     root_cause: str = Field(
         min_length=1,
         description=(
             "The diagnosed cause of poor performance from the analysis — WHY the agent fails, "
             "not what would fix it. Must complete: 'The agent underperforms because...' "
             "Do not mention the proposed change or any remedy here."
-        ),
-    )
-    optimization: str = Field(
-        min_length=1,
-        description=(
-            "Graph-level description of the change in terms of the architecture diagram: "
-            "which node is added, removed, or modified; which edge changes; which prompt is rewritten. "
-            "Must NOT reference source file paths, line numbers, or implementation details."
         ),
     )
     optimization_type: OptimizationType
@@ -52,6 +53,46 @@ class Improvement(BaseModel):
             "evidence in the analysis is caused by `root_cause`. 2-3 is typical."
         ),
     )
+
+
+class Improvement(BaseModel):
+    """One proposed change, as the LLM returns it, before it becomes a Proposal."""
+
+    ancestor: str = Field(description="Candidate id to branch from.")
+    optimization: str = Field(
+        min_length=1,
+        description=(
+            "Graph-level description of the change in terms of the architecture diagram: "
+            "which node is added, removed, or modified; which edge changes; which prompt is rewritten. "
+            "Must NOT reference source file paths, line numbers, or implementation details."
+        ),
+    )
+    root_cause: str = Field(
+        min_length=1,
+        description=(
+            "The diagnosed cause of poor performance from the analysis — WHY the agent fails, "
+            "not what would fix it. Must complete: 'The agent underperforms because...' "
+            "Do not mention the proposed change or any remedy here."
+        ),
+    )
+    optimization_type: OptimizationType
+    task_ids: list[str] = Field(
+        default_factory=list,
+        description="Task ids whose failure evidence is caused by `root_cause`.",
+    )
+
+    def as_proposal(self) -> Proposal:
+        """The Layer A message a Builder receives, with this pair's payload inside it."""
+        return Proposal(
+            ancestor=self.ancestor,
+            description=self.optimization,
+            kind=CODE_CHANGE,
+            payload=CodeChange(
+                root_cause=self.root_cause,
+                optimization_type=self.optimization_type,
+                task_ids=self.task_ids,
+            ).model_dump(),
+        )
 
 
 class ProposerConfig(BaseModel):
@@ -98,7 +139,7 @@ class Proposer(Agent):
         round_num: int,
         phase: Literal["exploration", "exploitation"],
         max_candidates: int,
-    ) -> list[Improvement]:
+    ) -> list[Proposal]:
         """Return up to max_candidates targeted improvement proposals.
 
         Args:
@@ -110,7 +151,8 @@ class Proposer(Agent):
             max_candidates: maximum number of Improvement objects to return.
 
         Returns:
-            list[Improvement]: up to max_candidates targeted improvement proposals.
+            list[Proposal]: up to max_candidates build requests, each routed to a
+            Builder by its ``kind``.
 
         """
         all_types = set(get_args(OptimizationType))
@@ -139,7 +181,8 @@ class Proposer(Agent):
                 meta = {}
             survivor_context.append(
                 {
-                    "id": s.label,
+                    "id": s.id,
+                    "label": s.label,
                     "reward": s.reward("validation").metrics or {},
                     "trajectory_reward": s.reward("validation-trajectory").metrics or {},
                     "metadata": meta,
@@ -162,7 +205,7 @@ class Proposer(Agent):
             max_candidates=max_candidates,
             allowed_types=set(available_types) or all_types,
         )
-        return improvements
+        return [improvement.as_proposal() for improvement in improvements]
 
     @staticmethod
     def _validate_improvements(

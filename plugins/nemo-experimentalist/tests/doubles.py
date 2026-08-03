@@ -23,6 +23,9 @@ from nemo_experimentalist_plugin.entities import (
     Dataset,
     EvaluationResult,
     ExperimentRun,
+    Proposal,
+    ResourceRef,
+    RewardRecord,
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import Evaluator, EvaluatorConfig
@@ -149,6 +152,53 @@ class FakeEvaluator(Evaluator):
 
     async def aggregate_results(self, results: Sequence[TrialResult]) -> dict[str, float | int]:
         return {"reward": self.reward}
+
+
+def make_candidate(
+    *,
+    label: str = "agent-0",
+    run_id: str = "run-1",
+    generation: int = 0,
+    description: str | None = None,
+    ancestor: str | None = None,
+    optimization_type: str | None = None,
+    artifact: str | None = None,
+    rewards: Mapping[str, RewardRecord] | None = None,
+    killed_generation: int | None = None,
+    workspace: str = "default",
+) -> Candidate:
+    """A Candidate with a synthetic artifact, for tests that only care about metadata.
+
+    Every real Candidate is created by ``ctx.commit_candidate()`` from a finished
+    artifact; a test that is not exercising that path still needs one, so this supplies
+    a plausible directory URI and derives the projections the same way the context does.
+    """
+    text = description if description is not None else ("baseline" if ancestor is None else f"change in {label}")
+    proposal = (
+        None
+        if ancestor is None
+        else Proposal(
+            ancestor=ancestor,
+            description=text,
+            kind="code-change",
+            payload={"optimization_type": optimization_type} if optimization_type else {},
+        )
+    )
+    candidate = Candidate(
+        name=label,
+        label=label,
+        run_id=run_id,
+        generation=generation,
+        ancestor=ancestor,
+        generated_from=proposal,
+        description=text,
+        artifact=ResourceRef(uri=artifact or f"file:///tmp/{run_id}/eval-and-optimize/agents/{label}"),
+        rewards=dict(rewards or {}),
+        killed_generation=killed_generation,
+        workspace=workspace,
+    )
+    candidate._id = label  # type: ignore[attr-defined]
+    return candidate
 
 
 def make_context(

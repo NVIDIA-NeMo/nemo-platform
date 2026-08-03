@@ -59,9 +59,9 @@ def pseudo_source_link(gname: str, label: str) -> str:
 
 def experiment_status(candidate: Candidate) -> str:
     """Derive the producer status string from candidate lineage (spec §4.1)."""
-    if candidate.killed_round is not None:
+    if candidate.killed_generation is not None:
         return "killed"
-    if candidate.round == 0:
+    if candidate.is_baseline:
         return "baseline"
     return "survived"
 
@@ -94,8 +94,8 @@ def experiment_metadata(candidate: Candidate, split: str) -> dict[str, str]:
     """Identity/grouping metadata only. Eval results (reward/trials) are NOT copied this
     PR — scores/traces arrive via the Intake rollup path later (spec §4.3).
 
-    Platform ``metadata`` is ``dict[str, str]``, so ``round`` is serialized via ``str``."""
-    return {"round": str(candidate.round), "candidate_id": candidate.label, "split": split}
+    Platform ``metadata`` is ``dict[str, str]``, so ``generation`` is serialized via ``str``."""
+    return {"generation": str(candidate.generation), "candidate_id": candidate.label, "split": split}
 
 
 class ExperimentMirror:
@@ -207,7 +207,7 @@ class ExperimentMirror:
                 workspace=self._workspace,
                 experiment_ids=[group_id],
                 source_link=link,
-                description=candidate.optimization,
+                description=candidate.description,
                 parent_evaluation_id=parent_id,
                 root_cause="",  # OQ-RC: left empty for now
                 status=st,
@@ -222,7 +222,7 @@ class ExperimentMirror:
                 body_name=name,
                 experiment_ids=[group_id],
                 source_link=link,
-                description=candidate.optimization,
+                description=candidate.description,
                 parent_evaluation_id=parent_id,
                 root_cause="",  # OQ-RC: left empty for now
                 status=st,
@@ -234,7 +234,7 @@ class ExperimentMirror:
         return split  # OQ-8: derive a real dataset name/version later
 
     def _source_link(self, gname: str, candidate: Candidate, agent_source: Any) -> str:
-        if candidate.round == 0 and agent_source is not None:
+        if candidate.is_baseline and agent_source is not None:
             return f"{agent_source.repo_url}@{agent_source.ref}"
         return pseudo_source_link(gname, candidate.label)
 

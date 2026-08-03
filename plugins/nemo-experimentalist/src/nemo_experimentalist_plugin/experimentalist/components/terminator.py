@@ -149,11 +149,11 @@ class Terminator(Agent):
         # unscored nodes, so ``is not None`` would pull them in and skew the round cutoff /
         # Pareto front. Match ``EvolutionTree.get_best()``.
         scored = [n for n in evolution_tree.nodes.values() if n.val_reward]
-        rounds = sorted({n.round for n in scored})
+        rounds = sorted({n.generation for n in scored})
         if len(rounds) < min_rounds_before_stopping:
             return False
         cutoff_round = rounds[-min_rounds_before_stopping]
-        old = [n for n in scored if n.round <= cutoff_round]
+        old = [n for n in scored if n.generation <= cutoff_round]
         if not old:
             return False
         old_front_ids = {n.label for n in pareto_front(old, lambda n: n.val_reward)}
@@ -163,7 +163,7 @@ class Terminator(Agent):
         return await self.qualitative_stop_check(prior_analysis)
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=5)))
-    async def qualitative_stop_check(self, analysis: str) -> bool:  # pyright: ignore[reportReturnType]
+    async def qualitative_stop_check(self, analysis: str) -> bool:  # ty: ignore[invalid-return-type]  # pyright: ignore[reportReturnType]
         """Decide whether the optimization has qualitatively plateaued; return True to stop.
 
         Judge the round ``analysis`` text against the terminator skill's stop

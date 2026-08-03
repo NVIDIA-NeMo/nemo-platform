@@ -9,17 +9,18 @@ crashed in `to_markdown_table`. `EvolutionNode` is not a `Candidate`: it exposes
 `Candidate` accessors on a node raises `AttributeError`.
 """
 
-from nemo_experimentalist_plugin.entities import Candidate, RewardRecord
+from doubles import make_candidate
+from nemo_experimentalist_plugin.entities import RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionNode, EvolutionTree
 
 
 def _node(label: str, *, round_num: int, train: dict[str, float], val: dict[str, float]) -> EvolutionNode:
     return EvolutionNode(
-        candidate=Candidate(
+        candidate=make_candidate(
             run_id="run-1",
             label=label,
-            round=round_num,
-            optimization="baseline" if round_num == 0 else "improve tool use",
+            generation=round_num,
+            description="baseline" if round_num == 0 else "improve tool use",
             rewards={
                 "train": RewardRecord(metrics=train),
                 "validation": RewardRecord(metrics=val),
@@ -41,7 +42,7 @@ def test_markdown_table_renders_every_reward_dimension() -> None:
     table = _tree().to_markdown_table()
 
     assert table.split("\n") == [
-        "| round | agent | ancestor | type | train:reward | validation:reward | optimization |",
+        "| gen | agent | ancestor | type | train:reward | validation:reward | description |",
         "| --- | --- | --- | --- | --- | --- | --- |",
         "| 0 | agent-0 | - | - | 0.25 | 0.50 | baseline |",
         "| 1 | agent-1 | - | - | 0.75 | 1.00 | improve tool use |",

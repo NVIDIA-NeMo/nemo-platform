@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from doubles import make_candidate
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror, group_metadata
 from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError, omit
@@ -70,9 +71,9 @@ def _run(**kw: Any) -> ExperimentRun:
 
 
 def _cand(**kw: Any) -> Candidate:
-    base: dict[str, Any] = dict(run_id="run-1", label="agent-0", round=0, optimization="baseline")
+    base: dict[str, Any] = dict(run_id="run-1", label="agent-0", generation=0, description="baseline")
     base.update(kw)
-    return Candidate(**base)
+    return make_candidate(**base)
 
 
 async def test_ensure_group_creates_with_insight_and_metadata():
@@ -98,13 +99,13 @@ async def test_project_candidate_upserts_experiment_per_evaluated_split():
     experiments = AsyncMock()
     experiments.create.return_value = SimpleNamespace(id="exp-train")
     mirror = ExperimentMirror(_client(AsyncMock(), experiments), workspace="default")
-    cand = _cand(round=0, rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])})
+    cand = _cand(generation=0, rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])})
     await mirror.project_candidate(cand)
     kwargs = experiments.create.await_args.kwargs
     assert kwargs["name"] == "opt-run-1-agent-0-train"
     assert kwargs["status"] == "baseline"
     # metadata is identity-only — reward/trials are NOT copied (§4.3)
-    assert kwargs["metadata"] == {"round": "0", "candidate_id": "agent-0", "split": "train"}
+    assert kwargs["metadata"] == {"generation": "0", "candidate_id": "agent-0", "split": "train"}
     assert "aggregate_metrics" not in kwargs["metadata"] and "trials" not in kwargs["metadata"]
     # validation not evaluated → not created
     assert experiments.create.await_count == 1
@@ -128,7 +129,7 @@ async def test_project_candidate_creates_insight_experiment_when_evaluated():
     kwargs = experiments.create.await_args.kwargs
     assert kwargs["name"] == "opt-run-1-agent-0-insight"
     assert kwargs["dataset_name"] == "insight"
-    assert kwargs["metadata"] == {"round": "0", "candidate_id": "agent-0", "split": "insight"}
+    assert kwargs["metadata"] == {"generation": "0", "candidate_id": "agent-0", "split": "insight"}
 
 
 async def test_project_candidate_conflict_updates_experiment():
@@ -138,13 +139,13 @@ async def test_project_candidate_conflict_updates_experiment():
     experiments.create.side_effect = _CONFLICT
     experiments.update.return_value = SimpleNamespace(id="exp-train")
     mirror = ExperimentMirror(_client(groups, experiments), workspace="default")
-    cand = _cand(round=0, rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])})
+    cand = _cand(generation=0, rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])})
     await mirror.project_candidate(cand)
     experiments.update.assert_awaited_once()
     # update is a full-replace: dataset_version must be re-supplied (symmetric with create)
     kwargs = experiments.update.await_args.kwargs
     assert kwargs["dataset_version"] == "v1"
-    assert kwargs["metadata"] == {"round": "0", "candidate_id": "agent-0", "split": "train"}
+    assert kwargs["metadata"] == {"generation": "0", "candidate_id": "agent-0", "split": "train"}
 
 
 async def test_parent_experiment_id_cache_hit():
@@ -156,12 +157,12 @@ async def test_parent_experiment_id_cache_hit():
         SimpleNamespace(id="exp-child-train"),  # child train experiment
     ]
     mirror = ExperimentMirror(_client(groups, experiments), workspace="default")
-    ancestor = _cand(label="agent-0", round=0, rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])})
+    ancestor = _cand(label="agent-0", generation=0, rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])})
     await mirror.project_candidate(ancestor)
     child = _cand(
         label="agent-1",
         ancestor="agent-0",
-        round=1,
+        generation=1,
         rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])},
     )
     await mirror.project_candidate(child)
@@ -180,7 +181,7 @@ async def test_parent_experiment_id_fallback_retrieve():
     child = _cand(
         label="agent-1",
         ancestor="agent-0",
-        round=1,
+        generation=1,
         rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])},
     )
     await mirror.project_candidate(child)
@@ -199,7 +200,7 @@ async def test_parent_experiment_id_not_found_omits():
     child = _cand(
         label="agent-1",
         ancestor="agent-0",
-        round=1,
+        generation=1,
         rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])},
     )
     await mirror.project_candidate(child)
@@ -216,7 +217,7 @@ async def test_finalize_round0_winner_preserves_existing_source_link():
     experiments.retrieve.return_value = SimpleNamespace(id="exp-w", source_link="https://git/repo.git@main")
     experiments.create.return_value = SimpleNamespace(id="exp-w")
     mirror = ExperimentMirror(_client(groups, experiments), workspace="default")
-    winner = _cand(label="agent-0", round=0, rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])})
+    winner = _cand(label="agent-0", generation=0, rewards={"train": RewardRecord(metrics={"reward": 1.0}, trials=[])})
     await mirror.finalize(run_id="run-1", summary="done", winner=winner, pr_url=None)
     kwargs = experiments.create.await_args.kwargs
     assert kwargs["source_link"] == "https://git/repo.git@main"  # preserved, not pseudo

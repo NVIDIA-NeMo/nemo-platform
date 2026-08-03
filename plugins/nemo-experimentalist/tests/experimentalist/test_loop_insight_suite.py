@@ -1,12 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from doubles import FakeBackend, FakeEvaluator, make_context
+from doubles import FakeBackend, FakeEvaluator, make_candidate, make_context
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import (
     Candidate,
@@ -20,6 +21,7 @@ from nemo_experimentalist_plugin.entities import (
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorConfig
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborEvaluatorConfig
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
 
@@ -75,13 +77,13 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
         tasks=[Task(id="insight-task")],
         metadata=_suite_metadata(),
     )
-    baseline = Candidate(run_id="run-1", label="agent-0", round=0, optimization="baseline")
-    new_candidate = Candidate(
+    baseline = make_candidate(run_id="run-1", label="agent-0", generation=0, description="baseline")
+    new_candidate = make_candidate(
         run_id="run-1",
         label="agent-1",
         ancestor="agent-0",
-        round=1,
-        optimization="use the required tool",
+        generation=1,
+        description="use the required tool",
     )
     insight_results = {
         "agent-0": _insight_result("agent-0", 0.0),
@@ -125,9 +127,14 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
                 raise _StopAfterOneRound
             return SimpleNamespace(stop=False, reason="continue")
 
-    monkeypatch.setattr(loop_module.EvolutionTree, "from_dir", lambda path: evolution_tree)
+    monkeypatch.setattr(loop_module.EvolutionTree, "from_candidates", lambda candidates: evolution_tree)
     monkeypatch.setattr(EvolutionaryOptimizer, "_detect_last_round", lambda self: None)
     monkeypatch.setattr(EvolutionaryOptimizer, "_create_baseline_agent", AsyncMock(return_value=baseline))
+    monkeypatch.setattr(
+        EvolutionaryOptimizer,
+        "_build_candidates",
+        AsyncMock(return_value=[new_candidate]),
+    )
     monkeypatch.setattr(
         EvolutionaryOptimizer,
         "_evaluate_validation_candidates",
@@ -151,12 +158,6 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
     monkeypatch.setattr(EvolutionaryOptimizer, "_analyze_round", AsyncMock(return_value="round analysis"))
     monkeypatch.setattr(EvolutionaryOptimizer, "_update_goal_tree", AsyncMock())
     monkeypatch.setattr(EvolutionaryOptimizer, "_propose_improvements", AsyncMock(return_value=[object()]))
-    monkeypatch.setattr(EvolutionaryOptimizer, "_create_agent", lambda self, **kwargs: new_candidate)
-    monkeypatch.setattr(
-        EvolutionaryOptimizer,
-        "_implement_candidates",
-        AsyncMock(side_effect=lambda **kwargs: kwargs["candidates"]),
-    )
 
     optimizer = object.__new__(EvolutionaryOptimizer)
     optimizer.working_dir = tmp_path
@@ -207,11 +208,11 @@ async def test_insight_evaluation_skips_cached_candidates_and_empty_suites(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    cached = Candidate(
+    cached = make_candidate(
         run_id="run-1",
         label="agent-0",
-        round=0,
-        optimization="baseline",
+        generation=0,
+        description="baseline",
         rewards={
             "insight": RewardRecord(
                 metrics={"uses_required_tool": 0.0},
@@ -220,11 +221,11 @@ async def test_insight_evaluation_skips_cached_candidates_and_empty_suites(
             )
         },
     )
-    pending = Candidate(
+    pending = make_candidate(
         run_id="run-1",
         label="agent-1",
-        round=1,
-        optimization="use the required tool",
+        generation=1,
+        description="use the required tool",
     )
     result = _insight_result("agent-1", 1.0)
     evaluate_agent = AsyncMock(return_value=(pending, result))
@@ -262,11 +263,11 @@ async def test_insight_evaluation_reuses_only_matching_suite_identity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    cached = Candidate(
+    cached = make_candidate(
         run_id="run-1",
         label="agent-0",
-        round=0,
-        optimization="baseline",
+        generation=0,
+        description="baseline",
         rewards={
             "insight": RewardRecord(
                 metrics={"uses_required_tool": 0.0},
@@ -317,11 +318,11 @@ async def test_cached_insight_metric_keys_are_order_independent(
 ) -> None:
     identity = f"sha256:{'a' * 64}"
     candidates = [
-        Candidate(
+        make_candidate(
             run_id="run-1",
             label="agent-0",
-            round=0,
-            optimization="baseline",
+            generation=0,
+            description="baseline",
             rewards={
                 "insight": RewardRecord(
                     metrics={"reward": 0.5, "uses_required_tool": 0.0},
@@ -330,11 +331,11 @@ async def test_cached_insight_metric_keys_are_order_independent(
                 )
             },
         ),
-        Candidate(
+        make_candidate(
             run_id="run-1",
             label="agent-1",
-            round=1,
-            optimization="improve tool use",
+            generation=1,
+            description="improve tool use",
             rewards={
                 "insight": RewardRecord(
                     metrics={"reward": 0.75, "uses_required_tool": 1.0},
@@ -373,22 +374,22 @@ async def test_cached_insight_metric_keys_are_order_independent(
 async def test_insight_evaluation_uses_at_least_two_attempts_without_changing_other_splits(
     tmp_path: Path,
 ) -> None:
-    candidate = Candidate(
+    candidate = make_candidate(
         run_id="run-1",
         label="agent-0",
-        round=0,
-        optimization="baseline",
+        generation=0,
+        description="baseline",
     )
     received_attempts: list[int] = []
 
     class RecordingEvaluator(FakeEvaluator):
-        async def run(self, **kwargs: object) -> EvaluationResult:  # type: ignore[override]
-            options = kwargs["options"]
+        async def _run(self, agent: Path, dataset: Dataset, options: EvaluatorConfig) -> Sequence[TrialResult]:
             assert isinstance(options, HarborEvaluatorConfig)
             received_attempts.append(options.n_attempts)
-            return _insight_result(candidate.label, 0.5)
+            return _insight_result(candidate.label, 0.5).trials
 
-    evaluator = RecordingEvaluator(options=HarborEvaluatorConfig(n_attempts=1))
+    configured = HarborEvaluatorConfig(n_attempts=1)
+    evaluator = RecordingEvaluator(options=configured)
     ctx = make_context(
         root=tmp_path,
         evaluator=evaluator,
@@ -399,26 +400,22 @@ async def test_insight_evaluation_uses_at_least_two_attempts_without_changing_ot
     await ctx.evaluate(candidate, split="insight", minimum_attempts=2)
 
     assert received_attempts == [1, 2]
-    assert evaluator.options.n_attempts == 1
+    assert configured.n_attempts == 1
 
 
-def test_rollback_removes_digest_named_insight_results(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_rollback_removes_a_candidates_artifact_and_every_scratch_dir(tmp_path: Path) -> None:
+    """Which candidates to roll back comes from the store, not from a directory walk."""
     root = tmp_path / "eval-and-optimize"
     agents_dir = root / "agents"
     results_dir = root / "results"
-    analysis_dir = root / "analysis"
-    smoke_dataset_dir = root / "smoke-dataset"
-    smoke_results_dir = root / "smoke-results"
-    for directory in (agents_dir, results_dir, analysis_dir, smoke_dataset_dir, smoke_results_dir):
+    for directory in (agents_dir, results_dir, root / "analysis", root / "smoke-dataset", root / "smoke-results"):
         directory.mkdir(parents=True)
 
-    removed_agent = agents_dir / "agent-2"
-    removed_agent.mkdir()
-    (removed_agent / "metadata.json").write_text('{"round": 2}\n')
-    surviving_agent = agents_dir / "agent-20"
-    surviving_agent.mkdir()
-    (surviving_agent / "metadata.json").write_text('{"round": 1}\n')
-
+    removed_dir = agents_dir / "agent-2"
+    removed_dir.mkdir()
+    surviving_dir = agents_dir / "agent-20"
+    surviving_dir.mkdir()
     removed_results = [
         results_dir / "agent-2-train",
         results_dir / "agent-2-validation",
@@ -429,11 +426,48 @@ def test_rollback_removes_digest_named_insight_results(tmp_path: Path) -> None:
     surviving_result = results_dir / "agent-20-insight-abcdef123456"
     surviving_result.mkdir()
 
+    backend = FakeBackend()
+    ctx = make_context(root=tmp_path, backend=backend)
+    for label, generation, directory in (("agent-2", 2, removed_dir), ("agent-20", 1, surviving_dir)):
+        await backend.create_candidate(
+            workspace="default",
+            candidate=make_candidate(
+                label=label,
+                ancestor="agent-0",
+                generation=generation,
+                artifact=directory.as_uri(),
+            ),
+        )
+
     optimizer = object.__new__(EvolutionaryOptimizer)
     optimizer.working_dir = tmp_path
-    optimizer._delete_all_artifacts(from_round=1)
+    await optimizer._delete_all_artifacts(ctx=ctx, from_round=1)
 
-    assert not removed_agent.exists()
+    assert not removed_dir.exists()
     assert all(not result_dir.exists() for result_dir in removed_results)
-    assert surviving_agent.is_dir()
+    assert surviving_dir.is_dir()
     assert surviving_result.is_dir()
+
+
+@pytest.mark.asyncio
+async def test_rollback_revives_a_survivor_whose_killing_round_was_itself_rolled_back(tmp_path: Path) -> None:
+    backend = FakeBackend()
+    ctx = make_context(root=tmp_path, backend=backend)
+    artifact = tmp_path / "eval-and-optimize" / "agents" / "agent-1"
+    artifact.mkdir(parents=True)
+    await backend.create_candidate(
+        workspace="default",
+        candidate=make_candidate(
+            label="agent-1",
+            ancestor="agent-0",
+            generation=1,
+            killed_generation=3,
+            artifact=artifact.as_uri(),
+        ),
+    )
+
+    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer.working_dir = tmp_path
+    await optimizer._delete_all_artifacts(ctx=ctx, from_round=2)
+
+    assert backend.candidates["agent-1"].killed_generation is None

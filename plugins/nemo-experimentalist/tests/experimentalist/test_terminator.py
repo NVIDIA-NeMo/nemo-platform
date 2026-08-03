@@ -27,7 +27,7 @@ class _FakeNode:
     """Stand-in for EvolutionNode exposing only what _has_converged reads."""
 
     label: str
-    round: int
+    generation: int
     val_reward: dict[str, float] = field(default_factory=dict)
 
 

@@ -31,6 +31,7 @@ from nemo_experimentalist_plugin.entities import (
     ExperimentRun,
     ResourceRef,
     TrialResult,
+    local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist.components.repository import (
     AgentSource,
@@ -251,7 +252,7 @@ class ExperimentalistBackend(ABC):
 
 
 def load_candidate(path: Path) -> Candidate:
-    """Deserialize a ``metadata.json`` file into a :class:`Candidate`.
+    """Deserialize one stored candidate record into a :class:`Candidate`.
 
     Free function rather than a backend method: read-only callers (the Coder's
     workspace tool) need the deserialization without constructing a backend,
@@ -286,11 +287,12 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
           eval-and-optimize/
             insight.json          ← loaded via get_insight(insight_id=path)
             run.json              ← ExperimentRun state
+            candidates/
+              <candidate-id>.json ← Candidate metadata and measurements
+              ...
             agents/
-              agent-0/
-                metadata.json     ← Candidate fields
+              agent-0/            ← the candidates' artifacts
               agent-1/
-                metadata.json
               ...
             analysis/
               round-0.md
@@ -313,7 +315,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         super().__init__(client, path, storage)
         self.path = path
         self._eo = path / "eval-and-optimize"
-        for subdir in ("agents", "analysis", "results"):
+        for subdir in ("agents", "analysis", "candidates", "results"):
             (self._eo / subdir).mkdir(parents=True, exist_ok=True)
         # Best-effort, one-way projection onto native platform Experiments. Active only when
         # a platform client is present (offline/local-only runs leave it a no-op); mirrors are
@@ -401,8 +403,9 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         return f"{self.storage.candidate_branch_prefix}/{candidate.run_id}/{candidate.label}"
 
     def _candidate_code_dir(self, candidate: Candidate) -> Path:
-        """Local directory holding *candidate*'s code (the per-candidate agent dir)."""
-        return self._eo / "agents" / candidate.label
+        """Local directory holding *candidate*'s code, read off its artifact reference."""
+        path = local_path_from_uri(candidate.artifact.uri, context="Candidate artifact")
+        return path if path.is_dir() else path.parent
 
     async def archive_candidate(self, *, workspace: str, candidate: Candidate) -> str | None:
         """Git implementation: push ``<prefix>/<run-id>/<label>`` (subtree at the agent's
@@ -415,7 +418,8 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         checkout, branch = self._agent_checkout, self._candidate_branch(candidate)
         code_dir = self._candidate_code_dir(candidate)
         message = (
-            f"Experimentalist candidate {candidate.label} (round {candidate.round}): {candidate.optimization}\n\n"
+            f"Experimentalist candidate {candidate.label} "
+            f"(generation {candidate.generation}): {candidate.description}\n\n"
             f"Candidate-Id: {candidate.id}"
         )
         pushed = await asyncio.to_thread(
@@ -444,10 +448,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         if src is None or self._agent_checkout is None:
             return None
         checkout, branch = self._agent_checkout, self._candidate_branch(candidate)
-        title = (
-            self.storage.pr_title
-            or f"Experimentalist: candidate {candidate.label} ({candidate.optimization_type or 'improvement'})"
-        )
+        title = self.storage.pr_title or f"Experimentalist: candidate {candidate.label} ({candidate.description})"
         body = self.storage.pr_body or await self._compose_pr_body(workspace=workspace, candidate=candidate)
         code_dir = self._candidate_code_dir(candidate)
         url = await asyncio.to_thread(
@@ -511,34 +512,28 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         return run
 
     # ------------------------------------------------------------------
-    # Candidate CRUD  (eval-and-optimize/agents/{label}/metadata.json)
+    # Candidate CRUD  (eval-and-optimize/candidates/{id}.json)
     #
-    # The candidate ``label`` is the agent directory name (e.g. "agent-0").
-    # Locally we use it as the entity id so lookup is O(1); remotely the store
-    # assigns the id and auto-slugs ``name`` (identity is the id, as for every
-    # entity in this plugin).
+    # Metadata lives in a store the runner owns, keyed by the candidate's durable
+    # id — never inside the artifact it describes. Listing therefore reads the
+    # store rather than walking a directory layout, so a strategy that does not
+    # produce one directory per candidate can still store, list and resume.
     # ------------------------------------------------------------------
 
-    def _candidate_path(self, label: str) -> Path:
-        if not label:
-            raise ValueError("Label is required")
-        return self._eo / "agents" / label / "metadata.json"
+    def _candidate_path(self, candidate_id: str) -> Path:
+        if not candidate_id:
+            raise ValueError("Candidate id is required")
+        return self._eo / "candidates" / f"{candidate_id}.json"
 
-    def _load_candidate(self, path: Path) -> Candidate:
-        """Deserialize a current-schema ``metadata.json`` file into a Candidate."""
-        return load_candidate(path)
+    def _write_candidate(self, candidate: Candidate) -> None:
+        path = self._candidate_path(candidate.id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({**candidate.model_dump(), "id": candidate.id}, indent=2))
 
     async def create_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
         if not candidate.id:
-            candidate._id = candidate.label or str(uuid.uuid4())  # type: ignore[attr-defined]
-        p = self._candidate_path(candidate.label)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(
-            json.dumps(
-                {**candidate.model_dump(), "id": candidate.id},
-                indent=2,
-            )
-        )
+            candidate._id = str(uuid.uuid4())  # type: ignore[attr-defined]
+        self._write_candidate(candidate)
         await self._project_best_effort(
             workspace,
             lambda m: m.project_candidate(
@@ -550,13 +545,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         return candidate
 
     async def update_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
-        p = self._candidate_path(candidate.label)
-        p.write_text(
-            json.dumps(
-                {**candidate.model_dump(), "id": candidate.id},
-                indent=2,
-            )
-        )
+        self._write_candidate(candidate)
         await self._project_best_effort(
             workspace,
             lambda m: m.project_candidate(
@@ -568,19 +557,14 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         return candidate
 
     async def get_candidate(self, *, workspace: str, candidate_id: str) -> Candidate:
-        # In local mode the store id equals the candidate label (e.g. "agent-0"),
-        # which is also the agent directory name.
-        p = self._candidate_path(candidate_id)
-        return self._load_candidate(p)
+        return load_candidate(self._candidate_path(candidate_id))
 
     async def list_candidates(self, *, workspace: str, run_id: str) -> list[Candidate]:
-        results: list[Candidate] = []
-        agents_dir = self._eo / "agents"
-        for meta in sorted(agents_dir.glob("*/metadata.json")):
-            c: Candidate = self._load_candidate(meta)
-            if c.run_id == run_id:
-                results.append(c)
-        return results
+        store = self._eo / "candidates"
+        if not store.is_dir():
+            return []
+        candidates = [load_candidate(path) for path in sorted(store.glob("*.json"))]
+        return sorted((c for c in candidates if c.run_id == run_id), key=lambda c: (c.generation, c.label))
 
     # ------------------------------------------------------------------
     # Result persistence  (eval-and-optimize/OPTIMIZATION.md)

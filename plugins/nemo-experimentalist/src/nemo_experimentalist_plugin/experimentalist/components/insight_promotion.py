@@ -321,7 +321,7 @@ def select_insight_promotion_suggestions(
     ]
     if len(evaluated_candidates) < 2:
         return []
-    baseline = next((candidate for candidate in evaluated_candidates if candidate.round == 0), None)
+    baseline = next((candidate for candidate in evaluated_candidates if candidate.is_baseline), None)
     if baseline is None or winner not in evaluated_candidates:
         return []
 

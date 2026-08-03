@@ -18,7 +18,9 @@ split, which is why one is not spelled with the other's name.
 
 from __future__ import annotations
 
+import fnmatch
 import logging
+import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -29,7 +31,10 @@ from nemo_experimentalist_plugin.entities import (
     DataValue,
     EvaluationResult,
     ExperimentRun,
+    Proposal,
+    ResourceRef,
     RewardRecord,
+    local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
@@ -43,6 +48,28 @@ logger = logging.getLogger(__name__)
 #: The split every run has, and what ``evaluate()`` measures unless told otherwise.
 #: It is also the channel a selector ranks on by default.
 PRIMARY_SPLIT = "validation"
+
+#: Display handle of the candidate that is the agent under test, unchanged.
+BASELINE_LABEL = "agent-0"
+
+#: What a fork must not carry from its source, composed from the three owners that
+#: actually contribute names: this run's own layout, generic developer hygiene, and
+#: the evaluator's scratch. Hardcoding one flat list is how a third-party strategy's
+#: real output gets stripped.
+_RUN_LAYOUT = frozenset({"eval-and-optimize", "artifacts", "dataset", "scratch"})
+_HYGIENE = frozenset({"__pycache__", ".git", ".runtime-cache", ".claude", ".uv", ".venv"})
+_EVALUATOR_SCRATCH_GLOBS = ("*traces*", "*eval-and-optimize_*")
+
+
+def _ignore_forked(directory: str, contents: list[str]) -> set[str]:
+    """Names a forked candidate must not inherit from the directory it came from."""
+    del directory
+    skip = _RUN_LAYOUT | _HYGIENE
+    return {
+        name
+        for name in contents
+        if name in skip or any(fnmatch.fnmatch(name, pattern) for pattern in _EVALUATOR_SCRATCH_GLOBS)
+    }
 
 
 class ExperimentContext:
@@ -136,12 +163,127 @@ class ExperimentContext:
         return await self._backend.list_candidates(workspace=self.workspace, run_id=self.run_id)
 
     def candidate_dir(self, candidate: Candidate) -> Path:
-        """Directory holding *candidate*'s code.
+        """Local directory holding *candidate*'s artifact.
 
-        Still derived from the label, because a Candidate is still a directory. The
-        candidate contract replaces this with ``candidate.artifact``.
+        Raises:
+            ValueError: if the artifact is a file, or lives outside the candidate root.
         """
-        return self.root / "eval-and-optimize" / "agents" / candidate.label
+        path = local_path_from_uri(candidate.artifact.uri, context="Candidate artifact")
+        return path if path.is_dir() else path.parent
+
+    async def fork(self, proposal: Proposal | None) -> Path:
+        """Reserve and populate a fresh candidate directory, copied from the ancestor.
+
+        The ignore policy lives here rather than in a Builder because it is host
+        knowledge composed from three owners — this run's own layout, generic hygiene,
+        and the evaluator's scratch — and because three divergent copy paths with three
+        different ignore lists is what this replaces.
+
+        Passing ``None`` forks the agent under test, for the baseline.
+
+        Returns:
+            Path: the reserved directory, for the Builder to write into. It is not a
+            Candidate until :meth:`commit_candidate` validates and commits it.
+        """
+        destination = self._reserve(proposal)
+        if destination.exists():
+            return destination  # resume: the fork already happened
+        source = self.agent_dir if proposal is None or proposal.ancestor is None else await self._ancestor_dir(proposal)
+        shutil.copytree(source, destination, ignore=_ignore_forked)
+        return destination
+
+    async def allocate(self, proposal: Proposal | None, *, filename: str) -> Path:
+        """Reserve a path for a candidate whose evaluation consumes a single file.
+
+        The file itself is the Builder's to write; the context only guarantees the path
+        is inside this run's candidate root, so the runner can archive and publish every
+        candidate without the strategy's cooperation.
+
+        Raises:
+            ValueError: if *filename* is not a plain name.
+        """
+        if not filename or Path(filename).name != filename:
+            raise ValueError(f"allocate() takes a bare filename, not a path: {filename!r}")
+        directory = self._reserve(proposal)
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / filename
+
+    async def commit_candidate(
+        self,
+        *,
+        proposal: Proposal | None,
+        artifact: Path,
+        description: str | None = None,
+        generation: int = 0,
+        label: str | None = None,
+    ) -> Candidate:
+        """Validate a finished artifact and create the Candidate that addresses it.
+
+        This is the only way a Candidate comes into existence, which is what makes
+        ``artifact`` safe to require: nothing durable ever points at partial work.
+
+        With a Proposal, ``ancestor`` and ``description`` are derived from it and an
+        explicit *description* is rejected — the two accounts of a candidate's origin
+        must not be able to drift. ``proposal=None`` is for the baseline or an
+        explicitly imported candidate, and then *description* is required.
+
+        Raises:
+            ValueError: if the artifact is missing, was not reserved for this proposal,
+                or the description is given when it is derived (or missing when it is not).
+        """
+        if proposal is not None and description is not None:
+            raise ValueError("description is derived from the Proposal; do not pass it as well")
+        if proposal is None and not description:
+            raise ValueError("committing without a Proposal requires an explicit description")
+        if not artifact.exists():
+            raise ValueError(f"Candidate artifact does not exist: {artifact}")
+        artifact = artifact.resolve()
+        root = self._candidate_root.resolve()
+        if not artifact.is_relative_to(root):
+            raise ValueError(f"Candidate artifact must live under {root}, got {artifact}")
+
+        text = proposal.description if proposal is not None else (description or "")
+        handle = label or (artifact.parent if artifact.is_file() else artifact).name
+        candidate = Candidate(
+            name=handle,
+            label=handle,
+            workspace=self.workspace,
+            run_id=self.run_id,
+            ancestor=proposal.ancestor if proposal is not None else None,
+            generation=generation,
+            generated_from=proposal,
+            description=text,
+            artifact=ResourceRef(uri=artifact.as_uri(), description=text),
+        )
+        return await self.save_candidate(candidate)
+
+    @property
+    def _candidate_root(self) -> Path:
+        """Runner-owned root every candidate artifact must live under."""
+        return self.root / "eval-and-optimize" / "agents"
+
+    def _reserve(self, proposal: Proposal | None) -> Path:
+        """Pick the next free candidate directory under the run's candidate root."""
+        root = self._candidate_root
+        root.mkdir(parents=True, exist_ok=True)
+        if proposal is None or proposal.ancestor is None:
+            return root / BASELINE_LABEL
+        taken = [
+            int(entry.name.split("-")[1])
+            for entry in root.iterdir()
+            if entry.is_dir() and entry.name.startswith("agent-") and entry.name.split("-")[1].isdigit()
+        ]
+        return root / f"agent-{max(taken, default=-1) + 1}"
+
+    async def _ancestor_dir(self, proposal: Proposal) -> Path:
+        """Where the candidate *proposal* branches from keeps its artifact.
+
+        Resolved through the ancestor's stored ``artifact``, not by treating the id as
+        a directory name — that identification is exactly what this contract removes.
+        """
+        assert proposal.ancestor is not None
+        ancestor = await self._backend.get_candidate(workspace=self.workspace, candidate_id=proposal.ancestor)
+        return self.candidate_dir(ancestor)
 
     async def save_candidate(self, candidate: Candidate, *, updates: dict[str, Any] | None = None) -> Candidate:
         """Create or update *candidate* in the entity store.

@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+from typing import Any
+
+from doubles import make_candidate
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
 from nemo_experimentalist_plugin.experimentalist import experiment_mirror as m
 
 
-def _cand(**kw):
-    base = dict(run_id="run-1", label="agent-0", round=0, optimization="baseline")
-    base.update(kw)
-    return Candidate(**base)
+def _cand(**kw: Any) -> Candidate:
+    return make_candidate(run_id="run-1", label="agent-0", description="baseline", **kw)
 
 
 def test_group_name_is_sanitized_and_bounded():
@@ -20,9 +21,12 @@ def test_experiment_name_deterministic():
 
 
 def test_status_derivation():
-    assert m.experiment_status(_cand(round=0)) == "baseline"
-    assert m.experiment_status(_cand(round=2, killed_round=3)) == "killed"
-    assert m.experiment_status(_cand(round=2)) == "survived"
+    # Baseline is ``ancestor is None``, not a generation-0 sentinel: a strategy that
+    # leaves generation at 0 must not have every candidate read as the baseline.
+    assert m.experiment_status(_cand(generation=0)) == "baseline"
+    assert m.experiment_status(_cand(generation=2, ancestor="agent-0", killed_generation=3)) == "killed"
+    assert m.experiment_status(_cand(generation=2, ancestor="agent-0")) == "survived"
+    assert m.experiment_status(_cand(generation=2)) == "baseline"
 
 
 def test_group_metadata_carries_run_fields():
@@ -68,9 +72,9 @@ def test_group_metadata_omits_winner_until_present():
 
 
 def test_experiment_metadata_is_identity_only():
-    md = m.experiment_metadata(_cand(round=1), "train")
-    # round stringified for dict[str, str] metadata; no reward/trials copied
-    assert md == {"round": "1", "candidate_id": "agent-0", "split": "train"}
+    md = m.experiment_metadata(_cand(generation=1), "train")
+    # generation stringified for dict[str, str] metadata; no reward/trials copied
+    assert md == {"generation": "1", "candidate_id": "agent-0", "split": "train"}
 
 
 def test_pseudo_source_link_is_a_url():

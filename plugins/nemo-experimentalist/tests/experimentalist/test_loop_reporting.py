@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 
 import pytest
+from doubles import make_candidate
 from nemo_experimentalist_plugin.entities import (
     Candidate,
     Dataset,
@@ -43,11 +44,11 @@ def _candidate(
     channels["insight"] = insight.model_copy(
         update={"metadata": {"suite_identity": _SUITE_IDENTITY, "metric_keys": ["reward", "uses_required_tool"]}}
     )
-    return Candidate(
+    return make_candidate(
         run_id="run-1",
         label=label,
-        round=round_num,
-        optimization="baseline" if round_num == 0 else "improve required tool use",
+        generation=round_num,
+        description="baseline" if round_num == 0 else "improve required tool use",
         rewards=channels,
     )
 
@@ -376,8 +377,13 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
         == []
     )
 
-    baseline.reward("insight").trials.append(_insight_trial("task-a", 0.0, attempt=2))
-    winner.reward("insight").trials.append(_insight_trial("task-a", 1.0, attempt=2, status="failed"))
+    baseline.set_reward(
+        "insight", trials=[*baseline.reward("insight").trials, _insight_trial("task-a", 0.0, attempt=2)]
+    )
+    winner.set_reward(
+        "insight",
+        trials=[*winner.reward("insight").trials, _insight_trial("task-a", 1.0, attempt=2, status="failed")],
+    )
     assert (
         select_insight_promotion_suggestions(
             _insight_dataset([task]),

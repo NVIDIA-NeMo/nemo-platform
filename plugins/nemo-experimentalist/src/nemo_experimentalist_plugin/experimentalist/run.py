@@ -92,7 +92,7 @@ async def run_experimentalist(
 
     reporter = build_run_reporter(
         run_dir=experiment_dir,
-        agent=agent or "(from insight)",
+        agent=str(agent) if agent else "(from insight)",
         insight=str(insight) if insight is not None else None,
     )
 

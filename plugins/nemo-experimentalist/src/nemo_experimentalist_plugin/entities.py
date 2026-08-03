@@ -444,22 +444,55 @@ class RewardRecord(BaseModel):
     metadata: dict[str, DataValue] = Field(default_factory=dict, description="Provenance for this measurement.")
 
 
+class Proposal(BaseModel):
+    """A request to build one candidate — the Proposer → Builder contract.
+
+    A transient component message, not a separately persisted entity and not an
+    unfinished Candidate: a proposal describes work to perform, and a Candidate is the
+    durable result after a Builder completes it. Failed proposals produce no Candidate
+    and are not retained; a successful one is embedded in ``Candidate.generated_from``.
+
+    ``kind`` is an opaque compatibility discriminator, not a global enumeration: it
+    routes the proposal to a Builder that declares it can accept it. ``payload`` is
+    owned by that Proposer/Builder pair — Layer A stores and transports it and
+    interprets neither.
+    """
+
+    ancestor: str | None = Field(
+        default=None,
+        description="Parent Candidate id to build from. None means the baseline.",
+    )
+    description: str = Field(
+        min_length=1,
+        description="Human-readable explanation of the proposed variant.",
+    )
+    kind: str = Field(
+        min_length=1,
+        description="Builder compatibility discriminator, e.g. 'code-change' or 'parameters'.",
+    )
+    payload: dict[str, DataValue] = Field(
+        default_factory=dict,
+        description="Build instructions, validated by the component-owned schema for this kind.",
+    )
+
+
 class Candidate(NemoEntity, entity_type="candidate"):
     """A candidate agent version produced during an Experimentalist run.
 
-    Lives in the entity store so candidates are queryable, resumable, and
-    survive the local working directory being deleted.  ``run_id`` groups all
-    candidates for a single ExperimentRun.
+    Metadata and measurements live in the entity store; the completed work is
+    *addressed*, not contained. ``artifact`` points at the resource that defines this
+    candidate and, when external evaluation is used, is directly consumable by the
+    run's evaluation component. Its format belongs to the components that produce and
+    consume that candidate kind — the host only stores, transports, archives and
+    publishes the reference.
 
-    Like every entity in this plugin, a Candidate's durable identity is its
-    store-assigned ``id`` (``name`` is left for the store to auto-slug).
-    ``label`` is the run-scoped handle ("agent-0", "agent-1", ...) used for the
-    working directory, evolution-tree key, and ``ancestor`` references; it is
-    unique within a run, not globally.
+    A Candidate is only ever created once its artifact exists and validates, so
+    ``artifact`` is required and no durable record points at partial work. Incomplete
+    work is a runner-owned path, not a Candidate.
 
-    A candidate's completed artifact is not stored here yet: it is still the
-    ``agents/<label>/`` directory the loop materialises. ``artifact: ResourceRef``
-    and runner-owned storage arrive with the candidate contract (plan §3.1, M1).
+    Identity is the store-assigned ``id``. ``label`` survives purely as a display
+    handle for reports and the evolution tree; it is unique within a run, not globally,
+    and nothing may derive storage or lineage from it.
     """
 
     workspace: str = Field(
@@ -473,34 +506,37 @@ class Candidate(NemoEntity, entity_type="candidate"):
     label: str = Field(
         ...,
         description=(
-            "Run-scoped handle for this candidate (e.g. 'agent-0'): the working "
-            "directory name, evolution-tree key, and target of ``ancestor`` "
-            "references. Unique within a run, not globally — the store-assigned "
-            "``id`` is the durable identity."
+            "Display handle for this candidate (e.g. 'agent-0'), used in reports and the "
+            "evolution tree. Unique within a run, not globally, and not identity."
         ),
     )
     ancestor: str | None = Field(
         default=None,
-        description="Parent Candidate ``label``. None means this is the baseline (round 0).",
-    )
-    round: int = Field(description="Optimization round that produced this candidate. 0 = baseline.")
-    optimization: str = Field(
         description=(
-            "Graph-level description of the architecture change that produced this candidate "
-            "(nodes added/removed/modified, edges changed, prompts rewritten). "
-            "No source file paths or line numbers."
+            "Parent Candidate id. None means this is the baseline — the one place the "
+            "distinction is encoded, replacing the round-0 sentinel it used to share it with."
         ),
     )
-    optimization_type: str | None = Field(
+    generation: int = Field(
+        default=0,
+        description=(
+            "Strategy-supplied grouping index. Our loop sets the round and HPO sets the "
+            "generation; a strategy with no such notion leaves it 0."
+        ),
+    )
+    generated_from: Proposal | None = Field(
         default=None,
-        description="OptimizationType literal that categorizes the change.",
-    )
-    task_ids: list[str] = Field(
-        default_factory=list,
         description=(
-            "Task ids the Proposer flagged as most exercising this candidate's root "
-            "cause; the coder uses them to validate the fix during subproblem refinement."
+            "Immutable snapshot of the Proposal this candidate was built from, so a Proposer "
+            "can read the history of what worked. None for the baseline or an imported candidate."
         ),
+    )
+    description: str = Field(
+        description="Human-readable explanation of this candidate; derived from the Proposal when there is one.",
+    )
+    artifact: ResourceRef = Field(
+        ...,
+        description="The completed resource that defines this candidate, written by its Builder.",
     )
     rewards: dict[str, RewardRecord] = Field(
         default_factory=dict,
@@ -519,24 +555,47 @@ class Candidate(NemoEntity, entity_type="candidate"):
             "and produced by one scorer; revisit when the trajectory-scorer seam lands."
         ),
     )
-    killed_round: int | None = Field(
+    killed_generation: int | None = Field(
         default=None,
-        description="Round in which this candidate was eliminated. None means still alive.",
+        description="Generation in which this candidate was eliminated. None means still alive.",
     )
 
+    @model_validator(mode="after")
+    def _projections_agree_with_origin(self) -> "Candidate":
+        """Reject a record whose derived projections disagree with its origin.
+
+        ``ancestor`` and ``description`` are generic, queryable copies of what the
+        embedded Proposal already says. ``commit_candidate`` derives them, so a
+        disagreement means something set a copy independently and the two accounts of
+        this candidate's origin have drifted.
+        """
+        origin = self.generated_from
+        if origin is None:
+            return self
+        if self.ancestor != origin.ancestor:
+            raise ValueError(f"Candidate ancestor {self.ancestor!r} disagrees with its Proposal's {origin.ancestor!r}")
+        if self.description != origin.description:
+            raise ValueError("Candidate description disagrees with its Proposal's")
+        return self
+
+    @property
+    def is_baseline(self) -> bool:
+        """True for the agent under test as it arrived, before any change."""
+        return self.ancestor is None
+
     def __repr__(self) -> str:
-        parts = [f"Candidate(label={self.label!r}, round={self.round}"]
+        parts = [f"Candidate(label={self.label!r}, generation={self.generation}"]
         if self.ancestor is not None:
             parts.append(f", ancestor={self.ancestor!r}")
-        parts.append(f", optimization={self.optimization!r}")
-        if self.optimization_type is not None:
-            parts.append(f", optimization_type={self.optimization_type!r}")
+        parts.append(f", description={self.description!r}")
+        if self.generated_from is not None:
+            parts.append(f", kind={self.generated_from.kind!r}")
         for channel, record in self.rewards.items():
             if record.metrics:
                 scores = ", ".join(f"{k}={v:.3f}" for k, v in record.metrics.items())
                 parts.append(f", {channel}={{{scores}}}")
-        if self.killed_round is not None:
-            parts.append(f", killed_round={self.killed_round}")
+        if self.killed_generation is not None:
+            parts.append(f", killed_generation={self.killed_generation}")
         parts.append(")")
         return "".join(parts)
 

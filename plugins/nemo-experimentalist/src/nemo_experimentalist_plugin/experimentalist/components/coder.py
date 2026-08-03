@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from nemo_experimentalist_plugin.entities import Candidate, Dataset, EvaluationResult, Task, TrialResult
+from nemo_experimentalist_plugin.entities import Dataset, EvaluationResult, Proposal, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator, EvaluatorConfig
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -28,6 +28,41 @@ from .cards import Optimize
 from .model_config import api_base, api_key, get_fast_model, get_mid_model, get_smart_model
 from .tools import GuardedShellTools
 from .util import load_framework_skills
+
+
+class BuildRequest(BaseModel):
+    """One build the Coder is asked to perform, against a directory already reserved.
+
+    The Coder's own view of a ``Proposal``: it never sees the Candidate entity, because
+    a Candidate does not exist until the artifact this builds is validated and
+    committed. ``name`` is the reserved directory, and ``ancestor`` the directory the
+    fork came from — display handles, not entity ids.
+    """
+
+    name: str = Field(description="Reserved candidate directory under eval-and-optimize/agents/.")
+    ancestor: str | None = Field(default=None, description="Directory the fork was copied from, if any.")
+    optimization: str = Field(description="Graph-level description of the change to make.")
+    optimization_type: str | None = Field(default=None, description="Which optimization card covers this change.")
+    task_ids: list[str] = Field(default_factory=list, description="Tasks that exercise the targeted root cause.")
+
+    @property
+    def id(self) -> str:
+        """Alias for :attr:`name`, so prompts may say either."""
+        return self.name
+
+    @classmethod
+    def from_proposal(cls, proposal: Proposal, *, name: str, ancestor: str | None) -> "BuildRequest":
+        """Read this pair's ``code-change`` payload out of *proposal*."""
+        payload = proposal.payload
+        optimization_type = payload.get("optimization_type")
+        task_ids = payload.get("task_ids") or []
+        return cls(
+            name=name,
+            ancestor=ancestor,
+            optimization=proposal.description,
+            optimization_type=optimization_type if isinstance(optimization_type, str) else None,
+            task_ids=[t for t in task_ids if isinstance(t, str)] if isinstance(task_ids, list) else [],
+        )
 
 
 class CoderConfig(BaseModel):
@@ -653,7 +688,7 @@ class Coder(Agent):
 
     async def run(
         self,
-        candidate: Candidate,
+        candidate: BuildRequest,
         dataset: Dataset,
         evaluator: Evaluator,
         evaluator_options: EvaluatorConfig | None = None,
@@ -663,8 +698,8 @@ class Coder(Agent):
         """Implement the improvement described in candidate and verify it integrates cleanly.
 
         Args:
-            candidate: The agent variant to implement. Identifies the agent directory,
-                carries the optimization description, and links to its ancestor.
+            candidate: The build to perform. Names the reserved directory, carries the
+                proposed change, and links to the directory it was forked from.
             dataset: The dataset to use for the evaluation.
             evaluator: The evaluator to use for the evaluation.
             evaluator_options: The options to pass to the evaluator.
@@ -694,11 +729,11 @@ class Coder(Agent):
         await self.create_architecture_doc(candidate.name, source_path=source_path, entrypoint=entrypoint)
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)))
-    async def apply_change(self, candidate: Candidate) -> None:
+    async def apply_change(self, candidate: BuildRequest) -> None:
         """Apply the ONE change from candidate.optimization.
 
         Args:
-        - candidate (Candidate): the agent variant being built. Identifies
+        - candidate (BuildRequest): the agent variant being built. Identifies
           which agent directory to modify, describes the change to apply, and
           carries lineage info from its ancestor
 
@@ -739,11 +774,11 @@ class Coder(Agent):
         ...
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)))
-    async def wire_up_change(self, candidate: Candidate) -> None:
+    async def wire_up_change(self, candidate: BuildRequest) -> None:
         """Wire up the change to the agent such that it is called by the agent. Load the framework skill and use it to understand how to wire up the change.
 
         Args:
-        - candidate (Candidate): the agent variant being built. Identifies
+        - candidate (BuildRequest): the agent variant being built. Identifies
           which agent directory to modify, describes the change to apply, and
           carries lineage info from its ancestor
 
@@ -759,7 +794,7 @@ class Coder(Agent):
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=200, cell_timeout=3600.0)))
     async def optimize_subproblem(
         self,
-        candidate: Candidate,
+        candidate: BuildRequest,
         dataset: Dataset,
         evaluator: Evaluator,
         evaluator_options: EvaluatorConfig | None = None,
@@ -767,7 +802,7 @@ class Coder(Agent):
         """Validate and iteratively refine the subproblem fix until the agent's behavior improves.
 
         Args:
-        - candidate (Candidate): the agent variant being built. Identifies
+        - candidate (BuildRequest): the agent variant being built. Identifies
           which agent directory to modify, describes the change to apply, and
           carries lineage info from its ancestor
         - dataset (Dataset): The dataset to use for the evaluation.
@@ -840,7 +875,7 @@ class Coder(Agent):
 
     async def integration_check(
         self,
-        candidate: Candidate,
+        candidate: BuildRequest,
         dataset: Dataset,
         evaluator: Evaluator,
         evaluator_options: EvaluatorConfig | None = None,
@@ -908,11 +943,11 @@ class Coder(Agent):
         return trial.status == "completed"
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)))
-    async def _fix_runtime_issues(self, candidate: Candidate, evaluation: EvaluationResult) -> None:
+    async def _fix_runtime_issues(self, candidate: BuildRequest, evaluation: EvaluationResult) -> None:
         """Diagnose and repair runtime failures surfaced by the most recent smoke eval.
 
         Args:
-        - candidate (Candidate): the agent variant being repaired. Identifies
+        - candidate (BuildRequest): the agent variant being repaired. Identifies
           which agent directory to modify, describes the change that was applied,
           and carries lineage info from its ancestor
         - evaluation (EvaluationResult): the smoke evaluation result. Use its

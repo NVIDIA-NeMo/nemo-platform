@@ -27,6 +27,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
+from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import load_candidate
 from nemo_experimentalist_plugin.resolve import resolve_dataset
 from pydantic import BaseModel, Field, model_validator
 
@@ -329,7 +330,7 @@ def summarize_experimentalist_jobs(results_dir: Path) -> dict[str, Any]:
         if not isinstance(payload, dict) or not isinstance(payload.get("stats"), dict):
             continue
         stats = payload["stats"]
-        job = {
+        job: dict[str, Any] = {
             "name": result_path.parent.name,
             "trials": int(payload.get("n_total_trials") or 0),
             "completed_trials": int(stats.get("n_completed_trials") or 0),
@@ -350,7 +351,7 @@ def summarize_experimentalist_jobs(results_dir: Path) -> dict[str, Any]:
             "cache_tokens",
             "output_tokens",
         ):
-            totals[key] += job[key]
+            totals[key] = int(totals[key]) + int(job[key])
         if job["cost_usd"] is not None:
             costs.append(float(job["cost_usd"]))
     return {**totals, "cost_usd": sum(costs) if costs else None, "job_results": jobs}
@@ -395,9 +396,11 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
 
     package_client = PackageDatasetClient()
     metadata = await package_client.get_dataset_metadata(suite.dataset.requested_reference)
-    canonical_task_ids = {task.name for task in metadata.task_ids}
+    # Harbor's task ids are a union of source-specific types; every variant names the
+    # task the same way, but only some spell it ``name``.
+    canonical_task_ids = {str(getattr(task, "name", task)) for task in metadata.task_ids}
     canonical_task_ids = validate_canonical_suite(
-        suite, canonical_task_ids=canonical_task_ids, resolved_ref=metadata.version
+        suite, canonical_task_ids=canonical_task_ids, resolved_ref=metadata.version or ""
     )
     # Resolved up front: the optimizer only needs these after the baseline evaluation,
     # which is hours of image builds to discover a typo'd skill name.
@@ -462,10 +465,15 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
         framework_skills_dirs=framework_skills_dirs,
     )
     run_document = json.loads((experimentalist_dir / "eval-and-optimize" / "run.json").read_text(encoding="utf-8"))
-    winner_label = run_document.get("winner_agent")
-    if not isinstance(winner_label, str) or not winner_label:
+    winner_id = run_document.get("winner_agent")
+    if not isinstance(winner_id, str) or not winner_id:
         raise RuntimeError("Experimentalist completed without a selected winner")
-    winner_dir = experimentalist_dir / "eval-and-optimize" / "agents" / winner_label
+    # ``winner_agent`` is a candidate id, not a directory name — the winner's location
+    # comes from its own artifact reference.
+    winner_record = experimentalist_dir / "eval-and-optimize" / "candidates" / f"{winner_id}.json"
+    winner_candidate = load_candidate(winner_record)
+    winner_label = winner_candidate.label
+    winner_dir = local_path_from_uri(winner_candidate.artifact.uri, context="Winner artifact")
     winner = await _evaluate_heldout(
         label="winner",
         agent_dir=winner_dir,

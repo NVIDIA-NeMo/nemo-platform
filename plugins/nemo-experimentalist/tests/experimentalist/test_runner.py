@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
-from doubles import FakeBackend, FakeEvaluator, fake_client
+from doubles import FakeBackend, FakeEvaluator, fake_client, make_candidate
 from nemo_experimentalist_plugin.config import CandidateStorageConfig, EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import (
     Candidate,
@@ -112,12 +112,12 @@ async def test_strategy_failure_marks_the_run_failed(monkeypatch, tmp_path) -> N
 
 @pytest.mark.asyncio
 async def test_a_completed_run_persists_its_result_and_winner(monkeypatch, tmp_path) -> None:
-    winner = Candidate(
+    winner = make_candidate(
         run_id="run-1",
         label="agent-1",
         ancestor="agent-0",
-        round=1,
-        optimization="add a tool",
+        generation=1,
+        description="add a tool",
         rewards={"validation": RewardRecord(metrics={"reward": 0.75})},
     )
     (tmp_path / "experiment" / "eval-and-optimize" / "agents" / "agent-1").mkdir(parents=True)
@@ -134,7 +134,7 @@ async def test_a_completed_run_persists_its_result_and_winner(monkeypatch, tmp_p
 
 @pytest.mark.asyncio
 async def test_the_winner_is_published_when_storage_asks_for_it(monkeypatch, tmp_path) -> None:
-    winner = Candidate(run_id="run-1", label="agent-1", ancestor="agent-0", round=1, optimization="add a tool")
+    winner = make_candidate(run_id="run-1", label="agent-1", ancestor="agent-0", generation=1, description="add a tool")
     (tmp_path / "experiment" / "eval-and-optimize" / "agents" / "agent-1").mkdir(parents=True)
     config = EvolutionaryOptimizerConfig(storage=CandidateStorageConfig(publish_winner=True))
     runner, backend = _make_runner(
@@ -149,7 +149,7 @@ async def test_the_winner_is_published_when_storage_asks_for_it(monkeypatch, tmp
 @pytest.mark.asyncio
 async def test_the_baseline_is_never_published(monkeypatch, tmp_path) -> None:
     """``ancestor is None`` means the baseline — there is nothing to open a PR against."""
-    baseline = Candidate(run_id="run-1", label="agent-0", ancestor=None, round=0, optimization="baseline")
+    baseline = make_candidate(run_id="run-1", label="agent-0", ancestor=None, generation=0, description="baseline")
     (tmp_path / "experiment" / "eval-and-optimize" / "agents" / "agent-0").mkdir(parents=True)
     config = EvolutionaryOptimizerConfig(storage=CandidateStorageConfig(publish_winner=True))
     runner, backend = _make_runner(
@@ -163,9 +163,16 @@ async def test_the_baseline_is_never_published(monkeypatch, tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_the_winner_is_copied_out_without_any_owners_scaffolding(monkeypatch, tmp_path) -> None:
-    winner = Candidate(run_id="run-1", label="agent-1", ancestor="agent-0", round=1, optimization="add a tool")
     winner_dir = tmp_path / "experiment" / "eval-and-optimize" / "agents" / "agent-1"
     winner_dir.mkdir(parents=True)
+    winner = make_candidate(
+        run_id="run-1",
+        label="agent-1",
+        ancestor="agent-0",
+        generation=1,
+        description="add a tool",
+        artifact=winner_dir.as_uri(),
+    )
     (winner_dir / "main.py").write_text("print('hello')\n")
     (winner_dir / "metadata.json").write_text("{}")  # the backend's
     (winner_dir / "architecture.md").write_text("# arch")  # the strategy's
@@ -305,12 +312,12 @@ def _insight_dataset(identity_char: str = "a") -> Dataset:
 
 
 def _insight_candidate(label: str, *, round_num: int, insight: float, validation: float) -> Candidate:
-    return Candidate(
+    return make_candidate(
         run_id="run-1",
         label=label,
         ancestor=None if round_num == 0 else "agent-0",
-        round=round_num,
-        optimization="baseline" if round_num == 0 else "improve required tool use",
+        generation=round_num,
+        description="baseline" if round_num == 0 else "improve required tool use",
         rewards={
             "insight": RewardRecord(
                 metrics={"reward": validation, "uses_required_tool": insight},

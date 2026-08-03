@@ -102,23 +102,19 @@ class WorkspaceTool:
         self._eval_root = self.workspace / "eval-and-optimize"
         self._agents_root = self._eval_root / "agents"
         self._analysis_root = self._eval_root / "analysis"
+        self._candidates_root = self._eval_root / "candidates"
 
     # ── Navigation ────────────────────────────────────────────────────────────
 
     def list_agents(self) -> list[str]:
-        """Return all agent IDs that have a ``metadata.json``, sorted naturally.
+        """Return every candidate's display handle, in natural numeric order.
 
         Returns:
             list[str]: agent IDs in natural numeric order.
 
         """
-        if not self._agents_root.exists():
-            return []
-        ids = [d.name for d in self._agents_root.iterdir() if d.is_dir() and (d / "metadata.json").exists()]
-        return sorted(
-            ids,
-            key=lambda s: int(s.split("-")[1]) if s.split("-")[1].isdigit() else 0,
-        )
+        ids = [candidate.label for candidate in self._candidates()]
+        return sorted(ids, key=lambda s: int(s.split("-")[1]) if s.split("-")[1].isdigit() else 0)
 
     def get_agent_path(self, agent_id: str) -> str:
         """Return the absolute path to an agent's directory.
@@ -185,23 +181,34 @@ class WorkspaceTool:
         return self._read_file(path, limit=limit)
 
     def get_metadata(self, agent_id: str) -> Candidate:
-        """Read ``agents/{agent_id}/metadata.json`` as a :class:`Candidate`.
+        """Read the stored :class:`Candidate` whose display handle is *agent_id*.
+
+        Candidate metadata lives in the run's candidate store, not inside the agent
+        directory, so nothing an agent-editing tool can reach owns it.
 
         Args:
             agent_id: the agent whose metadata to read.
 
         Returns:
-            Candidate: parsed candidate, or a minimal candidate with default
-            values if the file is missing or unreadable.
+            Candidate: the stored candidate.
+
+        Raises:
+            FileNotFoundError: when no candidate carries that handle.
 
         """
+        for candidate in self._candidates():
+            if candidate.label == agent_id:
+                return candidate
+        raise FileNotFoundError(f"No candidate with label {agent_id!r} in {self._candidates_root}")
+
+    def _candidates(self) -> list[Candidate]:
+        """Every candidate record this run has stored so far."""
         # Function-local import: experimentalist_backend imports this module.
         from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import load_candidate
 
-        path = self._agents_root / agent_id / "metadata.json"
-        if not path.exists():
-            raise FileNotFoundError(f"Metadata file not found: {path}")
-        return load_candidate(path)
+        if not self._candidates_root.is_dir():
+            return []
+        return [load_candidate(path) for path in sorted(self._candidates_root.glob("*.json"))]
 
     # ── Private helpers ───────────────────────────────────────────────────────
 

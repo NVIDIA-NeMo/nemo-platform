@@ -17,6 +17,7 @@ from typing import cast
 
 import httpx
 import pytest
+from doubles import make_candidate
 from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist import experimentalist_backend as beim
 from nemo_experimentalist_plugin.experimentalist.components.repository import AgentCloneError, AgentSource
@@ -250,7 +251,7 @@ async def test_get_agent_spec_remote_delegates_to_files(tmp_path: Path) -> None:
 
 
 def _cand(label: str = "agent-2", run_id: str = "run-1") -> Candidate:
-    return Candidate(name=label, label=label, run_id=run_id, round=1, optimization="edit")
+    return make_candidate(label=label, run_id=run_id, generation=1, ancestor="agent-0", description="edit")
 
 
 def _git_backend(tmp_path: Path, storage: CandidateStorageConfig | None = None) -> LocalExperimentalistBackend:

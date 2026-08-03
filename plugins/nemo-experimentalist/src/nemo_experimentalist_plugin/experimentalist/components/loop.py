@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import fnmatch
-import json
 import logging
 import random
 import shutil
@@ -23,11 +22,12 @@ from nemo_experimentalist_plugin.entities import (
     Candidate,
     Dataset,
     EvaluationResult,
+    Proposal,
     RewardRecord,
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
-from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
+from nemo_experimentalist_plugin.experimentalist.components.coder import BuildRequest, Coder, CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import (
     GoalTree,
     GoalTreeConfig,
@@ -56,7 +56,7 @@ from nemo_experimentalist_plugin.experimentalist.components.models import (
     pareto_front,
     pareto_sort,
 )
-from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer
+from nemo_experimentalist_plugin.experimentalist.components.proposer import Proposer
 from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
 from nemo_experimentalist_plugin.experimentalist.components.tools import (
     GuardedShellTools,
@@ -380,8 +380,8 @@ class EvolutionaryOptimizer(Agent):
         # re-opened an existing run.
         if (round_num := self._detect_last_round()) is not None:
             logger.info(f"[RESUME] round {round_num}")
-            self._delete_all_artifacts(from_round=round_num)
-            evolution_tree = EvolutionTree.from_dir(agents_dir)
+            await self._delete_all_artifacts(ctx=ctx, from_round=round_num)
+            evolution_tree = EvolutionTree.from_candidates(await ctx.candidates())
             candidates: list[Candidate] = list(evolution_tree.survivors(round_num))
         else:
             round_num = 0
@@ -389,9 +389,8 @@ class EvolutionaryOptimizer(Agent):
             await ctx.report_progress(completed=0, total=config.max_rounds, unit="round", note="baseline")
 
             # ---- Fetch + build baseline agent (agent-0) ------------------
-            baseline = await self._create_baseline_agent(ctx=ctx, agents_dir=agents_dir, config=config)
-            await ctx.save_candidate(baseline)
-            evolution_tree = EvolutionTree.from_dir(agents_dir)
+            await self._create_baseline_agent(ctx=ctx, config=config)
+            evolution_tree = EvolutionTree.from_candidates(await ctx.candidates())
             candidates = list(evolution_tree.survivors(0))
 
             # ---- Baseline validation evaluation (round 0) ----------------
@@ -444,9 +443,9 @@ class EvolutionaryOptimizer(Agent):
                 if len(candidates) > 1
                 else list(candidates)
             )
-            survivor_labels = {s.label for s in survivors}
-            for candidate in [c for c in candidates if c.label not in survivor_labels]:
-                await ctx.save_candidate(candidate, updates={"killed_round": round_num})
+            survived = {s.id for s in survivors}
+            for candidate in [c for c in candidates if c.id not in survived]:
+                await ctx.save_candidate(candidate, updates={"killed_generation": round_num})
 
             train_candidate_results = await self._evaluate_train_candidates(
                 ctx=ctx,
@@ -482,33 +481,21 @@ class EvolutionaryOptimizer(Agent):
                 agent_spec_path=agent_spec_path,
             )
 
-            improvements = await self._propose_improvements(
+            proposals = await self._propose_improvements(
                 analysis=analysis,
                 evolution_tree=evolution_tree,
                 round_num=round_num,
                 phase=phase,
                 config=config,
             )
-            new_candidates = [
-                self._create_agent(
-                    agents_dir=agents_dir,
-                    improvement=imp,
-                    round_num=round_num + 1,
-                    run_id=ctx.run_id,
-                )
-                for imp in improvements
-            ]
-            # Persist metadata.json before Coder runs so snapshot can read it.
-            for candidate in new_candidates:
-                await ctx.save_candidate(candidate)
-            new_candidates = await self._implement_candidates(
+            new_candidates = await self._build_candidates(
                 ctx=ctx,
+                evolution_tree=evolution_tree,
                 dataset=train_eval_dataset,
-                candidates=new_candidates,
+                proposals=proposals,
+                generation=round_num + 1,
                 config=config,
             )
-            for candidate in new_candidates:
-                await ctx.save_candidate(candidate)
             if insight_eval_dataset is not None:
                 await self._evaluate_and_persist_insight_candidates(
                     ctx=ctx,
@@ -533,7 +520,7 @@ class EvolutionaryOptimizer(Agent):
             # that will actually be evaluated (cached survivors already carry one).
             pending_validation = [c for c in candidates if "validation" not in c.rewards]
             for i, candidate in enumerate(pending_validation, start=1):
-                ctx.note(f"{candidate.label} ({i}/{len(pending_validation)}): {candidate.optimization}")
+                ctx.note(f"{candidate.label} ({i}/{len(pending_validation)}): {candidate.description}")
 
             validation_candidate_results = await self._evaluate_validation_candidates(
                 ctx=ctx,
@@ -722,60 +709,33 @@ class EvolutionaryOptimizer(Agent):
                 continue
         return max(rounds) if rounds else None
 
-    def _delete_all_artifacts(self, from_round: int) -> None:
-        """Delete agents and analysis files created after *from_round*.
+    async def _delete_all_artifacts(self, *, ctx: ExperimentContext, from_round: int) -> None:
+        """Roll back everything produced after *from_round* so the loop can re-enter cleanly.
 
-        Rolls back any partial work so the loop can cleanly re-enter at
-        the start of ``from_round + 1``.  Also clears stale ``killed_round``
-        markers on surviving agents whose killer round was itself rolled back.
+        Which candidates those are comes from the stored records rather than a directory
+        walk, so the rollback follows the entity contract instead of re-deriving it from
+        our own layout. Stale ``killed_generation`` markers whose killing round was
+        itself rolled back are cleared, or those survivors would stay dead.
         """
-        agents_dir = self.working_dir / "eval-and-optimize" / "agents"
         results_dir = self.working_dir / "eval-and-optimize" / "results"
         analysis_dir = self.working_dir / "eval-and-optimize" / "analysis"
         smoke_dataset_dir = self.working_dir / "eval-and-optimize" / "smoke-dataset"
         smoke_results_dir = self.working_dir / "eval-and-optimize" / "smoke-results"
 
-        for agent_dir in sorted(agents_dir.iterdir()):
-            if not (
-                agent_dir.is_dir() and agent_dir.name.startswith("agent-") and agent_dir.name.split("-")[1].isdigit()
-            ):
-                continue
-            meta_path = agent_dir / "metadata.json"
-            if not meta_path.exists():
-                continue
-            try:
-                meta = json.loads(meta_path.read_text())
-            except (json.JSONDecodeError, OSError):
-                continue
-            if (meta.get("round") or 0) > from_round:
-                shutil.rmtree(agent_dir)
-                for result_dir in results_dir.glob(f"{agent_dir.name}-*"):
-                    if result_dir.is_dir():
-                        shutil.rmtree(result_dir)
-                for rd in (
-                    smoke_results_dir / agent_dir.name,
-                    smoke_dataset_dir / agent_dir.name,
+        for candidate in await ctx.candidates():
+            if candidate.generation > from_round:
+                artifact = ctx.candidate_dir(candidate)
+                if artifact.is_dir():
+                    shutil.rmtree(artifact)
+                for scratch in (
+                    *results_dir.glob(f"{candidate.label}-*"),
+                    smoke_results_dir / candidate.label,
+                    smoke_dataset_dir / candidate.label,
                 ):
-                    if rd.exists():
-                        shutil.rmtree(rd)
-
-        # Clear stale killed_round markers whose killer round was rolled back.
-        for agent_dir in sorted(agents_dir.iterdir()):
-            if not (
-                agent_dir.is_dir() and agent_dir.name.startswith("agent-") and agent_dir.name.split("-")[1].isdigit()
-            ):
-                continue
-            meta_path = agent_dir / "metadata.json"
-            if not meta_path.exists():
-                continue
-            try:
-                meta = json.loads(meta_path.read_text())
-            except (json.JSONDecodeError, OSError):
-                continue
-            killed = meta.get("killed_round")
-            if killed is not None and killed > from_round:
-                meta["killed_round"] = None
-                meta_path.write_text(json.dumps(meta, indent=2))
+                    if scratch.is_dir():
+                        shutil.rmtree(scratch)
+            elif candidate.killed_generation is not None and candidate.killed_generation > from_round:
+                await ctx.save_candidate(candidate, updates={"killed_generation": None})
 
         for pattern in ("round-*.md", "round-*-goal.json"):
             for f in analysis_dir.glob(pattern):
@@ -790,75 +750,21 @@ class EvolutionaryOptimizer(Agent):
         self,
         *,
         ctx: ExperimentContext,
-        agents_dir: Path,
         config: EvolutionaryOptimizerConfig,
     ) -> Candidate:
-        """Fork the agent under test into ``agents_dir/agent-0`` and return the baseline.
+        """Fork the agent under test and commit it as the run's baseline candidate.
 
-        The runner has already materialized ``ctx.agent_dir``, whatever the source was;
-        this only copies it in. Skips the copy when the directory already exists (resume).
+        The baseline has no Proposal — it is the agent as it arrived, not a variant —
+        so it supplies its own description and is committed with ``proposal=None``.
         """
-        baseline_dir = agents_dir / _BASELINE_AGENT_LABEL
-        if not baseline_dir.exists():
-            shutil.copytree(ctx.agent_dir, baseline_dir, ignore=_ignore_patterns)
+        baseline_dir = await ctx.fork(None)
         await self._generate_architecture_doc(agent_dir=baseline_dir, config=config)
-        return Candidate(
-            name=_BASELINE_AGENT_LABEL,
-            label=_BASELINE_AGENT_LABEL,
-            workspace=ctx.workspace,
-            run_id=ctx.run_id,
-            ancestor=None,
-            round=0,
-            optimization="baseline",
+        return await ctx.commit_candidate(
+            proposal=None,
+            artifact=baseline_dir,
+            description="baseline: the agent under test, unchanged",
+            generation=0,
         )
-
-    def _create_agent(
-        self,
-        *,
-        agents_dir: Path,
-        improvement: Improvement,
-        round_num: int,
-        run_id: str,
-    ) -> Candidate:
-        """Copy the ancestor directory to a new ``agent-N`` directory and return the candidate."""
-        next_label = self._next_agent_label(agents_dir)
-        ancestor_dir = agents_dir / improvement.ancestor
-        candidate_dir = agents_dir / next_label
-        generated_files = {
-            "architecture.md",
-        }
-
-        def _ignore_agent_meta(directory: str, contents: list[str]) -> set[str]:
-            ignored = _ignore_patterns(directory, contents)
-            if Path(directory).resolve() != ancestor_dir.resolve():
-                return ignored
-            return ignored | {name for name in contents if name == "metadata.json" or name in generated_files}
-
-        if ancestor_dir.is_dir():
-            shutil.copytree(ancestor_dir, candidate_dir, ignore=_ignore_agent_meta)
-        else:
-            candidate_dir.mkdir(parents=True, exist_ok=True)
-        opt_type = _coerce_optimization_type(improvement.optimization_type)
-        candidate = Candidate(
-            name=next_label,
-            label=next_label,
-            ancestor=improvement.ancestor,
-            round=round_num,
-            optimization=improvement.optimization,
-            optimization_type=opt_type,
-            task_ids=improvement.task_ids,
-            run_id=run_id,
-        )
-        return candidate
-
-    def _next_agent_label(self, agents_dir: Path) -> str:
-        """Return the next sequential ``agent-N`` label based on existing directories."""
-        nums = [
-            int(d.name.split("-")[1])
-            for d in agents_dir.iterdir()
-            if d.is_dir() and d.name.startswith("agent-") and d.name.split("-")[1].isdigit()
-        ]
-        return f"agent-{max(nums, default=-1) + 1}"
 
     async def _load_round_analysis(
         self,
@@ -904,24 +810,6 @@ class EvolutionaryOptimizer(Agent):
         if not evolution_tree.nodes:
             return "(none yet — this is the first round)"
         return evolution_tree.to_markdown_table()
-
-    def _snapshot_metadata(self, candidate_name: str) -> str | None:
-        """Read and return the metadata.json content for a candidate, or None if absent."""
-        path = self.working_dir / "eval-and-optimize" / "agents" / candidate_name / "metadata.json"
-        try:
-            return path.read_text()
-        except OSError:
-            return None
-
-    def _restore_metadata(self, candidate_name: str, content: str | None) -> None:
-        """Restore metadata.json for a candidate to a previously snapshotted content."""
-        if content is None:
-            return
-        path = self.working_dir / "eval-and-optimize" / "agents" / candidate_name / "metadata.json"
-        try:
-            path.write_text(content)
-        except OSError:
-            pass
 
     async def _evaluate_agent(
         self,
@@ -1231,8 +1119,8 @@ class EvolutionaryOptimizer(Agent):
         round_num: int,
         phase: Literal["exploration", "exploitation"],
         config: EvolutionaryOptimizerConfig,
-    ) -> list[Improvement]:
-        """Run Proposer; return up to ``config.max_candidates`` Improvements."""
+    ) -> list[Proposal]:
+        """Run Proposer; return up to ``config.max_candidates`` build requests."""
         proposer = Proposer(
             workspace=self.working_dir,
             config=config.proposer,
@@ -1247,47 +1135,71 @@ class EvolutionaryOptimizer(Agent):
             max_candidates=config.max_candidates,
         )
 
-    async def _implement_candidates(
+    async def _build_candidates(
         self,
         *,
         ctx: ExperimentContext,
+        evolution_tree: EvolutionTree,
         dataset: Dataset,
-        candidates: list[Candidate],
+        proposals: list[Proposal],
+        generation: int,
         config: EvolutionaryOptimizerConfig,
     ) -> list[Candidate]:
-        """Apply proposed changes to each candidate via Coder; return the updated candidates."""
-        snapshots = {c.name: self._snapshot_metadata(c.name) for c in candidates}
-        try:
-            results = await asyncio.gather(
-                *[
-                    Coder(
-                        workspace=self.working_dir,
-                        config=self._coder_config(config),
-                        framework_skills_dirs=self._framework_skills_dirs,
-                    ).run(
-                        c,
-                        dataset,
-                        ctx.evaluation,
-                        source_path=config.source.source_path,
-                        entrypoint=config.source.entrypoint,
-                    )
-                    for c in candidates
-                ],
-                return_exceptions=True,
+        """Build each proposal with the Coder and commit the ones that succeed.
+
+        A failed build produces no Candidate at all: the proposal is discarded and its
+        forked directory is left behind as scratch. That is the point of committing only
+        after the build validates — there is no half-finished record to resurrect on
+        resume, and no killed marker to remember to write.
+        """
+        builds = [
+            BuildRequest.from_proposal(
+                proposal,
+                name=(await ctx.fork(proposal)).name,
+                ancestor=self._label_of(evolution_tree, proposal.ancestor),
             )
-        finally:
-            for c in candidates:
-                self._restore_metadata(c.name, snapshots[c.name])
-        failed = {c.name for c, r in zip(candidates, results, strict=True) if isinstance(r, Exception)}
-        # Persist a killed marker on failed candidates so a later resume via
-        # EvolutionTree.from_dir does not resurrect them as active survivors
-        # (a node is a survivor exactly when killed_round is None).
-        for candidate in candidates:
-            if candidate.name not in failed:
+            for proposal in proposals
+        ]
+        outcomes = await asyncio.gather(
+            *[
+                Coder(
+                    workspace=self.working_dir,
+                    config=self._coder_config(config),
+                    framework_skills_dirs=self._framework_skills_dirs,
+                ).run(
+                    build,
+                    dataset,
+                    ctx.evaluation,
+                    source_path=config.source.source_path,
+                    entrypoint=config.source.entrypoint,
+                )
+                for build in builds
+            ],
+            return_exceptions=True,
+        )
+
+        built: list[Candidate] = []
+        agents_dir = self.working_dir / "eval-and-optimize" / "agents"
+        for proposal, build, outcome in zip(proposals, builds, outcomes, strict=True):
+            if isinstance(outcome, BaseException):
+                logger.warning(f"Build failed for {build.name}: {outcome}")
                 continue
-            logger.warning(f"Impl failed: {candidate.name}")
-            await ctx.save_candidate(candidate, updates={"killed_round": candidate.round})
-        return [c for c in candidates if c.name not in failed]
+            built.append(
+                await ctx.commit_candidate(
+                    proposal=proposal,
+                    artifact=agents_dir / build.name,
+                    generation=generation,
+                )
+            )
+        return built
+
+    @staticmethod
+    def _label_of(evolution_tree: EvolutionTree, candidate_id: str | None) -> str | None:
+        """The display handle of *candidate_id*, which is the directory it was forked into."""
+        if candidate_id is None:
+            return None
+        node = evolution_tree.nodes.get(candidate_id)
+        return node.label if node is not None else None
 
     async def _reward_trajectories(
         self,
