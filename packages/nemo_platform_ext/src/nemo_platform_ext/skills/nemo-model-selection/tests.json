@@ -37,17 +37,17 @@
       "expected_skill": "nemo-model-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "nemo-explore is finished. The agent does triage, three tools, cloud deploy. What model do I put in the spec?",
       "expected_skill": "nemo-model-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "I went through agent design but skipped past the model question. Let's settle that now.",
       "expected_skill": "nemo-model-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "Spec is done except for the model. It's a code-review agent that reads PRs and suggests fixes.",
       "expected_skill": "nemo-model-selection"
     },
@@ -77,7 +77,7 @@
       "expected_skill": "nemo-model-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "I've already picked gpt-4o-mini. Tell me what I'm trading off vs alternatives.",
       "expected_skill": "nemo-model-selection"
     },

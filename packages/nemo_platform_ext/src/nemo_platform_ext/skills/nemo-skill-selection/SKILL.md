@@ -54,7 +54,7 @@ Match the user's intent to one downstream skill. Pick exactly one.
 | "write the spec", "save the design", "capture what we agreed" | `nemo-spec` | Persist the explore answers as `agents/<name>-spec/AGENT-SPEC.md` |
 | "write agent.yaml", "validate agent.yaml", "choose a harness", "migrate this NAT YAML", "convert to nemo-agents-spec-v1" | `nemo-agent-config` | Author or migrate the Platform-owned machine-readable config without running the full build |
 | "build the agent", "create the agent", "deploy", "scaffold from spec" | `nemo-build-agent` | Build from the approved spec, default to Platform `agent.yaml`, register, deploy, evaluate, and optionally apply guardrails |
-| "ask my agent", "try the agent", "test it" | `nemo-try-agent` | Send a query to a deployed agent or fall back to model chat |
+| "ask my agent", "try the agent", "test it", "invoke this agent.yaml" | `nemo-try-agent` | Invoke a named deployment or run a local agent YAML config once |
 | "status", "what is running", "platform health", "is the platform up", "what's deployed", "show me what's running" | `nemo-status` | Read-only dashboard: platform, agents, providers, models |
 | "shut down", "stop NeMo", "tear down", "clean up" | `nemo-teardown` | Stop the cluster (keep data, delete platform data, or full cleanup) |
 | "fine-tune", "customize the model", "train on my data", "SFT", "LoRA" | `nemo-customizer` | Model customization via installed customization contributor plugins (`nemo-customizer-plugin`). Requires plugin skills to be installed (`nemo skills install` / enabled-plugins). |
@@ -116,7 +116,7 @@ NeMo Platform skills I can route to:
   nemo-spec       write the design to agents/<name>-spec/AGENT-SPEC.md
   nemo-agent-config  author, validate, or migrate Platform agent.yaml
   nemo-build-agent  build from the spec, register, deploy, evaluate, and sign off
-  nemo-try-agent  query a deployed agent or chat with a model
+  nemo-try-agent  invoke a named deployment or local agent YAML config
   nemo-status     read-only platform health dashboard
   nemo-teardown   guided shutdown
 

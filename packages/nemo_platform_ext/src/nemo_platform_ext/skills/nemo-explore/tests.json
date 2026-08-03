@@ -37,17 +37,17 @@
       "expected_skill": "nemo-explore"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "Following up on yesterday's chat about a customer-support agent on NeMo Platform. Before I write any code, I want the design right. Platform is already running.",
       "expected_skill": "nemo-explore"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "Got a vague brief from the CTO: he wants a NeMo agent that helps engineers debug pipelines. Need to pin down what it actually does.",
       "expected_skill": "nemo-explore"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "Want to scope a NeMo agent for our HR team. Not sure what categories or tools it needs yet.",
       "expected_skill": "nemo-explore"
     },

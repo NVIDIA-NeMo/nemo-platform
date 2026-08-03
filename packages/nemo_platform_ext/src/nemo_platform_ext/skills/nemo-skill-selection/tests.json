@@ -32,17 +32,17 @@
       "expected_skill": "nemo-skill-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "We are prepping for a customer demo tomorrow. They want to see the NeMo agent platform end-to-end. Get it running and build something simple.",
       "expected_skill": "nemo-skill-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "Cloned the Platform repo this morning. Never used NeMo before. What is the first step.",
       "expected_skill": "nemo-skill-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "Got a LangGraph agent in production. Want to put it through NeMo Platform to harden and evaluate it.",
       "expected_skill": "nemo-skill-selection"
     },
