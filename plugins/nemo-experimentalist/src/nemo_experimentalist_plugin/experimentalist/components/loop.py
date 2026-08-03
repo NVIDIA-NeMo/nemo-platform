@@ -1432,8 +1432,10 @@ class EvolutionaryOptimizer(Agent):
         pending = [
             candidate
             for candidate in candidates
+            # One channel-presence check replaces the old pair of `insight_reward is None`
+            # / `insight_reward_details is None`: a RewardRecord carries metrics and trials
+            # together, and an empty `trials` is valid cached state, not a missing measurement.
             if "insight" not in candidate.rewards
-            or "insight" not in candidate.rewards
             or candidate_suite_identity(candidate) != provenance.identity
             or not candidate_metric_keys(candidate)
         ]

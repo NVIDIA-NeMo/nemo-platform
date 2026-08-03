@@ -51,9 +51,9 @@ class ModelsConfig(BaseModel):
     and are never accepted here.
     """
 
-    smart: str | None = None
-    mid: str | None = None
-    fast: str | None = None
+    smart: str | None = Field(default=None, description="Model for the smart tier, as your endpoint names it.")
+    mid: str | None = Field(default=None, description="Model for the mid tier, as your endpoint names it.")
+    fast: str | None = Field(default=None, description="Model for the fast tier, as your endpoint names it.")
 
     def apply_to_env(self, env: dict[str, str] | None = None) -> list[str]:
         """Write the configured tiers into the environment; return the names written."""
@@ -77,17 +77,27 @@ class EvolutionaryOptimizerConfig(BaseModel):
             raise ValueError("'curator' was renamed to 'eval_author'; update the optimizer configuration")
         return data
 
-    max_rounds: int = 15
-    min_rounds_before_stopping: int = 3
-    max_survivors: int = 3
-    max_candidates: int = 3
-    max_trajectory_tasks: int = 8
-    max_train_batch_tasks: int | None = None
-    train_batch_seed: int = 0
-    max_summary_tokens: int = 80_000
-    model_catalog_path: Path | None = None
-    disable_trajectory_scoring: bool = False
-    disable_convergence_check: bool = False
+    max_rounds: int = Field(default=15, description="Hard ceiling on optimization rounds.")
+    min_rounds_before_stopping: int = Field(
+        default=3, description="Rounds that must complete before the convergence check may stop the run."
+    )
+    max_survivors: int = Field(default=3, description="Candidates carried into the next round as parents.")
+    max_candidates: int = Field(default=3, description="Candidates proposed per round.")
+    max_trajectory_tasks: int = Field(default=8, description="Tasks scored per round by the trajectory scorer.")
+    max_train_batch_tasks: int | None = Field(
+        default=None, description="Train tasks sampled per round; None evaluates the full split."
+    )
+    train_batch_seed: int = Field(default=0, description="Seed for the per-round train batch sample.")
+    max_summary_tokens: int = Field(default=80_000, description="Token budget for context summarization.")
+    model_catalog_path: Path | None = Field(
+        default=None, description="Model catalog overriding the packaged assets/models.yaml."
+    )
+    disable_trajectory_scoring: bool = Field(
+        default=False, description="Skip goal-tree trajectory scoring and the goal tree it needs."
+    )
+    disable_convergence_check: bool = Field(
+        default=False, description="Stop only on max_rounds, never on the terminator's convergence judgement."
+    )
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     source: AgentSourceConfig = Field(default_factory=AgentSourceConfig)
     storage: CandidateStorageConfig = Field(default_factory=CandidateStorageConfig)

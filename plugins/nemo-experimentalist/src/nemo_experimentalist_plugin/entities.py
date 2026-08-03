@@ -1,12 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Layer A: the entities every Experimentalist plugin speaks.
+"""The entities every Experimentalist plugin speaks.
 
-The platform contract — ``ExperimentRun`` and ``Candidate`` (stored in the NeMo Platform
-entity store), plus the dataset and evaluation-result models a strategy reads and writes.
-These lived under ``components/evaluator/`` until the evaluator became one consumer among
-several; Layer A must not sit inside a Layer B component.
+``ExperimentRun`` and ``Candidate`` are stored in the NeMo Platform entity store; the
+dataset and evaluation-result models are what a strategy reads and writes. Every plugin
+shares these, so they live here rather than inside any one component.
 """
 
 from __future__ import annotations
