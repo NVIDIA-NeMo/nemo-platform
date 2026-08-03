@@ -10,6 +10,7 @@ from collections.abc import Iterator
 
 import pytest
 from nemo_eval_author_plugin import model_config
+from nemo_platform_plugin.config import Configuration
 
 
 @pytest.fixture(autouse=True)
@@ -203,6 +204,29 @@ def test_bridge_author_env_is_a_no_op_once_applied(
 
     assert model_config.bridge_author_env_to_experimentalist() == ["NEMO_EXPERIMENTALIST_API_BASE"]
     assert model_config.bridge_author_env_to_experimentalist() == []
+
+
+def test_bridge_is_visible_even_after_settings_were_already_resolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Experimentalist memoizes its settings, so bridging afterwards must invalidate them.
+
+    Without the cache clear this passes silently in isolation and fails in a real run,
+    where something resolves a model before ``EvalAuthor.__init__`` gets to bridge.
+    """
+    from nemo_experimentalist_plugin.experimentalist.components import model_config as exp_model_config
+
+    for name in ("NEMO_EXPERIMENTALIST_API_BASE", "NEMO_EXPERIMENTALIST_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    Configuration.clear_cache()
+    with pytest.raises(ValueError):
+        exp_model_config.api_base()  # populates the cache with "nothing configured"
+
+    monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
+    monkeypatch.setenv("AUTHOR_API_KEY", "author-key")
+    model_config.bridge_author_env_to_experimentalist()
+
+    assert exp_model_config.api_base() == "https://eval-author.example/v1"
 
 
 def test_agent_constructs_under_author_credentials_alone() -> None:
