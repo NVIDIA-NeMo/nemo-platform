@@ -32,19 +32,34 @@
       "expected_skill": "nemo-spec"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
+      "prompt": "Save the approved design and our decision to use a supported Codex harness in AGENT-SPEC.md.",
+      "expected_skill": "nemo-spec"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Persist our NAT compatibility decision in the agent's AGENT-SPEC.md so the design record stays accurate.",
+      "expected_skill": "nemo-spec"
+    },
+    {
+      "type": "implicit",
       "prompt": "Okay we covered the categories, the tools, the model, and the constraints. Write this all down before I forget. Agent name is support-triage.",
       "expected_skill": "nemo-spec"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "Explore is done. Job is clear, three categories, prompt-only, hosted Nemotron Super. Capture it.",
       "expected_skill": "nemo-spec"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "Got buy-in from the team on the agent scope this morning. Want to lock it in writing before someone changes their mind.",
       "expected_skill": "nemo-spec"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Create agent.yaml with Hermes as the default harness.",
+      "expected_skill_not": "nemo-spec"
     },
     {
       "type": "negative-control",
