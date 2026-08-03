@@ -389,7 +389,7 @@ class EvolutionaryOptimizer(Agent):
             await ctx.report_progress(completed=0, total=config.max_rounds, unit="round", note="baseline")
 
             # ---- Fetch + build baseline agent (agent-0) ------------------
-            await self._create_baseline_agent(ctx=ctx, config=config)
+            await self._ensure_baseline(ctx=ctx, config=config)
             evolution_tree = EvolutionTree.from_candidates(await ctx.candidates())
             candidates = list(evolution_tree.survivors(0))
 
@@ -715,8 +715,11 @@ class EvolutionaryOptimizer(Agent):
 
         Which candidates those are comes from the stored records rather than a directory
         walk, so the rollback follows the entity contract instead of re-deriving it from
-        our own layout. Stale ``killed_generation`` markers whose killing round was
-        itself rolled back are cleared, or those survivors would stay dead.
+        our own layout. Both halves go: deleting only the artifact used to be enough when
+        the population was derived from directories, but it is derived from records now,
+        so a surviving record is a candidate that still exists to every consumer and
+        addresses a directory that does not. Stale ``killed_generation`` markers whose
+        killing round was itself rolled back are cleared, or those survivors stay dead.
         """
         results_dir = self.working_dir / "eval-and-optimize" / "results"
         analysis_dir = self.working_dir / "eval-and-optimize" / "analysis"
@@ -725,9 +728,7 @@ class EvolutionaryOptimizer(Agent):
 
         for candidate in await ctx.candidates():
             if candidate.generation > from_round:
-                artifact = ctx.candidate_dir(candidate)
-                if artifact.is_dir():
-                    shutil.rmtree(artifact)
+                await ctx.discard_candidate(candidate)
                 for scratch in (
                     *results_dir.glob(f"{candidate.label}-*"),
                     smoke_results_dir / candidate.label,
@@ -746,6 +747,20 @@ class EvolutionaryOptimizer(Agent):
                     continue
                 if n > from_round:
                     f.unlink()
+
+    async def _ensure_baseline(self, *, ctx: ExperimentContext, config: EvolutionaryOptimizerConfig) -> None:
+        """Create the baseline candidate unless this run already has one.
+
+        A crash during round 0 leaves ``run.json`` behind but no round analysis, so the
+        runner resumes and this branch runs again. Candidate ids are uuids now, so a
+        second commit no longer overwrites the first the way a label-keyed record did —
+        it mints a duplicate baseline that is re-evaluated, offered to the Proposer, and
+        published to the same branch as the original.
+        """
+        if any(candidate.is_baseline for candidate in await ctx.candidates()):
+            logger.info("[RESUME] baseline already committed; not creating a second one")
+            return
+        await self._create_baseline_agent(ctx=ctx, config=config)
 
     async def _create_baseline_agent(
         self,
@@ -1159,21 +1174,35 @@ class EvolutionaryOptimizer(Agent):
         forked directory is left behind as scratch. That is the point of committing only
         after the build validates — there is no half-finished record to resurrect on
         resume, and no killed marker to remember to write.
+
+        Forking is part of the build for that purpose. It runs before the Coder and can
+        fail on its own (an ancestor whose artifact has gone, say), and a proposal that
+        cannot even be forked is one bad proposal — not a reason to end a run that has
+        already spent hours.
         """
-        builds = [
-            BuildRequest.from_proposal(
-                proposal,
-                name=(await ctx.fork(proposal)).name,
-                ancestor=self._label_of(evolution_tree, proposal.ancestor),
+        builds: list[BuildRequest] = []
+        buildable: list[Proposal] = []
+        for proposal in proposals:
+            try:
+                forked = await ctx.fork(proposal)
+            except (OSError, ValueError) as exc:
+                logger.warning(f"Cannot fork a candidate for proposal {proposal.description!r}: {exc}")
+                continue
+            builds.append(
+                BuildRequest.from_proposal(
+                    proposal,
+                    name=forked.name,
+                    ancestor=self._label_of(evolution_tree, proposal.ancestor),
+                )
             )
-            for proposal in proposals
-        ]
+            buildable.append(proposal)
         outcomes = await asyncio.gather(
             *[
                 Coder(
                     workspace=self.working_dir,
                     config=self._coder_config(config),
                     framework_skills_dirs=self._framework_skills_dirs,
+                    models=self._models,
                 ).run(
                     build,
                     dataset,
@@ -1188,7 +1217,7 @@ class EvolutionaryOptimizer(Agent):
 
         built: list[Candidate] = []
         agents_dir = self.working_dir / "eval-and-optimize" / "agents"
-        for proposal, build, outcome in zip(proposals, builds, outcomes, strict=True):
+        for proposal, build, outcome in zip(buildable, builds, outcomes, strict=True):
             if isinstance(outcome, BaseException):
                 logger.warning(f"Build failed for {build.name}: {outcome}")
                 continue

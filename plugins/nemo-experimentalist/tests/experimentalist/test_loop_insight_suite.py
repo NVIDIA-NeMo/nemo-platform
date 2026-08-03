@@ -470,4 +470,64 @@ async def test_rollback_revives_a_survivor_whose_killing_round_was_itself_rolled
     optimizer.working_dir = tmp_path
     await optimizer._delete_all_artifacts(ctx=ctx, from_round=2)
 
-    assert backend.candidates["agent-1"].killed_generation is None
+    assert backend.by_label["agent-1"].killed_generation is None
+
+
+@pytest.mark.asyncio
+async def test_rollback_removes_the_record_not_only_the_directory(tmp_path: Path) -> None:
+    """A record left behind is a candidate that still exists to every consumer.
+
+    It survives into the rebuilt tree, gets offered to the Proposer as a branchable
+    survivor, and can be selected as the Pareto winner while addressing nothing.
+    """
+    root = tmp_path / "eval-and-optimize"
+    for sub in ("agents", "results", "analysis", "smoke-dataset", "smoke-results"):
+        (root / sub).mkdir(parents=True)
+
+    backend = FakeBackend()
+    ctx = make_context(root=tmp_path, backend=backend)
+    rolled_back = root / "agents" / "agent-2"
+    rolled_back.mkdir()
+    kept = root / "agents" / "agent-1"
+    kept.mkdir()
+    for label, generation, directory in (("agent-2", 2, rolled_back), ("agent-1", 1, kept)):
+        await backend.create_candidate(
+            workspace="default",
+            candidate=make_candidate(
+                label=label, ancestor="id-agent-0", generation=generation, artifact=directory.as_uri()
+            ),
+        )
+
+    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer.working_dir = tmp_path
+    await optimizer._delete_all_artifacts(ctx=ctx, from_round=1)
+
+    assert not rolled_back.exists()
+    assert sorted(c.label for c in await ctx.candidates()) == ["agent-1"]
+
+
+@pytest.mark.asyncio
+async def test_an_interrupted_round_zero_does_not_mint_a_second_baseline(monkeypatch, tmp_path) -> None:
+    """Ids are uuids now, so re-committing the baseline no longer overwrites idempotently.
+
+    A crash during round-0 evaluation leaves run.json but no round analysis, so the
+    runner resumes and the loop re-enters its fresh-start branch.
+    """
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer.working_dir = tmp_path
+    created = 0
+
+    async def _commit_baseline(self, *, ctx, config):
+        nonlocal created
+        created += 1
+        return await ctx.commit_candidate(proposal=None, artifact=await ctx.fork(None), description="baseline")
+
+    monkeypatch.setattr(EvolutionaryOptimizer, "_create_baseline_agent", _commit_baseline)
+    config = EvolutionaryOptimizerConfig()
+
+    await optimizer._ensure_baseline(ctx=ctx, config=config)
+    await optimizer._ensure_baseline(ctx=ctx, config=config)  # the resumed pass
+
+    assert created == 1
+    assert len([c for c in await ctx.candidates() if c.is_baseline]) == 1

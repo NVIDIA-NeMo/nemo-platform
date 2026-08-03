@@ -421,6 +421,11 @@ class ExperimentRunner:
         insight_dataset = inputs.datasets.get("insight")
         if insight_dataset is None or not report_path.exists():
             return
+        # Membership below is a value comparison, and these candidates were re-read from
+        # the store while the winner is the strategy's in-memory object. Anything that
+        # does not round-trip byte-identically would make the winner "absent" and drop
+        # the section with no warning, so match on identity instead.
+        winner = next((c for c in candidates if c.id == winner.id), winner)
         try:
             provenance = insight_suite_provenance(insight_dataset)
             if baseline is not None:

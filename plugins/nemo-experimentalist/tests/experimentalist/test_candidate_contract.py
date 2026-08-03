@@ -9,6 +9,7 @@ committing one outside the run's candidate root, and letting the derived project
 drift from the Proposal they came from.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -68,13 +69,15 @@ async def test_forking_a_proposal_branches_from_its_ancestors_artifact(tmp_path:
 @pytest.mark.asyncio
 async def test_committing_derives_lineage_and_description_from_the_proposal(tmp_path: Path) -> None:
     ctx = make_context(root=tmp_path)
-    await ctx.commit_candidate(proposal=None, artifact=await ctx.fork(None), description="baseline")
-    proposal = _proposal()
+    baseline = await ctx.commit_candidate(proposal=None, artifact=await ctx.fork(None), description="baseline")
+    # The ancestor is the baseline's durable id, which is not its display handle.
+    proposal = _proposal(ancestor=baseline.id)
     built = await ctx.fork(proposal)
 
     candidate = await ctx.commit_candidate(proposal=proposal, artifact=built, generation=1)
 
-    assert candidate.ancestor == "agent-0"
+    assert candidate.ancestor == baseline.id
+    assert candidate.ancestor != baseline.label
     assert candidate.description == proposal.description
     assert candidate.generated_from == proposal
     assert candidate.generation == 1
@@ -204,3 +207,51 @@ async def test_a_fork_does_not_inherit_the_ancestors_architecture_doc(tmp_path: 
 
     assert (forked / "main.py").read_text() == "print('ancestor')\n"
     assert not (forked / "architecture.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_a_record_whose_artifact_is_gone_is_refused_not_guessed(tmp_path: Path) -> None:
+    """Resolving it to the parent yields the shared candidate root.
+
+    Callers copy out of and push whatever that returns, so a stale record would take
+    every other candidate's code with it.
+    """
+    ctx = make_context(root=tmp_path)
+    baseline = await ctx.commit_candidate(proposal=None, artifact=await ctx.fork(None), description="baseline")
+    shutil.rmtree(ctx.candidate_dir(baseline))
+
+    with pytest.raises(ValueError, match="has no artifact at"):
+        ctx.candidate_dir(baseline)
+
+
+@pytest.mark.asyncio
+async def test_discarding_a_candidate_removes_the_record_as_well(tmp_path: Path) -> None:
+    """Population is derived from records now, so a surviving record is a live candidate."""
+    backend = FakeBackend()
+    ctx = make_context(root=tmp_path, backend=backend)
+    baseline = await ctx.commit_candidate(proposal=None, artifact=await ctx.fork(None), description="baseline")
+    artifact = ctx.candidate_dir(baseline)
+
+    await ctx.discard_candidate(baseline)
+
+    assert not artifact.exists()
+    assert await ctx.candidates() == []
+
+
+@pytest.mark.asyncio
+async def test_every_ancestorless_proposal_gets_its_own_directory(tmp_path: Path) -> None:
+    """Only the baseline owns the baseline handle.
+
+    A strategy that builds from the agent under test rather than from a parent — the HPO
+    case — emits many ancestor-less proposals; sharing one directory would have them
+    overwrite each other and the baseline while still reporting distinct rewards.
+    """
+    ctx = make_context(root=tmp_path)
+    baseline_dir = await ctx.fork(None)
+
+    first = await ctx.allocate(_proposal(ancestor=None), filename="parameters.json")
+    second = await ctx.allocate(_proposal(ancestor=None), filename="parameters.json")
+
+    assert first != second
+    assert first.parent != baseline_dir
+    assert second.parent != baseline_dir

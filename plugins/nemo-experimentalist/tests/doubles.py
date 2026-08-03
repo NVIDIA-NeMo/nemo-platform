@@ -12,6 +12,9 @@ returns a fixed result, and a context wired from both.
 needs to build more than one.
 """
 
+import pathlib
+import tempfile
+import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,8 +54,10 @@ class RecordedEvaluation(dict):
 class FakeBackend(ExperimentalistBackend):
     """In-memory backend that keeps everything it was asked to persist.
 
-    Candidates are keyed by label the way the local backend keys them, so a test can
-    assert on ``backend.candidates["agent-1"]`` without reading any files.
+    Candidates are keyed by durable id, the way the local backend keys them — a double
+    that equated id with display label would make any id/label confusion in the code
+    under test pass, which is the defect class this contract exists to separate.
+    ``by_label`` is there for assertions that want the readable handle.
     """
 
     def __init__(
@@ -86,16 +91,24 @@ class FakeBackend(ExperimentalistBackend):
         return run
 
     async def create_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
-        candidate._id = candidate.id or candidate.label  # type: ignore[attr-defined]
-        self.candidates[candidate.label] = candidate
+        candidate._id = candidate.id or f"id-{uuid.uuid4()}"  # type: ignore[attr-defined]
+        self.candidates[candidate.id] = candidate
         return candidate
 
     async def update_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
-        self.candidates[candidate.label] = candidate
+        self.candidates[candidate.id] = candidate
         return candidate
 
     async def get_candidate(self, *, workspace: str, candidate_id: str) -> Candidate:
         return self.candidates[candidate_id]
+
+    async def delete_candidate(self, *, workspace: str, candidate_id: str) -> None:
+        self.candidates.pop(candidate_id, None)
+
+    @property
+    def by_label(self) -> dict[str, Candidate]:
+        """Stored candidates keyed by display handle, for readable assertions."""
+        return {c.label: c for c in self.candidates.values()}
 
     async def list_candidates(self, *, workspace: str, run_id: str) -> list[Candidate]:
         return [c for c in self.candidates.values() if c.run_id == run_id]
@@ -155,6 +168,12 @@ class FakeEvaluator(Evaluator):
         return {"reward": self.reward}
 
 
+#: Artifacts must exist -- ``candidate_dir`` refuses a record whose resource has gone,
+#: because resolving it to the shared root is what let a stale record copy every
+#: candidate's code out as its own. Doubles therefore materialise a real directory.
+_ARTIFACT_ROOT = pathlib.Path(tempfile.mkdtemp(prefix="experimentalist-doubles-"))
+
+
 def make_candidate(
     *,
     label: str = "agent-0",
@@ -194,7 +213,7 @@ def make_candidate(
         ancestor=ancestor,
         generated_from=proposal,
         description=text,
-        artifact=ResourceRef(uri=artifact or f"file:///tmp/{run_id}/eval-and-optimize/agents/{label}"),
+        artifact=ResourceRef(uri=artifact or _default_artifact(run_id, label)),
         rewards=dict(rewards or {}),
         killed_generation=killed_generation,
         workspace=workspace,
@@ -203,6 +222,13 @@ def make_candidate(
     # strings in a real run, and a double that conflates them hides that class of bug.
     candidate._id = candidate_id or f"id-{label}"  # type: ignore[attr-defined]
     return candidate
+
+
+def _default_artifact(run_id: str, label: str) -> str:
+    """A real, empty directory standing in for a built candidate."""
+    path = _ARTIFACT_ROOT / run_id / "eval-and-optimize" / "agents" / label
+    path.mkdir(parents=True, exist_ok=True)
+    return path.as_uri()
 
 
 def make_context(

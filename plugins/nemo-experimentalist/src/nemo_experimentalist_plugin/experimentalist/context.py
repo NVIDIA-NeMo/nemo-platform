@@ -176,10 +176,19 @@ class ExperimentContext:
     def candidate_dir(self, candidate: Candidate) -> Path:
         """Local directory holding *candidate*'s artifact.
 
+        A record whose artifact has gone is broken, not a candidate whose directory can
+        be guessed. Falling back to the parent resolves it to the shared candidate root,
+        which callers then copy out of and push wholesale.
+
         Raises:
-            ValueError: if the artifact is a file, or lives outside the candidate root.
+            ValueError: if the artifact does not exist.
         """
         path = local_path_from_uri(candidate.artifact.uri, context="Candidate artifact")
+        if not path.exists():
+            raise ValueError(
+                f"Candidate {candidate.label!r} ({candidate.id}) has no artifact at {path}; "
+                "its record outlived the resource it addresses"
+            )
         return path if path.is_dir() else path.parent
 
     async def fork(self, proposal: Proposal | None) -> Path:
@@ -274,10 +283,16 @@ class ExperimentContext:
         return self.root / "eval-and-optimize" / "agents"
 
     def _reserve(self, proposal: Proposal | None) -> Path:
-        """Pick the next free candidate directory under the run's candidate root."""
+        """Pick the next free candidate directory under the run's candidate root.
+
+        Only the baseline gets the fixed handle. A Proposal with no ancestor is a
+        candidate built from the agent under test rather than from a parent — the HPO
+        case — and there can be many of those in one run, so each needs its own
+        directory or they overwrite each other and the baseline.
+        """
         root = self._candidate_root
         root.mkdir(parents=True, exist_ok=True)
-        if proposal is None or proposal.ancestor is None:
+        if proposal is None:
             return root / BASELINE_LABEL
         taken = [
             int(entry.name.split("-")[1])
@@ -312,6 +327,20 @@ class ExperimentContext:
         stored = await self._backend.create_candidate(workspace=self.workspace, candidate=candidate)
         candidate._id = stored._id  # type: ignore[attr-defined]
         return candidate
+
+    async def discard_candidate(self, candidate: Candidate) -> None:
+        """Remove *candidate* entirely: its artifact and the record addressing it.
+
+        A record and its artifact are two halves of one thing. Deleting only the
+        directory used to be enough, because the population was derived from the
+        directories; now it is derived from the records, so a half-deleted candidate
+        stays in the tree pointing at nothing.
+        """
+        path = local_path_from_uri(candidate.artifact.uri, context="Candidate artifact")
+        target = path if path.is_dir() else path.parent
+        if target.is_dir() and target.resolve() != self._candidate_root.resolve():
+            shutil.rmtree(target)
+        await self._backend.delete_candidate(workspace=self.workspace, candidate_id=candidate.id)
 
     async def archive_candidate(self, candidate: Candidate) -> None:
         """Persist *candidate*'s code to durable storage, if the run archives at all.

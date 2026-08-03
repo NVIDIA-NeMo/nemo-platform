@@ -130,13 +130,15 @@ class ModelTiers:
         return self.tier("fast")
 
     def describe(self) -> dict[str, object]:
-        """What this run resolved, for the run record. Never includes the credential.
+        """What this run resolved, for the run record. Never includes a credential.
 
-        The endpoint and the tier names are what make a run reproducible; the key is not,
-        and the record is written to disk and mirrored to the platform.
+        The endpoint and the tier names are what make a run reproducible; a key is not,
+        and this record is written to disk and mirrored to the platform. The endpoint is
+        sanitized rather than copied: a URL is a normal way to pass a key to an
+        OpenAI-compatible proxy, which is why the log banner strips userinfo too.
         """
         return {
-            "api_base": self._settings.api_base,
+            "api_base": _sanitize_url(self._settings.api_base) if self._settings.api_base else None,
             "models": {name: getattr(self._settings.models, name) for name in TIERS},
         }
 

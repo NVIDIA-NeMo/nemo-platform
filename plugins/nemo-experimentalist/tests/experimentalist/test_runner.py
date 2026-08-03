@@ -518,3 +518,26 @@ async def test_the_strategy_receives_the_runs_resolved_tiers(monkeypatch, tmp_pa
 
     assert strategy.ctx is not None
     assert isinstance(strategy.ctx.models, ModelTiers)
+
+
+@pytest.mark.asyncio
+async def test_the_run_record_strips_userinfo_from_the_endpoint(monkeypatch, tmp_path) -> None:
+    """A URL is a normal way to pass a key to an OpenAI-compatible proxy.
+
+    The snapshot is written to run.json and mirrored to the platform, so the endpoint is
+    sanitized the same way the log banner already sanitizes it.
+    """
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://user:sk-live-abc123@endpoint.internal/v1")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "unused")
+    for tier in ("SMART", "MID", "FAST"):
+        monkeypatch.setenv(f"NEMO_EXPERIMENTALIST_MODELS_{tier}", "vendor/m")
+    Configuration.clear_cache()
+
+    strategy = RecordingStrategy()
+    runner, _ = _make_runner(tmp_path, strategy=strategy, monkeypatch=monkeypatch)
+    await runner.run()
+
+    assert strategy.ctx is not None
+    snapshot = json.dumps(strategy.ctx._run.config_snapshot)
+    assert "sk-live-abc123" not in snapshot
+    assert strategy.ctx._run.config_snapshot["deployment"]["api_base"] == "https://endpoint.internal/v1"

@@ -207,6 +207,7 @@ class Proposer(Agent):
             improvements=improvements,
             max_candidates=max_candidates,
             allowed_types=set(available_types) or all_types,
+            known_ancestors={s.id for s in proposal_survivors},
         )
         return [improvement.as_proposal() for improvement in improvements]
 
@@ -216,6 +217,7 @@ class Proposer(Agent):
         improvements: list[Improvement],
         max_candidates: int,
         allowed_types: set[str],
+        known_ancestors: set[str],
     ) -> None:
         if not improvements:
             raise ValueError("Proposer returned no improvements")
@@ -224,6 +226,15 @@ class Proposer(Agent):
         seen_types: set[str] = set()
         seen_descriptions: set[str] = set()
         for improvement in improvements:
+            # ``ancestor`` is a candidate id, not the display handle it used to be, and
+            # the survivors carry both — so a plausible-looking "agent-2" is exactly what
+            # a model returns. Rejecting it here costs one Proposer retry; letting it
+            # through costs the run.
+            if improvement.ancestor not in known_ancestors:
+                raise ValueError(
+                    f"Proposer returned unknown ancestor {improvement.ancestor!r}; "
+                    f"it must be the id of a survivor: {sorted(known_ancestors)}"
+                )
             optimization_type = improvement.optimization_type
             if optimization_type not in allowed_types:
                 raise ValueError(

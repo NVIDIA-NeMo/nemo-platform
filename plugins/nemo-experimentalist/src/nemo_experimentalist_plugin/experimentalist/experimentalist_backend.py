@@ -158,6 +158,16 @@ class ExperimentalistBackend(ABC):
         """Return all Candidates that belong to a given ExperimentRun."""
         ...
 
+    @abstractmethod
+    async def delete_candidate(self, *, workspace: str, candidate_id: str) -> None:
+        """Remove a Candidate record. Silent when it is already gone.
+
+        Rolling back partial work has to remove the record as well as the artifact:
+        listing reads the store, so a record left behind is a candidate that still
+        exists as far as every consumer is concerned.
+        """
+        ...
+
     # -- Result persistence --------------------------------------------------
 
     @abstractmethod
@@ -403,8 +413,16 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         return f"{self.storage.candidate_branch_prefix}/{candidate.run_id}/{candidate.label}"
 
     def _candidate_code_dir(self, candidate: Candidate) -> Path:
-        """Local directory holding *candidate*'s code, read off its artifact reference."""
+        """Local directory holding *candidate*'s code, read off its artifact reference.
+
+        Raises:
+            ValueError: if the artifact does not exist. Falling back to the parent would
+                resolve to the shared candidate root and push every candidate's code as
+                this one's.
+        """
         path = local_path_from_uri(candidate.artifact.uri, context="Candidate artifact")
+        if not path.exists():
+            raise ValueError(f"Candidate {candidate.label!r} ({candidate.id}) has no artifact at {path}")
         return path if path.is_dir() else path.parent
 
     async def archive_candidate(self, *, workspace: str, candidate: Candidate) -> str | None:
@@ -558,6 +576,9 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
 
     async def get_candidate(self, *, workspace: str, candidate_id: str) -> Candidate:
         return load_candidate(self._candidate_path(candidate_id))
+
+    async def delete_candidate(self, *, workspace: str, candidate_id: str) -> None:
+        self._candidate_path(candidate_id).unlink(missing_ok=True)
 
     async def list_candidates(self, *, workspace: str, run_id: str) -> list[Candidate]:
         store = self._eo / "candidates"
