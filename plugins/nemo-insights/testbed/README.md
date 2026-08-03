@@ -4,7 +4,7 @@
 # testbed — insights analyst test runner (maintainer tooling)
 
 Runs the Insights analyst against registered **subjects** and emits Insights. Think
-"pytest for the analysis loop." This is dev tooling — it *drives* `nemo insights`;
+"pytest for the analysis loop." This is dev tooling — it *drives* `nemo agents analyst`;
 it is not the product CLI and is not shipped in the wheel.
 
 ```bash

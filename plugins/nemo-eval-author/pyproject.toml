@@ -14,9 +14,6 @@ dependencies = [
     "tomlkit>=0.13.3",
 ]
 
-[project.entry-points."nemo.cli"]
-eval-author = "nemo_eval_author_plugin.cli:EvalAuthorCLI"
-
 [project.entry-points."nemo.cli.agents"]
 eval-author = "nemo_eval_author_plugin.cli:EvalAuthorCLI"
 

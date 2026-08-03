@@ -36,12 +36,12 @@ commit, currently one past `v0.0.6` that carries an MCP transport-timeout fix.
 The supported handoff is:
 
 ```text
-nemo insights analyze → .nemo-optimizer/insights.yaml or Platform Insight ID
-                    → nemo experimentalist doctor
-                    → nemo experimentalist run
+nemo agents analyst run → .nemo-optimizer/insights.yaml or Platform Insight ID
+                       → nemo agents experimentalist doctor
+                       → nemo agents experimentalist run
 ```
 
-Run `nemo insights analyze` using the Platform Insights plugin and its
+Run `nemo agents analyst run` using the Platform Insights plugin and its
 documented trace, workspace, and output options. The producer may write the
 local profile default, `.nemo-optimizer/insights.yaml`, or persist an Insight
 on Platform and report its ID. The Experimentalist does not analyze traces,
@@ -51,12 +51,12 @@ From an agent directory with an `optimizer.yaml` profile, validate the
 effective inputs:
 
 ```bash
-$NEMO experimentalist doctor
+$NEMO agents experimentalist doctor
 ```
 
 ## Run the Experimentalist locally
 
-`nemo experimentalist run` runs the local Experimentalist loop. It evaluates
+`nemo agents experimentalist run` runs the local Experimentalist loop. It evaluates
 a baseline agent on Harbor-compatible train and validation datasets, proposes
 candidate mutations, and records its artifacts under the selected experiment
 directory.
@@ -76,7 +76,7 @@ A single local Insight in `.nemo-optimizer/insights.yaml` is selected by
 default:
 
 ```bash
-$NEMO experimentalist run
+$NEMO agents experimentalist run
 ```
 
 Use `--insight` to name another local file. Local files can contain one
@@ -84,7 +84,7 @@ Insight object or an `insights` list. A list with multiple entries requires
 `--insight-id`, which accepts an exact ID, exact title, or zero-based index:
 
 ```bash
-$NEMO experimentalist run \
+$NEMO agents experimentalist run \
   --insight path/to/insights.yaml \
   --insight-id 0
 ```
@@ -92,7 +92,7 @@ $NEMO experimentalist run \
 For an Insight persisted by Platform, pass its ID with its Platform location:
 
 ```bash
-$NEMO experimentalist run \
+$NEMO agents experimentalist run \
   --insight <platform-insight-id> \
   --workspace <workspace> \
   --base-url https://<platform-host>
@@ -108,7 +108,7 @@ Use `--no-insight` to bypass both an explicit Insight and the profile-local
 default. Supply a baseline agent when the profile does not provide one:
 
 ```bash
-$NEMO experimentalist run \
+$NEMO agents experimentalist run \
   --no-insight \
   --agent path/to/agent \
   --train-dataset path/to/train \

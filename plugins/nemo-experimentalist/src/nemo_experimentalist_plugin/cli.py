@@ -3,9 +3,8 @@
 
 """Experimentalist plugin CLI — ``nemo agents experimentalist ...`` subcommands.
 
-The same class is registered under both ``nemo.cli.agents`` and ``nemo.cli``, so every
-verb is reachable as ``nemo agents experimentalist <verb>`` (canonical) and as ``nemo
-experimentalist <verb>`` (retained for backward compatibility).
+Registered under ``nemo.cli.agents`` and mounted by ``AgentsCLI`` as
+``nemo agents experimentalist <verb>``.
 """
 
 import asyncio
