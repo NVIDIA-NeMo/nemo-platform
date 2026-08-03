@@ -11,7 +11,7 @@ import {
 } from '@nemo/sdk/generated/agents/api';
 import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
 import { targetNameForEvalJob, toEvalJobRow } from '@studio/api/evaluation/utils';
-import { RECENT_EVAL_LIMIT } from '@studio/components/sidePanels/AgentPanels/AgentPanel/constants';
+import { RECENT_EVAL_LIMIT } from '@studio/routes/agents/AgentDetailRoute/constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 

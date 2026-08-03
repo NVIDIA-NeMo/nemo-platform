@@ -11,7 +11,7 @@ import {
   type InlineMetricBundle,
   parseEvalConfig,
   type PersistedEvalSpec,
-} from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
+} from '@studio/components/evaluation/submitEvaluationJob';
 
 const metric: InlineMetricBundle = {
   bundle_kind: 'metric-bundle',

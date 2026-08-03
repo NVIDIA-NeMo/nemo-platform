@@ -4,8 +4,8 @@
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
 import { Block, Select } from '@nvidia/foundations-react-core';
 import { ModelChat } from '@studio/components/ModelChat';
-import { NoHealthyDeploymentsBanner } from '@studio/components/sidePanels/AgentPanels/AgentPanel/NoHealthyDeploymentsBanner';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { NoHealthyDeploymentsBanner } from '@studio/routes/agents/AgentDetailRoute/NoHealthyDeploymentsBanner';
 import type { FC, RefObject } from 'react';
 
 interface ChatPlaygroundContentProps {

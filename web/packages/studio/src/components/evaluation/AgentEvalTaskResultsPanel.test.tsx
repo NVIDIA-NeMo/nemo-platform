@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AgentEvalTaskDetail } from '@studio/api/evaluation/agent-evaluations';
-import { AgentEvalTaskResultsPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/AgentEvalTaskResultsPanel';
+import { AgentEvalTaskResultsPanel } from '@studio/components/evaluation/AgentEvalTaskResultsPanel';
 import { fireEvent, render, screen } from '@studio/tests/util/render';
 
 const task: AgentEvalTaskDetail = {
