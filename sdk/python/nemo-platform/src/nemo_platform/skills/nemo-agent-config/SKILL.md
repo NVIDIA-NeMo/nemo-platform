@@ -97,6 +97,26 @@ Map only fields with a clear Platform equivalent:
 | Tool/function references | `skills.paths`, `mcp.servers`, `tools.blocked`, or harness settings when clearly supported |
 | Tracing or telemetry settings | `telemetry` |
 
+For a NAT `codex_agent` workflow, apply this mapping instead of copying the
+workflow fields into `harnesses.codex.settings`:
+
+| NAT Codex field | Platform `agent.yaml` target |
+|---|---|
+| `working_directory` | `environment.workspace` |
+| `sandbox_mode` | `harnesses.codex.settings.sandbox` |
+| `approval_policy: never` | `harnesses.codex.settings.approval_mode: deny_all` |
+| `relay_atof_output_dir` | `environment.artifacts`, `telemetry.output_dir`, and `telemetry.atof` |
+| `skip_git_repo_check` | Omit; removed CLI-only setting |
+| `timeout_seconds` | Omit unless the installed Codex adapter settings schema declares it |
+| `max_output_chars` | Omit; no current Codex adapter setting |
+| `prefer_chatgpt_auth` | Omit; authentication is selected by the Codex adapter and model configuration |
+
+Treat the installed Fabric adapter descriptor's `settings_schema` as
+authoritative. Only place keys declared under its `properties` in
+`harnesses.<name>.settings`; do not preserve an unsupported NAT setting merely
+because it existed in the source workflow. Surface omitted behavior in the
+migration summary.
+
 If behavior does not map cleanly, say so directly and choose one:
 
 - Keep the agent on the NAT compatibility path.
