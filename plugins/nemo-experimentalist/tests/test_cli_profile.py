@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 import pytest
 from nemo_experimentalist_plugin import cli
 from nemo_experimentalist_plugin.preflight import Probes
@@ -302,6 +303,41 @@ def test_doctor_healthy_exits_zero(app, profile_tree: Path, monkeypatch) -> None
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0, result.output
     assert "✓" in result.output
+
+
+def test_doctor_fails_when_run_client_bootstrap_fails(app, profile_tree: Path, monkeypatch) -> None:
+    write_task_toml(profile_tree)
+
+    def fail_client(_base_url: str) -> FakePlatformClient:
+        raise httpx.UnsupportedProtocol("invalid cached auth context")
+
+    monkeypatch.setattr(cli, "make_client", fail_client)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["doctor", "--base-url", "https://platform.example"])
+
+    assert result.exit_code == 1
+    assert "Platform client initialization failed (UnsupportedProtocol)" in result.output
+    assert "invalid cached auth context" not in result.output
+
+
+def test_doctor_bootstraps_and_closes_run_client(app, profile_tree: Path, monkeypatch) -> None:
+    write_task_toml(profile_tree)
+    clients: list[FakePlatformClient] = []
+
+    def record_client(base_url: str) -> FakePlatformClient:
+        client = FakePlatformClient(base_url)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "make_client", record_client)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["doctor", "--base-url", "https://platform.example"])
+
+    assert result.exit_code == 0, result.output
+    assert clients == [FakePlatformClient("https://platform.example", closed=True)]
+    assert "Platform client initialized with the effective authentication path" in result.output
 
 
 def test_doctor_no_profile_exits_one_with_skeleton(app, tmp_path: Path, monkeypatch) -> None:
