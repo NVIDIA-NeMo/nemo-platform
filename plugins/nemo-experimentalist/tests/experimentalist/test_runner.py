@@ -21,10 +21,12 @@ from nemo_experimentalist_plugin.entities import (
     Task,
 )
 from nemo_experimentalist_plugin.experimentalist import runner as runner_module
+from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
 from nemo_experimentalist_plugin.experimentalist.runner import ExperimentRunner
 from nemo_insights_plugin.entities import Insight
+from nemo_platform_plugin.config import Configuration
 
 
 class RecordingStrategy:
@@ -461,3 +463,58 @@ def test_the_run_entity_carries_a_progress_counter_not_a_round_count() -> None:
     """Not every strategy has rounds, so the entity counts units and names the unit."""
     run = ExperimentRun(workspace="default", agent="a")
     assert (run.progress_completed, run.progress_total, run.progress_unit) == (0, None, "step")
+
+
+@pytest.mark.asyncio
+async def test_the_run_record_says_which_models_it_actually_used(monkeypatch, tmp_path) -> None:
+    """`config_snapshot` is the only durable record of how a run was configured.
+
+    Model tiers are deployment settings, so they are not in the run config at all — dump
+    it alone and the record cannot answer "which models did this run use". It has been
+    unable to since the plugin landed.
+    """
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://example.test/v1")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "secret-value")
+    for tier, name in (("SMART", "vendor/smart-1"), ("MID", "vendor/mid-1"), ("FAST", "vendor/fast-1")):
+        monkeypatch.setenv(f"NEMO_EXPERIMENTALIST_MODELS_{tier}", name)
+    Configuration.clear_cache()
+
+    strategy = RecordingStrategy()
+    runner, _ = _make_runner(tmp_path, strategy=strategy, monkeypatch=monkeypatch)
+    await runner.run()
+
+    assert strategy.ctx is not None
+    deployment = strategy.ctx._run.config_snapshot["deployment"]
+    assert deployment["api_base"] == "https://example.test/v1"
+    assert deployment["models"] == {"smart": "vendor/smart-1", "mid": "vendor/mid-1", "fast": "vendor/fast-1"}
+    # Run parameters are still there alongside it.
+    assert "max_rounds" in strategy.ctx._run.config_snapshot
+
+
+@pytest.mark.asyncio
+async def test_the_run_record_never_carries_the_credential(monkeypatch, tmp_path) -> None:
+    """It is written to run.json on disk and mirrored to the platform."""
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://example.test/v1")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "super-secret-key")
+    for tier in ("SMART", "MID", "FAST"):
+        monkeypatch.setenv(f"NEMO_EXPERIMENTALIST_MODELS_{tier}", "vendor/m")
+    Configuration.clear_cache()
+
+    strategy = RecordingStrategy()
+    runner, _ = _make_runner(tmp_path, strategy=strategy, monkeypatch=monkeypatch)
+    await runner.run()
+
+    assert strategy.ctx is not None
+    assert "super-secret-key" not in json.dumps(strategy.ctx._run.config_snapshot)
+
+
+@pytest.mark.asyncio
+async def test_the_strategy_receives_the_runs_resolved_tiers(monkeypatch, tmp_path) -> None:
+    """Components read tiers off what they were handed, not off a module-level getter."""
+    strategy = RecordingStrategy()
+    runner, _ = _make_runner(tmp_path, strategy=strategy, monkeypatch=monkeypatch)
+
+    await runner.run()
+
+    assert strategy.ctx is not None
+    assert isinstance(strategy.ctx.models, ModelTiers)

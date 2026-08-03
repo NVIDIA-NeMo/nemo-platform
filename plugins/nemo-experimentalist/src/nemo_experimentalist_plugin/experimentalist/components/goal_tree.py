@@ -18,7 +18,7 @@ from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match, ShellTools, TodoManager
 from pydantic import BaseModel, Field, model_validator
 
-from .model_config import get_fast_model
+from .model_config import ModelTiers
 from .tools import WorkspaceTool
 from .util import load_framework_skills
 
@@ -289,7 +289,12 @@ class GoalTreeGenerator(Agent):
     """
 
     def __init__(
-        self, workspace: Path, config: GoalTreeConfig, framework_skills_dirs: list[Path] | None = None, **kwargs: Any
+        self,
+        workspace: Path,
+        config: GoalTreeConfig,
+        framework_skills_dirs: list[Path] | None = None,
+        models: ModelTiers | None = None,
+        **kwargs: Any,
     ):
         """Initialize the goal tree generator.
 
@@ -300,7 +305,9 @@ class GoalTreeGenerator(Agent):
             **kwargs: additional arguments passed to the parent Agent.
 
         """
-        super().__init__(llm=kwargs.pop("llm", None) or get_fast_model(), **kwargs)
+        tiers = models or ModelTiers()
+        super().__init__(llm=kwargs.pop("llm", None) or tiers.fast, **kwargs)
+        self._models = tiers
         self._config = config
         self._workspace_path = workspace.resolve()
 
@@ -311,7 +318,7 @@ class GoalTreeGenerator(Agent):
         self.skills: SkillRegistry = SkillRegistry(self)
         spec(self, "skills", hidden=True)
         load_framework_skills(self.skills, framework_skills_dirs or [])
-        TokenBudgetSummarizer.install(self, llm=get_fast_model(), config=TokenBudgetConfig(max_tokens=80_000))
+        TokenBudgetSummarizer.install(self, llm=self._models.fast, config=TokenBudgetConfig(max_tokens=80_000))
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=40, cell_timeout=3600.0)))
     async def _generate(self, dataset: Dataset, agent_spec: Path | None = None) -> GoalTree:  # pyright: ignore[reportReturnType]

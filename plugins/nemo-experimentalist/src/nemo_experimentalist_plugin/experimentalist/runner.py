@@ -42,6 +42,7 @@ from nemo_experimentalist_plugin.experimentalist.components.insight_promotion im
     write_insight_comparison_section,
     write_insight_promotion_section,
 )
+from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
@@ -148,11 +149,14 @@ class ExperimentRunner:
         for subdir in ("agents", "analysis", "results"):
             (self._eo / subdir).mkdir(parents=True, exist_ok=True)
 
+        # Resolved once here so every component runs on the same tiers, and so the run
+        # record can say what they were rather than what was declared.
+        models = ModelTiers()
         evaluator = EvaluatorFactory().build_evaluator(
             self._evaluator_type, self._config.evaluator, experiment_dir=self._root
         )
         inputs = await self._prepare_inputs()
-        run, resuming = await self._open_run(inputs)
+        run, resuming = await self._open_run(inputs, models)
         ctx = ExperimentContext(
             backend=self._backend,
             workspace=self._workspace,
@@ -162,6 +166,7 @@ class ExperimentRunner:
             agent_spec=inputs.agent_spec,
             datasets=inputs.datasets,
             evaluator=evaluator,
+            models=models,
             resuming=resuming,
             reporter=self._reporter,
         )
@@ -270,7 +275,7 @@ class ExperimentRunner:
             datasets=datasets,
         )
 
-    async def _open_run(self, inputs: PreparedInputs) -> tuple[ExperimentRun, bool]:
+    async def _open_run(self, inputs: PreparedInputs, models: ModelTiers) -> tuple[ExperimentRun, bool]:
         """Re-open this run if one already exists here, else create it.
 
         Resume is strategy-independent at this level: the runner restores the
@@ -296,7 +301,14 @@ class ExperimentRunner:
             workspace=self._workspace,
             agent=inputs.agent_name,
             insight=inputs.insight_ref,
-            config_snapshot=self._config.model_dump(mode="json"),
+            config_snapshot={
+                **self._config.model_dump(mode="json"),
+                # What this run actually resolved, not what was declared. Deployment
+                # settings live outside the run config, so without this the record
+                # cannot answer "which models did this run use". Never the credential:
+                # the snapshot is written to disk and mirrored to the platform.
+                "deployment": models.describe(),
+            },
             status="running",
         )
         return await self._backend.create_run(workspace=self._workspace, run=run), False

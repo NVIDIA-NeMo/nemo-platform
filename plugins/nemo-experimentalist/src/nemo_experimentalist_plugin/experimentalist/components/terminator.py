@@ -24,7 +24,7 @@ from nooa.agentdoc import doc
 from nooa.config import CodeActConfig
 from pydantic import BaseModel
 
-from .model_config import get_fast_model
+from .model_config import ModelTiers
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,10 @@ class TerminationDecision(BaseModel):
 class Terminator(Agent):
     """Decides when the evolutionary optimization loop should stop."""
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(llm=kwargs.pop("llm", None) or get_fast_model(), **kwargs)
+    def __init__(self, *, models: ModelTiers | None = None, **kwargs: Any) -> None:
+        tiers = models or ModelTiers()
+        super().__init__(llm=kwargs.pop("llm", None) or tiers.fast, **kwargs)
+        self._models = tiers
         self.terminator_skill = TextSkill(path=skills_dir() / "terminator")
 
     @hidden

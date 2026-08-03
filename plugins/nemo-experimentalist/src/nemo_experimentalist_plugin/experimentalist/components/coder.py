@@ -25,7 +25,7 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .model_config import api_base, api_key, get_fast_model, get_mid_model, get_smart_model
+from .model_config import ModelTiers, api_base, api_key
 from .tools import GuardedShellTools
 from .util import load_framework_skills
 
@@ -429,7 +429,7 @@ class ArchitectureSkill(Skill):
             '''Write a first draft from the brief.'''
             ...
 
-        @strategy(PredictStrategy(), llm=get_fast_model(), temperature=0.0)
+        @strategy(PredictStrategy(), llm=self._models.fast, temperature=0.0)
         async def critique(self, draft: str) -> str:
             '''List exactly three weaknesses in the draft. Be terse.'''
             ...
@@ -615,13 +615,16 @@ class Coder(Agent):
         workspace: Path,
         config: CoderConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
+        models: ModelTiers | None = None,
         **kwargs: Any,
     ):
         """Initialize the coder for the given workspace."""
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        tiers = models or ModelTiers()
+        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
+        self._models = tiers
         # create_architecture_doc runs on the mid tier. Resolved here, like every other
         # tier this component uses, and read off the instance by the decorator's callable.
-        self._mid_model = get_mid_model()
+        self._mid_model = tiers.mid
         self._config = config or CoderConfig()
         self._workspace_path = workspace.resolve()
         self.shell = GuardedShellTools(cwd=self._workspace_path)
@@ -642,7 +645,7 @@ class Coder(Agent):
         self._models_cache: list[str] | None = None
         TokenBudgetSummarizer.install(
             self,
-            llm=get_fast_model(),
+            llm=self._models.fast,
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 

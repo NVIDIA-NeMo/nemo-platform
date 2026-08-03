@@ -18,7 +18,7 @@ from nooa.skill_registry import SkillRegistry
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .model_config import get_fast_model, get_smart_model
+from .model_config import ModelTiers
 from .tools import WorkspaceTool
 from .util import load_framework_skills
 
@@ -112,9 +112,12 @@ class Proposer(Agent):
         workspace: Path,
         config: ProposerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
+        models: ModelTiers | None = None,
         **kwargs: Any,
     ):
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        tiers = models or ModelTiers()
+        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
+        self._models = tiers
         self._config = config or ProposerConfig()
         self._workspace_path = workspace.resolve()
         self.workspace = WorkspaceTool(workspace=self._workspace_path)
@@ -127,7 +130,7 @@ class Proposer(Agent):
         self.optimize = Optimize()
         TokenBudgetSummarizer.install(
             self,
-            llm=get_fast_model(),
+            llm=self._models.fast,
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 

@@ -46,10 +46,7 @@ from nemo_experimentalist_plugin.experimentalist.components.insight_promotion im
     stamp_insight_evaluation_result,
     validate_insight_evaluation_result,
 )
-from nemo_experimentalist_plugin.experimentalist.components.model_config import (
-    get_fast_model,
-    get_smart_model,
-)
+from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
     OptimizationType,
@@ -315,15 +312,18 @@ class EvolutionaryOptimizer(Agent):
         working_dir: Path,
         config: EvolutionaryOptimizerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
+        models: ModelTiers | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        tiers = models or ModelTiers()
+        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
+        self._models = tiers
         self.working_dir = working_dir.resolve()
         self.config = config or EvolutionaryOptimizerConfig()
         self._config = self.config
         self._workspace_path = self.working_dir
         self._framework_skills_dirs: list[Path] = framework_skills_dirs or []
-        self.terminator = Terminator()
+        self.terminator = Terminator(models=tiers)
         self.shell = GuardedShellTools(cwd=self.working_dir)
         self.workspace = WorkspaceTool(workspace=self.working_dir)
         self.context["file_match"] = doc(Match)
@@ -335,7 +335,7 @@ class EvolutionaryOptimizer(Agent):
         self.skills.activate(["cmd.*", "ext.*"])
         TokenBudgetSummarizer.install(
             self,
-            llm=get_fast_model(),
+            llm=self._models.fast,
             config=TokenBudgetConfig(max_tokens=self.config.max_summary_tokens),
         )
 
@@ -847,6 +847,7 @@ class EvolutionaryOptimizer(Agent):
             workspace=self.working_dir,
             config=self._coder_config(config),
             framework_skills_dirs=self._framework_skills_dirs,
+            models=self._models,
         ).create_architecture_doc(
             agent_id,
             source_path=config.source.source_path,
@@ -967,6 +968,7 @@ class EvolutionaryOptimizer(Agent):
                 workspace=self.working_dir,
                 config=config.goal_config,
                 framework_skills_dirs=self._framework_skills_dirs,
+                models=self._models,
             ).generate(dataset, agent_spec=agent_spec_path)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[TRAJ] Failed to generate initial goal tree; continuing without trajectory scoring: {exc}")
@@ -1066,6 +1068,7 @@ class EvolutionaryOptimizer(Agent):
                     workspace=self.working_dir,
                     config=config.analyzer,
                     framework_skills_dirs=self._framework_skills_dirs,
+                    models=self._models,
                 ).run(
                     agent=s.label,
                     dataset=dataset,
@@ -1106,7 +1109,10 @@ class EvolutionaryOptimizer(Agent):
         if goal_tree is None:
             return
         generator = GoalTreeGenerator(
-            workspace=self.working_dir, config=goal_config, framework_skills_dirs=self._framework_skills_dirs
+            workspace=self.working_dir,
+            config=goal_config,
+            framework_skills_dirs=self._framework_skills_dirs,
+            models=self._models,
         )
         updated_tree = await generator.update(goal_tree, analysis, round_num, dataset, agent_spec=agent_spec_path)
         next_goal_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1126,6 +1132,7 @@ class EvolutionaryOptimizer(Agent):
             workspace=self.working_dir,
             config=config.proposer,
             framework_skills_dirs=self._framework_skills_dirs,
+            models=self._models,
         )
         return await proposer.run(
             analysis=analysis,
@@ -1270,7 +1277,9 @@ class EvolutionaryOptimizer(Agent):
         keys = [(node.id, task_id) for node in nodes for task_id in traces_by_task]
         logger.info(f"[TRAJ] Starting {len(keys)} GRA scoring tasks...")
 
-        scorer = GroupLeafScorer(workspace=self.working_dir, client=ctx.client, nmp_workspace=ctx.workspace)
+        scorer = GroupLeafScorer(
+            workspace=self.working_dir, client=ctx.client, nmp_workspace=ctx.workspace, models=self._models
+        )
         scoring_results = await asyncio.gather(
             *[scorer.run(node, traces_by_task[task_id], dataset) for node in nodes for task_id in traces_by_task]
         )

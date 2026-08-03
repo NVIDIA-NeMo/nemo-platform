@@ -14,7 +14,7 @@ from nooa.config import CodeActConfig
 from pydantic import BaseModel, Field
 
 from .goal_tree import GoalNode
-from .model_config import get_mid_model
+from .model_config import ModelTiers
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +39,15 @@ class GroupLeafScorer(Agent):
         llm: Any | None = None,
         client: AsyncNeMoPlatform | None = None,
         nmp_workspace: str | None = None,
+        models: ModelTiers | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the scorer for the given workspace.
 
         Args:
             workspace: Path to the workspace directory.
-            llm: Language model instance; defaults to mid-tier model selection.
+            llm: Language model instance; defaults to this run's mid tier.
+            models: Resolved model tiers; falls back to this install's settings.
             client: NeMo Platform client; required to load ``intake://`` traces.
             nmp_workspace: NeMo Platform workspace name; required to load ``intake://`` traces.
             **kwargs: Additional arguments passed to parent Agent class.
@@ -54,7 +56,9 @@ class GroupLeafScorer(Agent):
             ValueError: if workspace does not exist or is invalid.
 
         """
-        super().__init__(llm=llm or get_mid_model(), **kwargs)
+        tiers = models or ModelTiers()
+        super().__init__(llm=llm or tiers.mid, **kwargs)
+        self._models = tiers
         self.workspace = workspace
         self._client = client
         self._nmp_workspace = nmp_workspace
@@ -66,7 +70,7 @@ class GroupLeafScorer(Agent):
         node: GoalNode,
         trials: dict[str, TrialResult],
         dataset: Dataset,
-    ) -> dict[str, GroupLeafScore]:  # pyright: ignore[reportReturnType]
+    ) -> dict[str, GroupLeafScore]:  # ty: ignore[invalid-return-type]  # pyright: ignore[reportReturnType]
         """Compute the relative group advantage score for a group of traces coming from different agents for a given node.
         All scores must be strictly ordered: score_a < score_b < ... < score_n (no ties).
 

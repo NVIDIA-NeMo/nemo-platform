@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlparse
 
 from nemo_experimentalist_plugin.entities import DependencyRuntime, MetricResult, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components import cache
-from nemo_experimentalist_plugin.experimentalist.components.model_config import get_fast_model, get_smart_model
+from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools, WorkspaceTool
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
@@ -111,6 +111,7 @@ class TraceAnalyzer(Agent):
         experiment_dir: Path,
         config: TraceAnalyzerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
+        models: ModelTiers | None = None,
         **kwargs: Any,
     ):
         """Initialize the trace analyzer for the given experiment directory.
@@ -122,7 +123,9 @@ class TraceAnalyzer(Agent):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        tiers = models or ModelTiers()
+        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
+        self._models = tiers
         self._config = config or TraceAnalyzerConfig()
         self._experiment_dir = experiment_dir
         self.shell = GuardedShellTools(cwd=experiment_dir)
@@ -143,7 +146,7 @@ class TraceAnalyzer(Agent):
         load_framework_skills(self.skills, framework_skills_dirs or [])
         TokenBudgetSummarizer.install(
             self,
-            llm=get_fast_model(),
+            llm=self._models.fast,
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 

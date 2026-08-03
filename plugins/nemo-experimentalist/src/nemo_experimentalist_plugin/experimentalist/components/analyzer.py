@@ -29,7 +29,7 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from . import cache
-from .model_config import get_fast_model, get_smart_model
+from .model_config import ModelTiers
 from .rationalizer import Rationale, Rationalizer, RationalizerConfig  # noqa: F401
 from .tools import GuardedShellTools
 from .util import load_framework_skills
@@ -222,6 +222,7 @@ class AgentAnalyzer(Agent):
         workspace: Path,
         config: AnalyzerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
+        models: ModelTiers | None = None,
         **kwargs: Any,
     ):
         """Initialize the analyzer for the given workspace.
@@ -233,14 +234,16 @@ class AgentAnalyzer(Agent):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        tiers = models or ModelTiers()
+        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
+        self._models = tiers
         self._config = config or AnalyzerConfig()
         self._workspace_path = workspace
         self._framework_skills_dirs: list[Path] = framework_skills_dirs or []
         self.shell = GuardedShellTools(cwd=workspace)
         # Two generation methods run on the fast tier. Resolved here, like every other
         # tier this component uses, and read off the instance by the decorator's callable.
-        self._fast_model = get_fast_model()
+        self._fast_model = tiers.fast
         self.todos = TodoManager()
         self.context["file_match"] = doc(Match)
         self.skills: SkillRegistry = SkillRegistry(self)
@@ -624,6 +627,7 @@ class AgentAnalyzer(Agent):
         rationales_list = await asyncio.gather(
             *[
                 Rationalizer(
+                    models=self._models,
                     workspace=self._workspace_path,
                     config=self._config.rationalizer,
                     framework_skills_dirs=self._framework_skills_dirs,
@@ -644,6 +648,7 @@ class AgentAnalyzer(Agent):
         diagnoses_list = await asyncio.gather(
             *[
                 TraceAnalyzer(
+                    models=self._models,
                     experiment_dir=self._workspace_path,
                     config=self._config.trace_analyzer,
                     framework_skills_dirs=self._framework_skills_dirs,

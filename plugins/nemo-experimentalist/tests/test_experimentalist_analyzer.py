@@ -28,6 +28,7 @@ from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
     FailureClassification,
     PeerComparison,
 )
+from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.components.rationalizer import Rationale
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 
@@ -72,7 +73,14 @@ class _RecordingTraceAnalyzer:
 
     calls: ClassVar[list[dict[str, Any]]] = []
 
-    def __init__(self, *, experiment_dir: Path, config: Any, framework_skills_dirs: list[Path] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        experiment_dir: Path,
+        config: Any,
+        framework_skills_dirs: list[Path] | None = None,
+        models: Any = None,
+    ) -> None:
         self.experiment_dir = experiment_dir
         self.config = config
         self.framework_skills_dirs = framework_skills_dirs or []
@@ -93,7 +101,14 @@ class _RecordingTraceAnalyzer:
 
 
 class _FakeRationalizer:
-    def __init__(self, *, workspace: Path, config: Any, framework_skills_dirs: list[Path] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: Path,
+        config: Any,
+        framework_skills_dirs: list[Path] | None = None,
+        models: Any = None,
+    ) -> None:
         self.workspace = workspace
         self.config = config
         self.framework_skills_dirs = framework_skills_dirs or []
@@ -130,6 +145,9 @@ def _make_analyzer(tmp_path: Path, trials: list[Any]) -> AgentAnalyzer:
     analyzer._workspace_path = tmp_path
     analyzer._config = AnalyzerConfig()
     analyzer._framework_skills_dirs = []
+    # __init__ is skipped, so supply what run() reads: it hands its tiers to the
+    # sub-components it builds.
+    analyzer._models = ModelTiers()
     analyzer.select_trials = _SelectTrials(trials)  # type: ignore[method-assign,assignment]
     analyzer.classify_failures = _ClassifyFailures()  # type: ignore[method-assign,assignment]
     analyzer.compare_with_peers = _CompareWithPeers()  # type: ignore[method-assign,assignment]

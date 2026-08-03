@@ -37,6 +37,7 @@ from nemo_experimentalist_plugin.entities import (
     local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
+from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
@@ -93,6 +94,7 @@ class ExperimentContext:
         datasets: Evaluator-domain datasets keyed by split. ``validation`` is always
             present; ``train`` and ``insight`` are present when the run has them.
         evaluator: Evaluation component the run was configured with.
+        models: The run's resolved model tiers, handed to every component it builds.
         resuming: True when the runner re-opened an existing run, so the strategy
             should rebuild its state from :meth:`candidates` instead of starting over.
         reporter: Optional human narration sink. Best-effort and never load-bearing.
@@ -109,6 +111,7 @@ class ExperimentContext:
         agent_spec: Path | None = None,
         datasets: Mapping[str, Dataset],
         evaluator: Evaluator,
+        models: ModelTiers,
         resuming: bool = False,
         reporter: RunReporter | None = None,
     ) -> None:
@@ -118,6 +121,7 @@ class ExperimentContext:
         self._run = run
         self._evaluator = evaluator
         self._reporter = reporter
+        self.models = models
         self.workspace = workspace
         self.root = root
         self.agent_dir = agent_dir

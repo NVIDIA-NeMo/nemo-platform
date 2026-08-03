@@ -81,6 +81,66 @@ def get_model(tier: str) -> CompletionClient:
     return _client(model_name(tier), api_base(), api_key())
 
 
+class ModelTiers:
+    """The clients one run's components talk to, resolved from one settings object.
+
+    Handed to each component at construction so none of them reaches for a module-level
+    getter. That matters for three reasons: two runs in one process can target different
+    endpoints, a test can inject fakes without touching the environment, and the runner
+    can record what a run actually resolved instead of what was declared.
+
+    Resolution is per tier and lazy, so a component that never uses a tier never requires
+    it to be configured. The underlying client cache is keyed on the full identity, so
+    two ``ModelTiers`` over the same settings share clients.
+    """
+
+    def __init__(self, settings: ExperimentalistConfig | None = None) -> None:
+        self._settings = settings if settings is not None else _settings()
+
+    def tier(self, name: str) -> CompletionClient:
+        """The client for *name*, built on first use.
+
+        Raises:
+            ValueError: if the tier is unknown, or it, the endpoint or the credential is
+                configured nowhere.
+        """
+        if name not in TIERS:
+            raise ValueError(f"unknown model tier {name!r}")
+        configured = getattr(self._settings.models, name)
+        secret = self._settings.api_key
+        return _client(
+            _required(configured, f"{_ENV_PREFIX}MODELS_{name.upper()}"),
+            _required(self._settings.api_base, f"{_ENV_PREFIX}API_BASE"),
+            _required(secret.get_secret_value() if secret else None, f"{_ENV_PREFIX}API_KEY"),
+        )
+
+    @property
+    def smart(self) -> CompletionClient:
+        """The high-capability tier."""
+        return self.tier("smart")
+
+    @property
+    def mid(self) -> CompletionClient:
+        """The mid tier."""
+        return self.tier("mid")
+
+    @property
+    def fast(self) -> CompletionClient:
+        """The low-latency tier."""
+        return self.tier("fast")
+
+    def describe(self) -> dict[str, object]:
+        """What this run resolved, for the run record. Never includes the credential.
+
+        The endpoint and the tier names are what make a run reproducible; the key is not,
+        and the record is written to disk and mirrored to the platform.
+        """
+        return {
+            "api_base": self._settings.api_base,
+            "models": {name: getattr(self._settings.models, name) for name in TIERS},
+        }
+
+
 def get_smart_model() -> CompletionClient:
     """Return the smart (high-capability) client, resolved from the environment."""
     return get_model("smart")
