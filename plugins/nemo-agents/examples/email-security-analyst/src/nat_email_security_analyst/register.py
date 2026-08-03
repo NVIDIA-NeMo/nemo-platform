@@ -24,6 +24,7 @@ instead of running a second generation over it, which is what makes each prompt'
 contract a guarantee rather than a hope.
 """
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -61,7 +62,7 @@ async def _invoke_llm(config: Any, builder: Builder, text: str) -> str:
     llm = await builder.get_llm(llm_name=config.llm, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
 
     try:
-        response = await llm.ainvoke(config.prompt.replace("{body}", text))
+        response = await asyncio.wait_for(llm.ainvoke(config.prompt.replace("{body}", text)), timeout=60)
         return str(response.content)
     except Exception as e:
         logger.error("LLM prediction failed", exc_info=e)
