@@ -156,10 +156,20 @@ legacy NAT path or needs a new NAT compatibility workflow.
 
 For the default path:
 
+For each operation retained by the selected lifecycle branch, follow the
+`nemo-agent-config` confirmation requirement. Show the create command and ask
+for explicit confirmation immediately before running it:
+
 ```bash
 .venv/bin/nemo agents create \
   --name "$AGENT_NAME" \
   --agent-config "agents/$AGENT_NAME-spec/agent.yaml"
+```
+
+After create succeeds, show the deploy command and ask for explicit
+confirmation immediately before running it:
+
+```bash
 .venv/bin/nemo agents deploy \
   --agent "$AGENT_NAME" \
   --name "$DEPLOYMENT_NAME"
@@ -181,10 +191,19 @@ model, harness, and instructions look right before continuing.
 For an unchanged NAT workflow, registration defaults configs without
 `config_format` to `nat-workflow-v1`:
 
+Apply the same immediate confirmation requirement. Show the create command and
+wait for explicit confirmation before running it:
+
 ```bash
 .venv/bin/nemo agents create \
   --name "$AGENT_NAME" \
   --agent-config "$NAT_WORKFLOW_PATH"
+```
+
+After create succeeds, show the deploy command and wait for explicit
+confirmation before running it:
+
+```bash
 .venv/bin/nemo agents deploy \
   --agent "$AGENT_NAME" \
   --name "$DEPLOYMENT_NAME"
@@ -211,8 +230,14 @@ workflow and the user's stated requirements:
 Display each response verbatim. Stop and ask whether to adjust the agent or
 continue to evaluation.
 
-For a NAT-only run without `AGENT-SPEC.md`, stop after the smoke test unless the
-user asks to create a spec and continue through the spec-driven evaluation flow.
+Before Step 3, branch explicitly:
+
+1. For an unchanged NAT-only run without `AGENT-SPEC.md`, stop after the smoke
+   test. Do not execute Steps 3–5 and do not require an evaluation fileset.
+2. Continue into the spec-driven purpose selection and Data Designer flow only
+   when the user requests it and `agents/$AGENT_NAME-spec/AGENT-SPEC.md` exists.
+   If the user requests evaluation but the spec is absent, create and confirm
+   the spec first; do not continue to Step 3 yet.
 
 ## Step 3: Generate synthetic data
 
