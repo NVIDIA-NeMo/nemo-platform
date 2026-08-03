@@ -480,7 +480,11 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             if backend.client is None:
                 raise ValueError("Platform client is required for insight trace loading")
             assert task_template_ref is not None
-            eval_author = EvalAuthor(experiment_dir=self.working_dir, config=config.eval_author)
+            eval_author = EvalAuthor(
+                experiment_dir=self.working_dir,
+                config=config.eval_author,
+                reporter=reporter,
+            )
             eval_author_result = await eval_author.run(
                 insight=insight,
                 agent_path=agent_path,
