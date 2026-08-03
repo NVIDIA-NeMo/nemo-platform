@@ -35,7 +35,10 @@ class ModelsConfig(BaseModel):
 
 
 class ExperimentalistConfig(NemoConfig):
-    """Endpoint and model settings for this install.
+    """LLM endpoint and model tiers the Experimentalist's own agents run on.
+
+    These are the models that *do* the optimizing -- proposing, coding, analyzing. The
+    agent being optimized is configured separately, by whatever the evaluator hands it.
 
     ``plugin_name`` gives this the ``NEMO_EXPERIMENTALIST_`` environment prefix and the
     ``experimentalist:`` section of the platform config file. Precedence is the platform's:
@@ -49,6 +52,15 @@ class ExperimentalistConfig(NemoConfig):
     plugin_name: ClassVar[str] = "experimentalist"
     plugin_description: ClassVar[str] = "Endpoint and model settings for the NeMo Experimentalist."
 
-    api_base: str | None = Field(default=None, description="Base URL of the OpenAI-compatible endpoint.")
-    api_key: SecretStr | None = Field(default=None, description="Credential for that endpoint.")
-    models: ModelsConfig = Field(default_factory=ModelsConfig, description="Model name per tier.")
+    api_base: str | None = Field(
+        default=None,
+        description="Base URL of the OpenAI-compatible endpoint the optimizer's agents call.",
+    )
+    api_key: SecretStr | None = Field(
+        default=None,
+        description="Credential for that endpoint. Prefer NEMO_EXPERIMENTALIST_API_KEY over writing it here.",
+    )
+    models: ModelsConfig = Field(
+        default_factory=ModelsConfig,
+        description="Model per tier, named as your endpoint names it. Every tier is required.",
+    )
