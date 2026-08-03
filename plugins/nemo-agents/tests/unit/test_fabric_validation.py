@@ -16,6 +16,8 @@ from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric.validation import (
     FabricPreflightError,
     FabricValidationError,
+    doctor_fabric_config,
+    plan_fabric_config,
     validate_fabric_config,
     validate_platform_agent_config,
 )
@@ -116,6 +118,27 @@ def _example_platform_config() -> dict[str, Any]:
 
 @pytest.mark.asyncio
 class TestValidateFabricConfig:
+    async def test_plan_only_does_not_run_doctor(self, fake_fabric_client: None) -> None:
+        fabric_config = object()
+        fabric = _FakeFabric(plan={"plan": "ok"})
+
+        result = await plan_fabric_config(fabric_config, base_dir=Path("/tmp/agent"), fabric=fabric)
+
+        assert result == {"plan": "ok"}
+        assert fabric.plan_calls == [{"fabric_config": fabric_config, "base_dir": Path("/tmp/agent")}]
+        assert fabric.doctor_calls == []
+
+    async def test_doctor_only_does_not_run_plan(self, fake_fabric_client: None) -> None:
+        fabric_config = object()
+        doctor_report = _FakeDoctorReport({"status": "pass", "checks": []})
+        fabric = _FakeFabric(doctor_report=doctor_report)
+
+        result = await doctor_fabric_config(fabric_config, base_dir=Path("/tmp/agent"), fabric=fabric)
+
+        assert result is doctor_report
+        assert fabric.plan_calls == []
+        assert fabric.doctor_calls == [{"fabric_config": fabric_config, "base_dir": Path("/tmp/agent")}]
+
     async def test_returns_plan_and_doctor_report(self, fake_fabric_client: None) -> None:
         fabric_config = object()
         doctor_report = _FakeDoctorReport({"status": "pass", "checks": [{"name": "adapter", "status": "pass"}]})

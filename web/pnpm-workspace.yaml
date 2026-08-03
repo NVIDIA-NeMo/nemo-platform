@@ -6,7 +6,12 @@ packages:
 # https://pnpm.io/settings#overrides
 overrides:
   '@codemirror/view': 6.43.1
-  'brace-expansion@1.1.15': 1.1.16
+  'brace-expansion@<1.1.18': 1.1.18
+  'brace-expansion@>=4.0.0 <5.0.9': 5.0.9
+  'fast-uri@<3.1.4': ^3.1.4
+  'js-yaml@>=4.0.0 <4.3.0': ^4.3.0
+  'linkify-it@<5.0.2': ^5.0.2
+  'postcss@<8.5.18': ^8.5.18
   'shell-quote@1.8.4': 1.9.0
 
 # https://pnpm.io/catalogs
@@ -45,7 +50,7 @@ catalog:
   hyparquet: ^1.8.1
   p-limit: ^6.2.0
   msw: ^2.13.2
-  postcss: ^8.5.15
+  postcss: ^8.5.18
   prettier: ^3.5.3
   oidc-client-ts: ^3.3.0
   openai: ^4.67.3
