@@ -69,6 +69,7 @@ Eval rows must use the **same CHAT `messages` shape** as training. Do not flatte
 LoRA inference and eval use the **provider** gateway on the **base** entity (`/provider/<name>/-/v1`, `model: default--<adapter>`). Base model uses the model-entity path. Full SFT / merged checkpoints use the **output** model entity's model-entity URL — deploy first. See `post-training-eval.md` and the **Using the adapter** / **Using the fine-tuned model** sections in `reporting.md`.
 
 Shared helpers and compare CLI: `references/eval_helpers.py`. Full workflow: `references/post-training-eval.md`.
+
 ## NeMo-RL (DPO) — preference data
 
 DPO trains on **preference pairs**, not prompt→completion examples. The `rl` backend takes a **single** dataset fileset that must contain **both** `training.jsonl` **and** `validation.jsonl` at the fileset root (unlike automodel/unsloth, the dataset block in the job JSON is a single ref — there is no separate validation ref).
