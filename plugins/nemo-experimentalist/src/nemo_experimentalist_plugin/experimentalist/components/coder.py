@@ -740,9 +740,9 @@ class Coder(Agent):
         ## Pre-staged destination — DO NOT re-copy from the ancestor
         The destination directory ``agents/{candidate.id}/`` has ALREADY been
         populated by the framework with a copy of the ancestor's source files
-        (everything except ``architecture.md``, which the framework regenerates).
-        Runtime harness files are inherited when present but are not part of the
-        agent behavior being optimized.
+        (everything except ``architecture.md``, which describes the ancestor and is
+        re-seeded and rewritten after you are done). Runtime harness files are inherited
+        when present but are not part of the agent behavior being optimized.
         Open and modify files in place. You do NOT need to copy anything in.
 
         ## Required reading before editing

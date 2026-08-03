@@ -52,19 +52,26 @@ PRIMARY_SPLIT = "validation"
 #: Display handle of the candidate that is the agent under test, unchanged.
 BASELINE_LABEL = "agent-0"
 
-#: What a fork must not carry from its source, composed from the three owners that
-#: actually contribute names: this run's own layout, generic developer hygiene, and
-#: the evaluator's scratch. Hardcoding one flat list is how a third-party strategy's
-#: real output gets stripped.
+#: What a fork must not carry from its source, composed from the owners that actually
+#: contribute names: this run's own layout, generic developer hygiene, the evaluator's
+#: scratch, and the strategy's generated documentation. Hardcoding one flat list is how
+#: a third-party strategy's real output gets stripped.
 _RUN_LAYOUT = frozenset({"eval-and-optimize", "artifacts", "dataset", "scratch"})
 _HYGIENE = frozenset({"__pycache__", ".git", ".runtime-cache", ".claude", ".uv", ".venv"})
 _EVALUATOR_SCRATCH_GLOBS = ("*traces*", "*eval-and-optimize_*")
+#: Generated *about* the ancestor rather than part of it, and the Proposer's only view of
+#: an agent — it is told to reason from this file and not to read source. The Builder
+#: re-seeds it from the ancestor after building and rewrites it against the finished
+#: source, so the fork must leave it absent: absence is what tells the Proposer it has no
+#: model of a candidate. Inherit it and a failed regeneration silently hands the Proposer
+#: the *ancestor's* graph instead, which is worse than handing it nothing.
+_GENERATED_DOCS = frozenset({"architecture.md"})
 
 
 def _ignore_forked(directory: str, contents: list[str]) -> set[str]:
     """Names a forked candidate must not inherit from the directory it came from."""
     del directory
-    skip = _RUN_LAYOUT | _HYGIENE
+    skip = _RUN_LAYOUT | _HYGIENE | _GENERATED_DOCS
     return {
         name
         for name in contents

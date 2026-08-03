@@ -182,3 +182,25 @@ async def test_candidates_are_listed_from_the_store_not_from_a_directory_walk(tm
     assert (tmp_path / "eval-and-optimize" / "candidates" / f"{committed.id}.json").is_file()
     # Metadata never lands inside the artifact it describes.
     assert not (path.parent / "metadata.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_a_fork_does_not_inherit_the_ancestors_architecture_doc(tmp_path: Path) -> None:
+    """The Builder is told its directory holds the ancestor's source and nothing else.
+
+    `architecture.md` describes the ancestor, not the candidate. Inheriting it makes that
+    statement false at the moment the Builder reads it, and hands a code-writing agent a
+    description that no longer matches what it is about to change. The Coder re-seeds it
+    from the ancestor afterwards, to edit in place against the finished source.
+    """
+    backend = FakeBackend()
+    ctx = make_context(root=tmp_path, backend=backend)
+    baseline = await ctx.commit_candidate(proposal=None, artifact=await ctx.fork(None), description="baseline")
+    ancestor_dir = ctx.candidate_dir(baseline)
+    (ancestor_dir / "main.py").write_text("print('ancestor')\n")
+    (ancestor_dir / "architecture.md").write_text("# describes agent-0\n")
+
+    forked = await ctx.fork(_proposal(ancestor=baseline.id))
+
+    assert (forked / "main.py").read_text() == "print('ancestor')\n"
+    assert not (forked / "architecture.md").exists()
