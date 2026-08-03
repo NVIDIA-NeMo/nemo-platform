@@ -134,7 +134,7 @@ class Proposer(Agent):
                 arch_text = f"(architecture.md missing for {s.label})"
             try:
                 candidate = self.workspace.get_metadata(s.label)
-                meta = candidate.slim().model_dump(exclude={"artifacts"})
+                meta = candidate.slim().model_dump()
             except Exception:  # noqa: BLE001
                 meta = {}
             survivor_context.append(

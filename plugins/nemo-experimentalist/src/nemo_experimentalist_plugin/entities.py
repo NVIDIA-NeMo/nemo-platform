@@ -442,9 +442,9 @@ class Candidate(NemoEntity, entity_type="candidate"):
     working directory, evolution-tree key, and ``ancestor`` references; it is
     unique within a run, not globally.
 
-    ``artifacts`` is a runtime-only dict (excluded from serialization) that
-    the loop uses to attach transient objects (e.g. agent directory paths)
-    without polluting the persisted record.
+    A candidate's completed artifact is not stored here yet: it is still the
+    ``agents/<label>/`` directory the loop materialises. ``artifact: ResourceRef``
+    and runner-owned storage arrive with the candidate contract (plan §3.1, M1).
     """
 
     workspace: str = Field(
@@ -487,13 +487,6 @@ class Candidate(NemoEntity, entity_type="candidate"):
             "cause; the coder uses them to validate the fix during subproblem refinement."
         ),
     )
-    optimization_params: dict[str, Any] | None = Field(
-        default=None,
-        description=(
-            "The genotype this candidate encodes, when it has one — hyper-parameters for a "
-            "numeric trial. Read back to breed the next generation."
-        ),
-    )
     rewards: dict[str, RewardRecord] = Field(
         default_factory=dict,
         description=(
@@ -514,11 +507,6 @@ class Candidate(NemoEntity, entity_type="candidate"):
     killed_round: int | None = Field(
         default=None,
         description="Round in which this candidate was eliminated. None means still alive.",
-    )
-    artifacts: dict[str, Any] = Field(
-        default_factory=dict,
-        exclude=True,
-        description="Runtime-only artifacts (not persisted to the entity store).",
     )
 
     def __repr__(self) -> str:

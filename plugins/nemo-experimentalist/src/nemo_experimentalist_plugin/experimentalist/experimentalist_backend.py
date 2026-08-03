@@ -535,7 +535,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(
             json.dumps(
-                {**candidate.model_dump(exclude={"artifacts"}), "id": candidate.id},
+                {**candidate.model_dump(), "id": candidate.id},
                 indent=2,
             )
         )
@@ -553,7 +553,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         p = self._candidate_path(candidate.label)
         p.write_text(
             json.dumps(
-                {**candidate.model_dump(exclude={"artifacts"}), "id": candidate.id},
+                {**candidate.model_dump(), "id": candidate.id},
                 indent=2,
             )
         )
