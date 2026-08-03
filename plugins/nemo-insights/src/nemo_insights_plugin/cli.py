@@ -54,7 +54,7 @@ class _ResolvedAnalysis:
     workspace: str
     base_url: str
     insights_output: Path | None
-    profile_output: Path | None
+    local_only: bool
     profile_dir: Path | None
     spec_checks: tuple[CheckResult, ...]
 
@@ -104,6 +104,7 @@ def _resolve_analysis(
     base_url: str | None,
     profile_path: Path | None,
     insights_output: Path | None,
+    local_only: bool,
 ) -> _ResolvedAnalysis:
     profile, profile_error = _load_profile_or_error(profile_path)
     if profile_error is not None:
@@ -131,10 +132,14 @@ def _resolve_analysis(
     spec_content, spec_checks = read_agent_spec(spec_path, spec_error)
 
     resolved_base_url = resolve_base_url(base_url)
-    profile_output = None
-    if insights_output is None and profile is not None:
-        profile_output = profile.profile_dir / ".nemo-optimizer" / "insights.yaml"
-    resolved_output = insights_output if insights_output is not None else profile_output
+    resolved_output = insights_output
+    if local_only and resolved_output is None:
+        if profile is None:
+            raise ProfileError(
+                "--local-only has nowhere to write: no optimizer.yaml profile was found. "
+                "Create a profile beside your agent or pass --insights-file-output with an explicit path."
+            )
+        resolved_output = profile.profile_dir / ".nemo-optimizer" / "insights.yaml"
     validate_insights_file(resolved_output)
 
     return _ResolvedAnalysis(
@@ -143,7 +148,7 @@ def _resolve_analysis(
         workspace=resolved_workspace,
         base_url=resolved_base_url,
         insights_output=resolved_output,
-        profile_output=profile_output,
+        local_only=local_only,
         profile_dir=profile.profile_dir if profile is not None else None,
         spec_checks=tuple(spec_checks),
     )
@@ -154,9 +159,10 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
     checks.extend(check_credentials(analysis.profile_dir, probes=_PREFLIGHT_PROBES))
     _preflight_or_exit(checks)
 
-    if analysis.profile_output is not None:
-        analysis.profile_output.parent.mkdir(parents=True, exist_ok=True)
-        typer.echo(f"Insights file: {analysis.profile_output}", err=True)
+    if analysis.insights_output is not None:
+        analysis.insights_output.parent.mkdir(parents=True, exist_ok=True)
+        role = "local only" if analysis.local_only else "mirror of the platform"
+        typer.echo(f"Insights file ({role}): {analysis.insights_output}", err=True)
     try:
         try:
             client = make_client(analysis.base_url)
@@ -169,6 +175,7 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             base_url=analysis.base_url,
             client=client,
             insights_output=analysis.insights_output,
+            local_only=analysis.local_only,
             verbose=verbose,
         )
     except AgentRunError as exc:
@@ -225,10 +232,21 @@ def analyze(
         None,
         "--insights-file-output",
         help=(
-            "Read and write insights from this local YAML file instead "
-            "of the Insights plugin API. Lets the analyst run against a "
-            "deployment that hosts observability data but not this "
-            "plugin; each run merges into the file. Trace/feedback reads "
+            "Also write insights to this local YAML file. Insights go to "
+            "the platform first and the file mirrors what was stored, "
+            "platform ids included; each run merges into the file. Combine "
+            "with --local-only to write the file and nothing else."
+        ),
+    ),
+    local_only: bool = typer.Option(
+        False,
+        "--local-only",
+        help=(
+            "Do not write insights to the platform; keep them in the local "
+            "YAML file only. Lets the analyst run against a deployment that "
+            "hosts observability data but not the Insights plugin. Writes to "
+            "--insights-file-output, or to <profile-dir>/.nemo-optimizer/"
+            "insights.yaml when a profile is discovered. Trace/feedback reads "
             "still hit --base-url."
         ),
     ),
@@ -248,7 +266,8 @@ def analyze(
     Builds the analyst agent with ``--agent`` (and optional
     ``--agent-spec``) formatted into its instructions and tools scoped
     to ``--agent`` / ``--workspace`` / ``--base-url``, runs it, and
-    prints whatever the agent returns.
+    prints whatever the agent returns. Insights are written to the
+    platform unless ``--local-only`` is passed.
     """
     try:
         analysis = _resolve_analysis(
@@ -258,6 +277,7 @@ def analyze(
             base_url=base_url,
             profile_path=profile_path,
             insights_output=insights_output,
+            local_only=local_only,
         )
         output = asyncio.run(_run_analysis(analysis, verbose=verbose))
     except (ProfileError, EnvFileError, InsightsFileError, OSError, UnicodeError) as exc:

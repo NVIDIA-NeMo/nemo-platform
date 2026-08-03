@@ -12,12 +12,14 @@ import httpx
 import pytest
 import yaml
 from nemo_insights_plugin.analyst.analyst_backend import (
+    InsightsFileStore,
     LocalAnalystBackend,
     RemoteAnalystBackend,
     _merge_eval_filter,
     _merge_since_filter,
+    make_analyst_backend,
 )
-from nemo_insights_plugin.analyst.result import AnalystResult, InsightUpdate
+from nemo_insights_plugin.analyst.result import AnalystResult, InsightUpdate, NewInsight
 from nemo_insights_plugin.config import (
     AnalystSchedulerConfig,
     Frequency,
@@ -29,6 +31,8 @@ from nemo_insights_plugin.entities import (
     AnalysisConfig,
     AnalysisConfigStatus,
     AnalysisRunStatus,
+    Insight,
+    InsightStatus,
 )
 from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
 from nemo_insights_plugin.schedule import is_due, previous_scheduled
@@ -96,6 +100,146 @@ async def test_remote_persist_validates_updates_without_trace_refs() -> None:
     assert "- updated: missing-insight" not in report
 
 
+_STAMP = datetime(2026, 6, 4, 12, tzinfo=timezone.utc)
+
+
+class _RecordingInsights:
+    """Stand-in for the Insights SDK resource that assigns platform ids."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, Insight] = {}
+
+    async def create(
+        self,
+        *,
+        workspace: str,
+        title: str,
+        agent: str,
+        description: str,
+        status: InsightStatus,
+        trace_refs: list[str],
+    ) -> Insight:
+        insight_id = f"insight-remote-{len(self.rows) + 1}"
+        row = Insight(
+            workspace=workspace,
+            name=f"{insight_id}-slug",
+            title=title,
+            agent=agent,
+            description=description,
+            status=status,
+            trace_refs=list(trace_refs or []),
+        )
+        row._id = insight_id
+        row._created_at = _STAMP
+        row._updated_at = _STAMP
+        self.rows[insight_id] = row
+        return row
+
+    async def get(self, *, workspace: str, insight_id: str) -> Insight:
+        del workspace
+        return self.rows[insight_id]
+
+    async def update(self, *, workspace: str, insight_id: str, trace_refs: list[str]) -> Insight:
+        del workspace
+        row = self.rows[insight_id]
+        row.trace_refs = list(trace_refs)
+        return row
+
+
+def _remote_backend_with_mirror(path: Path) -> tuple[RemoteAnalystBackend, _RecordingInsights]:
+    insights = _RecordingInsights()
+    client = SimpleNamespace(insights=SimpleNamespace(insights=insights))
+    backend = RemoteAnalystBackend(client, mirror=InsightsFileStore(path))  # type: ignore[arg-type]
+    return backend, insights
+
+
+@pytest.mark.asyncio
+async def test_remote_persist_mirrors_platform_records_to_the_file(tmp_path: Path) -> None:
+    path = tmp_path / "insights.yaml"
+    backend, _ = _remote_backend_with_mirror(path)
+    result = AnalystResult(
+        summary="Found one.",
+        new_insights=[NewInsight(title="Retrieval drops context", description="Long inputs.", trace_refs=["t1"])],
+    )
+
+    report = await backend.persist_result(workspace="default", agent="research-agent", result=result)
+
+    records = yaml.safe_load(path.read_text(encoding="utf-8"))["insights"]
+    assert [r["id"] for r in records] == ["insight-remote-1"]
+    assert records[0]["trace_refs"] == ["t1"]
+    assert records[0]["created_at"] == _STAMP.isoformat()
+    assert f"- mirrored 1 insight(s) to {path}" in report
+
+
+@pytest.mark.asyncio
+async def test_mirror_updates_match_platform_ids_across_runs(tmp_path: Path) -> None:
+    path = tmp_path / "insights.yaml"
+    backend, _ = _remote_backend_with_mirror(path)
+    await backend.persist_result(
+        workspace="default",
+        agent="research-agent",
+        result=AnalystResult(
+            summary="Found one.",
+            new_insights=[NewInsight(title="Retrieval drops context", description="Long inputs.", trace_refs=["t1"])],
+        ),
+    )
+
+    await backend.persist_result(
+        workspace="default",
+        agent="research-agent",
+        result=AnalystResult(
+            summary="More evidence.",
+            updated_insights=[InsightUpdate(id="insight-remote-1", trace_refs=["t2"])],
+        ),
+    )
+
+    records = yaml.safe_load(path.read_text(encoding="utf-8"))["insights"]
+    assert len(records) == 1, "the second run must update the mirrored record, not append a second one"
+    assert records[0]["trace_refs"] == ["t1", "t2"]
+
+
+@pytest.mark.asyncio
+async def test_mirror_write_failure_warns_without_failing_the_run(tmp_path: Path) -> None:
+    blocked = tmp_path / "blocked"
+    blocked.write_text("not a directory", encoding="utf-8")
+    backend, insights = _remote_backend_with_mirror(blocked / "insights.yaml")
+    result = AnalystResult(
+        summary="Found one.",
+        new_insights=[NewInsight(title="Retrieval drops context", description="Long inputs.")],
+    )
+
+    report = await backend.persist_result(workspace="default", agent="research-agent", result=result)
+
+    assert "- created: Retrieval drops context" in report
+    assert "could not be written" in report
+    assert list(insights.rows) == ["insight-remote-1"], "the platform write is the source of truth and must stand"
+
+
+def test_make_analyst_backend_defaults_to_the_platform(tmp_path: Path) -> None:
+    client = SimpleNamespace()
+
+    plain = make_analyst_backend(client=client, insights_output=None)  # type: ignore[arg-type]
+    mirrored = make_analyst_backend(client=client, insights_output=str(tmp_path / "insights.yaml"))  # type: ignore[arg-type]
+
+    assert isinstance(plain, RemoteAnalystBackend) and plain.mirror is None
+    assert isinstance(mirrored, RemoteAnalystBackend)
+    assert mirrored.mirror is not None and mirrored.mirror.path == tmp_path / "insights.yaml"
+
+
+def test_make_analyst_backend_local_only_requires_a_path(tmp_path: Path) -> None:
+    client = SimpleNamespace()
+
+    local = make_analyst_backend(  # type: ignore[arg-type]
+        client=client,  # type: ignore[arg-type]
+        insights_output=str(tmp_path / "insights.yaml"),
+        local_only=True,
+    )
+    assert isinstance(local, LocalAnalystBackend)
+
+    with pytest.raises(ValueError, match="requires an insights output path"):
+        make_analyst_backend(client=client, insights_output=None, local_only=True)  # type: ignore[arg-type]
+
+
 def test_local_backend_reads_and_writes_insights_file_with_explicit_utf8(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -116,8 +260,8 @@ def test_local_backend_reads_and_writes_insights_file_with_explicit_utf8(
     monkeypatch.setattr(Path, "write_text", spy_write_text)
 
     backend = LocalAnalystBackend(client=SimpleNamespace(), path=tmp_path / "insights.yaml")  # type: ignore[arg-type]
-    backend._write_records([])
-    backend._read_records()
+    backend.store.write_records([])
+    backend.store.read_records()
 
     assert write_calls[-1].get("encoding") == "utf-8"
     assert read_calls[-1].get("encoding") == "utf-8"
@@ -128,7 +272,7 @@ def test_local_backend_write_preserves_other_top_level_keys(tmp_path: Path) -> N
     path.write_text("metadata: retained\ninsights:\n- id: stale\n", encoding="utf-8")
     backend = LocalAnalystBackend(client=SimpleNamespace(), path=path)  # type: ignore[arg-type]
 
-    backend._write_records([{"id": "insight-1"}])
+    backend.store.write_records([{"id": "insight-1"}])
 
     assert yaml.safe_load(path.read_text(encoding="utf-8")) == {
         "metadata": "retained",

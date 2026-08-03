@@ -90,7 +90,50 @@ def test_analyze_runs_flag_free_from_profile(app: typer.Typer, profile_tree: Pat
     assert recorder.kwargs["agent"] == "flight-planner"
     assert recorder.kwargs["workspace"] == "flight-workspace"
     assert recorder.kwargs["agent_spec"] == "# Flight planner"
+    assert recorder.kwargs["insights_output"] is None
+    assert recorder.kwargs["local_only"] is False
+
+
+def test_local_only_defaults_to_the_profile_insights_file(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["run", "--local-only"])
+
+    assert result.exit_code == 0, result.output
+    assert recorder.kwargs is not None
     assert recorder.kwargs["insights_output"] == profile_tree / ".nemo-optimizer" / "insights.yaml"
+    assert recorder.kwargs["local_only"] is True
+
+
+def test_local_only_without_profile_or_path_errors(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["run", "--agent", "flight-planner", "--local-only"])
+
+    assert result.exit_code == 1
+    assert "--local-only has nowhere to write" in result.output
+    assert "--insights-file-output" in result.output
+    assert recorder.kwargs is None
+
+
+def test_insights_file_output_alone_still_writes_to_the_platform(
+    app: typer.Typer, profile_tree: Path, tmp_path: Path, monkeypatch
+) -> None:
+    recorder = AnalystRecorder()
+    output = tmp_path / "mirror.yaml"
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["run", "--insights-file-output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert recorder.kwargs is not None
+    assert recorder.kwargs["insights_output"] == output
+    assert recorder.kwargs["local_only"] is False
 
 
 def test_analyze_flags_override_profile(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:
@@ -378,7 +421,7 @@ def test_malformed_discovered_profile_errors_without_agent(app: typer.Typer, tmp
     assert recorder.kwargs is None
 
 
-def test_explicit_output_overrides_profile_default(
+def test_explicit_output_overrides_profile_default_under_local_only(
     app: typer.Typer, profile_tree: Path, tmp_path: Path, monkeypatch
 ) -> None:
     recorder = AnalystRecorder()
@@ -386,11 +429,12 @@ def test_explicit_output_overrides_profile_default(
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
 
-    result = runner.invoke(app, ["run", "--insights-file-output", str(output)])
+    result = runner.invoke(app, ["run", "--local-only", "--insights-file-output", str(output)])
 
     assert result.exit_code == 0, result.output
     assert recorder.kwargs is not None
     assert recorder.kwargs["insights_output"] == output
+    assert recorder.kwargs["local_only"] is True
 
 
 def test_missing_profile_and_agent_errors(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
@@ -564,7 +608,7 @@ def test_analyze_rejects_invalid_existing_insights_file_before_runner(
     output.write_bytes(payload)
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
-    arguments = ["run", "--insights-file-output", str(output)] if explicit else ["run"]
+    arguments = ["run", "--insights-file-output", str(output), "--local-only"] if explicit else ["run", "--local-only"]
 
     result = runner.invoke(app, arguments)
 
@@ -607,7 +651,7 @@ def test_analyze_rejects_invalid_insights_records_before_runner(
     output.write_bytes(payload)
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
-    arguments = ["run", "--insights-file-output", str(output)] if explicit else ["run"]
+    arguments = ["run", "--insights-file-output", str(output), "--local-only"] if explicit else ["run", "--local-only"]
 
     result = runner.invoke(app, arguments)
 
@@ -634,7 +678,7 @@ def test_analyze_accepts_existing_insights_file_without_insights_key(
     output.write_text("metadata: retained\n", encoding="utf-8")
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
-    arguments = ["run", "--insights-file-output", str(output)] if explicit else ["run"]
+    arguments = ["run", "--insights-file-output", str(output), "--local-only"] if explicit else ["run", "--local-only"]
 
     result = runner.invoke(app, arguments)
 
