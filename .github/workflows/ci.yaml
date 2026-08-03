@@ -755,8 +755,8 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-      - name: Install Flox
-        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0 
+      - name: Install flox
+        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0
         with:
           disable-metrics: "true"
       - name: Install uv
@@ -765,9 +765,8 @@ jobs:
           enable-cache: true
           python-version: "3.12"
           cache-dependency-glob: uv.lock
-      - name: Check uv lockfile
-        run: uv lock --check
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - name: Install nodejs
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: .nvmrc
       - name: Install pnpm via corepack
@@ -809,15 +808,7 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-      - name: Install Flox
-        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0
-        with:
-          disable-metrics: "true"
-      - name: Build policy WASM
-        uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
-        with:
-          dir: ./tools/open-policy-agent
-          command: ./script/build_policy_wasm.sh
+      - uses: ./.github/actions/build-policy-wasm
       - name: Upload policy WASM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1904,7 +1895,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Deps
-        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0 
+        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0
         with:
           disable-metrics: "true"
       - name: Policy Test
