@@ -73,17 +73,21 @@ config file or through the environment, and **the environment wins**.
 | `NEMO_EXPERIMENTALIST_MODELS_MID` | `models.mid` | — (required) | trajectory scorer, architecture doc |
 | `NEMO_EXPERIMENTALIST_MODELS_FAST` | `models.fast` | — (required) | Terminator, goal tree, summarizers |
 
+The tiers exist to buy capability where it changes the result and speed where it does not,
+so give them different models — smart writes the code, fast runs the high-volume judging:
+
 ```bash
 export NEMO_EXPERIMENTALIST_API_KEY=sk-...
-export NEMO_EXPERIMENTALIST_MODELS_SMART=openai/openai/openai/gpt-5-mini
-export NEMO_EXPERIMENTALIST_MODELS_MID=openai/openai/openai/gpt-5-mini
-export NEMO_EXPERIMENTALIST_MODELS_FAST=openai/openai/openai/gpt-5-mini
+export NEMO_EXPERIMENTALIST_MODELS_SMART=openai/openai/openai/gpt-5.6-sol
+export NEMO_EXPERIMENTALIST_MODELS_MID=openai/openai/openai/gpt-5.6-terra
+export NEMO_EXPERIMENTALIST_MODELS_FAST=openai/openai/openai/gpt-5.6-luna
 ```
 
 Model names have no default: a name is only meaningful against a specific endpoint, so
 an unset tier fails before the run starts rather than at the first LLM call. Name them
-as *your* endpoint does — `openai/openai/openai/gpt-5-mini` on the NVIDIA gateway,
-`gpt-5-mini` against OpenAI directly.
+as *your* endpoint does — `openai/openai/openai/gpt-5.6-sol` on the NVIDIA gateway,
+`gpt-5.6-sol` against OpenAI directly. The
+[example agent's `.env.example`](examples/tau3-nooa-agent/.env.example) is a working set.
 
 Credentials are the one place a default applies: when the API base is the NVIDIA gateway,
 a set `INFERENCE_API_KEY` fills `NEMO_EXPERIMENTALIST_API_KEY`. A custom base never
