@@ -15,7 +15,6 @@ import logging
 import random
 import shutil
 from collections import defaultdict
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal, cast, get_args
 
@@ -121,20 +120,6 @@ _EXCLUDE_DIRS = {
     "scratch",
 }
 _EXCLUDE_GLOBS = {"*traces*", "*eval-and-optimize_*"}
-
-
-def _with_reward(
-    candidate: Candidate,
-    channel: str,
-    *,
-    metrics: dict[str, float] | None = None,
-    trials: Sequence[TrialResult] | None = None,
-    metadata: dict[str, Any] | None = None,
-) -> dict[str, RewardRecord]:
-    """The candidate's reward map with *channel* merged in, for an entity update."""
-    current = candidate.rewards.get(channel) or RewardRecord()
-    update = {k: v for k, v in (("metrics", metrics), ("trials", trials), ("metadata", metadata)) if v is not None}
-    return {**candidate.rewards, channel: current.model_copy(update=update)}
 
 
 def _warn_persistence_failure(operation: Literal["archive", "publish"], candidate: str, exc: Exception) -> None:
@@ -592,16 +577,13 @@ class EvolutionaryOptimizer(Agent):
                     candidate=candidates[0],
                     split="validation",
                 )
+                candidates[0].set_reward(
+                    "validation",
+                    metrics=validation_result.aggregate_metrics,
+                    trials=validation_result.trials,
+                )
                 await self._update_candidate(
                     candidates[0],
-                    updates={
-                        "rewards": _with_reward(
-                            candidates[0],
-                            "validation",
-                            metrics=validation_result.aggregate_metrics,
-                            trials=validation_result.trials,
-                        ),
-                    },
                     workspace=workspace,
                     backend=backend,
                     run_id=run_entity.id or "",
@@ -695,19 +677,16 @@ class EvolutionaryOptimizer(Agent):
                             candidate=survivor,
                             split="train",
                         )
+                        survivor.set_reward(
+                            "train",
+                            metrics=train_candidate_results[survivor.label].aggregate_metrics,
+                            trials=train_candidate_results[survivor.label].trials,
+                        )
                         await self._update_candidate(
                             survivor,
                             workspace=workspace,
                             backend=backend,
                             run_id=run_id,
-                            updates={
-                                "rewards": _with_reward(
-                                    survivor,
-                                    "train",
-                                    metrics=train_candidate_results[survivor.label].aggregate_metrics,
-                                    trials=train_candidate_results[survivor.label].trials,
-                                ),
-                            },
                         )
                         if reporter:
                             reporter.candidate_evaluated(
@@ -825,19 +804,16 @@ class EvolutionaryOptimizer(Agent):
                             candidate=candidate,
                             split="validation",
                         )
+                        candidate.set_reward(
+                            "validation",
+                            metrics=validation_candidate_results[candidate.label].aggregate_metrics,
+                            trials=validation_candidate_results[candidate.label].trials,
+                        )
                         await self._update_candidate(
                             candidate,
                             workspace=workspace,
                             backend=backend,
                             run_id=run_id,
-                            updates={
-                                "rewards": _with_reward(
-                                    candidate,
-                                    "validation",
-                                    metrics=validation_candidate_results[candidate.label].aggregate_metrics,
-                                    trials=validation_candidate_results[candidate.label].trials,
-                                ),
-                            },
                         )
                         if reporter:
                             reporter.candidate_evaluated(
@@ -857,17 +833,16 @@ class EvolutionaryOptimizer(Agent):
                     )
                     for candidate in candidates:
                         if candidate.label in trajectory_results:
+                            candidate.set_reward(
+                                "validation-trajectory",
+                                metrics=trajectory_results[candidate.label]["reward"],
+                            )
                             await self._update_candidate(
                                 candidate,
                                 workspace=workspace,
                                 backend=backend,
                                 run_id=run_id,
                                 updates={
-                                    "rewards": _with_reward(
-                                        candidate,
-                                        "validation-trajectory",
-                                        metrics=trajectory_results[candidate.label]["reward"],
-                                    ),
                                     "trajectory_detail": trajectory_results[candidate.label]["details"],
                                 },
                             )
@@ -1539,17 +1514,14 @@ class EvolutionaryOptimizer(Agent):
                 candidate=candidate,
                 split="insight",
             )
+            candidate.set_reward(
+                "insight",
+                metrics=result.aggregate_metrics,
+                trials=result.trials,
+                metadata={"suite_identity": provenance.identity, "metric_keys": list(metric_keys)},
+            )
             await self._update_candidate(
                 candidate,
-                updates={
-                    "rewards": _with_reward(
-                        candidate,
-                        "insight",
-                        metrics=result.aggregate_metrics,
-                        trials=result.trials,
-                        metadata={"suite_identity": provenance.identity, "metric_keys": list(metric_keys)},
-                    ),
-                },
                 workspace=workspace,
                 backend=backend,
                 run_id=run_id,
