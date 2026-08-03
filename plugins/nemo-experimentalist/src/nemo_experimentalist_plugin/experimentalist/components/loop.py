@@ -565,9 +565,10 @@ class EvolutionaryOptimizer(Agent):
 
         To avoid getting stuck on the same agents round after round:
         1. Always include at least 1 candidate that was newly created this round. Look up
-           `self.workspace.get_metadata(c.name)["round"]` for each candidate; new candidates
-           are the ones whose round equals the max round across `ranked`.
-        2. Prefer candidates with different optimization_type values or that address different root causes.
+           `self.workspace.get_metadata(c.label).generation` for each candidate; new
+           candidates are the ones whose generation equals the max across `ranked`.
+        2. Prefer candidates whose `generated_from.payload` shows different
+           optimization_type values, or that address different root causes.
         3. If all new candidates sit on a worse Pareto front, still include the best new candidate.
 
         ## MANDATORY: Prefer agents with complementary strengths
@@ -577,7 +578,7 @@ class EvolutionaryOptimizer(Agent):
         dimensions where another trails):
 
         ```python
-        rewards = {c.id: self.workspace.get_metadata(c.name).reward("validation").metrics or {} for c in ranked}
+        rewards = {c.label: self.workspace.get_metadata(c.label).reward("validation").metrics or {} for c in ranked}
         ```
 
         Between 1 to 3 survivors per round.
@@ -599,14 +600,14 @@ class EvolutionaryOptimizer(Agent):
         Read each agent's per-dimension train rewards from metadata:
 
         ```python
-        rewards = {c.id: self.workspace.get_metadata(c.name).reward("train").metrics or {} for c in agent_ids}
+        rewards = {c.label: self.workspace.get_metadata(c.label).reward("train").metrics or {} for c in agent_ids}
         insight_rewards = {
-            c.id: self.workspace.get_metadata(c.name).reward("insight").metrics or {} for c in agent_ids
+            c.label: self.workspace.get_metadata(c.label).reward("insight").metrics or {} for c in agent_ids
         }
         all_candidates = [
             self.workspace.get_metadata(agent_id).slim() for agent_id in self.workspace.list_agents()
         ]
-        baseline = next((candidate for candidate in all_candidates if candidate.round == 0), None)
+        baseline = next((candidate for candidate in all_candidates if candidate.is_baseline), None)
         ```
 
         - Compare siblings: which optimization strategy worked better this round?
@@ -624,7 +625,7 @@ class EvolutionaryOptimizer(Agent):
 
         First, discover reward dimensions from metadata:
         ```python
-        candidate = self.workspace.get_metadata(agent_ids[0].name).slim()
+        candidate = self.workspace.get_metadata(agent_ids[0].label).slim()
         train_reward = candidate.reward("train").metrics or {}
         dim_keys = sorted(train_reward.keys())
         insight_dim_keys = sorted({key for reward in insight_rewards.values() for key in reward})

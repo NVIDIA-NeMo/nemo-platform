@@ -83,7 +83,7 @@ def test_round_analysis_contract_requires_separate_insight_suite_dimensions() ->
     assert "candidate.rewards" in skill_prompt
     assert "separate from train and validation rewards" in skill_prompt
     assert "insight_dim_keys" in merge_prompt
-    assert "candidate.round == 0" in merge_prompt
+    assert "candidate.is_baseline" in merge_prompt
     assert "must name every available Insight Suite dimension" in merge_prompt
     assert "Never blend those metrics into train/validation rewards" in merge_prompt
     assert "adaptive/development feedback" in merge_prompt
