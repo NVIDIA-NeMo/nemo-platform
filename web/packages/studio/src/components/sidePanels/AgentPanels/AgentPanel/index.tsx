@@ -10,7 +10,6 @@ import { AgentDetailsContent } from '@studio/components/sidePanels/AgentPanels/A
 import { ChatPlaygroundContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ChatPlaygroundContent';
 import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
 import type { AgentPanelTab } from '@studio/components/sidePanels/AgentPanels/AgentPanel/types';
-import { useAgentPanel } from '@studio/components/sidePanels/AgentPanels/AgentPanel/useAgentPanel';
 import { deriveWalkthroughStep } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
 import { WalkthroughCoachmarks } from '@studio/components/sidePanels/AgentPanels/AgentPanel/WalkthroughCoachmarks';
 import {
@@ -18,6 +17,7 @@ import {
   isAgentWalkthroughPending,
 } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
+import { useAgentDetails as useAgentPanel } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
 import { type ComponentProps, type FC, useEffect, useMemo, useRef, useState } from 'react';
 

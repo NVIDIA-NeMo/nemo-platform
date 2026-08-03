@@ -19,7 +19,6 @@ import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { ChatPlaygroundContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ChatPlaygroundContent';
 import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
-import { useAgentPanel } from '@studio/components/sidePanels/AgentPanels/AgentPanel/useAgentPanel';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -27,6 +26,7 @@ import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsLis
 import { DeploymentsTab } from '@studio/routes/agents/AgentDetailRoute/DeploymentsTab';
 import { DetailsTab } from '@studio/routes/agents/AgentDetailRoute/DetailsTab';
 import { EvaluationsTab } from '@studio/routes/agents/AgentDetailRoute/EvaluationsTab';
+import { useAgentDetails } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
 import { getAgentMonitorRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { Activity, ClipboardCheck, Dot, Rocket } from 'lucide-react';
@@ -67,7 +67,7 @@ export const AgentDetailRoute: FC = () => {
     healthyDeployments,
     isDeploying,
     isDeploymentsLoading,
-  } = useAgentPanel({ workspace, agentName, selectedDeploymentName });
+  } = useAgentDetails({ workspace, agentName, selectedDeploymentName });
 
   useBreadcrumbs({
     items: [

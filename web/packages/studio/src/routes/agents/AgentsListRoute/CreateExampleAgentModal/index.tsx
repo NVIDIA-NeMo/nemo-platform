@@ -9,7 +9,6 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import { loadSampleAgentConfig } from '@studio/api/agents/loadSampleAgentConfig';
-import { loadSampleAgentModelName } from '@studio/api/agents/loadSampleAgentModelName';
 import { getErrorMessage } from '@studio/api/common/utils';
 import {
   hasShownExampleAgentIntro,
@@ -35,6 +34,7 @@ import {
   pickModelNameForExample,
   SUGGESTED_MODEL_GROUP_LABELS,
 } from '@studio/util/buildSuggestedModelOptions';
+import { loadSampleAgentModelName } from '@studio/util/sampleAgents';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';

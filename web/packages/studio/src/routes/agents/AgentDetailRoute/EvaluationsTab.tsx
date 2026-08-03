@@ -9,7 +9,7 @@ import {
   evalJobDetailRoute,
   type EvalJobRow,
   hasMixedEvalKinds,
-} from '@studio/api/evaluation/evalJobs';
+} from '@studio/api/evaluation/utils';
 import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
 import { getAgentEvaluationsListRoute } from '@studio/routes/utils';
 import type { FC } from 'react';

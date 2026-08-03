@@ -22,7 +22,7 @@ import {
   evalJobDetailRoute,
   type EvalJobRow,
   hasMixedEvalKinds,
-} from '@studio/api/evaluation/evalJobs';
+} from '@studio/api/evaluation/utils';
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { deploymentStatusColor } from '@studio/components/sidePanels/AgentPanels/AgentPanel/helpers';
