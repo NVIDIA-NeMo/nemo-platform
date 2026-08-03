@@ -80,7 +80,6 @@ _CURRENT_SPAN_VALUE_COLUMNS = (
 )
 
 _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
-_UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 @dataclass(frozen=True)
@@ -94,7 +93,7 @@ class _TracePageRef:
         return cls(
             source_format=str(row["source_format"]),
             trace_id=str(row["id"]),
-            started_at_us=_datetime_to_unix_microseconds(row["started_at"]),
+            started_at_us=int(row["started_at_us"]),
         )
 
     @property
@@ -261,7 +260,8 @@ def _trace_page_sql(*, trace_index_sql: str, sort: str) -> str:
 
     return f"""
         SELECT
-            {_trace_select_columns(include_aggregates=False)}
+            {_trace_select_columns(include_aggregates=False)},
+            toUnixTimestamp64Micro(traces.started_at) AS started_at_us
         FROM ({trace_index_sql}) AS traces
         ORDER BY {_order_by(sort, table_alias="traces")}
         LIMIT %(limit)s OFFSET %(offset)s
@@ -450,20 +450,13 @@ def _trace_page_parameters(refs: Sequence[_TracePageRef]) -> dict[str, object]:
     }
 
 
-def _datetime_to_unix_microseconds(value: datetime) -> int:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    delta = value.astimezone(timezone.utc) - _UNIX_EPOCH
-    return ((delta.days * 86_400 + delta.seconds) * 1_000_000) + delta.microseconds
-
-
 def _reconcile_hydrated_page(
     page_refs: Sequence[_TracePageRef],
     hydrated_rows: Sequence[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[_TracePageRef]]:
-    rows_by_ref = {_TracePageRef.from_row(row): row for row in hydrated_rows}
-    rows = [rows_by_ref[ref] for ref in page_refs if ref in rows_by_ref]
-    dropped_refs = [ref for ref in page_refs if ref not in rows_by_ref]
+    rows_by_key = {(str(row["source_format"]), str(row["id"])): row for row in hydrated_rows}
+    rows = [rows_by_key[ref.trace_key] for ref in page_refs if ref.trace_key in rows_by_key]
+    dropped_refs = [ref for ref in page_refs if ref.trace_key not in rows_by_key]
     return rows, dropped_refs
 
 
