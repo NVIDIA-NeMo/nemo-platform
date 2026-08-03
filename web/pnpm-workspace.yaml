@@ -13,6 +13,7 @@ overrides:
   'linkify-it@<5.0.2': ^5.0.2
   'postcss@<8.5.18': ^8.5.18
   'shell-quote@1.8.4': 1.9.0
+  'undici@>=7.0.0 <7.29.0': ^7.29.0
 
 # https://pnpm.io/catalogs
 catalog:
@@ -62,7 +63,7 @@ catalog:
   react-dropzone: ^14.3.5
   react-hook-form: ^7.58.1
   react-oidc-context: ^3.3.0
-  react-router: ^7.18.2
+  react-router: ^8.3.0
   recharts: ^2.15.1
   storybook: ^10.5.5
   tailwindcss: ^4.1.11
