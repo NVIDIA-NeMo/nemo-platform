@@ -261,6 +261,8 @@ navigation:
         contents:
           - page: Deploy Agents
             path: ../../agents/deploy-agents.mdx
+          - page: Observe Agents
+            path: ../../agents/observability.mdx
           - page: Optimize Agents
             path: ../../agents/optimization.mdx
           - page: Secure Agents
@@ -403,6 +405,9 @@ navigation:
                 path: ../../evaluator/tutorials/run-llm-judge-evaluation.mdx
               - page: Define and Run Custom Python Metrics
                 path: ../../evaluator/tutorials/define-run-custom-python-metrics.mdx
+          - page: Experiments
+            slug: experiments
+            path: ../../evaluator/experiments.mdx
           - page: SDK Resources
             path: ../../evaluator/sdk-resources.mdx
           - page: Manage Tasks & Tasksets
