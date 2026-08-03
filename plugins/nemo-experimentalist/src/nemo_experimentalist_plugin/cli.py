@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import ClassVar, Literal
 from urllib.parse import urlsplit
 
+import httpx
 import typer
 import yaml
 from nemo_experimentalist_plugin.client import make_client
@@ -47,6 +48,7 @@ from nemo_insights_plugin.contracts.profile import (
     load_env_file,
     resolve_base_url,
 )
+from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
 
 DEFAULT_WORKSPACE = "default"
@@ -58,6 +60,8 @@ _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
 # must import env-less so `nemo agents experimentalist doctor` can diagnose the missing creds.
 # Tests monkeypatch this global with a recorder, which bypasses the lazy import.
 run_experimentalist = None
+
+_PLATFORM_CLIENT_ERRORS = (NeMoPlatformError, httpx.HTTPError, OSError, RuntimeError, ValueError)
 
 # TODO: Add remote train/validation dataset support when remote experiment mode is implemented.
 
@@ -420,6 +424,7 @@ class ExperimentalistCLI(NemoCLI):
                 base_url=base_url_resolved,
                 probes=_PREFLIGHT_PROBES,
             )
+            results.append(asyncio.run(_check_platform_client_bootstrap(base_url_resolved)))
             if profile_obj is not None:
                 if plan is not None:
                     results += check_artifacts(
@@ -436,6 +441,39 @@ class ExperimentalistCLI(NemoCLI):
                 raise typer.Exit(code=1)
 
         return app
+
+
+async def _check_platform_client_bootstrap(base_url: str) -> CheckResult:
+    """Verify doctor can construct the same Platform client used by a run."""
+    try:
+        client = make_client(base_url)
+    except _PLATFORM_CLIENT_ERRORS as exc:
+        return CheckResult(
+            name="platform-client-bootstrap",
+            group="platform",
+            status="fail",
+            severity="required",
+            message=f"Platform client initialization failed ({type(exc).__name__})",
+            hint="check --base-url/NMP_BASE_URL and the active authentication context",
+        )
+    try:
+        await client.close()
+    except _PLATFORM_CLIENT_ERRORS as exc:
+        return CheckResult(
+            name="platform-client-bootstrap",
+            group="platform",
+            status="fail",
+            severity="required",
+            message=f"Platform client cleanup failed ({type(exc).__name__})",
+            hint="check the active authentication context and retry",
+        )
+    return CheckResult(
+        name="platform-client-bootstrap",
+        group="platform",
+        status="pass",
+        severity="required",
+        message="Platform client initialized with the effective authentication path",
+    )
 
 
 def _load_profile_or_error(profile_path: Path | None) -> tuple[AgentProfile | None, str | None]:
