@@ -11,6 +11,7 @@ import { GuardrailDetailRoute } from '@studio/routes/guardrails/GuardrailDetailR
 import { getGuardrailChecksRoute } from '@studio/routes/utils';
 import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen } from '@studio/tests/util/render';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { Navigate } from 'react-router-dom';
 
@@ -57,6 +58,22 @@ describe('GuardrailChecksTab', () => {
     expect(screen.getByText('Test 1')).toBeInTheDocument();
     expect(screen.getByText('Test 2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Run 2 Tests/ })).toBeInTheDocument();
+  });
+
+  it('shows the summary and the results table on the Test Results sub-tab', async () => {
+    const user = userEvent.setup();
+    renderChecks('pii-filter');
+
+    await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+    await user.click(screen.getByRole('tab', { name: 'Test Results' }));
+
+    expect(
+      await screen.findByText('Result Summary', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+    ).toBeInTheDocument();
+    // Both mock checks appear, each carrying its own verdict: chk-1 ran and was blocked, chk-2
+    // has never run.
+    expect(screen.getByRole('row', { name: /My SSN is 123-45-6789/ })).toHaveTextContent('Guarded');
+    expect(screen.getByRole('row', { name: /Hello there/ })).toHaveTextContent('Not run');
   });
 
   it('shows an error state when the checks cannot be loaded', async () => {
