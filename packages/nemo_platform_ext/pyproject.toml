@@ -91,7 +91,7 @@ package_root = "packages/nemo_platform_ext"
 # extension globs here as new companion file types are needed (`.json`,
 # `.yaml`, `.txt`, ...); we avoid `**/*` because dev environments leave
 # `__pycache__/*.pyc` in source modules, which the vendor tool doesn't filter.
-included_paths = ["**/*.py", "**/*.md"]
+included_paths = ["**/*.py", "**/*.md", "**/*.yaml"]
 replace_client_inits_from = "client/enhanced.py"
 vendor_tests = true
 tests_path = "tests"
