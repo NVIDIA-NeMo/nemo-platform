@@ -7,7 +7,7 @@ import { routes as appRoutes } from '@studio/routes';
 import { TestProviders, TestProvidersOptions } from '@studio/tests/util/TestProviders';
 import { queries, render, within } from '@testing-library/react';
 import { Suspense } from 'react';
-import { createMemoryRouter, MemoryRouter, RouteObject } from 'react-router';
+import { createMemoryRouter, MemoryRouter, type RouteObject } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 
 /**
