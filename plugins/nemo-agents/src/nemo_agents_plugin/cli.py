@@ -801,20 +801,22 @@ def _register_platform_commands(app: typer.Typer) -> None:
                     err=True,
                 )
                 try:
-                    _delete_agent_and_spec_fileset(
+                    _delete_agent_entity(
                         agent_name=name,
                         workspace=workspace,
                         base_url=base_url,
                     )
-                except typer.Exit:
-                    logger.error(
-                        "Failed to roll back agent %r after fileset upload failure",
-                        name,
-                    )
+                # ``typer.Exit`` subclasses ``Exception``, so this also covers the
+                # exit raised by ``_api_request`` on an HTTP error.
                 except Exception:
                     logger.exception(
                         "Failed to roll back agent %r after fileset upload failure",
                         name,
+                    )
+                    typer.echo(
+                        f"Error: failed to roll back agent {name!r}; it may still exist on the "
+                        f"platform. Remove it with `nemo agents delete {name}`.",
+                        err=True,
                     )
                 raise typer.Exit(code=1) from exc
         typer.echo(json.dumps(resp, indent=2))
@@ -873,7 +875,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         base_url = _resolve_base_url(base_url)
         if not yes:
             typer.confirm(f"Delete agent '{name}'?", abort=True)
-        _delete_agent_and_spec_fileset(agent_name=name, workspace=workspace, base_url=base_url)
+        _delete_agent_entity(agent_name=name, workspace=workspace, base_url=base_url)
         typer.echo(f"Agent '{name}' deleted.")
 
     @app.command(rich_help_panel="Agent Resources (requires running cluster)")
@@ -1585,11 +1587,22 @@ def _check_agent_root_bounds(agent_root: Path) -> None:
     sitting in a source checkout would ship the whole tree and then fail at
     container start when the ConfigMap/env payload is built. Fail here instead,
     naming the limit that was exceeded.
+
+    Symlinks are rejected rather than skipped: the upload enumerates them and
+    ships their target content, so skipping one here would both stage files from
+    outside *agent_root* and let them evade the limits below.
     """
     total_bytes = 0
     file_count = 0
     for path in agent_root.rglob("*"):
-        if not path.is_file() or path.is_symlink():
+        if path.is_symlink():
+            raise ValueError(
+                f"agent directory {str(agent_root)!r} contains symlink "
+                f"{path.relative_to(agent_root).as_posix()!r}; the fileset upload follows "
+                "symlinks, which would stage content from outside the agent directory. "
+                "Replace it with a regular file or move the target inside the agent directory"
+            )
+        if not path.is_file():
             continue
         file_count += 1
         total_bytes += path.stat().st_size
@@ -1631,29 +1644,16 @@ def _upload_agent_spec_fileset(
     )
 
 
-def _delete_agent_spec_fileset(*, agent_name: str, workspace: str, base_url: str) -> None:
-    """Best-effort delete of the conventional ``{agent}-spec`` fileset."""
-    from nemo_platform import NotFoundError
+def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> None:
+    """Delete the agent entity, leaving the ``{agent}-spec`` fileset in place.
 
-    fileset_name = agent_spec_fileset_name(agent_name)
-    try:
-        _platform_sdk(base_url).files.filesets.delete(name=fileset_name, workspace=workspace)
-    except NotFoundError:
-        logger.info("Agent spec fileset %s/%s already absent", workspace, fileset_name)
-
-
-def _delete_agent_and_spec_fileset(*, agent_name: str, workspace: str, base_url: str) -> None:
-    """Delete the agent entity, then best-effort remove its spec fileset."""
+    The fileset outlives the agent on purpose: it is the canonical home of
+    ``AGENT-SPEC.md`` (see ``agent_spec_file_ref``), which ``nemo-spec`` writes
+    before the agent exists and ``nemo-build-agent`` reads on every rebuild.
+    Deleting the fileset here would destroy that durable contract, so the
+    executable artifacts it also carries are left behind instead.
+    """
     _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents/{agent_name}")
-    try:
-        _delete_agent_spec_fileset(agent_name=agent_name, workspace=workspace, base_url=base_url)
-    except Exception:
-        logger.warning(
-            "Agent %r deleted but failed to remove spec fileset %r",
-            agent_name,
-            agent_spec_fileset_name(agent_name),
-            exc_info=True,
-        )
 
 
 def _load_yaml(path: Path) -> dict:

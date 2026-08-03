@@ -316,7 +316,7 @@ def test_check_agent_root_bounds_rejects_too_many_files(tmp_path) -> None:
         _check_agent_root_bounds(tmp_path)
 
 
-def test_check_agent_root_bounds_skips_symlinks(tmp_path) -> None:
+def test_check_agent_root_bounds_rejects_file_symlink(tmp_path) -> None:
     outside = tmp_path.parent / "outside.bin"
     outside.write_bytes(b"x" * (MAX_AGENT_SPEC_STAGED_BYTES + 1))
     agent_root = tmp_path / "agent"
@@ -324,7 +324,21 @@ def test_check_agent_root_bounds_skips_symlinks(tmp_path) -> None:
     (agent_root / "agent.yaml").write_text("name: a\n")
     (agent_root / "link.bin").symlink_to(outside)
 
-    _check_agent_root_bounds(agent_root)
+    with pytest.raises(ValueError, match="contains symlink 'link.bin'"):
+        _check_agent_root_bounds(agent_root)
+
+
+def test_check_agent_root_bounds_rejects_directory_symlink(tmp_path) -> None:
+    outside = tmp_path.parent / "outside"
+    outside.mkdir()
+    (outside / "a.txt").write_text("x")
+    agent_root = tmp_path / "agent"
+    agent_root.mkdir()
+    (agent_root / "agent.yaml").write_text("name: a\n")
+    (agent_root / "linkdir").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="contains symlink 'linkdir'"):
+        _check_agent_root_bounds(agent_root)
 
 
 def test_create_fabric_rolls_back_agent_when_fileset_upload_fails(tmp_path) -> None:
@@ -371,7 +385,7 @@ def test_create_fabric_rolls_back_agent_when_fileset_upload_fails(tmp_path) -> N
             "nemo_agents_plugin.cli._upload_agent_spec_fileset",
             side_effect=RuntimeError("upload boom"),
         ),
-        patch("nemo_agents_plugin.cli._delete_agent_spec_fileset") as mock_delete_fileset,
+        patch("nemo_agents_plugin.cli._platform_sdk") as mock_sdk,
     ):
         result = CliRunner().invoke(
             app,
@@ -380,12 +394,61 @@ def test_create_fabric_rolls_back_agent_when_fileset_upload_fails(tmp_path) -> N
 
     assert result.exit_code == 1
     assert "failed to upload agent spec fileset" in result.stderr
+    # Rollback removes the agent entity only; the spec fileset is durable and may
+    # already hold an AGENT-SPEC.md written before this agent existed.
     assert methods == ["POST", "DELETE"]
-    mock_delete_fileset.assert_called_once_with(
-        agent_name="fabric-agent",
-        workspace="default",
-        base_url="http://test",
+    mock_sdk.assert_not_called()
+
+
+def test_create_fabric_reports_rollback_failure(tmp_path) -> None:
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "config_format: nemo-agents-spec-v1",
+                "name: fabric-agent",
+                "default_harness: hermes",
+                "harnesses:",
+                "  hermes:",
+                "    kind: hermes",
+                "",
+            ]
+        )
     )
+    normalized_config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes", "settings": {}}},
+        "environment": {"provider": "local"},
+    }
+
+    async def _validate_platform_agent_config(config_dict: dict[str, Any], *, base_dir: Path):
+        del config_dict, base_dir
+        return type("ValidationResult", (), {"agent_config": _ValidatedAgentConfig(normalized_config)})()
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.method == "POST":
+            return httpx.Response(200, json={"name": "fabric-agent"})
+        return httpx.Response(500, json={"detail": "delete exploded"})
+
+    app = AgentsCLI().get_cli()
+    with (
+        _install_mock_transport(handler),
+        patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
+        patch(
+            "nemo_agents_plugin.cli._upload_agent_spec_fileset",
+            side_effect=RuntimeError("upload boom"),
+        ),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["create", "--name", "fabric-agent", "--agent-config", str(config), "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 1
+    assert "failed to roll back agent 'fabric-agent'" in result.stderr
+    assert "nemo agents delete fabric-agent" in result.stderr
 
 
 def test_create_nat_does_not_upload_agent_spec_fileset(tmp_path) -> None:

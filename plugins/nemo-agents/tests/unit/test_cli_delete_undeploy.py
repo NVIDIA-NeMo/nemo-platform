@@ -8,12 +8,12 @@ Verifies:
 - Abort on user decline
 - ``--yes`` / ``-y`` skips the prompt
 - ``--all`` works as an alias for ``--agent`` on ``undeploy``
-- Agent delete also best-effort removes the conventional ``{agent}-spec`` fileset
+- Agent delete leaves the durable ``{agent}-spec`` fileset in place
 """
 
 from __future__ import annotations
 
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import ANY, patch
 
 import httpx
 import pytest
@@ -50,7 +50,7 @@ def _install_mock_transport(handler):
 class TestDeleteConfirmation:
     def test_delete_prompts_when_no_yes_flag(self, app) -> None:
         """Without --yes, the user is prompted; answering 'y' proceeds."""
-        with patch(f"{_PATCH_PREFIX}._delete_agent_and_spec_fileset") as mock_delete:
+        with patch(f"{_PATCH_PREFIX}._delete_agent_entity") as mock_delete:
             result = runner.invoke(app, ["delete", "my-agent"], input="y\n")
 
         assert result.exit_code == 0, result.output
@@ -63,7 +63,7 @@ class TestDeleteConfirmation:
 
     def test_delete_aborts_when_user_declines(self, app) -> None:
         """Without --yes, answering 'n' aborts without calling the API."""
-        with patch(f"{_PATCH_PREFIX}._delete_agent_and_spec_fileset") as mock_delete:
+        with patch(f"{_PATCH_PREFIX}._delete_agent_entity") as mock_delete:
             result = runner.invoke(app, ["delete", "my-agent"], input="n\n")
 
         assert result.exit_code != 0
@@ -72,14 +72,15 @@ class TestDeleteConfirmation:
     @pytest.mark.parametrize("flag", ["--yes", "-y"])
     def test_delete_skips_prompt_with_yes_flag(self, app, flag: str) -> None:
         """--yes and -y both skip the confirmation prompt."""
-        with patch(f"{_PATCH_PREFIX}._delete_agent_and_spec_fileset") as mock_delete:
+        with patch(f"{_PATCH_PREFIX}._delete_agent_entity") as mock_delete:
             result = runner.invoke(app, ["delete", "my-agent", flag])
 
         assert result.exit_code == 0, result.output
         mock_delete.assert_called_once()
         assert "deleted" in result.output.lower()
 
-    def test_delete_removes_agent_then_best_effort_fileset(self, app) -> None:
+    def test_delete_removes_agent_but_preserves_spec_fileset(self, app) -> None:
+        """The ``{agent}-spec`` fileset is durable: it holds ``AGENT-SPEC.md``."""
         methods: list[str] = []
 
         def handler(req: httpx.Request) -> httpx.Response:
@@ -89,38 +90,13 @@ class TestDeleteConfirmation:
 
         with (
             _install_mock_transport(handler),
-            patch(f"{_PATCH_PREFIX}._delete_agent_spec_fileset") as mock_fileset,
+            patch(f"{_PATCH_PREFIX}._platform_sdk") as mock_sdk,
         ):
             result = runner.invoke(app, ["delete", "my-agent", "--yes", "--base-url", "http://test"])
 
         assert result.exit_code == 0, result.output
         assert methods == ["DELETE"]
-        mock_fileset.assert_called_once_with(
-            agent_name="my-agent",
-            workspace="default",
-            base_url="http://test",
-        )
-
-    def test_delete_succeeds_when_fileset_already_absent(self, app) -> None:
-        from nemo_platform import NotFoundError
-
-        def handler(req: httpx.Request) -> httpx.Response:
-            assert req.method == "DELETE"
-            return httpx.Response(204)
-
-        filesets = MagicMock()
-        filesets.delete.side_effect = NotFoundError("missing", response=MagicMock(), body=None)
-        sdk = MagicMock()
-        sdk.files.filesets = filesets
-
-        with (
-            _install_mock_transport(handler),
-            patch(f"{_PATCH_PREFIX}._platform_sdk", return_value=sdk),
-        ):
-            result = runner.invoke(app, ["delete", "my-agent", "--yes", "--base-url", "http://test"])
-
-        assert result.exit_code == 0, result.output
-        filesets.delete.assert_called_once_with(name="my-agent-spec", workspace="default")
+        mock_sdk.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
