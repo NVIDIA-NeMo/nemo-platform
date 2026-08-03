@@ -6,7 +6,8 @@ import { LOCATION_DISPLAY_TEST_ID } from '@studio/tests/util/constants';
 import { LocationDisplay } from '@studio/tests/util/LocationDisplay';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen } from '@testing-library/react';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 
 const renderRootRedirect = async (initialPath = '/') => {
   const { RootRedirect } = await import('@studio/routes/RootRedirect');

@@ -9,7 +9,8 @@ import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 
 vi.mock('@studio/hooks/useModelCustomizationEligibility', () => ({
   useModelCustomizationEligibility: vi.fn(),

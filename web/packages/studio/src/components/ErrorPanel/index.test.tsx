@@ -6,7 +6,8 @@ import { ErrorPanel, ErrorPanelProps } from '@studio/components/ErrorPanel';
 import { mockUseNavigate } from '@studio/tests/util/mockUseParams';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 
 // React error boundaries always call console.error when catching errors.
 // This is expected React internals behavior, not a bug in our code.

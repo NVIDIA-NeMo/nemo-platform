@@ -75,14 +75,7 @@ export const DatasetCreateModal: FC<DatasetCreateModalProps> = ({
     onSuccess: (dataset: FilesetOutput) => {
       reset();
       onDatasetCreated?.(dataset);
-      navigate(
-        getFilesetDetailsRoute(
-          workspace,
-          getEntityReference(dataset, { encode: true }),
-          undefined,
-          true
-        )
-      );
+      navigate(getFilesetDetailsRoute(workspace, getEntityReference(dataset), undefined, true));
     },
   });
 

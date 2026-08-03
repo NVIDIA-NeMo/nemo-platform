@@ -8,6 +8,7 @@ import {
   getEvaluationMetricRunRoute,
   getEvaluationMetricsRunRoute,
   getEvaluationSessionDetailRoute,
+  getFilesetDetailsRoute,
   getIntakeSessionRoute,
   getIntakeSessionTraceRoute,
   getPromptTuningFormRoute,
@@ -178,6 +179,30 @@ describe('intake session detail routes', () => {
       )
     ).toBe(
       '/workspaces/my-workspace/experiment/experiment-group/evaluation/sessions/session%20%2F%201'
+    );
+  });
+});
+
+describe('getFilesetDetailsRoute', () => {
+  // Callers must pass raw values: the helper encodes the path param via generatePath and
+  // the folder query param via URLSearchParams. Pre-encoding would double-encode, so a
+  // fileset named `a/b` would arrive at useParams() as `a%2Fb` instead of `a/b`.
+  it.each([
+    ['default/my-fileset', 'default%2Fmy-fileset'],
+    ['default/100% coverage', 'default%2F100%25%20coverage'],
+    ['default/tag#1', 'default%2Ftag%231'],
+    ['default/with spaces', 'default%2Fwith%20spaces'],
+  ])('encodes %j exactly once', (filesetId, encoded) => {
+    expect(getFilesetDetailsRoute('my-workspace', filesetId)).toBe(
+      `/workspaces/my-workspace/filesets/${encoded}`
+    );
+    // The route param round-trips back to the original name.
+    expect(decodeURIComponent(encoded)).toBe(filesetId);
+  });
+
+  it('encodes the folder query param without double-encoding', () => {
+    expect(getFilesetDetailsRoute('my-workspace', 'default/set', 'nested/folder 1')).toBe(
+      '/workspaces/my-workspace/filesets/default%2Fset?filesetFolder=nested%2Ffolder+1'
     );
   });
 });

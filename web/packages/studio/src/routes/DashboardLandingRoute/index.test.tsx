@@ -8,7 +8,8 @@ import { mockFeatureFlags } from '@studio/tests/util/mockFeatureFlags';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, generatePath, RouterProvider, useLocation } from 'react-router';
+import { createMemoryRouter, generatePath, useLocation } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 
 vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', async (importOriginal) => {
   const actual =

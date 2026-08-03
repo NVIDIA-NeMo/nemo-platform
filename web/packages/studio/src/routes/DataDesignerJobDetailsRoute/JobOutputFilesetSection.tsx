@@ -123,18 +123,12 @@ export const JobOutputFilesetSection: FC = () => {
   }, []);
 
   const handleDatasetClickFromPreview = useCallback(() => {
-    navigate(getFilesetDetailsRoute(filesetWorkspace, encodeURIComponent(filesetName)));
+    navigate(getFilesetDetailsRoute(filesetWorkspace, filesetName));
   }, [navigate, filesetWorkspace, filesetName]);
 
   const handleFolderClickFromPreview = useCallback(
     (folderPath: string) => {
-      navigate(
-        getFilesetDetailsRoute(
-          filesetWorkspace,
-          encodeURIComponent(filesetName),
-          encodeURIComponent(folderPath)
-        )
-      );
+      navigate(getFilesetDetailsRoute(filesetWorkspace, filesetName, folderPath));
     },
     [navigate, filesetWorkspace, filesetName]
   );
@@ -229,7 +223,7 @@ export const JobOutputFilesetSection: FC = () => {
                   <Link
                     to={getFilesetDetailsRoute(
                       filesetWorkspace,
-                      encodeURIComponent(filesetWorkspace + '/' + filesetName)
+                      filesetWorkspace + '/' + filesetName
                     )}
                   >
                     {filesetName}

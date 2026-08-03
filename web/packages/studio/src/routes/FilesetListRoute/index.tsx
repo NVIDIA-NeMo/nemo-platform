@@ -38,7 +38,7 @@ export const FilesetListRoute: FC = () => {
       ) {
         return getFilesetDetailRoute(workspace, dataset.name);
       }
-      return getFilesetDetailsRoute(workspace, getEntityReference(dataset, { encode: true }));
+      return getFilesetDetailsRoute(workspace, getEntityReference(dataset));
     },
     [workspace]
   );

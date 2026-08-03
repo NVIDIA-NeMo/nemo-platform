@@ -215,14 +215,7 @@ export function useCreateFileset({
         navigate(getFilesetDetailRoute(workspace, fileset.name));
         return;
       }
-      navigate(
-        getFilesetDetailsRoute(
-          workspace,
-          getEntityReference(fileset, { encode: true }),
-          undefined,
-          true
-        )
-      );
+      navigate(getFilesetDetailsRoute(workspace, getEntityReference(fileset), undefined, true));
     },
     [
       activeTab,
