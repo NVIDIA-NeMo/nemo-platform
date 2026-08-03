@@ -17,7 +17,7 @@ import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router';
 
 const WORKSPACE = 'default';
 
