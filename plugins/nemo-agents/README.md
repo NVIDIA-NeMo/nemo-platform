@@ -79,6 +79,94 @@ nemo-relay --version
 > **Working directory:** Platform-backed examples use paths relative to the
 > repository root. Run them from there unless an example says otherwise.
 
+### Calculator agent demo — Codex + Relay
+
+[`examples/nemo-agent-config/calculator-agent/agent.yaml`](examples/nemo-agent-config/calculator-agent/agent.yaml)
+uses Codex as its harness and routes `nvidia-nemotron-3-nano-30b-a3b`
+through the Platform Inference Gateway. The agent answers arithmetic and
+numeric comparison requests and records ATIF and ATOF telemetry with NeMo
+Relay.
+
+#### Step 1 — Start the platform
+
+Run this in a **dedicated terminal** from the repository root. Use a separate
+terminal for the remaining steps.
+
+```bash
+nemo services run
+```
+
+#### Step 2 — Configure the model provider and harness
+
+In a new terminal, set the local Platform URL and NVIDIA API key, then verify
+that Codex and NeMo Relay are ready:
+
+```bash
+export NMP_BASE_URL=http://127.0.0.1:8080
+export NVIDIA_API_KEY="<your NVIDIA API key>"
+
+codex login
+nemo-relay --version
+```
+
+Create the local NVIDIA Build provider and wait for its models to be
+registered:
+
+```bash
+nemo secrets create ngc-api-key \
+  --value "$NVIDIA_API_KEY"
+
+nemo inference providers create nvidia-build \
+  --host-url https://integrate.api.nvidia.com \
+  --api-key-secret-name ngc-api-key
+
+nemo wait inference provider nvidia-build
+```
+
+In production, the `system/nvidia-build` provider is normally created by the
+Platform seed job, so this local provider setup is not required.
+
+#### Step 3 — Create and deploy the agent
+
+```bash
+nemo agents create \
+  --name fabric-calculator-agent \
+  --agent-config plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml
+
+nemo agents deploy \
+  --agent fabric-calculator-agent \
+  --name fabric-calculator-agent-deployment \
+  --mode subprocess
+```
+
+`create` validates the config and registers the agent. `deploy` waits for the
+deployment to reach `running` by default.
+
+#### Step 4 — Invoke through the gateway
+
+```bash
+nemo agents invoke \
+  --agent-deployment fabric-calculator-agent-deployment \
+  --input "What is 144 divided by 12?"
+```
+
+The response content should be `12`.
+
+#### Step 5 — Verify Relay telemetry
+
+The config writes ATIF and ATOF files beneath the deployment's artifacts
+directory:
+
+```bash
+find ~/.local/share/nemo/agents/system/default/fabric-calculator-agent-deployment-fabric/artifacts \
+  \( -name "*atif*" -o -name "*atof*" \) \
+  -exec ls -lh {} \;
+```
+
+Its ATIF configuration also sends trajectories to the local Platform Intake
+API at `http://127.0.0.1:8080`. Ensure Intake is running if you want to use that
+HTTP sink.
+
 ---
 
 ## NVIDIA Agent Toolkit (NAT) workflows
