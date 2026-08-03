@@ -12,8 +12,9 @@ in the platform virtualenv via the subprocess job backend for local development.
 Not a ``nemo`` CLI subcommand: the profiler's inputs and output contract are both still moving, and a
 published subcommand is a promise to keep them still.
 
-The fileset is staged on local disk for the duration of the run. That is the whole of what
-:func:`_fileset_source` does, and the one part a ranged-read source replaces later; the profiler core
+Files are read through the Files API with range requests rather than staged on disk, so the
+task's cost tracks what profiling actually needs -- a footer and the row groups it reads -- instead
+of the size of the dataset. That swap is confined to :func:`_fileset_source`: the profiler core
 stays blind to where its bytes come from, which is what the ``FileSource`` seam is for.
 """
 
@@ -23,11 +24,10 @@ import json
 import logging
 import os
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
-from nemo_datasets_plugin.profiler.file_source import FileSource, LocalFileSource
+from nemo_datasets_plugin.fileset_source import FilesetFileSource
+from nemo_datasets_plugin.profiler.file_source import FileSource
 from nemo_datasets_plugin.profiler.pipeline import DEFAULT_ROW_BUDGET, profile
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -43,7 +43,6 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
     NEMO_JOB_WORKSPACE_ENVVAR,
 )
-from nemo_platform_plugin.jobs.file_manager import FilesetFileManager
 from nemo_platform_plugin.sdk_provider import get_platform_sdk
 
 logger = logging.getLogger(__name__)
@@ -66,41 +65,28 @@ def run(sdk: NeMoPlatform | None = None) -> int:
         config = _load_step_config()
         workspace = config.get("workspace") or _required_env(NEMO_JOB_WORKSPACE_ENVVAR)
         fileset = config.get("fileset") or _required_env(NEMO_JOB_FILESET_ENVVAR)
-        with _fileset_source(service_sdk, workspace=workspace, fileset=fileset) as source:
-            return _profile_and_publish(
-                service_sdk,
-                source=source,
-                workspace=workspace,
-                fileset=fileset,
-                job_name=_required_env(NEMO_JOB_ID_ENVVAR),
-                row_budget=_resolve_row_budget(config),
-                column_roles=_resolve_column_roles(config),
-            )
+        return _profile_and_publish(
+            service_sdk,
+            source=_fileset_source(service_sdk, workspace=workspace, fileset=fileset),
+            workspace=workspace,
+            fileset=fileset,
+            job_name=_required_env(NEMO_JOB_ID_ENVVAR),
+            row_budget=_resolve_row_budget(config),
+            column_roles=_resolve_column_roles(config),
+        )
     except Exception:
         logger.exception("Dataset profiler task failed")
         return 1
 
 
-@contextmanager
-def _fileset_source(sdk: NeMoPlatform, *, workspace: str, fileset: str) -> Iterator[FileSource]:
-    """The fileset's files, staged on local disk for the duration of the profile.
+def _fileset_source(sdk: NeMoPlatform, *, workspace: str, fileset: str) -> FileSource:
+    """The fileset's files, read in place through the Files API.
 
-    Downloading the whole fileset is what this costs today. It is also the only part of the task
-    that knows where the bytes live, so a ranged-read source over the Files API replaces it without
-    the profiler core noticing.
+    Range requests rather than a staged copy: profiling needs a footer and the row groups it reads,
+    not the dataset, so the task's cost tracks the read instead of the fileset's size. Nothing is
+    downloaded, so there is nothing to clean up either.
     """
-    manager = FilesetFileManager(
-        workspace=workspace,
-        fileset_name=fileset,
-        sdk=sdk,
-        ensure_fileset_exists=False,
-    )
-    logger.info("Downloading fileset %s/%s", workspace, fileset)
-    downloaded = manager.download_from_url(manager.url())
-    try:
-        yield LocalFileSource(downloaded.path)
-    finally:
-        downloaded.cleanup_tmp_dir()
+    return FilesetFileSource(client_from_platform(sdk, FilesClient), workspace=workspace, fileset=fileset)
 
 
 def _profile_and_publish(
@@ -113,9 +99,10 @@ def _profile_and_publish(
     row_budget: int | None,
     column_roles: dict[str, str],
 ) -> int:
-    # Uncapped by default, and especially right for this task: the whole fileset has already been
-    # downloaded, so capping would pay the full transfer cost and still hand back partial statistics
-    # and an incomplete profile. Having bought the bytes, read them.
+    # Uncapped by default: the profiler folds, so memory is flat in rows and an exhaustive read
+    # buys exact row counts, proven value enumerations and `rows_complete`. Reading through ranges
+    # does make that a *transfer* cost rather than a free one -- an uncapped run pulls every row
+    # group over the wire -- so `row_budget` is the knob for a fileset too large to be worth it.
     logger.info("Profiling with a row budget of %s per partition", row_budget if row_budget else "unbounded")
     dataset_profile = profile(source, row_budget=row_budget, column_roles=column_roles)
 

@@ -12,6 +12,7 @@ import nemo_datasets_plugin.tasks.profile.run as run_mod
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from nemo_datasets_plugin.profiler.file_source import LocalFileSource
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.files.metadata import FilesetMetadata
 from nemo_platform_plugin.job_results import ResultRef
@@ -21,7 +22,6 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
     NEMO_JOB_WORKSPACE_ENVVAR,
 )
-from nemo_platform_plugin.jobs.file_manager import TmpDirPath
 
 # The task touches the sdk only through PlatformJobResults and the Files client, both patched below,
 # so a bare object stands in for it.
@@ -42,20 +42,12 @@ def _install(monkeypatch, tmp_path: Path, config: dict, data: Path | None = None
     stay empty when the task bails, which is what the failure tests assert on.
     """
     published: dict = {}
-    throwaway = tmp_path / "throwaway"
-    throwaway.mkdir(exist_ok=True)
 
-    class _Manager:
-        def __init__(self, **kwargs):
-            published["downloaded"] = (kwargs["workspace"], kwargs["fileset_name"])
-
-        def url(self, remote_path=None):
-            return "fileset://download"
-
-        def download_from_url(self, url, local_dir=None):
-            if data is None:
-                raise RuntimeError("fileset could not be downloaded")
-            return TmpDirPath(path=data, tmp_dir=throwaway)
+    def _source(client, *, workspace, fileset):
+        published["read"] = (workspace, fileset)
+        if data is None:
+            raise RuntimeError("fileset could not be read")
+        return LocalFileSource(data)
 
     class _Results:
         def __init__(self, *, job_name, workspace, sdk):
@@ -79,10 +71,9 @@ def _install(monkeypatch, tmp_path: Path, config: dict, data: Path | None = None
     monkeypatch.setenv(NEMO_JOB_WORKSPACE_ENVVAR, "ws1")
     monkeypatch.setenv(NEMO_JOB_ID_ENVVAR, "job-1")
     monkeypatch.delenv(NEMO_JOB_FILESET_ENVVAR, raising=False)
-    monkeypatch.setattr(run_mod, "FilesetFileManager", _Manager)
+    monkeypatch.setattr(run_mod, "FilesetFileSource", _source)
     monkeypatch.setattr(run_mod, "PlatformJobResults", _Results)
     monkeypatch.setattr(run_mod, "client_from_platform", lambda sdk, client_cls: _FilesClient())
-    published["throwaway"] = throwaway
     return published
 
 
@@ -92,7 +83,7 @@ def test_task_profiles_a_fileset_and_publishes_the_profile(tmp_path, monkeypatch
 
     assert run_mod.run(_SDK) == 0
 
-    assert published["downloaded"] == ("ws1", "fs1")
+    assert published["read"] == ("ws1", "fs1")
     assert published["job_name"] == "job-1"
     assert published["workspace"] == "ws1"
     assert published["name"] == "profile"
@@ -114,12 +105,14 @@ def test_task_persists_the_profile_onto_the_fileset(tmp_path, monkeypatch):
     assert body.metadata.dataset.profile.partitions[0].classification.dataset_type == "prompt_completion"
 
 
-def test_task_cleans_up_the_download(tmp_path, monkeypatch):
+def test_task_reads_the_fileset_in_place(tmp_path, monkeypatch):
+    # Nothing is staged on disk: the source is handed the fileset and reads it through the Files API,
+    # so there is no download to clean up and the task's cost tracks the read, not the fileset size.
     data = _dataset(tmp_path / "data")
     published = _install(monkeypatch, tmp_path, {"fileset": "fs1"}, data)
 
     assert run_mod.run(_SDK) == 0
-    assert not published["throwaway"].exists()
+    assert published["read"] == ("ws1", "fs1")
 
 
 def test_task_prefers_the_step_configs_workspace_over_the_environment(tmp_path, monkeypatch):
@@ -177,7 +170,7 @@ def test_task_fails_when_the_step_config_says_nothing_to_profile(tmp_path, monke
     assert "profile" not in published
 
 
-def test_task_fails_when_the_fileset_cannot_be_downloaded(tmp_path, monkeypatch):
+def test_task_fails_when_the_fileset_cannot_be_read(tmp_path, monkeypatch):
     published = _install(monkeypatch, tmp_path, {"fileset": "fs1"}, data=None)
 
     assert run_mod.run(_SDK) == 1
