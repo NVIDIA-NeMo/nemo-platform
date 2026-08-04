@@ -60,8 +60,8 @@ want to automate portions of the agent improvement loop.
 To install only one side of the loop, use the convenience groups:
 
 ```bash
-uv sync --group insights          # Analyst only
-uv sync --group experimentalist   # Experimenter and Eval Author
+uv sync --only-group insights         # Analyst only
+uv sync --only-group experimentalist  # Experimenter and Eval Author
 ```
 
 ### Dependencies
@@ -439,12 +439,12 @@ Hand it a single Insight:
 
 ```bash
 nemo agents experimentalist run \
-  --insight <insight-id-or-local-file> \
-  --agent <path-to-aut> \
+  --insight insight-id \
+  --agent ./path-to-agent \
   --train-dataset ./harbor_eval/dataset/train \
   --validation-dataset ./harbor_eval/dataset/validation \
   --task-template ./task-template \
-  --config <path-to-experiment-config.yaml> \
+  --config ./experiment-config.yaml \
   --experiment-dir tmp/experiment \
   --workspace "$WORKSPACE" \
   --base-url "$NMP_BASE_URL"
@@ -570,7 +570,6 @@ Run the local Experimenter loop.
 | `--task-template` | required with an Insight | profile `task_template` | Evaluator-specific task-template URI, used to build the Insight-specific evaluation suite. |
 | `--experiment-dir` / `-o` | no | `<profile-dir>/.nemo-optimizer/experiments/<timestamp>`, else `./tmp` | Local experiment directory; writes `eval-and-optimize/` here. |
 | `--framework-skills` | no | profile `framework_skills` | Directory of framework skills to load into the optimization agents. Repeatable. |
-| `--mode` | no | `local` | `local` or `remote`. Only `local` is implemented today. |
 | `--profile` | no | discovered by walking up from the current working directory | Path to `optimizer.yaml`. |
 | `--workspace` | no | profile `workspace` | Workspace for traces and run/candidate metadata. |
 | `--base-url` | no | `NMP_BASE_URL`, else `http://localhost:8080` | Running platform instance. |
@@ -597,7 +596,7 @@ The optimization agents use the following model configuration:
 | `NEMO_EXPERIMENTALIST_API_BASE` | Experimenter, Eval Author | OpenAI-compatible model API base URL. `run` and `doctor` fall back to the NVIDIA Inference Gateway when it is unset, so it is only required against another endpoint. Also settable as `api_base` under the `experimentalist:` config section; the environment wins. |
 | `NEMO_EXPERIMENTALIST_API_KEY` | Experimenter, Eval Author | Required. Model API key. On the gateway, `INFERENCE_API_KEY` fills this. |
 | `NEMO_EXPERIMENTALIST_MODELS_SMART` | Experimenter, Eval Author | Required. High-capability model for analysis, proposing, coding, and curation. No default: a model name is only meaningful against a specific endpoint. |
-| `NEMO_EXPERIMENTALIST_MODELS_MID` | Experimenter, Eval Author | Required. Mid-tier model, used by the Coder's `apply_change` among others. No default. |
+| `NEMO_EXPERIMENTALIST_MODELS_MID` | Experimenter, Eval Author | Required. Mid-tier model used for trajectory scoring and architecture documentation. No default. |
 | `NEMO_EXPERIMENTALIST_MODELS_FAST` | Experimenter, Eval Author | Required. Low-latency model for lightweight steps such as termination checks and summarization. No default. |
 | `AUTHOR_API_BASE` | Eval Author | Optional override for the OpenAI-compatible model API base URL. Falls back to `NEMO_EXPERIMENTALIST_API_BASE`. |
 | `AUTHOR_API_KEY` | Eval Author | Optional override for the model API key. Falls back to `NEMO_EXPERIMENTALIST_API_KEY`, or to `INFERENCE_API_KEY` for the NVIDIA Inference Gateway. |

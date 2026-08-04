@@ -313,10 +313,10 @@ Query traces or spans with filters, then group spans by session or trace to find
 ```bash
 curl -g --fail-with-body \
   -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
-  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/spans?filter[status]=ERROR&page=1&page_size=20"
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/spans?filter[status]=error&page=1&page_size=20"
 curl -g --fail-with-body \
   -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
-  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/spans/groups?by=session_id&filter[status]=ERROR"
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/spans/groups?by=session_id&filter[status]=error"
 ```
 
 In Studio, start from the trace list, filter to negative feedback or error status, then open trace
