@@ -65,8 +65,31 @@ class TestLoadPlatformSkills:
     def test_contains_expected_skills(self):
         skills = load_skills()
         # Canonical platform skills must remain present — adding new ones is free.
-        expected = {"inference"}
+        expected = {"inference", "nemo-experimentalist"}
         assert expected <= skills.keys()
+
+    def test_experimentalist_skill_explains_run_inputs(self):
+        content = load_skills()["nemo-experimentalist"].content
+        assert "## Prepare the agent" in content
+        assert "AGENT-SPEC.md" in content
+        assert "nemo-explore" in content
+        assert "nemo-spec" in content
+        assert "separate\n  test split" in content
+        assert "baseline smoke test" in content
+        assert "pushed baseline revision" in content
+        assert "systematic\n  symptom inferred from a set of traces" in content
+        assert "trustworthy, verifiable reward" in content
+        for option in (
+            "--insight",
+            "--no-insight",
+            "--agent",
+            "--train-dataset",
+            "--validation-dataset",
+            "--task-template",
+            "--config",
+            "--experiment-dir",
+        ):
+            assert option in content
 
     def test_each_skill_has_valid_fields(self):
         for name, skill in load_skills().items():
