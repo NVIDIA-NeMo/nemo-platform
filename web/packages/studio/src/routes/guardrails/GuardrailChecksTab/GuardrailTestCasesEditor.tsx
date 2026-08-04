@@ -3,25 +3,24 @@
 
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import {
-  Button,
-  Flex,
-  Stack,
-  TabsList,
-  TabsRoot,
-  TabsTrigger,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Button, Flex, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
 import { GuardrailChecksDataView } from '@studio/components/dataViews/GuardrailChecksDataView';
 import { ResultSummary } from '@studio/components/dataViews/GuardrailChecksDataView/ResultSummary';
+import { ROUTE_PARAMS } from '@studio/constants/routes';
+import {
+  GUARDRAIL_CHECKS_DEFAULT_SUB_TAB,
+  GuardrailChecksSubTab,
+  isGuardrailChecksSubTab,
+} from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailTestCard } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCard';
+import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
+import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { ListChecks, Plus, Settings } from 'lucide-react';
-import { type FC, useState } from 'react';
-
-type SubTab = 'tests' | 'results';
+import type { FC } from 'react';
+import { Link, useParams } from 'react-router-dom';
 
 interface GuardrailTestCasesEditorProps {
   workspace: string;
@@ -35,7 +34,15 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
   checks,
 }) => {
   const toast = useToast();
-  const [subTab, setSubTab] = useState<SubTab>('tests');
+  const { guardrailConfigName } = useRequiredPathParams([ROUTE_PARAMS.guardrailConfigName]);
+
+  // An unknown segment falls back to the default rather than redirecting, so a hand-typed
+  // URL still renders something useful.
+  const params = useParams();
+  const subTabParam = params[ROUTE_PARAMS.guardrailChecksSubTab];
+  const subTab = isGuardrailChecksSubTab(subTabParam)
+    ? subTabParam
+    : GUARDRAIL_CHECKS_DEFAULT_SUB_TAB;
 
   const runMutation = useRunGuardrailChecks({
     onSuccess: (results) => {
@@ -97,15 +104,34 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
       </Flex>
 
       {/* Sub-tab switcher */}
-      <TabsRoot value={subTab} onValueChange={(v) => setSubTab(v as SubTab)}>
-        <TabsList>
-          <TabsTrigger value="tests">Tests</TabsTrigger>
-          <TabsTrigger value="results">Test Results</TabsTrigger>
-        </TabsList>
-      </TabsRoot>
+      <Tabs
+        aria-label="Guardrail test views"
+        value={subTab}
+        items={[
+          {
+            value: GuardrailChecksSubTab.Tests,
+            children: 'Tests',
+            href: getGuardrailChecksSubTabRoute(
+              workspace,
+              guardrailConfigName,
+              GuardrailChecksSubTab.Tests
+            ),
+          },
+          {
+            value: GuardrailChecksSubTab.Results,
+            children: 'Test Results',
+            href: getGuardrailChecksSubTabRoute(
+              workspace,
+              guardrailConfigName,
+              GuardrailChecksSubTab.Results
+            ),
+          },
+        ]}
+        renderLink={(item) => <Link to={item.href!}>{item.children}</Link>}
+      />
 
       {/* Tests tab */}
-      {subTab === 'tests' ? (
+      {subTab === GuardrailChecksSubTab.Tests ? (
         <Stack gap="density-lg">
           {checks.map((check, i) => (
             <GuardrailTestCard key={check.id} check={check} index={i} workspace={workspace} />

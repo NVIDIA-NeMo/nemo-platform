@@ -30,6 +30,7 @@ import {
 import { ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { FilesetDetailTab } from '@studio/routes/FilesetDetailRoute/constants';
+import type { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { generatePath, RouteObject } from 'react-router';
 
 const gateRoutes = (enabled: boolean, routes: RouteObject | RouteObject[]) => {
@@ -419,6 +420,18 @@ export const getGuardrailChecksRoute = (workspace: string, guardrailConfigName: 
   return generatePath(ROUTES.workspace.guardrailChecks, {
     workspace,
     guardrailConfigName,
+  });
+};
+
+export const getGuardrailChecksSubTabRoute = (
+  workspace: string,
+  guardrailConfigName: string,
+  subTab: GuardrailChecksSubTab
+): ReturnType<typeof generatePath> => {
+  return generatePath(ROUTES.workspace.guardrailChecksSubTab, {
+    workspace,
+    guardrailConfigName,
+    guardrailChecksSubTab: subTab,
   });
 };
 
