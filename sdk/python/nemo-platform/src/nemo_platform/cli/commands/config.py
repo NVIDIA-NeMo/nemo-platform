@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
+import shlex
 from typing import Annotated
 
 import typer
 
+from nemo_platform.cli.commands.config_help import CONFIG_APP_HELP
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.cli.core.formatters import format_output
@@ -19,16 +21,7 @@ OutputFormat = ListOutputFormat
 
 app = create_typer_app(
     name="config",
-    help="""\
-Manage NeMo Platform CLI configuration.
-
-Examples:
-# Set the cluster base URL (most common first step).
-nemo config set --base-url https://nmp.example.com
-# View current effective configuration.
-nemo config view
-# Switch to a named context.
-nemo config use-context dev""",
+    help=CONFIG_APP_HELP,
 )
 
 
@@ -77,18 +70,20 @@ def config_callback(ctx: typer.Context) -> None:
 
 @app.command("current-context")
 @handle_errors
-def current_context() -> None:
-    """Display the current context name.
+def current_context(ctx: typer.Context) -> None:
+    """Display the effective current context name.
 
     For full context details, use: nemo config view
     """
     from nemo_platform.config.config import Config
 
+    cli_context: CLIContext = ctx.obj
     config = Config.load()
     config_file = config.get_config_file()
+    context_name = cli_context.overrides.get("current_context") or config.current_context or config_file.current_context
 
-    if config_file.current_context:
-        typer.echo(config_file.current_context)
+    if context_name:
+        typer.echo(context_name)
     else:
         raise ConfigError("No current context set")
 
@@ -124,7 +119,10 @@ def set_config(
     truncate: Annotated[bool | None, typer.Option(help="Truncate long output values")] = None,
     context_name: Annotated[
         str | None,
-        typer.Option("--context", help="Context to modify (default: current context)"),
+        typer.Option(
+            "--context",
+            help="Context name to create or modify (user-defined label; default: current context)",
+        ),
     ] = None,
     activate: Annotated[
         bool,
@@ -132,13 +130,19 @@ def set_config(
     ] = False,
 ) -> None:
     """
-    Set configuration values in the active or provided context.
+    Set configuration values in the current or specified context.
 
-    If no config file exists, creates one with a 'default' context.
+    If no config file exists, creates one. Without --context, uses the effective
+    current context, or 'default' when no current context is selected.
+    If the saved config has no current context, the next written context becomes
+    current automatically. Otherwise, creating additional contexts does not switch
+    the current context; use --activate or use-context.
     At least one option must be provided.
 
     Examples:
       nemo config set --base-url https://api.example.com
+      nemo config set --context staging --base-url https://nmp.staging.example.com
+      nemo config set --context production --base-url https://nmp.example.com --activate
       nemo config set --workspace my-workspace --output-format json
       nemo config set --api-key YOUR_API_KEY
       nemo config set --api-key -        # prompts for API key securely
@@ -205,9 +209,28 @@ def set_config(
     if activate and target_context_name:
         params["current_context"] = target_context_name
 
-    config = Config.write(params, context_name=target_context_name, set_current_on_create=True)
-    effective_name = target_context_name or config.get_config_file().current_context
-    typer.echo(f"Configuration updated for context '{effective_name}'")
+    write_result = Config.write_with_result(
+        params,
+        context_name=target_context_name,
+    )
+    effective_name = write_result.context_name
+    # is_current checks the persisted file value; --activate writes current_context into params,
+    # so a newly-created context with --activate will already appear here as current.
+    is_current = write_result.config.get_config_file().current_context == effective_name
+    if write_result.created and is_current:
+        typer.echo(f"Context '{effective_name}' created and set as current")
+    elif write_result.created:
+        typer.echo(f"Context '{effective_name}' created")
+        context_arg = shlex.quote(effective_name)
+        if effective_name.startswith("-"):
+            context_arg = f"-- {context_arg}"
+        typer.echo(f"To make it current, run: nemo config use-context {context_arg}")
+    elif activate and has_options:
+        typer.echo(f"Configuration updated for context '{effective_name}' and set as current")
+    elif activate:
+        typer.echo(f"Switched to context '{effective_name}'")
+    else:
+        typer.echo(f"Configuration updated for context '{effective_name}'")
 
 
 @app.command("use-context")
@@ -220,7 +243,7 @@ def use_context(
 
     config = Config.load()
     config.set_current_context(context_name)
-    typer.echo(f'Switched to context "{context_name}"')
+    typer.echo(f"Switched to context '{context_name}'")
 
 
 @app.command("view")

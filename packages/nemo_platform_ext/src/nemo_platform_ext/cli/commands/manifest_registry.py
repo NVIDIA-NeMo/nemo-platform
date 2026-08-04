@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from nemo_platform_ext.cli.commands.config_help import CONFIG_APP_HELP
 from nemo_platform_ext.cli.manifest import TopLevelEntry
 
 TOP_LEVEL_ENTRIES = (
@@ -15,16 +16,7 @@ TOP_LEVEL_ENTRIES = (
     ),
     TopLevelEntry(
         import_path="nemo_platform_ext.cli.commands.config:app",
-        help="""\
-Manage NeMo Platform CLI configuration.
-
-Examples:
-# Set the cluster base URL (most common first step).
-nemo config set --base-url https://nmp.example.com
-# View current effective configuration.
-nemo config view
-# Switch to a named context.
-nemo config use-context dev""",
+        help=CONFIG_APP_HELP,
         name="config",
         panel="Setup",
         kind="group",

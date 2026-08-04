@@ -91,6 +91,8 @@ Choose the remote option and enter the deployment's base URL. Setup verifies the
 
 This connects the local CLI to an existing deployment; it does not install the platform on a remote host.
 
+To configure remote access without rerunning setup, or to keep separate local and remote targets, follow [Connect the CLI to Deployments](/documentation/reference/cli-reference/connect-to-deployments).
+
 ### Auth and OIDC source installs
 
 `nemo setup` and `nemo services run` do not create authorization role bindings by themselves. If you enable auth in source config with `auth.enabled: true` and set `auth.admin_email`, run the platform seed task so the bootstrap IAM bindings exist.
