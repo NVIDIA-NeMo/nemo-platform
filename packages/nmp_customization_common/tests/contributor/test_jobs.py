@@ -34,7 +34,8 @@ def _patch_runtime(monkeypatch: pytest.MonkeyPatch):
             classmethod(lambda cls: SimpleNamespace(runtime=runtime)),
         )
         monkeypatch.setattr(
-            "nemo_platform_plugin.capabilities.probe_docker",
+            jobs_mod,
+            "probe_docker",
             lambda **kwargs: ProbeResult(
                 available=docker_available,
                 detail=None if docker_available else "Docker daemon unreachable (test)",

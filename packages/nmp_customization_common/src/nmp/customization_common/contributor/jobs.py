@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import ClassVar, cast
 
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.config import NemoPlatformConfig, Runtime
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
@@ -40,8 +41,6 @@ def require_container_runtime(backend_label: str, *, num_nodes: int = 1) -> None
     ``platform.runtime: kubernetes``. Failing here surfaces the misconfiguration at
     compile time instead of as an opaque "no backend found" scheduling error.
     """
-    from nemo_platform_plugin.capabilities import probe_docker
-
     platform_config = NemoPlatformConfig.get()
     runtime = platform_config.runtime
 

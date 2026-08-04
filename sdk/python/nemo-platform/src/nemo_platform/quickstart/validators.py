@@ -9,6 +9,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from nemo_platform_plugin.capabilities import probe_docker, reset_capability_cache
+
 from .config import QuickstartConfig
 
 
@@ -30,8 +32,6 @@ def validate_docker_available() -> ValidationResult:
     Returns:
         ValidationResult indicating success or failure.
     """
-    from nemo_platform_plugin.capabilities import probe_docker, reset_capability_cache
-
     # CLI may re-run after the user starts Docker; do not pin a prior miss.
     reset_capability_cache()
     result = probe_docker(use_cache=False)

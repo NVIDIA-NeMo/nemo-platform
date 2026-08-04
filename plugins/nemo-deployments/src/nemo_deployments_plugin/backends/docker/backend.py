@@ -60,6 +60,7 @@ from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
+from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
@@ -115,8 +116,6 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         self._gpu_pool = get_shared_gpu_pool()
         docker_host = self._executor_config.docker_host
-        from nemo_platform_plugin.capabilities import probe_docker
-
         probe = probe_docker(docker_host=docker_host)
         if not probe.available:
             raise MissingBackendDependencyError(

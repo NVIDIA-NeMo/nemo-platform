@@ -118,7 +118,7 @@ def test_require_docker_raises_when_unavailable() -> None:
 def test_validate_docker_available_delegates_to_probe() -> None:
     from nemo_platform_plugin.config import validate_docker_available
 
-    with patch("nemo_platform_plugin.capabilities.probe_docker") as probe:
+    with patch("nemo_platform_plugin.config.probe_docker") as probe:
         probe.return_value = MagicMock(available=False)
         assert validate_docker_available() is False
         probe.assert_called_once()

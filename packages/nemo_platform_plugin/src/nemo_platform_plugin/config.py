@@ -78,6 +78,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal, Self, Type, TypeVar
 
 import yaml
+from nemo_platform_plugin.capabilities import probe_docker
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
@@ -385,8 +386,6 @@ def validate_docker_available() -> bool:
     ``docker_host`` override. Results are process-cached; CLI retry paths
     should call :func:`~nemo_platform_plugin.capabilities.reset_capability_cache`.
     """
-    from nemo_platform_plugin.capabilities import probe_docker
-
     return probe_docker().available
 
 
