@@ -622,17 +622,20 @@ def test_snapshot_subtree_respects_gitignore(tmp_path: Path) -> None:
     checkout = tmp_path / "repo"
     checkout.mkdir()
     _git(checkout, "init", "-q")
-    (checkout / ".gitignore").write_text(".env\n", encoding="utf-8")
+    gitignore = ".env\nmetadata.json\n__pycache__/\n"
+    (checkout / ".gitignore").write_text(gitignore, encoding="utf-8")
     _git(checkout, "add", ".gitignore")
 
     winner = _winner(tmp_path)
-    (winner / ".gitignore").write_text(".env\n", encoding="utf-8")
+    (winner / ".gitignore").write_text(gitignore, encoding="utf-8")
     (winner / ".env").write_text("INFERENCE_API_KEY=secret\n", encoding="utf-8")
+    (winner / "__pycache__" / "agent.pyc").parent.mkdir()
+    (winner / "__pycache__" / "agent.pyc").write_bytes(b"cache")
 
     PRPublisher(agent_dir=checkout)._snapshot_subtree(winner, ".")
 
     assert (checkout / ".env").exists()
-    assert ".env" not in _git(checkout, "ls-files")
+    assert not {".env", "metadata.json", "__pycache__/agent.pyc"} & set(_git(checkout, "ls-files"))
 
 
 def test_snapshot_subtree_rejects_symlink_ancestor_before_commands_or_overlay(

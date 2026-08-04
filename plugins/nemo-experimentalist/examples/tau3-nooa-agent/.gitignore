@@ -1,2 +1,6 @@
 # Local inference credentials
 .env
+
+# Generated runtime artifacts
+metadata.json
+__pycache__/
