@@ -88,7 +88,7 @@ export const useAnonymizerPreview = ({
           setResult((prev) => ({
             ...prev,
             records: frame.records,
-            textColumn: frame.originalTextColumn ?? prev.textColumn,
+            textColumn: frame.original_text_column ?? prev.textColumn,
           }));
           break;
         case 'failed_records':

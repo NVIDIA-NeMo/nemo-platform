@@ -1,23 +1,31 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { PreviewRequest } from '@nemo/sdk/generated/anonymizer/schema';
+import {
+  LogFrameLevel,
+  type Done,
+  type Error as ErrorFrame,
+  type FailedRecordsFrame,
+  type Heartbeat,
+  type LogFrame,
+  type PreviewDatasetFrame,
+  type PreviewRequest,
+  type TraceDatasetFrame,
+} from '@nemo/sdk/generated/anonymizer/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { asRecord } from '@studio/util/guards';
 import { readLineDelimitedStream } from '@studio/util/lineStream';
 
-export type PreviewLogLevel = 'debug' | 'info' | 'warning' | 'error';
-
 export type PreviewFrame =
-  | { kind: 'log'; level: PreviewLogLevel; message: string }
-  | { kind: 'preview_dataset'; records: Record<string, unknown>[] }
-  | { kind: 'trace_dataset'; records: Record<string, unknown>[]; originalTextColumn?: string }
-  | { kind: 'failed_records'; records: Record<string, unknown>[] }
-  | { kind: 'heartbeat' }
-  | { kind: 'done' }
-  | { kind: 'error'; message: string };
+  | LogFrame
+  | PreviewDatasetFrame
+  | TraceDatasetFrame
+  | FailedRecordsFrame
+  | Heartbeat
+  | Done
+  | ErrorFrame;
 
-const LOG_LEVELS: readonly string[] = ['debug', 'info', 'warning', 'error'];
+const LOG_LEVELS: readonly string[] = Object.values(LogFrameLevel);
 
 const asRecordList = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value)
@@ -48,7 +56,9 @@ export const parsePreviewFrame = (line: string): PreviewFrame | undefined => {
       const { level, message } = frame;
       return {
         kind,
-        level: LOG_LEVELS.includes(String(level)) ? (level as PreviewLogLevel) : 'info',
+        level: LOG_LEVELS.includes(String(level))
+          ? (level as LogFrame['level'])
+          : LogFrameLevel.info,
         message: typeof message === 'string' ? message : '',
       };
     }
@@ -60,7 +70,7 @@ export const parsePreviewFrame = (line: string): PreviewFrame | undefined => {
       return {
         kind,
         records: asRecordList(frame.records),
-        originalTextColumn: typeof column === 'string' ? column : undefined,
+        original_text_column: typeof column === 'string' ? column : undefined,
       };
     }
     case 'heartbeat':

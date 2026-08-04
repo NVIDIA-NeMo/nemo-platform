@@ -26,7 +26,7 @@ describe('parsePreviewFrame', () => {
     expect(parsePreviewFrame(line)).toEqual({
       kind: 'trace_dataset',
       records: [{ a: 1 }],
-      originalTextColumn: 'biography',
+      original_text_column: 'biography',
     });
   });
 
@@ -34,7 +34,7 @@ describe('parsePreviewFrame', () => {
     expect(parsePreviewFrame('{"kind":"trace_dataset","records":[]}')).toEqual({
       kind: 'trace_dataset',
       records: [],
-      originalTextColumn: undefined,
+      original_text_column: undefined,
     });
   });
 
