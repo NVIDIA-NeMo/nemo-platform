@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { RadioCard } from '@nemo/common/src/components/RadioCard/index';
 import { RadioGroupRoot } from '@nvidia/foundations-react-core';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-
-import { RadioCard } from '.';
 
 const renderGroup = (onValueChange: () => void, showIndicator?: boolean) => {
   render(
@@ -25,8 +24,6 @@ describe('RadioCard', () => {
     expect(screen.getByText('First')).toBeInTheDocument();
   });
 
-  // The hidden indicator must stay in the DOM: four studio suites locate these
-  // cards with getByRole('radio').
   it('Keeps the radio input queryable and operable when showIndicator is false', async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();

@@ -27,7 +27,7 @@ export interface RadioCardProps extends Omit<ComponentProps<typeof RadioGroupIte
   labelId?: string;
   /** Which side of the card the radio input renders on. @default "right" */
   labelSide?: 'left' | 'right';
-  /** Shows the radio indicator dot. When false the input stays in the DOM (still focusable and form-participating) but is visually hidden, so the card's selected border conveys state on its own. @default true */
+  /** Shows the radio indicator dot; when false the input is only visually hidden and the selected border conveys state. @default true */
   showIndicator?: boolean;
   /** When true, shows the card as selected. When used inside RadioGroupRoot, the group's value controls this; pass checked so the card reflects the active state (e.g. checked={value === 'this-option'}). */
   checked?: boolean;
