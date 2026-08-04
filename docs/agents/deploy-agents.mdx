@@ -12,7 +12,7 @@ subprocess (the default), or as a durable container on Docker or Kubernetes.
 
 Resource names for agents and deployments must contain only letters (a-z,
 A-Z), digits (0-9), underscores, hyphens, and dots. For example:
-`calc-agent`, `my-agent`, `react-agent`.
+`calculator-agent`, `my-agent`, `react-agent`.
 
 </Note>
 
@@ -27,7 +27,7 @@ durable container through the deployments plugin.
 
 | Mode | Runs as | Survives a platform restart | Requires |
 |------|---------|-----------------------------|----------|
-| `subprocess` (default) | A local `nat start fastapi` process on the platform host | No | Nothing extra |
+| `subprocess` (default) | A local FastAPI server on the platform host | No | Nothing extra |
 | `docker` | A Docker container | Yes | A container image and a configured `docker` executor |
 | `k8s` | A Kubernetes Deployment + Service | Yes | A container image and a configured `k8s` executor |
 
@@ -39,7 +39,7 @@ clients do not need to know which mode the agent runs in.
 
 ## Subprocess Mode (Default)
 
-The simplest path: the platform launches a `nat start fastapi` process for the
+The simplest path: the platform launches a FastAPI server for the
 agent on its own host, assigns a port, watches its health, and tears it down
 on `nemo agents undeploy`. No image or executor configuration is required.
 
@@ -49,15 +49,21 @@ on `nemo agents undeploy`. No image or executor configuration is required.
 <Tab title="CLI">
 
 ```bash
-# Register the agent from a NAT workflow YAML
-nemo agents create --name calc-agent \
-  --agent-config ./calculator-agent.yml
+# Register the calculator agent from agent.yaml
+nemo agents create \
+  --name calculator-agent \
+  --agent-config plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml
 
 # Deploy as a local subprocess (waits for "running" by default)
-nemo agents deploy --agent calc-agent
+nemo agents deploy \
+  --agent calculator-agent \
+  --name calculator-agent-deployment \
+  --mode subprocess
 
 # Invoke through the Agents gateway
-nemo agents invoke --agent calc-agent --input "What is 12 multiplied by 8?"
+nemo agents invoke \
+  --agent-deployment calculator-agent-deployment \
+  --input "What is 12 multiplied by 8?"
 ```
 
 </Tab>
@@ -74,17 +80,26 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# Register the agent from a NAT workflow YAML
-with open("calculator-agent.yml") as f:
+# Register the agent from an agent.yaml
+with open(
+    "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml"
+) as f:
     config = yaml.safe_load(f)
-client.agents.create(name="calc-agent", config=config)
+client.agents.create(
+    name="calculator-agent",
+    config=config,
+    config_format=config["config_format"],
+)
 
 # Deploy as a local subprocess
-client.agents.deployments.create(agent="calc-agent")
+client.agents.deployments.create(
+    agent="calculator-agent",
+    name="calculator-agent-deployment",
+)
 
 # Invoke through the Agents gateway
 response = client.agents.invoke(
-    agent="calc-agent",
+    deployment="calculator-agent-deployment",
     input="What is 12 multiplied by 8?",
 )
 ```
@@ -106,44 +121,36 @@ routes to that projected address.
 
 ### Prerequisites
 
-**1. A container image for the agent.** Container modes run a NAT runtime image
-that has `nat` on its `PATH` plus your agent's dependencies (tools, custom
-components). Build one with `nemo agents package`. Image building requires the
-`container` extra — install it with `pip install 'nemo-agents-plugin[container]'`
-if `nemo agents package` reports that `python-on-whales` is missing.
+**1. A container image for the agent.** Container modes run a packaged agent
+runtime with the selected harness adapters and the agent's dependencies. Build
+one with `nemo agents package`; the command detects `nemo-agents-spec-v1` and
+selects the Platform agent image pipeline automatically. Image building
+requires the `container` extra. Install it with:
+
+```bash
+uv pip install 'nemo-agents-plugin[container]'
+```
 
 The examples below use the calculator agent that ships with the source
-checkout. From the repository root, its project directory is
-`plugins/nemo-agents/examples/calculator-agent/` — the workflow YAML lives at
-`src/calculator_agent/calculator-agent.yml` and the project's `pyproject.toml`
-sits at the directory root. `cd` into that project directory first so the paths
-below resolve:
+checkout. Run them from the repository root. Its config is located at
+`plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml`.
 
 <Tabs>
 
 <Tab title="CLI">
 
 ```bash
-# From the repo root, switch into the example's project directory
-cd plugins/nemo-agents/examples/calculator-agent
-
-# Render a Dockerfile, build the image, and tag it locally.
-# --pyproject builds in "project mode" so the agent's custom components
-# (here, the `calculator` function group) are installed into the image.
-# Omit --pyproject only for a single-file agent that has no local package.
+# Build the calculator agent image and tag it locally
 nemo agents package \
-  --agent src/calculator_agent/calculator-agent.yml \
-  --pyproject pyproject.toml \
-  --nat-version 1.8.0 \
-  --tag calc-agent:local
+  --agent plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml \
+  --tag calculator-agent:local
 
 # For k8s, publish to a registry your cluster can pull from
 nemo agents package \
-  --agent src/calculator_agent/calculator-agent.yml \
-  --pyproject pyproject.toml \
-  --nat-version 1.8.0 \
-  --tag calc-agent:1.0 \
-  --publish --registry <your-registry>
+  --agent plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml \
+  --tag calculator-agent:1.0.0 \
+  --publish \
+  --registry <your-registry>
 ```
 
 </Tab>
@@ -171,7 +178,7 @@ agents:
     k8s_executor: k8s-local
     # Optional: the image used when --image is omitted
     default_image: ""
-    # Container port the NAT server binds (and the readiness probe target)
+    # Container port the packaged agent runtime binds (and the readiness probe target)
     container_port: 8000
 
 deployments:
@@ -205,17 +212,22 @@ run in the core controller, whose Role already grants those permissions.
 <Tab title="CLI">
 
 ```bash
-# Run from the example's project directory (see Prerequisites)
-nemo agents create --name calc-agent \
-  --agent-config src/calculator_agent/calculator-agent.yml
+# Run from the repository root (see Prerequisites)
+nemo agents create \
+  --name calculator-agent \
+  --agent-config plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml
 
 # --mode docker compiles to the deployments plugin's docker executor
-nemo agents deploy --agent calc-agent \
+nemo agents deploy \
+  --agent calculator-agent \
+  --name calculator-agent-docker \
   --mode docker \
-  --image calc-agent:local
+  --image calculator-agent:local
 
 # Reached through the Agents gateway, exactly like subprocess mode
-nemo agents invoke --agent calc-agent --input "What is 12 multiplied by 8?"
+nemo agents invoke \
+  --agent-deployment calculator-agent-docker \
+  --input "What is 12 multiplied by 8?"
 ```
 
 </Tab>
@@ -232,18 +244,25 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-with open("src/calculator_agent/calculator-agent.yml") as f:
+with open(
+    "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml"
+) as f:
     config = yaml.safe_load(f)
-client.agents.create(name="calc-agent", config=config)
+client.agents.create(
+    name="calculator-agent",
+    config=config,
+    config_format=config["config_format"],
+)
 
 client.agents.deployments.create(
-    agent="calc-agent",
+    agent="calculator-agent",
+    name="calculator-agent-docker",
     deployment_mode="docker",
-    image="calc-agent:local",
+    image="calculator-agent:local",
 )
 
 response = client.agents.invoke(
-    agent="calc-agent",
+    deployment="calculator-agent-docker",
     input="What is 12 multiplied by 8?",
 )
 ```
@@ -265,15 +284,20 @@ that address directly.
 <Tab title="CLI">
 
 ```bash
-# Run from the example's project directory (see Prerequisites)
-nemo agents create --name calc-agent \
-  --agent-config src/calculator_agent/calculator-agent.yml
+# Run from the repository root (see Prerequisites)
+nemo agents create \
+  --name calculator-agent \
+  --agent-config plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml
 
-nemo agents deploy --agent calc-agent \
+nemo agents deploy \
+  --agent calculator-agent \
+  --name calculator-agent-k8s \
   --mode k8s \
-  --image <registry>/calc-agent:1.0
+  --image <registry>/calculator-agent:1.0.0
 
-nemo agents invoke --agent calc-agent --input "What is 12 multiplied by 8?"
+nemo agents invoke \
+  --agent-deployment calculator-agent-k8s \
+  --input "What is 12 multiplied by 8?"
 ```
 
 </Tab>
@@ -290,18 +314,25 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-with open("src/calculator_agent/calculator-agent.yml") as f:
+with open(
+    "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml"
+) as f:
     config = yaml.safe_load(f)
-client.agents.create(name="calc-agent", config=config)
+client.agents.create(
+    name="calculator-agent",
+    config=config,
+    config_format=config["config_format"],
+)
 
 client.agents.deployments.create(
-    agent="calc-agent",
+    agent="calculator-agent",
+    name="calculator-agent-k8s",
     deployment_mode="k8s",
-    image="<registry>/calc-agent:1.0",
+    image="<registry>/calculator-agent:1.0.0",
 )
 
 response = client.agents.invoke(
-    agent="calc-agent",
+    deployment="calculator-agent-k8s",
     input="What is 12 multiplied by 8?",
 )
 ```
@@ -317,17 +348,26 @@ Regardless of mode, model traffic from inside the agent routes back through the
 [Inference Gateway](/documentation/models-and-inference). The platform injects
 the gateway URL when it deploys the agent, and the gateway resolves model
 entity names to upstream providers and supplies their credentials. Two
-conventions apply to the agent's workflow YAML:
+conventions apply to `agent.yaml`:
 
-- **Leave `base_url` and `api_key` unset** on `openai` and `nim` LLMs — the
-  deployment injects the gateway URL and the gateway looks up upstream
-  credentials.
-- **Reference models by their Inference Gateway entity name**, with slashes and
-  dots converted to hyphens (`meta/llama-3.1-8b-instruct` becomes
-  `default/meta-llama-3-1-8b-instruct`). Use `${NEMO_DEFAULT_MODEL}` in agent
-  config files to defer to the SDK or CLI context's configured default model at
-  agent registration time. If you call the REST API directly, replace the
-  placeholder with an explicit VirtualModel name before creating the agent.
+- **Set `models.default.model` to the Inference Gateway entity name.** The
+  models controller creates these names by replacing slashes and dots with
+  hyphens (`nvidia/nemotron-3-nano-30b-a3b` becomes
+  `nvidia-nemotron-3-nano-30b-a3b`).
+- **Leave `base_url` unset for a Platform-routed model.** When `provider` is
+  `nvidia`, `openai`, or `openai-compatible`, the deployment supplies the
+  Inference Gateway URL. `api_key_env` names the environment variable expected
+  by the selected harness; it does not contain a credential.
+
+The calculator agent uses:
+
+```yaml
+models:
+  default:
+    provider: nvidia
+    model: nvidia-nemotron-3-nano-30b-a3b
+    api_key_env: NVIDIA_API_KEY
+```
 
 To make an external model available to the agent, register a provider first —
 see [Deploy Models](/documentation/models-and-inference/tutorials/deploy-models#add-external-providers)
@@ -357,7 +397,7 @@ agents:
 ```
 
 ```bash
-uv run nemo services run --host 0.0.0.0 --port 8080
+nemo services run --host 0.0.0.0 --port 8080
 ```
 
 If your Docker bridge uses a non-default subnet, substitute its gateway address
@@ -373,11 +413,11 @@ If your Docker bridge uses a non-default subnet, substitute its gateway address
 
 ```bash
 # Block until the deployment is running or failed
-nemo agents deployments wait --agent calc-agent
+nemo agents deployments wait --agent calculator-agent
 
 # List / inspect deployments
 nemo agents deployments list
-nemo agents deployments get <deployment-name>
+nemo agents deployments get calculator-agent-deployment
 ```
 
 </Tab>
@@ -393,13 +433,14 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-deployment = client.agents.deployments.get("<deployment-name>")
+deployment = client.agents.deployments.get("calculator-agent-deployment")
 print(deployment["deployment_mode"], deployment["status"], deployment["endpoints"])
 ```
 
 </Tab>
 
 </Tabs>
+
 For a container-mode deployment, the deployment reports `deployment_mode`
 (`docker` or `k8s`), a `status` of `running` once ready, and an `endpoints`
 list carrying the container's routable address. Subprocess deployments carry a
@@ -410,17 +451,16 @@ mode provides, so invocation is identical across modes.
 
 ## Deployment Cleanup
 
-
 <Tabs>
 
 <Tab title="CLI">
 
 ```bash
 # Stop the running deployment (removes the process/container/k8s objects)
-nemo agents undeploy <deployment-name>
+nemo agents undeploy calculator-agent-deployment
 
 # Remove the agent entity
-nemo agents delete <agent-name>
+nemo agents delete calculator-agent
 ```
 
 </Tab>
@@ -437,10 +477,10 @@ client = NeMoPlatform(
 )
 
 # Stop the running deployment (removes the process/container/k8s objects)
-client.agents.deployments.delete("<deployment-name>")
+client.agents.deployments.delete("calculator-agent-deployment")
 
 # Remove the agent entity
-client.agents.delete("<agent-name>")
+client.agents.delete("calculator-agent")
 ```
 
 </Tab>
