@@ -57,6 +57,54 @@ a baseline agent on Harbor-compatible train and validation datasets, proposes
 candidate mutations, and records its artifacts under the selected experiment
 directory.
 
+### Recommended laptop isolation
+
+Use [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) instead of a
+privileged Docker-in-Docker container or a host Docker socket mount. The
+Experimentalist runs inside an isolated microVM, while Harbor uses that
+sandbox's private Docker daemon for task containers. Clone mode gives the
+Experimentalist a private writable clone instead of write access to the host
+checkout. This flow requires Docker Engine 29.6.2 or later and was tested with
+Docker Sandboxes (`sbx`) 0.37.1.
+
+Create the sandbox and run the Experimentalist:
+
+```bash
+repo="$(git rev-parse --show-toplevel)"
+sbx create --clone --name nemo-experimentalist shell "$repo"
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env INFERENCE_API_KEY \
+  --env NEMO_EXPERIMENTALIST_API_BASE \
+  --env NEMO_EXPERIMENTALIST_API_KEY \
+  --env NEMO_EXPERIMENTALIST_MODELS_SMART \
+  --env NEMO_EXPERIMENTALIST_MODELS_MID \
+  --env NEMO_EXPERIMENTALIST_MODELS_FAST \
+  nemo-experimentalist \
+  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
+  nemo agents experimentalist run
+```
+
+Append the run options described below. `UV_PROJECT_ENVIRONMENT` keeps the
+sandbox's Linux environment separate from the host checkout's `.venv`. Clone
+mode prevents sandbox writes to the host checkout, but it is not a secret
+isolation boundary: the complete host repository, including ignored `.env`
+files, remains readable at `/run/sandbox/source`. Values passed with `sbx exec
+--env` are readable by the optimizer, candidate agent, verifier, and their
+subprocesses. Use dedicated, revocable, spending-limited keys. Optimizer and
+task code can use any outbound access granted to the sandbox. The sandbox must
+be able to reach the package, model, registry, Harbor dataset, and NeMo Platform
+endpoints required by the run.
+
+Copy experiment artifacts you want to retain to the host with `sbx cp`; the
+[complete example](../../docs/get-started/example-agent.mdx#5-optimize-performance-with-the-experimentalist)
+includes concrete inspection, comparison, and copy commands.
+`sbx stop nemo-experimentalist` preserves the VM, output, packages, and private
+Docker cache; `sbx rm nemo-experimentalist` deletes them. On Apple silicon,
+Harbor tasks that publish only `linux/amd64` images do not run in the
+`linux/arm64` sandbox. This currently includes the Terminal-Bench `fix-git`
+task; use an x86_64 machine or VM for that suite.
+
 ### Endpoint and model settings
 
 Which endpoint the Experimentalist talks to, and with which models, is a *deployment*

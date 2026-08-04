@@ -7,7 +7,9 @@ This provides a guide for how you can quickly load agent traces into your NeMo P
 
 ## Prerequisites
 
-- Git, GNU Make, uv, pnpm, Docker
+- Git, GNU Make, uv, and pnpm
+- Docker Engine 29.6.2 or later
+- [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) (`sbx`) 0.37.1 or later
 - An NVIDIA Inference Gateway virtual key (`sk-...`) from `inference.nvidia.com`.
 
 ## 1. Clone and bootstrap NeMo Platform
@@ -99,24 +101,88 @@ uv run --frozen nemo workspaces create canonical-tau3-airline \
   --exist-ok
 ```
 
-Now we're ready to run the experimentalist!
+Run the experimentalist in a Docker Sandbox so that both the optimization
+process and Harbor's task containers use the sandbox's microVM and private
+Docker daemon. Clone mode gives the experimentalist a private writable clone
+instead of write access to the host checkout. The host checkout remains
+available read-only at `/run/sandbox/source`; the prepared evaluation dataset
+is read from there. The sandbox uses `host.docker.internal` to reach the NeMo
+Platform services running on the host:
 
 ```bash
-uv run --frozen nemo agents experimentalist run \
+repo="$(git rev-parse --show-toplevel)"
+sbx create --clone --name nemo-experimentalist shell "$repo"
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env INFERENCE_API_KEY \
+  --env INFERENCE_API_BASE \
+  --env OPENAI_API_KEY \
+  --env OPENAI_BASE_URL \
+  --env NEMO_EXPERIMENTALIST_API_KEY \
+  --env NEMO_EXPERIMENTALIST_API_BASE \
+  --env NEMO_EXPERIMENTALIST_MODELS_SMART \
+  --env NEMO_EXPERIMENTALIST_MODELS_MID \
+  --env NEMO_EXPERIMENTALIST_MODELS_FAST \
+  --env TAU2_USER_MODEL \
+  --env TAU2_NL_ASSERTIONS_MODEL \
+  --env AUT_MODEL_NAME \
+  nemo-experimentalist \
+  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
+  nemo agents experimentalist run \
   --no-insight \
   --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
   --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \
-  --train-dataset plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
-  --validation-dataset plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
+  --train-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
+  --validation-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
   --workspace canonical-tau3-airline \
   --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
   --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-smoke.yaml \
   --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
-  --base-url "$NMP_BASE_URL"
+  --base-url http://host.docker.internal:8080
 ```
 
+The sandbox needs outbound access to the package, model, registry, Harbor
+dataset, and NeMo Platform endpoints used by the run. `host.docker.internal`
+is translated to the host's loopback interface so the sandbox can reach the
+NeMo Platform service on port 8080.
+
+<Warning>
+Clone mode protects the host checkout from writes, but it does not isolate
+secrets or host services from code in the sandbox. The complete host repository,
+including ignored `.env` files, is readable at `/run/sandbox/source`. Values
+passed with `sbx exec --env` are readable by the optimizer, candidate agents,
+Harbor verifier, and their subprocesses. Use dedicated, revocable,
+spending-limited credentials, and do not expose unrelated host services or
+network destinations. Optimizer and task code can use any outbound access
+granted to the sandbox.
+</Warning>
+
 The trace records include the Experimentalist evaluation ID and Tau3 task ID.
-After the run completes, inspect
-`plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist/eval-and-optimize/run.json`
-for the selected winner and compare the `agent-0` and `agent-1` directories to
-review the code change that was evaluated.
+After the run completes, inspect the run summary and compare the baseline with
+the candidate. The `diff` command exits with status 1 when it finds candidate
+changes, which is expected:
+
+```bash
+artifact_dir="plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist/eval-and-optimize"
+sbx exec --workdir "$repo" nemo-experimentalist \
+  sed -n '1,240p' "$artifact_dir/run.json"
+sbx exec --workdir "$repo" nemo-experimentalist \
+  diff -ru "$artifact_dir/agents/agent-0" "$artifact_dir/agents/agent-1"
+```
+
+Copy artifacts you want to retain to the host before removing the sandbox:
+
+```bash
+mkdir -p tmp/tau3-airline-artifacts
+sbx cp "nemo-experimentalist:$repo/$artifact_dir" \
+  tmp/tau3-airline-artifacts/
+```
+
+Stopping preserves the VM, its private Git clone, experiment output, installed
+packages, and Docker image/build cache. Remove the sandbox when you no longer
+need that state:
+
+```bash
+sbx stop nemo-experimentalist
+sbx rm nemo-experimentalist
+```
