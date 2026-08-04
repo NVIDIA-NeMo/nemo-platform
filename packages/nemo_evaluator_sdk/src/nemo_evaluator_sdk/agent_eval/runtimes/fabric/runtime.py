@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric import _common
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.hooks import FabricTaskRunHook, FabricTaskRunSession
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     SKILL_MODE_CODEX_SKILLS_DIR,
     AgentSkill,
@@ -130,6 +131,7 @@ class FabricAgentRuntime:
         trajectory_extra: Mapping[str, Any] | None = None,
         runtime_name: str = _RUNTIME_NAME,
         skills: Sequence[AgentSkill] | None = None,
+        task_hook: FabricTaskRunHook | None = None,
     ) -> None:
         self._config = config
         self._model = model
@@ -140,6 +142,7 @@ class FabricAgentRuntime:
         self._trajectory_extra = dict(trajectory_extra) if trajectory_extra else None
         self._runtime_name = runtime_name
         self._skill_set = SkillSet(tuple(skills or ()))
+        self._task_hook = task_hook
 
     def with_skills(self, skills: Sequence[AgentSkill]) -> FabricAgentRuntime:
         """Return a copy of this runtime with ``skills`` *added* to its skill set; ``self`` is not modified.
@@ -291,6 +294,8 @@ class FabricAgentRuntime:
         workspace_dir = evidence_dir / _WORKSPACE_SUBDIR
         workspace_dir.mkdir(parents=True, exist_ok=True)
         skill_provenances: list[SkillProvenance] = []
+        hook_session = FabricTaskRunSession()
+        hook_extras: dict[str, Any] | None = None
         try:
             # Stage seed files into the workspace for their on-disk side effect; the prompt is the task
             # instruction only, so the returned paths are unused.
@@ -320,6 +325,15 @@ class FabricAgentRuntime:
             for skill_path in skill_paths:
                 task_config.add_skill_path(skill_path)
 
+            if self._task_hook is not None:
+                task_config = self._task_hook.prepare(
+                    config=task_config,
+                    task=task,
+                    evidence_dir=evidence_dir,
+                    workspace_dir=workspace_dir,
+                    session=hook_session,
+                )
+
             result = await asyncio.wait_for(
                 # ``Fabric.run`` folds the per-invocation input + request id into a ``RunRequest``.
                 client.run(
@@ -329,11 +343,18 @@ class FabricAgentRuntime:
                 ),
                 timeout=self._timeout_s,
             )
+            if self._task_hook is not None and result.status == "succeeded":
+                hook_extras = self._task_hook.after_success(task=task, result=result, session=hook_session)
         except TimeoutError as exc:
             return self._failed_trial(task, evidence_dir, exc, extra_metadata=self._skill_metadata(skill_provenances))
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
             return self._failed_trial(task, evidence_dir, exc, extra_metadata=self._skill_metadata(skill_provenances))
         finally:
+            if self._task_hook is not None:
+                try:
+                    self._task_hook.cleanup(session=hook_session)
+                except Exception:  # noqa: BLE001 - hook cleanup must not mask the trial outcome
+                    pass
             # Codex self-injection staged each bundle *inside* the workspace so the harness could discover
             # it. Remove them once the run is over (it is already captured in the trajectory) so the injected
             # files don't linger in the durable workspace and, on any path that exposes it as filesystem
@@ -344,7 +365,14 @@ class FabricAgentRuntime:
                 for provenance in skill_provenances:
                     await asyncio.to_thread(_remove_injected_bundle, workspace_dir, provenance["location"])
 
-        return self._to_trial(task, result, evidence_dir, workspace_dir, skill_provenances=skill_provenances)
+        return self._to_trial(
+            task,
+            result,
+            evidence_dir,
+            workspace_dir,
+            skill_provenances=skill_provenances,
+            hook_extras=hook_extras,
+        )
 
     @staticmethod
     def _skill_metadata(provenances: list[SkillProvenance]) -> dict[str, Any]:
@@ -362,14 +390,15 @@ class FabricAgentRuntime:
         result: RunResult,
         evidence_dir: Path,
         workspace_dir: Path,
-        *,
         skill_provenances: list[SkillProvenance] | None = None,
+        hook_extras: Mapping[str, Any] | None = None,
     ) -> AgentEvalTrial:
         # Persist the full normalized Fabric result so graders (and debugging) can see the raw
         # envelope, and expose it as an evidence descriptor.
         result_path = evidence_dir / "fabric_result.json"
         result_path.write_text(json.dumps(result.to_mapping(), indent=2, default=str), encoding="utf-8")
 
+        extras = dict(hook_extras) if hook_extras else {}
         base_metadata: dict[str, Any] = {
             "runtime": self._runtime_name,
             "harness": result.harness,
@@ -379,6 +408,7 @@ class FabricAgentRuntime:
             "agent_model": self._model,
             # Skill provenance (name + content hash + injection mode) for the A/B diff.
             **self._skill_metadata(skill_provenances or []),
+            **extras,
         }
 
         if result.status != "succeeded":
@@ -388,12 +418,20 @@ class FabricAgentRuntime:
         # which is not itself a JSON value; normalize it to a plain mapping so it round-trips through the
         # trial's ``JsonValue``-typed response.
         output = _normalize_output(result.output)
+        # Author / mcp_run_binding hooks may attach a structured result. Prefer that when the
+        # harness returns an empty final message after a successful tool call.
+        output_text = _extract_output_text(output)
+        if not output_text or not str(output_text).strip():
+            binding_result = _first_mcp_binding_result(extras)
+            analysis = binding_result if binding_result is not None else extras.get("analyzer_analysis")
+            if analysis is not None:
+                output_text = json.dumps(analysis, default=str)
         return AgentEvalTrial(
             id=f"{task.id}:fabric",
             task_id=task.id,
             status=AgentEvalTrialStatus.COMPLETED,
             output=AgentOutput(
-                output_text=_extract_output_text(output),
+                output_text=output_text,
                 response=output,
                 metadata={**base_metadata, "evidence_dir": str(evidence_dir)},
             ),
@@ -442,7 +480,6 @@ class FabricAgentRuntime:
         task: AgentEvalTask,
         evidence_dir: Path,
         error: Exception | Mapping[str, Any],
-        *,
         extra_metadata: Mapping[str, Any] | None = None,
     ) -> AgentEvalTrial:
         if isinstance(error, Mapping):
@@ -491,7 +528,7 @@ class FabricAgentRuntime:
         # environment.workspace is overridden per task.
         environment = cfg.environment or EnvironmentConfig(provider="local")
         environment.provider = environment.provider or "local"
-        environment.workspace = str(workspace_dir)
+        environment.workspace = str(workspace_dir.resolve())
         cfg.environment = environment
 
         # Apply the model as the config's default (mirrors nemo_fabric.integrations.harbor).
@@ -606,6 +643,17 @@ def _normalize_output(output: RunOutput | JsonValue) -> JsonValue:
     if isinstance(output, Mapping):
         return dict(output)
     return output
+
+
+def _first_mcp_binding_result(extras: Mapping[str, Any]) -> Any | None:
+    """Return the first ``mcp_bindings.<server>.result`` payload, if any."""
+    bindings = extras.get("mcp_bindings")
+    if not isinstance(bindings, Mapping):
+        return None
+    for entry in bindings.values():
+        if isinstance(entry, Mapping) and "result" in entry:
+            return entry.get("result")
+    return None
 
 
 def _extract_output_text(output: object) -> str | None:

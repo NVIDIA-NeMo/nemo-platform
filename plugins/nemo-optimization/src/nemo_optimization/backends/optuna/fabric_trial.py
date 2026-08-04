@@ -13,6 +13,7 @@ from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.hook_loading import FabricTaskHookLoadError, load_fabric_task_hook
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
@@ -44,16 +45,26 @@ class FabricTrialEvaluator:
         self._experiment_id = experiment_id
         self._eval_config = _eval_config(payload)
         self._tasks = build_agent_eval_tasks(payload)
-        self._base_profiles = [_runtime_profile_overlay(profile) for profile in _profile_overlays(self._eval_config)]
-        self._fabric_base_dir = _optional_path(self._eval_config.get("fabric", {}).get("base_dir"))
-        self._timeout_s = int(self._eval_config.get("fabric", {}).get("timeout_s", 600))
-        self._capture_trajectory = bool(self._eval_config.get("fabric", {}).get("capture_trajectory", True))
-        self._parallelism = int(self._eval_config.get("general", {}).get("max_concurrency", 4))
+        fabric_eval = self._eval_config.get("fabric") if isinstance(self._eval_config.get("fabric"), Mapping) else {}
+        run_hook_spec = self._eval_config.get("run_hook")
+        try:
+            self._task_hook = load_fabric_task_hook(run_hook_spec if isinstance(run_hook_spec, Mapping) else None)
+        except FabricTaskHookLoadError as exc:
+            raise StudyDriverError(str(exc)) from exc
+        self._fabric_base_dir = _optional_path(
+            fabric_eval.get("base_dir") if isinstance(fabric_eval, Mapping) else None
+        )
+        self._timeout_s = int(fabric_eval.get("timeout_s", 600) if isinstance(fabric_eval, Mapping) else 600)
+        self._capture_trajectory = bool(
+            fabric_eval.get("capture_trajectory", True) if isinstance(fabric_eval, Mapping) else True
+        )
+        # Hooks often own per-task sockets/files; default serial when a hook is configured.
+        default_parallelism = 1 if self._task_hook is not None else 4
+        self._parallelism = int(self._eval_config.get("general", {}).get("max_concurrency", default_parallelism))
         self._trace_map: list[dict[str, Any]] = []
 
     def evaluate(
         self,
-        *,
         trial_number: int,
         suggestions: dict[str, Any],
         trial_overlay: dict[str, Any],
@@ -61,7 +72,6 @@ class FabricTrialEvaluator:
     ) -> dict[str, float]:
         runtime = FabricAgentRuntime(
             config=_runtime_agent_config(apply_suggestions(self._payload, suggestions)),
-            profiles=[*self._base_profiles, _runtime_profile_overlay(trial_overlay)],
             base_dir=self._fabric_base_dir,
             work_root=self._trial_work_root(trial_number, rep),
             timeout_s=self._timeout_s,
@@ -71,6 +81,7 @@ class FabricTrialEvaluator:
                 trial_number=trial_number,
                 rep=rep,
             ),
+            task_hook=self._task_hook,
         )
         result = AgentEvaluator().run_sync(
             tasks=self._tasks,
@@ -125,13 +136,22 @@ def build_agent_eval_tasks(payload: Mapping[str, Any]) -> list[AgentEvalTask]:
     tasks: list[AgentEvalTask] = []
     for index, row in enumerate(rows):
         row_id = str(row.get("id", index))
-        question = str(row.get("question") or row.get("prompt") or row.get("input") or "")
-        answer = row.get("answer") or row.get("expected_answer") or row.get("reference") or ""
+        instruction = str(
+            row.get("instruction")
+            or row.get("question")
+            or row.get("prompt")
+            or row.get("body")
+            or row.get("input")
+            or ""
+        )
+        if not instruction:
+            raise StudyDriverError(f"Dataset row {row_id!r} has no instruction/question/body/input.")
+        answer = row.get("answer") or row.get("expected_answer") or row.get("reference") or row.get("label") or ""
         tasks.append(
             AgentEvalTask(
                 id=row_id,
-                intent=question,
-                inputs={"question": question},
+                intent=instruction,
+                inputs={"instruction": instruction},
                 reference={"answer": str(answer)},
                 metrics=copy.deepcopy(metrics),
                 metadata={"optimizer_dataset_index": index},
@@ -240,33 +260,11 @@ def _eval_config(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     return eval_config
 
 
-def _profile_overlays(eval_config: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    profiles = eval_config.get("fabric", {}).get("profiles") if isinstance(eval_config.get("fabric"), Mapping) else None
-    if profiles is None:
-        return []
-    if not isinstance(profiles, Sequence) or isinstance(profiles, (str, bytes)):
-        raise StudyDriverError("eval.fabric.profiles must be a list of profile mappings.")
-    if not all(isinstance(profile, Mapping) for profile in profiles):
-        raise StudyDriverError("eval.fabric.profiles must contain only profile mappings.")
-    return list(profiles)
-
-
 def _runtime_agent_config(config: Mapping[str, Any]) -> dict[str, Any]:
     runtime_config = copy.deepcopy(dict(config))
     runtime_config.pop("eval", None)
     runtime_config.pop("optimizer", None)
     return runtime_config
-
-
-def _runtime_profile_overlay(profile: Mapping[str, Any]) -> dict[str, Any]:
-    runtime_profile = copy.deepcopy(dict(profile))
-    metadata = runtime_profile.pop("metadata", None)
-    if isinstance(metadata, Mapping):
-        if metadata.get("name") is not None:
-            runtime_profile.setdefault("name", metadata.get("name"))
-        if metadata.get("description") is not None:
-            runtime_profile.setdefault("description", metadata.get("description"))
-    return runtime_profile
 
 
 def _optional_path(value: Any) -> Path | None:

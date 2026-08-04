@@ -227,7 +227,9 @@ def run_numeric_study(
         return objective_values[0] if len(objective_values) == 1 else objective_values
 
     logger.info("Starting numeric Optuna study (%d trials, %d metrics)", n_trials, len(metric_names))
-    study.optimize(objective, n_trials=n_trials)
+    # Agent-eval / audit failures raise StudyDriverError; fail that Optuna trial and continue.
+    # Do not catch broader Exception — programming errors should still abort the study.
+    study.optimize(objective, n_trials=n_trials, catch=(StudyDriverError,))
     logger.info("Numeric Optuna study finished")
 
     if len(metric_names) == 1:

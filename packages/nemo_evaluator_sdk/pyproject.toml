@@ -96,6 +96,9 @@ fabric = [
   "nemo-fabric-adapters-hermes>=0.1.0rc6,<0.2.0; python_version < '3.14'",
 ]
 
+[project.entry-points."nemo.fabric.task_hooks"]
+mcp_run_binding = "nemo_evaluator_sdk.agent_eval.runtimes.fabric.hooks_mcp_binding:McpRunBindingHook"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -1,5 +1,21 @@
 # Optimizer/eval overlay only. Merge with agent.yaml via a platform agent
-# reference (`--agent <name>`) or use package.yaml for a self-contained run.
+# reference (`--agent <name>`) or use the self-contained packages:
+#   phishing.optimize.fabric-chatonly.yaml
+#   phishing.optimize.fabric-mcp.e2e.yaml
+#
+# Optional per-task Fabric lifecycle hook:
+#
+# eval:
+#   run_hook:
+#     type: mcp_run_binding
+#     agent_src: ${AGENT_SRC}
+#     bindings:
+#       - server: my-mcp
+#         binding: my_pkg.audit:RunBinding
+#         executable: ${AGENT_MCP_BIN}
+#
+# Or: ref: "my_pkg.hooks:MyHook"  |  path+attr  |  type: <nemo.fabric.task_hooks entry point>
+# See README.md in this directory.
 optimizer:
   numeric:
     enabled: true

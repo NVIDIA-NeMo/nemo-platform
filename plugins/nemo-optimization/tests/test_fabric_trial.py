@@ -62,9 +62,22 @@ def test_build_agent_eval_tasks_from_json_dataset(tmp_path: Path) -> None:
 
     assert len(tasks) == 1
     assert tasks[0].id == "1"
-    assert tasks[0].inputs == {"question": "q?"}
+    assert tasks[0].inputs == {"instruction": "q?"}
     assert tasks[0].reference == {"answer": "a"}
     assert isinstance(tasks[0].metrics[0], TunableRagEvaluatorMetric)
+
+
+def test_build_agent_eval_tasks_accepts_body_label(tmp_path: Path) -> None:
+    dataset = tmp_path / "rows.json"
+    dataset.write_text(
+        '[{"id": "mail-1", "body": "Send password now", "label": "phishing"}]\n',
+        encoding="utf-8",
+    )
+
+    tasks = build_agent_eval_tasks(_payload(dataset))
+
+    assert tasks[0].inputs == {"instruction": "Send password now"}
+    assert tasks[0].reference == {"answer": "phishing"}
 
 
 def test_build_agent_eval_tasks_preserves_judge_api_key_env(tmp_path: Path) -> None:
@@ -181,7 +194,8 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
         "nemo.optimizer.trial_number": 7,
         "nemo.optimizer.rep": 0,
     }
-    assert captured["runtime"]["profiles"][-1] == {"name": "trial-007"}
+    assert "profiles" not in captured["runtime"]
+    assert captured["runtime"]["task_hook"] is None
     assert captured["runtime"]["config"]["models"]["default"]["temperature"] == 0.2
     assert "optimizer" not in captured["runtime"]["config"]
     assert "eval" not in captured["runtime"]["config"]

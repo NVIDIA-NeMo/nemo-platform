@@ -483,6 +483,81 @@ async def test_fabric_runtime_bad_seed_fails_only_that_task(tmp_path: Path, monk
 
 
 @pytest.mark.asyncio
+async def test_fabric_runtime_invokes_task_hook_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+
+    class _Hook:
+        def prepare(self, *, config, task, evidence_dir, workspace_dir, session):  # noqa: ANN001
+            events.append("prepare")
+            session.state["ok"] = True
+            return config
+
+        def after_success(self, *, task, result, session):  # noqa: ANN001
+            events.append("after_success")
+            assert session.state["ok"] is True
+            return {"analyzer_analysis": {"label": "benign"}}
+
+        def cleanup(self, *, session):  # noqa: ANN001
+            events.append("cleanup")
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=_CONFIG,
+        work_root=tmp_path / "fabric",
+        capture_trajectory=False,
+        task_hook=_Hook(),
+    )
+
+    trials = await runtime.run_tasks([_TASK])
+
+    assert events == ["prepare", "after_success", "cleanup"]
+    assert trials[0].status == "completed"
+    assert trials[0].metadata["analyzer_analysis"]["label"] == "benign"
+    assert trials[0].output is not None
+    assert trials[0].output.metadata["analyzer_analysis"]["label"] == "benign"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_task_hook_cleanup_runs_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+
+    class _Hook:
+        def prepare(self, *, config, task, evidence_dir, workspace_dir, session):  # noqa: ANN001
+            events.append("prepare")
+            return config
+
+        def after_success(self, *, task, result, session):  # noqa: ANN001
+            events.append("after_success")
+            return None
+
+        def cleanup(self, *, session):  # noqa: ANN001
+            events.append("cleanup")
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        raise RuntimeError("boom")
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=_CONFIG,
+        work_root=tmp_path / "fabric",
+        capture_trajectory=False,
+        task_hook=_Hook(),
+    )
+
+    trials = await runtime.run_tasks([_TASK])
+
+    assert events == ["prepare", "cleanup"]
+    assert trials[0].status == "failed"
+
+
+@pytest.mark.asyncio
 async def test_fabric_runtime_passes_trajectory_extra_to_atif_relay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
