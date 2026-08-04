@@ -112,9 +112,6 @@ Platform services running on the host:
 ```bash
 repo="$(git rev-parse --show-toplevel)"
 sbx create --clone --name nemo-experimentalist shell "$repo"
-
-# Harbor's Supabase storage download fails over SBX's HTTP/2 forward proxy.
-# Route only that public host through SBX's policy-enforced transparent proxy.
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
   --env INFERENCE_API_KEY \
@@ -130,22 +127,18 @@ sbx exec --workdir "$repo" \
   --env TAU2_NL_ASSERTIONS_MODEL \
   --env AUT_MODEL_NAME \
   nemo-experimentalist \
-  sh -lc '
-    export NO_PROXY="${NO_PROXY:+$NO_PROXY,}ofhuhcpkvzjlejydnvyd.supabase.co"
-    export no_proxy="$NO_PROXY"
-    exec uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
-      nemo agents experimentalist run \
-      --no-insight \
-      --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
-      --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \
-      --train-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
-      --validation-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
-      --workspace canonical-tau3-airline \
-      --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
-      --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-smoke.yaml \
-      --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
-      --base-url http://host.docker.internal:8080
-  '
+  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
+  nemo agents experimentalist run \
+  --no-insight \
+  --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
+  --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \
+  --train-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
+  --validation-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
+  --workspace canonical-tau3-airline \
+  --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
+  --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-smoke.yaml \
+  --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
+  --base-url http://host.docker.internal:8080
 ```
 
 The sandbox needs outbound access to the package, model, registry, Harbor
