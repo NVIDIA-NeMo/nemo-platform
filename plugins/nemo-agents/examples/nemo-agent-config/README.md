@@ -1,13 +1,13 @@
 # NeMo Agent Config
 
 This directory contains Platform-owned `nemo-agents-spec-v1` configs for
-Fabric-backed NeMo Agents. Run the commands below from the repository root.
+NeMo Agents. Run the commands below from the repository root.
 
 Fabric, Relay, Claude, Codex, and DeepAgents dependencies are installed with
 the `nemo-agents` plugin. Hermes is intentionally split out because the Hermes
 Agent runtime dependencies conflict with the Platform environment.
 
-Shared Fabric capabilities live at the top level:
+Shared agent capabilities live at the top level:
 
 ```yaml
 instructions:
@@ -50,17 +50,17 @@ nemo setup --auto --start-services --install-skills --no-deploy-agent
 # Step 2 in plugins/nemo-agents/README.md before deploying.
 
 nemo agents create \
-  --name fabric-agent \
+  --name platform-agent \
   --agent-config plugins/nemo-agents/examples/nemo-agent-config/agent.yaml
 
 nemo agents deploy \
-  --agent fabric-agent \
-  --name fabric-agent-deployment \
+  --agent platform-agent \
+  --name platform-agent-deployment \
   --mode subprocess
 
 nemo agents invoke \
-  --agent-deployment fabric-agent-deployment \
-  --input "Reply with exactly: platform fabric works"
+  --agent-deployment platform-agent-deployment \
+  --input "Reply with exactly: platform agent works"
 ```
 
 Use a unique `--name` / deployment name for each harness, or delete the previous
@@ -126,7 +126,8 @@ the deployment name you pass to `nemo agents deploy`.
 Confirm Relay emitted both ATIF and ATOF files:
 
 ```bash
-find ~/.local/share/nemo/agents/system/default/fabric-agent-deployment-fabric/artifacts \
+find ~/.local/share/nemo/agents/system/default \
+  -path "*platform-agent-deployment*/artifacts/*" \
   \( -name "*atif*" -o -name "*atof*" \) \
   -exec ls -lh {} \;
 ```

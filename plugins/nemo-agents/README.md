@@ -27,8 +27,8 @@ Both flows provide:
 
 For new agents, use the Platform-owned configuration contract. It supports
 shared instructions, models, skills, tools, MCP servers, environment settings,
-telemetry, and a selectable harness. NeMo Agents translates that contract into
-Fabric at validation and runtime boundaries.
+telemetry, and a selectable harness. NeMo Agents validates that contract and
+executes it through the selected harness.
 
 ### How this differs from legacy NAT
 
@@ -130,12 +130,12 @@ Platform seed job, so this local provider setup is not required.
 
 ```bash
 nemo agents create \
-  --name fabric-calculator-agent \
+  --name calculator-agent \
   --agent-config plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml
 
 nemo agents deploy \
-  --agent fabric-calculator-agent \
-  --name fabric-calculator-agent-deployment \
+  --agent calculator-agent \
+  --name calculator-agent-deployment \
   --mode subprocess
 ```
 
@@ -146,7 +146,7 @@ deployment to reach `running` by default.
 
 ```bash
 nemo agents invoke \
-  --agent-deployment fabric-calculator-agent-deployment \
+  --agent-deployment calculator-agent-deployment \
   --input "What is 144 divided by 12?"
 ```
 
@@ -158,7 +158,8 @@ The config writes ATIF and ATOF files beneath the deployment's artifacts
 directory:
 
 ```bash
-find ~/.local/share/nemo/agents/system/default/fabric-calculator-agent-deployment-fabric/artifacts \
+find ~/.local/share/nemo/agents/system/default \
+  -path "*calculator-agent-deployment*/artifacts/*" \
   \( -name "*atif*" -o -name "*atof*" \) \
   -exec ls -lh {} \;
 ```
@@ -207,7 +208,7 @@ the image directly with:
 ```bash
 nemo agents package \
   --agent plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml \
-  --tag fabric-calculator-agent:local
+  --tag calculator-agent:local
 ```
 
 To build and publish in one operation:
@@ -215,7 +216,7 @@ To build and publish in one operation:
 ```bash
 nemo agents package \
   --agent plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml \
-  --tag fabric-calculator-agent:1.0.0 \
+  --tag calculator-agent:1.0.0 \
   --publish \
   --registry nvcr.io/my-org
 ```
@@ -227,7 +228,7 @@ If the agent is part of a Python project, enable project mode by passing its
 nemo agents package \
   --agent plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml \
   --pyproject pyproject.toml \
-  --tag fabric-calculator-agent:local
+  --tag calculator-agent:local
 ```
 
 Use `--skip-validation` only when a separate trusted pipeline has already
@@ -236,11 +237,11 @@ validated the exact inputs being packaged:
 ```bash
 nemo agents package \
   --agent plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml \
-  --tag fabric-calculator-agent:local \
+  --tag calculator-agent:local \
   --skip-validation
 ```
 
-This flag bypasses strict config loading, Fabric translation and planning, and
+This flag bypasses strict config loading, runtime translation and planning, and
 referenced-artifact checks. It can produce an image that fails at startup.
 
 #### `agent.yaml` validation
@@ -248,13 +249,13 @@ referenced-artifact checks. It can produce an image that fails at startup.
 Before a build, Platform agent packaging:
 
 1. Loads `agent.yaml` using the strict `nemo-agents-spec-v1` schema.
-2. Translates the Platform-owned config into an in-memory Fabric config.
-3. Runs `Fabric.plan()` to verify that Fabric can resolve the runtime plan.
+2. Translates the Platform-owned config into the runtime configuration.
+3. Runs the runtime planner to verify that it can resolve the execution plan.
 4. Validates every referenced artifact included in the build context.
 
-Packaging intentionally does not run Fabric doctor checks. The machine building
-an image does not necessarily have the harness binaries, authentication, or
-Relay CLI that the resulting image will contain.
+Packaging intentionally does not run harness environment checks. The machine
+building an image does not necessarily have the harness binaries,
+authentication, or Relay CLI that the resulting image will contain.
 
 #### Build context and referenced artifacts
 
@@ -396,11 +397,10 @@ installation differs:
 | Config-only | No `--pyproject` | Install the release-matched `nemo-platform[nemo-agents-plugin]` runtime |
 | Project | `--pyproject` provided | Install the release-matched runtime and the project together |
 
-The image includes the supported Fabric adapters and harness dependencies,
-pinned NeMo Relay CLI `0.6.0`, non-root `agent` user, port `8000`, and the
-`nemo_agents_plugin.fabric.server` entrypoint. The Hermes adapter is installed,
-but the Hermes harness runtime remains excluded until its Python dependency
-constraint is resolved.
+The image includes the supported harness adapters and dependencies, pinned NeMo
+Relay CLI `0.6.0`, a non-root `agent` user, and the packaged agent server on
+port `8000`. The Hermes adapter is installed, but the Hermes harness runtime
+remains excluded until its Python dependency constraint is resolved.
 
 #### Deploy the packaged calculator image
 
@@ -409,16 +409,16 @@ local image:
 
 ```bash
 nemo agents deploy \
-  --agent fabric-calculator-agent \
-  --name fabric-calculator-agent-docker \
+  --agent calculator-agent \
+  --name calculator-agent-docker \
   --mode docker \
-  --image fabric-calculator-agent:local \
+  --image calculator-agent:local \
   --timeout 300
 
-nemo agents deployments get fabric-calculator-agent-docker
+nemo agents deployments get calculator-agent-docker
 
 nemo agents invoke \
-  --agent-deployment fabric-calculator-agent-docker \
+  --agent-deployment calculator-agent-docker \
   --input "What is 144 divided by 12?" \
   --timeout 300
 ```
@@ -441,19 +441,19 @@ deployment, or pass a deployment name directly:
 
 ```bash
 # Print the full log for the calculator agent's latest deployment
-nemo agents logs --agent fabric-calculator-agent
+nemo agents logs --agent calculator-agent
 
 # Print the log for a specific deployment
-nemo agents logs fabric-calculator-agent-deployment
+nemo agents logs calculator-agent-deployment
 
 # Tail the last 100 lines
-nemo agents logs --agent fabric-calculator-agent --tail 100
+nemo agents logs --agent calculator-agent --tail 100
 
 # Follow new output until interrupted with Ctrl-C
-nemo agents logs --agent fabric-calculator-agent --follow
+nemo agents logs --agent calculator-agent --follow
 
 # Print only the absolute log path
-nemo agents logs --agent fabric-calculator-agent --path
+nemo agents logs --agent calculator-agent --path
 ```
 
 Logs are stored under the Platform user-data directory:
@@ -494,8 +494,8 @@ that registered model.
 To remove the resources created during the calculator walkthrough:
 
 ```bash
-nemo agents undeploy --agent fabric-calculator-agent
-nemo agents delete fabric-calculator-agent
+nemo agents undeploy --agent calculator-agent
+nemo agents delete calculator-agent
 
 nemo inference providers delete nvidia-build
 nemo secrets delete ngc-api-key

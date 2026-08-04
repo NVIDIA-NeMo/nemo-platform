@@ -1,6 +1,6 @@
 config_format: nemo-agents-spec-v1
-name: fabric-calculator-agent
-description: Calculator agent executed through NeMo Fabric and Codex
+name: calculator-agent
+description: Calculator agent executed with Codex
 
 instructions:
   system:
@@ -40,7 +40,7 @@ telemetry:
   enabled: true
   provider: relay
   output_dir: ./artifacts/relay
-  project: fabric-calculator-agent
+  project: calculator-agent
   atif:
     enabled: true
     filename_template: trajectory-{session_id}.atif.json
