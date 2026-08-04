@@ -69,7 +69,7 @@ def _agent_config(label: str) -> dict[str, Any]:
 
 
 def _platform_agent_config(label: str) -> dict[str, Any]:
-    """Return a minimal Platform-owned agent config for API persistence tests."""
+    """Return a minimal Platform-managed agent config for API persistence tests."""
     return {
         "config_format": _NEMO_AGENTS_SPEC_CONFIG_FORMAT,
         "name": label,

@@ -33,7 +33,7 @@ allowed-tools: [Read]
 
 You are deciding which downstream NeMo Platform skill should run. This skill never executes commands. It picks the next skill, announces the choice, and hands off.
 
-New NeMo Platform agent builds use a Platform-owned `agent.yaml` with
+New NeMo Platform agent builds use a Platform-managed `agent.yaml` with
 `config_format: nemo-agents-spec-v1` and a supported harness. NVIDIA NeMo Agent
 Toolkit (NAT) workflow YAML remains a compatibility path. Do not describe NAT
 as the only supported implementation model.

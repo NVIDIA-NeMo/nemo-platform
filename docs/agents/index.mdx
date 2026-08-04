@@ -5,24 +5,28 @@ description: ""
 <a id="agents"></a>
 
 An agent on NeMo Platform calls tools, accesses models through shared Platform
-infrastructure, and runs as a managed service you can register, deploy, and
-invoke. New agents use the Platform-owned `nemo-agents-spec-v1` `agent.yaml`
+infrastructure, and runs as a service you can register, deploy, and
+invoke. New agents use the Platform-managed `nemo-agents-spec-v1` `agent.yaml`
 contract. Legacy NVIDIA NeMo Agent Toolkit (NAT) workflow configurations remain
 supported, including NAT-specific evaluation and optimization commands. Both
 formats are managed through the `nemo agents` command group.
 
 ## Agent Definition
 
-### Platform-owned agents
+### Platform-managed agents
 
 #### About NeMo Fabric
-NeMo Platform uses Fabric as the runtime wrapper around your agent so the
-platform can deploy it and route its model traffic
-through shared infrastructure. For the toolkit itself, see the
+NeMo Fabric gives users one configurable, observable way to run applications across multiple agent harnesses. 
+It standardizes configuration, lifecycle management, and results without requiring a separate integration for every harness.
+To learn more about Fabric, see
 [NeMo Fabric](https://docs.nvidia.com/nemo/fabric/about-nemo-fabric/overview/).
 
+NeMo Platform uses Fabric as the runtime wrapper around your agent so the
+platform can deploy it and route its model traffic
+through shared infrastructure.
 
-An agent's behavior is described by the platform-owned `agent.yaml`:
+
+An agent's behavior is described by the platform-managed `agent.yaml`:
 
 | Section | Purpose | Example |
 |---------|---------|---------|
