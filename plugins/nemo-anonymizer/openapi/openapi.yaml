@@ -699,6 +699,8 @@ components:
           title: Kind
           default: done
       type: object
+      required:
+      - kind
       title: Done
       description: "Terminator frame for a successful stream.\n\nConvention only \u2014\
         \ yield this as the *last* frame in a stream. The\nroute adapter does not\
@@ -770,6 +772,7 @@ components:
           type: object
       type: object
       required:
+      - kind
       - message
       title: Error
       description: "Terminator frame for an unsuccessful stream.\n\nConvention only\
@@ -792,6 +795,7 @@ components:
           title: Records
       type: object
       required:
+      - kind
       - records
       title: FailedRecordsFrame
       description: Records that failed during the pipeline, with reasons.
@@ -843,6 +847,8 @@ components:
           title: Kind
           default: heartbeat
       type: object
+      required:
+      - kind
       title: Heartbeat
       description: "Idle-tick frame emitted by the route adapter every ~5 s of silence.\n\
         \nThe route adapter inserts these unconditionally on streams that go\nquiet\
@@ -903,6 +909,7 @@ components:
           title: Message
       type: object
       required:
+      - kind
       - level
       - message
       title: LogFrame
@@ -1275,6 +1282,7 @@ components:
           title: Records
       type: object
       required:
+      - kind
       - records
       title: PreviewDatasetFrame
       description: Final user-visible dataframe produced by the preview run.
@@ -1609,6 +1617,7 @@ components:
           type: string
       type: object
       required:
+      - kind
       - records
       title: TraceDatasetFrame
       description: "Internal trace dataframe \u2014 useful for debugging detection/replacement."

@@ -36,7 +36,7 @@ from fastapi.testclient import TestClient
 from nemo_platform_plugin.dependencies import get_sdk_client
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.function_context import FunctionContext
-from nemo_platform_plugin.functions.frames import Done, Heartbeat
+from nemo_platform_plugin.functions.frames import Done, FrameModel, Heartbeat
 from nemo_platform_plugin.functions.routes import (
     NDJSON_MEDIA_TYPE,
     _prime_async_iterator,
@@ -441,7 +441,7 @@ class TestMountValidation:
 # ---------------------------------------------------------------------------
 
 
-class GreetFrame(BaseModel):
+class GreetFrame(FrameModel):
     kind: Literal["greeting"] = "greeting"
     message: str
 
