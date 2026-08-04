@@ -12,7 +12,6 @@ disable_trajectory_scoring: true
 disable_convergence_check: true
 evaluator:
   n_attempts: 1
-  n_concurrent_trials: 1
   quiet: true
   agent_setup_timeout_multiplier: 2.0
   environment_build_timeout_multiplier: 3.0
