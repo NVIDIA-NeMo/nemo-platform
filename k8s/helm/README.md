@@ -70,6 +70,38 @@ externalClickhouse:
   existingSecretPasswordKey: password
 ```
 
+### ClickHouse sizing
+
+The following are starting points for the current Intake schema and interactive
+query workload:
+
+| Retained Intake spans | Topology | ClickHouse resources | Storage |
+| --- | --- | --- | --- |
+| Up to 1 million | Embedded single node for non-critical workloads | 2 vCPU, 8 GiB RAM | Fast SSD, at least 20 GiB and 2× measured active data |
+| 1–10 million | External preferred; embedded only when downtime and data loss are acceptable | 4–8 vCPU, 16–32 GiB RAM | Provisioned-IOPS SSD, at least 100 GiB and 2× measured active data |
+| More than 10 million, or any HA requirement | Managed ClickHouse or an operator-managed replicated cluster | Start at 8 vCPU and 32 GiB RAM per replica, then load-test the actual ingest/read mix | Size from measured compression, retention, replication, and merge headroom |
+
+Intake currently retains spans and its trace index for 90 days. Evaluator
+results and annotations do not have a time-based TTL, so include their continuing
+growth in capacity planning. ReplacingMergeTree retries also leave physical row
+versions until background merges complete.
+
+For large or frequently queried deployments, ClickHouse recommends:
+
+- At least 8 GiB RAM even at low data volumes.
+- A general-purpose starting ratio of 4 GiB RAM per CPU core.
+- Provisioned-IOPS SSDs for latency-sensitive workloads.
+- Roughly 1:30 to 1:50 RAM-to-storage for frequently accessed large datasets.
+- Replication for production durability; vertically scale replicas before
+  adding shards.
+
+Validate CPU, query peak memory, active parts, merge backlog, disk latency, and
+free space under representative batched OTLP ingestion before promoting a tier.
+See the upstream
+[ClickHouse sizing guide](https://clickhouse.com/docs/guides/oss/best-practices/sizing-and-hardware-recommendations)
+and
+[OSS operational recommendations](https://clickhouse.com/docs/guides/oss/best-practices/tips).
+
 ## Values
 
 | Key | Type | Default | Description |
