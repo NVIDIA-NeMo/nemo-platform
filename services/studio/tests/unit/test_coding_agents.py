@@ -29,6 +29,7 @@ def reset_coding_agent_state():
     coding_agents._pending_agent_inputs.clear()
     coding_agents._session_conversations.clear()
     coding_agents._session_mtimes.clear()
+    coding_agents._session_workspace_cache.clear()
     yield
     coding_agents._initialized_sessions.clear()
     coding_agents._session_streams.clear()
@@ -36,6 +37,7 @@ def reset_coding_agent_state():
     coding_agents._pending_agent_inputs.clear()
     coding_agents._session_conversations.clear()
     coding_agents._session_mtimes.clear()
+    coding_agents._session_workspace_cache.clear()
 
 
 @pytest.fixture
@@ -1852,6 +1854,90 @@ def test_platform_route_rejects_workspace_path_injection(service_client: TestCli
     assert response.status_code == 422
 
 
+_WORKSPACES_LIST_URL = "http://127.0.0.1:8080/apis/entities/v2/workspaces"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_default_skips_lookup():
+    # No HTTP mock configured: the default fallback must not make a network call.
+    assert await coding_agents._authorized_workspace("default", {}, "sess") == "default"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_returns_name_from_entity_store(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": [{"name": "team-a"}, {"name": "my-ws"}], "pagination": {"total_pages": 1}},
+        )
+    )
+
+    # The returned value is the platform's own copy of the name (not client input).
+    assert await coding_agents._authorized_workspace("my-ws", {}, "sess") == "my-ws"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_paginates_until_match(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"data": [{"name": "a"}], "pagination": {"total_pages": 2}}),
+            httpx.Response(200, json={"data": [{"name": "target"}], "pagination": {"total_pages": 2}}),
+        ]
+    )
+
+    assert await coding_agents._authorized_workspace("target", {}, "sess") == "target"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_caches_per_session(respx_mock):
+    route = respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "my-ws"}], "pagination": {"total_pages": 1}})
+    )
+
+    first = await coding_agents._authorized_workspace("my-ws", {}, "sess")
+    second = await coding_agents._authorized_workspace("my-ws", {}, "sess")
+
+    assert first == second == "my-ws"
+    # The second resolution is served from the per-session cache, not the network.
+    assert route.call_count == 1
+    # A different session does not share the cache.
+    await coding_agents._authorized_workspace("my-ws", {}, "other-sess")
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_rejects_unknown_workspace(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "team-a"}], "pagination": {"total_pages": 1}})
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await coding_agents._authorized_workspace("not-a-member", {}, "sess")
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_does_not_cache_failures(respx_mock):
+    route = respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "team-a"}], "pagination": {"total_pages": 1}})
+    )
+
+    for _ in range(2):
+        with pytest.raises(HTTPException):
+            await coding_agents._authorized_workspace("not-a-member", {}, "sess")
+    # Unresolved workspaces are re-checked every message (no negative caching).
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_maps_upstream_error_to_502(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(side_effect=httpx.ConnectError("boom"))
+
+    with pytest.raises(HTTPException) as excinfo:
+        await coding_agents._authorized_workspace("my-ws", {}, "sess")
+    assert excinfo.value.status_code == 502
+
+
 def test_nemo_agent_error_detail_does_not_expose_exception_text():
     request = httpx.Request("POST", "https://platform.test/agent")
     response = httpx.Response(502, request=request)
@@ -1881,6 +1967,47 @@ def test_tool_use_stream_event_shape():
     assert block["type"] == "tool_use"
     assert block["name"] == "nemo_api"
     assert block["input"] == {"resource": "secrets"}
+
+
+def test_tool_use_stream_event_strips_internal_session_id():
+    _, payload = coding_agents._tool_use_stream_event(
+        "ask_user_question",
+        {"studio_session_id": "sess-123", "questions": [{"q": "?"}]},
+    )
+    block = json.loads(payload)["message"]["content"][0]
+    assert "studio_session_id" not in block["input"]
+    assert block["input"] == {"questions": [{"q": "?"}]}
+
+
+@pytest.mark.asyncio
+async def test_stream_nemo_agent_flushes_tool_events_before_final_response(monkeypatch: pytest.MonkeyPatch):
+    session_id = str(uuid.uuid4())
+
+    async def fake_invoke(agent_url, headers, messages, studio_session_id):
+        queue = coding_agents._session_streams[studio_session_id]
+        # Two tool events queued in the same turn the invocation completes: the
+        # loop can consume at most one, so the drain must flush the remainder.
+        queue.put_nowait(coding_agents._tool_use_stream_event("nemo_api", {"resource": "secrets"}))
+        queue.put_nowait(coding_agents._tool_use_stream_event("describe_api", {"path": "secrets"}))
+        return "final answer", "model-x"
+
+    monkeypatch.setattr(coding_agents, "_invoke_nemo_agent", fake_invoke)
+
+    frames = [
+        frame
+        async for frame in coding_agents._stream_nemo_agent(
+            session_id, "hello", "https://agent.test/x", {}, "sys prompt"
+        )
+    ]
+
+    body = "".join(frames)
+    first_tool = body.find("nemo_api")
+    second_tool = body.find("describe_api")
+    final = body.find("final answer")
+    assert first_tool != -1 and second_tool != -1 and final != -1
+    # Both tool-use events survive and are emitted before the final assistant message.
+    assert first_tool < final
+    assert second_tool < final
 
 
 def test_nemo_agent_request_payload_keeps_session_outside_model_messages():

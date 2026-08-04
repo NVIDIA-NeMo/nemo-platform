@@ -141,6 +141,10 @@ _pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _pending_agent_inputs: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _session_conversations: dict[str, list[dict[str, str]]] = {}
 _session_mtimes: dict[str, float] = {}
+# Cache of Entity-Store-confirmed workspace names, keyed by session then by the
+# requested workspace, so the membership lookup runs once per session/workspace
+# rather than on every message. Cleared when a session is evicted.
+_session_workspace_cache: dict[str, dict[str, str]] = {}
 _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 
 
@@ -158,9 +162,12 @@ def _evict_oldest_sessions(*, protected_session_ids: set[str] | None = None) -> 
         _session_conversations.pop(oldest_session_id, None)
         _session_mtimes.pop(oldest_session_id, None)
         _initialized_sessions.discard(oldest_session_id)
+        _session_workspace_cache.pop(oldest_session_id, None)
 
     for session_id in set(_session_mtimes) - set(_session_conversations):
         _session_mtimes.pop(session_id, None)
+    for session_id in set(_session_workspace_cache) - set(_session_conversations):
+        _session_workspace_cache.pop(session_id, None)
 
 
 def _retain_recent_turns(conversation: list[dict[str, str]]) -> None:
@@ -1246,6 +1253,66 @@ def _validated_workspace_or_default(value: str | None) -> str:
     return workspace
 
 
+# Bounds for the workspace-membership lookup below. The entities list is scoped to
+# the caller's own memberships (forwarded auth), so the page count is normally tiny.
+_WORKSPACE_LOOKUP_PAGE_SIZE = 100
+_WORKSPACE_LOOKUP_MAX_PAGES = 50
+
+
+async def _authorized_workspace(workspace: str, headers: Mapping[str, str], session_id: str) -> str:
+    """Confirm the caller may target ``workspace`` and return the platform's own
+    spelling of the name.
+
+    The value is looked up in the Entity Store (scoped to the caller's auth) and the
+    returned name is taken from the *response*, not from client input, so the value
+    that later becomes part of the agent request URL cannot be attacker-controlled.
+    The list request itself carries no user-provided value in its URL.
+
+    The confirmed name is cached per (session, requested workspace) so the lookup
+    runs once per session/workspace instead of on every message; only successful
+    resolutions are cached.
+    """
+    # ``default`` is our own fallback constant, always addressable; skip the lookup.
+    if workspace == "default":
+        return "default"
+
+    cached = _session_workspace_cache.get(session_id, {}).get(workspace)
+    if cached is not None:
+        return cached
+
+    base_url = _studio_coding_agent_base_url()
+    list_url = f"{base_url}/apis/entities/v2/workspaces"
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for page in range(1, _WORKSPACE_LOOKUP_MAX_PAGES + 1):
+                response = await client.get(
+                    list_url,
+                    headers=dict(headers),
+                    params={"page": page, "page_size": _WORKSPACE_LOOKUP_PAGE_SIZE},
+                )
+                response.raise_for_status()
+                body = response.json()
+                data = body.get("data") if isinstance(body, dict) else None
+                if not isinstance(data, list) or not data:
+                    break
+                for entry in data:
+                    name = entry.get("name") if isinstance(entry, dict) else None
+                    if isinstance(name, str) and name == workspace:
+                        # ``name`` is sourced from the platform response, not the request.
+                        _session_workspace_cache.setdefault(session_id, {})[workspace] = name
+                        return name
+                pagination = body.get("pagination") if isinstance(body, dict) else None
+                total_pages = pagination.get("total_pages") if isinstance(pagination, dict) else None
+                if isinstance(total_pages, int) and page >= total_pages:
+                    break
+    except httpx.HTTPError as exc:
+        logger.warning("Workspace authorization lookup failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Could not verify the requested workspace") from exc
+
+    raise HTTPException(status_code=404, detail="workspace not found or not accessible")
+
+
 def _workspace_path_segment(workspace: str) -> str:
     if WORKSPACE_NAME_RE.fullmatch(workspace) is None:
         raise ValueError("Invalid workspace name")
@@ -1253,8 +1320,8 @@ def _workspace_path_segment(workspace: str) -> str:
 
 
 def _studio_coding_agent_url(workspace: str) -> str:
-    # MessageRequest validates workspace against the platform's restricted entity-name
-    # pattern before it can become part of this internal request path.
+    # ``workspace`` is expected to already be an Entity-Store-confirmed name (see
+    # _authorized_workspace); it is percent-encoded as a single path segment here.
     return (
         f"{_studio_coding_agent_base_url()}/apis/agents/v2/workspaces/{_workspace_path_segment(workspace)}"
         f"/agents/{quote(_studio_coding_agent_name(), safe='')}/-/v1/chat/completions"
@@ -1336,7 +1403,13 @@ def _parse_tool_step_input(payload: Any) -> dict[str, Any]:
     return {}
 
 
+# Framework-injected tool arguments that must never be surfaced in the browser
+# tool-use event (they are internal plumbing, not user-facing input).
+_TOOL_INPUT_INTERNAL_KEYS = frozenset({"studio_session_id"})
+
+
 def _tool_use_stream_event(tool_name: str, tool_input: dict[str, Any]) -> tuple[str, str]:
+    safe_input = {key: value for key, value in tool_input.items() if key not in _TOOL_INPUT_INTERNAL_KEYS}
     return (
         "agent",
         json.dumps(
@@ -1350,7 +1423,7 @@ def _tool_use_stream_event(tool_name: str, tool_input: dict[str, Any]) -> tuple[
                             "type": "tool_use",
                             "id": f"tool-{uuid.uuid4()}",
                             "name": tool_name,
-                            "input": tool_input,
+                            "input": safe_input,
                         }
                     ],
                 },
@@ -1376,9 +1449,8 @@ async def _invoke_nemo_agent(
     model = _studio_coding_agent_name()
     seen_tool_ids: set[str] = set()
     async with httpx.AsyncClient(timeout=timeout) as client:
-        # The origin and agent name are server-configured. The only request-derived URL
-        # component is a NAME_PATTERN-validated, percent-encoded workspace path segment.
-        # codeql[py/partial-ssrf]
+        # The origin and agent name are server-configured; the workspace path segment is
+        # an Entity-Store-confirmed name resolved by _authorized_workspace before this call.
         async with client.stream(
             "POST",
             agent_url,
@@ -1413,9 +1485,9 @@ async def _invoke_nemo_agent(
                     if not isinstance(name, str) or not name.startswith(_TOOL_STEP_PREFIX):
                         continue
                     step_id = step.get("id")
-                    if step_id in seen_tool_ids:
-                        continue
                     if isinstance(step_id, str):
+                        if step_id in seen_tool_ids:
+                            continue
                         seen_tool_ids.add(step_id)
                     await queue.put(
                         _tool_use_stream_event(
@@ -1424,6 +1496,21 @@ async def _invoke_nemo_agent(
                         )
                     )
     return "".join(content_parts), model
+
+
+def _render_session_event(event_type: str, payload: Any) -> str | None:
+    """Render a queued session event as an SSE frame, or None if it is not relayable."""
+    if event_type == "permission_request":
+        return _sse(payload, event="permission_request")
+    if event_type == "input_request":
+        return _sse(payload, event="input_request")
+    if event_type == "permission_expired":
+        return _sse(payload, event="permission_expired")
+    if event_type == "input_expired":
+        return _sse(payload, event="input_expired")
+    if event_type == "agent":
+        return _sse(payload)
+    return None
 
 
 async def _stream_nemo_agent(
@@ -1475,18 +1562,28 @@ async def _stream_nemo_agent(
                 yield ":\n\n"
                 continue
             if queued_event in done:
-                event_type, payload = queued_event.result()
-                if event_type == "permission_request":
-                    yield _sse(payload, event="permission_request")
-                elif event_type == "input_request":
-                    yield _sse(payload, event="input_request")
-                elif event_type == "permission_expired":
-                    yield _sse(payload, event="permission_expired")
-                elif event_type == "input_expired":
-                    yield _sse(payload, event="input_expired")
-                elif event_type == "agent":
-                    yield _sse(payload)
+                rendered = _render_session_event(*queued_event.result())
+                if rendered is not None:
+                    yield rendered
                 queued_event = asyncio.create_task(queue.get())
+
+        # The invocation finished, but tool-use / prompt events may have been
+        # queued in the same event-loop turn as completion. Flush them before the
+        # final assistant message so they are not dropped when the loop exits.
+        pending: list[tuple[str, Any]] = []
+        if queued_event.done() and not queued_event.cancelled():
+            pending.append(queued_event.result())
+        else:
+            queued_event.cancel()
+        while True:
+            try:
+                pending.append(queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        for event_type, payload in pending:
+            rendered = _render_session_event(event_type, payload)
+            if rendered is not None:
+                yield rendered
 
         assistant_text, model = await invocation
         conversation.extend(
@@ -1534,12 +1631,14 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
     """Send a message to the deployed NeMo Agent and stream Studio events."""
     sid = _validate_session_id(session_id)
     workspace = _validated_workspace_or_default(body.workspace)
+    agent_headers = _coding_agent_request_headers(request)
+    canonical_workspace = await _authorized_workspace(workspace, agent_headers, sid)
     studio_base_url = _studio_base_url_from_request(body, request)
     studio_pathname = _studio_pathname_from_request(body, request)
     enabled_destinations = studio_links.enabled_destinations_from_request(request)
     system_prompt = _build_nemo_agent_system_prompt(
         sid,
-        workspace,
+        canonical_workspace,
         studio_base_url,
         studio_pathname,
         enabled_destinations,
@@ -1548,8 +1647,8 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
         _stream_nemo_agent(
             sid,
             body.message,
-            _studio_coding_agent_url(workspace),
-            _coding_agent_request_headers(request),
+            _studio_coding_agent_url(canonical_workspace),
+            agent_headers,
             system_prompt,
         ),
         media_type="text/event-stream",
