@@ -101,7 +101,11 @@ def _build_payload(dataset_path: Path) -> dict:
             "average_score": {"evaluator_name": "average_score", "direction": "maximize", "weight": 1.0},
         },
         "search_space": {
-            "models.default.temperature": {"values": [0.0, 0.2]},
+            "temperature": {
+                "type": "fabric",
+                "path": "models.default.temperature",
+                "values": [0.0, 0.2],
+            },
         },
     }
     return agent

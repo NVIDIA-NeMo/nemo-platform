@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Task entrypoint for the Tune optimize job (``python -m nemo_optimization.tasks.optimize``)."""
+"""Task entrypoint for the Agents optimize job (``python -m nemo_optimization.tasks.optimize``)."""
 
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ def _shutdown_handler(signum: int, frame: FrameType | None) -> None:
 def main() -> int:
     signal.signal(signal.SIGTERM, _shutdown_handler)
     try:
-        sdk = get_task_sdk("customization")
+        sdk = get_task_sdk("agents")
     except Exception:
-        logger.exception("Failed to build task SDK for customization")
+        logger.exception("Failed to build task SDK for agents")
         return 2
     return run_task(OptimizeJob, sdk=sdk)
 

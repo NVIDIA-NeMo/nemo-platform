@@ -31,7 +31,7 @@ class OptimizeRouterError(RuntimeError):
 
 
 class OptimizeRouter:
-    """Customizer Tune routing hub for agent optimize jobs."""
+    """Routing hub for agent optimize jobs (Optuna / GA backends)."""
 
     @staticmethod
     def dispatch(

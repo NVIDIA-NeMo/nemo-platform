@@ -268,11 +268,10 @@ nemo files list nemo-agent-telemetry
 
 ## Run Prompt and Parameter Tuning
 
-The `nemo agents optimize run` command is an Agents CLI alias for the
-Customizer Tune job. It runs Fabric-backed numeric optimization through
-`customization.optimize.jobs`; use `nemo customization optimize` for the
-canonical Customizer surface, or `nemo agents optimize` when working from an
-agent lifecycle flow.
+The `nemo agents optimize run` command runs Fabric-backed numeric
+optimization through `agents.optimize` (implementation in
+`nemo-optimization`). Use `nemo agents optimize convert nat-to-fabric`
+to migrate legacy NAT YAML once before submitting.
 
 For the ReAct example:
 

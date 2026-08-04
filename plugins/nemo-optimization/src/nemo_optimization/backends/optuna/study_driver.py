@@ -31,6 +31,7 @@ from nemo_optimization.backends.optuna.search_space import (
     SearchSpaceSpec,
     grid_trial_count,
     parse_search_space,
+    suggestions_by_path,
 )
 from nemo_optimization.backends.optuna.selection import pick_trial
 
@@ -186,11 +187,12 @@ def run_numeric_study(
 
     def objective(trial: optuna.Trial) -> float | list[float]:
         suggestions = {name: spec.suggest(trial, name) for name, spec in config.search_space.items()}
-        trial_overlay = suggestions_to_profile_overlay(suggestions, trial.number)
+        path_suggestions = suggestions_by_path(config.search_space, suggestions)
+        trial_overlay = suggestions_to_profile_overlay(path_suggestions, trial.number)
         write_trial_config(
             output_dir,
             trial.number,
-            apply_suggestions(base_config, suggestions),
+            apply_suggestions(base_config, path_suggestions),
             width=trial_id_width,
         )
 

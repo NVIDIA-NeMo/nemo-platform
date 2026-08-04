@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 
 class OptimizeSpec(BaseModel):
-    """Spec for a Customizer Tune optimize study."""
+    """Spec for an Agents optimize study (``nemo agents optimize``)."""
 
     optimize_config: str = Field(description="Absolute path to the Fabric-native optimization YAML file.")
     workspace: str = Field(

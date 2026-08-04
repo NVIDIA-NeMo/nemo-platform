@@ -30,7 +30,7 @@ def test_apply_suggestions_strips_optimizer_metadata() -> None:
         "models": {"default": {"temperature": 0.0}},
         "optimizer": {
             "numeric": {"enabled": True},
-            "search_space": {"models.default.temperature": {"low": 0.0, "high": 0.8}},
+            "search_space": {"temperature": {"low": 0.0, "high": 0.8}},
         },
         "optimizable_params": {"legacy": True},
     }

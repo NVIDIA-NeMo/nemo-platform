@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""OptimizeJob — Customizer Tune lane (``nemo customization optimize``)."""
+"""OptimizeJob — Agents numeric HPO (``nemo agents optimize``).
+
+Implementation lives in ``nemo_optimization``; registration and HTTP mounting
+are owned by the agents plugin (``agents.optimize``).
+"""
 
 from __future__ import annotations
 
@@ -26,12 +30,12 @@ logger = logging.getLogger(__name__)
 
 
 class OptimizeJob(NemoJob):
-    """Run a Fabric-native numeric optimize study via the Customizer Tune lane."""
+    """Run a Fabric-native numeric optimize study via the Agents optimize job."""
 
-    name: ClassVar[str] = "customization.optimize.jobs"
-    description: ClassVar[str] = "Optimize a Fabric agent workflow (numeric HPO) via the Customizer Tune lane."
+    name: ClassVar[str] = "optimize"
+    description: ClassVar[str] = "Optimize a Fabric agent workflow (numeric HPO)."
     container: ClassVar[str] = "cpu-tasks"
-    job_collection_path: ClassVar[str | None] = "/optimize/jobs"
+    job_collection_path: ClassVar[str | None] = None
     spec_schema: ClassVar[type[BaseModel]] = OptimizeSpec
 
     @classmethod
@@ -91,7 +95,7 @@ class OptimizeJob(NemoJob):
             sdk=sdk,
             agent_config=agent_config,
         )
-        logger.info("Dispatching Tune optimize study via OptimizeRouter")
+        logger.info("Dispatching agents optimize study via OptimizeRouter")
         return OptimizeRouter.dispatch(
             agent_config=agent_config,
             optimize_config=optimize_config,

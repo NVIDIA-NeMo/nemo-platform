@@ -66,8 +66,9 @@ def test_convert_react_optimize_overlay() -> None:
     assert converted["eval"]["fabric"]["capture_trajectory"] is True
 
     search_space = parse_search_space(converted["optimizer"])
-    assert "models.default.temperature" in search_space
-    assert "models.default.top_p" in search_space
+    assert set(search_space) == {"temperature", "top_p"}
+    assert search_space["temperature"].path == "models.default.temperature"
+    assert search_space["top_p"].path == "models.default.top_p"
     assert converted["optimizer"]["eval_metrics"]["accuracy"]["evaluator_name"] == "average_score"
 
 
@@ -75,7 +76,7 @@ def test_convert_calculator_optimize_overlay() -> None:
     converted = convert_nat_to_fabric(_load(_CALC_OPTIMIZE), agent_name="calculator-optimize")
 
     search_space = parse_search_space(converted["optimizer"])
-    assert set(search_space) == {"models.default.temperature", "models.default.top_p"}
+    assert set(search_space) == {"temperature", "top_p"}
     assert converted["eval"]["evaluators"]["accuracy"]["llm_name"] == "judge"
 
 
@@ -84,7 +85,7 @@ def test_convert_merged_agent_and_optimize_configs() -> None:
     converted = convert_nat_to_fabric(merged, agent_name="react-merged")
 
     assert converted["harness"]["settings"]["workflow"]["tool_names"] == ["wiki", "clock"]
-    assert "models.default.temperature" in parse_search_space(converted["optimizer"])
+    assert "temperature" in parse_search_space(converted["optimizer"])
     assert converted["eval"]["general"]["max_concurrency"] == 4
 
 
@@ -92,7 +93,12 @@ def test_convert_rejects_unsupported_workflow_type() -> None:
     config = {
         "workflow": {"_type": "tool_calling_agent"},
         "llms": {"llm": {"_type": "openai", "model_name": "test"}},
-        "optimizer": {"numeric": {"enabled": True}, "search_space": {"models.default.temperature": {"values": [0.0]}}},
+        "optimizer": {
+            "numeric": {"enabled": True},
+            "search_space": {
+                "temperature": {"type": "fabric", "path": "models.default.temperature", "values": [0.0]},
+            },
+        },
     }
     try:
         convert_nat_to_fabric(config)

@@ -37,8 +37,18 @@ def _payload(**overrides: Any) -> dict[str, Any]:
                 "average_score": {"evaluator_name": "average_score", "direction": "maximize", "weight": 1.0},
             },
             "search_space": {
-                "models.default.temperature": {"low": 0.0, "high": 0.4, "step": 0.2},
-                "models.default.top_p": {"values": [0.7, 0.85]},
+                "temperature": {
+                    "type": "fabric",
+                    "path": "models.default.temperature",
+                    "low": 0.0,
+                    "high": 0.4,
+                    "step": 0.2,
+                },
+                "top_p": {
+                    "type": "fabric",
+                    "path": "models.default.top_p",
+                    "values": [0.7, 0.85],
+                },
             },
         },
     }
@@ -90,7 +100,7 @@ def test_run_numeric_study_writes_configs(tmp_path: Path) -> None:
         rows = list(csv.DictReader(handle))
     assert len(rows) == 4
     assert "values_average_score" in rows[0]
-    assert "params_models.default.temperature" in rows[0]
+    assert "params_temperature" in rows[0]
     assert "rep_scores" in rows[0]
     assert "pareto_optimal" in rows[0]
     assert json.loads(rows[0]["rep_scores"])

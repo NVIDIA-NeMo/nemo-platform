@@ -10,9 +10,9 @@ Usage::
         --agent-name react-optimize \\
         --fabric-base-dir /path/to/NeMo-Fabric/examples/react-optimize-agent
 
-Or via the customization CLI::
+Or via the Agents CLI::
 
-    nemo customization optimize convert nat-to-fabric input.yml output.yml
+    nemo agents optimize convert nat-to-fabric input.yml output.yml
 """
 
 from __future__ import annotations
@@ -201,7 +201,10 @@ def convert_nat_optimizer(
     search_space: dict[str, Any] = {}
     if isinstance(converted.get("search_space"), Mapping):
         for key, spec in converted["search_space"].items():
-            search_space[_rewrite_search_space_key(str(key), llm_name_map)] = spec
+            fabric_path = _rewrite_search_space_key(str(key), llm_name_map)
+            search_space[_unique_param_name(fabric_path, search_space)] = _fabric_search_entry(
+                fabric_path, spec
+            )
 
     if isinstance(llms, Mapping):
         for nat_llm_name, llm_cfg in llms.items():
@@ -216,7 +219,10 @@ def convert_nat_optimizer(
                 param_name = str(param)
                 if param_name not in spaces:
                     continue
-                search_space[f"models.{fabric_llm}.{param_name}"] = copy.deepcopy(spaces[param_name])
+                fabric_path = f"models.{fabric_llm}.{param_name}"
+                search_space[_unique_param_name(fabric_path, search_space)] = _fabric_search_entry(
+                    fabric_path, spaces[param_name]
+                )
 
     if search_space:
         converted["search_space"] = search_space
@@ -357,6 +363,30 @@ def _rewrite_search_space_key(key: str, llm_name_map: Mapping[str, str]) -> str:
         return key
     fabric_llm = llm_name_map.get(parts[1], parts[1])
     return f"models.{fabric_llm}.{'.'.join(parts[2:])}"
+
+
+def _fabric_search_entry(path: str, spec: Any) -> dict[str, Any]:
+    """Wrap a NAT search-space leaf as a typed Fabric applicator entry."""
+    if isinstance(spec, Mapping):
+        entry = copy.deepcopy(dict(spec))
+    else:
+        entry = {"values": [spec]}
+    entry["type"] = "fabric"
+    entry["path"] = path
+    return entry
+
+
+def _unique_param_name(path: str, existing: Mapping[str, Any]) -> str:
+    """Prefer the leaf field name; fall back to the full path on collision."""
+    leaf = path.rsplit(".", 1)[-1]
+    if leaf not in existing:
+        return leaf
+    if path not in existing:
+        return path
+    index = 2
+    while f"{path}_{index}" in existing:
+        index += 1
+    return f"{path}_{index}"
 
 
 def _infer_name(config: Mapping[str, Any]) -> str:

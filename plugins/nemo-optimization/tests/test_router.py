@@ -21,7 +21,11 @@ def test_dispatch_routes_numeric_to_optuna_study(ctx: JobContext) -> None:
                 "average_score": {"direction": "maximize", "weight": 1.0},
             },
             "search_space": {
-                "models.default.temperature": {"values": [0.0, 0.2]},
+                "temperature": {
+                    "type": "fabric",
+                    "path": "models.default.temperature",
+                    "values": [0.0, 0.2],
+                },
             },
         },
     }

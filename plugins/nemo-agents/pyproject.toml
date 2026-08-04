@@ -46,6 +46,7 @@ agents = "nemo_agents_plugin.skills:skills_dir"
 # POC: agent-improvement workflow
 "agents.evaluate-suite" = "nemo_agents_plugin.jobs.evaluate_suite:EvaluateSuiteJob"
 "agents.analyze" = "nemo_agents_plugin.jobs.analyze_batch:AnalyzeBatchJob"
+"agents.optimize" = "nemo_optimization.jobs.optimize:OptimizeJob"
 "agents.optimize-skills" = "nemo_agents_plugin.jobs.optimize_skills:OptimizeSkillsJob"
 
 [project.entry-points."nemo.controllers"]

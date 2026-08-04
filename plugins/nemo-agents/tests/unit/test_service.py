@@ -11,6 +11,7 @@ from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
 from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
 from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
 from nemo_agents_plugin.service import AgentsService
+from nemo_optimization.jobs.optimize import OptimizeJob
 from nemo_platform_plugin.scheduler import submit_path_for
 
 
@@ -45,6 +46,10 @@ def test_evaluate_suite_job_route_matches_generated_submit_path() -> None:
 
 def test_optimize_skills_job_route_matches_generated_submit_path() -> None:
     assert submit_path_for(OptimizeSkillsJob, workspace="{workspace}") in _mounted_post_paths()
+
+
+def test_optimize_job_route_matches_generated_submit_path() -> None:
+    assert submit_path_for(OptimizeJob, workspace="{workspace}") in _mounted_post_paths()
 
 
 def test_analyze_job_route_matches_generated_submit_path() -> None:

@@ -1,6 +1,6 @@
 [project]
 name = "nemo-optimization-plugin"
-description = "NeMo Customizer Tune lane — Optuna numeric optimizer and optimize routing."
+description = "NeMo optimization library — Optuna numeric HPO and Agents optimize job."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 dependencies = [
@@ -17,12 +17,6 @@ dependencies = [
     "typer>=0.12.5",
 ]
 version = "0.0.0"
-
-[project.entry-points."nemo.customization.contributors"]
-optimize = "nemo_optimization.contributor:OptimizationContributor"
-
-[project.entry-points."nemo.jobs"]
-"customization.optimize.jobs" = "nemo_optimization.jobs.optimize:OptimizeJob"
 
 [project.entry-points."nemo.optimization.backends"]
 optuna = "nemo_optimization.backends.optuna.backend:OptunaBackend"
@@ -46,7 +40,6 @@ dev = [
     "pytest>=8.3.4",
     "pytest-asyncio>=0.24.0",
     "fastapi>=0.115.0",
-    "nemo-customizer-plugin",
 ]
 
 [tool.pytest.ini_options]

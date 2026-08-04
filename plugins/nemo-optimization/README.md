@@ -1,10 +1,17 @@
 # nemo-optimization-plugin
 
-Customizer **Tune** lane: routes numeric hyperparameter optimization through
-`OptimizeRouter` to backend plugins (`optuna`, `ga`).
+Shared library for Fabric-backed numeric hyperparameter optimization (Optuna)
+and the Agents ``optimize`` job implementation.
 
-Trial execution is delegated to the Evaluator (`AgentEvaluator` +
-`FabricAgentRuntime`); this plugin owns the study loop, artifacts, and Jobs
-results registration.
+Primary user surface (Alt 5):
 
-See `customizer-optuna-optimizer-implementation-strategy.md` for the full plan.
+```bash
+nemo agents optimize run|submit|explain
+nemo agents optimize convert nat-to-fabric ...
+```
+
+Job registration: ``agents.optimize`` (mounted by the agents plugin).
+Backend registry: ``nemo.optimization.backends`` (``optuna``, ``ga`` stub).
+
+This package is intentionally not a Customizer contributor. A future
+Experimentalist / Customizer agent may call the same library.

@@ -140,15 +140,14 @@ def test_list_404_prints_request_context_and_hint() -> None:
     assert "route may not be deployed" in result.stderr
 
 
-def test_optimize_submit_alias_targets_customization_route() -> None:
+def test_optimize_submit_targets_agents_route() -> None:
     captured: dict[str, Any] = {}
 
+    from nemo_platform_plugin.commands import add_job_commands
     from nemo_platform_plugin.scheduler import submit_path_for
 
     OptimizeJob = import_module("nemo_optimization.jobs.optimize").OptimizeJob
-    assert (
-        submit_path_for(OptimizeJob, workspace="default") == "/apis/customization/v2/workspaces/default/optimize/jobs"
-    )
+    assert submit_path_for(OptimizeJob, workspace="default") == "/apis/agents/v2/workspaces/default/jobs/optimize"
 
     def _submit_remote(_self, job_cls, spec, **kwargs):
         captured["job_cls"] = job_cls
@@ -157,7 +156,9 @@ def test_optimize_submit_alias_targets_customization_route() -> None:
         captured["workspace"] = kwargs["workspace"]
         return {"name": "optimize-123"}
 
-    app = AgentsCLI().get_cli()
+    agents_cli = AgentsCLI()
+    app = agents_cli.get_cli()
+    add_job_commands(app, {"agents.optimize": OptimizeJob}, cli=agents_cli)
     with patch("nemo_platform_plugin.scheduler.NemoJobScheduler.submit_remote", _submit_remote):
         result = CliRunner().invoke(
             app,

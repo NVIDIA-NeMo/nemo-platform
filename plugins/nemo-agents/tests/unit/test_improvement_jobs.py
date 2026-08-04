@@ -17,6 +17,7 @@ def test_jobs_discovered_via_entry_points() -> None:
     jobs = discover_jobs()
     assert "agents.evaluate-suite" in jobs
     assert "agents.analyze" in jobs
+    assert "agents.optimize" in jobs
     assert "agents.optimize-skills" in jobs
 
 

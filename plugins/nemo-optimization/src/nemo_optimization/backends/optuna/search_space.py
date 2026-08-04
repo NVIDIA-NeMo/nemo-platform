@@ -4,6 +4,10 @@
 """YAML search-space specs → Optuna ``trial.suggest_*`` dispatch.
 
 Ported from https://github.com/NVIDIA/NeMo-Agent-Toolkit/blob/main/packages/nvidia_nat_core/src/nat/data_models/optimizable.py
+
+Search-space entries are logical Optuna param names with an applicator ``type``
+and a target ``path``. Today only ``type: fabric`` is supported (profile-overlay
+paths such as ``models.default.temperature``).
 """
 
 from __future__ import annotations
@@ -13,6 +17,9 @@ from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
 import numpy as np
+
+SUPPORTED_PARAM_TYPES = frozenset({"fabric"})
+DEFAULT_PARAM_TYPE = "fabric"
 
 
 class _TrialLike(Protocol):
@@ -47,6 +54,8 @@ class SearchSpaceError(ValueError):
 class SearchSpaceSpec:
     """One hyperparameter dimension parsed from ``optimizer.search_space``."""
 
+    path: str
+    param_type: str = DEFAULT_PARAM_TYPE
     values: tuple[Any, ...] | None = None
     low: int | float | None = None
     high: int | float | None = None
@@ -55,9 +64,25 @@ class SearchSpaceSpec:
     is_prompt: bool = False
 
     @classmethod
-    def from_mapping(cls, spec: Mapping[str, Any]) -> SearchSpaceSpec:
+    def from_mapping(cls, name: str, spec: Mapping[str, Any]) -> SearchSpaceSpec:
         if spec.get("is_prompt"):
-            return cls(is_prompt=True)
+            return cls(path=name, is_prompt=True)
+
+        param_type = str(spec.get("type") or DEFAULT_PARAM_TYPE).strip().lower()
+        if param_type not in SUPPORTED_PARAM_TYPES:
+            supported = ", ".join(sorted(SUPPORTED_PARAM_TYPES))
+            raise SearchSpaceError(
+                f"Search space entry {name!r} has unsupported type {param_type!r}; "
+                f"supported types: {supported}."
+            )
+
+        path = spec.get("path")
+        if path is None or not str(path).strip():
+            raise SearchSpaceError(
+                f"Search space entry {name!r} requires 'path' (Fabric overlay dotted path)."
+            )
+        path = str(path).strip()
+
         values = spec.get("values")
         if values is not None:
             if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
@@ -66,7 +91,7 @@ class SearchSpaceSpec:
                 raise SearchSpaceError("'values' must not be empty.")
             if spec.get("low") is not None or spec.get("high") is not None:
                 raise SearchSpaceError("'values' is mutually exclusive with 'low' and 'high'.")
-            return cls(values=tuple(values))
+            return cls(path=path, param_type=param_type, values=tuple(values))
 
         low = spec.get("low")
         high = spec.get("high")
@@ -80,6 +105,8 @@ class SearchSpaceSpec:
             raise SearchSpaceError(f"'low' must be less than 'high'; got low={low}, high={high}.")
 
         return cls(
+            path=path,
+            param_type=param_type,
             low=low,
             high=high,
             log=bool(spec.get("log", False)),
@@ -146,15 +173,17 @@ def parse_search_space(optimizer: Mapping[str, Any]) -> dict[str, SearchSpaceSpe
     if raw is None:
         raw = optimizer.get("optimizable_params")
     if not isinstance(raw, Mapping):
-        raise SearchSpaceError("optimizer.search_space must be a mapping of dotted paths to specs.")
+        raise SearchSpaceError(
+            "optimizer.search_space must be a mapping of param names to typed specs."
+        )
 
     space: dict[str, SearchSpaceSpec] = {}
     for name, spec in raw.items():
         if not isinstance(name, str):
-            raise SearchSpaceError("Search-space keys must be dotted-path strings.")
+            raise SearchSpaceError("Search-space keys must be strings (logical param names).")
         if not isinstance(spec, Mapping):
             raise SearchSpaceError(f"Search space entry {name!r} must be a mapping.")
-        parsed = SearchSpaceSpec.from_mapping(spec)
+        parsed = SearchSpaceSpec.from_mapping(name, spec)
         if parsed.is_prompt:
             raise SearchSpaceError(
                 f"Search space entry {name!r} is prompt-only; enable optimizer.prompt for GA."
@@ -163,6 +192,25 @@ def parse_search_space(optimizer: Mapping[str, Any]) -> dict[str, SearchSpaceSpe
     if not space:
         raise SearchSpaceError("optimizer.search_space must declare at least one dimension.")
     return space
+
+
+def suggestions_by_path(
+    search_space: Mapping[str, SearchSpaceSpec],
+    suggestions: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Map logical Optuna suggestions onto applicator ``path`` keys."""
+    by_path: dict[str, Any] = {}
+    for name, value in suggestions.items():
+        spec = search_space.get(name)
+        if spec is None:
+            raise SearchSpaceError(f"Suggestion {name!r} is not in the parsed search space.")
+        if spec.path in by_path:
+            raise SearchSpaceError(
+                f"Search-space paths collide at {spec.path!r} "
+                f"(params {[n for n, s in search_space.items() if s.path == spec.path]})."
+            )
+        by_path[spec.path] = value
+    return by_path
 
 
 def grid_trial_count(space: Mapping[str, SearchSpaceSpec]) -> int:
