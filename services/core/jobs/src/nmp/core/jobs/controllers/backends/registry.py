@@ -139,6 +139,9 @@ class BackendRegistry:
             backend = backends[backend_key]
 
             if executor.backend == "docker":
+                # Process-lifetime cache is intentional: executor registration is
+                # fixed at controller startup. Callers that need a fresh probe
+                # (CLI / compile retries) use probe_docker(use_cache=False).
                 if docker_available is None:
                     docker_available = probe_docker().available
                 if not docker_available:
