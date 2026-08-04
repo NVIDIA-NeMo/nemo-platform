@@ -227,7 +227,8 @@ def rewrite_fabric_config_base_urls(agent_config: dict[str, Any], gateway_url: s
         parts = urlsplit(endpoint)
         if parts.hostname not in LOOPBACK_ADDRESSES:
             continue
-        storage_config["endpoint"] = parts._replace(scheme=reachable.scheme, netloc=reachable.netloc).geturl()
+        scheme = "https" if "https" in (parts.scheme, reachable.scheme) else reachable.scheme
+        storage_config["endpoint"] = parts._replace(scheme=scheme, netloc=reachable.netloc).geturl()
     return config
 
 
