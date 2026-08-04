@@ -268,3 +268,25 @@ def test_register_platform_config_class_controls_platform_config_accessors() -> 
 def test_get_nemo_platform_config_alias() -> None:
     """get_nemo_platform_config is an alias for get_platform_config."""
     assert get_nemo_platform_config is get_platform_config
+
+
+def test_validate_docker_available_returns_false_on_connection_failures() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from docker.errors import DockerException
+    from nemo_platform_plugin.config import validate_docker_available
+    from requests.exceptions import ConnectionError as RequestsConnectionError
+
+    for exc in (
+        DockerException("boom"),
+        RequestsConnectionError("refused"),
+        OSError("no such file"),
+    ):
+        with patch("nemo_platform_plugin.config.docker.from_env", side_effect=exc):
+            assert validate_docker_available() is False
+
+        client = MagicMock()
+        client.ping.side_effect = exc
+        with patch("nemo_platform_plugin.config.docker.from_env", return_value=client):
+            assert validate_docker_available() is False
+        client.close.assert_called()
