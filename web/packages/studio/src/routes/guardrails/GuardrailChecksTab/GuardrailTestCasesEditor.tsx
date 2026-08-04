@@ -15,7 +15,8 @@ import {
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
-import { GuardrailResultsTable } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailResultsTable';
+import { GuardrailChecksDataView } from '@studio/components/dataViews/GuardrailChecksDataView';
+import { ResultSummary } from '@studio/components/dataViews/GuardrailChecksDataView/ResultSummary';
 import { GuardrailTestCard } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCard';
 import { ListChecks, Plus, Settings } from 'lucide-react';
 import { type FC, useState } from 'react';
@@ -122,8 +123,11 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
           </LoadingButton>
         </Stack>
       ) : (
-        /* Test Results tab — simple summary + table over the loaded checks */
-        <GuardrailResultsTable checks={checks} />
+        /* Test Results tab — summary + table over the loaded checks */
+        <Stack gap="density-lg" className="w-full min-h-0">
+          <ResultSummary checks={checks} />
+          <GuardrailChecksDataView checks={checks} />
+        </Stack>
       )}
     </Stack>
   );

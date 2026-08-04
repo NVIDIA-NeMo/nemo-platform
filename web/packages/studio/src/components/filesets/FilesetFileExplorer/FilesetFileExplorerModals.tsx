@@ -26,7 +26,6 @@ export interface FilesetFileExplorerModalsProps {
   isUploading: boolean;
   stagedUploadFiles: File[];
   filesList: ComponentProps<typeof UploadToFolderModal>['filesList'];
-  openFileDialog: ComponentProps<typeof UploadToFolderModal>['openFileDialog'];
   handleConfirmUpload: ComponentProps<typeof UploadToFolderModal>['onConfirm'];
 }
 
@@ -49,7 +48,6 @@ export const FilesetFileExplorerModals: FC<FilesetFileExplorerModalsProps> = ({
   isUploading,
   stagedUploadFiles,
   filesList,
-  openFileDialog,
   handleConfirmUpload,
 }) => (
   <>
@@ -84,7 +82,6 @@ export const FilesetFileExplorerModals: FC<FilesetFileExplorerModalsProps> = ({
       files={stagedUploadFiles}
       defaultFolder={currentFolder}
       filesList={filesList}
-      openFileDialog={openFileDialog}
       onConfirm={handleConfirmUpload}
     />
   </>

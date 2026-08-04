@@ -76,11 +76,11 @@ class _TrainingBase(RlSchema):
         description="Optimizer + LR-scheduler combination (AdamW/Adam × cosine-annealing/flat-LR). "
         "Defaults to AdamW with cosine annealing.",
     )
-    learning_rate: float = Field(default=1e-4, description="Peak learning rate.")
-    min_learning_rate: float | None = Field(default=None, description="Minimum LR for cosine decay.")
-    weight_decay: float = Field(default=0.01, description="Weight decay coefficient.")
-    adam_beta1: float = Field(default=0.9, description="Adam beta1.")
-    adam_beta2: float = Field(default=0.999, description="Adam beta2.")
+    learning_rate: float = Field(default=1e-4, gt=0.0, description="Peak learning rate.")
+    min_learning_rate: float | None = Field(default=None, ge=0.0, description="Minimum LR for cosine decay.")
+    weight_decay: float = Field(default=0.01, ge=0.0, description="Weight decay coefficient.")
+    adam_beta1: float = Field(default=0.9, ge=0.0, lt=1.0, description="Adam beta1.")
+    adam_beta2: float = Field(default=0.999, ge=0.0, lt=1.0, description="Adam beta2.")
     adam_eps: float = Field(default=1e-5, gt=0.0, description="Adam epsilon (numerical stability term).")
     warmup_steps: int = Field(default=0, ge=0, description="Linear warmup steps.")
 

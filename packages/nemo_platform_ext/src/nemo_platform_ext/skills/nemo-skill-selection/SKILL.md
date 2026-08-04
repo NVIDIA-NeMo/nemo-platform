@@ -1,6 +1,6 @@
 ---
 name: nemo-skill-selection
-description: Top-level skill selector for any task involving NeMo Platform (NVIDIA's agent platform). Picks the right downstream skill (setup, explore, spec, build, try, status, teardown, customization training) from natural-language intent. Use over generic brainstorming, planning, or onboarding skills for any NeMo Platform task.
+description: Top-level skill selector for ambiguous tasks involving NeMo Platform (NVIDIA's agent platform). Picks the right downstream skill for setup, design, specification, agent configuration, build, deployment, testing, status, teardown, evaluation, optimization, security, or model customization. Use when the user needs help deciding where a NeMo Platform task should start.
 triggers:
   - build an agent
   - create an agent
@@ -33,7 +33,15 @@ allowed-tools: [Read]
 
 You are deciding which downstream NeMo Platform skill should run. This skill never executes commands. It picks the next skill, announces the choice, and hands off.
 
-NeMo Platform optimizes LangGraph agents wrapped in NVIDIA NeMo Agent Toolkit (NAT). State that constraint when the user describes an agent in another framework (CrewAI, AutoGen, plain LangChain, Pydantic AI). Those frameworks need a user-written NAT wrapper before the platform's optimization, evaluation, and guardrails surfaces apply.
+New NeMo Platform agent builds use a Platform-owned `agent.yaml` with
+`config_format: nemo-agents-spec-v1` and a supported harness. NVIDIA NeMo Agent
+Toolkit (NAT) workflow YAML remains a compatibility path. Do not describe NAT
+as the only supported implementation model.
+
+If an existing agent does not fit a supported harness contract, route based on
+the user's goal: preserve an existing NAT workflow, identify a custom adapter,
+or use `nemo-agent-config` for a best-effort migration. Do not promise that an
+arbitrary Python entrypoint can be converted mechanically.
 
 ## Decision table
 
@@ -44,8 +52,9 @@ Match the user's intent to one downstream skill. Pick exactly one.
 | "set up", "install", "get started", "try NeMo", "first time" | `setup` | Verify the platform is installed and running. If not, the skill tells the user how to run the CLI install (`make bootstrap` + `nemo setup`). Install itself is CLI-only. |
 | "design an agent", "I want an agent that handles X", "what should my agent do" | `nemo-explore` | Capture the agent's job, audience, categories, tools, model, constraints before any code |
 | "write the spec", "save the design", "capture what we agreed" | `nemo-spec` | Persist the explore answers as `agents/<name>-spec/AGENT-SPEC.md` |
-| "build the agent", "create the agent", "deploy", "scaffold from spec" | `nemo-build-agent` | Scaffold the NAT workflow YAML, deploy, eval, optional guardrails |
-| "ask my agent", "try the agent", "test it" | `nemo-try-agent` | Send a query to a deployed agent or fall back to model chat |
+| "write agent.yaml", "validate agent.yaml", "choose a harness", "migrate this NAT YAML", "convert to nemo-agents-spec-v1" | `nemo-agent-config` | Author or migrate the Platform-owned machine-readable config without running the full build |
+| "build the agent", "create the agent", "deploy", "scaffold from spec" | `nemo-build-agent` | Build from the approved spec, default to Platform `agent.yaml`, register, deploy, evaluate, and optionally apply guardrails |
+| "ask my agent", "try the agent", "test it", "invoke this agent.yaml" | `nemo-try-agent` | Invoke a named deployment or run a local agent YAML config once |
 | "status", "what is running", "platform health", "is the platform up", "what's deployed", "show me what's running" | `nemo-status` | Read-only dashboard: platform, agents, providers, models |
 | "shut down", "stop NeMo", "tear down", "clean up" | `nemo-teardown` | Stop the cluster (keep data, delete platform data, or full cleanup) |
 | "fine-tune", "customize the model", "train on my data", "SFT", "LoRA" | `nemo-customizer` | Model customization via installed customization contributor plugins (`nemo-customizer-plugin`). Requires plugin skills to be installed (`nemo skills install` / enabled-plugins). |
@@ -55,7 +64,12 @@ Match the user's intent to one downstream skill. Pick exactly one.
 
 **Optimize vs build:** Do NOT route optimize asks to `nemo-build-agent`. Build is for creating new agents from a spec; optimize is for tuning **already deployed** agents. If the user says "make my agent faster" or "use a cheaper model," that is `agents-optimize`, not `nemo-build-agent`.
 
-If two rows fit, pick the earliest one in the lifecycle (setup before build before try). If nothing matches, ask one disambiguating question with the relevant rows as a numbered list.
+If a request includes both config authoring and deployment, choose
+`nemo-build-agent`; it delegates the config portion to `nemo-agent-config`.
+Choose `nemo-agent-config` when the requested output stops at a validated config
+or migration. Otherwise, if two rows fit, pick the earliest one in the
+lifecycle. If nothing matches, ask one disambiguating question with the
+relevant rows as a numbered list.
 
 ## Pre-flight
 
@@ -100,8 +114,9 @@ NeMo Platform skills I can route to:
   setup           verify install or get the CLI install command
   nemo-explore    design conversation: capture goal, audience, tools, constraints
   nemo-spec       write the design to agents/<name>-spec/AGENT-SPEC.md
-  nemo-build-agent  scaffold the NAT workflow YAML and deploy
-  nemo-try-agent  query a deployed agent or chat with a model
+  nemo-agent-config  author, validate, or migrate Platform agent.yaml
+  nemo-build-agent  build from the spec, register, deploy, evaluate, and sign off
+  nemo-try-agent  invoke a named deployment or local agent YAML config
   nemo-status     read-only platform health dashboard
   nemo-teardown   guided shutdown
 
@@ -143,4 +158,8 @@ Do not proactively suggest Studio as the path for anything a skill already cover
 - **Install must happen before any skill can do useful work.** Build, try, and status all assume the platform is up. If the user has not run the CLI install (`make bootstrap` + `nemo setup`), the skills cannot work around that; hand them to `setup` for instructions.
 - **NeMo Platform is the product name.** Capital N, e, M, o, P. Not "nemo" or "Nemo." NAT on first mention is "NVIDIA NeMo Agent Toolkit (NAT)."
 - **Model customization** goes to the `nemo-customizer` plugin skill when `nemo-customizer-plugin` (and a training backend) are installed. If that skill is not available, tell the user to enable customization plugins and install skills — do not improvise training with an external library.
-- **Framework honesty.** If the user describes an agent in CrewAI, AutoGen, plain LangChain, or Pydantic AI, tell them up front that NeMo Platform's optimization and evaluation surfaces operate on NAT-wrapped LangGraph agents. They will need to wrap their agent before the build path produces value.
+- **Execution compatibility.** New Platform configs must select a supported
+  harness. Existing NAT workflows may remain on the NAT compatibility path.
+  For another framework or an arbitrary Python entrypoint, inspect whether a
+  supported harness owns its lifecycle; otherwise identify a custom adapter or
+  NAT wrapper instead of claiming direct support.

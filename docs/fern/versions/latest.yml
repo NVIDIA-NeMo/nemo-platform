@@ -261,8 +261,15 @@ navigation:
         contents:
           - page: Deploy Agents
             path: ../../agents/deploy-agents.mdx
+          - page: Observe Agents
+            path: ../../agents/observability.mdx
           - page: Optimize Agents
             path: ../../agents/optimization.mdx
+          # Gated until Insight-Driven Optimization ships. Uncomment the two
+          # lines below to publish it here, then drop the matching Agents block
+          # from gated-nav.yml and re-add inbound links from Optimize Agents.
+          # - page: Insight-Driven Optimization
+          #   path: ../../agents/insight-driven-optimization.mdx
           - page: Secure Agents
             path: ../../agents/security.mdx
           - page: Plugins and Skills
@@ -403,6 +410,9 @@ navigation:
                 path: ../../evaluator/tutorials/run-llm-judge-evaluation.mdx
               - page: Define and Run Custom Python Metrics
                 path: ../../evaluator/tutorials/define-run-custom-python-metrics.mdx
+          - page: Experiments
+            slug: experiments
+            path: ../../evaluator/experiments.mdx
           - page: SDK Resources
             path: ../../evaluator/sdk-resources.mdx
           - page: Manage Tasks & Tasksets

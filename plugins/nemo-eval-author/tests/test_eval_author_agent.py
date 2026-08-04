@@ -5,6 +5,7 @@
 
 import asyncio
 import inspect
+import io
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,6 +85,7 @@ def _eval_author(
     max_traces: int = 10,
     max_summary_tokens: int = 80_000,
     max_validation_repair_attempts: int = 5,
+    reporter: Any = None,
 ) -> EvalAuthor:
     eval_author = object.__new__(EvalAuthor)
     eval_author.experiment_dir = tmp_path
@@ -92,6 +94,7 @@ def _eval_author(
         max_summary_tokens=max_summary_tokens,
         max_validation_repair_attempts=max_validation_repair_attempts,
     )
+    eval_author._reporter = reporter
     eval_author.context = {}
     eval_author.shell = cast(Any, _ClosingShell())
     return eval_author
@@ -680,3 +683,111 @@ def test_eval_author_config_defaults_and_bounds_validation_repair_attempts() -> 
     assert EvalAuthorConfig(max_validation_repair_attempts=10).max_validation_repair_attempts == 10
     with pytest.raises(ValueError, match="less than or equal to 10"):
         EvalAuthorConfig(max_validation_repair_attempts=11)
+
+
+def _string_reporter() -> tuple[Any, io.StringIO]:
+    from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
+
+    sink = io.StringIO()
+    return RunReporter(sink=sink), sink
+
+
+@pytest.mark.asyncio
+async def test_run_with_reporter_emits_start_note_and_complete_on_empty_traces(tmp_path: Path) -> None:
+    reporter, sink = _string_reporter()
+    eval_author = _eval_author(tmp_path, reporter=reporter)
+
+    await eval_author.run(
+        _insight([]),
+        Path("agent"),
+        Task(id="template"),
+        Dataset(id="train"),
+        Dataset(id="validation"),
+        client=cast(Any, object()),
+    )
+
+    out = sink.getvalue()
+    assert "eval author · starting" in out
+    assert "no trace refs — nothing to analyze" in out
+    assert "eval author · complete" in out
+
+
+@pytest.mark.asyncio
+async def test_run_with_reporter_emits_pipeline_phases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reporter, sink = _string_reporter()
+    eval_author = _eval_author(tmp_path, reporter=reporter)
+    _install_pipeline(
+        monkeypatch,
+        [_diagnostic("trace-1 failed"), _diagnostic("trace-2 failed")],
+        eval_author,
+    )
+    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
+
+    result = await eval_author.run(
+        _insight(["trace-1", "trace-2"]),
+        Path("agent"),
+        Task(id="template"),
+        Dataset(id="train"),
+        Dataset(id="validation"),
+        client=cast(Any, object()),
+    )
+
+    out = sink.getvalue()
+    assert "eval author · starting" in out
+    assert "eval author · materializing tasks" in out
+    assert "task 2/≤2" in out
+    assert "eval author · analyzing traces" in out
+    assert "eval author · discovering runner" in out
+    assert "eval author · authoring metrics" in out
+    assert "eval author · complete" in out
+    assert "Finished" not in out
+    assert result.summary == "authored insight metrics"
+
+
+@pytest.mark.asyncio
+async def test_run_with_reporter_emits_repair_progress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reporter, sink = _string_reporter()
+    eval_author = _eval_author(tmp_path, max_validation_repair_attempts=2, reporter=reporter)
+    insight_dataset = _RepairableDataset("insight-suite", "task 'insight-a': check.py:2:1: invalid syntax")
+    _install_pipeline(
+        monkeypatch,
+        [_diagnostic("diagnostic")],
+        eval_author,
+        materialized_dataset=insight_dataset,
+    )
+    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
+
+    class RepairInsightMetrics:
+        async def __call__(
+            self,
+            insight: Insight,
+            diagnostics: list[tuple[str, Diagnostic]],
+            insight_suite: Dataset,
+            runner_conventions: str,
+            validation_feedback: str | None = None,
+        ) -> str:
+            if validation_feedback is not None:
+                insight_dataset.error = None
+            return "repaired insight metric"
+
+    eval_author.author_insight_metrics = cast(Any, RepairInsightMetrics())
+
+    await eval_author.run(
+        _insight(["trace-1"]),
+        Path("agent"),
+        Task(id="template"),
+        Dataset(id="train"),
+        Dataset(id="validation"),
+        client=cast(Any, object()),
+    )
+
+    out = sink.getvalue()
+    assert "eval author · repairing metrics" in out
+    assert "attempt 1/≤2" in out
+    assert "eval author · complete" in out

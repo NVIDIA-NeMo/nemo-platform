@@ -432,14 +432,17 @@ class TestStopInstance:
         assert result.stopped_pids == []
 
     def test_stops_running_process(self, base_dir: Path) -> None:
-        proc = subprocess.Popen(
-            [sys.executable, "-c", "import time; time.sleep(60)"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        scope = "stop-test"
+        fd: int | None = None
+        proc: subprocess.Popen[bytes] | None = None
         try:
-            scope = "stop-test"
             fd = acquire_lock(scope, base_dir=base_dir)
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                pass_fds=(fd,),
+            )
             desc = InstanceDescriptor(
                 pid=proc.pid,
                 config=PlatformAppConfig(scope=scope),
@@ -449,14 +452,63 @@ class TestStopInstance:
             write_descriptor(desc, base_dir=base_dir)
 
             os.close(fd)
+            fd = None
 
             result = stop_instance(scope, base_dir=base_dir, timeout=5.0)
             assert proc.pid in result.stopped_pids
             proc.wait(timeout=5)
             assert proc.poll() is not None
+            assert not is_instance_alive(scope, base_dir=base_dir)
+            assert read_descriptor(scope, base_dir=base_dir) is None
         finally:
-            if proc.poll() is None:
+            if fd is not None:
+                os.close(fd)
+            if proc is not None and proc.poll() is None:
                 proc.kill()
+                proc.wait(timeout=5)
+
+    def test_preserves_descriptor_while_lock_remains_held(self, base_dir: Path) -> None:
+        scope = "lock-still-held"
+        fd: int | None = None
+        lock_holder: subprocess.Popen[bytes] | None = None
+        target: subprocess.Popen[bytes] | None = None
+        try:
+            fd = acquire_lock(scope, base_dir=base_dir)
+            lock_holder = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                pass_fds=(fd,),
+            )
+            target = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            os.close(fd)
+            fd = None
+
+            desc = InstanceDescriptor(
+                pid=target.pid,
+                config=PlatformAppConfig(scope=scope),
+                mode="background",
+                create_time=psutil.Process(target.pid).create_time(),
+            )
+            write_descriptor(desc, base_dir=base_dir)
+
+            result = stop_instance(scope, base_dir=base_dir, timeout=0.5)
+
+            assert target.pid in result.stopped_pids
+            assert is_instance_alive(scope, base_dir=base_dir)
+            assert read_descriptor(scope, base_dir=base_dir) == desc
+        finally:
+            if fd is not None:
+                os.close(fd)
+            for proc in (target, lock_holder):
+                if proc is None:
+                    continue
+                if proc.poll() is None:
+                    proc.kill()
                 proc.wait(timeout=5)
 
     def test_cleans_up_stale_descriptor(self, base_dir: Path) -> None:
