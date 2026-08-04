@@ -70,12 +70,17 @@ COPY web/packages/studio/env/${ENV_FILE} packages/studio/env/.env
 # so the Dockerfile can retry before the GitHub job-level timeout cancels the run.
 RUN set -eu; \
   for attempt in 1 2 3; do \
-    if VITE_VERSION_SHA="${VITE_VERSION_SHA}" NODE_ENV="${NODE_ENV}" \
+    status=0; \
+    VITE_VERSION_SHA="${VITE_VERSION_SHA}" NODE_ENV="${NODE_ENV}" \
       timeout --kill-after=30s 15m \
-      pnpm --filter nemo-studio-ui --fail-if-no-match build:fastapi; then \
+      pnpm --filter nemo-studio-ui --fail-if-no-match build:fastapi || status="$?"; \
+    if [ "${status}" = "0" ]; then \
+      if [ ! -f /app/web/packages/studio/dist/index.html ]; then \
+        echo "Studio UI build reported success but dist/index.html is missing"; \
+        exit 1; \
+      fi; \
       exit 0; \
     fi; \
-    status="$?"; \
     if [ "${status}" != "124" ] && [ "${status}" != "137" ]; then \
       exit "${status}"; \
     fi; \
