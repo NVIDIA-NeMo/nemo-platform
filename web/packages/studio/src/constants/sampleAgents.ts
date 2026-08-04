@@ -26,6 +26,10 @@ export interface SampleAgent {
   /** Public path to a reusable nemo-evaluator eval-config.json. Samples without
    *  one remain available for agent creation but not evaluation seeding. */
   evalConfigPath?: string;
+  /** Config format identifier sent to the create API. Defaults to
+   *  `nat-workflow-v1` server-side when omitted; set to `nemo-agents-spec-v1`
+   *  for Fabric-backed samples so the API validates them as Fabric, not NAT. */
+  configFormat?: string;
 }
 
 export const SAMPLE_AGENTS: SampleAgent[] = [
