@@ -1,5 +1,5 @@
 ---
-name: nemo-platform-contributor-create-pr
+name: contributor-create-pr
 description: Create, publish, or advance a GitHub pull request for NVIDIA-NeMo/nemo-platform with repository-aware branch checks, targeted validation, DCO sign-off enforcement, trusted PR-template completion, conventional titles, safe pushes, draft or ready-for-review creation, CI and CodeRabbit follow-up, and merge-conflict handling. Use when the user asks to commit and push work, create or open a PR, submit changes for review, mark a draft ready, monitor a PR, address automated review or CI feedback, or update a conflicted PR in nemo-platform.
 ---
 
