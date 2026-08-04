@@ -29,6 +29,7 @@ class _FakeNode:
     label: str
     round: int
     val_reward: dict[str, float] = field(default_factory=dict)
+    insight_val_reward: dict[str, float] = field(default_factory=dict)
 
 
 def _tree(*nodes: _FakeNode) -> SimpleNamespace:
@@ -216,6 +217,27 @@ async def test_has_converged_true_when_front_stagnates() -> None:
             min_rounds_before_stopping=2,
         )
         is True
+    )
+
+
+async def test_gains_confined_to_the_held_out_insight_half_keep_the_loop_running() -> None:
+    # a2 gives up a little validation reward but is the only candidate scoring on the
+    # held-out Insight half. On validation alone it is dominated and the front looks
+    # stagnant, so convergence would end the run while the agent is still getting
+    # better at the production failures the Insight suite reconstructs.
+    term = _terminator(stop_verdict=False)
+    tree = _tree(
+        _FakeNode("a0", 0, {"score": 0.7}),
+        _FakeNode("a1", 1, {"score": 0.7}),
+        _FakeNode("a2", 2, {"score": 0.6}, {"uses_required_tool": 0.9}),
+    )
+    assert (
+        await term._has_converged(
+            evolution_tree=tree,
+            prior_analysis="ignored",
+            min_rounds_before_stopping=2,
+        )
+        is False
     )
 
 

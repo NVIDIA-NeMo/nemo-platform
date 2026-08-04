@@ -6,11 +6,11 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from nemo_experimentalist_plugin.entities import Candidate
+from nemo_experimentalist_plugin.entities import Candidate, InsightSplitFields
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
     EvaluationResult,
@@ -22,10 +22,18 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
 _GENERIC_METRIC_NAMES = frozenset({"reward", "score"})
 _MAX_REPEAT_SPREAD = 0.1
 _MIN_DISCRIMINATION = 1e-9
-_REPORT_SECTION_START = "<!-- insight-suite-promotion-suggestions:start -->"
-_REPORT_SECTION_END = "<!-- insight-suite-promotion-suggestions:end -->"
-_COMPARISON_SECTION_START = "<!-- insight-suite-comparison:start -->"
-_COMPARISON_SECTION_END = "<!-- insight-suite-comparison:end -->"
+_PROMOTION_SECTION_MARKER = "insight-suite-promotion-suggestions"
+_COMPARISON_SECTION_MARKER = "insight-suite-comparison"
+
+
+def _section_markers(marker: str, split: str) -> tuple[str, str]:
+    """Return per-split section markers so both Insight halves can coexist in one report."""
+    return f"<!-- {marker}:{split}:start -->", f"<!-- {marker}:{split}:end -->"
+
+
+def insight_metric_names(metric_keys: Iterable[str]) -> set[str]:
+    """Return the Insight-specific subset of ``metric_keys``, dropping generic reward keys."""
+    return set(metric_keys) - _GENERIC_METRIC_NAMES
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,11 +199,12 @@ def _task_evidence(
     baseline: Candidate,
     winner: Candidate,
     provenance: InsightSuiteProvenance,
+    fields: InsightSplitFields,
 ) -> _TaskEvidence | None:
     suite_candidates = [
-        candidate for candidate in candidates if candidate.insight_suite_identity == provenance.identity
+        candidate for candidate in candidates if fields.suite_identity_of(candidate) == provenance.identity
     ]
-    metric_key_sets = {tuple(sorted(candidate.insight_metric_keys or ())) for candidate in suite_candidates}
+    metric_key_sets = {tuple(sorted(fields.metric_keys_of(candidate) or ())) for candidate in suite_candidates}
     if len(metric_key_sets) != 1:
         return None
     required_metrics = set(next(iter(metric_key_sets), ()))
@@ -204,7 +213,7 @@ def _task_evidence(
         return None
 
     trials_by_candidate = {
-        candidate.label: [trial for trial in candidate.insight_reward_details or () if trial.task_id == task.id]
+        candidate.label: [trial for trial in fields.reward_details_of(candidate) or () if trial.task_id == task.id]
         for candidate in suite_candidates
     }
     values_by_candidate: dict[str, dict[str, list[float]]] = {}
@@ -286,6 +295,7 @@ def select_insight_promotion_suggestions(
     dataset: Dataset,
     candidates: Sequence[Candidate],
     *,
+    fields: InsightSplitFields,
     winner: Candidate | None = None,
     limit: int = 3,
 ) -> list[InsightPromotionSuggestion]:
@@ -296,7 +306,8 @@ def select_insight_promotion_suggestions(
     evaluated_candidates = [
         candidate
         for candidate in candidates
-        if candidate.insight_reward_details is not None and candidate.insight_suite_identity == provenance.identity
+        if fields.reward_details_of(candidate) is not None
+        and fields.suite_identity_of(candidate) == provenance.identity
     ]
     if len(evaluated_candidates) < 2:
         return []
@@ -314,6 +325,7 @@ def select_insight_promotion_suggestions(
                 baseline=baseline,
                 winner=winner,
                 provenance=provenance,
+                fields=fields,
             )
         )
         is not None
@@ -368,10 +380,11 @@ def _markdown_cell(value: str) -> str:
 
 def render_insight_promotion_section(
     suggestions: Sequence[InsightPromotionSuggestion],
+    split: str,
 ) -> str:
-    """Render an advisory-only final-report section."""
+    """Render an advisory-only final-report section for one Insight half."""
     lines = [
-        "## Insight Suite Promotion Suggestions",
+        f"## Insight Suite Promotion Suggestions ({split})",
         "",
         (
             "Advisory adaptive/development evidence only, not independent validation evidence. "
@@ -436,13 +449,15 @@ def _write_marked_section(
 def write_insight_promotion_section(
     report_path: Path,
     suggestions: Sequence[InsightPromotionSuggestion],
+    split: str,
 ) -> None:
-    """Append or replace the advisory promotion section in the final report."""
+    """Append or replace one half's advisory promotion section in the final report."""
+    start_marker, end_marker = _section_markers(_PROMOTION_SECTION_MARKER, split)
     _write_marked_section(
         report_path,
-        rendered=render_insight_promotion_section(suggestions),
-        start_marker=_REPORT_SECTION_START,
-        end_marker=_REPORT_SECTION_END,
+        rendered=render_insight_promotion_section(suggestions, split),
+        start_marker=start_marker,
+        end_marker=end_marker,
     )
 
 
@@ -450,23 +465,32 @@ def render_insight_comparison_section(
     baseline: Candidate,
     winner: Candidate,
     provenance: InsightSuiteProvenance,
+    fields: InsightSplitFields,
 ) -> str:
-    """Render the deterministic baseline-versus-winner Insight comparison."""
+    """Render the deterministic baseline-versus-winner Insight comparison for one half."""
     for candidate in (baseline, winner):
-        if candidate.insight_suite_identity != provenance.identity:
+        if fields.suite_identity_of(candidate) != provenance.identity:
             raise ValueError(
                 f"Candidate {candidate.label!r} Insight evidence does not match finalized suite {provenance.identity}"
             )
-    baseline_reward = baseline.insight_reward or {}
-    winner_reward = winner.insight_reward or {}
+    baseline_reward = fields.reward_of(baseline) or {}
+    winner_reward = fields.reward_of(winner) or {}
     metric_names = sorted(set(baseline_reward) | set(winner_reward))
-    lines = [
-        "## Deterministic Insight Suite Comparison",
-        "",
+    provenance_note = (
         (
-            "Adaptive/development evidence only; canonical validation remains the direct "
-            "Pareto and winner-selection criterion."
-        ),
+            "Held out from optimization, so these dimensions are independent scoring evidence "
+            "and participate in Pareto and winner selection under the `insight/` prefix."
+        )
+        if fields.held_out
+        else (
+            "Adaptive/development evidence only; this half is visible to the optimizer and "
+            "does not affect Pareto or winner selection."
+        )
+    )
+    lines = [
+        f"## Deterministic Insight Suite Comparison ({fields.split})",
+        "",
+        provenance_note,
         "",
         (f"Suite: `{provenance.suite_path}` (suite `{provenance.identity}`; scorer `{provenance.scorer_identity}`)"),
         "",
@@ -493,11 +517,13 @@ def write_insight_comparison_section(
     baseline: Candidate,
     winner: Candidate,
     provenance: InsightSuiteProvenance,
+    fields: InsightSplitFields,
 ) -> None:
-    """Append or replace the deterministic baseline-versus-winner section."""
+    """Append or replace one half's deterministic baseline-versus-winner section."""
+    start_marker, end_marker = _section_markers(_COMPARISON_SECTION_MARKER, fields.split)
     _write_marked_section(
         report_path,
-        rendered=render_insight_comparison_section(baseline, winner, provenance),
-        start_marker=_COMPARISON_SECTION_START,
-        end_marker=_COMPARISON_SECTION_END,
+        rendered=render_insight_comparison_section(baseline, winner, provenance, fields),
+        start_marker=start_marker,
+        end_marker=end_marker,
     )

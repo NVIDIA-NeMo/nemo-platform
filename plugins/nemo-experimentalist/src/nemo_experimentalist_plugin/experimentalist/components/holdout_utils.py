@@ -5,7 +5,14 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-HELD_OUT_SPLITS = frozenset({"validation"})
+VALIDATION_SPLIT = "validation"
+
+# Eval Author materializes the Insight halves into these directories and declares the
+# same names itself; the pairing is pinned by test_insight_split_names_match_eval_author.
+INSIGHT_TRAIN_SPLIT = "insight-train"
+INSIGHT_VALIDATION_SPLIT = "insight-validation"
+
+HELD_OUT_SPLITS = frozenset({VALIDATION_SPLIT, INSIGHT_VALIDATION_SPLIT})
 HELD_OUT_STORAGE_DIR = ".aad-heldout"
 
 # Path tokens GuardedShellTools refuses: a tripwire for direct shell access while a
@@ -16,8 +23,8 @@ DEFAULT_BLOCKED_PATHS: tuple[str, ...] = (
 )
 
 BLOCKED_MESSAGE = (
-    "blocked: the validation split is held out for scoring only. "
-    "Its contents are off-limits; diagnose and fix using the train split."
+    "blocked: the validation splits are held out for scoring only. "
+    "Their contents are off-limits; diagnose and fix using the train splits."
 )
 
 

@@ -9,13 +9,21 @@ before beginning insight-driven optimization.
 
 import asyncio
 import logging
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 # Populates EXPERIMENTALIST_* from AUTHOR_*, which the Experimentalist agent imports below
 # read when their class bodies execute. Must stay ahead of them; isort keeps it there.
 import nemo_eval_author_plugin._env_bridge  # noqa: F401
-from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
+from nemo_eval_author_plugin.eval_author.materialization import (
+    INSIGHT_TRAIN_SPLIT,
+    INSIGHT_VALIDATION_SPLIT,
+    InsightSuite,
+    materialize_insight_split,
+    verifier_hashes,
+)
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_eval_author_plugin.model_config import get_fast_model, get_smart_model
 from nemo_experimentalist_plugin.experimentalist.components import cache
@@ -49,6 +57,97 @@ from nooa.config.summarizer_config import TokenBudgetConfig
 from nooa.tools import TodoManager
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class EvalAuthorDatasetValidationFailure:
+    """Validation failure for one Eval Author dataset split."""
+
+    split: str
+    error: DatasetValidationError
+
+
+class EvalAuthorDatasetValidationError(DatasetValidationError):
+    """Aggregated validation failures across every dataset the Eval Author authored."""
+
+    def __init__(self, failures: list[EvalAuthorDatasetValidationFailure]) -> None:
+        self.failures = tuple(failures)
+        details = "\n".join(f"{failure.split} dataset:\n{failure.error}" for failure in failures)
+        super().__init__(f"Eval Author dataset validation failed:\n{details}")
+
+
+@dataclass(frozen=True)
+class EvalAuthorUnauthoredTasks:
+    """Tasks in one split whose verifier metric authoring never touched."""
+
+    split: str
+    task_ids: tuple[str, ...]
+
+
+class EvalAuthorUnauthoredTasksError(DatasetValidationError):
+    """Raised when metric authoring skipped tasks, leaving their verifiers unchanged.
+
+    Subclasses ``DatasetValidationError`` so the caller's repair loop treats a skipped
+    task like any other authoring defect and feeds this message back as feedback.
+    """
+
+    def __init__(self, unauthored: Sequence[EvalAuthorUnauthoredTasks]) -> None:
+        self.unauthored = tuple(unauthored)
+        details = "\n".join(f"{entry.split} dataset: {', '.join(entry.task_ids)}" for entry in unauthored)
+        super().__init__(
+            "Insight metric authoring left these task verifiers byte-identical, so they emit "
+            "none of the new metric keys and every downstream comparison against them fails:\n"
+            f"{details}\n"
+            "Add the same metric key set to each listed task's verifier. Every task in every "
+            "dataset must emit the identical key set."
+        )
+
+
+async def _validate_authored_datasets(splits: Sequence[tuple[str, Dataset]]) -> None:
+    """Validate every authored split, reporting which splits failed rather than only the first."""
+    failures: list[EvalAuthorDatasetValidationFailure] = []
+    for split, dataset in splits:
+        try:
+            await dataset.validate()
+        except DatasetValidationError as exc:
+            failures.append(EvalAuthorDatasetValidationFailure(split=split, error=exc))
+
+    if failures:
+        raise EvalAuthorDatasetValidationError(failures) from failures[0].error
+
+
+def _assert_every_task_authored(
+    splits: Sequence[tuple[str, Dataset]],
+    baseline: Mapping[str, Mapping[str, str]],
+) -> None:
+    """Fail when authoring left any task's verifier identical to its pre-authoring state.
+
+    ``dataset.validate()`` only checks that each task is structurally sound, and a task
+    nobody touched always is. Comparing verifier hashes is what distinguishes "authored"
+    from "skipped", and it needs no knowledge of the metric's name.
+
+    Without this the shared metric contract is enforced for the first time by
+    ``validate_insight_evaluation_result`` at baseline, one full evaluation later: a
+    skipped task costs a round of trials before anyone learns it was skipped, and a
+    skipped task in a single-task Insight half fails the run outright.
+
+    Only pass splits whose tasks are rebuilt from source on every run. Re-running into an
+    existing experiment directory reuses already-staged copies of the user's datasets, so
+    their verifiers legitimately start out authored and an unchanged hash proves nothing.
+    """
+    unauthored: list[EvalAuthorUnauthoredTasks] = []
+    for split, dataset in splits:
+        before = baseline.get(split, {})
+        unchanged = tuple(
+            task_id
+            for task_id, digest in verifier_hashes(dataset.list_tasks()).items()
+            if before.get(task_id) == digest
+        )
+        if unchanged:
+            unauthored.append(EvalAuthorUnauthoredTasks(split=split, task_ids=unchanged))
+
+    if unauthored:
+        raise EvalAuthorUnauthoredTasksError(unauthored)
 
 
 class EvalAuthor(Agent, llm=get_smart_model()):
@@ -107,15 +206,19 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         insight: Insight,
         diagnostics: list[tuple[str, Diagnostic]],
         insight_suite: Dataset,
+        train_dataset: Dataset,
+        validation_dataset: Dataset,
         runner_conventions: str,
         validation_feedback: str | None = None,
     ) -> str:
-        """Author verifier metrics for the materialized tasks that capture the insight.
+        """Author verifier metrics that capture the insight across every evaluated dataset.
 
         Args:
             insight: The insight whose failure mode the tasks should detect.
             diagnostics: Per-trace ``(trace_ref, Diagnostic)`` pairs for concrete evidence.
             insight_suite: The materialized tasks recreated from the Insight's production traces.
+            train_dataset: The user's train dataset, augmented with the same metric keys.
+            validation_dataset: The user's validation dataset, augmented with the same metric keys.
             runner_conventions: Summary of how this dataset's runner works (from ``discover_runner``).
                 Use this as the authoritative reference for what artifacts exist at
                 evaluation runtime, how tasks are structured, and how to add metrics.
@@ -126,18 +229,23 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         Refer to ``self.context["dataset_documentation"]`` for the dataset-specific API
         and metric authoring conventions (file layout, how to add/remove/modify a metric).
 
-        **Scope: new grades on the materialized Insight tasks**
+        **Scope: every task in all three datasets**
 
-        Add at least one new Insight-specific metric key to every task in ``insight_suite``.
-        Use the same new metric key set and shared scoring semantics across the entire
-        suite. Preserve every existing verifier metric, including the task's ordinary
-        ``reward`` or ``score``; append the Insight signal instead of replacing the
-        task's original notion of success.
+        Add at least one new Insight-specific metric key to every task in ``insight_suite``,
+        ``train_dataset``, and ``validation_dataset``. A metric is only useful as a
+        suite-wide signal, not a per-sample patch. Preserve every existing verifier
+        metric, including the task's ordinary ``reward`` or ``score``; append the Insight
+        signal instead of replacing the task's original notion of success.
 
-        Only edit verifier files in the materialized Insight suite. Do not modify the
-        user's train or validation datasets, and do not change task instructions,
-        environments, solutions, or other agent-visible inputs. This work adds new
-        grades to the new rows; it does not add new agent output to old benchmark rows.
+        **The metric key set must be identical across all three datasets.** Every task
+        everywhere emits exactly the same new key names with the same scoring semantics.
+        This is a hard requirement, not a preference: the scores are compared against each
+        other downstream, and a key present in one dataset but missing from another fails
+        the run.
+
+        Only add grades. Do not change task instructions, environments, solutions, or any
+        other agent-visible input in any of the three datasets. Adding a verifier metric is
+        additive; changing an instruction changes what the benchmark asks.
 
         Name each new metric after the root-cause behavior, not a trace id or surface
         symptom. Measure the current Harbor run from runtime artifacts such as OTLP
@@ -146,13 +254,14 @@ class EvalAuthor(Agent, llm=get_smart_model()):
 
         **Validate while authoring**
 
-        After every verifier edit, call ``await insight_suite.validate()``. This performs
-        evaluator-specific static checks without launching trials or executing verifier
-        code. If it raises ``DatasetValidationError``, use its task, path, and source
-        location diagnostics to repair the files, then call it again. Do not return until
-        the suite passes validation. If ``validation_feedback`` is provided, the caller's
-        mandatory validation found errors in the previous attempt; fix every reported
-        failure and revalidate the suite.
+        After every verifier edit, call ``await insight_suite.validate()``,
+        ``await train_dataset.validate()``, and ``await validation_dataset.validate()``.
+        These perform evaluator-specific static checks without launching trials or
+        executing verifier code. If any raises ``DatasetValidationError``, use its task,
+        path, and source location diagnostics to repair the files, then call it again. Do
+        not return until all three pass validation. If ``validation_feedback`` is provided,
+        the caller's mandatory validation found errors in the previous attempt; it names
+        which dataset failed. Fix every reported failure and revalidate all three.
 
         **Metric quality**
 
@@ -179,8 +288,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         all required objects, not merely whether X appears in the final answer.
 
         Return a concise summary naming the new metric key(s), what they measure, and
-        which runtime evidence they score. The caller retains the materialized suite and
-        the user's unchanged train and validation datasets.
+        which runtime evidence they score. The caller retains all three datasets.
         """  # noqa: D413
         ...
 
@@ -343,15 +451,34 @@ class EvalAuthor(Agent, llm=get_smart_model()):
 
         self.context["dataset_documentation"] = doc(type(materialized_dataset), inline_depth=1)
         runner_conventions = await self.discover_runner(materialized_dataset)
+        authored_splits = (
+            ("insight", materialized_dataset),
+            ("train", train_dataset),
+            ("validation", validation_dataset),
+        )
+        # Only the Insight suite: promote_local rebuilds it from the task template on every
+        # run, so an unchanged verifier there really does mean authoring skipped the task.
+        # The user's datasets are staged once and reused, so on a re-run they start out
+        # already authored and an unchanged hash would be a false accusation.
+        #
+        # Snapshot before the first pass and keep it: a repair attempt is still measured
+        # against the pre-authoring state, so a task every attempt skips stays flagged.
+        insight_verifiers_before_authoring = {"insight": verifier_hashes(materialized_dataset.list_tasks())}
         summary = await self.author_insight_metrics(
             insight,
             diagnostics,
             materialized_dataset,
+            train_dataset,
+            validation_dataset,
             runner_conventions,
         )
         for repair_attempt in range(self._config.max_validation_repair_attempts + 1):
             try:
-                await materialized_dataset.validate()
+                await _validate_authored_datasets(authored_splits)
+                _assert_every_task_authored(
+                    (("insight", materialized_dataset),),
+                    insight_verifiers_before_authoring,
+                )
             except DatasetValidationError as exc:
                 if repair_attempt >= self._config.max_validation_repair_attempts:
                     raise
@@ -365,16 +492,27 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                     insight,
                     diagnostics,
                     materialized_dataset,
+                    train_dataset,
+                    validation_dataset,
                     runner_conventions,
                     validation_feedback=str(exc),
                 )
             else:
+                # Split after authoring so both halves inherit the same metric keys.
                 finalized_suite = insight_suite.finalize()
+                dataset_dir = self.experiment_dir / "dataset"
+                split = materialize_insight_split(
+                    finalized_suite,
+                    train_dir=dataset_dir / INSIGHT_TRAIN_SPLIT,
+                    validation_dir=dataset_dir / INSIGHT_VALIDATION_SPLIT,
+                )
                 return EvalAuthorResult(
                     train_dataset=train_dataset,
                     validation_dataset=validation_dataset,
-                    insight_suite=finalized_suite.dataset,
-                    insight_suite_identity=finalized_suite.identity,
+                    insight_train_suite=split.train.dataset if split.train else None,
+                    insight_train_suite_identity=split.train.identity if split.train else None,
+                    insight_validation_suite=split.validation.dataset if split.validation else None,
+                    insight_validation_suite_identity=split.validation.identity if split.validation else None,
                     summary=summary,
                 )
 

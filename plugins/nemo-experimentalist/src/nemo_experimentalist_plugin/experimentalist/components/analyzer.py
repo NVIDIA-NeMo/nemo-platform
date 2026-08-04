@@ -263,6 +263,8 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         agent_id: str,
         dataset: Dataset,
         evaluation: EvaluationResult,
+        insight_dataset: Dataset | None = None,
+        insight_trials: Sequence[TrialResult] | None = None,
     ) -> Sequence[TrialResult]:
         """Pick which trials to analyze in depth. Return their TrialResult objects.
 
@@ -270,6 +272,8 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
             agent_id: The agent to analyze.
             dataset: The dataset to analyze.
             evaluation: The evaluation result to analyze.
+            insight_dataset: The Insight suite train half, when this run has one.
+            insight_trials: This agent's trials on ``insight_dataset``.
 
         Returns:
             Sequence[TrialResult]: The selected trials.
@@ -280,6 +284,17 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         tasks_by_id = {task.id: task for task in dataset.list_tasks()}
         trials = list(evaluation.trials)
         ```
+
+        ## Step 1b: Always include every Insight trial
+
+        ```python
+        insight = list(insight_trials or ())
+        ```
+
+        Each Insight task reconstructs a real production failure, and there are only a
+        handful of them. Return **all** of them in addition to your triaged selection;
+        they do not count against the triage budget below. When ``insight_trials`` is
+        empty or ``None`` there is nothing to add.
 
         ## Step 2: Inspect metrics, outputs, resources, and errors
 
@@ -305,7 +320,7 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         ## Step 4: Return TrialResult objects
 
         ```python
-        return selected_trials
+        return insight + selected_trials
         ```
         """
         ...
@@ -573,6 +588,8 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         client: AsyncNeMoPlatform | None = None,
         nmp_workspace: str | None = None,
         agent_spec: Path | None = None,
+        insight_dataset: Dataset | None = None,
+        insight_trials: Sequence[TrialResult] | None = None,
     ) -> AgentAnalysis:
         """Run the full analysis pipeline for one agent in one optimization round.
 
@@ -587,6 +604,11 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
             nmp_workspace: NeMo Platform (Intake) workspace *name* — the request
                 context for ``intake://`` trace lookups. Distinct from the
                 constructor's ``workspace: Path`` (the filesystem eval dir).
+            agent_spec: Optional agent spec used to rationalize task intent.
+            insight_dataset: The Insight suite train half. Must never be the held-out
+                validation half, whose contents this analysis would leak into the
+                goal tree and proposer.
+            insight_trials: This agent's trials on ``insight_dataset``.
 
         Returns:
             AgentAnalysis: per-trial diagnostics, failure classification, and peer
@@ -600,13 +622,16 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         # trace-starved. Keying on availability prevents such a degraded result
         # from being replayed on a later run that *can* load those traces.
         intake_key = ":intake:1" if client is not None and nmp_workspace is not None else ":intake:0"
-        cache_key = cache.agent_hash(f"{agent_id}:evaluation:{evaluation.id}{round_key}{intake_key}")
+        insight_key = ":insight:" + ",".join(sorted(trial.id for trial in insight_trials or ()))
+        cache_key = cache.agent_hash(f"{agent_id}:evaluation:{evaluation.id}{round_key}{intake_key}{insight_key}")
         cached = cache.load(self._workspace_path, cache_key, AgentAnalysis)
         if cached is not None:
             return cached
 
-        trials = await self.select_trials(agent_id, dataset, evaluation)
+        trials = await self.select_trials(agent_id, dataset, evaluation, insight_dataset, insight_trials)
         tasks_by_id = self._tasks_by_id(dataset)
+        if insight_dataset is not None:
+            tasks_by_id |= self._tasks_by_id(insight_dataset)
 
         missing_task_diagnostics: dict[str, Diagnostic] = {}
         trial_tasks: list[tuple[TrialResult, Task]] = []

@@ -7,7 +7,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from nemo_experimentalist_plugin.entities import Candidate
+from nemo_experimentalist_plugin.entities import (
+    INSIGHT_TRAIN_FIELDS,
+    INSIGHT_VALIDATION_FIELDS,
+    Candidate,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
     EvaluationResult,
@@ -37,7 +41,8 @@ def _candidate(
     label: str,
     *,
     round_num: int,
-    insight_reward: dict[str, float] | None = None,
+    insight_train_reward: dict[str, float] | None = None,
+    insight_validation_reward: dict[str, float] | None = None,
     validation_reward: dict[str, float] | None = None,
 ) -> Candidate:
     return Candidate(
@@ -45,10 +50,13 @@ def _candidate(
         label=label,
         round=round_num,
         optimization="baseline" if round_num == 0 else "improve required tool use",
-        insight_reward=insight_reward,
+        insight_train_reward=insight_train_reward,
         validation_reward=validation_reward,
-        insight_suite_identity=_SUITE_IDENTITY,
-        insight_metric_keys=["reward", "uses_required_tool"],
+        insight_train_suite_identity=_SUITE_IDENTITY,
+        insight_train_metric_keys=["reward", "uses_required_tool"],
+        insight_validation_reward=insight_validation_reward,
+        insight_validation_suite_identity=_SUITE_IDENTITY,
+        insight_validation_metric_keys=["reward", "uses_required_tool"],
     )
 
 
@@ -74,39 +82,54 @@ def _insight_dataset(tasks: list[Task]) -> Dataset:
     )
 
 
-def test_round_analysis_contract_requires_separate_insight_suite_dimensions() -> None:
+def test_round_analysis_contract_keeps_the_two_insight_halves_in_separate_tables() -> None:
     skill_prompt = " ".join((AnalysisSkill.__doc__ or "").split())
     merge_prompt = " ".join((EvolutionaryOptimizer.merge_analysis.__doc__ or "").split())
 
-    assert "Insight Suite Reward" in skill_prompt
-    assert "candidate.insight_reward" in skill_prompt
-    assert "separate from train and validation rewards" in skill_prompt
-    assert "insight_dim_keys" in merge_prompt
-    assert "candidate.round == 0" in merge_prompt
-    assert "must name every available Insight Suite dimension" in merge_prompt
-    assert "Never blend those metrics into train/validation rewards" in merge_prompt
-    assert "adaptive/development feedback" in merge_prompt
-    assert "never present them as independent validation evidence" in merge_prompt
+    assert "Insight Train Reward:" in skill_prompt
+    assert "Insight Validation Reward:" in skill_prompt
+    assert "candidate.insight_train_reward" in skill_prompt
+    assert "candidate.insight_validation_reward" in skill_prompt
+    assert "Keep both separate from train and validation rewards" in skill_prompt
+    assert "insight_train_dim_keys" in merge_prompt
+    assert "insight_validation_dim_keys" in merge_prompt
+    assert "Never blend either half's metrics into the train or validation reward tables" in merge_prompt
 
 
-def test_final_report_contract_requires_baseline_winner_insight_comparison() -> None:
+def test_round_analysis_contract_distinguishes_development_feedback_from_ranking_evidence() -> None:
+    merge_prompt = " ".join((EvolutionaryOptimizer.merge_analysis.__doc__ or "").split())
+
+    train_rule, _, validation_rule = merge_prompt.partition("`insight_validation_reward` is held out")
+
+    assert "adaptive/development feedback" in train_rule
+    assert "it did not affect ranking" in train_rule
+    assert "never present it as independent validation evidence" in train_rule
+    assert "independent scoring evidence and it did affect ranking" in validation_rule
+    assert "prefixed with `insight/`" in validation_rule
+
+
+def test_final_report_contract_requires_a_baseline_winner_table_per_insight_half() -> None:
     report_prompt = " ".join((EvolutionaryOptimizer.write_final_report.__doc__ or "").split())
 
-    assert "Insight Suite Metrics table" in report_prompt
+    assert "Insight Train Metrics and Insight Validation Metrics tables" in report_prompt
     assert "baseline, winner, and signed delta columns" in report_prompt
-    assert "Keep this table separate from generic train and validation rewards" in report_prompt
+    assert "Keep these tables separate from generic train and validation rewards" in report_prompt
+    assert "label the train half as adaptive/development feedback that did not affect ranking" in report_prompt
+    assert "the validation half as held-out evidence that did" in report_prompt
 
 
-def test_terminal_summary_includes_baseline_and_winner_insight_metrics() -> None:
+def test_terminal_summary_reports_the_held_out_insight_half() -> None:
     baseline = _candidate(
         "agent-0",
         round_num=0,
-        insight_reward={"uses_required_tool": 0.0},
+        insight_train_reward={"uses_required_tool": 0.5},
+        insight_validation_reward={"uses_required_tool": 0.0},
     )
     winner = _candidate(
         "agent-1",
         round_num=1,
-        insight_reward={"uses_required_tool": 1.0},
+        insight_train_reward={"uses_required_tool": 0.5},
+        insight_validation_reward={"uses_required_tool": 1.0},
         validation_reward={"reward": 0.75},
     )
     optimizer = object.__new__(EvolutionaryOptimizer)
@@ -114,8 +137,10 @@ def test_terminal_summary_includes_baseline_and_winner_insight_metrics() -> None
     summary = optimizer._render_summary(rounds_completed=1, baseline=baseline, winner=winner)
 
     assert "validation_reward={'reward': 0.75}" in summary
-    assert "insight_suite=(baseline={'uses_required_tool': 0.0}" in summary
+    assert "insight_validation=(baseline={'uses_required_tool': 0.0}" in summary
     assert "winner={'uses_required_tool': 1.0})" in summary
+    # The train half steers development only, so it never appears as an outcome number.
+    assert "0.5" not in summary
 
 
 def test_terminal_summary_omits_insight_comparison_when_unavailable() -> None:
@@ -125,7 +150,7 @@ def test_terminal_summary_omits_insight_comparison_when_unavailable() -> None:
 
     summary = optimizer._render_summary(rounds_completed=1, baseline=baseline, winner=winner)
 
-    assert "insight_suite" not in summary
+    assert "insight" not in summary
 
 
 def _insight_trial(
@@ -158,7 +183,7 @@ def test_insight_promotion_suggestions_are_stable_discriminative_and_diverse(
         Task(id="task-flat", uri=(tmp_path / "task-flat").as_uri()),
     ]
     baseline = _candidate("agent-0", round_num=0)
-    baseline.insight_reward_details = [
+    baseline.insight_train_reward_details = [
         _insight_trial("task-a", 0.0, attempt=1),
         _insight_trial("task-a", 0.0, attempt=2),
         _insight_trial("task-b", 0.0, attempt=1),
@@ -171,8 +196,8 @@ def test_insight_promotion_suggestions_are_stable_discriminative_and_diverse(
         _insight_trial("task-flat", 0.5, attempt=2),
     ]
     winner = _candidate("agent-1", round_num=1)
-    winner.insight_metric_keys = ["uses_required_tool", "reward"]
-    winner.insight_reward_details = [
+    winner.insight_train_metric_keys = ["uses_required_tool", "reward"]
+    winner.insight_train_reward_details = [
         _insight_trial("task-a", 1.0, attempt=1),
         _insight_trial("task-a", 1.0, attempt=2),
         _insight_trial("task-b", 1.0, attempt=1),
@@ -188,6 +213,7 @@ def test_insight_promotion_suggestions_are_stable_discriminative_and_diverse(
     suggestions = select_insight_promotion_suggestions(
         _insight_dataset(tasks),
         [baseline, winner],
+        fields=INSIGHT_TRAIN_FIELDS,
         winner=winner,
     )
 
@@ -197,7 +223,7 @@ def test_insight_promotion_suggestions_are_stable_discriminative_and_diverse(
     assert suggestions[0].diversity_score is None
     assert suggestions[1].diversity_score == pytest.approx(0.45)
 
-    section = render_insight_promotion_section(suggestions)
+    section = render_insight_promotion_section(suggestions, INSIGHT_TRAIN_FIELDS.split)
     assert "Advisory adaptive/development evidence only" in section
     assert "`task-a`" in section
     assert str(tmp_path / "task-a") in section
@@ -215,9 +241,9 @@ def test_task_evidence_excludes_candidates_from_other_suites(tmp_path: Path) -> 
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
     stale = _candidate("agent-stale", round_num=1)
-    stale.insight_suite_identity = f"sha256:{'e' * 64}"
+    stale.insight_train_suite_identity = f"sha256:{'e' * 64}"
     for candidate, score in ((baseline, 0.0), (winner, 1.0), (stale, 0.5)):
-        candidate.insight_reward_details = [
+        candidate.insight_train_reward_details = [
             _insight_trial(task.id, score, attempt=1),
             _insight_trial(task.id, score, attempt=2),
         ]
@@ -228,6 +254,7 @@ def test_task_evidence_excludes_candidates_from_other_suites(tmp_path: Path) -> 
         baseline=baseline,
         winner=winner,
         provenance=insight_suite_provenance(dataset),
+        fields=INSIGHT_TRAIN_FIELDS,
     )
 
     assert evidence is not None
@@ -240,9 +267,9 @@ def test_task_evidence_excludes_candidates_from_other_suites(tmp_path: Path) -> 
 
 
 def test_insight_promotion_section_explains_when_no_task_qualifies() -> None:
-    section = render_insight_promotion_section([])
+    section = render_insight_promotion_section([], INSIGHT_TRAIN_FIELDS.split)
 
-    assert "## Insight Suite Promotion Suggestions" in section
+    assert "## Insight Suite Promotion Suggestions (insight-train)" in section
     assert "No task had complete repeated evidence" in section
 
 
@@ -253,13 +280,24 @@ def test_insight_promotion_section_is_appended_without_rewriting_report(
     report_path.parent.mkdir(parents=True)
     report_path.write_text("# Optimization\n\nExisting analysis.\n")
 
-    write_insight_promotion_section(report_path, [])
+    write_insight_promotion_section(report_path, [], INSIGHT_TRAIN_FIELDS.split)
     first_report = report_path.read_text()
-    write_insight_promotion_section(report_path, [])
+    write_insight_promotion_section(report_path, [], INSIGHT_TRAIN_FIELDS.split)
 
     assert report_path.read_text() == first_report
     assert first_report.startswith("# Optimization\n\nExisting analysis.")
-    assert first_report.count("## Insight Suite Promotion Suggestions") == 1
+    assert first_report.count("## Insight Suite Promotion Suggestions (insight-train)") == 1
+
+
+def test_each_insight_half_gets_its_own_promotion_section(tmp_path: Path) -> None:
+    report_path = tmp_path / "OPTIMIZATION.md"
+
+    write_insight_promotion_section(report_path, [], INSIGHT_TRAIN_FIELDS.split)
+    write_insight_promotion_section(report_path, [], INSIGHT_VALIDATION_FIELDS.split)
+    report = report_path.read_text()
+
+    assert "## Insight Suite Promotion Suggestions (insight-train)" in report
+    assert "## Insight Suite Promotion Suggestions (insight-validation)" in report
 
 
 @pytest.mark.parametrize("score", [1.1, -0.1, math.inf, -math.inf, math.nan])
@@ -323,14 +361,14 @@ def test_invalid_runtime_metrics_cannot_be_promotion_evidence(
     task = Task(id="task-a")
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
-    baseline.insight_reward_details = [
+    baseline.insight_train_reward_details = [
         _insight_trial("task-a", 0.0, attempt=1),
         _insight_trial("task-a", 0.0, attempt=2),
     ]
     invalid_trial = _insight_trial("task-a", invalid_score, attempt=1)
     if missing_key:
         invalid_trial.metrics.pop("uses_required_tool")
-    winner.insight_reward_details = [
+    winner.insight_train_reward_details = [
         invalid_trial,
         _insight_trial("task-a", 1.0, attempt=2),
     ]
@@ -339,6 +377,7 @@ def test_invalid_runtime_metrics_cannot_be_promotion_evidence(
         select_insight_promotion_suggestions(
             _insight_dataset([task]),
             [baseline, winner],
+            fields=INSIGHT_TRAIN_FIELDS,
             winner=winner,
         )
         == []
@@ -349,34 +388,37 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
     task = Task(id="task-a")
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
-    baseline.insight_reward_details = [_insight_trial("task-a", 0.0)]
-    winner.insight_reward_details = [_insight_trial("task-a", 1.0)]
+    baseline.insight_train_reward_details = [_insight_trial("task-a", 0.0)]
+    winner.insight_train_reward_details = [_insight_trial("task-a", 1.0)]
 
     assert (
         select_insight_promotion_suggestions(
             _insight_dataset([task]),
             [baseline, winner],
+            fields=INSIGHT_TRAIN_FIELDS,
             winner=winner,
         )
         == []
     )
 
-    baseline.insight_reward_details.append(_insight_trial("task-a", 0.0, attempt=2))
-    winner.insight_reward_details.append(_insight_trial("task-a", 1.0, attempt=2, status="failed"))
+    baseline.insight_train_reward_details.append(_insight_trial("task-a", 0.0, attempt=2))
+    winner.insight_train_reward_details.append(_insight_trial("task-a", 1.0, attempt=2, status="failed"))
     assert (
         select_insight_promotion_suggestions(
             _insight_dataset([task]),
             [baseline, winner],
+            fields=INSIGHT_TRAIN_FIELDS,
             winner=winner,
         )
         == []
     )
 
-    winner.insight_reward_details = []
+    winner.insight_train_reward_details = []
     assert (
         select_insight_promotion_suggestions(
             _insight_dataset([task]),
             [baseline, winner],
+            fields=INSIGHT_TRAIN_FIELDS,
             winner=winner,
         )
         == []
@@ -400,17 +442,17 @@ def test_promotion_requires_baseline_to_winner_improvement(
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
     candidates = [baseline, winner]
-    baseline.insight_reward_details = [
+    baseline.insight_train_reward_details = [
         _insight_trial("task-a", baseline_score, attempt=1),
         _insight_trial("task-a", baseline_score, attempt=2),
     ]
-    winner.insight_reward_details = [
+    winner.insight_train_reward_details = [
         _insight_trial("task-a", winner_score, attempt=1),
         _insight_trial("task-a", winner_score, attempt=2),
     ]
     if bad_score is not None:
         bad = _candidate("agent-bad", round_num=1)
-        bad.insight_reward_details = [
+        bad.insight_train_reward_details = [
             _insight_trial("task-a", bad_score, attempt=1),
             _insight_trial("task-a", bad_score, attempt=2),
         ]
@@ -420,6 +462,7 @@ def test_promotion_requires_baseline_to_winner_improvement(
         select_insight_promotion_suggestions(
             _insight_dataset([task]),
             candidates,
+            fields=INSIGHT_TRAIN_FIELDS,
             winner=winner,
         )
         == []
@@ -432,23 +475,53 @@ def test_deterministic_insight_comparison_section_uses_local_suite_identity(
     baseline = _candidate(
         "agent-0",
         round_num=0,
-        insight_reward={"reward": 0.5, "uses_required_tool": 0.0},
+        insight_train_reward={"reward": 0.5, "uses_required_tool": 0.0},
     )
     winner = _candidate(
         "agent-1",
         round_num=1,
-        insight_reward={"reward": 0.75, "uses_required_tool": 1.0},
+        insight_train_reward={"reward": 0.75, "uses_required_tool": 1.0},
     )
     report_path = tmp_path / "OPTIMIZATION.md"
     provenance = insight_suite_provenance(_insight_dataset([Task(id="task-a")]))
 
-    write_insight_comparison_section(report_path, baseline, winner, provenance)
+    write_insight_comparison_section(report_path, baseline, winner, provenance, INSIGHT_TRAIN_FIELDS)
     report = report_path.read_text()
 
-    assert "## Deterministic Insight Suite Comparison" in report
+    assert "## Deterministic Insight Suite Comparison (insight-train)" in report
     assert str(_SUITE_PATH) in report
     assert _SUITE_IDENTITY in report
     assert "| `uses_required_tool` | 0.000 | 1.000 | +1.000 |" in report
+
+
+def test_comparison_section_labels_each_half_by_its_evidentiary_role(tmp_path: Path) -> None:
+    baseline = _candidate(
+        "agent-0",
+        round_num=0,
+        insight_train_reward={"reward": 0.5, "uses_required_tool": 0.0},
+        insight_validation_reward={"reward": 0.5, "uses_required_tool": 0.0},
+    )
+    winner = _candidate(
+        "agent-1",
+        round_num=1,
+        insight_train_reward={"reward": 0.75, "uses_required_tool": 1.0},
+        insight_validation_reward={"reward": 0.75, "uses_required_tool": 1.0},
+    )
+    report_path = tmp_path / "OPTIMIZATION.md"
+    provenance = insight_suite_provenance(_insight_dataset([Task(id="task-a")]))
+
+    for fields in (INSIGHT_TRAIN_FIELDS, INSIGHT_VALIDATION_FIELDS):
+        write_insight_comparison_section(report_path, baseline, winner, provenance, fields)
+    report = report_path.read_text()
+
+    train_section = report.split("## Deterministic Insight Suite Comparison (insight-train)")[1]
+    train_section = train_section.split("## Deterministic Insight Suite Comparison (insight-validation)")[0]
+    validation_section = report.split("## Deterministic Insight Suite Comparison (insight-validation)")[1]
+
+    assert "Adaptive/development evidence only" in train_section
+    assert "does not affect Pareto or winner selection" in train_section
+    assert "Held out from optimization" in validation_section
+    assert "participate in Pareto and winner selection" in validation_section
 
 
 @pytest.mark.asyncio
@@ -459,13 +532,13 @@ async def test_final_report_failure_preserves_compact_summary_and_deterministic_
     baseline = _candidate(
         "agent-0",
         round_num=0,
-        insight_reward={"reward": 0.5, "uses_required_tool": 0.0},
+        insight_train_reward={"reward": 0.5, "uses_required_tool": 0.0},
         validation_reward={"reward": 0.5},
     )
     winner = _candidate(
         "agent-1",
         round_num=1,
-        insight_reward={"reward": 0.75, "uses_required_tool": 1.0},
+        insight_train_reward={"reward": 0.75, "uses_required_tool": 1.0},
         validation_reward={"reward": 0.75},
     )
     tree = EvolutionTree()
@@ -492,7 +565,7 @@ async def test_final_report_failure_preserves_compact_summary_and_deterministic_
             run_entity=run,
             evolution_tree=tree,
             agent_name="agent",
-            insight_dataset=_insight_dataset([Task(id="task-a")]),
+            insight_halves=[(INSIGHT_TRAIN_FIELDS, _insight_dataset([Task(id="task-a")]))],
         )
     finally:
         type.__setattr__(
@@ -518,16 +591,16 @@ async def test_insight_report_mismatch_does_not_fail_completed_run(
     baseline = _candidate(
         "agent-0",
         round_num=0,
-        insight_reward={"reward": 0.5, "uses_required_tool": 0.0},
+        insight_train_reward={"reward": 0.5, "uses_required_tool": 0.0},
         validation_reward={"reward": 0.5},
     )
     winner = _candidate(
         "agent-1",
         round_num=1,
-        insight_reward={"reward": 0.75, "uses_required_tool": 1.0},
+        insight_train_reward={"reward": 0.75, "uses_required_tool": 1.0},
         validation_reward={"reward": 0.75},
     )
-    winner.insight_suite_identity = f"sha256:{'e' * 64}"
+    winner.insight_train_suite_identity = f"sha256:{'e' * 64}"
     tree = EvolutionTree()
     tree.add(baseline)
     tree.add(winner)
@@ -549,7 +622,7 @@ async def test_insight_report_mismatch_does_not_fail_completed_run(
                 run_entity=run,
                 evolution_tree=tree,
                 agent_name="agent",
-                insight_dataset=_insight_dataset([Task(id="task-a")]),
+                insight_halves=[(INSIGHT_TRAIN_FIELDS, _insight_dataset([Task(id="task-a")]))],
             )
     finally:
         type.__setattr__(
@@ -562,4 +635,4 @@ async def test_insight_report_mismatch_does_not_fail_completed_run(
     assert run.status == "completed"
     assert run.winner_agent == winner.label
     backend.update_run.assert_awaited_once()
-    assert "Skipping Insight Suite report sections" in caplog.text
+    assert "Skipping insight-train Insight report sections" in caplog.text

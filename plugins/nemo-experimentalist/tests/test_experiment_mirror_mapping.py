@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+from typing import Any
+
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
 from nemo_experimentalist_plugin.experimentalist import experiment_mirror as m
 
 
-def _cand(**kw):
-    base = dict(run_id="run-1", label="agent-0", round=0, optimization="baseline")
+def _cand(**kw: Any) -> Candidate:
+    base: dict[str, Any] = dict(run_id="run-1", label="agent-0", round=0, optimization="baseline")
     base.update(kw)
     return Candidate(**base)
 

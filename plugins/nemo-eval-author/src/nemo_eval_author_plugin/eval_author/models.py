@@ -33,12 +33,20 @@ class EvalAuthorResult(BaseModel):
 
     train_dataset: Dataset
     validation_dataset: Dataset
-    insight_suite: Dataset | None = Field(
+    insight_train_suite: Dataset | None = Field(
         default=None,
-        description="Finalized experiment-local Insight dataset for use by the optimization loop.",
+        description="Insight suite train half, visible to the optimization loop as development feedback.",
     )
-    insight_suite_identity: str | None = Field(
+    insight_train_suite_identity: str | None = Field(
         default=None,
-        description="SHA-256 identity of the finalized Insight task and verifier content.",
+        description="SHA-256 identity of the Insight train half's task and verifier content.",
+    )
+    insight_validation_suite: Dataset | None = Field(
+        default=None,
+        description="Insight suite validation half, held out so its score is independent scoring evidence.",
+    )
+    insight_validation_suite_identity: str | None = Field(
+        default=None,
+        description="SHA-256 identity of the Insight validation half's task and verifier content.",
     )
     summary: str

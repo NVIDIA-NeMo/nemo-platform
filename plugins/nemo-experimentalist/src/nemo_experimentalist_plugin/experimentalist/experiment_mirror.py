@@ -21,11 +21,16 @@ import re
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
+from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import (
+    INSIGHT_TRAIN_SPLIT,
+    INSIGHT_VALIDATION_SPLIT,
+    VALIDATION_SPLIT,
+)
 from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError, omit
 
 logger = logging.getLogger(__name__)
 
-SPLITS: tuple[str, ...] = ("train", "validation", "insight")
+SPLITS: tuple[str, ...] = ("train", VALIDATION_SPLIT, INSIGHT_TRAIN_SPLIT, INSIGHT_VALIDATION_SPLIT)
 _NAME_RE = re.compile(r"[^a-z0-9-]+")
 
 
@@ -95,13 +100,13 @@ def experiment_metadata(candidate: Candidate, split: str) -> dict[str, str]:
 
 def _split_reward(candidate: Candidate, split: str) -> Any:
     """The candidate's reward object for *split* — an explicit lookup over the known
-    split fields (``train_reward``/``validation_reward``/``insight_reward``) rather
-    than a dynamic attribute read. Used only as a presence check: the reward value
-    itself is never projected."""
+    split fields rather than a dynamic attribute read. Used only as a presence check:
+    the reward value itself is never projected."""
     return {
         "train": candidate.train_reward,
-        "validation": candidate.validation_reward,
-        "insight": candidate.insight_reward,
+        VALIDATION_SPLIT: candidate.validation_reward,
+        INSIGHT_TRAIN_SPLIT: candidate.insight_train_reward,
+        INSIGHT_VALIDATION_SPLIT: candidate.insight_validation_reward,
     }[split]
 
 

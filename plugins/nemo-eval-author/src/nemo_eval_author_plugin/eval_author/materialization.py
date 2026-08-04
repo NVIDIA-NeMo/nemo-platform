@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import tomllib
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -25,6 +26,13 @@ _MANIFEST_SCHEMA_VERSION = 3
 _CONTENT_HASH_SCHEMA_VERSION = 1
 _METRIC_CONTRACT_VERSION = 1
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+# Directory names for the two halves. Experimentalist declares the same names in its
+# holdout_utils to decide which half to hide; they are duplicated rather than imported
+# to keep Eval Author's dependency on Experimentalist shrinking, and pinned together by
+# test_insight_split_names_match_eval_author in the Experimentalist suite.
+INSIGHT_TRAIN_SPLIT = "insight-train"
+INSIGHT_VALIDATION_SPLIT = "insight-validation"
 
 
 def _slug(value: str, *, fallback: str, max_length: int = 48) -> str:
@@ -65,6 +73,44 @@ def _verifier_dir(task_dir: Path) -> Path:
         if path.is_dir():
             return path
     raise ValueError(f"Materialized task has no verifier directory: {task_dir}")
+
+
+def _scoring_dir(task_dir: Path) -> Path:
+    """Return the directory whose contents decide which metrics a task emits.
+
+    Falls back to the whole task directory for datasets that do not follow Harbor's
+    verifier layout. A coarser hash still detects a task nobody touched, which is all
+    :func:`verifier_hashes` needs.
+    """
+    try:
+        return _verifier_dir(task_dir)
+    except (OSError, ValueError, tomllib.TOMLDecodeError):
+        return task_dir
+
+
+def verifier_hashes(tasks: Iterable[Task]) -> dict[str, str]:
+    """Return each task's verifier content hash, keyed by task id.
+
+    Snapshot this before metric authoring and compare after: a verifier whose hash did
+    not move cannot have gained a metric key, so the comparison names exactly the tasks
+    authoring skipped without needing to know the metric's name.
+
+    Tasks with no readable files on disk are omitted rather than hashed as empty. A task
+    this cannot inspect is not evidence that nobody authored it, and hashing them all to
+    the same empty digest would accuse every one of them.
+    """
+    hashes: dict[str, str] = {}
+    for task in tasks:
+        if not task.uri:
+            continue
+        try:
+            task_dir = local_path_from_uri(task.uri, context="Authored task").resolve()
+        except ValueError:
+            continue
+        files = _file_hashes(_scoring_dir(task_dir))
+        if files:
+            hashes[task.id] = f"sha256:{_canonical_digest(files)}"
+    return hashes
 
 
 def _content_provenance(suite_dir: Path, manifest: dict[str, object]) -> tuple[list[dict[str, object]], str, str]:
@@ -133,6 +179,30 @@ def _content_provenance(suite_dir: Path, manifest: dict[str, object]) -> tuple[l
     }
     suite_identity = f"sha256:{_canonical_digest(suite_payload)}"
     return tasks, scorer_identity, suite_identity
+
+
+def _write_manifest(manifest_path: Path, manifest: dict[str, object]) -> None:
+    """Write a suite manifest atomically."""
+    pending_path = manifest_path.with_suffix(".json.pending")
+    pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(pending_path, manifest_path)
+
+
+def _task_hashes(tasks: list[dict[str, object]]) -> dict[str, dict[str, str]]:
+    """Return per-task content and verifier hashes keyed by relative task path."""
+    task_hashes: dict[str, dict[str, str]] = {}
+    for task in tasks:
+        task_path = task.get("path")
+        content_hash = task.get("content_hash")
+        verifier = task.get("verifier")
+        verifier_hash = verifier.get("content_hash") if isinstance(verifier, dict) else None
+        if not isinstance(task_path, str) or not isinstance(content_hash, str) or not isinstance(verifier_hash, str):
+            raise ValueError(f"Finalized Insight suite has invalid task provenance: {task!r}")
+        task_hashes[task_path] = {
+            "content_hash": content_hash,
+            "verifier_hash": verifier_hash,
+        }
+    return task_hashes
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,9 +381,7 @@ class InsightSuite:
             task["analysis"] = {"status": status}
             if error is not None:
                 task["analysis"]["error"] = error
-        pending_path = manifest_path.with_suffix(".json.pending")
-        pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(pending_path, manifest_path)
+        _write_manifest(manifest_path, manifest)
 
     def finalize(self) -> FinalizedInsightSuite:
         """Persist content identities on the experiment-local authored suite."""
@@ -335,35 +403,17 @@ class InsightSuite:
                 "tasks": tasks,
             }
         )
-        pending_path = manifest_path.with_suffix(".json.pending")
-        pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(pending_path, manifest_path)
+        _write_manifest(manifest_path, manifest)
 
         dataset = HarborDataset.from_path(
             self.suite_dir,
             dataset_id=f"insight-{digest[:12]}",
         )
-        task_hashes: dict[str, dict[str, str]] = {}
-        for task in tasks:
-            task_path = task.get("path")
-            content_hash = task.get("content_hash")
-            verifier = task.get("verifier")
-            verifier_hash = verifier.get("content_hash") if isinstance(verifier, dict) else None
-            if (
-                not isinstance(task_path, str)
-                or not isinstance(content_hash, str)
-                or not isinstance(verifier_hash, str)
-            ):
-                raise ValueError(f"Finalized Insight suite has invalid task provenance: {task!r}")
-            task_hashes[task_path] = {
-                "content_hash": content_hash,
-                "verifier_hash": verifier_hash,
-            }
         dataset.metadata.update(
             {
                 "insight_suite_identity": suite_identity,
                 "insight_suite_scorer_identity": scorer_identity,
-                "insight_suite_task_hashes": task_hashes,
+                "insight_suite_task_hashes": _task_hashes(tasks),
             }
         )
         return FinalizedInsightSuite(
@@ -372,3 +422,124 @@ class InsightSuite:
             path=self.suite_dir,
             dataset=dataset,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class InsightSuiteSplit:
+    """Train and validation halves materialized from one finalized Insight suite."""
+
+    train: FinalizedInsightSuite | None
+    validation: FinalizedInsightSuite | None
+
+
+def split_insight_task_paths(task_paths: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Alternate task paths into train and validation, giving the odd task to train.
+
+    Alternating instead of cutting the ordered list in half keeps any ordering bias
+    in the source traces (recency, severity) spread across both halves.
+    """
+    return list(task_paths[0::2]), list(task_paths[1::2])
+
+
+def _materialize_half(
+    *,
+    source_dir: Path,
+    manifest: dict[str, object],
+    task_paths: list[str],
+    destination: Path,
+    split: str,
+) -> FinalizedInsightSuite | None:
+    """Copy one half's tasks to ``destination`` and stamp its own content identity."""
+    if not task_paths:
+        return None
+
+    raw_tasks = manifest.get("tasks")
+    if not isinstance(raw_tasks, list):
+        raise ValueError(f"Insight suite manifest has invalid tasks: {source_dir / 'manifest.json'}")
+    entries_by_path: dict[str, dict[str, object]] = {}
+    for raw_task in raw_tasks:
+        if not isinstance(raw_task, dict):
+            continue
+        task_entry = cast(dict[str, object], raw_task)
+        relative_path = task_entry.get("path")
+        if isinstance(relative_path, str):
+            entries_by_path[relative_path] = task_entry
+    if missing := [path for path in task_paths if path not in entries_by_path]:
+        raise ValueError(f"Insight suite split references unknown tasks: {missing}")
+    selected = [entries_by_path[path] for path in task_paths]
+
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.mkdir()
+    for relative_path in task_paths:
+        shutil.copytree(source_dir / relative_path, destination / relative_path)
+
+    half_manifest: dict[str, object] = {**manifest, "split": split, "tasks": selected}
+    tasks, scorer_identity, suite_identity = _content_provenance(destination, half_manifest)
+    digest = suite_identity.removeprefix("sha256:")
+    half_manifest.update(
+        {
+            "schema_version": _MANIFEST_SCHEMA_VERSION,
+            "content_hash_schema_version": _CONTENT_HASH_SCHEMA_VERSION,
+            "metric_contract_version": _METRIC_CONTRACT_VERSION,
+            "suite_identity": suite_identity,
+            "scorer": {
+                "identity": scorer_identity,
+                "metric_contract_version": _METRIC_CONTRACT_VERSION,
+            },
+            "tasks": tasks,
+        }
+    )
+    _write_manifest(destination / "manifest.json", half_manifest)
+
+    dataset = HarborDataset.from_path(destination, dataset_id=f"{split}-{digest[:12]}")
+    dataset.metadata.update(
+        {
+            "insight_suite_identity": suite_identity,
+            "insight_suite_scorer_identity": scorer_identity,
+            "insight_suite_task_hashes": _task_hashes(tasks),
+        }
+    )
+    return FinalizedInsightSuite(
+        identity=suite_identity,
+        scorer_identity=scorer_identity,
+        path=destination,
+        dataset=dataset,
+    )
+
+
+def materialize_insight_split(
+    finalized: FinalizedInsightSuite,
+    *,
+    train_dir: Path,
+    validation_dir: Path,
+) -> InsightSuiteSplit:
+    """Materialize a finalized suite into two physically separate halves.
+
+    Physical separation is required because holdout relocates whole directories; a
+    logical subset view would leave both halves interleaved in one directory where
+    the validation half could not be hidden from the optimizing agent.
+
+    Either half is ``None`` when the split assigns it no tasks, which happens for
+    the validation half of a single-task suite.
+    """
+    manifest = json.loads((finalized.path / "manifest.json").read_text(encoding="utf-8"))
+    task_paths = [task.id for task in finalized.dataset.list_tasks()]
+    train_paths, validation_paths = split_insight_task_paths(task_paths)
+    return InsightSuiteSplit(
+        train=_materialize_half(
+            source_dir=finalized.path,
+            manifest=manifest,
+            task_paths=train_paths,
+            destination=train_dir,
+            split=INSIGHT_TRAIN_SPLIT,
+        ),
+        validation=_materialize_half(
+            source_dir=finalized.path,
+            manifest=manifest,
+            task_paths=validation_paths,
+            destination=validation_dir,
+            split=INSIGHT_VALIDATION_SPLIT,
+        ),
+    )

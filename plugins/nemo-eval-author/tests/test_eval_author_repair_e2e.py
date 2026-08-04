@@ -210,11 +210,18 @@ async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """GPT-5 mini repairs try-without-except failures across an Insight suite."""
+    """GPT-5 mini repairs try-without-except failures across every dataset it authored."""
     insight_suite_dir = tmp_path / "insight-suite"
     _write_malformed_task(insight_suite_dir, "task-a")
     _write_malformed_task(insight_suite_dir, "task-b")
     insight_suite = HarborDataset.from_path(insight_suite_dir)
+    # Authoring now spans the user's datasets too, so the repair loop has to reach them.
+    train_dir = tmp_path / "dataset" / "train"
+    validation_dir = tmp_path / "dataset" / "validation"
+    _write_malformed_task(train_dir, "train-task")
+    _write_malformed_task(validation_dir, "validation-task")
+    train_dataset = HarborDataset.from_path(train_dir)
+    validation_dataset = HarborDataset.from_path(validation_dir)
 
     with pytest.raises(DatasetValidationError) as exc_info:
         await insight_suite.validate()
@@ -253,17 +260,22 @@ async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
             insight,
             [],
             insight_suite,
+            train_dataset,
+            validation_dataset,
             runner_conventions,
             validation_feedback=validation_feedback,
         ),
-        timeout=300,
+        timeout=600,
     )
 
     assert summary
-    await insight_suite.validate()
+    for dataset in (insight_suite, train_dataset, validation_dataset):
+        await dataset.validate()
     for verifier_path in (
         insight_suite_dir / "task-a" / "tests" / "check_tool_hallucination.py",
         insight_suite_dir / "task-b" / "tests" / "check_tool_hallucination.py",
+        train_dir / "train-task" / "tests" / "check_tool_hallucination.py",
+        validation_dir / "validation-task" / "tests" / "check_tool_hallucination.py",
     ):
         repaired_source = verifier_path.read_text(encoding="utf-8")
         assert "def check_tool_hallucination" in repaired_source
@@ -281,10 +293,17 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
     """An authored root-cause metric scores a known-failing Harbor baseline low."""
     insight_suite_dir = tmp_path / "insight-suite"
     agent_dir = tmp_path / "known-failing-agent"
+    train_dir = tmp_path / "dataset" / "train"
+    validation_dir = tmp_path / "dataset" / "validation"
     _write_known_failing_task(insight_suite_dir)
+    _write_known_failing_task(train_dir)
+    _write_known_failing_task(validation_dir)
     _write_known_failing_agent(agent_dir)
     insight_suite = HarborDataset.from_path(insight_suite_dir)
-    await insight_suite.validate()
+    train_dataset = HarborDataset.from_path(train_dir)
+    validation_dataset = HarborDataset.from_path(validation_dir)
+    for dataset in (insight_suite, train_dataset, validation_dataset):
+        await dataset.validate()
 
     llm = get_fast_model()
     llm.config["temperature"] = 0.0
@@ -322,9 +341,9 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
         "/logs/verifier/reward.json, where higher is better and values are bounded to [0.0, 1.0]. Make the minimal "
         "verifier-only edit. Missing tool evidence is the expected failing case: it must score 0.0 while still "
         "writing reward.json and exiting successfully. Do not use an unguarded grep pipeline whose no-match status "
-        "can abort a set -e script; prefer a small Python standard-library checker. Call await "
-        "insight_suite.validate() once after editing, then return the metric summary as soon as validation passes; "
-        "do not inspect unrelated files."
+        "can abort a set -e script; prefer a small Python standard-library checker. The three datasets share one "
+        "task layout, so make the same verifier edit in each. Validate each dataset once after editing, then "
+        "return the metric summary as soon as validation passes; do not inspect unrelated files."
     )
 
     summary = await asyncio.wait_for(
@@ -332,13 +351,16 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
             insight,
             [("known-failing-trace", diagnostic)],
             insight_suite,
+            train_dataset,
+            validation_dataset,
             runner_conventions,
         ),
-        timeout=600,
+        timeout=900,
     )
 
     assert summary
-    await insight_suite.validate()
+    for dataset in (insight_suite, train_dataset, validation_dataset):
+        await dataset.validate()
     evaluator = HarborEvaluator(experiment_dir=tmp_path)
     result = await asyncio.wait_for(
         evaluator.run(

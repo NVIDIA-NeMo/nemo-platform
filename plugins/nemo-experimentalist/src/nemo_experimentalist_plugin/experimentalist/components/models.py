@@ -11,7 +11,7 @@ analyzer, proposer, coder, and evaluator.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Literal, TypeVar
 
@@ -63,6 +63,55 @@ def pareto_sort(
         front_ids = {id(x) for x in front}
         remaining = [x for x in remaining if id(x) not in front_ids]
     return out
+
+
+INSIGHT_REWARD_PREFIX = "insight/"
+
+
+def _merge_selection_rewards(
+    entries: Sequence[tuple[str, dict[str, float], dict[str, float]]],
+) -> dict[str, dict[str, float]]:
+    """Merge ``(label, validation, insight_validation)`` triples into Pareto rewards.
+
+    Insight validation metrics are namespaced under ``insight/`` so they add their own
+    axes rather than colliding with same-named validation keys. The union of Insight keys
+    is zero-filled across the set because :func:`_dominates` treats candidates whose key
+    sets differ as incomparable, which would otherwise leave a candidate missing an
+    Insight score silently undominated.
+
+    Entries without a validation reward keep an empty mapping, preserving the existing
+    contract that unscored candidates are incomparable rather than dominated by everything.
+    """
+    insight_keys = sorted({key for _, _, insight in entries for key in insight})
+    rewards: dict[str, dict[str, float]] = {}
+    for label, validation, insight in entries:
+        if not validation:
+            rewards[label] = {}
+            continue
+        rewards[label] = {
+            **validation,
+            **{f"{INSIGHT_REWARD_PREFIX}{key}": insight.get(key, 0.0) for key in insight_keys},
+        }
+    return rewards
+
+
+def selection_rewards(candidates: Sequence[Candidate]) -> dict[str, dict[str, float]]:
+    """Return per-label Pareto rewards for candidates. See :func:`_merge_selection_rewards`."""
+    return _merge_selection_rewards(
+        [
+            (candidate.label, candidate.validation_reward or {}, candidate.insight_validation_reward or {})
+            for candidate in candidates
+        ]
+    )
+
+
+def node_selection_rewards(nodes: Sequence[EvolutionNode]) -> dict[str, dict[str, float]]:
+    """Return per-label Pareto rewards for evolution nodes.
+
+    The node-shaped twin of :func:`selection_rewards`, so every ranking path — survivor
+    selection, convergence, and winner choice — scores on the same dimensions.
+    """
+    return _merge_selection_rewards([(node.label, node.val_reward, node.insight_val_reward) for node in nodes])
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +201,10 @@ class EvolutionNode(BaseModel):
         return self.candidate.validation_reward or {}
 
     @property
+    def insight_val_reward(self) -> dict[str, float]:
+        return self.candidate.insight_validation_reward or {}
+
+    @property
     def trajectory_reward(self) -> dict[str, float]:
         return self.candidate.validation_trajectory_reward or {}
 
@@ -166,6 +219,8 @@ class EvolutionNode(BaseModel):
             parts.append(f"tr[{_format_reward(self.train_reward)}]")
         if self.val_reward:
             parts.append(f"val[{_format_reward(self.val_reward)}]")
+        if self.insight_val_reward:
+            parts.append(f"insight-val[{_format_reward(self.insight_val_reward)}]")
         if self.trajectory_reward:
             parts.append(f"traj[{_format_reward(self.trajectory_reward)}]")
         return " ".join(parts) if parts else "no rewards"
@@ -230,11 +285,12 @@ class EvolutionTree:
             self.nodes[label].is_best = True
 
     def get_best(self) -> list[EvolutionNode]:
-        """Return the Pareto-optimal nodes by validation reward."""
+        """Return the Pareto-optimal nodes by validation and held-out Insight reward."""
         scored = [n for n in self.nodes.values() if n.val_reward]
         if not scored:
             return []
-        return pareto_front(scored, lambda n: n.val_reward)
+        rewards = node_selection_rewards(scored)
+        return pareto_front(scored, lambda n: rewards[n.label])
 
     def to_markdown_table(self) -> str:
         """Export as a markdown table with all score dimensions as columns."""

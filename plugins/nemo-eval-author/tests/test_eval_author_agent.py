@@ -13,7 +13,7 @@ from typing import Any, cast
 
 import pytest
 from nemo_eval_author_plugin.eval_author import agent as eval_author_module
-from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
+from nemo_eval_author_plugin.eval_author.agent import EvalAuthor, EvalAuthorDatasetValidationError
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Dataset,
@@ -59,8 +59,9 @@ class _PipelineCalls:
     analyzer_init: list[_AnalyzerInitCall]
     analyzer_run: list[_AnalyzerRunCall]
     discovered_datasets: list[Dataset]
-    author_args: list[tuple[Insight, list[tuple[str, Diagnostic]], Dataset, str, str | None]]
+    author_args: list[tuple[Insight, list[tuple[str, Diagnostic]], Dataset, Dataset, Dataset, str, str | None]]
     suite_discards: int
+    split_dirs: list[tuple[Path, Path]]
 
 
 @dataclass
@@ -112,7 +113,7 @@ def _prompt(method: Any) -> str:
     return " ".join(prompt.split())
 
 
-def test_eval_author_prompts_scope_metrics_to_materialized_insight_suite() -> None:
+def test_eval_author_prompts_scope_metrics_across_all_three_datasets() -> None:
     discover_prompt = _prompt(EvalAuthor.discover_runner)
     author_prompt = _prompt(EvalAuthor.author_insight_metrics)
 
@@ -120,11 +121,22 @@ def test_eval_author_prompts_scope_metrics_to_materialized_insight_suite() -> No
     assert "inspect the actual files" in discover_prompt
     assert "authoritative reference for what artifacts exist at evaluation runtime" in author_prompt
     assert "how tasks are structured, and how to add metrics" in author_prompt
-    assert "Add at least one new Insight-specific metric key to every task in ``insight_suite``" in author_prompt
+    assert (
+        "Add at least one new Insight-specific metric key to every task in ``insight_suite``, "
+        "``train_dataset``, and ``validation_dataset``" in author_prompt
+    )
+    assert "A metric is only useful as a suite-wide signal, not a per-sample patch." in author_prompt
     assert "Preserve every existing verifier metric" in author_prompt
-    assert "Do not modify the user's train or validation datasets" in author_prompt
+    assert "The metric key set must be identical across all three datasets." in author_prompt
+    assert "This is a hard requirement, not a preference" in author_prompt
+    assert (
+        "Do not change task instructions, environments, solutions, or any other agent-visible input "
+        "in any of the three datasets." in author_prompt
+    )
     assert "call ``await insight_suite.validate()``" in author_prompt
-    assert "fix every reported failure and revalidate the suite" in author_prompt
+    assert "``await train_dataset.validate()``" in author_prompt
+    assert "``await validation_dataset.validate()``" in author_prompt
+    assert "Fix every reported failure and revalidate all three." in author_prompt
 
 
 def test_eval_author_prompts_retain_root_cause_and_normalized_scoring_guidance() -> None:
@@ -162,6 +174,7 @@ def _install_pipeline(
         discovered_datasets=[],
         author_args=[],
         suite_discards=0,
+        split_dirs=[],
     )
     next_analyzer = 0
 
@@ -285,6 +298,8 @@ def _install_pipeline(
             insight: Insight,
             diagnostics: list[tuple[str, Diagnostic]],
             insight_suite: Dataset,
+            train_dataset: Dataset,
+            validation_dataset: Dataset,
             runner_conventions: str,
             validation_feedback: str | None = None,
         ) -> str:
@@ -293,17 +308,38 @@ def _install_pipeline(
                     insight,
                     diagnostics,
                     insight_suite,
+                    train_dataset,
+                    validation_dataset,
                     runner_conventions,
                     validation_feedback,
                 )
             )
             return "authored insight metrics"
 
+    def fake_materialize_split(finalized: Any, *, train_dir: Path, validation_dir: Path) -> SimpleNamespace:
+        calls.split_dirs.append((train_dir, validation_dir))
+        tasks = list(finalized.dataset.list_tasks())
+        return SimpleNamespace(
+            train=SimpleNamespace(
+                dataset=Dataset(id="insight-train", tasks=tasks[0::2]),
+                identity="sha256:" + "1" * 64,
+            ),
+            validation=(
+                SimpleNamespace(
+                    dataset=Dataset(id="insight-validation", tasks=tasks[1::2]),
+                    identity="sha256:" + "2" * 64,
+                )
+                if tasks[1::2]
+                else None
+            ),
+        )
+
     eval_author.fill_task_template = cast(Any, FillTaskTemplate())
     eval_author.discover_runner = cast(Any, DiscoverRunner())
     eval_author.author_insight_metrics = cast(Any, AuthorInsightMetrics())
     monkeypatch.setattr(eval_author_module, "TraceAnalyzer", FakeTraceAnalyzer)
     monkeypatch.setattr(eval_author_module, "InsightSuite", FakeInsightSuite)
+    monkeypatch.setattr(eval_author_module, "materialize_insight_split", fake_materialize_split)
     return calls
 
 
@@ -560,22 +596,34 @@ async def test_run_authors_metrics_on_materialized_insight_suite(
     assert eval_author.context["dataset_documentation"] is documentation
     assert len(calls.discovered_datasets) == 1
     materialized_dataset = calls.discovered_datasets[0]
-    assert result.insight_suite is materialized_dataset
-    assert result.insight_suite_identity == f"sha256:{'a' * 64}"
     assert materialized_dataset.id == "insight-suite"
     assert materialized_dataset is not train_dataset
     assert materialized_dataset is not validation_dataset
+
+    # The loop consumes the halves, not the authored suite, which stays the provenance home.
+    assert calls.split_dirs == [(tmp_path / "dataset" / "insight-train", tmp_path / "dataset" / "insight-validation")]
+    assert result.insight_train_suite is not None
+    assert result.insight_train_suite.id == "insight-train"
+    assert result.insight_train_suite_identity == f"sha256:{'1' * 64}"
+    # A single trace leaves the validation half empty.
+    assert result.insight_validation_suite is None
+    assert result.insight_validation_suite_identity is None
+
     assert len(calls.author_args) == 1
     (
         authored_insight,
         diagnostics,
         authored_suite,
+        authored_train,
+        authored_validation,
         runner_conventions,
         validation_feedback,
     ) = calls.author_args[0]
     assert authored_insight is insight
     assert diagnostics == [("trace-1", diagnostic)]
     assert authored_suite is materialized_dataset
+    assert authored_train is train_dataset
+    assert authored_validation is validation_dataset
     assert runner_conventions == "runner conventions"
     assert validation_feedback is None
     assert result.train_dataset is train_dataset
@@ -619,6 +667,8 @@ async def test_run_feeds_validation_failures_back_for_one_repair_attempt(
             insight: Insight,
             diagnostics: list[tuple[str, Diagnostic]],
             insight_suite: Dataset,
+            train_dataset: Dataset,
+            validation_dataset: Dataset,
             runner_conventions: str,
             validation_feedback: str | None = None,
         ) -> str:
@@ -644,6 +694,41 @@ async def test_run_feeds_validation_failures_back_for_one_repair_attempt(
     assert feedback[1] is not None
     assert "task 'insight-a': check.py:2:1: invalid syntax" in feedback[1]
     assert insight_dataset.validate_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_validation_failure_names_every_failing_split_not_just_the_first(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eval_author = _eval_author(tmp_path, max_validation_repair_attempts=0)
+    insight_dataset = _RepairableDataset("insight-suite", "insight verifier is missing uses_required_tool")
+    train_dataset = _RepairableDataset("train", "train verifier is missing uses_required_tool")
+    validation_dataset = _RepairableDataset("validation", None)
+    _install_pipeline(
+        monkeypatch,
+        [_diagnostic("diagnostic")],
+        eval_author,
+        materialized_dataset=insight_dataset,
+    )
+    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
+
+    with pytest.raises(EvalAuthorDatasetValidationError) as exc_info:
+        await eval_author.run(
+            _insight(["trace-1"]),
+            Path("agent"),
+            Task(id="template"),
+            train_dataset,
+            validation_dataset,
+            client=cast(Any, object()),
+        )
+
+    assert [failure.split for failure in exc_info.value.failures] == ["insight", "train"]
+    message = str(exc_info.value)
+    assert "insight dataset:\ninsight verifier is missing uses_required_tool" in message
+    assert "train dataset:\ntrain verifier is missing uses_required_tool" in message
+    # Every split is validated even after one fails, so the repair prompt sees the whole picture.
+    assert validation_dataset.validate_calls == 1
 
 
 @pytest.mark.asyncio
@@ -676,6 +761,102 @@ async def test_run_raises_after_validation_repair_budget_is_exhausted(
     assert calls.author_args[0][-1] is None
     assert calls.author_args[1][-1] is not None
     assert insight_dataset.validate_calls == 2
+
+
+def _authored_task(dataset_dir: Path, task_id: str) -> Task:
+    """Write a minimal Harbor task whose verifier emits only the task's own reward."""
+    task_dir = dataset_dir / task_id
+    verifier_dir = task_dir / "tests"
+    verifier_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text(f'[task]\nname = "local/{task_id}"\n', encoding="utf-8")
+    (verifier_dir / "test.sh").write_text("#!/bin/sh\npython3 /tests/evaluate.py\n", encoding="utf-8")
+    return Task(id=task_id, uri=task_dir.as_uri())
+
+
+def _add_metric(dataset_dir: Path, task_id: str) -> None:
+    """Augment one task's verifier the way metric authoring is supposed to."""
+    verifier_dir = dataset_dir / task_id / "tests"
+    (verifier_dir / "check_escalation_restraint.py").write_text("print('escalation_restraint=1.0')\n", encoding="utf-8")
+    (verifier_dir / "test.sh").write_text(
+        "#!/bin/sh\npython3 /tests/evaluate.py\npython3 /tests/check_escalation_restraint.py\n",
+        encoding="utf-8",
+    )
+
+
+def test_a_task_authoring_skipped_is_named_rather_than_silently_unscored(tmp_path: Path) -> None:
+    # The failure this prevents: authoring augments most tasks and misses one, every
+    # structural check still passes because a skipped task is a perfectly valid task, and
+    # nobody finds out until that task evaluates without the shared metric key. When the
+    # skipped task is the only one in an Insight half, the half scores nothing at all.
+    insight_dir = tmp_path / "insight"
+    train_dir = tmp_path / "train"
+    insight_tasks = [_authored_task(insight_dir, "001-alpha"), _authored_task(insight_dir, "002-beta")]
+    train_tasks = [_authored_task(train_dir, "train-1")]
+    splits = (
+        ("insight", Dataset(id="insight-suite", tasks=insight_tasks)),
+        ("train", Dataset(id="train", tasks=train_tasks)),
+    )
+    before = {split: eval_author_module.verifier_hashes(dataset.list_tasks()) for split, dataset in splits}
+
+    _add_metric(insight_dir, "001-alpha")
+    _add_metric(train_dir, "train-1")
+
+    with pytest.raises(eval_author_module.EvalAuthorUnauthoredTasksError) as exc_info:
+        eval_author_module._assert_every_task_authored(splits, before)
+
+    assert [entry.split for entry in exc_info.value.unauthored] == ["insight"]
+    assert exc_info.value.unauthored[0].task_ids == ("002-beta",)
+    # The message becomes the repair prompt, so it has to name the split and the task.
+    assert "insight dataset: 002-beta" in str(exc_info.value)
+    assert "001-alpha" not in str(exc_info.value)
+
+    _add_metric(insight_dir, "002-beta")
+    eval_author_module._assert_every_task_authored(splits, before)
+
+
+def test_unauthored_task_check_is_a_dataset_validation_error_so_repair_retries_it() -> None:
+    # The repair loop catches DatasetValidationError. Raising anything else would turn a
+    # recoverable authoring miss into a hard run failure with no repair attempt.
+    assert issubclass(eval_author_module.EvalAuthorUnauthoredTasksError, DatasetValidationError)
+
+
+def test_the_check_detects_change_only_so_it_must_not_see_already_authored_splits(tmp_path: Path) -> None:
+    # This is a pure change detector: a task that already carries the metric but did not
+    # move this pass is still reported. That is correct for the Insight suite, which
+    # promote_local rebuilds from the task template every run, and wrong for the user's
+    # datasets, which dataset_staging._stage leaves in place once staged. Re-running into
+    # an existing experiment directory therefore hands back train/validation copies the
+    # previous run already authored, which is why run() scopes this to the Insight suite.
+    dataset_dir = tmp_path / "already-authored"
+    task = _authored_task(dataset_dir, "train-1")
+    _add_metric(dataset_dir, "train-1")
+    splits = (("train", Dataset(id="train", tasks=[task])),)
+    baseline = {"train": eval_author_module.verifier_hashes([task])}
+
+    with pytest.raises(eval_author_module.EvalAuthorUnauthoredTasksError):
+        eval_author_module._assert_every_task_authored(splits, baseline)
+
+
+def test_tasks_with_no_files_on_disk_are_not_accused_of_being_unauthored(tmp_path: Path) -> None:
+    # Remote or synthetic tasks hash to nothing. Treating "cannot inspect" as "identical"
+    # would fail every run whose datasets this cannot read off local disk.
+    splits = (
+        (
+            "train",
+            Dataset(
+                id="train",
+                tasks=[
+                    Task(id="missing", uri=(tmp_path / "absent").as_uri()),
+                    Task(id="remote", uri="s3://bucket/task"),
+                    Task(id="no-uri"),
+                ],
+            ),
+        ),
+    )
+    before = {split: eval_author_module.verifier_hashes(dataset.list_tasks()) for split, dataset in splits}
+
+    assert before == {"train": {}}
+    eval_author_module._assert_every_task_authored(splits, before)
 
 
 def test_eval_author_config_defaults_and_bounds_validation_repair_attempts() -> None:

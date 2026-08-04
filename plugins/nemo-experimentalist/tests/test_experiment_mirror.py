@@ -117,18 +117,21 @@ async def test_project_candidate_skips_when_no_reward():
     experiments.create.assert_not_awaited()
 
 
-async def test_project_candidate_creates_insight_experiment_when_evaluated():
+@pytest.mark.parametrize("split", ["insight-train", "insight-validation"])
+async def test_project_candidate_creates_an_experiment_per_evaluated_insight_half(split: str) -> None:
     experiments = AsyncMock()
-    experiments.create.return_value = SimpleNamespace(id="exp-insight")
+    experiments.create.return_value = SimpleNamespace(id=f"exp-{split}")
     mirror = ExperimentMirror(_client(AsyncMock(), experiments), workspace="default")
-    candidate = _cand(insight_reward={"uses_required_tool": 0.5}, insight_reward_details=[])
+    prefix = split.replace("-", "_")
+    candidate = _cand(**{f"{prefix}_reward": {"uses_required_tool": 0.5}, f"{prefix}_reward_details": []})
 
     await mirror.project_candidate(candidate)
 
     kwargs = experiments.create.await_args.kwargs
-    assert kwargs["name"] == "opt-run-1-agent-0-insight"
-    assert kwargs["dataset_name"] == "insight"
-    assert kwargs["metadata"] == {"round": "0", "candidate_id": "agent-0", "split": "insight"}
+    assert kwargs["name"] == f"opt-run-1-agent-0-{split}"
+    assert kwargs["dataset_name"] == split
+    assert kwargs["metadata"] == {"round": "0", "candidate_id": "agent-0", "split": split}
+    assert experiments.create.await_count == 1
 
 
 async def test_project_candidate_conflict_updates_experiment():

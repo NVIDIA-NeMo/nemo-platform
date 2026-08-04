@@ -24,7 +24,7 @@ from nooa.config import CodeActConfig
 from pydantic import BaseModel
 
 from .model_config import get_fast_model
-from .models import EvolutionTree, pareto_front
+from .models import EvolutionTree, node_selection_rewards, pareto_front
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +156,12 @@ class Terminator(Agent, llm=get_fast_model()):
         old = [n for n in scored if n.round <= cutoff_round]
         if not old:
             return False
-        old_front_ids = {n.label for n in pareto_front(old, lambda n: n.val_reward)}
-        full_front_ids = {n.label for n in pareto_front(scored, lambda n: n.val_reward)}
+        # Rank on the same merged dimensions as survivor and winner selection: a candidate
+        # whose only gain is on the held-out Insight half still moves the front, so the run
+        # is not called converged while it is still improving on the Insight tasks.
+        rewards = node_selection_rewards(scored)
+        old_front_ids = {n.label for n in pareto_front(old, lambda n: rewards[n.label])}
+        full_front_ids = {n.label for n in pareto_front(scored, lambda n: rewards[n.label])}
         if full_front_ids.issubset(old_front_ids):
             return True
         return await self.qualitative_stop_check(prior_analysis)

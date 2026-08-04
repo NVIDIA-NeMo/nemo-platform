@@ -11,7 +11,14 @@ from pathlib import Path
 
 import pytest
 from nemo_eval_author_plugin.eval_author import materialization as materialization_module
-from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
+from nemo_eval_author_plugin.eval_author.materialization import (
+    INSIGHT_TRAIN_SPLIT,
+    INSIGHT_VALIDATION_SPLIT,
+    FinalizedInsightSuite,
+    InsightSuite,
+    materialize_insight_split,
+    verifier_hashes,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 
@@ -276,3 +283,131 @@ def test_finalized_suite_identity_is_stable_and_changes_with_task_or_verifier_co
     assert changed_verifier_identity != first_identity
     assert changed_scorer_identity != first_scorer_identity
     assert list((tmp_path / "eval-and-optimize" / "eval_author").glob("*/artifacts")) == []
+
+
+def _finalize_suite(tmp_path: Path, trace_count: int) -> FinalizedInsightSuite:
+    template = _write_template(tmp_path / "template")
+    refs = [f"trace-{index}" for index in range(1, trace_count + 1)]
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
+    staged = suite.stage(refs)
+    for task in staged:
+        (task.path / "instruction.md").write_text(f"Reproduce {task.trace_ref}.\n", encoding="utf-8")
+        suite.validate(task)
+    suite.promote_local(refs, staged)
+    return suite.finalize()
+
+
+@pytest.mark.parametrize(
+    ("trace_count", "expected_train", "expected_validation"),
+    [(1, 1, 0), (2, 1, 1), (5, 3, 2), (6, 3, 3)],
+)
+def test_split_alternates_and_gives_the_odd_task_to_train(
+    tmp_path: Path,
+    trace_count: int,
+    expected_train: int,
+    expected_validation: int,
+) -> None:
+    finalized = _finalize_suite(tmp_path, trace_count)
+    all_task_ids = [task.id for task in finalized.dataset.list_tasks()]
+
+    split = materialize_insight_split(
+        finalized,
+        train_dir=tmp_path / "dataset" / INSIGHT_TRAIN_SPLIT,
+        validation_dir=tmp_path / "dataset" / INSIGHT_VALIDATION_SPLIT,
+    )
+
+    train_ids = [task.id for task in split.train.dataset.list_tasks()] if split.train else []
+    validation_ids = [task.id for task in split.validation.dataset.list_tasks()] if split.validation else []
+    assert (len(train_ids), len(validation_ids)) == (expected_train, expected_validation)
+    assert train_ids == all_task_ids[0::2]
+    assert validation_ids == all_task_ids[1::2]
+    # An empty half is returned as None rather than an unscoreable zero-task dataset.
+    assert (split.validation is None) == (expected_validation == 0)
+
+
+def test_split_is_deterministic_across_repeated_materialization(tmp_path: Path) -> None:
+    finalized = _finalize_suite(tmp_path, 5)
+    dataset_dir = tmp_path / "dataset"
+
+    def materialize() -> tuple[list[str], list[str], str, str]:
+        split = materialize_insight_split(
+            finalized,
+            train_dir=dataset_dir / INSIGHT_TRAIN_SPLIT,
+            validation_dir=dataset_dir / INSIGHT_VALIDATION_SPLIT,
+        )
+        assert split.train is not None and split.validation is not None
+        return (
+            [task.id for task in split.train.dataset.list_tasks()],
+            [task.id for task in split.validation.dataset.list_tasks()],
+            split.train.identity,
+            split.validation.identity,
+        )
+
+    assert materialize() == materialize()
+
+
+def test_each_half_carries_its_own_provenance(tmp_path: Path) -> None:
+    finalized = _finalize_suite(tmp_path, 4)
+    dataset_dir = tmp_path / "dataset"
+
+    split = materialize_insight_split(
+        finalized,
+        train_dir=dataset_dir / INSIGHT_TRAIN_SPLIT,
+        validation_dir=dataset_dir / INSIGHT_VALIDATION_SPLIT,
+    )
+
+    assert split.train is not None and split.validation is not None
+    # Distinct identities are what keeps the per-half evaluation cache from confusing them.
+    assert split.train.identity != split.validation.identity
+    assert split.train.identity != finalized.identity
+    assert split.train.scorer_identity != split.validation.scorer_identity
+    for half, expected_path in (
+        (split.train, dataset_dir / INSIGHT_TRAIN_SPLIT),
+        (split.validation, dataset_dir / INSIGHT_VALIDATION_SPLIT),
+    ):
+        assert half.path == expected_path
+        manifest = json.loads((half.path / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["suite_identity"] == half.identity
+        assert manifest["scorer"]["identity"] == half.scorer_identity
+        assert manifest["insight_id"] == "insight-1"
+        task_ids = [task.id for task in half.dataset.list_tasks()]
+        assert [task["path"] for task in manifest["tasks"]] == task_ids
+        assert half.dataset.metadata["insight_suite_identity"] == half.identity
+        task_hashes = half.dataset.metadata["insight_suite_task_hashes"]
+        assert isinstance(task_hashes, dict)
+        assert set(task_hashes) == set(task_ids)
+        assert all(task.uri.startswith(half.path.as_uri()) for task in half.dataset.list_tasks())
+
+
+def test_verifier_hash_tracks_the_verifier_so_edits_elsewhere_cannot_mask_a_skipped_task(
+    tmp_path: Path,
+) -> None:
+    # Hashing the whole task directory would let any incidental edit — a rewritten
+    # instruction, a re-stamped task.toml — make a task with an untouched verifier look
+    # authored, which is exactly the case the hash exists to catch.
+    finalized = _finalize_suite(tmp_path, 2)
+    tasks = list(finalized.dataset.list_tasks())
+    before = verifier_hashes(tasks)
+    assert len(before) == 2
+
+    untouched, augmented = (Path(task.uri.removeprefix("file://")) for task in tasks)
+    (untouched / "instruction.md").write_text("Rewritten instruction, same verifier.\n", encoding="utf-8")
+    (augmented / "tests" / "check_restraint.py").write_text("print('restraint=1.0')\n", encoding="utf-8")
+
+    after = verifier_hashes(tasks)
+    assert after[tasks[0].id] == before[tasks[0].id]
+    assert after[tasks[1].id] != before[tasks[1].id]
+
+
+def test_split_leaves_the_authored_suite_as_the_provenance_home(tmp_path: Path) -> None:
+    finalized = _finalize_suite(tmp_path, 3)
+    before = json.loads((finalized.path / "manifest.json").read_text(encoding="utf-8"))
+
+    materialize_insight_split(
+        finalized,
+        train_dir=tmp_path / "dataset" / INSIGHT_TRAIN_SPLIT,
+        validation_dir=tmp_path / "dataset" / INSIGHT_VALIDATION_SPLIT,
+    )
+
+    assert json.loads((finalized.path / "manifest.json").read_text(encoding="utf-8")) == before
+    assert len(HarborDataset.from_path(finalized.path).list_tasks()) == 3

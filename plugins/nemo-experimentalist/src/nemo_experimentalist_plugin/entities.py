@@ -3,9 +3,14 @@
 
 """Experimentalist plugin entity definitions — stored in the NeMo Platform entity store."""
 
+from dataclasses import dataclass
 from typing import Any, Literal, Sequence
 
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import TrialResult
+from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import (
+    INSIGHT_TRAIN_SPLIT,
+    INSIGHT_VALIDATION_SPLIT,
+)
 from nemo_platform_plugin.entity import NemoEntity
 from pydantic import ConfigDict, Field, model_validator
 
@@ -149,21 +154,37 @@ class Candidate(NemoEntity, entity_type="candidate"):
         default=None,
         description="Validation split trial results from the last evaluation run.",
     )
-    insight_reward: dict[str, float] | None = Field(
+    insight_train_reward: dict[str, float] | None = Field(
         default=None,
-        description="Multi-dimensional reward on the materialized Insight suite.",
+        description="Multi-dimensional reward on the Insight suite train half (development feedback).",
     )
-    insight_reward_details: Sequence[TrialResult] | None = Field(
+    insight_train_reward_details: Sequence[TrialResult] | None = Field(
         default=None,
-        description="Insight-suite trial results from the last evaluation run.",
+        description="Insight train half trial results from the last evaluation run.",
     )
-    insight_suite_identity: str | None = Field(
+    insight_train_suite_identity: str | None = Field(
         default=None,
-        description="Content identity of the Insight suite associated with insight_reward.",
+        description="Content identity of the Insight half associated with insight_train_reward.",
     )
-    insight_metric_keys: list[str] | None = Field(
+    insight_train_metric_keys: list[str] | None = Field(
         default=None,
-        description="Validated runtime metric keys associated with insight_reward.",
+        description="Validated runtime metric keys associated with insight_train_reward.",
+    )
+    insight_validation_reward: dict[str, float] | None = Field(
+        default=None,
+        description="Multi-dimensional reward on the held-out Insight suite validation half.",
+    )
+    insight_validation_reward_details: Sequence[TrialResult] | None = Field(
+        default=None,
+        description="Insight validation half trial results from the last evaluation run.",
+    )
+    insight_validation_suite_identity: str | None = Field(
+        default=None,
+        description="Content identity of the Insight half associated with insight_validation_reward.",
+    )
+    insight_validation_metric_keys: list[str] | None = Field(
+        default=None,
+        description="Validated runtime metric keys associated with insight_validation_reward.",
     )
     validation_trajectory_reward: dict[str, float] | None = Field(
         default=None,
@@ -196,9 +217,12 @@ class Candidate(NemoEntity, entity_type="candidate"):
         if self.validation_reward:
             scores = ", ".join(f"{k}={v:.3f}" for k, v in self.validation_reward.items())
             parts.append(f", validation_reward={{{scores}}}")
-        if self.insight_reward:
-            scores = ", ".join(f"{k}={v:.3f}" for k, v in self.insight_reward.items())
-            parts.append(f", insight_reward={{{scores}}}")
+        if self.insight_train_reward:
+            scores = ", ".join(f"{k}={v:.3f}" for k, v in self.insight_train_reward.items())
+            parts.append(f", insight_train_reward={{{scores}}}")
+        if self.insight_validation_reward:
+            scores = ", ".join(f"{k}={v:.3f}" for k, v in self.insight_validation_reward.items())
+            parts.append(f", insight_validation_reward={{{scores}}}")
         if self.killed_round is not None:
             parts.append(f", killed_round={self.killed_round}")
         parts.append(")")
@@ -210,7 +234,75 @@ class Candidate(NemoEntity, entity_type="candidate"):
             update={
                 "train_reward_details": None,
                 "validation_reward_details": None,
-                "insight_reward_details": None,
+                "insight_train_reward_details": None,
+                "insight_validation_reward_details": None,
                 "validation_trajectory_reward_details": None,
             }
         )
+
+
+@dataclass(frozen=True, slots=True)
+class InsightSplitFields:
+    """Names of the ``Candidate`` fields holding one Insight half's evaluation results.
+
+    Lets evaluation, promotion, and reporting address either half without branching
+    on the split name at every access.
+    """
+
+    split: str
+    reward: str
+    reward_details: str
+    suite_identity: str
+    metric_keys: str
+    held_out: bool
+
+    def reward_of(self, candidate: Candidate) -> dict[str, float] | None:
+        """Return this half's aggregate reward for ``candidate``."""
+        return getattr(candidate, self.reward)
+
+    def reward_details_of(self, candidate: Candidate) -> Sequence[TrialResult] | None:
+        """Return this half's trial results for ``candidate``."""
+        return getattr(candidate, self.reward_details)
+
+    def suite_identity_of(self, candidate: Candidate) -> str | None:
+        """Return the suite identity ``candidate``'s reward for this half was scored against."""
+        return getattr(candidate, self.suite_identity)
+
+    def metric_keys_of(self, candidate: Candidate) -> list[str] | None:
+        """Return the validated metric keys for this half's reward on ``candidate``."""
+        return getattr(candidate, self.metric_keys)
+
+    def updates(
+        self,
+        *,
+        reward: dict[str, float],
+        reward_details: Sequence[TrialResult],
+        suite_identity: str,
+        metric_keys: list[str],
+    ) -> dict[str, Any]:
+        """Return a ``Candidate`` update mapping for this half."""
+        return {
+            self.reward: reward,
+            self.reward_details: reward_details,
+            self.suite_identity: suite_identity,
+            self.metric_keys: metric_keys,
+        }
+
+
+INSIGHT_TRAIN_FIELDS = InsightSplitFields(
+    split=INSIGHT_TRAIN_SPLIT,
+    reward="insight_train_reward",
+    reward_details="insight_train_reward_details",
+    suite_identity="insight_train_suite_identity",
+    metric_keys="insight_train_metric_keys",
+    held_out=False,
+)
+
+INSIGHT_VALIDATION_FIELDS = InsightSplitFields(
+    split=INSIGHT_VALIDATION_SPLIT,
+    reward="insight_validation_reward",
+    reward_details="insight_validation_reward_details",
+    suite_identity="insight_validation_suite_identity",
+    metric_keys="insight_validation_metric_keys",
+    held_out=True,
+)

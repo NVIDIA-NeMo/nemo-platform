@@ -107,9 +107,18 @@ class _FakeRationalizer:
 class _SelectTrials:
     def __init__(self, trials: list[Any]) -> None:
         self._trials = trials
+        self.calls: list[tuple[Any, Any]] = []
 
-    async def __call__(self, agent_id: str, dataset: Any, evaluation: Any) -> list[Any]:
-        return self._trials
+    async def __call__(
+        self,
+        agent_id: str,
+        dataset: Any,
+        evaluation: Any,
+        insight_dataset: Any = None,
+        insight_trials: Any = None,
+    ) -> list[Any]:
+        self.calls.append((insight_dataset, insight_trials))
+        return self._trials + list(insight_trials or ())
 
 
 class _ClassifyFailures:
@@ -190,6 +199,71 @@ async def test_run_defaults_client_and_workspace_to_none(tmp_path: Path, monkeyp
     assert len(calls) == 1
     assert calls[0]["client"] is None
     assert calls[0]["workspace"] is None
+
+
+@pytest.mark.asyncio
+async def test_insight_train_trials_reach_trial_selection_and_get_diagnosed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Insight failures only get trace-level diagnosis if both the trials and their tasks arrive."""
+    calls: list[dict[str, Any]] = []
+    _install_fakes(monkeypatch, calls)
+    trial, dataset, evaluation = _fixtures()
+    insight_trial = _FakeTrial(
+        id="insight-trial-1",
+        task_id="insight-task-1",
+        trace=object(),
+        metrics={"uses_required_tool": _FakeMetric(0.0)},
+    )
+    insight_dataset = _FakeDataset(tasks=[_FakeTask(id="insight-task-1")])
+    analyzer = _make_analyzer(tmp_path, [trial])
+
+    result = await analyzer.run(
+        agent="agent-a",
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round=0,
+        insight_dataset=cast(Any, insight_dataset),
+        insight_trials=cast(Any, [insight_trial]),
+    )
+
+    select_trials = cast(_SelectTrials, analyzer.select_trials)
+    assert select_trials.calls == [(insight_dataset, [insight_trial])]
+    # Both trials are diagnosed: the Insight task resolved, so it was not dropped as unknown.
+    assert len(calls) == 2
+    analyses = {analysis.trial_id: analysis for analysis in result.trial_analyses}
+    assert set(analyses) == {"trial-1", "insight-trial-1"}
+    assert analyses["insight-trial-1"].task_id == "insight-task-1"
+    assert analyses["insight-trial-1"].diagnostic.root_cause != "evaluation_result_references_unknown_task"
+
+
+@pytest.mark.asyncio
+async def test_insight_trials_are_part_of_the_cache_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A run analyzed before the Insight suite existed must not be replayed once it does."""
+    calls: list[dict[str, Any]] = []
+    _install_fakes(monkeypatch, calls)
+    trial, dataset, evaluation = _fixtures()
+    insight_trial = _FakeTrial(
+        id="insight-trial-1",
+        task_id="insight-task-1",
+        trace=object(),
+        metrics={"uses_required_tool": _FakeMetric(0.0)},
+    )
+    insight_dataset = _FakeDataset(tasks=[_FakeTask(id="insight-task-1")])
+
+    await _make_analyzer(tmp_path, [trial]).run(
+        agent="agent-a", dataset=cast(Any, dataset), evaluation=cast(Any, evaluation), round=0
+    )
+    await _make_analyzer(tmp_path, [trial]).run(
+        agent="agent-a",
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round=0,
+        insight_dataset=cast(Any, insight_dataset),
+        insight_trials=cast(Any, [insight_trial]),
+    )
+
+    assert len(calls) == 3
 
 
 @pytest.mark.asyncio
