@@ -2,10 +2,7 @@ AGENTS.local.md
 tmp
 .idea
 .cursor/rules/personal/
-# Local NeMo skill installs created by `nemo setup` / `nemo skills install`.
-# Existing tracked repo-owned skills remain tracked; use `git add -f` for new
-# repo-owned NeMo skills under these paths.
-.agents/skills/nemo-*/
+# Local NeMo Cursor rules created by `nemo setup` / `nemo skills install`.
 .cursor/rules/nemo-*/
 CLAUDE.local.md
 **/worktrees/
