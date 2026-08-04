@@ -53,6 +53,8 @@ const VENDOR_EXTERNALS = [
   '@tanstack/react-query',
 ] as const;
 
+const DEV_VENDOR_DIR = 'node_modules/.vendor';
+
 // Each import specifier in the map resolves to a single vendor bundle.
 // 'react/jsx-runtime' shares react.js and 'react-dom/client' shares
 // react-dom.js so there's exactly one copy of each package's internals.
@@ -257,10 +259,13 @@ function vendorPlugin(): Plugin {
   // the document base URL, which on SPA-fallback deep links can be anywhere
   // inside the app, so relative './vendor/…' paths would break. Absolute
   // paths prefixed with Vite's `base` resolve identically from any route.
+  const vendorUrl = (bundle: string) =>
+    isServe ? `${base}${DEV_VENDOR_DIR}/${bundle}` : `${base}vendor/${bundle}`;
+
   const importMapJson = () =>
     JSON.stringify({
       imports: Object.fromEntries(
-        Object.entries(VENDOR_IMPORT_MAP).map(([k, v]) => [k, `${base}vendor/${v}`])
+        Object.entries(VENDOR_IMPORT_MAP).map(([k, v]) => [k, vendorUrl(v)])
       ),
     });
 
@@ -274,7 +279,9 @@ function vendorPlugin(): Plugin {
       base = config.base;
       isServe = config.command === 'serve';
       projectRoot = config.root;
-      outdir = path.resolve(projectRoot, 'public', 'vendor');
+      outdir = isServe
+        ? path.resolve(projectRoot, DEV_VENDOR_DIR)
+        : path.resolve(projectRoot, 'public', 'vendor');
       await ensureBuilt();
     },
     buildStart() {
@@ -285,14 +292,13 @@ function vendorPlugin(): Plugin {
     },
     // Without this, Vite pre-bundles bare 'react' into .vite/deps and
     // rewrites Studio's imports to that URL, giving Studio its own React
-    // while plugins use the vendor copy. Redirecting to the vendor URL
-    // in dev matches the prod externalization so a single React instance
-    // is shared at runtime.
+    // while plugins use the vendor copy. Resolving to the same file the
+    // dev import map points at keeps one shared instance at runtime.
     resolveId(id) {
       if (!isServe) return null;
       const mapped = VENDOR_IMPORT_MAP[id];
       if (mapped) {
-        return { id: `${base}vendor/${mapped}`, external: true };
+        return path.resolve(outdir, mapped);
       }
       return null;
     },
