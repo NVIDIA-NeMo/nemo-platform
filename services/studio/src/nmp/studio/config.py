@@ -47,7 +47,7 @@ class StudioOtelConfig(BaseModel):
         return any(fnmatchcase(origin, allowed_origin) for allowed_origin in self.allowed_origins)
 
 
-class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]
+class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]  # ty: ignore[unsupported-base]
     """Configuration for the Studio service.
 
     This configuration is loaded from the 'studio' section of the
@@ -164,7 +164,7 @@ class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]
             if value is not None:
                 replacements[mapping.marker] = value
                 logger.debug(f"Resolved {mapping.marker} -> {value}")
-            elif mapping.default:
+            elif mapping.default is not None:
                 replacements[mapping.marker] = mapping.default
                 logger.debug(f"Using default for {mapping.marker} -> {mapping.default}")
             else:
