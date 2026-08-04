@@ -41,7 +41,7 @@ def test_markdown_table_renders_every_reward_dimension() -> None:
     table = _tree().to_markdown_table()
 
     assert table.split("\n") == [
-        "| round | agent | ancestor | type | train:reward | val:reward | optimization |",
+        "| round | agent | ancestor | type | train:reward | validation:reward | optimization |",
         "| --- | --- | --- | --- | --- | --- | --- |",
         "| 0 | agent-0 | - | - | 0.25 | 0.50 | baseline |",
         "| 1 | agent-1 | - | - | 0.75 | 1.00 | improve tool use |",
@@ -54,7 +54,7 @@ def test_node_reward_str_renders_every_measured_channel() -> None:
     rendered = node.reward_str
 
     assert "train[" in rendered
-    assert "val[" in rendered
+    assert "validation[" in rendered
 
 
 def test_rendering_picks_up_an_unknown_channel_without_code_changes() -> None:

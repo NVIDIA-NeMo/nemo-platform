@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import subprocess
 import sys
 import textwrap
@@ -13,9 +14,12 @@ from nemo_experimentalist_plugin.experimentalist.components.model_config import 
     log_model_config,
     model_name,
 )
-from nemo_experimentalist_plugin.settings import ExperimentalistConfig
+from nemo_experimentalist_plugin.settings import ExperimentalistConfig, ModelsConfig
 from nemo_platform_plugin.config import NMP_CONFIG_FILE_PATH_ENV_VAR, Configuration
 
+# Only the tests that assert on *where* a value comes from touch the environment. Everything
+# else injects the settings object, which is both closer to what the code reads and immune
+# to an ``/etc/nmp/config.yaml`` existing on the machine running the suite.
 TIER_ENV = {
     "smart": "NEMO_EXPERIMENTALIST_MODELS_SMART",
     "mid": "NEMO_EXPERIMENTALIST_MODELS_MID",
@@ -23,28 +27,39 @@ TIER_ENV = {
 }
 
 
-def _credentials(monkeypatch, base: str = "https://llm.example/v1", key: str = "k") -> None:
-    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", base)
-    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", key)
+def _configure(**kwargs) -> None:
+    """Install settings directly, bypassing both the environment and any config file.
+
+    The environment has to be cleared first, and that is not belt-and-braces: this plugin's
+    settings are env-first by design, so ``ExperimentalistConfig(models=...)`` would read
+    conftest's import-time placeholders over the values passed here. The autouse fixture in
+    ``conftest`` snapshots and restores ``os.environ``, so removing them is safe.
+    """
+    for name in [n for n in os.environ if n.startswith("NEMO_EXPERIMENTALIST_")]:
+        del os.environ[name]
+    Configuration.set_override(ExperimentalistConfig(**kwargs))
 
 
-def test_model_name_is_required_per_tier(monkeypatch) -> None:
+def _configured(base: str = "https://llm.example/v1", key: str = "k", **tiers) -> None:
+    """The common case: a usable endpoint plus whichever tiers the test names."""
+    _configure(api_base=base, api_key=key, models=ModelsConfig(**tiers))
+
+
+def test_model_name_is_required_per_tier() -> None:
     """There is no portable default for a model name, so an unset tier must fail here.
 
     Any built-in default would name a model on exactly one endpoint and be wrong on every
     other, surfacing as an opaque provider error at the first LLM call instead of a
     configuration error before the run starts.
     """
-    _credentials(monkeypatch, base="https://inference-api.nvidia.com/v1")
-    monkeypatch.delenv(TIER_ENV["smart"], raising=False)
+    _configured(base="https://inference-api.nvidia.com/v1")
 
     with pytest.raises(ValueError, match=TIER_ENV["smart"]):
         model_name("smart")
 
 
-def test_model_name_reads_its_tier(monkeypatch) -> None:
-    monkeypatch.setenv(TIER_ENV["smart"], "vendor/smart-1")
-    monkeypatch.setenv(TIER_ENV["fast"], "vendor/fast-1")
+def test_model_name_reads_its_tier() -> None:
+    _configured(smart="vendor/smart-1", fast="vendor/fast-1")
 
     assert model_name("smart") == "vendor/smart-1"
     assert model_name("fast") == "vendor/fast-1"
@@ -55,34 +70,30 @@ def test_unknown_tier_is_rejected() -> None:
         model_name("enormous")
 
 
-def test_log_model_config_tolerates_unset_tiers(monkeypatch) -> None:
+def test_log_model_config_tolerates_unset_tiers() -> None:
     """A display helper must not be the thing that fails."""
-    _credentials(monkeypatch)
-    for name in TIER_ENV.values():
-        monkeypatch.delenv(name, raising=False)
+    _configured()
 
     assert "(unset)" in log_model_config()
 
 
-def test_log_model_config_survives_a_wholly_unconfigured_install(monkeypatch) -> None:
+def test_log_model_config_survives_a_wholly_unconfigured_install() -> None:
     """The banner must not raise on the install it exists to diagnose.
 
     ``_shown`` always guarded the tiers, but the endpoint and key were resolved
     unguarded, so the one case where you most want to see the banner was the one case
     that raised.
     """
-    for name in (*TIER_ENV.values(), "NEMO_EXPERIMENTALIST_API_BASE", "NEMO_EXPERIMENTALIST_API_KEY"):
-        monkeypatch.delenv(name, raising=False)
-    Configuration.clear_cache()
+    _configure()
 
     rendered = log_model_config()
 
     assert rendered.count("(unset)") == 5
 
 
-def test_log_model_config_masks_the_key(monkeypatch) -> None:
+def test_log_model_config_masks_the_key() -> None:
     """The banner is printed to logs, so it must never carry the whole credential."""
-    _credentials(monkeypatch, key="sk-abcdefghijkl")
+    _configured(key="sk-abcdefghijkl")
 
     rendered = log_model_config()
 
@@ -182,9 +193,9 @@ def test_environment_overrides_the_config_file(tmp_path, monkeypatch) -> None:
     assert model_name("smart") == "vendor/from-env"
 
 
-def test_api_key_is_not_exposed_by_repr(monkeypatch) -> None:
+def test_api_key_is_not_exposed_by_repr() -> None:
     """A settings object gets logged; the credential inside it must not come along."""
-    _credentials(monkeypatch, key="sk-not-in-the-logs")
+    _configured(key="sk-not-in-the-logs")
 
     assert "sk-not-in-the-logs" not in repr(ExperimentalistConfig.get())
 

@@ -37,12 +37,15 @@ def _restore_environ():
 
     ``ExperimentalistConfig.get()`` memoizes, so a test that sets endpoint or model
     variables would otherwise be read back by the next test — or, worse, would silently
-    read the previous test's values itself. Clearing on both sides of the yield keeps each
-    test resolving its own environment.
+    read the previous test's values itself. Overrides installed with
+    ``Configuration.set_override`` outlive the test that set them for the same reason.
+    Clearing both on either side of the yield keeps each test resolving its own settings.
     """
     snapshot = os.environ.copy()
     Configuration.clear_cache()
+    Configuration.clear_overrides()
     yield
     os.environ.clear()
     os.environ.update(snapshot)
     Configuration.clear_cache()
+    Configuration.clear_overrides()

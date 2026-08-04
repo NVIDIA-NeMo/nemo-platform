@@ -117,13 +117,6 @@ def _format_reward(reward: dict[str, float]) -> str:
 # ---------------------------------------------------------------------------
 
 
-_CHANNEL_ABBREV = {
-    "train": "train",
-    "validation": "val",
-    "validation-trajectory": "traj",
-}
-
-
 class EvolutionNode(BaseModel):
     """One node in the evolution tree, representing one Candidate."""
 
@@ -170,7 +163,7 @@ class EvolutionNode(BaseModel):
     def reward_str(self) -> str:
         """One-line reward summary over every measured channel, not a fixed three."""
         parts = [
-            f"{_CHANNEL_ABBREV.get(channel, channel)}[{_format_reward(record.metrics)}]"
+            f"{channel}[{_format_reward(record.metrics)}]"
             for channel, record in sorted(self.candidate.rewards.items())
             if record.metrics
         ]
@@ -259,11 +252,7 @@ class EvolutionTree:
 
         fixed = ["round", "agent", "ancestor", "type"]
         reward_cols = [(channel, dimension) for channel in channels for dimension in dimensions[channel]]
-        all_cols = (
-            fixed
-            + [f"{_CHANNEL_ABBREV.get(channel, channel)}:{dimension}" for channel, dimension in reward_cols]
-            + ["optimization"]
-        )
+        all_cols = fixed + [f"{channel}:{dimension}" for channel, dimension in reward_cols] + ["optimization"]
         header = "| " + " | ".join(all_cols) + " |"
         sep = "| " + " | ".join("---" for _ in all_cols) + " |"
         lines = [header, sep]
