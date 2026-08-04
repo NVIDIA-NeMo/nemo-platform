@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { TransformFileFormFields } from '@studio/components/FilesTable/TransformFileModal/types';
+import type { TransformFileFormFields } from '@studio/components/FilesTable/TransformFileModal/types';
 import { useTransformPreview } from '@studio/components/FilesTable/TransformFileModal/useTransformPreview';
 import { PreviewOutputPanel } from '@studio/components/PreviewOutputPanel';
-import { FC, useMemo } from 'react';
-import { Control, useWatch } from 'react-hook-form';
+import { useMemo, type FC } from 'react';
+import { useWatch, type Control } from 'react-hook-form';
 import { useDebounce } from 'use-debounce';
 
 const PREVIEW_DEBOUNCE_MS = 250;

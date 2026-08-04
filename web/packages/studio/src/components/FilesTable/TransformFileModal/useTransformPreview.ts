@@ -27,7 +27,10 @@ const applyMappings = (row: Row, mappings: Mapping[]): Row => {
 
     for (let i = 0; i < keyParts.length - 1; i++) {
       const part = keyParts[i];
-      if (!(part in current)) current[part] = {};
+      const existing = current[part];
+      if (typeof existing !== 'object' || existing === null || Array.isArray(existing)) {
+        current[part] = {};
+      }
       current = current[part] as Record<string, unknown>;
     }
 

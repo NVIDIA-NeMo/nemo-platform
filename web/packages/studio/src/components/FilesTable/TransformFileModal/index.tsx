@@ -13,7 +13,7 @@ import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileConten
 import { useDatasetFileTransform } from '@studio/api/datasets/useDatasetFileTransform';
 import { TransformPreview } from '@studio/components/FilesTable/TransformFileModal/TransformPreview';
 import {
-  TransformFileFormFields,
+  type TransformFileFormFields,
   transformFileSchema,
 } from '@studio/components/FilesTable/TransformFileModal/types';
 import { ValueWithLabel } from '@studio/components/ValueWithLabel';
@@ -22,7 +22,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getContentSchema } from '@studio/util/files';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { GitBranch } from 'lucide-react';
-import { ComponentProps, FC, useMemo } from 'react';
+import { useMemo, type ComponentProps, type FC } from 'react';
 import { useForm } from 'react-hook-form';
 
 interface Props extends Pick<ComponentProps<typeof FormModal>, 'open' | 'onClose'> {
@@ -62,7 +62,8 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, dataset
   }, [modelsResponse]);
 
   const resolvedFilepath = filepath ?? '';
-  const fileType = resolvedFilepath.split('.').at(-1) ?? '';
+  const filepathParts = resolvedFilepath.split('.');
+  const fileType = filepathParts.length > 1 ? (filepathParts.at(-1) ?? '') : '';
 
   const { data: fileContent, isLoading: isLoadingFileContent } = useDatasetFileContent({
     ...datasetNameSplit,

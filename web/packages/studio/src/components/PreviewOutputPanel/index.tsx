@@ -55,6 +55,7 @@ export const PreviewOutputPanel: FC<Props> = ({
           onClick={() => setCollapsed(!collapsed)}
           className="shrink-0 text-secondary transition-colors hover:text-primary"
           aria-label={collapsed ? 'Expand preview' : 'Collapse preview'}
+          aria-expanded={!collapsed}
         >
           {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
         </Button>
