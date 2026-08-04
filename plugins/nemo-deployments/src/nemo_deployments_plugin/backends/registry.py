@@ -69,7 +69,9 @@ class ExecutorRegistry:
                     # Capability missing (optional packaging extra, unreachable Docker
                     # daemon, etc.): skip just that executor so the deployments service
                     # can still boot. Resolving a skipped name later raises
-                    # ExecutorNotFoundError; a skipped default is cleared below.
+                    # ExecutorNotFoundError. A configured default_executor that failed
+                    # to register still fails fast below — silent clearing hid config
+                    # mistakes and made debugging harder.
                     logger.warning(
                         "Skipping executor '%s': backend '%s' is unavailable (%s)",
                         spec.name,
@@ -77,12 +79,10 @@ class ExecutorRegistry:
                         exc,
                     )
             if default_executor and default_executor not in executors:
-                logger.warning(
-                    "Clearing default_executor '%s' because it is not registered "
-                    "(unavailable backend or missing from executor config).",
-                    default_executor,
+                raise ExecutorNotFoundError(
+                    f"default_executor '{default_executor}' is not registered "
+                    "(unavailable backend or missing from executor config)."
                 )
-                default_executor = None
         except Exception:
             for backend in executors.values():
                 backend.shutdown()

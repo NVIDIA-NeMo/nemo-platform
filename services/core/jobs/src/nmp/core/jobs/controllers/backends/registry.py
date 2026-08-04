@@ -157,6 +157,26 @@ class BackendRegistry:
                     executor.profile,
                     exc,
                 )
+
+        # Keep GET /v2/execution-profiles aligned with backends that registered.
+        # ``profiles`` is built at import time and shared with the jobs API in local
+        # standalone, so prune the list in place when callers pass a mutable list.
+        if isinstance(profiles, list):
+            registered = frozenset((key.provider, key.profile) for key in registry)
+            kept = []
+            for profile in profiles:
+                if (profile.provider, profile.profile) in registered:
+                    kept.append(profile)
+            skipped = len(profiles) - len(kept)
+            if skipped:
+                logger.warning(
+                    "Removed %s execution profile(s) that failed backend registration so advertised "
+                    "profiles match the jobs controller registry.",
+                    skipped,
+                )
+                profiles.clear()
+                profiles.extend(kept)
+
         return cls(registry)
 
     def registered_profile_keys(self) -> frozenset[tuple[str, str]]:

@@ -530,9 +530,7 @@ def test_backend_registry_propagates_non_connection_errors_for_docker(mock_nmp_c
         )
 
 
-def test_sync_advertised_profiles_to_registry_prunes_skipped_docker(mock_nmp_client, caplog):
-    from nmp.core.jobs.controllers import main as jobs_main
-
+def test_from_config_prunes_skipped_docker_from_mutable_profiles(mock_nmp_client, caplog):
     class DummyBackend:
         def __init__(self, nmp_sdk, execution_profile_config, profile_name):
             self.nmp_sdk = nmp_sdk
@@ -551,6 +549,7 @@ def test_sync_advertised_profiles_to_registry_prunes_skipped_docker(mock_nmp_cli
         ),
     ]
 
+    caplog.set_level(logging.WARNING)
     with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
         registry = BackendRegistry.from_config(
             nmp_sdk=mock_nmp_client,
@@ -561,13 +560,11 @@ def test_sync_advertised_profiles_to_registry_prunes_skipped_docker(mock_nmp_cli
             },
         )
 
-    with patch.object(jobs_main, "profiles", advertised):
-        caplog.set_level(logging.WARNING)
-        jobs_main._sync_advertised_profiles_to_registry(registry)
-        assert [(p.provider, p.profile, p.backend) for p in advertised] == [
-            ("subprocess", "default", "subprocess"),
-        ]
-        assert "Removed 1 execution profile" in caplog.text
+    assert registry.registered_profile_keys() == frozenset({("subprocess", "default")})
+    assert [(p.provider, p.profile, p.backend) for p in advertised] == [
+        ("subprocess", "default", "subprocess"),
+    ]
+    assert "Removed 1 execution profile" in caplog.text
 
 
 def test_subprocess_execution_profile_defaults_provider_to_subprocess():
