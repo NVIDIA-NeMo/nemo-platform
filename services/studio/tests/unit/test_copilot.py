@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from nmp.studio import copilot, copilot_artifacts, copilot_skills, studio_links
 from nmp.studio.config import StudioConfig
@@ -1721,6 +1721,7 @@ def test_platform_route_stream_uses_deployed_copilot(monkeypatch: pytest.MonkeyP
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["cache-control"] == "no-store"
     assert "event: done" in response.text
     assert captured["session_id"] == session_id
     assert captured["agent_url"] == (
@@ -1808,8 +1809,8 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
         },
         headers={
             "host": "attacker.example",
-            "origin": "http://ns.local.aire.nvidia.com:5173",
-            "referer": "http://ns.local.aire.nvidia.com:5173/workspaces/default/dashboard/copilot",
+            "origin": "https://studio.example.com",
+            "referer": "https://studio.example.com/workspaces/default/dashboard/copilot",
         },
     )
 
@@ -1818,17 +1819,48 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
         "http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/nemo-studio-copilot/-/v1/chat/completions"
     )
     assert captured["message"] == "can you give me a link to it?"
-    assert "Studio UI base URL: http://ns.local.aire.nvidia.com:5173" in captured["studio_system_prompt"]
+    assert "Studio UI base URL: https://studio.example.com" in captured["studio_system_prompt"]
     assert "Current Studio route path: /workspaces/default/dashboard/copilot" in captured["studio_system_prompt"]
 
 
 def test_copilot_url_uses_only_configured_base_url(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("NMP_BASE_URL", "https://nmp.dev.aire.nvidia.com")
+    monkeypatch.setenv("NMP_BASE_URL", "https://platform.example.com")
 
     assert copilot._studio_copilot_url("default") == (
-        "https://nmp.dev.aire.nvidia.com/apis/agents/v2/workspaces/default/"
+        "https://platform.example.com/apis/agents/v2/workspaces/default/"
         "agents/nemo-studio-copilot/-/v1/chat/completions"
     )
+
+
+def test_copilot_request_headers_strip_credentials_for_http():
+    request = Request(
+        {
+            "type": "http",
+            "headers": [
+                (b"authorization", b"Bearer secret-token"),
+                (b"cookie", b"session=secret-cookie"),
+            ],
+        }
+    )
+
+    assert copilot._copilot_request_headers(request, "http://127.0.0.1:8080/agent") == {}
+
+
+def test_copilot_request_headers_forward_credentials_for_https():
+    request = Request(
+        {
+            "type": "http",
+            "headers": [
+                (b"authorization", b"Bearer secret-token"),
+                (b"cookie", b"session=secret-cookie"),
+            ],
+        }
+    )
+
+    assert copilot._copilot_request_headers(request, "https://platform.test/agent") == {
+        "authorization": "Bearer secret-token",
+        "cookie": "session=secret-cookie",
+    }
 
 
 def test_validated_workspace_uses_default_and_rejects_path_injection():

@@ -1260,8 +1260,11 @@ def _studio_copilot_url(workspace: str) -> str:
     )
 
 
-def _copilot_request_headers(request: Request) -> dict[str, str]:
-    """Forward end-user auth context when the Studio service invokes the agent gateway."""
+def _copilot_request_headers(request: Request, agent_url: str) -> dict[str, str]:
+    """Forward end-user auth context only over an encrypted connection."""
+    if urlparse(agent_url).scheme != "https":
+        return {}
+
     forwarded = {}
     for name in ("authorization", "cookie"):
         value = request.headers.get(name)
@@ -1436,6 +1439,7 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
     """Send a message to the deployed NeMo Copilot and stream Studio events."""
     sid = _validate_session_id(session_id)
     workspace = _validated_workspace_or_default(body.workspace)
+    agent_url = _studio_copilot_url(workspace)
     studio_base_url = _studio_base_url_from_request(body, request)
     studio_pathname = _studio_pathname_from_request(body, request)
     enabled_destinations = studio_links.enabled_destinations_from_request(request)
@@ -1450,11 +1454,12 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
         _stream_copilot(
             sid,
             body.message,
-            _studio_copilot_url(workspace),
-            _copilot_request_headers(request),
+            agent_url,
+            _copilot_request_headers(request, agent_url),
             system_prompt,
         ),
         media_type="text/event-stream",
+        headers={"Cache-Control": "no-store"},
     )
 
 
