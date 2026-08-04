@@ -6,6 +6,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { mockGuardrailConfigs } from '@studio/mocks/handlers/guardrails';
 import { server } from '@studio/mocks/node';
 import { GuardrailChecksTab } from '@studio/routes/guardrails/GuardrailChecksTab';
+import { GUARDRAIL_CHECKS_DEFAULT_SUB_TAB } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailConfigTab } from '@studio/routes/guardrails/GuardrailConfigTab';
 import { GuardrailDetailRoute } from '@studio/routes/guardrails/GuardrailDetailRoute';
 import { getGuardrailDetailRoute } from '@studio/routes/utils';
@@ -28,7 +29,11 @@ const routes = [
     children: [
       { index: true, element: <Navigate to="config" replace /> },
       { path: ROUTES.workspace.guardrailConfig, element: <GuardrailConfigTab /> },
-      { path: ROUTES.workspace.guardrailChecks, element: <GuardrailChecksTab /> },
+      {
+        path: ROUTES.workspace.guardrailChecks,
+        element: <Navigate to={GUARDRAIL_CHECKS_DEFAULT_SUB_TAB} replace />,
+      },
+      { path: ROUTES.workspace.guardrailChecksSubTab, element: <GuardrailChecksTab /> },
     ],
   },
   {
