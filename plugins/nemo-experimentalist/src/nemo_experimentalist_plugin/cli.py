@@ -55,11 +55,7 @@ DEFAULT_WORKSPACE = "default"
 
 _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
 
-# Lazily imported in the experiment command: importing experimentalist.run reaches model
-# construction that requires NEMO_EXPERIMENTALIST_API_* env at import time, and this module
-# must import env-less so `nemo agents experimentalist doctor` can diagnose the missing creds.
-# Tests monkeypatch this global with a recorder, which bypasses the lazy import.
-run_experimentalist = None
+run_experimentalist = None  # lazily imported by the run command; tests monkeypatch it
 
 _PLATFORM_CLIENT_ERRORS = (NeMoPlatformError, httpx.HTTPError, OSError, RuntimeError, ValueError)
 
