@@ -1,0 +1,143 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { Badge, Block, Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { formatScore, scoreColor } from '@studio/components/evaluation/utils';
+import { type ComponentProps, type FC, useCallback } from 'react';
+
+export interface EvalAggregateScoreRow {
+  name: string;
+  mean?: number | null;
+  count?: number;
+  nan_count?: number;
+  min?: number | null;
+  max?: number | null;
+  score_type?: string;
+  mode_category?: string | null;
+  rubric_distribution?: { label: string; value?: number; count?: number }[];
+}
+
+interface EvalAggregateScoresTableProps {
+  scores: EvalAggregateScoreRow[];
+  emptyMessage?: string;
+}
+
+const VIEW_PREFIX = 'view.';
+
+const displayMetricName = (name: string): string => {
+  if (name.startsWith(VIEW_PREFIX)) return name.slice(VIEW_PREFIX.length);
+  const separator = name.indexOf('.');
+  if (separator === -1) return name;
+  const type = name.slice(0, separator);
+  const output = name.slice(separator + 1);
+  return !output || output === type ? type : output;
+};
+
+const trialsText = (score: EvalAggregateScoreRow): string => {
+  const scored = score.count ?? 0;
+  return `${scored}/${scored + (score.nan_count ?? 0)}`;
+};
+
+export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
+  scores,
+  emptyMessage = 'No scores recorded for this evaluation.',
+}) => {
+  const dataViewState = useStudioDataViewState();
+  const hasRubric = scores.some((score) => !!score.rubric_distribution?.length);
+
+  const makeColumns = useCallback<
+    ComponentProps<typeof StudioDataView<EvalAggregateScoreRow>>['makeColumns']
+  >(
+    (col) => [
+      col.display({
+        id: 'metric',
+        header: 'Metric',
+        size: 200,
+        cell: ({ row }) => (
+          <Text kind="body/semibold/sm" title={row.original.name}>
+            {displayMetricName(row.original.name)}
+          </Text>
+        ),
+      }),
+      col.display({
+        id: 'score',
+        header: 'Score',
+        size: 100,
+        cell: ({ row }) => (
+          <Badge kind="solid" color={scoreColor(row.original.mean)}>
+            {formatScore(row.original.mean)}
+          </Badge>
+        ),
+      }),
+      col.display({
+        id: 'trials',
+        header: 'Trials',
+        size: 90,
+        cell: ({ row }) => (
+          <Text kind="body/regular/sm" color="secondary">
+            {trialsText(row.original)}
+          </Text>
+        ),
+      }),
+      ...(hasRubric
+        ? [
+            col.display({
+              id: 'distribution',
+              header: 'Distribution',
+              size: 240,
+              cell: ({ row }) => {
+                const { mode_category: mode, rubric_distribution: distribution } = row.original;
+                if (!distribution?.length) {
+                  return (
+                    <Text kind="body/regular/sm" color="secondary">
+                      —
+                    </Text>
+                  );
+                }
+                return (
+                  <Stack gap="density-xs">
+                    {mode ? (
+                      <Text kind="body/regular/sm" color="secondary">
+                        Most frequent: {mode}
+                      </Text>
+                    ) : null}
+                    <Flex gap="density-xs" wrap="wrap">
+                      {distribution.map((bucket) => (
+                        <Badge key={bucket.label} kind="outline" color="gray">
+                          {bucket.label}: {bucket.count ?? 0}
+                        </Badge>
+                      ))}
+                    </Flex>
+                  </Stack>
+                );
+              },
+            }),
+          ]
+        : []),
+    ],
+    [hasRubric]
+  );
+
+  if (scores.length === 0) {
+    return <Block className="text-subtle">{emptyMessage}</Block>;
+  }
+
+  return (
+    <div className="flex flex-col max-h-[420px]">
+      <StudioDataView
+        dataViewState={dataViewState}
+        makeColumns={makeColumns}
+        attributes={{
+          DataViewRoot: {
+            data: scores,
+            totalCount: scores.length,
+            reactTableOptions: { getRowId: (row) => row.name },
+          },
+          DataViewPagination: { showWhileLessThanPageSize: false },
+        }}
+      />
+    </div>
+  );
+};
