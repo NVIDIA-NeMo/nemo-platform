@@ -6,7 +6,7 @@
 These guard the behavior-preserving extraction of the termination logic
 (``_has_converged`` + ``qualitative_stop_check`` + ``max_rounds``) out of the
 loop and into :mod:`terminator`. Every Terminator is constructed with an injected
-``FakeLLMClient`` so the tests need no ``EXPERIMENTALIST_API_*`` env vars and make no
+``FakeLLMClient`` so the tests need no ``NEMO_EXPERIMENTALIST_API_*`` env vars and make no
 network calls.
 """
 

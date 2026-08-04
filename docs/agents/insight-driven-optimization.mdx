@@ -300,8 +300,11 @@ export AGENT=<your-agent-name>         # Must have traces in Intake
 export INFERENCE_API_KEY=sk-...
 
 # The Experimenter and Eval Author drive their own endpoint:
-export EXPERIMENTALIST_API_BASE=https://inference-api.nvidia.com/v1
-export EXPERIMENTALIST_API_KEY=sk-...
+export NEMO_EXPERIMENTALIST_API_BASE=https://inference-api.nvidia.com/v1
+export NEMO_EXPERIMENTALIST_API_KEY=sk-...
+export NEMO_EXPERIMENTALIST_MODELS_SMART=openai/openai/openai/gpt-5.6-sol
+export NEMO_EXPERIMENTALIST_MODELS_MID=openai/openai/openai/gpt-5.6-terra
+export NEMO_EXPERIMENTALIST_MODELS_FAST=openai/openai/openai/gpt-5.6-luna
 ```
 
 Confirm the plugins are installed and discoverable:
@@ -559,11 +562,11 @@ variable:
 | Variable | Used by | Default and notes |
 |----------|---------|-------------------|
 | `INFERENCE_API_KEY` | Analyst | Required. API key for the Analyst model, reached through the NVIDIA Inference Gateway. |
-| `EXPERIMENTALIST_API_BASE` | Experimenter, Eval Author | Required. OpenAI-compatible model API base URL. |
-| `EXPERIMENTALIST_API_KEY` | Experimenter, Eval Author | Required. Model API key. On the gateway, `INFERENCE_API_KEY` fills this. |
-| `EXPERIMENTALIST_SMART_MODEL_NAME` | Experimenter, Eval Author | High-capability model for analysis, proposing, coding, and curation. Defaults to a GPT-5-class model. |
-| `EXPERIMENTALIST_MID_MODEL_NAME` | Experimenter, Eval Author | Mid-tier model. Defaults to a Gemini Flash-class model. |
-| `EXPERIMENTALIST_FAST_MODEL_NAME` | Experimenter, Eval Author | Low-latency model for lightweight steps such as termination checks and summarization. Defaults to a GPT-5-mini-class model. |
+| `NEMO_EXPERIMENTALIST_API_BASE` | Experimenter, Eval Author | OpenAI-compatible model API base URL. `run` and `doctor` fall back to the NVIDIA Inference Gateway when it is unset, so it is only required against another endpoint. Also settable as `api_base` under the `experimentalist:` config section; the environment wins. |
+| `NEMO_EXPERIMENTALIST_API_KEY` | Experimenter, Eval Author | Required. Model API key. On the gateway, `INFERENCE_API_KEY` fills this. |
+| `NEMO_EXPERIMENTALIST_MODELS_SMART` | Experimenter, Eval Author | Required. High-capability model for analysis, proposing, coding, and curation. No default: a model name is only meaningful against a specific endpoint. |
+| `NEMO_EXPERIMENTALIST_MODELS_MID` | Experimenter, Eval Author | Required. Mid-tier model, used by the Coder's `apply_change` among others. No default. |
+| `NEMO_EXPERIMENTALIST_MODELS_FAST` | Experimenter, Eval Author | Required. Low-latency model for lightweight steps such as termination checks and summarization. No default. |
 
 ## Troubleshooting
 

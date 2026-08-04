@@ -15,4 +15,4 @@ dependencies = [
 ]
 [tool.uv.sources]
 # Keep in step with the workspace root pin.
-nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "bea4614a0e2a6cf88f76225466159af883da80a0" }
+nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "6e0274dd03f883254a084cfb9f871ea580e03434" }

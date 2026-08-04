@@ -12,20 +12,15 @@ import logging
 from pathlib import Path
 from typing import Any
 
-# Populates EXPERIMENTALIST_* from AUTHOR_*, which the Experimentalist agent imports below
-# read when their class bodies execute. Must stay ahead of them; isort keeps it there.
-import nemo_eval_author_plugin._env_bridge  # noqa: F401
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_eval_author_plugin.model_config import get_fast_model, get_smart_model
-from nemo_experimentalist_plugin.experimentalist.components import cache
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
-    Dataset,
-    DatasetValidationError,
-    Task,
-    TrialResult,
+from nemo_eval_author_plugin.model_config import (
+    bridge_author_env_to_experimentalist,
+    get_fast_model,
+    get_smart_model,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, ResourceRef, Task, TrialResult
+from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
@@ -52,7 +47,7 @@ from nooa.tools import TodoManager
 logger = logging.getLogger(__name__)
 
 
-class EvalAuthor(Agent, llm=get_smart_model()):
+class EvalAuthor(Agent):
     """Insights are failure modes of an agent in production.
 
     The role of the Eval Author is to create or augment the evaluation suite in such a way that it can be used to detect the failure mode.
@@ -75,7 +70,11 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                 When set, emits mid-run progress lines; never owns header/footer.
             **kwargs: Forwarded to ``Agent.__init__``.
         """
-        super().__init__(**kwargs)
+        # Eval Author still reuses a few Experimentalist agents (TraceAnalyzer,
+        # TraceExplorer). They read NEMO_EXPERIMENTALIST_* when constructed, so bridge the
+        # AUTHOR_* credentials before any of them is built.
+        bridge_author_env_to_experimentalist()
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or EvalAuthorConfig()
         self._reporter = reporter
         self.experiment_dir = experiment_dir

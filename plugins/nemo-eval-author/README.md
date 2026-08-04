@@ -32,8 +32,7 @@ from nemo_eval_author_plugin.eval_author.run import run_eval_author
 
 # Still borrowed from Experimentalist, and on the way out. Treat these as Eval Author's
 # own types once they move; do not build new code on the Experimentalist paths.
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.entities import Dataset, DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import TraceAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
@@ -54,13 +53,11 @@ from Experimentalist. When the API base is the NVIDIA Inference Gateway over HTT
 Two pieces of that module are transitional and disappear with the last
 Experimentalist import, both tagged `TODO(eval-author-standalone)`:
 
-- unset `AUTHOR_*` variables fall back to `EXPERIMENTALIST_*`, so insight mode works
+- unset `AUTHOR_*` variables fall back to `NEMO_EXPERIMENTALIST_*`, so insight mode works
   from a single Experimentalist profile `.env`. Setting `AUTHOR_*` explicitly today
   avoids the break when the fallback is removed.
-- importing `nemo_eval_author_plugin._env_bridge` copies `AUTHOR_*` into unset
-  `EXPERIMENTALIST_*` slots, so the Experimentalist helpers Eval Author still
-  borrows see credentials during a standalone run. `eval_author.agent` imports it
-  ahead of any Experimentalist agent, because those agents read the environment when
-  their class body executes.
+- `EvalAuthor.__init__` calls `bridge_author_env_to_experimentalist()`, copying
+  `AUTHOR_*` into unset `NEMO_EXPERIMENTALIST_*` slots so the Experimentalist helpers
+  Eval Author still borrows see credentials during a standalone run.
 
 A `nemo eval-author` CLI that auto-loads this `.env` is not wired yet.

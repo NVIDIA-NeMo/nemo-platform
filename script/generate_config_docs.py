@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, get_args, get_origin
 
 import yaml
+from nemo_experimentalist_plugin.settings import ExperimentalistConfig
 from nemo_safe_synthesizer_plugin.config import SafeSynthesizerConfig
 from nmp.automodel.config import AutomodelConfig
 from nmp.common.config.base import CommonServiceConfig, PlatformConfig
@@ -72,6 +73,7 @@ CONFIG_CLASSES: list[type[Any]] = [
     AutomodelConfig,
     UnslothConfig,
     SafeSynthesizerConfig,
+    ExperimentalistConfig,
     StudioConfig,
 ]
 

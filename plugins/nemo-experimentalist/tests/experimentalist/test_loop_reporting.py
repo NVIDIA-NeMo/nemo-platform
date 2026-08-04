@@ -7,16 +7,17 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from nemo_experimentalist_plugin.entities import Candidate
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
     Dataset,
     EvaluationResult,
     MetricResult,
+    ResourceRef,
+    RewardRecord,
     Task,
     TrialResult,
-    TrialStatus,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import TrialStatus
 from nemo_experimentalist_plugin.experimentalist.components.insight_promotion import (
     _task_evidence,
     insight_suite_provenance,
@@ -37,18 +38,19 @@ def _candidate(
     label: str,
     *,
     round_num: int,
-    insight_reward: dict[str, float] | None = None,
-    validation_reward: dict[str, float] | None = None,
+    rewards: dict[str, RewardRecord] | None = None,
 ) -> Candidate:
+    channels = dict(rewards or {})
+    insight = channels.get("insight") or RewardRecord()
+    channels["insight"] = insight.model_copy(
+        update={"metadata": {"suite_identity": _SUITE_IDENTITY, "metric_keys": ["reward", "uses_required_tool"]}}
+    )
     return Candidate(
         run_id="run-1",
         label=label,
         round=round_num,
         optimization="baseline" if round_num == 0 else "improve required tool use",
-        insight_reward=insight_reward,
-        validation_reward=validation_reward,
-        insight_suite_identity=_SUITE_IDENTITY,
-        insight_metric_keys=["reward", "uses_required_tool"],
+        rewards=channels,
     )
 
 
@@ -79,7 +81,7 @@ def test_round_analysis_contract_requires_separate_insight_suite_dimensions() ->
     merge_prompt = " ".join((EvolutionaryOptimizer.merge_analysis.__doc__ or "").split())
 
     assert "Insight Suite Reward" in skill_prompt
-    assert "candidate.insight_reward" in skill_prompt
+    assert "candidate.rewards" in skill_prompt
     assert "separate from train and validation rewards" in skill_prompt
     assert "insight_dim_keys" in merge_prompt
     assert "candidate.round == 0" in merge_prompt
@@ -101,13 +103,15 @@ def test_terminal_summary_includes_baseline_and_winner_insight_metrics() -> None
     baseline = _candidate(
         "agent-0",
         round_num=0,
-        insight_reward={"uses_required_tool": 0.0},
+        rewards={"insight": RewardRecord(metrics={"uses_required_tool": 0.0})},
     )
     winner = _candidate(
         "agent-1",
         round_num=1,
-        insight_reward={"uses_required_tool": 1.0},
-        validation_reward={"reward": 0.75},
+        rewards={
+            "insight": RewardRecord(metrics={"uses_required_tool": 1.0}),
+            "validation": RewardRecord(metrics={"reward": 0.75}),
+        },
     )
     optimizer = object.__new__(EvolutionaryOptimizer)
 
@@ -120,7 +124,7 @@ def test_terminal_summary_includes_baseline_and_winner_insight_metrics() -> None
 
 def test_terminal_summary_omits_insight_comparison_when_unavailable() -> None:
     baseline = _candidate("agent-0", round_num=0)
-    winner = _candidate("agent-1", round_num=1, validation_reward={"reward": 0.75})
+    winner = _candidate("agent-1", round_num=1, rewards={"validation": RewardRecord(metrics={"reward": 0.75})})
     optimizer = object.__new__(EvolutionaryOptimizer)
 
     summary = optimizer._render_summary(rounds_completed=1, baseline=baseline, winner=winner)
@@ -158,32 +162,40 @@ def test_insight_promotion_suggestions_are_stable_discriminative_and_diverse(
         Task(id="task-flat", uri=(tmp_path / "task-flat").as_uri()),
     ]
     baseline = _candidate("agent-0", round_num=0)
-    baseline.insight_reward_details = [
-        _insight_trial("task-a", 0.0, attempt=1),
-        _insight_trial("task-a", 0.0, attempt=2),
-        _insight_trial("task-b", 0.0, attempt=1),
-        _insight_trial("task-b", 0.0, attempt=2),
-        _insight_trial("task-c", 0.8, attempt=1),
-        _insight_trial("task-c", 0.8, attempt=2),
-        _insight_trial("task-flaky", 0.0, attempt=1),
-        _insight_trial("task-flaky", 1.0, attempt=2),
-        _insight_trial("task-flat", 0.5, attempt=1),
-        _insight_trial("task-flat", 0.5, attempt=2),
-    ]
+    baseline.record_reward(
+        "insight",
+        trials=[
+            _insight_trial("task-a", 0.0, attempt=1),
+            _insight_trial("task-a", 0.0, attempt=2),
+            _insight_trial("task-b", 0.0, attempt=1),
+            _insight_trial("task-b", 0.0, attempt=2),
+            _insight_trial("task-c", 0.8, attempt=1),
+            _insight_trial("task-c", 0.8, attempt=2),
+            _insight_trial("task-flaky", 0.0, attempt=1),
+            _insight_trial("task-flaky", 1.0, attempt=2),
+            _insight_trial("task-flat", 0.5, attempt=1),
+            _insight_trial("task-flat", 0.5, attempt=2),
+        ],
+    )
     winner = _candidate("agent-1", round_num=1)
-    winner.insight_metric_keys = ["uses_required_tool", "reward"]
-    winner.insight_reward_details = [
-        _insight_trial("task-a", 1.0, attempt=1),
-        _insight_trial("task-a", 1.0, attempt=2),
-        _insight_trial("task-b", 1.0, attempt=1),
-        _insight_trial("task-b", 1.0, attempt=2),
-        _insight_trial("task-c", 0.9, attempt=1),
-        _insight_trial("task-c", 0.9, attempt=2),
-        _insight_trial("task-flaky", 1.0, attempt=1),
-        _insight_trial("task-flaky", 1.0, attempt=2),
-        _insight_trial("task-flat", 0.5, attempt=1),
-        _insight_trial("task-flat", 0.5, attempt=2),
-    ]
+    winner.record_reward(
+        "insight", metadata={**winner.rewards["insight"].metadata, "metric_keys": ["uses_required_tool", "reward"]}
+    )
+    winner.record_reward(
+        "insight",
+        trials=[
+            _insight_trial("task-a", 1.0, attempt=1),
+            _insight_trial("task-a", 1.0, attempt=2),
+            _insight_trial("task-b", 1.0, attempt=1),
+            _insight_trial("task-b", 1.0, attempt=2),
+            _insight_trial("task-c", 0.9, attempt=1),
+            _insight_trial("task-c", 0.9, attempt=2),
+            _insight_trial("task-flaky", 1.0, attempt=1),
+            _insight_trial("task-flaky", 1.0, attempt=2),
+            _insight_trial("task-flat", 0.5, attempt=1),
+            _insight_trial("task-flat", 0.5, attempt=2),
+        ],
+    )
 
     suggestions = select_insight_promotion_suggestions(
         _insight_dataset(tasks),
@@ -215,12 +227,17 @@ def test_task_evidence_excludes_candidates_from_other_suites(tmp_path: Path) -> 
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
     stale = _candidate("agent-stale", round_num=1)
-    stale.insight_suite_identity = f"sha256:{'e' * 64}"
+    stale.record_reward(
+        "insight", metadata={**stale.rewards["insight"].metadata, "suite_identity": f"sha256:{'e' * 64}"}
+    )
     for candidate, score in ((baseline, 0.0), (winner, 1.0), (stale, 0.5)):
-        candidate.insight_reward_details = [
-            _insight_trial(task.id, score, attempt=1),
-            _insight_trial(task.id, score, attempt=2),
-        ]
+        candidate.record_reward(
+            "insight",
+            trials=[
+                _insight_trial(task.id, score, attempt=1),
+                _insight_trial(task.id, score, attempt=2),
+            ],
+        )
 
     evidence = _task_evidence(
         task,
@@ -323,17 +340,23 @@ def test_invalid_runtime_metrics_cannot_be_promotion_evidence(
     task = Task(id="task-a")
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
-    baseline.insight_reward_details = [
-        _insight_trial("task-a", 0.0, attempt=1),
-        _insight_trial("task-a", 0.0, attempt=2),
-    ]
+    baseline.record_reward(
+        "insight",
+        trials=[
+            _insight_trial("task-a", 0.0, attempt=1),
+            _insight_trial("task-a", 0.0, attempt=2),
+        ],
+    )
     invalid_trial = _insight_trial("task-a", invalid_score, attempt=1)
     if missing_key:
         invalid_trial.metrics.pop("uses_required_tool")
-    winner.insight_reward_details = [
-        invalid_trial,
-        _insight_trial("task-a", 1.0, attempt=2),
-    ]
+    winner.record_reward(
+        "insight",
+        trials=[
+            invalid_trial,
+            _insight_trial("task-a", 1.0, attempt=2),
+        ],
+    )
 
     assert (
         select_insight_promotion_suggestions(
@@ -349,8 +372,8 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
     task = Task(id="task-a")
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
-    baseline.insight_reward_details = [_insight_trial("task-a", 0.0)]
-    winner.insight_reward_details = [_insight_trial("task-a", 1.0)]
+    baseline.record_reward("insight", trials=[_insight_trial("task-a", 0.0)])
+    winner.record_reward("insight", trials=[_insight_trial("task-a", 1.0)])
 
     assert (
         select_insight_promotion_suggestions(
@@ -361,8 +384,8 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
         == []
     )
 
-    baseline.insight_reward_details.append(_insight_trial("task-a", 0.0, attempt=2))
-    winner.insight_reward_details.append(_insight_trial("task-a", 1.0, attempt=2, status="failed"))
+    baseline.reward("insight").trials.append(_insight_trial("task-a", 0.0, attempt=2))
+    winner.reward("insight").trials.append(_insight_trial("task-a", 1.0, attempt=2, status="failed"))
     assert (
         select_insight_promotion_suggestions(
             _insight_dataset([task]),
@@ -372,7 +395,7 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
         == []
     )
 
-    winner.insight_reward_details = []
+    winner.record_reward("insight", trials=[])
     assert (
         select_insight_promotion_suggestions(
             _insight_dataset([task]),
@@ -400,20 +423,29 @@ def test_promotion_requires_baseline_to_winner_improvement(
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
     candidates = [baseline, winner]
-    baseline.insight_reward_details = [
-        _insight_trial("task-a", baseline_score, attempt=1),
-        _insight_trial("task-a", baseline_score, attempt=2),
-    ]
-    winner.insight_reward_details = [
-        _insight_trial("task-a", winner_score, attempt=1),
-        _insight_trial("task-a", winner_score, attempt=2),
-    ]
+    baseline.record_reward(
+        "insight",
+        trials=[
+            _insight_trial("task-a", baseline_score, attempt=1),
+            _insight_trial("task-a", baseline_score, attempt=2),
+        ],
+    )
+    winner.record_reward(
+        "insight",
+        trials=[
+            _insight_trial("task-a", winner_score, attempt=1),
+            _insight_trial("task-a", winner_score, attempt=2),
+        ],
+    )
     if bad_score is not None:
         bad = _candidate("agent-bad", round_num=1)
-        bad.insight_reward_details = [
-            _insight_trial("task-a", bad_score, attempt=1),
-            _insight_trial("task-a", bad_score, attempt=2),
-        ]
+        bad.record_reward(
+            "insight",
+            trials=[
+                _insight_trial("task-a", bad_score, attempt=1),
+                _insight_trial("task-a", bad_score, attempt=2),
+            ],
+        )
         candidates.append(bad)
 
     assert (
@@ -432,12 +464,12 @@ def test_deterministic_insight_comparison_section_uses_local_suite_identity(
     baseline = _candidate(
         "agent-0",
         round_num=0,
-        insight_reward={"reward": 0.5, "uses_required_tool": 0.0},
+        rewards={"insight": RewardRecord(metrics={"reward": 0.5, "uses_required_tool": 0.0})},
     )
     winner = _candidate(
         "agent-1",
         round_num=1,
-        insight_reward={"reward": 0.75, "uses_required_tool": 1.0},
+        rewards={"insight": RewardRecord(metrics={"reward": 0.75, "uses_required_tool": 1.0})},
     )
     report_path = tmp_path / "OPTIMIZATION.md"
     provenance = insight_suite_provenance(_insight_dataset([Task(id="task-a")]))
@@ -459,14 +491,18 @@ async def test_final_report_failure_preserves_compact_summary_and_deterministic_
     baseline = _candidate(
         "agent-0",
         round_num=0,
-        insight_reward={"reward": 0.5, "uses_required_tool": 0.0},
-        validation_reward={"reward": 0.5},
+        rewards={
+            "insight": RewardRecord(metrics={"reward": 0.5, "uses_required_tool": 0.0}),
+            "validation": RewardRecord(metrics={"reward": 0.5}),
+        },
     )
     winner = _candidate(
         "agent-1",
         round_num=1,
-        insight_reward={"reward": 0.75, "uses_required_tool": 1.0},
-        validation_reward={"reward": 0.75},
+        rewards={
+            "insight": RewardRecord(metrics={"reward": 0.75, "uses_required_tool": 1.0}),
+            "validation": RewardRecord(metrics={"reward": 0.75}),
+        },
     )
     tree = EvolutionTree()
     tree.add(baseline)
@@ -518,16 +554,22 @@ async def test_insight_report_mismatch_does_not_fail_completed_run(
     baseline = _candidate(
         "agent-0",
         round_num=0,
-        insight_reward={"reward": 0.5, "uses_required_tool": 0.0},
-        validation_reward={"reward": 0.5},
+        rewards={
+            "insight": RewardRecord(metrics={"reward": 0.5, "uses_required_tool": 0.0}),
+            "validation": RewardRecord(metrics={"reward": 0.5}),
+        },
     )
     winner = _candidate(
         "agent-1",
         round_num=1,
-        insight_reward={"reward": 0.75, "uses_required_tool": 1.0},
-        validation_reward={"reward": 0.75},
+        rewards={
+            "insight": RewardRecord(metrics={"reward": 0.75, "uses_required_tool": 1.0}),
+            "validation": RewardRecord(metrics={"reward": 0.75}),
+        },
     )
-    winner.insight_suite_identity = f"sha256:{'e' * 64}"
+    winner.record_reward(
+        "insight", metadata={**winner.rewards["insight"].metadata, "suite_identity": f"sha256:{'e' * 64}"}
+    )
     tree = EvolutionTree()
     tree.add(baseline)
     tree.add(winner)

@@ -11,9 +11,8 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import unquote, urlparse
 
+from nemo_experimentalist_plugin.entities import DependencyRuntime, MetricResult, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components import cache
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import MetricResult, Task, TrialResult
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DependencyRuntime
 from nemo_experimentalist_plugin.experimentalist.components.model_config import get_fast_model, get_smart_model
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools, WorkspaceTool
 from nemo_insights_plugin.entities import Insight
@@ -95,7 +94,7 @@ def _outcome_from_eval_passed(eval_passed: bool | None) -> Literal["SUCCESS", "F
     return "SUCCESS" if eval_passed else "FAILURE"
 
 
-class TraceAnalyzer(Agent, llm=get_smart_model()):
+class TraceAnalyzer(Agent):
     """Perform deep trace analysis for a single task.
 
     Spawned by AgentAnalyzer.run in parallel — one instance per task.
@@ -123,7 +122,7 @@ class TraceAnalyzer(Agent, llm=get_smart_model()):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or TraceAnalyzerConfig()
         self._experiment_dir = experiment_dir
         self.shell = GuardedShellTools(cwd=experiment_dir)

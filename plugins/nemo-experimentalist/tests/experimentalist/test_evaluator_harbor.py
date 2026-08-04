@@ -10,6 +10,21 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from nemo_experimentalist_plugin.entities import (
+    CommandSpec,
+    Dataset,
+    DatasetRef,
+    DependencyContext,
+    DependencyRuntime,
+    MetricResult,
+    MetricSpec,
+    ResourceRef,
+    Task,
+    TrialResult,
+    local_path_from_uri,
+    run_dependency_command,
+    subset_dataset_id,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     _TRACE_ARTIFACT_DESTINATION,
     _TRACE_ARTIFACT_SOURCE,
@@ -31,21 +46,6 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     _trial_metrics,
     _trial_resources,
     _with_trace_artifact,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
-    CommandSpec,
-    Dataset,
-    DatasetRef,
-    DependencyContext,
-    DependencyRuntime,
-    MetricResult,
-    MetricSpec,
-    ResourceRef,
-    Task,
-    TrialResult,
-    local_path_from_uri,
-    run_dependency_command,
-    subset_dataset_id,
 )
 
 
@@ -1583,7 +1583,7 @@ def test_dataset_subset_missing_raises():
 
 
 def test_dataset_from_ref_not_implemented():
-    from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+    from nemo_experimentalist_plugin.entities import DatasetRef
 
     class ConcreteDataset(Dataset):
         pass

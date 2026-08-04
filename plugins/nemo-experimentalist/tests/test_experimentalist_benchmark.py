@@ -8,7 +8,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+from nemo_experimentalist_plugin.entities import (
     EvaluationResult,
     MetricResult,
     ResourceRef,
