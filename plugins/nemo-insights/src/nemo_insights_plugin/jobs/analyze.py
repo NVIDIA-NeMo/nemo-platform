@@ -59,10 +59,6 @@ class AnalyzeSpec(BaseModel):
             "Container-local unless it points at mounted storage."
         ),
     )
-    local_only: bool = Field(
-        default=False,
-        description=("Persist Insights to `insights_output` only, skipping the platform. Requires `insights_output`."),
-    )
     since: datetime | None = Field(
         default=None,
         description="Optional lower bound for incremental trace/span analysis.",
@@ -165,7 +161,6 @@ class AnalyzeJob(NemoJob):
                     base_url=spec.base_url,
                     client=make_client(spec.base_url),
                     insights_output=spec.insights_output,
-                    local_only=spec.local_only,
                     since=spec.since,
                 )
             )

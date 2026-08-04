@@ -90,37 +90,21 @@ def test_analyze_runs_flag_free_from_profile(app: typer.Typer, profile_tree: Pat
     assert recorder.kwargs["agent"] == "flight-planner"
     assert recorder.kwargs["workspace"] == "flight-workspace"
     assert recorder.kwargs["agent_spec"] == "# Flight planner"
-    assert recorder.kwargs["insights_output"] is None
-    assert recorder.kwargs["local_only"] is False
+    assert recorder.kwargs["insights_output"] is None, "a discovered profile must not divert writes off the platform"
 
 
-def test_local_only_defaults_to_the_profile_insights_file(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:
+def test_no_local_only_flag_is_exposed(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:
     recorder = AnalystRecorder()
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
 
     result = runner.invoke(app, ["run", "--local-only"])
 
-    assert result.exit_code == 0, result.output
-    assert recorder.kwargs is not None
-    assert recorder.kwargs["insights_output"] == profile_tree / ".nemo-optimizer" / "insights.yaml"
-    assert recorder.kwargs["local_only"] is True
-
-
-def test_local_only_without_profile_or_path_errors(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
-    recorder = AnalystRecorder()
-    monkeypatch.setattr(cli, "run_analyst", recorder)
-    monkeypatch.chdir(tmp_path)
-
-    result = runner.invoke(app, ["run", "--agent", "flight-planner", "--local-only"])
-
-    assert result.exit_code == 1
-    assert "--local-only has nowhere to write" in result.output
-    assert "--insights-file-output" in result.output
+    assert result.exit_code != 0
     assert recorder.kwargs is None
 
 
-def test_insights_file_output_alone_still_writes_to_the_platform(
+def test_insights_file_output_is_a_mirror_not_a_redirect(
     app: typer.Typer, profile_tree: Path, tmp_path: Path, monkeypatch
 ) -> None:
     recorder = AnalystRecorder()
@@ -133,7 +117,7 @@ def test_insights_file_output_alone_still_writes_to_the_platform(
     assert result.exit_code == 0, result.output
     assert recorder.kwargs is not None
     assert recorder.kwargs["insights_output"] == output
-    assert recorder.kwargs["local_only"] is False
+    assert "local_only" not in recorder.kwargs, "the CLI must never ask for local-only persistence"
 
 
 def test_analyze_flags_override_profile(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:
@@ -421,22 +405,6 @@ def test_malformed_discovered_profile_errors_without_agent(app: typer.Typer, tmp
     assert recorder.kwargs is None
 
 
-def test_explicit_output_overrides_profile_default_under_local_only(
-    app: typer.Typer, profile_tree: Path, tmp_path: Path, monkeypatch
-) -> None:
-    recorder = AnalystRecorder()
-    output = tmp_path / "custom.yaml"
-    monkeypatch.setattr(cli, "run_analyst", recorder)
-    monkeypatch.chdir(profile_tree)
-
-    result = runner.invoke(app, ["run", "--local-only", "--insights-file-output", str(output)])
-
-    assert result.exit_code == 0, result.output
-    assert recorder.kwargs is not None
-    assert recorder.kwargs["insights_output"] == output
-    assert recorder.kwargs["local_only"] is True
-
-
 def test_missing_profile_and_agent_errors(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
@@ -582,7 +550,6 @@ def test_analyze_constructor_failure_warns_then_exits_cleanly(
     assert "During handling of the above exception" not in result.output
 
 
-@pytest.mark.parametrize("explicit", [False, True], ids=["profile-default", "explicit-path"])
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
@@ -598,17 +565,16 @@ def test_analyze_rejects_invalid_existing_insights_file_before_runner(
     profile_tree: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    explicit: bool,
     payload: bytes,
     expected: str,
 ) -> None:
     recorder = AnalystRecorder()
-    output = tmp_path / "explicit-insights.yaml" if explicit else profile_tree / ".nemo-optimizer" / "insights.yaml"
+    output = tmp_path / "explicit-insights.yaml"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(payload)
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
-    arguments = ["run", "--insights-file-output", str(output), "--local-only"] if explicit else ["run", "--local-only"]
+    arguments = ["run", "--insights-file-output", str(output)]
 
     result = runner.invoke(app, arguments)
 
@@ -621,7 +587,6 @@ def test_analyze_rejects_invalid_existing_insights_file_before_runner(
     assert recorder.kwargs is None
 
 
-@pytest.mark.parametrize("explicit", [False, True], ids=["profile-default", "explicit-path"])
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
@@ -641,17 +606,16 @@ def test_analyze_rejects_invalid_insights_records_before_runner(
     profile_tree: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    explicit: bool,
     payload: bytes,
     expected: str,
 ) -> None:
     recorder = AnalystRecorder()
-    output = tmp_path / "explicit-insights.yaml" if explicit else profile_tree / ".nemo-optimizer" / "insights.yaml"
+    output = tmp_path / "explicit-insights.yaml"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(payload)
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
-    arguments = ["run", "--insights-file-output", str(output), "--local-only"] if explicit else ["run", "--local-only"]
+    arguments = ["run", "--insights-file-output", str(output)]
 
     result = runner.invoke(app, arguments)
 
@@ -664,21 +628,19 @@ def test_analyze_rejects_invalid_insights_records_before_runner(
     assert recorder.kwargs is None
 
 
-@pytest.mark.parametrize("explicit", [False, True], ids=["profile-default", "explicit-path"])
 def test_analyze_accepts_existing_insights_file_without_insights_key(
     app: typer.Typer,
     profile_tree: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    explicit: bool,
 ) -> None:
     recorder = AnalystRecorder()
-    output = tmp_path / "explicit-insights.yaml" if explicit else profile_tree / ".nemo-optimizer" / "insights.yaml"
+    output = tmp_path / "explicit-insights.yaml"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("metadata: retained\n", encoding="utf-8")
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
-    arguments = ["run", "--insights-file-output", str(output), "--local-only"] if explicit else ["run", "--local-only"]
+    arguments = ["run", "--insights-file-output", str(output)]
 
     result = runner.invoke(app, arguments)
 

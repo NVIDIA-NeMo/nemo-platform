@@ -14,20 +14,23 @@ raw SDK client around. The backend owns the SDK client and exposes:
   :class:`~nemo_insights_plugin.analyst.result.AnalystResult` and stores it.
 
 Intake reads (spans, span groups, annotations, session count) always hit the
-live platform. Insight listing and result persistence vary by backend, because the
-target deployment may not have the Insights plugin installed.
-:class:`RemoteAnalystBackend` lists insights via the plugin API and persists the
-result as Insight rows via the plugin API. Given an
+live platform.
+
+Insights always go to the platform. :class:`RemoteAnalystBackend` lists them via
+the plugin API and persists the result as Insight rows through it. Given an
 :class:`InsightsFileStore`, it then mirrors what the platform stored — platform
 ids included — into a local YAML file (``--insights-file-output``), so the two
-stores speak the same identifiers and a later run's updates land in both.
-:class:`LocalAnalystBackend` (``--local-only``) never touches the plugin API: it
-lists from and persists to the file alone.
+stores speak the same identifiers and a later run's updates land in both. The
+platform is the source of truth: it is written first and the file follows, and a
+file that cannot be written degrades to a warning on the run report rather than
+failing a run whose platform writes already succeeded.
 
-The platform is the source of truth in mirror mode. Insights are written there
-first and the file follows; a file that cannot be written degrades to a warning
-on the run report rather than failing a run whose platform writes already
-succeeded.
+:class:`LocalAnalystBackend` never touches the plugin API, listing from and
+persisting to the file alone. It is **maintainer tooling, not a user-facing
+mode**: the insights testbed treats the YAML as the artifact under test and runs
+against subjects that expose Intake but not the Insights plugin (see
+``testbed/README.md``). There is no CLI flag for it; only ``make_analyst_backend``'s
+``local_only`` argument selects it.
 
 :func:`make_analyst_backend` picks one. The client's lifecycle is owned by the
 caller (the CLI), so the backend never closes it.
@@ -548,12 +551,16 @@ class RemoteAnalystBackend(AnalystBackend):
 
 
 class LocalAnalystBackend(AnalystBackend):
-    """Persist the analyst's result to a local YAML file only (``--local-only``).
+    """Persist the analyst's result to a local YAML file only.
 
-    For running against a deployment that hosts observability data but does not
-    have the Insights plugin installed: reads of traces/spans/annotations still
-    hit the live platform, but insights are both listed from and written to the
-    file, and nothing is written to the platform. Ids are minted locally, so a
+    Maintainer tooling for the insights testbed, not a user-facing mode — no CLI
+    flag reaches it. The testbed treats the YAML as the artifact under test
+    (checked in, hashed, diffed across runs) and analyzes subjects that expose
+    Intake but not the Insights plugin, so its runs must neither require nor
+    touch platform Insight rows.
+
+    Reads of traces/spans/annotations still hit the live platform, but insights
+    are both listed from and written to the file. Ids are minted locally, so a
     file written this way is an independent store rather than a mirror of
     platform rows.
 
@@ -650,11 +657,11 @@ def make_analyst_backend(
 ) -> AnalystBackend:
     """Select the analyst backend.
 
-    The platform is the default destination: without *local_only*, results are
-    written through the Insights plugin API on *client*, and *insights_output*
-    (when set) additionally receives a mirror of what the platform stored. With
-    *local_only*, nothing is written to the platform and *insights_output* is
-    the sole store, so a path is required. Reads always go through *client*.
+    Results are written through the Insights plugin API on *client*, and
+    *insights_output* (when set) additionally receives a mirror of what the
+    platform stored. *local_only* is reserved for the insights testbed: it skips
+    the platform and makes *insights_output* the sole store, so a path is
+    required. No CLI flag sets it. Reads always go through *client*.
     """
     if local_only:
         if not insights_output:

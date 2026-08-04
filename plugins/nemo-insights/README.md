@@ -45,7 +45,8 @@ defaults. `--base-url` takes precedence over `NMP_BASE_URL`.
 
 ### Where insights are written
 
-Insights go to the platform by default, through the Insights plugin API.
+Insights always go to the platform, through the Insights plugin API. There is no
+mode that keeps them off it.
 
 Pass `--insights-file-output <path>` to also keep a local copy: the platform is
 written first and the file mirrors what it stored, platform ids included, so a
@@ -54,19 +55,9 @@ than overwriting it. Because the platform is the source of truth, a file that
 cannot be written is reported as a warning on the run report instead of failing
 the run.
 
-Pass `--local-only` to skip the platform entirely — for a deployment that hosts
-observability data but does not have the Insights plugin installed. It writes to
-`--insights-file-output` when given, otherwise to the shared profile default
-`.nemo-optimizer/insights.yaml` beside `optimizer.yaml`. With neither a profile
-nor an explicit path there is nowhere to write, and the command errors. Ids in a
-`--local-only` file are minted locally, so such a file is an independent store
-rather than a mirror of platform rows. Trace and feedback reads always hit
-`--base-url`.
-
 ```bash
 uv run nemo agents analyst run                                  # platform only
 uv run nemo agents analyst run --insights-file-output out.yaml  # platform + local mirror
-uv run nemo agents analyst run --local-only                     # local only
 ```
 
 ```bash

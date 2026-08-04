@@ -215,7 +215,8 @@ async def test_mirror_write_failure_warns_without_failing_the_run(tmp_path: Path
     assert list(insights.rows) == ["insight-remote-1"], "the platform write is the source of truth and must stand"
 
 
-def test_make_analyst_backend_defaults_to_the_platform(tmp_path: Path) -> None:
+def test_make_analyst_backend_always_writes_to_the_platform(tmp_path: Path) -> None:
+    """An output path adds a mirror; it never diverts writes off the platform."""
     client = SimpleNamespace()
 
     plain = make_analyst_backend(client=client, insights_output=None)  # type: ignore[arg-type]
@@ -226,7 +227,8 @@ def test_make_analyst_backend_defaults_to_the_platform(tmp_path: Path) -> None:
     assert mirrored.mirror is not None and mirrored.mirror.path == tmp_path / "insights.yaml"
 
 
-def test_make_analyst_backend_local_only_requires_a_path(tmp_path: Path) -> None:
+def test_local_only_is_testbed_plumbing_and_requires_a_path(tmp_path: Path) -> None:
+    """``local_only`` stays reachable for the testbed, which no CLI flag sets."""
     client = SimpleNamespace()
 
     local = make_analyst_backend(  # type: ignore[arg-type]

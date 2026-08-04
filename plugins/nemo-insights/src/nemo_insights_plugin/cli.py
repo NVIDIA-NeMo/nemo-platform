@@ -54,7 +54,6 @@ class _ResolvedAnalysis:
     workspace: str
     base_url: str
     insights_output: Path | None
-    local_only: bool
     profile_dir: Path | None
     spec_checks: tuple[CheckResult, ...]
 
@@ -104,7 +103,6 @@ def _resolve_analysis(
     base_url: str | None,
     profile_path: Path | None,
     insights_output: Path | None,
-    local_only: bool,
 ) -> _ResolvedAnalysis:
     profile, profile_error = _load_profile_or_error(profile_path)
     if profile_error is not None:
@@ -132,23 +130,14 @@ def _resolve_analysis(
     spec_content, spec_checks = read_agent_spec(spec_path, spec_error)
 
     resolved_base_url = resolve_base_url(base_url)
-    resolved_output = insights_output
-    if local_only and resolved_output is None:
-        if profile is None:
-            raise ProfileError(
-                "--local-only has nowhere to write: no optimizer.yaml profile was found. "
-                "Create a profile beside your agent or pass --insights-file-output with an explicit path."
-            )
-        resolved_output = profile.profile_dir / ".nemo-optimizer" / "insights.yaml"
-    validate_insights_file(resolved_output)
+    validate_insights_file(insights_output)
 
     return _ResolvedAnalysis(
         agent=resolved_agent,
         agent_spec=spec_content,
         workspace=resolved_workspace,
         base_url=resolved_base_url,
-        insights_output=resolved_output,
-        local_only=local_only,
+        insights_output=insights_output,
         profile_dir=profile.profile_dir if profile is not None else None,
         spec_checks=tuple(spec_checks),
     )
@@ -161,8 +150,7 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
 
     if analysis.insights_output is not None:
         analysis.insights_output.parent.mkdir(parents=True, exist_ok=True)
-        role = "local only" if analysis.local_only else "mirror of the platform"
-        typer.echo(f"Insights file ({role}): {analysis.insights_output}", err=True)
+        typer.echo(f"Insights file (mirror of the platform): {analysis.insights_output}", err=True)
     try:
         try:
             client = make_client(analysis.base_url)
@@ -175,7 +163,6 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             base_url=analysis.base_url,
             client=client,
             insights_output=analysis.insights_output,
-            local_only=analysis.local_only,
             verbose=verbose,
         )
     except AgentRunError as exc:
@@ -232,22 +219,9 @@ def analyze(
         None,
         "--insights-file-output",
         help=(
-            "Also write insights to this local YAML file. Insights go to "
-            "the platform first and the file mirrors what was stored, "
-            "platform ids included; each run merges into the file. Combine "
-            "with --local-only to write the file and nothing else."
-        ),
-    ),
-    local_only: bool = typer.Option(
-        False,
-        "--local-only",
-        help=(
-            "Do not write insights to the platform; keep them in the local "
-            "YAML file only. Lets the analyst run against a deployment that "
-            "hosts observability data but not the Insights plugin. Writes to "
-            "--insights-file-output, or to <profile-dir>/.nemo-optimizer/"
-            "insights.yaml when a profile is discovered. Trace/feedback reads "
-            "still hit --base-url."
+            "Also write insights to this local YAML file. Insights always go "
+            "to the platform first; the file mirrors what was stored, "
+            "platform ids included, and each run merges into it."
         ),
     ),
     verbose: bool = typer.Option(
@@ -267,7 +241,7 @@ def analyze(
     ``--agent-spec``) formatted into its instructions and tools scoped
     to ``--agent`` / ``--workspace`` / ``--base-url``, runs it, and
     prints whatever the agent returns. Insights are written to the
-    platform unless ``--local-only`` is passed.
+    platform, and mirrored to ``--insights-file-output`` when given.
     """
     try:
         analysis = _resolve_analysis(
@@ -277,7 +251,6 @@ def analyze(
             base_url=base_url,
             profile_path=profile_path,
             insights_output=insights_output,
-            local_only=local_only,
         )
         output = asyncio.run(_run_analysis(analysis, verbose=verbose))
     except (ProfileError, EnvFileError, InsightsFileError, OSError, UnicodeError) as exc:

@@ -32,8 +32,8 @@ class AnalystDeps:
         base_url: Base URL of the running NMP instance (run metadata; tools go
             through ``backend``).
         insights_output: When set, the backend also persists insights to this
-            local YAML file — as a mirror of the platform's rows, or as the
-            only store under ``--local-only`` (run metadata).
+            local YAML file, mirroring the rows the platform stored (run
+            metadata).
         backend: Shared data-access backend used by every tool.
         since: Optional lower bound for scheduled incremental analysis. Backend
             reads enforce this even if the model omits a time filter.
