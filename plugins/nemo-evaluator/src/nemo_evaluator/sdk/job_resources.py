@@ -15,8 +15,10 @@ from io import BytesIO
 from pathlib import Path
 from time import monotonic
 from typing import TypeAlias, cast
+from urllib.parse import quote
 
 import httpx
+from nemo_evaluator.jobs.agent_spec import AgentEvalSpec
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk.utils import filter_aggregate_scores
@@ -28,6 +30,10 @@ from nemo_platform_plugin.jobs.schemas import PlatformJobStatusResponse
 from pydantic import BaseModel
 
 EvaluatorJob: TypeAlias = BaseJob[EvaluateSpec]
+#: The task-driven counterpart. The two job collections carry different spec schemas, so a job
+#: payload from one does not validate as the other; the shared resource handles either.
+AgentEvaluatorJob: TypeAlias = BaseJob[AgentEvalSpec]
+AnyEvaluatorJob: TypeAlias = EvaluatorJob | AgentEvaluatorJob
 
 _TERMINAL_FAILURE_STATUSES = frozenset({"error", "cancelled", "failed"})
 _TERMINAL_SUCCESS_STATUS = "completed"
@@ -42,6 +48,12 @@ _RES_STATUS = "status"
 _RES_AGGREGATE_DOWNLOAD = "results/aggregate-scores/download"
 _RES_ROW_SCORES_DOWNLOAD = "results/row-scores/download"
 _RES_ARTIFACTS_DOWNLOAD = "results/artifacts/download"
+
+
+def _result_download_path(name: str) -> str:
+    """Job-scoped path for downloading one named result."""
+    return f"results/{quote(name, safe='')}/download"
+
 
 _RowScorePayload: TypeAlias = RowScore | BaseModel | Mapping[str, object]
 _AggregateScoresPayload: TypeAlias = AggregatedMetricResult | BaseModel | Mapping[str, object]
@@ -212,11 +224,12 @@ class EvaluatorJobResource:
     def __init__(
         self,
         *,
-        job: EvaluatorJob,
+        job: AnyEvaluatorJob,
         http_client: httpx.Client,
         base_url: str,
         workspace: str,
         headers: Mapping[str, str] | None = None,
+        collection: str = http_utils.DATASET_JOB_COLLECTION,
     ) -> None:
         """Store the job identity and HTTP client used for status and result calls."""
         self._job = job
@@ -224,10 +237,12 @@ class EvaluatorJobResource:
         self._base_url = http_utils.base_url(base_url)
         self._workspace = workspace
         self._headers = dict(headers or {})
+        self._collection = collection
         self._job_base_url = http_utils.job_route_base_url(
             raw_base_url=self._base_url,
             workspace=self._workspace,
             job_name=self.name,
+            collection=collection,
         )
 
     @property
@@ -236,7 +251,7 @@ class EvaluatorJobResource:
         return self._job.name
 
     @property
-    def job(self) -> EvaluatorJob:
+    def job(self) -> AnyEvaluatorJob:
         """Return the raw evaluator job payload captured at resource creation."""
         return self._job
 
@@ -310,6 +325,37 @@ class EvaluatorJobResource:
             aggregate_scores=aggregate_scores,
         )
 
+    def read_result_text(self, name: str) -> str:
+        """Download a *file*-valued job result by name and return its text.
+
+        ``results/{name}/download`` is a generic lookup over the results a job actually saved, so
+        ``name`` must be one the job registered (e.g. ``evaluation-results``) — there is no implicit
+        ``artifacts`` result on every job.
+        """
+        response = self._http_client.get(
+            http_utils.job_route_resource_url(
+                job_base_url=self._job_base_url, resource_path=_result_download_path(name)
+            ),
+            headers=self._headers,
+        )
+        response.raise_for_status()
+        return response.text
+
+    def download_result(self, name: str, path: Path | str | None = None) -> Path:
+        """Download a *directory*-valued job result by name and extract it.
+
+        The directory is served as a tarball; the extracted tree is returned. See
+        :meth:`read_result_text` on why the name must be one the job saved.
+        """
+        response = self._http_client.get(
+            http_utils.job_route_resource_url(
+                job_base_url=self._job_base_url, resource_path=_result_download_path(name)
+            ),
+            headers=self._headers,
+        )
+        response.raise_for_status()
+        return _extract_artifacts_tarball(response.content, _artifact_output_path(path, self.name))
+
     def download_artifacts(self, path: Path | str | None = None) -> Path:
         """Download and extract the full evaluator job artifacts tarball.
 
@@ -340,6 +386,7 @@ class EvaluatorJobResource:
             base_url=self._base_url,
             workspace=self._workspace,
             headers=self._headers,
+            collection=self._collection,
         )
 
 
@@ -349,11 +396,12 @@ class AsyncEvaluatorJobResource:
     def __init__(
         self,
         *,
-        job: EvaluatorJob,
+        job: AnyEvaluatorJob,
         http_client: _AsyncHTTPClient,
         base_url: str,
         workspace: str,
         headers: Mapping[str, str] | None = None,
+        collection: str = http_utils.DATASET_JOB_COLLECTION,
     ) -> None:
         """Store the job identity and HTTP client used for async status and result calls."""
         self._job = job
@@ -361,10 +409,12 @@ class AsyncEvaluatorJobResource:
         self._base_url = http_utils.base_url(base_url)
         self._workspace = workspace
         self._headers = dict(headers or {})
+        self._collection = collection
         self._job_base_url = http_utils.job_route_base_url(
             raw_base_url=self._base_url,
             workspace=self._workspace,
             job_name=self.name,
+            collection=collection,
         )
 
     @property
@@ -373,7 +423,7 @@ class AsyncEvaluatorJobResource:
         return self._job.name
 
     @property
-    def job(self) -> EvaluatorJob:
+    def job(self) -> AnyEvaluatorJob:
         """Return the raw evaluator job payload captured at resource creation."""
         return self._job
 
@@ -454,6 +504,28 @@ class AsyncEvaluatorJobResource:
         return EvaluationResult(
             row_scores=_parse_row_scores_jsonl(row_scores_response.text),
             aggregate_scores=aggregate_scores,
+        )
+
+    async def read_result_text(self, name: str) -> str:
+        """Async counterpart of :meth:`EvaluatorJobResource.read_result_text`."""
+        response = await self._get(
+            http_utils.job_route_resource_url(
+                job_base_url=self._job_base_url, resource_path=_result_download_path(name)
+            )
+        )
+        response.raise_for_status()
+        return response.text
+
+    async def download_result(self, name: str, path: Path | str | None = None) -> Path:
+        """Async counterpart of :meth:`EvaluatorJobResource.download_result`."""
+        response = await self._get(
+            http_utils.job_route_resource_url(
+                job_base_url=self._job_base_url, resource_path=_result_download_path(name)
+            )
+        )
+        response.raise_for_status()
+        return await asyncio.to_thread(
+            _extract_artifacts_tarball, response.content, _artifact_output_path(path, self.name)
         )
 
     async def download_artifacts(self, path: Path | str | None = None) -> Path:

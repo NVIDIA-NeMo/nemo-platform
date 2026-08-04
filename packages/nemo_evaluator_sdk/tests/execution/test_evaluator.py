@@ -12,6 +12,7 @@ import pytest
 from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.execution.config import RunConfig, RunConfigOnlineModel
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
+from nemo_evaluator_sdk.execution.utils import is_metric_sequence
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import FieldMapping, Model
@@ -74,7 +75,7 @@ def _empty_benchmark_result() -> BenchmarkEvaluationResult:
 
 
 class _FakeDirectBackend:
-    """Test backend that satisfies the evaluator protocol."""
+    """Test backend satisfying the async evaluator protocol (dataset dispatch + taskset)."""
 
     def __init__(self, single_result: EvaluationResult, multi_result: BenchmarkEvaluationResult):
         self.single_result = single_result
@@ -82,22 +83,21 @@ class _FakeDirectBackend:
         self.single_calls: list[dict[str, Any]] = []
         self.multi_calls: list[dict[str, Any]] = []
 
-    async def evaluate(self, *, metric: Metric, **kwargs: Any) -> EvaluationResult:
-        self.single_calls.append({"metric": metric, **kwargs})
+    async def evaluate_dataset(
+        self, *, metrics: Metric | Sequence[Metric], **kwargs: Any
+    ) -> EvaluationResult | BenchmarkEvaluationResult:
+        if is_metric_sequence(metrics):
+            self.multi_calls.append({"metrics": metrics, **kwargs})
+            return self.multi_result
+        self.single_calls.append({"metric": metrics, **kwargs})
         return self.single_result
 
-    async def evaluate_benchmark(
-        self,
-        *,
-        metrics: Sequence[Metric],
-        **kwargs: Any,
-    ) -> BenchmarkEvaluationResult:
-        self.multi_calls.append({"metrics": metrics, **kwargs})
-        return self.multi_result
+    async def evaluate_taskset(self, **kwargs: Any) -> Any:  # pragma: no cover - unused by dataset tests
+        raise AssertionError("taskset path should not be exercised")
 
 
 class _FakeSyncBackend:
-    """Test backend that satisfies the sync evaluator protocol."""
+    """Test backend satisfying the sync evaluator protocol (dataset dispatch + taskset)."""
 
     def __init__(self, single_result: EvaluationResult, multi_result: BenchmarkEvaluationResult):
         self.single_result = single_result
@@ -105,18 +105,17 @@ class _FakeSyncBackend:
         self.single_calls: list[dict[str, Any]] = []
         self.multi_calls: list[dict[str, Any]] = []
 
-    def evaluate(self, *, metric: Metric, **kwargs: Any) -> EvaluationResult:
-        self.single_calls.append({"metric": metric, **kwargs})
+    def evaluate_dataset(
+        self, *, metrics: Metric | Sequence[Metric], **kwargs: Any
+    ) -> EvaluationResult | BenchmarkEvaluationResult:
+        if is_metric_sequence(metrics):
+            self.multi_calls.append({"metrics": metrics, **kwargs})
+            return self.multi_result
+        self.single_calls.append({"metric": metrics, **kwargs})
         return self.single_result
 
-    def evaluate_benchmark(
-        self,
-        *,
-        metrics: Sequence[Metric],
-        **kwargs: Any,
-    ) -> BenchmarkEvaluationResult:
-        self.multi_calls.append({"metrics": metrics, **kwargs})
-        return self.multi_result
+    def evaluate_taskset(self, **kwargs: Any) -> Any:  # pragma: no cover - unused by dataset tests
+        raise AssertionError("taskset path should not be exercised")
 
 
 class _LoopSensitiveSyncBackend(_FakeSyncBackend):
@@ -130,51 +129,36 @@ class _LoopSensitiveSyncBackend(_FakeSyncBackend):
             return
         raise RuntimeError("sync backend ran on an active event loop")
 
-    def evaluate(self, *, metric: Metric, **kwargs: Any) -> EvaluationResult:
+    def evaluate_dataset(
+        self, *, metrics: Metric | Sequence[Metric], **kwargs: Any
+    ) -> EvaluationResult | BenchmarkEvaluationResult:
         self._raise_if_running_on_active_loop()
-        return super().evaluate(metric=metric, **kwargs)
-
-    def evaluate_benchmark(
-        self,
-        *,
-        metrics: Sequence[Metric],
-        **kwargs: Any,
-    ) -> BenchmarkEvaluationResult:
-        self._raise_if_running_on_active_loop()
-        return super().evaluate_benchmark(metrics=metrics, **kwargs)
+        return super().evaluate_dataset(metrics=metrics, **kwargs)
 
 
 class _MissingEvaluateBackend:
-    """Invalid backend missing the single-metric evaluation method."""
+    """Invalid backend missing the dataset evaluation method."""
 
-    def evaluate_benchmark(
-        self,
-        *,
-        metrics: Sequence[Metric],
-        **kwargs: Any,
-    ) -> BenchmarkEvaluationResult:
-        """Return an empty benchmark result for invalid-backend validation tests."""
-        del metrics, kwargs
-        return _empty_benchmark_result()
+    def evaluate_taskset(self, **kwargs: Any) -> Any:
+        """Present only the taskset method so validation reports the missing dataset method."""
+        del kwargs
+        raise NotImplementedError
 
 
 class _MixedBackend:
-    """Invalid backend mixing async single-metric and sync benchmark methods."""
+    """Invalid backend mixing an async dataset method and a sync taskset method."""
 
-    async def evaluate(self, *, metric: Metric, **kwargs: Any) -> EvaluationResult:
+    async def evaluate_dataset(
+        self, *, metrics: Metric | Sequence[Metric], **kwargs: Any
+    ) -> EvaluationResult | BenchmarkEvaluationResult:
         """Return an empty single-metric result asynchronously."""
-        del metric, kwargs
+        del metrics, kwargs
         return _empty_evaluation_result()
 
-    def evaluate_benchmark(
-        self,
-        *,
-        metrics: Sequence[Metric],
-        **kwargs: Any,
-    ) -> BenchmarkEvaluationResult:
-        """Return an empty benchmark result synchronously."""
-        del metrics, kwargs
-        return _empty_benchmark_result()
+    def evaluate_taskset(self, **kwargs: Any) -> Any:
+        """A synchronous taskset method, making this backend sync/async-mixed."""
+        del kwargs
+        raise NotImplementedError
 
 
 class TestEvaluator:
@@ -463,7 +447,7 @@ class TestEvaluator:
         assert call["params"] == RunConfig(parallelism=1)
 
     def test_rejects_client_with_missing_backend_method(self):
-        with pytest.raises(TypeError, match="missing: evaluate"):
+        with pytest.raises(TypeError, match="missing: evaluate_dataset"):
             Evaluator(client=cast(Any, _MissingEvaluateBackend()))
 
     def test_rejects_client_with_mixed_sync_and_async_methods(self):

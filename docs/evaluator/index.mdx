@@ -91,9 +91,9 @@ plugin-backed and durable execution.
 
 | Mode | Caller | Call | Best for |
 |------|--------|------|----------|
-| **Local SDK** | `Evaluator()` (`nemo_evaluator_sdk`) | `await evaluator.run(metrics=metric, dataset=dataset, config=config)` | Fast in-process iteration with no platform services. |
-| **Local plugin** | `client.evaluator` | `evaluator.run(metric=metric, dataset=dataset, config=config)` | Local runs through the platform runtime and Inference Gateway. |
-| **Remote job** | `client.evaluator` | `evaluator.submit(metric=metric, dataset=dataset, config=config)` | Durable, monitored platform jobs for production and regressions. |
+| **In-process SDK** | `Evaluator()` (`nemo_evaluator_sdk`) | `await evaluator.run(metrics=metric, dataset=dataset, config=config)` | Fast in-process iteration with no platform services. |
+| **Platform job, blocking** | `client.evaluator` | `evaluator.run(metric=metric, dataset=dataset, config=config)` | A platform job you wait on and get the result from in one call. |
+| **Platform job, durable** | `client.evaluator` | `evaluator.submit(metric=metric, dataset=dataset, config=config)` | Durable, monitored platform jobs for production and regressions. |
 
 The platform caller is mounted on a `NeMoPlatform` client:
 
@@ -109,8 +109,8 @@ client = NeMoPlatform(
 )
 evaluator: Evaluator = client.evaluator
 
-# Fast local iteration through the plugin runtime.
-local_result = evaluator.run(metric=metric, dataset=dataset, config=config)
+# A platform job, submitted and waited on in one call.
+result = evaluator.run(metric=metric, dataset=dataset, config=config)
 
 # Production evaluation as a durable platform job.
 job = evaluator.submit(metric=metric, dataset=dataset, config=config)
@@ -134,7 +134,7 @@ the same and execution gains platform capabilities:
 
 | Capability | Local SDK | Platform (`client.evaluator`) |
 |------------|-----------|-------------------------------|
-| **Execution** | Local in-process run | Local plugin runs, plus durable platform jobs |
+| **Execution** | Local in-process run | Platform jobs, blocking or durable |
 | **Inference** | Direct model or agent endpoint calls | The same, and can route through the NeMo Platform [Inference Gateway](/documentation/models-and-inference) and platform-managed endpoints |
 | **Datasets** | Inline rows and local files | Inline rows, local paths resolved at submission time, and NeMo Platform [Filesets](/documentation/get-started/core-concepts/manage-files) |
 | **Results** | Returned in memory | Platform artifact storage with typed result download |
@@ -186,8 +186,8 @@ Write a domain-specific Python metric, test it locally, and run it through the E
 Most teams get the best results by starting metric-first and scaling up:
 
 1. **Develop and validate your metrics.** Start with [Metrics](/documentation/evaluate-models/metrics)
-   to define how quality should be scored for your use case, and iterate quickly with local `run()`
-   over small inline datasets.
+   to define how quality should be scored for your use case, and iterate quickly in-process with
+   `Evaluator()` over small inline datasets.
 2. **Scale to durable jobs.** When your metrics are validated, run them with `submit()` on larger
    datasets, using [Filesets](/documentation/get-started/core-concepts/manage-files) for
    production-scale inputs.

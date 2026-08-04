@@ -42,14 +42,15 @@ target = Model(url="https://integrate.api.nvidia.com/v1/chat/completions", name=
                format=ModelFormat.OPEN_AI, api_key_secret="NVIDIA_API_KEY")
 ```
 
-For a local `run()`, `api_key_secret` names an **environment variable** in your process; for a submitted
-job it names a **platform secret** in the workspace.
+`api_key_secret` names a **platform secret** in the workspace: both `run()` and `submit()` on the
+plugin resource execute the evaluation as a platform job. Only the in-process SDK `Evaluator()`
+resolves it from an environment variable in your own process.
 
 ## `Agent` (HTTP)
 
 A deployed agent reachable over HTTP. Two variants, both authenticated with **`api_key_secret`** — the
-same credential reference `Model` uses: for a local `run()` it names an environment variable, for a
-submitted job a platform secret. Its value is sent as a bearer token on each request.
+same credential reference `Model` uses: a platform secret for plugin-resource runs, an environment
+variable for the in-process SDK `Evaluator()`. Its value is sent as a bearer token on each request.
 
 ### `GenericAgent`
 

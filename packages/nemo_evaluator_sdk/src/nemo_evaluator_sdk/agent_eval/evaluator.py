@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+import warnings
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
@@ -79,14 +80,20 @@ _SAMPLE_KEYS_EXCLUDED_FROM_OUTPUT_METADATA = frozenset(
 )
 
 
-class AgentEvaluator:
+class _AgentEvalEngine:
     """Run stored-trial or live-target agent evaluations.
 
+    This is the internal task-evaluation engine that backs
+    :meth:`nemo_evaluator_sdk.execution.evaluator.Evaluator.run_taskset_eval` (via
+    :class:`~nemo_evaluator_sdk.execution.backends.local.backend.LocalBackend`). Prefer the
+    public ``Evaluator`` entrypoint; the deprecated :class:`AgentEvaluator` shim below
+    delegates here through that entrypoint.
+
     The online inference seam (an optional ``inference_fn``, transport ``client``, and
-    ``default_headers``) is injected on the evaluator instance rather than the run config,
+    ``default_headers``) is injected on the engine instance rather than the run config,
     because these are runtime transport concerns rather than declarative run settings. A
     single ``inference_fn``/``client`` pair serves both model and agent targets; leave them
-    unset to let the evaluator build a default client for the resolved target type.
+    unset to let the engine build a default client for the resolved target type.
     """
 
     @overload
@@ -359,6 +366,108 @@ class AgentEvaluator:
         finally:
             if close_client is not None:
                 await close_client()
+
+
+class AgentEvaluator:
+    """Deprecated. Use :class:`nemo_evaluator_sdk.execution.evaluator.Evaluator`.
+
+    Task-driven (agent) evaluation is now part of the unified ``Evaluator`` entrypoint:
+
+    - ``AgentEvaluator().run(...)`` → ``Evaluator().run_taskset_eval(...)``
+    - ``AgentEvaluator().run_sync(...)`` → ``Evaluator().run_taskset_eval_sync(...)``
+
+    The online inference transport (``inference_fn`` / ``agent_inference_fn_factory`` /
+    ``client`` / ``default_headers``) now lives on ``LocalBackend``:
+    ``Evaluator(LocalBackend(inference_fn=...))``.
+
+    This shim is retained for backward compatibility and forwards to that entrypoint. It
+    will be removed in a future release.
+    """
+
+    @overload
+    def __init__(
+        self,
+        *,
+        inference_fn: InferenceFn | AgentInferenceFn | None = None,
+        agent_inference_fn_factory: None = None,
+        client: AsyncOpenAI | httpx.AsyncClient | None = None,
+        default_headers: dict[str, str] | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        *,
+        inference_fn: None = None,
+        agent_inference_fn_factory: AgentInferenceFnFactory,
+        client: AsyncOpenAI | httpx.AsyncClient | None = None,
+        default_headers: dict[str, str] | None = None,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        *,
+        inference_fn: InferenceFn | AgentInferenceFn | None = None,
+        agent_inference_fn_factory: AgentInferenceFnFactory | None = None,
+        client: AsyncOpenAI | httpx.AsyncClient | None = None,
+        default_headers: dict[str, str] | None = None,
+    ) -> None:
+        """Store transport settings for a deprecated agent-evaluation run."""
+        warnings.warn(
+            "AgentEvaluator is deprecated; use Evaluator().run_taskset_eval(...) "
+            "(transport lives on LocalBackend, e.g. Evaluator(LocalBackend(inference_fn=...))).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if inference_fn is not None and agent_inference_fn_factory is not None:
+            raise ValueError("provide either inference_fn or agent_inference_fn_factory, not both")
+        self._inference_fn = inference_fn
+        self._agent_inference_fn_factory = agent_inference_fn_factory
+        self._client = client
+        self._default_headers = default_headers
+
+    def _build_backend(self):
+        """Build a transport-configured local backend for the unified evaluator."""
+        # Imported lazily to avoid an import cycle: execution.evaluator -> backends.local
+        # -> agent_eval.evaluator (this module).
+        from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
+
+        # ``inference_fn`` / ``agent_inference_fn_factory`` are mutually exclusive (validated in
+        # ``__init__``); branch so exactly one is passed and the LocalBackend overload resolves.
+        if self._agent_inference_fn_factory is not None:
+            return LocalBackend(
+                agent_inference_fn_factory=self._agent_inference_fn_factory,
+                client=self._client,
+                default_headers=self._default_headers,
+            )
+        return LocalBackend(
+            inference_fn=self._inference_fn,
+            client=self._client,
+            default_headers=self._default_headers,
+        )
+
+    async def run(
+        self,
+        *,
+        tasks: Sequence[AgentEvalTask],
+        trials: Sequence[AgentEvalTrial] | None = None,
+        target: AgentEvalTarget | None = None,
+        config: AgentEvalRunConfig | None = None,
+    ) -> AgentEvalResult:
+        """Deprecated alias for :meth:`Evaluator.run_taskset_eval` (provide exactly one of trials/target)."""
+        return await self._build_backend().evaluate_taskset(taskset=tasks, trials=trials, target=target, config=config)
+
+    def run_sync(
+        self,
+        *,
+        tasks: Sequence[AgentEvalTask],
+        trials: Sequence[AgentEvalTrial] | None = None,
+        target: AgentEvalTarget | None = None,
+        config: AgentEvalRunConfig | None = None,
+    ) -> AgentEvalResult:
+        """Deprecated alias for :meth:`Evaluator.run_taskset_eval_sync` (provide exactly one of trials/target)."""
+        backend = self._build_backend()
+        return run_sync(lambda: backend.evaluate_taskset(taskset=tasks, trials=trials, target=target, config=config))
 
 
 async def _generate_sample(

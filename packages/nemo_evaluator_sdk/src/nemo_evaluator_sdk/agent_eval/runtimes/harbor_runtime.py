@@ -1282,10 +1282,11 @@ async def run_harbor_eval(
     """Run a Harbor dataset natively and score it — the minimal-plumbing entry point.
 
     Loads the taskset from ``dataset_path``, runs Harbor via ``config``, and scores
-    through :class:`AgentEvaluator`. Tasks are scored by :class:`HarborRewardMetric`
-    unless ``metrics`` overrides them. Returns the scored :class:`AgentEvalResult`.
+    through :class:`~nemo_evaluator_sdk.execution.evaluator.Evaluator`. Tasks are scored by
+    :class:`HarborRewardMetric` unless ``metrics`` overrides them. Returns the scored
+    :class:`AgentEvalResult`.
     """
-    from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+    from nemo_evaluator_sdk.execution.evaluator import Evaluator
 
     dataset_path = Path(dataset_path)
     tasks = HarborTasksetLoader(dataset_path).load().tasks
@@ -1296,8 +1297,8 @@ async def run_harbor_eval(
         tasks = [task.model_copy(update={"metrics": list(metrics)}) for task in tasks]
 
     runner = HarborAgentTaskRunner(config=config, task_names=task_names)
-    return await AgentEvaluator().run(
-        tasks=tasks,
+    return await Evaluator().run_taskset_eval(
+        taskset=tasks,
         target=runner,
         config=run_config or AgentEvalRunConfig(write_dashboard=False),
     )

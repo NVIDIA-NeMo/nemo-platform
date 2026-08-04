@@ -1888,8 +1888,8 @@ class TestEvaluateMetricOnline:
             side_effect=fake_generation_inference,
         )
 
-        result = await LocalBackend().evaluate(
-            metric=metric,
+        result = await LocalBackend().evaluate_dataset(
+            metrics=metric,
             dataset=[{"prompt": "What is the capital of France?"}],
             target=candidate_model,
             prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
@@ -1976,8 +1976,8 @@ class TestEvaluateMetricOnline:
             side_effect=fake_generation_inference,
         )
 
-        result = await LocalBackend().evaluate(
-            metric=metric,
+        result = await LocalBackend().evaluate_dataset(
+            metrics=metric,
             dataset=[{"prompt": "What is the capital of France?"}],
             target=candidate_model,
             prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},

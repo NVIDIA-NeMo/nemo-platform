@@ -3,7 +3,8 @@
 
 """SDK-backed agent-evaluation job for the evaluator plugin.
 
-Runs :class:`AgentEvaluator` over a set of tasks against a Model/Agent endpoint
+Runs the unified :class:`~nemo_evaluator_sdk.execution.evaluator.Evaluator` (task-driven)
+over a set of tasks against a Model/Agent endpoint
 or an agent runner (e.g. Codex CLI), producing an ``AgentEvalResult`` (trials +
 per-trial scores + summary). The row-based counterpart is
 :class:`~nemo_evaluator.jobs.evaluate.EvaluateJob`.
@@ -33,6 +34,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    FabricSandboxSpec,
     HarborRunnerTarget,
     ModelTarget,
     Target,
@@ -41,14 +43,21 @@ from nemo_evaluator.jobs.metric_resolution import resolve_metrics_to_inline, to_
 from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator.task_refs import resolve_agent_eval_tasks
-from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.persistence import persist_run
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.container_runtime import (
+    DEFAULT_FABRIC_TIMEOUT_S,
+    FabricContainerRuntime,
+)
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
+from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.base import SandboxProvider
+from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers.docker import DockerSandboxProvider
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
+from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
+from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import RunConfigOnline, RunConfigOnlineModel
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -97,6 +106,17 @@ def _runtime_metric(metric: MetricInline) -> Metric:
     return unbundle_metric(to_runtime_bundle(metric))
 
 
+def _sandbox_provider(name: str) -> SandboxProvider:
+    """Construct the sandbox provider a ``FabricSandboxSpec`` selected by name.
+
+    Providers hold live process-wide resources, so a spec carries only the name and the job owns
+    the instance. The spec's provider union is the real gate; this mapping stays exhaustive with it.
+    """
+    if name == "docker":
+        return DockerSandboxProvider()
+    raise ValueError(f"unsupported sandbox provider {name!r}")
+
+
 def _to_runtime_task(task: AgentEvalTaskSpec) -> AgentEvalTask:
     """Reconstruct a runtime ``AgentEvalTask`` (live metrics) from its canonical DTO."""
     return AgentEvalTask(
@@ -113,7 +133,7 @@ def _to_runtime_task(task: AgentEvalTaskSpec) -> AgentEvalTask:
 
 
 class AgentEvalJob(NemoJob):
-    """Run agent evaluation (``AgentEvaluator``) over tasks against a Model/Agent endpoint or runner."""
+    """Run agent evaluation (``Evaluator.run_taskset_eval``) over tasks against a Model/Agent endpoint or runner."""
 
     name: ClassVar[str] = "agent-evaluate"
     description: ClassVar[str] = "Run agent evaluation over tasks against a model, agent, or runner."
@@ -212,7 +232,7 @@ class AgentEvalJob(NemoJob):
         return (target.hostname, target.port) == (base.hostname, base.port)
 
     @staticmethod
-    def _build_evaluator(platform: NeMoPlatform | AsyncNeMoPlatform | None, target: Target | None) -> AgentEvaluator:
+    def _build_evaluator(platform: NeMoPlatform | AsyncNeMoPlatform | None, target: Target | None) -> Evaluator:
         """Construct the evaluator, forwarding the job's platform identity to online inference.
 
         Online generation against a *platform-routed* Model/Agent target must act as the job's
@@ -234,15 +254,55 @@ class AgentEvalJob(NemoJob):
         forwarded (the local/internal path relies on the ``X-NMP-*`` identity headers); see
         AALGO-297 follow-ups.
         """
-        identity_headers: dict[str, str] = {}
+        identity_headers = AgentEvalJob._identity_headers(platform, target)
+        return Evaluator(LocalBackend(default_headers=identity_headers or None))
+
+    @staticmethod
+    def _identity_headers(platform: NeMoPlatform | AsyncNeMoPlatform | None, target: Target | None) -> dict[str, str]:
+        """The job's on-behalf-of identity headers to forward, gated on the target being platform-routed.
+
+        Returns the allowlisted identity headers (:data:`_FORWARDED_IDENTITY_HEADERS`) only when *target*
+        is a platform-routed Model/Agent endpoint; an empty mapping for a third-party endpoint, a runner
+        (no HTTP endpoint), or a platformless run — so the delegated identity (which includes the user's
+        email and group PII) never leaves the platform.
+        """
         url = AgentEvalJob._endpoint_url(target)
-        if platform is not None and url is not None and AgentEvalJob._is_platform_routed(url, platform):
-            identity_headers = {
-                key: value
-                for key, value in platform.default_headers.items()
-                if key in _FORWARDED_IDENTITY_HEADERS and isinstance(value, str)
-            }
-        return AgentEvaluator(default_headers=identity_headers or None)
+        if platform is None or url is None or not AgentEvalJob._is_platform_routed(url, platform):
+            return {}
+        return {
+            key: value
+            for key, value in platform.default_headers.items()
+            if key in _FORWARDED_IDENTITY_HEADERS and isinstance(value, str)
+        }
+
+    @staticmethod
+    def _fabric_container_runtime(target: FabricRunnerTarget, sandbox: FabricSandboxSpec) -> FabricContainerRuntime:
+        """Build the sandboxed Fabric runtime for a ``fabric`` target that selected a sandbox.
+
+        The container runtime is configured entirely by its Fabric ``config`` and always captures
+        the full evidence contract, so the sibling fields that only the host runtime honors are
+        rejected rather than silently ignored — a run that quietly drops a caller's timeout or
+        model override is worse than one that refuses to start.
+        """
+        conflicts: list[str] = []
+        if target.model is not None:
+            conflicts.append("'model' (set the default model in config.models instead)")
+        if target.timeout_s != DEFAULT_FABRIC_TIMEOUT_S:
+            conflicts.append(f"'timeout_s' (the sandbox uses a fixed {DEFAULT_FABRIC_TIMEOUT_S}s budget per task)")
+        if not target.capture_trajectory:
+            conflicts.append("'capture_trajectory=False' (the sandbox always captures the ATIF trajectory)")
+        if conflicts:
+            raise ValueError(
+                f"fabric target sets {', '.join(conflicts)}, which the sandboxed runtime does not honor. "
+                "Remove the field, or drop 'sandbox' to run the harness on the job's filesystem."
+            )
+        provider = _sandbox_provider(sandbox.provider)
+        return FabricContainerRuntime(
+            target.config,
+            provider=provider,
+            secrets=sandbox.secrets,
+            image=sandbox.image,
+        )
 
     @staticmethod
     def _resolve_target(
@@ -265,6 +325,8 @@ class AgentEvalJob(NemoJob):
             )
             return runtime, None, None
         if isinstance(target, FabricRunnerTarget):
+            if target.sandbox is not None:
+                return AgentEvalJob._fabric_container_runtime(target, target.sandbox), None, None
             fabric_runtime = FabricAgentRuntime(
                 config=target.config,
                 model=target.model,
@@ -317,12 +379,23 @@ class AgentEvalJob(NemoJob):
             benchmark=spec.benchmark,
             fail_fast=spec.fail_fast,
             write_dashboard=False,
+            # Anchor runtime-produced evidence inside job storage. Runtimes given an explicit root
+            # (Codex/Fabric ``work_root``, Harbor ``jobs_dir``) ignore this; those without one —
+            # notably the sandboxed Fabric runtime — otherwise fall back to the process working
+            # directory, writing workspace/logs/trace outside storage where they are never persisted.
+            output_dir=ctx.storage.persistent,
         )
         # `run` may be injected a sync `sdk` (submitted jobs, via get_task_sdk) and/or an
         # `async_sdk`; forward whichever identity is present, preferring async when both are — the
         # same precedence the SDK-backed dataset resolver uses.
         evaluator = self._build_evaluator(async_sdk or sdk, spec.target)
-        result = evaluator.run_sync(tasks=tasks, trials=spec.trials, target=target, config=run_config)
+        # The spec validator guarantees exactly one of trials/target; branch so the mutually-exclusive
+        # run_taskset_eval_sync overload resolves (trials vs target) instead of passing both.
+        if spec.trials is not None:
+            result = evaluator.run_taskset_eval_sync(taskset=tasks, trials=spec.trials, config=run_config)
+        else:
+            assert target is not None, "agent-eval spec must provide exactly one of trials or target"
+            result = evaluator.run_taskset_eval_sync(taskset=tasks, target=target, config=run_config)
 
         files = self._write_result_files(result, ctx.storage.persistent)
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, files.bundle_dir)

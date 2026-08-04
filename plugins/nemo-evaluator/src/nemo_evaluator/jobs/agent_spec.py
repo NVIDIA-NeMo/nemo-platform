@@ -25,6 +25,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values.common import SecretRef
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -76,6 +77,35 @@ class CodexRunnerTarget(BaseModel):
     timeout_s: int = Field(default=600, ge=1, description="Per-task timeout for the Codex CLI, in seconds.")
 
 
+class FabricSandboxSpec(BaseModel):
+    """Run the Fabric harness inside a per-task sandbox instead of on the job's filesystem.
+
+    Selecting a sandbox swaps the host ``FabricAgentRuntime`` for ``FabricContainerRuntime``,
+    whose evidence contract is a superset (``workspace`` and ``logs`` are always captured from
+    the container's output tree rather than only when Fabric promotes them as artifacts), so
+    metrics score sandboxed trials unchanged.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["docker"] = Field(
+        default="docker",
+        description="Sandbox provider that supplies the per-task environment. Docker today; "
+        "Kubernetes/agent-sandbox providers widen this union as they land.",
+    )
+    image: str | None = Field(
+        default=None,
+        description="Prebuilt sandbox image containing the Fabric CLI and the selected adapter. When "
+        "omitted, a harness-agnostic image is provisioned build-if-missing on first use.",
+    )
+    secrets: dict[str, SecretRef] = Field(
+        default_factory=dict,
+        description="Credentials the harness needs inside the sandbox, keyed by the environment "
+        "variable the selected adapter reads (its ``requirements.env``). Resolved by the job and "
+        "injected as container environment; the values never appear in the spec.",
+    )
+
+
 class FabricRunnerTarget(BaseModel):
     """Generate trials by driving an agent harness through the NeMo Fabric runtime.
 
@@ -104,6 +134,11 @@ class FabricRunnerTarget(BaseModel):
         default=True,
         description="Capture the agent trajectory as ATIF via NeMo Relay and attach it to trial evidence. "
         "Requires the NeMo Relay gateway in the run environment.",
+    )
+    sandbox: FabricSandboxSpec | None = Field(
+        default=None,
+        description="Run each task inside a sandbox rather than on the job's filesystem. Omit to run "
+        "the harness directly on the host, which requires Fabric and the harness in the job image.",
     )
 
 

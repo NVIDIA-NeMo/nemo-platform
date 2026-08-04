@@ -76,6 +76,36 @@ class CodexCliAgentRuntime:
         self._process_factory = process_factory or asyncio.create_subprocess_exec
         self._runtime_name = runtime_name
 
+    @property
+    def model(self) -> str | None:
+        """Codex model this runtime was configured with; ``None`` uses the CLI default."""
+        return self._model
+
+    @property
+    def timeout_s(self) -> int:
+        """Per-task wall-clock budget for the Codex CLI, in seconds."""
+        return self._timeout_s
+
+    @property
+    def codex_bin(self) -> str:
+        """Codex executable resolved from PATH, or an explicit path."""
+        return self._codex_bin
+
+    @property
+    def prompt_builder(self) -> CodexPromptBuilder:
+        """How each task is framed as the prompt handed to Codex on stdin."""
+        return self._prompt_builder
+
+    @property
+    def process_factory(self) -> ProcessFactory:
+        """Subprocess factory used to launch the CLI; a seam for tests and sandboxing."""
+        return self._process_factory
+
+    @property
+    def runtime_name(self) -> str:
+        """Name recorded on produced trials and used for this runtime's evidence directory."""
+        return self._runtime_name
+
     async def run_tasks(
         self,
         tasks: Sequence[AgentEvalTask],

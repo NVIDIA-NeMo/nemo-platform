@@ -441,7 +441,10 @@ class FileResultSerializer(BaseResultSerializer):
             tar_path = output_path.parent / filename
             with tarfile.open(tar_path, "w:gz") as tar:
                 tar.add(output_path, arcname=os.path.basename(output_path))
-            return FileResponse(path=output_path, filename=filename)
+            # Serve the archive we just built, not the directory: ``FileResponse`` stats its path and
+            # raises on anything that is not a regular file, so returning ``output_path`` here made
+            # every directory-valued result undownloadable.
+            return FileResponse(path=tar_path, filename=filename)
         else:
             return FileResponse(path=output_path, filename=output_path.name)
 

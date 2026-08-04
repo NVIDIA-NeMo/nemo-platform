@@ -43,9 +43,9 @@ agent = GenericAgent(
 ```
 
 Set `body` and `response_path` to match **your** agent's request and response shape. Uncomment
-`api_key_secret` for an agent that needs a token — for a local `run()` it names an environment
-variable in your process, and for a submitted job it names a platform secret in the workspace; either
-way its value is sent as a bearer token on each request. The local stand-in below needs no auth, so
+`api_key_secret` for an agent that needs a token — on the plugin resource it names a platform secret
+in the workspace, and for the in-process SDK `Evaluator()` an environment variable in your process;
+either way its value is sent as a bearer token on each request. The local stand-in below needs no auth, so
 this walkthrough leaves it off.
 
 ## 2. Run it against a local stand-in

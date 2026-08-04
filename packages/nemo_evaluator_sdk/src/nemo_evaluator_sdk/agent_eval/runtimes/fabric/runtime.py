@@ -139,6 +139,41 @@ class FabricAgentRuntime:
         self._runtime_name = runtime_name
         self._skill_set = SkillSet(tuple(skills or ()))
 
+    @property
+    def config(self) -> Mapping[str, Any]:
+        """The Fabric agent config (an ``agent.yaml`` as a mapping) that describes this agent."""
+        return self._config
+
+    @property
+    def model(self) -> str | None:
+        """``provider/model`` slug applied as the config's default model, if one was given."""
+        return self._model
+
+    @property
+    def base_dir(self) -> Path | None:
+        """Directory that anchors relative paths in the config, if one was given."""
+        return self._base_dir
+
+    @property
+    def timeout_s(self) -> int:
+        """Per-task wall-clock budget for the Fabric run, in seconds."""
+        return self._timeout_s
+
+    @property
+    def capture_trajectory(self) -> bool:
+        """Whether the agent trajectory is captured as ATIF via NeMo Relay."""
+        return self._capture_trajectory
+
+    @property
+    def runtime_name(self) -> str:
+        """Name recorded on produced trials and used for this runtime's evidence directory."""
+        return self._runtime_name
+
+    @property
+    def skills(self) -> tuple[AgentSkill, ...]:
+        """Agent skills injected before each task; empty when none are configured."""
+        return self._skill_set.skills
+
     def with_skills(self, skills: Sequence[AgentSkill]) -> FabricAgentRuntime:
         """Return a copy of this runtime with ``skills`` *added* to its skill set; ``self`` is not modified.
 

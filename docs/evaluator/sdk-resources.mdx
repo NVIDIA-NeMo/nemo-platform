@@ -7,7 +7,7 @@ description: ""
 
 The `nemo_evaluator_sdk` package provides context-agnostic objects for defining metrics, datasets, evaluation configuration, and result handling.
 When you want to execute those evaluations through the NeMo Platform Evaluator plugin, use the Evaluator SDK resource mounted on the `nemo_platform` SDK.
-This page explains the NeMo Platform-specific objects used to run local plugin jobs, submit durable platform jobs, and retrieve evaluator job results.
+This page explains the NeMo Platform-specific objects used to run platform evaluation jobs — blocking or durable — and retrieve their results.
 
 
 ## Evaluator
@@ -34,7 +34,7 @@ Use `submit` when you want to create a durable remote platform job and manage th
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `run()` | Runs one metric locally through the Evaluator plugin job runtime. | `EvaluationResult` |
+| `run()` | Submits one metric evaluation as a platform job, waits for it, and returns the result. | `EvaluationResult` |
 | `submit()` | Submits one metric evaluation as a durable platform job. | `EvaluatorJobResource` |
 | `plugin_status()` | Returns Evaluator plugin health information from the service. | `dict[str, object]` |
 | `get_job_resource(job_name: str, workspace: str \\| None = None)` | Returns a resource for an existing Evaluator plugin job. | `EvaluatorJobResource` |
@@ -125,7 +125,7 @@ evaluator: AsyncEvaluator = client.evaluator
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `run()` | Runs one metric locally through the Evaluator plugin job runtime. | `EvaluationResult` |
+| `run()` | Submits one metric evaluation as a platform job, waits for it, and returns the result. | `EvaluationResult` |
 | `submit()` | Submits one metric evaluation as a durable platform job. | `AsyncEvaluatorJobResource` |
 | `plugin_status()` | Returns Evaluator plugin health information from the service. | `dict[str, object]` |
 | `get_job_resource(job_name: str, workspace: str \\| None = None)` | Returns a resource for an existing Evaluator plugin job. | `AsyncEvaluatorJobResource` |

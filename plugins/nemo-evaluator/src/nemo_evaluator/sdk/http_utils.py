@@ -52,11 +52,29 @@ def create_job_payload(spec: EvaluateInputSpec) -> dict[str, dict[str, Any]]:
     return {"spec": spec.model_dump(mode="json")}
 
 
-def job_route_base_url(*, raw_base_url: str, workspace: str, job_name: str) -> str:
-    """Build the stable evaluator plugin URL prefix for one submitted job."""
+#: Job collections the evaluator plugin exposes, matching each job's ``job_collection_path``.
+DATASET_JOB_COLLECTION = "evaluate"
+TASKSET_JOB_COLLECTION = "agent-evaluate"
+
+
+def job_collection_url(*, raw_base_url: str, workspace: str, collection: str = DATASET_JOB_COLLECTION) -> str:
+    """Build the create/list URL for one of the plugin's job collections."""
     encoded_workspace = quote(workspace, safe="")
+    return _join_url(raw_base_url, f"{_API_PREFIX}/v2/workspaces/{encoded_workspace}/{collection}/jobs")
+
+
+def job_route_base_url(
+    *, raw_base_url: str, workspace: str, job_name: str, collection: str = DATASET_JOB_COLLECTION
+) -> str:
+    """Build the stable evaluator plugin URL prefix for one submitted job.
+
+    ``collection`` selects the job family the name lives under — dataset-driven ``evaluate`` jobs
+    and task-driven ``agent-evaluate`` jobs are separate collections on the plugin API, so a job
+    name is only resolvable within its own.
+    """
     encoded_job_name = quote(job_name, safe="")
-    return _join_url(raw_base_url, f"{_API_PREFIX}/v2/workspaces/{encoded_workspace}/evaluate/jobs/{encoded_job_name}")
+    collection_url = job_collection_url(raw_base_url=raw_base_url, workspace=workspace, collection=collection)
+    return f"{collection_url}/{encoded_job_name}"
 
 
 def job_route_resource_url(*, job_base_url: str, resource_path: str) -> str:
@@ -64,10 +82,19 @@ def job_route_resource_url(*, job_base_url: str, resource_path: str) -> str:
     return _join_url(job_base_url, resource_path)
 
 
-def job_route_url(*, base_url: str, workspace: str, job_name: str, suffix: str) -> str:
+def job_route_url(
+    *,
+    base_url: str,
+    workspace: str,
+    job_name: str,
+    suffix: str,
+    collection: str = DATASET_JOB_COLLECTION,
+) -> str:
     """Build a full evaluator plugin job URL for a specific job-scoped operation."""
     return job_route_resource_url(
-        job_base_url=job_route_base_url(raw_base_url=base_url, workspace=workspace, job_name=job_name),
+        job_base_url=job_route_base_url(
+            raw_base_url=base_url, workspace=workspace, job_name=job_name, collection=collection
+        ),
         resource_path=suffix,
     )
 

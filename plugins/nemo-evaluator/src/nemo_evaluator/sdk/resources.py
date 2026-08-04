@@ -45,6 +45,7 @@ from nemo_evaluator.sdk.types import (
 )
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundlePackager
 from nemo_evaluator.shared.metric_bundles.defaults import resolve_default_metric_bundle_packager
+from nemo_evaluator_sdk.execution.backends.base import EvaluationBackend, SyncEvaluationBackend
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -216,9 +217,13 @@ class Evaluator:
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
-        """Run one metric through the evaluator plugin executor's local execution path."""
-        return self._executor.evaluate(
-            metric=metric,
+        """Run one metric on the platform: submit an evaluator job, wait for it, and return its result.
+
+        The blocking counterpart of :meth:`submit`, which returns a job handle instead. For
+        in-process evaluation use the SDK's ``Evaluator()`` directly — the plugin is the remote path.
+        """
+        return self._executor.evaluate_dataset(
+            metrics=metric,
             dataset=dataset,
             params=config,
             target=target,
@@ -226,6 +231,22 @@ class Evaluator:
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
         )
+
+    def as_backend(self) -> SyncEvaluationBackend:
+        """Return this evaluator as an injectable ``SyncEvaluationBackend``.
+
+        The returned backend satisfies the SDK's synchronous evaluation-backend protocol
+        (``evaluate_dataset`` / ``evaluate_taskset``), so it can be injected into
+        :class:`nemo_evaluator_sdk.execution.evaluator.Evaluator` to run dataset-driven and
+        task-driven evaluations through the platform plugin — "define once, run anywhere"::
+
+            from nemo_evaluator_sdk.execution.evaluator import Evaluator
+
+            evaluator = Evaluator(client.evaluator.as_backend())
+            row_result = evaluator.run_dataset_eval_sync(metric, dataset=...)
+            task_result = evaluator.run_taskset_eval_sync(taskset=..., target=...)
+        """
+        return self._executor
 
 
 class AsyncEvaluator:
@@ -323,9 +344,13 @@ class AsyncEvaluator:
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
-        """Run one metric through the evaluator plugin executor's local execution path."""
-        return await self._executor.evaluate(
-            metric=metric,
+        """Run one metric on the platform: submit an evaluator job, wait for it, and return its result.
+
+        The blocking counterpart of :meth:`submit`, which returns a job handle instead. For
+        in-process evaluation use the SDK's ``Evaluator()`` directly — the plugin is the remote path.
+        """
+        return await self._executor.evaluate_dataset(
+            metrics=metric,
             dataset=dataset,
             params=config,
             target=target,
@@ -396,6 +421,22 @@ class AsyncEvaluator:
                 metric, metric_bundle_packager, allow_cloudpickle_fallback=False, action="Submitting"
             ),
         )
+
+    def as_backend(self) -> EvaluationBackend:
+        """Return this evaluator as an injectable async ``EvaluationBackend``.
+
+        The returned backend satisfies the SDK's async evaluation-backend protocol
+        (``evaluate_dataset`` / ``evaluate_taskset``), so it can be injected into
+        :class:`nemo_evaluator_sdk.execution.evaluator.Evaluator` to run dataset-driven and
+        task-driven evaluations through the platform plugin — "define once, run anywhere"::
+
+            from nemo_evaluator_sdk.execution.evaluator import Evaluator
+
+            evaluator = Evaluator(client.evaluator.as_backend())
+            row_result = await evaluator.run_dataset_eval(metric, dataset=...)
+            task_result = await evaluator.run_taskset_eval(taskset=..., target=...)
+        """
+        return self._executor
 
 
 evaluator_sdk_resources = NemoPluginSDKResources(

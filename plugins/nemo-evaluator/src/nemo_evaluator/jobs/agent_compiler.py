@@ -6,15 +6,16 @@
 Parallels :mod:`nemo_evaluator.jobs.compiler` (row/model eval), emitting a single
 ``cpu-tasks`` step that runs ``python -m nemo_evaluator.tasks.agent_evaluate`` in
 the platform task environment. Metric/endpoint secrets are surfaced as
-``from_secret`` environment variables; an agent *runner* target (e.g. Codex)
-carries no endpoint secret of its own.
+``from_secret`` environment variables, as are the harness credentials a sandboxed
+runner declares; a host-side runner target (e.g. Codex) carries no secret of its
+own and authenticates from the job environment.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 
-from nemo_evaluator.jobs.agent_spec import AgentEvalSpec, AgentTarget, ModelTarget
+from nemo_evaluator.jobs.agent_spec import AgentEvalSpec, AgentTarget, FabricRunnerTarget, ModelTarget
 from nemo_evaluator.jobs.secret_env import build_task_environment
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -41,7 +42,7 @@ def compile_agent_eval_job(spec: AgentEvalSpec, *, profile: str | None = None) -
 
 
 def _secret_refs(spec: AgentEvalSpec) -> Iterator[tuple[str, str]]:
-    """Yield ``(env_name, secret_name)`` for each metric secret and the endpoint target's api key."""
+    """Yield ``(env_name, secret_name)`` for metric secrets, the endpoint api key, and runner secrets."""
     for task in spec.tasks:
         for bundle in task.metrics:
             for env_name, secret_ref in bundle.secrets.items():
@@ -54,6 +55,13 @@ def _secret_refs(spec: AgentEvalSpec) -> Iterator[tuple[str, str]]:
         endpoint = spec.target.agent
     if endpoint is not None and endpoint.api_key_secret is not None and endpoint.api_key_env:
         yield endpoint.api_key_env, endpoint.api_key_secret.root
+
+    # A sandboxed Fabric runner declares the credentials its harness reads inside the container,
+    # keyed by the adapter's own env var. They reach the step the same way metric secrets do; the
+    # runtime then forwards them across the sandbox boundary.
+    if isinstance(spec.target, FabricRunnerTarget) and spec.target.sandbox is not None:
+        for env_name, secret_ref in spec.target.sandbox.secrets.items():
+            yield env_name, secret_ref.root
 
 
 def _agent_eval_step(spec: AgentEvalSpec, profile: str | None) -> PlatformJobStep:

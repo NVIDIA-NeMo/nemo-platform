@@ -138,6 +138,34 @@ class FabricContainerRuntime:
         # must be unique — each stages to its own ``<name>/`` bundle, so a repeat would collide.
         self._skill_set = SkillSet(tuple(skills or ()))
 
+    @property
+    def config(self) -> Mapping[str, Any]:
+        """The Fabric agent config (an ``agent.yaml`` as a mapping) that describes this agent."""
+        return self._config
+
+    @property
+    def provider(self) -> SandboxProvider:
+        """Provider that supplies each task's sandbox."""
+        return self._provider
+
+    @property
+    def secrets(self) -> Mapping[str, SecretRef]:
+        """Declared credentials, keyed by the env var the selected adapter reads them from.
+
+        References only — never the values a prior :meth:`resolve_secrets` resolved.
+        """
+        return self._secrets
+
+    @property
+    def image(self) -> str | None:
+        """Sandbox image, or ``None`` to provision the stock image build-if-missing on first run."""
+        return self._image
+
+    @property
+    def skills(self) -> tuple[AgentSkill, ...]:
+        """Agent skills injected before each task; empty when none are configured."""
+        return self._skill_set.skills
+
     def with_skills(self, skills: Sequence[AgentSkill]) -> FabricContainerRuntime:
         """Return a copy of this runtime with ``skills`` *added* to its skill set; ``self`` is not modified.
 

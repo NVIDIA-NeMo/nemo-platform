@@ -1633,7 +1633,7 @@ components:
           - $ref: '#/components/schemas/ModelTargetInput'
           - $ref: '#/components/schemas/AgentTargetInput'
           - $ref: '#/components/schemas/CodexRunnerTarget'
-          - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/FabricRunnerTargetInput'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
@@ -1797,7 +1797,7 @@ components:
           - $ref: '#/components/schemas/ModelTargetOutput'
           - $ref: '#/components/schemas/AgentTargetOutput'
           - $ref: '#/components/schemas/CodexRunnerTarget'
-          - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/FabricRunnerTargetOutput'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
@@ -2970,7 +2970,7 @@ components:
       - kind
       title: EvidenceDescriptor
       description: Descriptor for a candidate trace, source, or artifact.
-    FabricRunnerTarget:
+    FabricRunnerTargetInput:
       properties:
         kind:
           type: string
@@ -3001,11 +3001,17 @@ components:
           description: Capture the agent trajectory as ATIF via NeMo Relay and attach
             it to trial evidence. Requires the NeMo Relay gateway in the run environment.
           default: true
+        sandbox:
+          allOf:
+          - $ref: '#/components/schemas/FabricSandboxSpec'
+          description: Run each task inside a sandbox rather than on the job's filesystem.
+            Omit to run the harness directly on the host, which requires Fabric and
+            the harness in the job image.
       additionalProperties: false
       type: object
       required:
       - config
-      title: FabricRunnerTarget
+      title: FabricRunnerTargetInput
       description: "Generate trials by driving an agent harness through the NeMo Fabric\
         \ runtime.\n\nFabric is harness-agnostic: the harness (Codex, Hermes, ...)\
         \ is selected by the supplied\nconfig's ``harness.adapter_id`` and is never\
@@ -3013,6 +3019,95 @@ components:
         \ when given.\n\nA run is described by exactly one complete ``config``. Fabric\
         \ 0.1.0rc2 removed profile overlays,\nso the former ``profiles`` field is\
         \ gone \u2014 fold any overlay you were passing into ``config``."
+    FabricRunnerTargetOutput:
+      properties:
+        kind:
+          type: string
+          const: fabric
+          title: Kind
+          default: fabric
+        config:
+          additionalProperties: true
+          type: object
+          title: Config
+          description: Inline NeMo Fabric agent config (an ``agent.yaml`` as a JSON-shaped
+            mapping). Its ``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex``
+            for Codex.
+        model:
+          title: Model
+          description: Optional ``provider/model`` slug applied as the config's default
+            model; the harness default is used when omitted.
+          type: string
+        timeout_s:
+          type: integer
+          minimum: 1.0
+          title: Timeout S
+          description: Per-task timeout for the Fabric run, in seconds.
+          default: 600
+        capture_trajectory:
+          type: boolean
+          title: Capture Trajectory
+          description: Capture the agent trajectory as ATIF via NeMo Relay and attach
+            it to trial evidence. Requires the NeMo Relay gateway in the run environment.
+          default: true
+        sandbox:
+          allOf:
+          - $ref: '#/components/schemas/FabricSandboxSpec'
+          description: Run each task inside a sandbox rather than on the job's filesystem.
+            Omit to run the harness directly on the host, which requires Fabric and
+            the harness in the job image.
+      additionalProperties: false
+      type: object
+      required:
+      - config
+      title: FabricRunnerTargetOutput
+      description: "Generate trials by driving an agent harness through the NeMo Fabric\
+        \ runtime.\n\nFabric is harness-agnostic: the harness (Codex, Hermes, ...)\
+        \ is selected by the supplied\nconfig's ``harness.adapter_id`` and is never\
+        \ inferred from ``model``. ``model`` is applied as the\nconfig's default model\
+        \ when given.\n\nA run is described by exactly one complete ``config``. Fabric\
+        \ 0.1.0rc2 removed profile overlays,\nso the former ``profiles`` field is\
+        \ gone \u2014 fold any overlay you were passing into ``config``."
+    FabricSandboxSpec:
+      properties:
+        provider:
+          type: string
+          const: docker
+          title: Provider
+          description: Sandbox provider that supplies the per-task environment. Docker
+            today; Kubernetes/agent-sandbox providers widen this union as they land.
+          default: docker
+        image:
+          title: Image
+          description: Prebuilt sandbox image containing the Fabric CLI and the selected
+            adapter. When omitted, a harness-agnostic image is provisioned build-if-missing
+            on first use.
+          type: string
+        secrets:
+          additionalProperties:
+            $ref: '#/components/schemas/SecretRef'
+          type: object
+          title: Secrets
+          description: Credentials the harness needs inside the sandbox, keyed by
+            the environment variable the selected adapter reads (its ``requirements.env``).
+            Resolved by the job and injected as container environment; the values
+            never appear in the spec.
+      additionalProperties: false
+      type: object
+      title: FabricSandboxSpec
+      description: 'Run the Fabric harness inside a per-task sandbox instead of on
+        the job''s filesystem.
+
+
+        Selecting a sandbox swaps the host ``FabricAgentRuntime`` for ``FabricContainerRuntime``,
+
+        whose evidence contract is a superset (``workspace`` and ``logs`` are always
+        captured from
+
+        the container''s output tree rather than only when Fabric promotes them as
+        artifacts), so
+
+        metrics score sandboxed trials unchanged.'
     FieldMapping:
       properties:
         input:

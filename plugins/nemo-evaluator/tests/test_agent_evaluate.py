@@ -26,19 +26,23 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    FabricSandboxSpec,
     HarborRunnerTarget,
     ModelTarget,
     Target,
 )
 from nemo_evaluator.metric_refs import MetricRef
+from nemo_evaluator.sdk._executor import _agent_eval_target_to_spec
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator.tasks.agent_evaluate import main as agent_eval_task_main
 from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.container_runtime import FabricContainerRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner
+from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.providers.docker import DockerSandboxProvider
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTarget,
@@ -95,15 +99,15 @@ class _FakeEvaluator:
         self.received_target: AgentEvalTarget | None = None
         self.received_config: AgentEvalRunConfig | None = None
 
-    def run_sync(
+    def run_taskset_eval_sync(
         self,
         *,
-        tasks: Sequence[AgentEvalTask],
+        taskset: Sequence[AgentEvalTask],
         trials: Sequence[AgentEvalTrial] | None = None,
         target: AgentEvalTarget | None = None,
         config: AgentEvalRunConfig | None = None,
     ) -> AgentEvalResult:
-        self.received_tasks = list(tasks)
+        self.received_tasks = list(taskset)
         self.received_trials = list(trials) if trials is not None else None
         self.received_target = target
         self.received_config = config
@@ -114,10 +118,10 @@ class _FakeEvaluator:
                 status=AgentEvalTrialStatus.COMPLETED,
                 output=AgentOutput(output_text="4"),
             )
-            for task in tasks
+            for task in taskset
         ]
         return AgentEvalResult(
-            run_id="run-1", tasks=list(tasks), trials=generated_trials, scores=[], summary=AgentEvalSummary()
+            run_id="run-1", tasks=list(taskset), trials=generated_trials, scores=[], summary=AgentEvalSummary()
         )
 
 
@@ -234,6 +238,68 @@ def test_resolve_target_builds_fabric_runtime_from_runner_target(tmp_path: Path)
     assert params is None
 
 
+def test_resolve_target_builds_fabric_container_runtime_when_sandbox_selected(tmp_path: Path) -> None:
+    """A ``sandbox`` on the fabric target swaps the host runtime for its sandboxed sibling."""
+    ctx = _job_context(tmp_path)
+    fabric_target = FabricRunnerTarget(
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.hermes"}},
+        sandbox=FabricSandboxSpec(
+            image="fabric-sandbox:test", secrets={"NVIDIA_API_KEY": SecretRef(root="nvidia-api-key")}
+        ),
+    )
+    target, prompt_template, params = AgentEvalJob._resolve_target(fabric_target, ctx)
+
+    assert isinstance(target, FabricContainerRuntime)
+    assert target._image == "fabric-sandbox:test"
+    assert target._secrets == {"NVIDIA_API_KEY": SecretRef(root="nvidia-api-key")}
+    assert target._provider.name == "docker"
+    assert prompt_template is None
+    assert params is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("model", "openai/gpt-5.4", "config.models"),
+        ("timeout_s", 1200, "timeout_s"),
+        ("capture_trajectory", False, "capture_trajectory"),
+    ],
+)
+def test_resolve_target_rejects_sandbox_fields_the_container_ignores(
+    tmp_path: Path, field: str, value: object, expected: str
+) -> None:
+    """Host-only knobs must fail loudly rather than be silently dropped by the sandboxed runtime."""
+    ctx = _job_context(tmp_path)
+    fabric_target = FabricRunnerTarget(
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.hermes"}},
+        sandbox=FabricSandboxSpec(),
+        **{field: value},
+    )
+
+    with pytest.raises(ValueError, match=expected):
+        AgentEvalJob._resolve_target(fabric_target, ctx)
+
+
+def test_fabric_container_runner_round_trips_through_the_wire(tmp_path: Path) -> None:
+    """runtime -> to_target_spec -> wire DTO -> _resolve_target reconstructs an equivalent runner."""
+    ctx = _job_context(tmp_path)
+    original = FabricContainerRuntime(
+        {"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.hermes"}},
+        provider=DockerSandboxProvider(),
+        secrets={"NVIDIA_API_KEY": SecretRef(root="nvidia-api-key")},
+        image="fabric-sandbox:test",
+    )
+
+    spec = _agent_eval_target_to_spec(original, None)
+    rebuilt, _, _ = AgentEvalJob._resolve_target(spec, ctx)
+
+    assert isinstance(rebuilt, FabricContainerRuntime)
+    assert rebuilt._config == original._config
+    assert rebuilt._secrets == original._secrets
+    assert rebuilt._image == original._image
+    assert rebuilt._provider.name == original._provider.name
+
+
 def test_resolve_target_builds_harbor_runtime_from_runner_target(tmp_path: Path) -> None:
     ctx = _job_context(tmp_path)
     harbor_target = HarborRunnerTarget(
@@ -337,9 +403,7 @@ def test_build_evaluator_forwards_identity_headers_to_platform_routed_target(
     sdk = _sdk_with_identity(sdk_cls)
     target = _model_target("http://platform/apis/inference-gateway/v2/workspaces/default/model/m/-/v1/chat/completions")
 
-    evaluator = AgentEvalJob._build_evaluator(sdk, target)
-
-    assert evaluator.default_headers == {
+    assert AgentEvalJob._identity_headers(sdk, target) == {
         "X-NMP-Principal-Id": "service:evaluator",
         "X-NMP-Principal-On-Behalf-Of": "user-1",
         "X-NMP-Principal-On-Behalf-Of-Email": "user@corp.test",
@@ -357,18 +421,18 @@ def test_build_evaluator_sends_no_identity_to_third_party_target(
     sdk = _sdk_with_identity(sdk_cls)
     target = _model_target("https://api.openai.com/v1/chat/completions")
 
-    assert AgentEvalJob._build_evaluator(sdk, target).default_headers is None
+    assert AgentEvalJob._identity_headers(sdk, target) == {}
 
 
 def test_build_evaluator_runner_target_forwards_no_headers() -> None:
     # A runner (Codex CLI) has no platform HTTP endpoint, so there's no identity to forward.
     sdk = _sdk_with_identity(NeMoPlatform)
-    assert AgentEvalJob._build_evaluator(sdk, CodexRunnerTarget(model="gpt-5.5")).default_headers is None
+    assert AgentEvalJob._identity_headers(sdk, CodexRunnerTarget(model="gpt-5.5")) == {}
 
 
 def test_build_evaluator_without_platform_forwards_no_headers() -> None:
     target = _model_target("http://platform/apis/inference-gateway/v2/workspaces/default/model/m/-/v1/chat/completions")
-    assert AgentEvalJob._build_evaluator(None, target).default_headers is None
+    assert AgentEvalJob._identity_headers(None, target) == {}
 
 
 def test_input_spec_accepts_stored_metric_reference() -> None:
@@ -501,6 +565,40 @@ async def test_compile_injects_target_api_key_secret() -> None:
     step = PlatformJobSpec.model_validate(compiled).steps[0]
     secrets = {env.name: env.from_secret.name for env in step.environment or [] if env.from_secret}
     assert secrets == {"NVIDIA_API_KEY": "NVIDIA_API_KEY"}
+
+
+async def test_compile_injects_sandbox_runner_secrets() -> None:
+    """A sandboxed runner's harness credential reaches the step keyed by the adapter's env var."""
+    spec = AgentEvalSpec(
+        tasks=[_task_spec()],
+        target=FabricRunnerTarget(
+            config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.hermes"}},
+            sandbox=FabricSandboxSpec(secrets={"NVIDIA_API_KEY": SecretRef(root="nvidia-api-key")}),
+        ),
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="default", spec=spec, entity_client=object(), job_name=None, async_sdk=None
+    )
+
+    step = PlatformJobSpec.model_validate(compiled).steps[0]
+    secrets = {env.name: env.from_secret.name for env in step.environment or [] if env.from_secret}
+    assert secrets == {"NVIDIA_API_KEY": "nvidia-api-key"}
+
+
+async def test_compile_host_fabric_runner_declares_no_secrets() -> None:
+    """Without a sandbox the harness authenticates from the job environment, so nothing is injected."""
+    spec = AgentEvalSpec(
+        tasks=[_task_spec()],
+        target=FabricRunnerTarget(config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}}),
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="default", spec=spec, entity_client=object(), job_name=None, async_sdk=None
+    )
+
+    step = PlatformJobSpec.model_validate(compiled).steps[0]
+    assert [env.name for env in step.environment or [] if env.from_secret] == []
 
 
 async def test_compile_rejects_reserved_secret_env_name() -> None:

@@ -13,10 +13,11 @@ got there*. Each task carries its own metrics, so a single suite can grade heter
 
 <Note>
 
-**Platform-plugin support is in progress.** The pages in this section run agent evaluations through
-the **local SDK** (`AgentEvaluator().run()`). Running them through the **NeMo Platform plugin** as
-durable platform jobs — the way [dataset-driven metrics](/documentation/evaluate-models/metrics)
-already can — is under active development; for now, use the local SDK path shown here.
+**The examples here run in-process.** The pages in this section run agent evaluations through the
+in-process SDK (`Evaluator().run_taskset_eval()`; `AgentEvaluator` is a deprecated shim for it). The
+same taskset also runs as a platform job by injecting the plugin backend —
+`Evaluator(client.evaluator.as_backend()).run_taskset_eval(...)` — which is how you get durable,
+monitored execution alongside [dataset-driven metrics](/documentation/evaluate-models/metrics).
 
 </Note>
 
