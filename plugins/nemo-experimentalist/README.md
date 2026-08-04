@@ -96,7 +96,9 @@ task code can use any outbound access granted to the sandbox. The sandbox must
 be able to reach the package, model, registry, Harbor dataset, and NeMo Platform
 endpoints required by the run.
 
-Copy experiment artifacts you want to retain to the host with `sbx cp`.
+Copy experiment artifacts you want to retain to the host with `sbx cp`; the
+[complete example](../../docs/get-started/example-agent.mdx#5-optimize-performance-with-the-experimentalist)
+includes concrete inspection, comparison, and copy commands.
 `sbx stop nemo-experimentalist` preserves the VM, output, packages, and private
 Docker cache; `sbx rm nemo-experimentalist` deletes them. On Apple silicon,
 Harbor tasks that publish only `linux/amd64` images do not run in the

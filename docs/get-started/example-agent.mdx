@@ -158,11 +158,25 @@ granted to the sandbox.
 </Warning>
 
 The trace records include the Experimentalist evaluation ID and Tau3 task ID.
-After the run completes, use `sbx exec` to inspect
-`plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist/eval-and-optimize/run.json`
-in the sandbox for the selected winner and compare the `agent-0` and `agent-1`
-directories to review the code change that was evaluated. Copy artifacts you
-want to retain to the host with `sbx cp` before removing the sandbox.
+After the run completes, inspect the run summary and compare the baseline with
+the candidate. The `diff` command exits with status 1 when it finds candidate
+changes, which is expected:
+
+```bash
+artifact_dir="plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist/eval-and-optimize"
+sbx exec --workdir "$repo" nemo-experimentalist \
+  sed -n '1,240p' "$artifact_dir/run.json"
+sbx exec --workdir "$repo" nemo-experimentalist \
+  diff -ru "$artifact_dir/agents/agent-0" "$artifact_dir/agents/agent-1"
+```
+
+Copy artifacts you want to retain to the host before removing the sandbox:
+
+```bash
+mkdir -p tmp/tau3-airline-artifacts
+sbx cp "nemo-experimentalist:$repo/$artifact_dir" \
+  tmp/tau3-airline-artifacts/
+```
 
 Stopping preserves the VM, its private Git clone, experiment output, installed
 packages, and Docker image/build cache. Remove the sandbox when you no longer
