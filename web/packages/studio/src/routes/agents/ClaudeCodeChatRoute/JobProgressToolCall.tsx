@@ -15,7 +15,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardList } from 'lucide-react';
 import { type FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface JobProgressToolCallProps {
   readonly args: ClaudeCodeToolArgs;

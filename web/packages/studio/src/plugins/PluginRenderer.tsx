@@ -10,7 +10,7 @@ import type { PluginHost, PluginSdk, PluginTelemetry } from '@studio/plugins/typ
 import { logger } from '@studio/util/logger';
 import { useCallback, useMemo, useRef, type ReactElement } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 
 // Module-scope for stable identity; plugins run these on Studio's axios + cache.
 const STUDIO_SDK: PluginSdk = { platform: platformSdk };

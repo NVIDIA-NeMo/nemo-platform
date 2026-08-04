@@ -6,7 +6,7 @@ import { PluginRenderer } from '@studio/plugins/PluginRenderer';
 import type { LoadedPlugin, PluginRootProps } from '@studio/plugins/types';
 import { render, screen } from '@testing-library/react';
 import { useEffect } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 
 const authState = vi.hoisted(() => ({ accessToken: 'test-token' }));
 

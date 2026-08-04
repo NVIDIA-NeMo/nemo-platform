@@ -8,7 +8,7 @@ import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeC
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { generatePath, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { generatePath, MemoryRouter, Route, Routes } from 'react-router';
 
 const mocks = vi.hoisted(() => ({
   chat: {

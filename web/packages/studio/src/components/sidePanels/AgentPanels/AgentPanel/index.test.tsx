@@ -9,7 +9,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { type ReactNode } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 
 // These match mock agent names in handlers.ts
 const MOCK_AGENT_WITH_DEPLOYMENTS = 'react-agent'; // has rag-agent-prod (running) + sql-agent-dev (stopped)

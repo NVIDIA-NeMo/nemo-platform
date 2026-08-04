@@ -43,7 +43,6 @@ const VENDOR_EXTERNALS = [
   'react-dom',
   'react-dom/client',
   'react-router',
-  'react-router-dom',
   // The design system is shared so plugins render KUI components against the
   // same theme context Studio's KaizenThemeProvider populates (native look +
   // dark mode) instead of bundling their own foundations copy.
@@ -64,7 +63,6 @@ const VENDOR_IMPORT_MAP: Record<string, string> = {
   'react-dom': 'react-dom.js',
   'react-dom/client': 'react-dom.js',
   'react-router': 'react-router.js',
-  'react-router-dom': 'react-router-dom.js',
   '@nvidia/foundations-react-core': 'foundations.js',
   '@tanstack/react-query': 'react-query.js',
 };
@@ -161,7 +159,6 @@ async function buildVendorBundles(
       ...cjsNamedReexports('_reactDomClient', reactDomClientKeys),
     ].join('\n'),
     'virtual:react-router': "export * from 'react-router';",
-    'virtual:react-router-dom': "export * from 'react-router-dom';",
     // Foundations is ESM with static named exports, so a plain re-export works
     // (no CJS named-reexport introspection needed as with react/react-dom).
     'virtual:foundations': "export * from '@nvidia/foundations-react-core';",
@@ -182,11 +179,6 @@ async function buildVendorBundles(
       banner: buildRequireShim(['react']),
     },
     { entry: 'virtual:react-router', outfile: 'react-router.js', external: ['react'] },
-    {
-      entry: 'virtual:react-router-dom',
-      outfile: 'react-router-dom.js',
-      external: ['react', 'react-dom', 'react-router'],
-    },
     {
       entry: 'virtual:foundations',
       outfile: 'foundations.js',

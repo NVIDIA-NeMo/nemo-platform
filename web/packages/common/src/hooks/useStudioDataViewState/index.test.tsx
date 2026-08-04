@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { renderHook, act } from '@testing-library/react';
-import { MemoryRouter, useSearchParams } from 'react-router-dom';
+import { MemoryRouter, useSearchParams } from 'react-router';
 
 import { useStudioDataViewState } from './index';
 

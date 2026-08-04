@@ -168,7 +168,7 @@ export const getWorkspaceBaseModelsRoute = (
   if (options?.model) {
     path = generatePath(ROUTES.workspace.baseModelsModel, {
       workspace,
-      modelName: encodeURIComponent(options.model),
+      modelName: options.model,
     });
     if (options?.tab) {
       searchParams.set('tab', options.tab);
@@ -235,7 +235,7 @@ export const getWorkspaceDeploymentDetailsRoute = (
 ) => {
   return generatePath(ROUTES.workspace.deploymentsDeployment, {
     workspace,
-    deploymentName: encodeURIComponent(deploymentName),
+    deploymentName: deploymentName,
     deploymentPanelView: panelView,
   });
 };
@@ -321,7 +321,7 @@ export const getExperimentRoute = (workspace: string) => {
 export const getExperimentDetailRoute = (workspace: string, experimentName: string) => {
   return generatePath(ROUTES.workspace.experimentDetail, {
     workspace,
-    experimentName: encodeURIComponent(experimentName),
+    experimentName: experimentName,
   });
 };
 
@@ -332,8 +332,8 @@ export const getEvaluationDetailRoute = (
 ) => {
   return generatePath(ROUTES.workspace.evaluationDetail, {
     workspace,
-    experimentName: encodeURIComponent(experimentName),
-    evaluationName: encodeURIComponent(evaluationName),
+    experimentName: experimentName,
+    evaluationName: evaluationName,
   });
 };
 
@@ -345,9 +345,9 @@ export const getEvaluationSessionDetailRoute = (
 ): string => {
   return generatePath(ROUTES.workspace.evaluationSessionDetail, {
     workspace,
-    experimentName: encodeURIComponent(experimentName),
-    evaluationName: encodeURIComponent(evaluationName),
-    sessionId: encodeURIComponent(sessionId),
+    experimentName: experimentName,
+    evaluationName: evaluationName,
+    sessionId: sessionId,
   });
 };
 
@@ -491,8 +491,8 @@ export const getFilesetDetailRoute = (
 export const getFilesetFileRoute = (workspace: string, fileset: string, filePath: string) => {
   return generatePath(ROUTES.workspace.filesetFile, {
     workspace,
-    filesetId: encodeURIComponent(fileset),
-    filePathEncoded: encodeURIComponent(filePath),
+    filesetId: fileset,
+    filePathEncoded: filePath,
   });
 };
 
@@ -511,7 +511,7 @@ export const getIntakeSpansRoute = (workspace: string) => {
 export const getIntakeSessionRoute = (workspace: string, sessionId: string) => {
   return generatePath(ROUTES.workspace.intakeSession, {
     workspace,
-    sessionId: encodeURIComponent(sessionId),
+    sessionId: sessionId,
   });
 };
 

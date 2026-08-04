@@ -10,7 +10,7 @@ import { useSelectedWorkspace } from '@studio/providers/workspace';
 import { ClaudeCodeChatProvider } from '@studio/routes/agents/ClaudeCodeChatRoute/context/ClaudeCodeChatProvider';
 import { WorkspaceGuard } from '@studio/routes/RootLayout/WorkspaceGuard';
 import { ReactNode } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 
 export const PageLayout = ({ sideNav }: { sideNav?: (collapsed: boolean) => ReactNode }) => {
   const { isAuthPending } = useAuthAutoLogin();

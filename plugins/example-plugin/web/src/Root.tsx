@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import { Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
-import type { PluginHost, PluginRootProps } from './types';
+import { Button, Flex, Stack, Text } from "@nvidia/foundations-react-core";
+import { Routes, Route, NavLink, Navigate, Outlet } from "react-router";
+import type { PluginHost, PluginRootProps } from "./types";
 
 /**
  * Example plugin root.
@@ -32,8 +32,14 @@ export function Root({ host }: PluginRootProps) {
       <Route element={<Layout />}>
         <Route index element={<Navigate to="overview" replace />} />
         <Route path="overview" element={<OverviewPage host={host} />} />
-        <Route path="auth" element={<AuthPage getAccessToken={host.auth.getAccessToken} />} />
-        <Route path="workspace" element={<WorkspacePage workspaceId={host.workspaceId} />} />
+        <Route
+          path="auth"
+          element={<AuthPage getAccessToken={host.auth.getAccessToken} />}
+        />
+        <Route
+          path="workspace"
+          element={<WorkspacePage workspaceId={host.workspaceId} />}
+        />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
@@ -45,16 +51,24 @@ function Layout() {
   // Active/inactive styling uses Studio's semantic tokens so it tracks the theme.
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-1 rounded text-sm font-medium transition-colors ${
-      isActive ? 'text-primary bg-surface-hover' : 'text-subtle hover:text-primary'
+      isActive
+        ? "text-primary bg-surface-hover"
+        : "text-subtle hover:text-primary"
     }`;
 
   return (
     <Stack gap="4" className="h-full p-4">
       {/* In-plugin tab bar — uses Studio's shared react-router <NavLink>. */}
       <Flex gap="2" className="border-b border-subtle pb-2">
-        <NavLink to="overview" className={linkClass}>Overview</NavLink>
-        <NavLink to="auth" className={linkClass}>Auth</NavLink>
-        <NavLink to="workspace" className={linkClass}>Workspace</NavLink>
+        <NavLink to="overview" className={linkClass}>
+          Overview
+        </NavLink>
+        <NavLink to="auth" className={linkClass}>
+          Auth
+        </NavLink>
+        <NavLink to="workspace" className={linkClass}>
+          Workspace
+        </NavLink>
       </Flex>
       <div className="flex-1">
         <Outlet />
@@ -74,10 +88,11 @@ function CodeBlock({ children }: { children: string }) {
 
 function OverviewPage({ host }: { host: PluginHost }) {
   // Studio's typed hook — runs on Studio's authenticated axios + shared cache.
-  const { data, isPending, isError } = host.sdk.platform.useEntitiesListWorkspaces(
-    { page: 1, page_size: 100 },
-    { query: { staleTime: 5_000 } }
-  );
+  const { data, isPending, isError } =
+    host.sdk.platform.useEntitiesListWorkspaces(
+      { page: 1, page_size: 100 },
+      { query: { staleTime: 5_000 } },
+    );
   const workspaces = data?.data ?? [];
 
   return (
@@ -91,17 +106,22 @@ function OverviewPage({ host }: { host: PluginHost }) {
       <Stack gap="1">
         <Text kind="label/bold/sm">Shared SDK</Text>
         <Text kind="body/regular/xs" color="secondary">
-          Listed via Studio&apos;s sdk.platform.useEntitiesListWorkspaces() — the
-          platform&apos;s typed hook, running on Studio&apos;s authenticated axios
-          and shared QueryClient rather than a plugin copy.
+          Listed via Studio&apos;s sdk.platform.useEntitiesListWorkspaces() —
+          the platform&apos;s typed hook, running on Studio&apos;s authenticated
+          axios and shared QueryClient rather than a plugin copy.
         </Text>
         {isPending ? (
-          <Text kind="body/regular/xs" color="secondary">Loading…</Text>
+          <Text kind="body/regular/xs" color="secondary">
+            Loading…
+          </Text>
         ) : isError ? (
-          <Text kind="body/regular/xs" color="danger">Request failed.</Text>
+          <Text kind="body/regular/xs" color="danger">
+            Request failed.
+          </Text>
         ) : (
           <Text kind="body/regular/sm">
-            {workspaces.length} workspaces: {workspaces.map((w) => w.name).join(', ')}
+            {workspaces.length} workspaces:{" "}
+            {workspaces.map((w) => w.name).join(", ")}
           </Text>
         )}
       </Stack>
@@ -109,22 +129,29 @@ function OverviewPage({ host }: { host: PluginHost }) {
       <Stack gap="1">
         <Text kind="label/bold/sm">Host capabilities</Text>
         <Text kind="body/regular/xs" color="secondary">
-          Studio&apos;s notifications, telemetry, and navigation, all off the host
-          handle — no plugin-side setup.
+          Studio&apos;s notifications, telemetry, and navigation, all off the
+          host handle — no plugin-side setup.
         </Text>
         <Flex gap="2">
           <Button
             kind="secondary"
             onClick={() => {
-              host.notifications.notify('Toast from the example plugin', 'success');
-              host.telemetry.event('overview_notify_clicked');
+              host.notifications.notify(
+                "Toast from the example plugin",
+                "success",
+              );
+              host.telemetry.event("overview_notify_clicked");
             }}
           >
             Notify
           </Button>
           <Button
             kind="secondary"
-            onClick={() => host.navigation.navigate(`/workspaces/${host.workspaceId}/base-models`)}
+            onClick={() =>
+              host.navigation.navigate(
+                `/workspaces/${host.workspaceId}/base-models`,
+              )
+            }
           >
             Go to Base Models
           </Button>
@@ -139,9 +166,11 @@ function AuthPage({ getAccessToken }: { getAccessToken: () => string }) {
   // Parse the JWT payload (without verification — for display only).
   let claims: Record<string, unknown> | null = null;
   try {
-    const payload = accessToken.split('.')[1];
+    const payload = accessToken.split(".")[1];
     if (payload) {
-      claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as Record<string, unknown>;
+      claims = JSON.parse(
+        atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
+      ) as Record<string, unknown>;
     }
   } catch {
     // malformed token — show raw
@@ -169,7 +198,7 @@ function AuthPage({ getAccessToken }: { getAccessToken: () => string }) {
           <CodeBlock>{JSON.stringify(claims, null, 2)}</CodeBlock>
         ) : (
           <Text kind="body/regular/xs" color="secondary">
-            {accessToken ? 'Could not decode token.' : 'No token provided.'}
+            {accessToken ? "Could not decode token." : "No token provided."}
           </Text>
         )}
       </Stack>
@@ -182,8 +211,8 @@ function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     <Stack gap="3">
       <Text kind="label/bold/md">Workspace</Text>
       <Text kind="body/regular/sm" color="secondary">
-        Studio passes the current workspace ID to every plugin via the plugin&apos;s
-        workspaceId prop.
+        Studio passes the current workspace ID to every plugin via the
+        plugin&apos;s workspaceId prop.
       </Text>
 
       <Stack gap="1">
@@ -192,7 +221,9 @@ function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       </Stack>
 
       <Stack gap="1">
-        <Text kind="label/bold/sm">Example API call scoped to this workspace</Text>
+        <Text kind="label/bold/sm">
+          Example API call scoped to this workspace
+        </Text>
         <CodeBlock>{`fetch(\`/apis/v1/workspaces/\${workspaceId}/models\`, {
   headers: { Authorization: \`Bearer \${getAccessToken()}\` },
 })`}</CodeBlock>

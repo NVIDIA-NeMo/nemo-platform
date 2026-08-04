@@ -14,7 +14,7 @@ import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router';
 
 const WORKSPACE = 'default';
 
@@ -55,7 +55,13 @@ describe('GuardrailDetailRoute', () => {
     expect(
       await screen.findByText('pii-filter', undefined, { timeout: XL_SELECTOR_TIMEOUT })
     ).toBeInTheDocument();
-    expect(screen.getByText('Blocks PII in user inputs and outputs')).toBeInTheDocument();
+    // The index route redirects to `config`; react-router v7 runs that navigation
+    // inside startTransition, so the tab content resolves asynchronously.
+    expect(
+      await screen.findByText('Blocks PII in user inputs and outputs', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      })
+    ).toBeInTheDocument();
     // pii-filter has 2 models and 4 rail flows (2 input + 2 output).
     expect(screen.getAllByText('2').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('4').length).toBeGreaterThanOrEqual(1);
@@ -75,7 +81,15 @@ describe('GuardrailDetailRoute', () => {
     renderDetail('pii-filter');
     await screen.findByText('pii-filter', undefined, { timeout: XL_SELECTOR_TIMEOUT });
 
-    await user.type(screen.getByRole('textbox', { name: 'General instruction' }), 'Be concise.');
+    // Tab content arrives after the index route's redirect settles (see above).
+    await user.type(
+      await screen.findByRole(
+        'textbox',
+        { name: 'General instruction' },
+        { timeout: XL_SELECTOR_TIMEOUT }
+      ),
+      'Be concise.'
+    );
 
     expect(await screen.findByRole('button', { name: 'Save Guardrail' })).toBeInTheDocument();
     const reset = screen.getByRole('button', { name: 'Reset' });
@@ -114,7 +128,15 @@ describe('GuardrailDetailRoute', () => {
     renderDetail('pii-filter');
     await screen.findByText('pii-filter', undefined, { timeout: XL_SELECTOR_TIMEOUT });
 
-    await user.type(screen.getByRole('textbox', { name: 'General instruction' }), 'Be concise.');
+    // Tab content arrives after the index route's redirect settles (see above).
+    await user.type(
+      await screen.findByRole(
+        'textbox',
+        { name: 'General instruction' },
+        { timeout: XL_SELECTOR_TIMEOUT }
+      ),
+      'Be concise.'
+    );
     await user.click(await screen.findByRole('button', { name: 'Save Guardrail' }));
 
     await waitFor(() =>

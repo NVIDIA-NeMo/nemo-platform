@@ -4,7 +4,7 @@
 import { Button, ButtonProps } from '@nvidia/foundations-react-core';
 import { Download } from 'lucide-react';
 import { FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 type Props = {
   evaluatorUrl: string;

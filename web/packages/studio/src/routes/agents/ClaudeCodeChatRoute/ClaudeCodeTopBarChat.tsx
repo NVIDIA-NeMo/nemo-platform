@@ -11,7 +11,7 @@ import { getCopilotChatRoute } from '@studio/routes/utils';
 import { Maximize2, Plus, Terminal, X } from 'lucide-react';
 import { type FC, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const OPEN_LABEL = 'Open NeMo Copilot chat';
 const CLOSE_LABEL = 'Close NeMo Copilot chat';

@@ -10,7 +10,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getIntakeSpansRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { FC, Suspense } from 'react';
-import { Link, Outlet, matchPath, useLocation } from 'react-router-dom';
+import { Link, Outlet, matchPath, useLocation } from 'react-router';
 
 export const INTAKE_FILTER_ACTION_TARGET_ID = 'intake-filter-action-target';
 

@@ -3,7 +3,7 @@
 
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { render, screen } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 describe('DocumentationButton', () => {
   it('renders with documentation text', () => {

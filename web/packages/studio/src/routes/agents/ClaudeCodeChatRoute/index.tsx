@@ -15,7 +15,7 @@ import {
 } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getCopilotChatRoute, getWorkspaceDashboardRoute } from '@studio/routes/utils';
 import { type FC, useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 
 const getInitialPrompt = (state: unknown): string | undefined => {
   if (typeof state !== 'object' || state === null) return undefined;

@@ -8,7 +8,7 @@ import { WorkspaceContext } from '@studio/providers/workspace/WorkspaceContext';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { SELECTED_WORKSPACE_KEY } from '@studio/util/localStorage';
 import { FC, ReactNode, useCallback, useEffect, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 interface WorkspaceProviderProps {
   children: ReactNode;

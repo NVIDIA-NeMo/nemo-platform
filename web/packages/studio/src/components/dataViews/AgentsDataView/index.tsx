@@ -36,7 +36,7 @@ import { getModelCompareRoute } from '@studio/routes/utils';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { HatGlasses, Trash, X } from 'lucide-react';
 import { ComponentProps, FC, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export type { Agent, AgentDeployment };
 
