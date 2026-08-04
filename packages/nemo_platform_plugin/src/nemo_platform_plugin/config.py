@@ -78,14 +78,9 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal, Self, Type, TypeVar
 
 import yaml
-from docker.errors import DockerException
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
-from requests.exceptions import ConnectionError as RequestsConnectionError
-from requests.exceptions import Timeout as RequestsTimeout
-
-import docker
 
 logger = logging.getLogger(__name__)
 
@@ -383,17 +378,16 @@ def determine_loopback_override() -> str | None:
 
 
 def validate_docker_available() -> bool:
-    """Validate that Docker is available using a lightweight check."""
-    client = None
-    try:
-        client = docker.from_env(timeout=5)
-        client.ping()
-        return True
-    except (DockerException, RequestsConnectionError, RequestsTimeout, OSError):
-        return False
-    finally:
-        if client:
-            client.close()
+    """Validate that Docker is available using a lightweight check.
+
+    Thin wrapper over :func:`nemo_platform_plugin.capabilities.probe_docker`.
+    Prefer ``probe_docker`` when callers need the failure detail or a
+    ``docker_host`` override. Results are process-cached; CLI retry paths
+    should call :func:`~nemo_platform_plugin.capabilities.reset_capability_cache`.
+    """
+    from nemo_platform_plugin.capabilities import probe_docker
+
+    return probe_docker().available
 
 
 class ImagePullSecret(BaseSettings):
@@ -653,7 +647,14 @@ class NemoPlatformConfig(ServiceConfig):
     def validate_runtime(self) -> Self:
         if self.runtime == Runtime.DOCKER:
             if not validate_docker_available():
-                logger.warning("Docker is not available, setting runtime to NONE")
+                # Deprecated convenience: Runtime is topology, not capability.
+                # Capability probes (nemo_platform_plugin.capabilities) own Docker
+                # availability. Soft-downgrade remains for one release; AIRCORE-972
+                # removes or shrinks Runtime.NONE as a Docker-absence signal.
+                logger.warning(
+                    "Docker is not available, setting runtime to NONE "
+                    "(deprecated: prefer capability probes; see AIRCORE-972)"
+                )
                 self.runtime = Runtime.NONE
         return self
 
