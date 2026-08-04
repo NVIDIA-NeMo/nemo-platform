@@ -64,6 +64,10 @@ Finally, we'll run our agent using the dataset tasks and record the data to NeMo
 uv run --frozen plugins/nemo-experimentalist/examples/tau3-nooa-agent/record_tau_airline_traces.py
 ```
 
+To run more tasks concurrently, add an explicit value such as `--concurrency 10`.
+Each task starts Docker containers, so choose a value appropriate for your
+available CPU and memory.
+
 At this point you can navigate to the [traces tab](http://localhost:8080/studio/workspaces/tau3-airline/intake/traces) and see the traces from the agent.
 
 
@@ -101,13 +105,73 @@ uv run --frozen nemo workspaces create canonical-tau3-airline \
   --exist-ok
 ```
 
-Run the experimentalist in a Docker Sandbox so that both the optimization
-process and Harbor's task containers use the sandbox's microVM and private
-Docker daemon. Clone mode gives the experimentalist a private writable clone
-instead of write access to the host checkout. The host checkout remains
-available read-only at `/run/sandbox/source`; the prepared evaluation dataset
-is read from there. The sandbox uses `host.docker.internal` to reach the NeMo
-Platform services running on the host:
+The Experimentalist generates a draft pull request (PR) or merge request (MR)
+when it receives a GitHub or GitLab agent source. It creates a branch only when
+a changed candidate wins validation.
+
+To optimize the example agent, create a private GitHub repository with the
+[GitHub CLI](https://cli.github.com/) and populate it with the example source.
+Replace `your-github-user-or-org` with the GitHub account or organization that
+will own the repository. `rsync` excludes `.env`, so your API key is not copied
+into the repository.
+
+```bash
+gh auth login
+export GITHUB_OWNER="your-github-user-or-org"
+mkdir -p "$HOME/src"
+cd "$HOME/src"
+gh repo create "$GITHUB_OWNER/tau3-nooa-agent" --private --clone
+export EXAMPLE_AGENT_REPO="$PWD/tau3-nooa-agent"
+cd -
+rsync -a --exclude='.env' plugins/nemo-experimentalist/examples/tau3-nooa-agent/ "$EXAMPLE_AGENT_REPO/"
+git -C "$EXAMPLE_AGENT_REPO" checkout -b main
+git -C "$EXAMPLE_AGENT_REPO" add .
+git -C "$EXAMPLE_AGENT_REPO" commit -m "Add the tau3 NOOA example agent"
+git -C "$EXAMPLE_AGENT_REPO" push -u origin main
+export AGENT_REPO_URL="$(git -C "$EXAMPLE_AGENT_REPO" remote get-url origin)"
+```
+
+Run the Experimentalist against the Git repository. The `@main` suffix selects
+the source ref to optimize. It clones that baseline, pushes a validated winner
+to a new branch, and opens a draft PR or MR against `main`. To use a different
+target branch, set `storage.pr_base_branch` in the configuration.
+
+```bash
+uv run --frozen nemo agents experimentalist run \
+  --no-insight \
+  --agent "${AGENT_REPO_URL}@main" \
+  --agent-spec "$EXAMPLE_AGENT_REPO/AGENT-SPEC.md" \
+  --train-dataset plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
+  --validation-dataset plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
+  --workspace canonical-tau3-airline \
+  --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
+  --config "$EXAMPLE_AGENT_REPO/experimentalist-smoke.yaml" \
+  --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
+  --base-url "$NMP_BASE_URL"
+```
+
+This setup enables `storage.archive_candidates`, which pushes every generated
+candidate branch; the default pushes only the winner. After the run, inspect a
+non-winning candidate with `git fetch origin`,
+`git -C "$EXAMPLE_AGENT_REPO" branch -r --list 'origin/optimizer/*'`, and
+`git diff main...origin/optimizer/<run-id>/<candidate>`.
+
+GitLab is supported too: use a GitLab repository URL and authenticate with
+`glab auth login`. The Experimentalist opens a draft PR/MR only when it finds a
+changed winning candidate.
+
+The trace records include the Experimentalist evaluation ID and Tau3 task ID.
+After the run completes, inspect
+`plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist/eval-and-optimize/run.json`
+for the selected winner and compare the `agent-0` and `agent-1` directories to
+review the code change that was evaluated.
+
+### Optional: run locally without creating a PR or MR
+
+Use this alternative if you do not want to create or push to a repository. It
+changes only a private sandbox clone and never creates a PR/MR. The sandbox
+uses `host.docker.internal` to reach the NeMo Platform services running on the
+host:
 
 ```bash
 repo="$(git rev-parse --show-toplevel)"
@@ -140,7 +204,6 @@ sbx exec --workdir "$repo" \
   --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
   --base-url http://host.docker.internal:8080
 ```
-
 The sandbox needs outbound access to the package, model, registry, Harbor
 dataset, and NeMo Platform endpoints used by the run. `host.docker.internal`
 is translated to the host's loopback interface so the sandbox can reach the
