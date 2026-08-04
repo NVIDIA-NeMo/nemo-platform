@@ -6,9 +6,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "builtin-nemo-agent"
+name = "nemo-studio-copilot"
 version = "0.1.0"
-description = "Built-in NeMo Platform agent — a LangChain Deep Agent that uses the NeMo SDK to perform platform tasks."
+description = "NeMo Copilot — a LangChain Deep Agent that uses the NeMo SDK to perform platform tasks."
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "nvidia-nat-core>=1.8.0,<1.9",
@@ -21,13 +21,13 @@ dependencies = [
 ]
 
 [project.entry-points."nat.components"]
-nemo_agents_nemo_agent = "nemo_agent.register"
-# Custom NAT workflow type that wraps the nemo-agent graph with permissive
-# input/output schemas. See src/nemo_agent/wrapper.py for the full rationale —
+nemo_studio_copilot = "nemo_studio_copilot.register"
+# Custom NAT workflow type that wraps the nemo-studio-copilot graph with permissive
+# input/output schemas. See src/nemo_studio_copilot/wrapper.py for the full rationale —
 # in short, NAT 1.6.0's stock `langgraph_wrapper` doesn't accept the
 # `{"input_message": ...}` shape that `nvidia-nat-eval` posts and crashes on
 # deep-agent state deltas that don't carry `messages`.
-nemo_agents_nemo_agent_wrapper = "nemo_agent.wrapper"
+nemo_studio_copilot_wrapper = "nemo_studio_copilot.wrapper"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nemo_agent"]
+packages = ["src/nemo_studio_copilot"]

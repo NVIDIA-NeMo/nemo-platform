@@ -256,7 +256,7 @@ wheels = [
 ]
 
 [[package]]
-name = "builtin-nemo-agent"
+name = "nemo-studio-copilot"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

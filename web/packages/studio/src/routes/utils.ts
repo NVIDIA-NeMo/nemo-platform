@@ -6,7 +6,7 @@ import {
   AGENTS_ENABLED,
   ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
-  CODING_AGENT_STUDIO_ENABLED,
+  COPILOT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
   DASHBOARD_ENABLED,
   DATA_DESIGNER_ENABLED,
@@ -44,7 +44,7 @@ export const gateCustomizationRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(CUSTOMIZER_ENABLED, routes);
 
 export const gateDashboardRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED, routes);
+  gateRoutes(DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED, routes);
 
 export const gateDatasetsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATASETS_ENABLED, routes);
@@ -94,8 +94,8 @@ export const gateMembersRoutes = (routes: RouteObject | RouteObject[]) =>
 export const agentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(AGENTS_ENABLED, routes);
 
-export const gateCodingAgentStudioRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(CODING_AGENT_STUDIO_ENABLED, routes);
+export const gateCopilotStudioRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(COPILOT_STUDIO_ENABLED, routes);
 
 export const gateDeploymentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DEPLOYMENTS_ENABLED, routes);
@@ -133,8 +133,7 @@ export const getWorkspaceIndexRoute = (workspace: string) => {
 };
 
 export const getWorkspaceDetailsDefaultRoute = (workspace: string) => {
-  if (DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED)
-    return getWorkspaceDashboardRoute(workspace);
+  if (DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED) return getWorkspaceDashboardRoute(workspace);
   if (AGENTS_ENABLED) return getAgentsListRoute(workspace);
   if (BASE_MODELS_ENABLED) return getWorkspaceBaseModelsRoute(workspace);
   if (JOBS_ENABLED) return getWorkspaceJobsRoute(workspace);
@@ -580,8 +579,8 @@ export const getAgentsListRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.agentsList, { workspace });
 };
 
-export const getClaudeCodeChatRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.claudeCodeChat, { workspace });
+export const getCopilotChatRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.copilotChat, { workspace });
 };
 
 export const getAgentDetailRoute = (workspace: string, agentName: string) => {

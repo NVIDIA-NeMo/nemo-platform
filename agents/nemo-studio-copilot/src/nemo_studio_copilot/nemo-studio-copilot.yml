@@ -1,4 +1,4 @@
-# NeMo Platform Agent — NAT workflow configuration
+# NeMo Copilot — NAT workflow configuration
 #
 # A LangChain Deep Agent that uses the NeMo SDK to perform platform tasks.
 # Deliberately configured as the "expensive baseline" for the optimization
@@ -6,13 +6,12 @@
 #
 # Deploy:
 #   uv pip install -e plugins/nemo-agents
-#   uv pip install -e plugins/nemo-agents/builtin_agents/nemo-agent
-#   nemo agents create --name nemo-agent \
-#     --agent-config plugins/nemo-agents/builtin_agents/nemo-agent/src/nemo_agent/nemo-agent.yml
-#   nemo agents deploy --agent nemo-agent
+#   nemo agents create --name nemo-studio-copilot \
+#     --agent-config agents/nemo-studio-copilot/src/nemo_studio_copilot/nemo-studio-copilot.yml
+#   nemo agents deploy --agent nemo-studio-copilot
 #
 # Invoke:
-#   nemo agents invoke --agent nemo-agent --input "Create a workspace called demo"
+#   nemo agents invoke --agent nemo-studio-copilot --input "Create a workspace called demo"
 
 llms:
   agent:
@@ -73,9 +72,9 @@ llms:
     # max_tokens: 49152
 
 workflow:
-  # Custom workflow type registered by `nemo-agents-nemo-agent`. Wraps the same
+  # Custom workflow type registered by `nemo_studio_copilot_wrapper`. Wraps the same
   # deep-agent graph as `langgraph_wrapper` would, but with input/output schemas
   # that survive both the eval client's `{"input_message": ...}` payload and the
-  # deep-agent's wider state shape. See src/nemo_agent/wrapper.py.
-  _type: nemo_agent_wrapper
+  # deep-agent's wider state shape. See src/nemo_studio_copilot/wrapper.py.
+  _type: nemo_studio_copilot_wrapper
   description: NeMo Platform assistant using LangChain Deep Agents

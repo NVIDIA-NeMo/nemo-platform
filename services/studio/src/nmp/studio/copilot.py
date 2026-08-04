@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Local coding-agent bridge for Studio."""
+"""Local copilot bridge for Studio."""
 
 import asyncio
 import json
@@ -23,12 +23,12 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nmp.common.entities.constants import NAME_PATTERN
 from nmp.studio import studio_links
-from nmp.studio.coding_agent_artifacts import (
+from nmp.studio.copilot_artifacts import (
     ChatArtifactsResponse,
     InputSelectionTool,
     answer_selection_pairs,
     record_answer_selections,
-    record_coding_agent_model,
+    record_copilot_model,
     record_spec_text_artifacts,
     record_tool_artifacts,
     record_tool_name,
@@ -36,7 +36,7 @@ from nmp.studio.coding_agent_artifacts import (
     record_workspace_artifact,
     string_value,
 )
-from nmp.studio.coding_agent_mcp_tools import (
+from nmp.studio.copilot_mcp_tools import (
     APPROVAL_TOOL_NAME,
     CLAUDE_MCP_SERVER_NAME,
     JOB_PROGRESS_TOOL_NAME,
@@ -45,28 +45,28 @@ from nmp.studio.coding_agent_mcp_tools import (
     SELECT_DATASET_FILE_TOOL_NAME,
     SELECT_EVAL_CONFIG_TOOL_NAME,
     SELECT_MODEL_TOOL_NAME,
-    STUDIO_CODING_AGENT_CONTEXT,
+    STUDIO_COPILOT_CONTEXT,
     STUDIO_LINK_TOOL_NAME,
     allowed_mcp_tools,
     permission_prompt_tool,
 )
-from nmp.studio.coding_agent_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
+from nmp.studio.copilot_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import NoMatchFound
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/v2/coding-agents")
+router = APIRouter(prefix="/v2/copilot")
 
-MCP_ROUTE_NAME = "studio_coding_agent_mcp"
-PUBLIC_MCP_ROUTE_NAME = "studio_coding_agent_public_mcp"
-PUBLIC_MCP_UNSUPPORTED_METHOD_ROUTE_NAME = "studio_coding_agent_public_mcp_unsupported_method"
-PUBLIC_MCP_PATH = "/studio/api/coding-agents/mcp/{session_id}"
+MCP_ROUTE_NAME = "studio_copilot_mcp"
+PUBLIC_MCP_ROUTE_NAME = "studio_copilot_public_mcp"
+PUBLIC_MCP_UNSUPPORTED_METHOD_ROUTE_NAME = "studio_copilot_public_mcp_unsupported_method"
+PUBLIC_MCP_PATH = "/studio/api/copilot/mcp/{session_id}"
 CLAUDE_MCP_TOOL_TIMEOUT_MS = 2_147_483_647
 MCP_KEEPALIVE_INTERVAL_SECONDS = 15
-DEFAULT_STUDIO_CODING_AGENT_NAME = "nemo-agent-local-poc"
-DEFAULT_STUDIO_CODING_AGENT_BASE_URL = "http://127.0.0.1:8080"
-STUDIO_CODING_AGENT_TIMEOUT_SECONDS = 600.0
+DEFAULT_STUDIO_COPILOT_NAME = "nemo-studio-copilot"
+DEFAULT_STUDIO_COPILOT_BASE_URL = "http://127.0.0.1:8080"
+STUDIO_COPILOT_TIMEOUT_SECONDS = 600.0
 MAX_RETAINED_SESSIONS = 100
 MAX_RETAINED_TURNS_PER_SESSION = 50
 
@@ -81,13 +81,13 @@ WORKSPACE_NAME_RE = re.compile(NAME_PATTERN)
 
 
 class NewSessionResponse(BaseModel):
-    """Response returned when Studio starts a new coding-agent session."""
+    """Response returned when Studio starts a new copilot session."""
 
     session_id: str
 
 
 class MessageRequest(BaseModel):
-    """A user message to send to the local coding agent."""
+    """A user message to send to the local copilot."""
 
     message: str = Field(min_length=1)
     studio_base_url: str | None = Field(default=None, min_length=1)
@@ -332,7 +332,7 @@ def _build_studio_system_prompt(
     current_studio_route = _trimmed_string(studio_pathname) or "unknown"
     destinations = studio_links.STUDIO_LINK_DESTINATIONS if enabled_destinations is None else enabled_destinations
     lines = [
-        "You are NeMo Agent, running inside NeMo Studio.",
+        "You are NeMo Copilot, running inside NeMo Studio.",
         f"Current Studio workspace: {workspace or 'unknown'}",
         f"Studio UI base URL: {normalized_base_url or 'unknown'}",
         f"Current Studio route path: {current_studio_route}",
@@ -434,15 +434,15 @@ def _build_studio_system_prompt(
     return "\n".join(lines)
 
 
-def _build_nemo_agent_system_prompt(
+def _build_copilot_system_prompt(
     session_id: str,
     workspace: str | None,
     studio_base_url: str | None,
     studio_pathname: str | None,
     enabled_destinations: Mapping[str, studio_links.StudioLinkDestination] | None = None,
 ) -> str:
-    """Adapt the existing Studio coding-agent rules to the deployed NeMo agent tools."""
-    context = STUDIO_CODING_AGENT_CONTEXT
+    """Adapt the existing Studio copilot rules to the deployed NeMo Copilot tools."""
+    context = STUDIO_COPILOT_CONTEXT
     prompt = _build_studio_system_prompt(
         workspace,
         studio_base_url,
@@ -470,9 +470,9 @@ def _build_nemo_agent_system_prompt(
         [
             context,
             prompt,
-            "Your identity in this interface is NeMo Agent.",
+            "Your identity in this interface is NeMo Copilot.",
             "Do not describe yourself as a different assistant or provider.",
-            "Deployed NeMo agent callback behavior:",
+            "Deployed NeMo Copilot callback behavior:",
             (
                 f"For every select_agent, select_model, select_dataset_file, select_eval_config, "
                 f"job_progress, studio_link, and ask_user_question call, pass studio_session_id='{session_id}'."
@@ -614,7 +614,7 @@ def _summarize_history_session(path: Path) -> HistorySummary:
 
                 message = entry.get("message")
                 if isinstance(message, dict):
-                    record_coding_agent_model(summary.chat_artifacts, string_value(message.get("model")))
+                    record_copilot_model(summary.chat_artifacts, string_value(message.get("model")))
                     usage_identity = _usage_identity(entry, message)
                     if usage_identity is None or usage_identity not in seen_usage_events:
                         summary.token_count += _usage_token_count(message.get("usage"))
@@ -685,7 +685,7 @@ def _extract_assistant_parts(content: Any) -> list[dict[str, Any]]:
 
 @router.post("/sessions", response_model=NewSessionResponse)
 def create_session() -> NewSessionResponse:
-    """Create a new local coding-agent session."""
+    """Create a new local copilot session."""
     session_id = str(uuid.uuid4())
     _session_conversations[session_id] = []
     _session_mtimes[session_id] = time.time()
@@ -695,7 +695,7 @@ def create_session() -> NewSessionResponse:
 
 @router.get("/history/sessions", response_model=list[HistorySessionResponse])
 def list_history_sessions() -> list[HistorySessionResponse]:
-    """List active retained NeMo Agent sessions."""
+    """List active retained NeMo Copilot sessions."""
     _evict_oldest_sessions()
     sessions: list[HistorySessionResponse] = []
     for session_id, messages in _session_conversations.items():
@@ -796,7 +796,7 @@ def _history_user_interaction_texts(
 
 @router.get("/history/sessions/{session_id}", response_model=SessionHistoryResponse)
 def get_session_history(session_id: str) -> SessionHistoryResponse:
-    """Load a NeMo Agent session or legacy Claude history for replay."""
+    """Load a NeMo Copilot session or legacy Claude history for replay."""
     sid = _validate_session_id(session_id)
     conversation = _session_conversations.get(sid)
     if conversation is not None:
@@ -896,7 +896,7 @@ def _mcp_url(
             return f"{url}?{urlencode(query_params)}" if query_params else url
         except NoMatchFound:
             continue
-    raise RuntimeError("Studio coding-agent MCP route is not mounted")
+    raise RuntimeError("Studio copilot MCP route is not mounted")
 
 
 def _build_claude_argv(
@@ -932,7 +932,7 @@ def _build_claude_argv(
         "--allowedTools",
         ",".join(allowed_mcp_tools(CLAUDE_MCP_SERVER_NAME)),
         "--append-system-prompt",
-        STUDIO_CODING_AGENT_CONTEXT,
+        STUDIO_COPILOT_CONTEXT,
         "--permission-prompt-tool",
         permission_prompt_tool(CLAUDE_MCP_SERVER_NAME),
     ]
@@ -1013,7 +1013,7 @@ async def _blocking_mcp_tool_response(
 async def _request_permission(session_id: str, args: dict[str, Any]) -> dict[str, Any]:
     queue = _session_streams.get(session_id)
     if queue is None:
-        return {"behavior": "deny", "message": "no active Studio coding-agent session"}
+        return {"behavior": "deny", "message": "no active Studio copilot session"}
 
     request_id = str(uuid.uuid4())
     loop = asyncio.get_running_loop()
@@ -1046,7 +1046,7 @@ async def _request_permission(session_id: str, args: dict[str, Any]) -> dict[str
 async def _request_agent_input(session_id: str, kind: str, args: dict[str, Any]) -> dict[str, Any]:
     queue = _session_streams.get(session_id)
     if queue is None:
-        return {"status": "error", "message": "no active Studio coding-agent session"}
+        return {"status": "error", "message": "no active Studio copilot session"}
 
     request_id = str(uuid.uuid4())
     loop = asyncio.get_running_loop()
@@ -1213,15 +1213,15 @@ async def _stream_claude(
                 task.cancel()
 
 
-def _studio_coding_agent_name() -> str:
-    return _trimmed_string(os.environ.get("STUDIO_CODING_AGENT_NAME")) or DEFAULT_STUDIO_CODING_AGENT_NAME
+def _studio_copilot_name() -> str:
+    return _trimmed_string(os.environ.get("STUDIO_COPILOT_NAME")) or DEFAULT_STUDIO_COPILOT_NAME
 
 
-def _studio_coding_agent_base_url() -> str:
+def _studio_copilot_base_url() -> str:
     base_url = (
-        _trimmed_string(os.environ.get("STUDIO_CODING_AGENT_BASE_URL"))
+        _trimmed_string(os.environ.get("STUDIO_COPILOT_BASE_URL"))
         or _trimmed_string(os.environ.get("NMP_BASE_URL"))
-        or DEFAULT_STUDIO_CODING_AGENT_BASE_URL
+        or DEFAULT_STUDIO_COPILOT_BASE_URL
     )
     parsed = urlparse(base_url)
     if (
@@ -1232,7 +1232,7 @@ def _studio_coding_agent_base_url() -> str:
         or parsed.query
         or parsed.fragment
     ):
-        raise RuntimeError("The configured coding-agent base URL is invalid")
+        raise RuntimeError("The configured copilot base URL is invalid")
     return base_url.rstrip("/")
 
 
@@ -1251,16 +1251,16 @@ def _workspace_path_segment(workspace: str) -> str:
     return quote(workspace, safe="")
 
 
-def _studio_coding_agent_url(workspace: str) -> str:
+def _studio_copilot_url(workspace: str) -> str:
     # MessageRequest validates workspace against the platform's restricted entity-name
     # pattern before it can become part of this internal request path.
     return (
-        f"{_studio_coding_agent_base_url()}/apis/agents/v2/workspaces/{_workspace_path_segment(workspace)}"
-        f"/agents/{quote(_studio_coding_agent_name(), safe='')}/-/v1/chat/completions"
+        f"{_studio_copilot_base_url()}/apis/agents/v2/workspaces/{_workspace_path_segment(workspace)}"
+        f"/agents/{quote(_studio_copilot_name(), safe='')}/-/v1/chat/completions"
     )
 
 
-def _coding_agent_request_headers(request: Request) -> dict[str, str]:
+def _copilot_request_headers(request: Request) -> dict[str, str]:
     """Forward end-user auth context when the Studio service invokes the agent gateway."""
     forwarded = {}
     for name in ("authorization", "cookie"):
@@ -1270,29 +1270,29 @@ def _coding_agent_request_headers(request: Request) -> dict[str, str]:
     return forwarded
 
 
-def _nemo_agent_response(body: Any) -> tuple[str, str]:
+def _copilot_response(body: Any) -> tuple[str, str]:
     if not isinstance(body, dict):
-        raise RuntimeError("NeMo Agent returned a non-object response")
+        raise RuntimeError("NeMo Copilot returned a non-object response")
     choices = body.get("choices")
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-        raise RuntimeError("NeMo Agent response did not include a choice")
+        raise RuntimeError("NeMo Copilot response did not include a choice")
     message = choices[0].get("message")
     if not isinstance(message, dict) or not isinstance(message.get("content"), str):
-        raise RuntimeError("NeMo Agent response did not include assistant text")
-    model = _trimmed_string(body.get("model")) or _studio_coding_agent_name()
+        raise RuntimeError("NeMo Copilot response did not include assistant text")
+    model = _trimmed_string(body.get("model")) or _studio_copilot_name()
     return message["content"], model
 
 
-def _nemo_agent_error_detail(exc: httpx.HTTPError | RuntimeError | ValueError) -> str:
+def _copilot_error_detail(exc: httpx.HTTPError | RuntimeError | ValueError) -> str:
     """Return a safe client-facing error without leaking exception or upstream response details."""
     if isinstance(exc, httpx.HTTPStatusError):
-        return f"The deployed NeMo Agent returned HTTP {exc.response.status_code}."
+        return f"The deployed NeMo Copilot returned HTTP {exc.response.status_code}."
     if isinstance(exc, httpx.HTTPError):
-        return "The deployed NeMo Agent could not be reached."
-    return "The deployed NeMo Agent returned an invalid response."
+        return "The deployed NeMo Copilot could not be reached."
+    return "The deployed NeMo Copilot returned an invalid response."
 
 
-def _nemo_agent_request_payload(
+def _copilot_request_payload(
     messages: list[dict[str, str]],
     studio_session_id: str,
 ) -> dict[str, Any]:
@@ -1303,7 +1303,7 @@ def _nemo_agent_request_payload(
     }
 
 
-async def _invoke_nemo_agent(
+async def _invoke_copilot(
     agent_url: str,
     headers: Mapping[str, str],
     messages: list[dict[str, str]],
@@ -1311,7 +1311,7 @@ async def _invoke_nemo_agent(
 ) -> tuple[str, str]:
     timeout = httpx.Timeout(
         connect=10.0,
-        read=STUDIO_CODING_AGENT_TIMEOUT_SECONDS,
+        read=STUDIO_COPILOT_TIMEOUT_SECONDS,
         write=60.0,
         pool=10.0,
     )
@@ -1322,20 +1322,20 @@ async def _invoke_nemo_agent(
         response = await client.post(
             agent_url,
             headers=dict(headers),
-            json=_nemo_agent_request_payload(messages, studio_session_id),
+            json=_copilot_request_payload(messages, studio_session_id),
         )
         response.raise_for_status()
-        return _nemo_agent_response(response.json())
+        return _copilot_response(response.json())
 
 
-async def _stream_nemo_agent(
+async def _stream_copilot(
     session_id: str,
     message: str,
     agent_url: str,
     headers: Mapping[str, str],
     studio_system_prompt: str,
 ) -> AsyncIterator[str]:
-    """Invoke the deployed NeMo agent while preserving Studio's blocking UI event protocol."""
+    """Invoke the deployed NeMo Copilot while preserving Studio's blocking UI event protocol."""
     if session_id in _session_streams:
         yield _sse(
             json.dumps({"message": "session already has an active stream"}),
@@ -1357,7 +1357,7 @@ async def _stream_nemo_agent(
     )
     request_messages = [*conversation, {"role": "user", "content": contextual_message}]
     invocation = asyncio.create_task(
-        _invoke_nemo_agent(
+        _invoke_copilot(
             agent_url,
             headers,
             request_messages,
@@ -1405,7 +1405,7 @@ async def _stream_nemo_agent(
                 {
                     "type": "assistant",
                     "message": {
-                        "id": f"nemo-agent-{uuid.uuid4()}",
+                        "id": f"nemo-studio-copilot-{uuid.uuid4()}",
                         "model": model,
                         "content": [{"type": "text", "text": assistant_text}],
                     },
@@ -1417,9 +1417,9 @@ async def _stream_nemo_agent(
         invocation.cancel()
         raise
     except (httpx.HTTPError, RuntimeError, ValueError) as exc:
-        logger.exception("NeMo Agent invocation failed for session %s", session_id)
+        logger.exception("NeMo Copilot invocation failed for session %s", session_id)
         yield _sse(
-            json.dumps({"message": _nemo_agent_error_detail(exc)}),
+            json.dumps({"message": _copilot_error_detail(exc)}),
             event="error",
         )
     finally:
@@ -1433,13 +1433,13 @@ async def _stream_nemo_agent(
 
 @router.post("/sessions/{session_id}/messages")
 async def send_message(session_id: str, body: MessageRequest, request: Request) -> StreamingResponse:
-    """Send a message to the deployed NeMo Agent and stream Studio events."""
+    """Send a message to the deployed NeMo Copilot and stream Studio events."""
     sid = _validate_session_id(session_id)
     workspace = _validated_workspace_or_default(body.workspace)
     studio_base_url = _studio_base_url_from_request(body, request)
     studio_pathname = _studio_pathname_from_request(body, request)
     enabled_destinations = studio_links.enabled_destinations_from_request(request)
-    system_prompt = _build_nemo_agent_system_prompt(
+    system_prompt = _build_copilot_system_prompt(
         sid,
         workspace,
         studio_base_url,
@@ -1447,11 +1447,11 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
         enabled_destinations,
     )
     return StreamingResponse(
-        _stream_nemo_agent(
+        _stream_copilot(
             sid,
             body.message,
-            _studio_coding_agent_url(workspace),
-            _coding_agent_request_headers(request),
+            _studio_copilot_url(workspace),
+            _copilot_request_headers(request),
             system_prompt,
         ),
         media_type="text/event-stream",
@@ -1576,8 +1576,8 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
                             {
                                 "type": "assistant",
                                 "message": {
-                                    "id": f"nemo-agent-tool-{uuid.uuid4()}",
-                                    "model": _studio_coding_agent_name(),
+                                    "id": f"nemo-studio-copilot-tool-{uuid.uuid4()}",
+                                    "model": _studio_copilot_name(),
                                     "content": [
                                         {
                                             "type": "tool_use",

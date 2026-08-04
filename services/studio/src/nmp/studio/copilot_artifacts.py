@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Artifact extraction for Studio coding-agent chat history."""
+"""Artifact extraction for Studio copilot chat history."""
 
 import json
 import re
@@ -20,14 +20,14 @@ class ChatSelectionArtifactResponse(BaseModel):
 
 
 class ChatFileArtifactResponse(BaseModel):
-    """A file touched by the local coding agent."""
+    """A file touched by the local copilot."""
 
     action: str
     path: str
 
 
 class ChatLinkArtifactResponse(BaseModel):
-    """A Studio link requested by the local coding agent."""
+    """A Studio link requested by the local copilot."""
 
     label: str
     destination: str | None = None
@@ -49,7 +49,7 @@ class ChatArtifactsResponse(BaseModel):
     agent: str | None = None
     model: str | None = None
     model_source: str | None = None
-    coding_agent_model: str | None = None
+    copilot_model: str | None = None
     workspace: str | None = None
     selections: list[ChatSelectionArtifactResponse] = Field(default_factory=list)
     files: list[ChatFileArtifactResponse] = Field(default_factory=list)
@@ -124,10 +124,10 @@ def record_tool_name(artifacts: ChatArtifactsResponse, tool_name: str) -> None:
     _append_unique_string(artifacts.tools, tool_name)
 
 
-def record_coding_agent_model(artifacts: ChatArtifactsResponse, model: str | None) -> None:
+def record_copilot_model(artifacts: ChatArtifactsResponse, model: str | None) -> None:
     if not model:
         return
-    artifacts.coding_agent_model = model
+    artifacts.copilot_model = model
 
 
 def _set_spec_model(artifacts: ChatArtifactsResponse, model: str) -> None:

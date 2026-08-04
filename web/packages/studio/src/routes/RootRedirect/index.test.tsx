@@ -48,9 +48,9 @@ describe('RootRedirect', () => {
     vi.unstubAllEnvs();
   });
 
-  it('uses coding agent studio as the root landing page when enabled', async () => {
+  it('uses copilot studio as the root landing page when enabled', async () => {
     vi.resetModules();
-    vi.stubEnv('VITE_FF_CODING_AGENT_STUDIO_ENABLED', 'true');
+    vi.stubEnv('VITE_FF_COPILOT_STUDIO_ENABLED', 'true');
 
     await renderRootRedirect();
 
@@ -59,9 +59,9 @@ describe('RootRedirect', () => {
     expect(location).toHaveTextContent('/dashboard');
   });
 
-  it('uses the dashboard route as the /workspaces landing page when coding agent studio is enabled', async () => {
+  it('uses the dashboard route as the /workspaces landing page when copilot studio is enabled', async () => {
     vi.resetModules();
-    vi.stubEnv('VITE_FF_CODING_AGENT_STUDIO_ENABLED', 'true');
+    vi.stubEnv('VITE_FF_COPILOT_STUDIO_ENABLED', 'true');
     await renderRootRedirect('/workspaces');
 
     const location = await screen.findByTestId(LOCATION_DISPLAY_TEST_ID);

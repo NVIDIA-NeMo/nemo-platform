@@ -18,5 +18,5 @@ llms:
     request_timeout: 120
 
 workflow:
-  _type: nemo_agent_wrapper
+  _type: nemo_studio_copilot_wrapper
   description: NeMo Platform assistant using LangChain Deep Agents

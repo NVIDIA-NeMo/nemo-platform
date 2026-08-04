@@ -27,13 +27,13 @@ import type {
   ClaudeCodeStreamHandlers,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 
-const CLAUDE_CODE_API_BASE_PATH = '/apis/studio/v2/coding-agents';
+const COPILOT_API_BASE_PATH = '/apis/studio/v2/copilot';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const claudeCodeApiUrl = (path: string): string =>
-  `${PLATFORM_BASE_URL}${CLAUDE_CODE_API_BASE_PATH}${path}`;
+  `${PLATFORM_BASE_URL}${COPILOT_API_BASE_PATH}${path}`;
 
 const getStudioBaseUrl = (): string | undefined => {
   if (typeof window === 'undefined') return undefined;
@@ -79,12 +79,14 @@ export const createClaudeCodeSession = async (): Promise<string> => {
   });
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to create NeMo Agent session'));
+    throw new Error(
+      await getResponseErrorMessage(response, 'Failed to create NeMo Copilot session')
+    );
   }
 
   const body = (await response.json()) as unknown;
   if (!isRecord(body) || typeof body.session_id !== 'string') {
-    throw new Error('NeMo Agent session response did not include a session id');
+    throw new Error('NeMo Copilot session response did not include a session id');
   }
 
   return body.session_id;
@@ -109,7 +111,7 @@ const getOptionalArtifactString = (value: unknown): string | undefined => {
 };
 
 const parseModelSource = (value: unknown): ClaudeCodeChatModelSource | undefined => {
-  if (value === 'coding_agent' || value === 'selection' || value === 'spec') return value;
+  if (value === 'copilot' || value === 'selection' || value === 'spec') return value;
   return undefined;
 };
 
@@ -160,15 +162,15 @@ const parseChatArtifacts = (value: unknown): ClaudeCodeChatArtifacts => {
 
   const modelSource = parseModelSource(value.model_source);
   const model = getOptionalArtifactString(value.model);
-  const codingAgentModel =
-    getOptionalArtifactString(value.coding_agent_model) ||
-    (modelSource === 'coding_agent' ? model : undefined);
+  const copilotModel =
+    getOptionalArtifactString(value.copilot_model) ||
+    (modelSource === 'copilot' ? model : undefined);
 
   return {
     agent: getOptionalArtifactString(value.agent),
-    model: modelSource === 'coding_agent' ? undefined : model,
-    model_source: modelSource === 'coding_agent' ? undefined : modelSource,
-    coding_agent_model: codingAgentModel,
+    model: modelSource === 'copilot' ? undefined : model,
+    model_source: modelSource === 'copilot' ? undefined : modelSource,
+    copilot_model: copilotModel,
     workspace: getOptionalArtifactString(value.workspace),
     selections: parseArray(value.selections, parseSelectionArtifact),
     files: parseArray(value.files, parseFileArtifact),
@@ -256,7 +258,7 @@ export const listClaudeCodeHistorySessions = async (): Promise<ClaudeCodeHistory
   const response = await fetch(claudeCodeApiUrl('/history/sessions'));
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Agent history'));
+    throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Copilot history'));
   }
 
   const body = (await response.json()) as unknown;
@@ -271,7 +273,7 @@ export const listClaudeCodeSkills = async (): Promise<ClaudeCodeSkill[]> => {
   const response = await fetch(claudeCodeApiUrl('/skills'));
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Agent skills'));
+    throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Copilot skills'));
   }
 
   const body = (await response.json()) as unknown;
@@ -290,12 +292,12 @@ export const getClaudeCodeSessionHistory = async (
   );
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Agent session'));
+    throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Copilot session'));
   }
 
   const body = (await response.json()) as unknown;
   if (!isRecord(body)) {
-    throw new Error('NeMo Agent session history response was not an object');
+    throw new Error('NeMo Copilot session history response was not an object');
   }
 
   const items = Array.isArray(body.items)
@@ -315,11 +317,11 @@ export const getClaudeCodeSessionHistory = async (
 };
 
 const getStreamErrorMessage = (payload: unknown): string => {
-  if (!isRecord(payload)) return 'NeMo Agent stream failed';
+  if (!isRecord(payload)) return 'NeMo Copilot stream failed';
   if (typeof payload.stderr === 'string' && payload.stderr) return payload.stderr;
   if (typeof payload.detail === 'string' && payload.detail) return payload.detail;
   if (typeof payload.message === 'string' && payload.message) return payload.message;
-  return 'NeMo Agent stream failed';
+  return 'NeMo Copilot stream failed';
 };
 
 const parsePermissionRequest = (payload: unknown): ClaudeCodePermissionRequest | undefined => {
@@ -371,7 +373,7 @@ const handleSseEvent = (
   if (event.event === 'permission_request') {
     const request = parsePermissionRequest(parseJsonObject(event.data));
     if (!request) {
-      handlers.onError(new Error('NeMo Agent permission request was malformed'));
+      handlers.onError(new Error('NeMo Copilot permission request was malformed'));
       return false;
     }
     handlers.onPermissionRequest(request);
@@ -381,7 +383,7 @@ const handleSseEvent = (
   if (event.event === 'input_request') {
     const request = parseInputRequest(parseJsonObject(event.data));
     if (!request) {
-      handlers.onError(new Error('NeMo Agent input request was malformed'));
+      handlers.onError(new Error('NeMo Copilot input request was malformed'));
       return false;
     }
     handlers.onInputRequest(request);
@@ -434,7 +436,7 @@ export const resolveClaudeCodePermission = async ({
 
   if (!response.ok) {
     throw new Error(
-      await getResponseErrorMessage(response, 'Failed to resolve NeMo Agent permission')
+      await getResponseErrorMessage(response, 'Failed to resolve NeMo Copilot permission')
     );
   }
 };
@@ -460,7 +462,9 @@ export const resolveClaudeCodeInput = async ({
   });
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to resolve NeMo Agent input'));
+    throw new Error(
+      await getResponseErrorMessage(response, 'Failed to resolve NeMo Copilot input')
+    );
   }
 };
 
@@ -496,10 +500,10 @@ export const streamClaudeCodeMessage = async ({
   });
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to send NeMo Agent message'));
+    throw new Error(await getResponseErrorMessage(response, 'Failed to send NeMo Copilot message'));
   }
   if (!response.body) {
-    throw new Error('NeMo Agent response did not include a stream');
+    throw new Error('NeMo Copilot response did not include a stream');
   }
 
   const reader = response.body.getReader();

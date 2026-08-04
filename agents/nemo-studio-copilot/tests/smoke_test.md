@@ -1,4 +1,4 @@
-# NeMo Agent Smoke Test
+# NeMo Copilot Smoke Test
 
 Covers all changes from the follow-up PR: fallback removal, SyncBuilder-only
 model resolution, and the `_StreamSafeGraph` Studio streaming fix.
@@ -15,7 +15,7 @@ model resolution, and the `_StreamSafeGraph` Studio streaming fix.
 Run from the worktree root. All tests should pass.
 
 ```bash
-uv run --frozen pytest plugins/nemo-agents/builtin_agents/nemo-agent/tests/test_nemo_agent.py -v
+uv run --frozen pytest agents/nemo-studio-copilot/tests/test_nemo_studio_copilot.py -v
 ```
 
 Verify specifically:
@@ -34,7 +34,7 @@ Confirm the ChatOpenAI fallback and subprocess-based CLI tool are gone:
 ```bash
 # Should find zero matches in the runtime source.
 rg -n 'ChatOpenAI|NVIDIA_API_KEY|langchain_openai|nemo_cli|subprocess' \
-    plugins/nemo-agents/builtin_agents/nemo-agent/src/nemo_agent/register.py
+    agents/nemo-studio-copilot/src/nemo_studio_copilot/register.py
 ```
 
 Expected: no output.
@@ -63,15 +63,15 @@ with the real SyncBuilder and API-only platform tools.
 
 ```bash
 # nemo_api tool — workspace CRUD
-nemo agents invoke --agent nemo-agent \
+nemo agents invoke --agent nemo-studio-copilot \
     --input "List all workspaces on the platform"
 
 # nemo_api tool — model and provider discovery
-nemo agents invoke --agent nemo-agent \
+nemo agents invoke --agent nemo-studio-copilot \
     --input "List the available models and inference providers using the platform API."
 
 # Multi-step with nemo_api — create + verify
-nemo agents invoke --agent nemo-agent \
+nemo agents invoke --agent nemo-studio-copilot \
     --input "Create a workspace called 'smoke-test' with description 'PR follow-up smoke test', then list workspaces to confirm it exists"
 ```
 
@@ -90,7 +90,7 @@ This validates that `_StreamSafeGraph` makes agent chat work in the Studio UI.
 
 2. Navigate to **Agents** in the left sidebar.
 
-3. Click the **nemo-agent** row to open the agent panel.
+3. Click the **nemo-studio-copilot** row to open the agent panel.
 
 4. Switch to the **Chat Playground** tab.
 
@@ -130,8 +130,8 @@ Without the `_StreamSafeGraph` fix, you would see one of:
 ## Part 6: Cleanup
 
 ```bash
-nemo agents undeploy --agent nemo-agent
-nemo agents delete nemo-agent
+nemo agents undeploy --agent nemo-studio-copilot
+nemo agents delete nemo-studio-copilot
 nemo workspaces delete smoke-test 2>/dev/null
 nemo secrets delete studio-test-key 2>/dev/null
 # Ctrl-C the nemo services run process

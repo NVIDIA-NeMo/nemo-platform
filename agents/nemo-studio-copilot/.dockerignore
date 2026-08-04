@@ -17,5 +17,5 @@ build/
 .venv/
 node_modules/
 tests/
-src/nemo_agent/nemo-eval.yml
-src/nemo_agent/nemo-eval-data.json
+src/nemo_studio_copilot/nemo-studio-copilot-eval.yml
+src/nemo_studio_copilot/nemo-studio-copilot-eval-data.json

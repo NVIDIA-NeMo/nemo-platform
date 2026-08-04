@@ -21,7 +21,7 @@ vi.mock('@studio/constants/environment', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@studio/constants/environment')>();
   return {
     ...actual,
-    CODING_AGENT_STUDIO_ENABLED: true,
+    COPILOT_STUDIO_ENABLED: true,
   };
 });
 
@@ -77,12 +77,12 @@ describe('ClaudeCodeTopBarChat', () => {
   it('opens and closes the compact chat from the top bar icon', async () => {
     renderTopBarChat();
     const user = userEvent.setup();
-    const trigger = screen.getByRole('button', { name: 'Open NeMo Agent chat' });
+    const trigger = screen.getByRole('button', { name: 'Open NeMo Copilot chat' });
 
     await user.click(trigger);
     expect(await screen.findByTestId('compact-chat-thread')).toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: 'Close NeMo Agent chat' }));
+    await user.click(screen.getByRole('button', { name: 'Close NeMo Copilot chat' }));
     await waitFor(() => expect(screen.getByTestId('compact-chat-thread')).not.toBeVisible());
   });
 
@@ -90,14 +90,14 @@ describe('ClaudeCodeTopBarChat', () => {
     renderTopBarChat();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Open NeMo Agent chat' }));
-    const backdrop = await screen.findByTestId('code-agent-chat-backdrop');
+    await user.click(screen.getByRole('button', { name: 'Open NeMo Copilot chat' }));
+    const backdrop = await screen.findByTestId('copilot-chat-backdrop');
     expect(backdrop).toBeVisible();
 
     await user.click(backdrop);
 
     await waitFor(() =>
-      expect(screen.queryByTestId('code-agent-chat-backdrop')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('copilot-chat-backdrop')).not.toBeInTheDocument()
     );
   });
 
@@ -105,17 +105,17 @@ describe('ClaudeCodeTopBarChat', () => {
     renderTopBarChat();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Open NeMo Agent chat' }));
+    await user.click(screen.getByRole('button', { name: 'Open NeMo Copilot chat' }));
     await user.click(await screen.findByRole('button', { name: 'Open in main chat' }));
 
-    await waitFor(() => expect(screen.getByTestId('pathname').textContent).toContain('code-agent'));
+    await waitFor(() => expect(screen.getByTestId('pathname').textContent).toContain('copilot'));
   });
 
   it('starts a new compact chat from the popout header', async () => {
     renderTopBarChat();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Open NeMo Agent chat' }));
+    await user.click(screen.getByRole('button', { name: 'Open NeMo Copilot chat' }));
     await user.click(await screen.findByRole('button', { name: /New/i }));
 
     expect(mocks.startNewChat).toHaveBeenCalledOnce();
@@ -125,7 +125,7 @@ describe('ClaudeCodeTopBarChat', () => {
     renderTopBarChat();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Open NeMo Agent chat' }));
+    await user.click(screen.getByRole('button', { name: 'Open NeMo Copilot chat' }));
     expect(await screen.findByTestId('compact-chat-thread')).toBeVisible();
 
     await user.click(screen.getByRole('link', { name: 'Job details' }));
@@ -137,21 +137,21 @@ describe('ClaudeCodeTopBarChat', () => {
 
     renderTopBarChat();
 
-    expect(screen.getAllByTestId('code-agent-thinking-dot')).toHaveLength(3);
-    expect(screen.queryByTestId('code-agent-unread-indicator')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('copilot-thinking-dot')).toHaveLength(3);
+    expect(screen.queryByTestId('copilot-unread-indicator')).not.toBeInTheDocument();
   });
 
   it('surfaces an unread badge after a response finishes while closed', () => {
     const view = renderTopBarChat();
 
-    expect(screen.queryByTestId('code-agent-unread-indicator')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('copilot-unread-indicator')).not.toBeInTheDocument();
 
     mocks.chat.isRunning = true;
     view.rerender(getTopBarChatElement());
     mocks.chat.isRunning = false;
     view.rerender(getTopBarChatElement());
 
-    expect(screen.getByTestId('code-agent-unread-indicator')).toBeInTheDocument();
+    expect(screen.getByTestId('copilot-unread-indicator')).toBeInTheDocument();
   });
 
   it('shows the attention badge instead of the thinking dots while awaiting user input', () => {
@@ -160,7 +160,7 @@ describe('ClaudeCodeTopBarChat', () => {
 
     renderTopBarChat();
 
-    expect(screen.getByTestId('code-agent-unread-indicator')).toBeInTheDocument();
-    expect(screen.queryByTestId('code-agent-thinking-indicator')).not.toBeInTheDocument();
+    expect(screen.getByTestId('copilot-unread-indicator')).toBeInTheDocument();
+    expect(screen.queryByTestId('copilot-thinking-indicator')).not.toBeInTheDocument();
   });
 });

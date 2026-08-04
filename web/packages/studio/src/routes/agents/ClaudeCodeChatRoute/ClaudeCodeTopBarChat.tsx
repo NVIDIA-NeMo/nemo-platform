@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button, Flex, Popover, Stack, Tooltip } from '@nvidia/foundations-react-core';
-import { CODING_AGENT_STUDIO_ENABLED } from '@studio/constants/environment';
+import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { ClaudeCodeChatThread } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeChatThread';
 import { useClaudeCodeChatContext } from '@studio/routes/agents/ClaudeCodeChatRoute/context/useClaudeCodeChatContext';
-import { getClaudeCodeChatRouteForSession } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
-import { getClaudeCodeChatRoute } from '@studio/routes/utils';
+import { getCopilotChatRouteForSession } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
+import { getCopilotChatRoute } from '@studio/routes/utils';
 import { Maximize2, Plus, Terminal, X } from 'lucide-react';
 import { type FC, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 
-const OPEN_LABEL = 'Open NeMo Agent chat';
-const CLOSE_LABEL = 'Close NeMo Agent chat';
+const OPEN_LABEL = 'Open NeMo Copilot chat';
+const CLOSE_LABEL = 'Close NeMo Copilot chat';
 
 const TopBarChatIcon = () => <Terminal size={16} />;
 
@@ -92,8 +92,8 @@ const ClaudeCodeTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) =>
     setIsOpen(false);
     navigate(
       sessionId
-        ? getClaudeCodeChatRouteForSession(workspace, sessionId)
-        : getClaudeCodeChatRoute(workspace)
+        ? getCopilotChatRouteForSession(workspace, sessionId)
+        : getCopilotChatRoute(workspace)
     );
   }, [navigate, sessionId, workspace]);
 
@@ -103,7 +103,7 @@ const ClaudeCodeTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) =>
         typeof document !== 'undefined' &&
         createPortal(
           <div
-            data-testid="code-agent-chat-backdrop"
+            data-testid="copilot-chat-backdrop"
             aria-hidden="true"
             className="fixed inset-0 z-[1000] bg-black/40 backdrop-blur-[1px]"
             onClick={() => setIsOpen(false)}
@@ -171,25 +171,25 @@ const ClaudeCodeTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) =>
           {isRunning && !isAwaitingUserInput ? (
             <span
               className="pointer-events-none absolute right-0 top-0 flex h-3 w-5 items-center justify-center gap-0.5 rounded-full border border-base bg-surface-sunken/90 dark:bg-surface-raised/90"
-              data-testid="code-agent-thinking-indicator"
+              data-testid="copilot-thinking-indicator"
             >
               <span
                 className="size-1 animate-pulse rounded-full bg-brand"
-                data-testid="code-agent-thinking-dot"
+                data-testid="copilot-thinking-dot"
               />
               <span
                 className="size-1 animate-pulse rounded-full bg-brand [animation-delay:150ms]"
-                data-testid="code-agent-thinking-dot"
+                data-testid="copilot-thinking-dot"
               />
               <span
                 className="size-1 animate-pulse rounded-full bg-brand [animation-delay:300ms]"
-                data-testid="code-agent-thinking-dot"
+                data-testid="copilot-thinking-dot"
               />
             </span>
           ) : isAwaitingUserInput || hasUnreadResponse ? (
             <span
               className="pointer-events-none absolute right-1 top-1 size-2 rounded-full bg-brand ring-2 ring-surface-sunken dark:ring-surface-raised"
-              data-testid="code-agent-unread-indicator"
+              data-testid="copilot-unread-indicator"
             />
           ) : null}
         </Button>
@@ -201,7 +201,7 @@ const ClaudeCodeTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) =>
 export const ClaudeCodeTopBarChat: FC = () => {
   const workspace = useWorkspaceFromPathIfExists();
 
-  if (!CODING_AGENT_STUDIO_ENABLED || !workspace) return null;
+  if (!COPILOT_STUDIO_ENABLED || !workspace) return null;
 
   return <ClaudeCodeTopBarChatPopout workspace={workspace} />;
 };

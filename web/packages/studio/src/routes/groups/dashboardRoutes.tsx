@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorPanel } from '@studio/components/ErrorPanel';
-import { CODING_AGENT_STUDIO_ENABLED } from '@studio/constants/environment';
+import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateCodingAgentStudioRoutes, gateDashboardRoutes } from '@studio/routes/utils';
+import { gateCopilotStudioRoutes, gateDashboardRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router-dom';
 
@@ -27,14 +27,14 @@ const ClaudeCodeChatRoute = lazy(() =>
 export const dashboardRoutes: RouteObject[] = gateDashboardRoutes([
   {
     path: ROUTES.workspace.dashboard,
-    element: CODING_AGENT_STUDIO_ENABLED ? <DashboardLandingRoute /> : <WorkspaceDashboardRoute />,
+    element: COPILOT_STUDIO_ENABLED ? <DashboardLandingRoute /> : <WorkspaceDashboardRoute />,
     errorElement: <ErrorPanel title="Workspace" />,
   },
-  ...gateCodingAgentStudioRoutes([
+  ...gateCopilotStudioRoutes([
     {
-      path: ROUTES.workspace.claudeCodeChat,
+      path: ROUTES.workspace.copilotChat,
       element: <ClaudeCodeChatRoute />,
-      errorElement: <ErrorPanel title="Claude Code" />,
+      errorElement: <ErrorPanel title="NeMo Copilot" />,
     },
   ]),
 ]);

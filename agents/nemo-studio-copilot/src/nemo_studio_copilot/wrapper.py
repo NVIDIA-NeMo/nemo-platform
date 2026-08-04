@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""NeMo agent wrapper — a NAT workflow type for the built-in nemo-agent.
+"""NeMo Copilot wrapper — a NAT workflow type for the built-in nemo-studio-copilot.
 
 Why this exists
 ---------------
@@ -32,29 +32,29 @@ NAT workflow type with permissive schemas. That's this module.
 
 How it works
 ------------
-* ``NemoAgentWrapperConfig`` registers ``_type: nemo_agent_wrapper`` with
+* ``NemoStudioCopilotWrapperConfig`` registers ``_type: nemo_studio_copilot_wrapper`` with
   NAT via ``register_function`` at import time.
-* ``NemoAgentWrapperInput`` accepts **either** ``messages`` (native LangGraph
+* ``NemoStudioCopilotWrapperInput`` accepts **either** ``messages`` (native LangGraph
   state shape) **or** ``input_message`` (the eval client's shape) and
   normalizes the latter to a single ``user`` message via a
   ``model_validator(mode="after")`` that participates in the Pydantic core
   schema (so it survives FastAPI's TypeAdapter path).
-* ``NemoAgentWrapperOutput.messages`` defaults to an empty list, so streaming
+* ``NemoStudioCopilotWrapperOutput.messages`` defaults to an empty list, so streaming
   chunks without ``messages`` validate cleanly.
-* ``NemoAgentWrapperFunction`` is a ``Function`` parametrized over those
+* ``NemoStudioCopilotWrapperFunction`` is a ``Function`` parametrized over those
   schemas. ``_ainvoke`` and ``_astream`` build a ``{"messages": [...]}`` state
   for the graph, run it, and coerce each output (or chunk) into
-  ``NemoAgentWrapperOutput`` via ``_parse``.
+  ``NemoStudioCopilotWrapperOutput`` via ``_parse``.
 * ``_parse`` extracts ``messages`` from the outer dict, from a single-keyed
   node-update wrapper, or — if neither shape applies — yields an empty
   placeholder. This is the key behavioral difference from
   ``LanggraphWrapperFunction._parse_stream_output``: we never raise on a
   state delta that lacks ``messages``.
-* The graph itself comes from :func:`nemo_agent.register.create_nemo_agent`.
+* The graph itself comes from :func:`nemo_studio_copilot.register.create_nemo_studio_copilot`.
   No ``graph:`` field on the config: this wrapper is single-purpose.
 
-Use it via ``_type: nemo_agent_wrapper`` in ``nemo-agent.yml`` /
-``nemo-eval.yml``. Once the upstream NAT bugs are fixed we can drop this
+Use it via ``_type: nemo_studio_copilot_wrapper`` in ``nemo-studio-copilot.yml`` /
+``nemo-studio-copilot-eval.yml``. Once the upstream NAT bugs are fixed we can drop this
 module and revert to ``langgraph_wrapper``.
 """
 
@@ -75,7 +75,7 @@ from nat.builder.function import Function
 from nat.cli.register_workflow import register_function
 from nat.data_models.api_server import ChatRequest, ChatResponse, ChatResponseChunk, Usage
 from nat.data_models.function import FunctionBaseConfig
-from nemo_agent.register import create_nemo_agent
+from nemo_studio_copilot.register import create_nemo_studio_copilot
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 logger = logging.getLogger(__name__)
@@ -92,14 +92,14 @@ _TIMEOUT_MESSAGE = "The model service timed out before it could complete that re
 _MODEL_ERROR_MESSAGE = "The model service returned an error before I could complete that request. Please try again."
 
 
-class NemoAgentWrapperConfig(FunctionBaseConfig, name="nemo_agent_wrapper"):
-    """Configuration for the nemo-agent NAT workflow.
+class NemoStudioCopilotWrapperConfig(FunctionBaseConfig, name="nemo_studio_copilot_wrapper"):
+    """Configuration for the nemo-studio-copilot NAT workflow.
 
     Unlike ``langgraph_wrapper`` there is no ``graph`` field — the graph is
-    fixed (the built-in nemo-agent deep-agent), so the YAML is just::
+    fixed (the built-in nemo-studio-copilot deep-agent), so the YAML is just::
 
         workflow:
-          _type: nemo_agent_wrapper
+          _type: nemo_studio_copilot_wrapper
           description: NeMo Platform assistant using LangChain Deep Agents
     """
 
@@ -108,8 +108,8 @@ class NemoAgentWrapperConfig(FunctionBaseConfig, name="nemo_agent_wrapper"):
     description: str = ""
 
 
-class NemoAgentWrapperInput(BaseModel):
-    """Input schema accepted by the nemo-agent ``/generate*`` routes.
+class NemoStudioCopilotWrapperInput(BaseModel):
+    """Input schema accepted by the nemo-studio-copilot ``/generate*`` routes.
 
     Accepts either:
 
@@ -137,7 +137,7 @@ class NemoAgentWrapperInput(BaseModel):
     studio_session_id: UUID | None = None
 
     @model_validator(mode="after")
-    def _ensure_messages(self) -> "NemoAgentWrapperInput":
+    def _ensure_messages(self) -> "NemoStudioCopilotWrapperInput":
         if self.messages is not None:
             return self
         if self.input_message is not None:
@@ -146,7 +146,7 @@ class NemoAgentWrapperInput(BaseModel):
         raise ValueError("Either 'messages' or 'input_message' is required")
 
 
-class NemoAgentWrapperOutput(BaseModel):
+class NemoStudioCopilotWrapperOutput(BaseModel):
     """Output schema for chunks and final results.
 
     ``messages`` defaults to an empty list (vs. required in
@@ -200,35 +200,37 @@ class NemoAgentWrapperOutput(BaseModel):
         return ""
 
 
-class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperOutput, NemoAgentWrapperOutput]):
-    """NAT ``Function`` wrapping the nemo-agent compiled LangGraph.
+class NemoStudioCopilotWrapperFunction(
+    Function[NemoStudioCopilotWrapperInput, NemoStudioCopilotWrapperOutput, NemoStudioCopilotWrapperOutput]
+):
+    """NAT ``Function`` wrapping the nemo-studio-copilot compiled LangGraph.
 
     Behavior mirrors ``LanggraphWrapperFunction`` (so the same converters
     work for both the chat-completions route and the raw generate routes),
     with two differences:
 
-    * **Input normalization** happens via ``NemoAgentWrapperInput``'s
+    * **Input normalization** happens via ``NemoStudioCopilotWrapperInput``'s
       validator, before this class is reached.
     * **Stream chunks** that lack ``messages`` are coerced to an empty
       output instead of raising — see :meth:`_parse`.
     """
 
-    def __init__(self, *, config: NemoAgentWrapperConfig, graph: Any) -> None:
+    def __init__(self, *, config: NemoStudioCopilotWrapperConfig, graph: Any) -> None:
         super().__init__(
             config=config,
             description=config.description,
             converters=[
-                NemoAgentWrapperFunction.convert_to_str,
-                NemoAgentWrapperFunction.convert_chat_request,
-                NemoAgentWrapperFunction.convert_str,
-                NemoAgentWrapperFunction.convert_to_chat_response,
-                NemoAgentWrapperFunction.convert_to_chat_response_chunk,
+                NemoStudioCopilotWrapperFunction.convert_to_str,
+                NemoStudioCopilotWrapperFunction.convert_chat_request,
+                NemoStudioCopilotWrapperFunction.convert_str,
+                NemoStudioCopilotWrapperFunction.convert_to_chat_response,
+                NemoStudioCopilotWrapperFunction.convert_to_chat_response_chunk,
             ],
         )
         self._graph = graph
 
     @staticmethod
-    def _build_state(value: NemoAgentWrapperInput) -> dict[str, Any]:
+    def _build_state(value: NemoStudioCopilotWrapperInput) -> dict[str, Any]:
         """Project the validated input down to the LangGraph state shape.
 
         We deliberately forward only ``messages`` — that's all the deep
@@ -240,7 +242,7 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
         return {"messages": convert_to_messages(messages)}
 
     @staticmethod
-    def _invocation_config(value: NemoAgentWrapperInput) -> RunnableConfig:
+    def _invocation_config(value: NemoStudioCopilotWrapperInput) -> RunnableConfig:
         if value.studio_session_id is None:
             return {}
         return {
@@ -269,7 +271,7 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
     @staticmethod
     def _is_empty_assistant_message(message: Any) -> bool:
         if isinstance(message, AIMessage):
-            return not message.text.strip() and not NemoAgentWrapperFunction._has_tool_calls(message)
+            return not message.text.strip() and not NemoStudioCopilotWrapperFunction._has_tool_calls(message)
         if not isinstance(message, dict):
             return False
         role = message.get("role") or message.get("type")
@@ -277,15 +279,15 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
             return False
         content = message.get("content", "")
         if isinstance(content, str):
-            return not content.strip() and not NemoAgentWrapperFunction._has_tool_calls(message)
+            return not content.strip() and not NemoStudioCopilotWrapperFunction._has_tool_calls(message)
         if content in (None, []):
-            return not NemoAgentWrapperFunction._has_tool_calls(message)
+            return not NemoStudioCopilotWrapperFunction._has_tool_calls(message)
         return False
 
     @staticmethod
     def _drop_trailing_empty_assistant_messages(messages: list[Any]) -> list[Any]:
         sanitized = list(messages)
-        while sanitized and NemoAgentWrapperFunction._is_empty_assistant_message(sanitized[-1]):
+        while sanitized and NemoStudioCopilotWrapperFunction._is_empty_assistant_message(sanitized[-1]):
             sanitized.pop()
         return sanitized
 
@@ -293,7 +295,7 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
         self,
         state: dict[str, Any],
         config: RunnableConfig | None = None,
-    ) -> NemoAgentWrapperOutput:
+    ) -> NemoStudioCopilotWrapperOutput:
         """Retry once when the graph silently stops with an empty final answer.
 
         Random-routed weaker models can occasionally emit an empty ``stop``
@@ -307,7 +309,7 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
         if parsed.value.strip():
             return parsed
 
-        logger.warning("nemo_agent_wrapper received empty final response; prompting agent to continue")
+        logger.warning("nemo_studio_copilot_wrapper received empty final response; prompting agent to continue")
         messages = parsed.messages if parsed.messages else state.get("messages", [])
         messages = self._drop_trailing_empty_assistant_messages(messages)
         if not messages:
@@ -322,17 +324,19 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
         }
         return self._parse(await self._graph.ainvoke(retry_state, config=config))
 
-    async def _ainvoke(self, value: NemoAgentWrapperInput) -> NemoAgentWrapperOutput:
+    async def _ainvoke(self, value: NemoStudioCopilotWrapperInput) -> NemoStudioCopilotWrapperOutput:
         try:
             return await self._ainvoke_with_empty_response_retry(
                 self._build_state(value),
                 self._invocation_config(value),
             )
         except Exception as e:
-            logger.exception("nemo_agent_wrapper _ainvoke failed")
+            logger.exception("nemo_studio_copilot_wrapper _ainvoke failed")
             return self._error_output(e)
 
-    async def _astream(self, value: NemoAgentWrapperInput) -> AsyncGenerator[NemoAgentWrapperOutput, None]:
+    async def _astream(
+        self, value: NemoStudioCopilotWrapperInput
+    ) -> AsyncGenerator[NemoStudioCopilotWrapperOutput, None]:
         # Streaming consumers receive graph chunks as they arrive; the
         # empty-final-response retry lives only on the non-streaming
         # ``_ainvoke`` path because it requires having the full final state.
@@ -343,14 +347,14 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
             ):
                 yield self._parse(chunk)
         except Exception as e:
-            logger.exception("nemo_agent_wrapper _astream failed")
+            logger.exception("nemo_studio_copilot_wrapper _astream failed")
             # The route has already sent HTTP 200 by the time a streaming
             # model call fails. Re-raising closes the stream without a final
             # chunk, which Studio renders as a silent agent.
             yield self._error_output(e)
 
     @staticmethod
-    def _error_output(error: Exception) -> NemoAgentWrapperOutput:
+    def _error_output(error: Exception) -> NemoStudioCopilotWrapperOutput:
         """Turn model transport failures into a safe, visible assistant reply."""
         error_chain: list[str] = []
         current: BaseException | None = error
@@ -367,10 +371,10 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
             message = _TIMEOUT_MESSAGE
         else:
             message = _MODEL_ERROR_MESSAGE
-        return NemoAgentWrapperOutput(messages=[AIMessage(content=message)])
+        return NemoStudioCopilotWrapperOutput(messages=[AIMessage(content=message)])
 
     @staticmethod
-    def _parse(output: Any) -> NemoAgentWrapperOutput:
+    def _parse(output: Any) -> NemoStudioCopilotWrapperOutput:
         """Coerce any LangGraph output (final state OR stream chunk) into our output type.
 
         ``LangGraph.astream()`` yields different shapes depending on stream
@@ -385,13 +389,13 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
           subagent state node) — neither carries messages.
 
         We extract ``messages`` if it appears at either nesting level, and
-        otherwise emit an empty ``NemoAgentWrapperOutput``. ``model_construct``
+        otherwise emit an empty ``NemoStudioCopilotWrapperOutput``. ``model_construct``
         bypasses validation since we've already chosen the data ourselves.
         """
         if isinstance(output, dict):
             if "messages" in output:
                 payload = {"messages": output["messages"], **{k: v for k, v in output.items() if k != "messages"}}
-                return NemoAgentWrapperOutput.model_construct(**payload)
+                return NemoStudioCopilotWrapperOutput.model_construct(**payload)
             # Scan all node deltas (not just the single-key shape): under
             # ``stream_mode="updates"`` LangGraph can fan out and emit a chunk
             # like ``{"agent": {"messages": [...]}, "tools": {...}}``. We pick
@@ -401,8 +405,8 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
             for inner in output.values():
                 if isinstance(inner, dict) and "messages" in inner:
                     payload = {"messages": inner["messages"], **{k: v for k, v in inner.items() if k != "messages"}}
-                    return NemoAgentWrapperOutput.model_construct(**payload)
-        return NemoAgentWrapperOutput.model_construct(messages=[])
+                    return NemoStudioCopilotWrapperOutput.model_construct(**payload)
+        return NemoStudioCopilotWrapperOutput.model_construct(messages=[])
 
     # Converters — called by NAT to translate between this Function's
     # native types and the chat-completions / string shapes that NAT's
@@ -410,13 +414,13 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
     # the only delta is the output type they return is our wider one.
 
     @staticmethod
-    def convert_to_str(value: NemoAgentWrapperOutput) -> str:
+    def convert_to_str(value: NemoStudioCopilotWrapperOutput) -> str:
         if not value.messages:
             return ""
         return value.value
 
     @staticmethod
-    def _extract_usage(value: NemoAgentWrapperOutput) -> Usage:
+    def _extract_usage(value: NemoStudioCopilotWrapperOutput) -> Usage:
         """Best-effort token usage extraction from the final assistant message."""
         candidates: list[dict[str, Any]] = []
         extras = getattr(value, "__pydantic_extra__", None)
@@ -487,11 +491,11 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
         )
 
     @staticmethod
-    def convert_chat_request(value: ChatRequest) -> NemoAgentWrapperInput:
+    def convert_chat_request(value: ChatRequest) -> NemoStudioCopilotWrapperInput:
         """Translate NAT's ``ChatRequest`` (chat-completions route body) to our input.
 
         NAT's chat-completions handler hands us a ``ChatRequest`` per call;
-        converting it to ``NemoAgentWrapperInput.messages`` is what lets the
+        converting it to ``NemoStudioCopilotWrapperInput.messages`` is what lets the
         ``/chat/completions`` and ``/generate/full`` routes share a single
         downstream graph invocation. We unpack the role enum and any
         ``model_dump``-able content parts so the LangGraph state ends up with
@@ -505,48 +509,48 @@ class NemoAgentWrapperFunction(Function[NemoAgentWrapperInput, NemoAgentWrapperO
                 content = [part.model_dump() if hasattr(part, "model_dump") else part for part in content]
             message_dicts.append({"role": role, "content": content})
         extras = value.model_extra or {}
-        return NemoAgentWrapperInput(
+        return NemoStudioCopilotWrapperInput(
             messages=message_dicts,
             studio_session_id=extras.get("studio_session_id"),
         )
 
     @staticmethod
-    def convert_str(value: str) -> NemoAgentWrapperInput:
+    def convert_str(value: str) -> NemoStudioCopilotWrapperInput:
         """Translate the ``/generate`` route body (a bare string) to our input.
 
         NAT's ``/generate`` route accepts a plain string and asks each
         registered ``str`` converter to lift it into the workflow's input
         type. We populate ``input_message`` (rather than ``messages``) so the
-        ``model_validator`` on :class:`NemoAgentWrapperInput` can take the
+        ``model_validator`` on :class:`NemoStudioCopilotWrapperInput` can take the
         canonical eval-client path that ``nvidia-nat-eval``'s
         ``remote_workflow.py`` uses against ``/generate/full`` — see the
         module docstring for the FastAPI/TypeAdapter rationale.
         """
-        return NemoAgentWrapperInput(input_message=value)
+        return NemoStudioCopilotWrapperInput(input_message=value)
 
     @staticmethod
-    def convert_to_chat_response(value: NemoAgentWrapperOutput) -> ChatResponse:
+    def convert_to_chat_response(value: NemoStudioCopilotWrapperOutput) -> ChatResponse:
         # ``value.value`` already handles dict-backed messages from
-        # ``model_construct`` (see NemoAgentWrapperOutput.value), so we don't
+        # ``model_construct`` (see NemoStudioCopilotWrapperOutput.value), so we don't
         # have to reach into ``messages[-1].text`` here and risk
         # ``AttributeError`` when streaming chunks contain raw graph dicts.
-        return ChatResponse.from_string(value.value, usage=NemoAgentWrapperFunction._extract_usage(value))
+        return ChatResponse.from_string(value.value, usage=NemoStudioCopilotWrapperFunction._extract_usage(value))
 
     @staticmethod
-    def convert_to_chat_response_chunk(value: NemoAgentWrapperOutput) -> ChatResponseChunk:
+    def convert_to_chat_response_chunk(value: NemoStudioCopilotWrapperOutput) -> ChatResponseChunk:
         return ChatResponseChunk.from_string(value.value)
 
 
-@register_function(config_type=NemoAgentWrapperConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
-async def register(config: NemoAgentWrapperConfig, b: Builder):
-    """Build the nemo-agent graph and yield a NAT-callable wrapper.
+@register_function(config_type=NemoStudioCopilotWrapperConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
+async def register(config: NemoStudioCopilotWrapperConfig, b: Builder):
+    """Build the nemo-studio-copilot graph and yield a NAT-callable wrapper.
 
-    The graph factory in ``register.create_nemo_agent`` constructs the
-    Deep Agent graph. We hand it directly to ``NemoAgentWrapperFunction``.
+    The graph factory in ``register.create_nemo_studio_copilot`` constructs the
+    Deep Agent graph. We hand it directly to ``NemoStudioCopilotWrapperFunction``.
 
     NAT calls this once per workflow build and yields the function
     instance to the runtime; ``_ainvoke`` / ``_astream`` are then driven
     per request by the FastAPI route handlers.
     """
-    graph = create_nemo_agent()
-    yield NemoAgentWrapperFunction(config=config, graph=graph)
+    graph = create_nemo_studio_copilot()
+    yield NemoStudioCopilotWrapperFunction(config=config, graph=graph)

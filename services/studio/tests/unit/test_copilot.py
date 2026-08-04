@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the Studio local coding-agent bridge."""
+"""Unit tests for the Studio local copilot bridge."""
 
 import asyncio
 import json
@@ -15,27 +15,27 @@ import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from nmp.studio import coding_agent_artifacts, coding_agent_skills, coding_agents, studio_links
+from nmp.studio import copilot, copilot_artifacts, copilot_skills, studio_links
 from nmp.studio.config import StudioConfig
 from nmp.studio.service import StudioService
 
 
 @pytest.fixture(autouse=True)
-def reset_coding_agent_state():
+def reset_copilot_state():
     """Reset module-level bridge state between tests."""
-    coding_agents._initialized_sessions.clear()
-    coding_agents._session_streams.clear()
-    coding_agents._pending_permissions.clear()
-    coding_agents._pending_agent_inputs.clear()
-    coding_agents._session_conversations.clear()
-    coding_agents._session_mtimes.clear()
+    copilot._initialized_sessions.clear()
+    copilot._session_streams.clear()
+    copilot._pending_permissions.clear()
+    copilot._pending_agent_inputs.clear()
+    copilot._session_conversations.clear()
+    copilot._session_mtimes.clear()
     yield
-    coding_agents._initialized_sessions.clear()
-    coding_agents._session_streams.clear()
-    coding_agents._pending_permissions.clear()
-    coding_agents._pending_agent_inputs.clear()
-    coding_agents._session_conversations.clear()
-    coding_agents._session_mtimes.clear()
+    copilot._initialized_sessions.clear()
+    copilot._session_streams.clear()
+    copilot._pending_permissions.clear()
+    copilot._pending_agent_inputs.clear()
+    copilot._session_conversations.clear()
+    copilot._session_mtimes.clear()
 
 
 @pytest.fixture
@@ -55,9 +55,9 @@ def service_client_with_feature_flags(
 
 
 def test_history_preserves_distinct_answers_under_an_agent_header():
-    artifacts = coding_agent_artifacts.ChatArtifactsResponse()
+    artifacts = copilot_artifacts.ChatArtifactsResponse()
     question_labels_by_tool_use_id: dict[str, dict[str, str]] = {}
-    input_selection_tools_by_tool_use_id: dict[str, coding_agent_artifacts.InputSelectionTool] = {}
+    input_selection_tools_by_tool_use_id: dict[str, copilot_artifacts.InputSelectionTool] = {}
     questions = [
         {
             "header": "Agent",
@@ -71,7 +71,7 @@ def test_history_preserves_distinct_answers_under_an_agent_header():
         },
     ]
 
-    coding_agent_artifacts.record_tool_artifacts(
+    copilot_artifacts.record_tool_artifacts(
         artifacts,
         "AskUserQuestion",
         {"questions": questions},
@@ -79,7 +79,7 @@ def test_history_preserves_distinct_answers_under_an_agent_header():
         question_labels_by_tool_use_id,
         input_selection_tools_by_tool_use_id,
     )
-    coding_agent_artifacts.record_user_tool_result_artifacts(
+    copilot_artifacts.record_user_tool_result_artifacts(
         artifacts,
         [
             {
@@ -104,9 +104,9 @@ def test_history_preserves_distinct_answers_under_an_agent_header():
 
 
 def test_history_records_studio_picker_results_as_selections():
-    artifacts = coding_agent_artifacts.ChatArtifactsResponse()
+    artifacts = copilot_artifacts.ChatArtifactsResponse()
     question_labels_by_tool_use_id: dict[str, dict[str, str]] = {}
-    input_selection_tools_by_tool_use_id: dict[str, coding_agent_artifacts.InputSelectionTool] = {}
+    input_selection_tools_by_tool_use_id: dict[str, copilot_artifacts.InputSelectionTool] = {}
     picker_calls = [
         ("toolu_agent", "mcp__nemo_studio__select_agent", {}, {"agent": "calculator-agent"}),
         (
@@ -130,7 +130,7 @@ def test_history_records_studio_picker_results_as_selections():
     ]
 
     for tool_use_id, tool_name, tool_input, _result in picker_calls:
-        coding_agent_artifacts.record_tool_artifacts(
+        copilot_artifacts.record_tool_artifacts(
             artifacts,
             tool_name,
             tool_input,
@@ -139,7 +139,7 @@ def test_history_records_studio_picker_results_as_selections():
             input_selection_tools_by_tool_use_id,
         )
 
-    coding_agent_artifacts.record_user_tool_result_artifacts(
+    copilot_artifacts.record_user_tool_result_artifacts(
         artifacts,
         [
             {
@@ -180,8 +180,8 @@ def _inference_source_dir(root: Path) -> Path:
     return source_dir
 
 
-def _inference_skill(source_dir: Path) -> coding_agent_skills.Skill:
-    return coding_agent_skills.Skill(
+def _inference_skill(source_dir: Path) -> copilot_skills.Skill:
+    return copilot_skills.Skill(
         name="inference",
         description="Use NeMo Platform inference.",
         version="0.1",
@@ -212,7 +212,7 @@ def test_vendored_load_skills_from_root_loads_selected_root_without_registry_pri
         encoding="utf-8",
     )
 
-    loaded = coding_agent_skills.load_skills_from_root(
+    loaded = copilot_skills.load_skills_from_root(
         tmp_path / "packages" / "nemo_platform_ext" / "skills",
         source_plugin="platform",
         source_dist="nemo-platform-ext",
@@ -226,7 +226,7 @@ def test_vendored_load_skills_from_root_loads_selected_root_without_registry_pri
 
 
 def test_create_session_returns_uuid(service_client: TestClient):
-    response = service_client.post("/v2/coding-agents/sessions")
+    response = service_client.post("/v2/copilot/sessions")
 
     assert response.status_code == 200
     uuid.UUID(response.json()["session_id"])
@@ -236,23 +236,23 @@ def test_create_session_evicts_least_recently_updated_session(
     service_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(coding_agents, "MAX_RETAINED_SESSIONS", 2)
-    first_session_id = service_client.post("/v2/coding-agents/sessions").json()["session_id"]
-    coding_agents._session_mtimes[first_session_id] = 1
-    second_session_id = service_client.post("/v2/coding-agents/sessions").json()["session_id"]
-    coding_agents._session_mtimes[second_session_id] = 2
+    monkeypatch.setattr(copilot, "MAX_RETAINED_SESSIONS", 2)
+    first_session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
+    copilot._session_mtimes[first_session_id] = 1
+    second_session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
+    copilot._session_mtimes[second_session_id] = 2
 
-    third_session_id = service_client.post("/v2/coding-agents/sessions").json()["session_id"]
+    third_session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
 
-    assert set(coding_agents._session_conversations) == {second_session_id, third_session_id}
-    assert set(coding_agents._session_mtimes) == {second_session_id, third_session_id}
+    assert set(copilot._session_conversations) == {second_session_id, third_session_id}
+    assert set(copilot._session_mtimes) == {second_session_id, third_session_id}
 
 
 def test_retain_recent_turns_caps_complete_user_assistant_pairs(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(coding_agents, "MAX_RETAINED_TURNS_PER_SESSION", 2)
+    monkeypatch.setattr(copilot, "MAX_RETAINED_TURNS_PER_SESSION", 2)
     conversation = [{"role": role, "content": f"{role}-{turn}"} for turn in range(3) for role in ("user", "assistant")]
 
-    coding_agents._retain_recent_turns(conversation)
+    copilot._retain_recent_turns(conversation)
 
     assert conversation == [
         {"role": "user", "content": "user-1"},
@@ -264,13 +264,13 @@ def test_retain_recent_turns_caps_complete_user_assistant_pairs(monkeypatch: pyt
 
 def test_list_history_sessions_includes_retained_conversation(service_client: TestClient):
     session_id = str(uuid.uuid4())
-    coding_agents._session_conversations[session_id] = [
+    copilot._session_conversations[session_id] = [
         {"role": "user", "content": "Help me build an agent"},
         {"role": "assistant", "content": "What should it do?"},
     ]
-    coding_agents._session_mtimes[session_id] = 42
+    copilot._session_mtimes[session_id] = 42
 
-    response = service_client.get("/v2/coding-agents/history/sessions")
+    response = service_client.get("/v2/copilot/history/sessions")
 
     assert response.status_code == 200
     assert response.json() == [
@@ -287,7 +287,7 @@ def test_list_history_sessions_includes_retained_conversation(service_client: Te
                 "agent": None,
                 "model": None,
                 "model_source": None,
-                "coding_agent_model": None,
+                "copilot_model": None,
                 "workspace": None,
                 "selections": [],
                 "files": [],
@@ -302,36 +302,36 @@ def test_list_history_sessions_includes_retained_conversation(service_client: Te
 def test_build_claude_argv_uses_new_session_then_resume_flag():
     session_id = str(uuid.uuid4())
 
-    argv = coding_agents._build_claude_argv(session_id, "hello", "http://test/mcp", "Studio context")
+    argv = copilot._build_claude_argv(session_id, "hello", "http://test/mcp", "Studio context")
     assert argv[:3] == ["claude", "-p", "hello"]
     assert "--output-format" in argv
     assert "stream-json" in argv
     mcp_config = json.loads(argv[argv.index("--mcp-config") + 1])
-    assert mcp_config["mcpServers"][coding_agents.CLAUDE_MCP_SERVER_NAME] == {
+    assert mcp_config["mcpServers"][copilot.CLAUDE_MCP_SERVER_NAME] == {
         "type": "http",
         "url": "http://test/mcp",
-        "timeout": coding_agents.CLAUDE_MCP_TOOL_TIMEOUT_MS,
+        "timeout": copilot.CLAUDE_MCP_TOOL_TIMEOUT_MS,
     }
     assert "--allowedTools" in argv
     allowed_tools = argv[argv.index("--allowedTools") + 1].split(",")
-    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_agent" in allowed_tools
-    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_eval_config" in allowed_tools
-    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_dataset_file" in allowed_tools
-    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_model" in allowed_tools
-    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__job_progress" in allowed_tools
-    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__studio_link" in allowed_tools
+    assert f"mcp__{copilot.CLAUDE_MCP_SERVER_NAME}__select_agent" in allowed_tools
+    assert f"mcp__{copilot.CLAUDE_MCP_SERVER_NAME}__select_eval_config" in allowed_tools
+    assert f"mcp__{copilot.CLAUDE_MCP_SERVER_NAME}__select_dataset_file" in allowed_tools
+    assert f"mcp__{copilot.CLAUDE_MCP_SERVER_NAME}__select_model" in allowed_tools
+    assert f"mcp__{copilot.CLAUDE_MCP_SERVER_NAME}__job_progress" in allowed_tools
+    assert f"mcp__{copilot.CLAUDE_MCP_SERVER_NAME}__studio_link" in allowed_tools
     assert "--disallowedTools" not in argv
     assert "--append-system-prompt" in argv
-    assert argv[argv.index("--append-system-prompt") + 1] == coding_agents.STUDIO_CODING_AGENT_CONTEXT
+    assert argv[argv.index("--append-system-prompt") + 1] == copilot.STUDIO_COPILOT_CONTEXT
     assert "--permission-prompt-tool" in argv
-    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__approval_prompt" in argv
+    assert f"mcp__{copilot.CLAUDE_MCP_SERVER_NAME}__approval_prompt" in argv
     assert "--append-system-prompt" in argv
     assert "Studio context" in argv
     assert "--session-id" in argv
     assert session_id in argv
 
-    coding_agents._initialized_sessions.add(session_id)
-    resumed_argv = coding_agents._build_claude_argv(session_id, "again", "http://test/mcp", "Studio context")
+    copilot._initialized_sessions.add(session_id)
+    resumed_argv = copilot._build_claude_argv(session_id, "again", "http://test/mcp", "Studio context")
     assert "-r" in resumed_argv
     assert "--session-id" not in resumed_argv
     assert "--append-system-prompt" in resumed_argv
@@ -348,11 +348,11 @@ def test_history_list_excludes_disk_only_sessions_but_direct_get_remains_availab
     project_dir.mkdir(parents=True)
     session_id = str(uuid.uuid4())
     history = project_dir / f"{session_id}.jsonl"
-    first_prompt = coding_agents._build_claude_prompt(
+    first_prompt = copilot._build_claude_prompt(
         "first prompt",
         "default",
         "https://studio.test/studio",
-        "/workspaces/default/dashboard/code-agent",
+        "/workspaces/default/dashboard/copilot",
     )
     history.write_text(
         "\n".join(
@@ -497,15 +497,15 @@ def test_history_list_excludes_disk_only_sessions_but_direct_get_remains_availab
         )
     )
 
-    monkeypatch.setattr(coding_agents, "SERVER_CWD", workdir)
-    monkeypatch.setattr(coding_agents, "CLAUDE_PROJECTS_DIR", projects_dir)
+    monkeypatch.setattr(copilot, "SERVER_CWD", workdir)
+    monkeypatch.setattr(copilot, "CLAUDE_PROJECTS_DIR", projects_dir)
 
-    list_response = service_client.get("/v2/coding-agents/history/sessions")
+    list_response = service_client.get("/v2/copilot/history/sessions")
 
     assert list_response.status_code == 200
     assert list_response.json() == []
 
-    history_response = service_client.get(f"/v2/coding-agents/history/sessions/{session_id}")
+    history_response = service_client.get(f"/v2/copilot/history/sessions/{session_id}")
 
     assert history_response.status_code == 200
     assert history_response.json() == {
@@ -587,7 +587,7 @@ def test_history_list_excludes_disk_only_sessions_but_direct_get_remains_availab
             "agent": "cat-identifier",
             "model": "cloud, nvidia/llama-3.3-nemotron-super-49b-v1",
             "model_source": "spec",
-            "coding_agent_model": "claude-sonnet-4-6",
+            "copilot_model": "claude-sonnet-4-6",
             "workspace": "default",
             "selections": [{"label": "Agent", "value": "beach-finder"}],
             "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
@@ -609,7 +609,7 @@ def test_history_list_excludes_disk_only_sessions_but_direct_get_remains_availab
             ],
         },
     }
-    assert session_id in coding_agents._initialized_sessions
+    assert session_id in copilot._initialized_sessions
 
 
 def test_list_claude_skills_returns_claude_install_metadata(
@@ -623,10 +623,10 @@ def test_list_claude_skills_returns_claude_install_metadata(
     installed_skill.write_text("# Installed")
     skill = _inference_skill(source_dir)
 
-    monkeypatch.setattr(coding_agents, "SERVER_CWD", tmp_path)
-    monkeypatch.setattr(coding_agent_skills, "load_skills", lambda: {"inference": skill})
+    monkeypatch.setattr(copilot, "SERVER_CWD", tmp_path)
+    monkeypatch.setattr(copilot_skills, "load_skills", lambda: {"inference": skill})
 
-    response = service_client.get("/v2/coding-agents/skills")
+    response = service_client.get("/v2/copilot/skills")
 
     assert response.status_code == 200
     assert response.json() == [_expected_inference_skill_response(installed=True)]
@@ -668,8 +668,8 @@ def test_history_interaction_text_restores_studio_picker_submissions(
     expected: str,
 ):
     assert (
-        coding_agents._history_interaction_text(
-            coding_agents.HistoryToolUse(name=tool_name, input=tool_input),
+        copilot._history_interaction_text(
+            copilot.HistoryToolUse(name=tool_name, input=tool_input),
             result,
         )
         == expected
@@ -684,20 +684,20 @@ def test_load_claude_skills_falls_back_on_duplicate_skill_error(
     skill = _inference_skill(_inference_source_dir(tmp_path))
     fallback_called = False
 
-    def fallback() -> dict[str, coding_agent_skills.Skill]:
+    def fallback() -> dict[str, copilot_skills.Skill]:
         nonlocal fallback_called
         fallback_called = True
         return {"inference": skill}
 
     monkeypatch.setattr(
-        coding_agent_skills,
+        copilot_skills,
         "load_skills",
-        lambda: (_ for _ in ()).throw(coding_agent_skills.DuplicateSkillError("vendored drift")),
+        lambda: (_ for _ in ()).throw(copilot_skills.DuplicateSkillError("vendored drift")),
     )
-    monkeypatch.setattr(coding_agent_skills, "_load_skills_from_preferred_entry_points", fallback)
+    monkeypatch.setattr(copilot_skills, "_load_skills_from_preferred_entry_points", fallback)
 
     with caplog.at_level(logging.WARNING):
-        loaded = coding_agent_skills._load_claude_skills()
+        loaded = copilot_skills._load_claude_skills()
 
     assert loaded == {"inference": skill}
     assert fallback_called
@@ -709,24 +709,24 @@ def test_list_claude_skills_returns_500_when_fallback_also_fails(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(
-        coding_agent_skills,
+        copilot_skills,
         "load_skills",
-        lambda: (_ for _ in ()).throw(coding_agent_skills.DuplicateSkillError("registry drift")),
+        lambda: (_ for _ in ()).throw(copilot_skills.DuplicateSkillError("registry drift")),
     )
     monkeypatch.setattr(
-        coding_agent_skills,
+        copilot_skills,
         "_load_skills_from_preferred_entry_points",
-        lambda: (_ for _ in ()).throw(coding_agent_skills.DuplicateSkillError("fallback drift")),
+        lambda: (_ for _ in ()).throw(copilot_skills.DuplicateSkillError("fallback drift")),
     )
 
-    response = service_client.get("/v2/coding-agents/skills")
+    response = service_client.get("/v2/copilot/skills")
 
     assert response.status_code == 500
     assert response.json()["detail"] == "fallback drift"
 
 
 def test_invalid_session_id_returns_400(service_client: TestClient):
-    response = service_client.get("/v2/coding-agents/history/sessions/not-a-uuid")
+    response = service_client.get("/v2/copilot/history/sessions/not-a-uuid")
 
     assert response.status_code == 400
     assert response.json()["detail"] == "session_id must be a UUID"
@@ -738,21 +738,21 @@ async def test_stream_claude_hides_startup_oserror(monkeypatch: pytest.MonkeyPat
     async def fail_start(*args: Any, **kwargs: Any):
         raise OSError("secret local path")
 
-    monkeypatch.setattr(coding_agents.shutil, "which", lambda name: "/usr/bin/claude")
-    monkeypatch.setattr(coding_agents.asyncio, "create_subprocess_exec", fail_start)
+    monkeypatch.setattr(copilot.shutil, "which", lambda name: "/usr/bin/claude")
+    monkeypatch.setattr(copilot.asyncio, "create_subprocess_exec", fail_start)
 
-    chunks = [chunk async for chunk in coding_agents._stream_claude(session_id, "hello", "http://test/mcp")]
+    chunks = [chunk async for chunk in copilot._stream_claude(session_id, "hello", "http://test/mcp")]
 
     assert chunks == ['event: error\ndata: {"exit_code": null, "stderr": "Failed to start Claude Code process"}\n\n']
     assert "secret local path" not in chunks[0]
-    assert session_id not in coding_agents._session_streams
+    assert session_id not in copilot._session_streams
 
 
 def test_mcp_initialize_and_tools_list(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
     initialize_response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -761,7 +761,7 @@ def test_mcp_initialize_and_tools_list(service_client: TestClient):
         },
     )
     tools_response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
     )
 
@@ -803,7 +803,7 @@ def test_mcp_tools_list_includes_feature_flag_enabled_destinations(monkeypatch: 
     session_id = str(uuid.uuid4())
 
     tools_response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
     )
 
@@ -817,10 +817,10 @@ def test_mcp_tools_list_includes_feature_flag_enabled_destinations(monkeypatch: 
 
 
 def test_build_studio_system_prompt_preserves_empty_enabled_destinations():
-    prompt = coding_agents._build_studio_system_prompt(
+    prompt = copilot._build_studio_system_prompt(
         "default",
         "https://studio.test",
-        "/workspaces/default/dashboard/code-agent",
+        "/workspaces/default/dashboard/copilot",
         {},
     )
 
@@ -831,16 +831,16 @@ def test_build_studio_system_prompt_preserves_empty_enabled_destinations():
 
 
 def test_build_studio_system_prompt_includes_message_summary_contract():
-    prompt = coding_agents._build_studio_system_prompt(
+    prompt = copilot._build_studio_system_prompt(
         "default",
         "https://studio.test",
-        "/workspaces/default/dashboard/code-agent",
+        "/workspaces/default/dashboard/copilot",
         {},
     )
 
     assert "Conditional message-summary behavior:" in prompt
-    assert coding_agents.STUDIO_MESSAGE_SUMMARY_START in prompt
-    assert coding_agents.STUDIO_MESSAGE_SUMMARY_END in prompt
+    assert copilot.STUDIO_MESSAGE_SUMMARY_START in prompt
+    assert copilot.STUDIO_MESSAGE_SUMMARY_END in prompt
     assert "title: <meaningful 3-7 word title" in prompt
     assert "worked_for: <elapsed time if you know it, otherwise unknown>" in prompt
     assert "summary: <concise Markdown" in prompt
@@ -864,18 +864,17 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
     assert "Do not omit the summary block because the message is short." not in prompt
 
 
-def test_build_nemo_agent_system_prompt_uses_nemo_agent_identity():
-    prompt = coding_agents._build_nemo_agent_system_prompt(
+def test_build_copilot_system_prompt_uses_copilot_identity():
+    prompt = copilot._build_copilot_system_prompt(
         str(uuid.uuid4()),
         "default",
         "https://studio.test",
-        "/workspaces/default/dashboard/code-agent",
+        "/workspaces/default/dashboard/copilot",
         {},
     )
 
-    assert "Your identity in this interface is NeMo Agent." in prompt
+    assert "Your identity in this interface is NeMo Copilot." in prompt
     assert "Claude" not in prompt
-    assert "Code Agent" not in prompt
 
 
 def test_history_summary_reads_model_generated_session_title(tmp_path: Path):
@@ -893,12 +892,12 @@ def test_history_summary_reads_model_generated_session_title(tmp_path: Path):
                                     "type": "text",
                                     "text": "\n".join(
                                         [
-                                            coding_agents.STUDIO_MESSAGE_SUMMARY_START,
+                                            copilot.STUDIO_MESSAGE_SUMMARY_START,
                                             "title: Create Spam Detector Agent",
                                             "worked_for: unknown",
                                             "summary: Created the requested agent.",
                                             "details_label: worked for unknown",
-                                            coding_agents.STUDIO_MESSAGE_SUMMARY_END,
+                                            copilot.STUDIO_MESSAGE_SUMMARY_END,
                                         ]
                                     ),
                                 }
@@ -910,7 +909,7 @@ def test_history_summary_reads_model_generated_session_title(tmp_path: Path):
         )
     )
 
-    summary = coding_agents._summarize_history_session(history)
+    summary = copilot._summarize_history_session(history)
 
     assert summary.title == "Create Spam Detector Agent"
 
@@ -928,7 +927,7 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
         "agentsList": "agents",
         "baseModels": "base_models",
         "baseModelsModel": "base_model",
-        "claudeCodeChat": "code_agent",
+        "claudeCodeChat": "copilot",
         "customizationJobDetails": "customization",
         "customizationJobList": "customizations",
         "dashboard": "dashboard",
@@ -987,7 +986,7 @@ def test_mcp_studio_link_returns_agents_page_markdown(service_client: TestClient
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1015,7 +1014,7 @@ def test_mcp_studio_link_returns_custom_models_full_url(monkeypatch: pytest.Monk
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default&studio_base_url=https%3A%2F%2Fstudio.test%2Fstudio",
+        f"/v2/copilot/mcp/{session_id}?workspace=default&studio_base_url=https%3A%2F%2Fstudio.test%2Fstudio",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1042,7 +1041,7 @@ def test_mcp_studio_link_returns_base_models_markdown(service_client: TestClient
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1069,7 +1068,7 @@ def test_mcp_studio_link_returns_jobs_page_markdown(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1096,7 +1095,7 @@ def test_mcp_studio_link_encodes_detail_route_parts(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default%20workspace",
+        f"/v2/copilot/mcp/{session_id}?workspace=default%20workspace",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1127,7 +1126,7 @@ def test_mcp_studio_link_returns_agent_deployment_detail_markdown(service_client
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1157,7 +1156,7 @@ def test_mcp_studio_link_returns_agent_chat_markdown(service_client: TestClient)
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1188,7 +1187,7 @@ def test_mcp_studio_link_returns_model_chat_markdown(monkeypatch: pytest.MonkeyP
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1215,7 +1214,7 @@ def test_mcp_studio_link_rejects_disabled_feature_flag_destination(service_clien
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1253,7 +1252,7 @@ def test_mcp_studio_link_returns_fileset_file_markdown(service_client: TestClien
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1285,7 +1284,7 @@ def test_mcp_studio_link_returns_intake_span_markdown(monkeypatch: pytest.Monkey
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1356,7 +1355,7 @@ def test_mcp_studio_link_returns_started_evaluation_result_markdown(service_clie
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        f"/v2/copilot/mcp/{session_id}?workspace=default",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1386,7 +1385,7 @@ def test_mcp_rejects_malformed_json(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         content="{",
         headers={"content-type": "application/json"},
     )
@@ -1398,7 +1397,7 @@ def test_mcp_rejects_malformed_json(service_client: TestClient):
 def test_mcp_rejects_non_object_json(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
-    response = service_client.post(f"/v2/coding-agents/mcp/{session_id}", json=[])
+    response = service_client.post(f"/v2/copilot/mcp/{session_id}", json=[])
 
     assert response.status_code == 400
     assert response.json()["detail"] == "JSON body must be an object"
@@ -1408,7 +1407,7 @@ def test_mcp_rejects_non_object_params(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": []},
     )
 
@@ -1420,7 +1419,7 @@ def test_mcp_tools_call_denies_without_active_stream(service_client: TestClient)
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1436,7 +1435,7 @@ def test_mcp_tools_call_denies_without_active_stream(service_client: TestClient)
     result_text = response.json()["result"]["content"][0]["text"]
     assert json.loads(result_text) == {
         "behavior": "deny",
-        "message": "no active Studio coding-agent session",
+        "message": "no active Studio copilot session",
     }
 
 
@@ -1444,7 +1443,7 @@ def test_mcp_tools_call_job_progress_returns_rendered(service_client: TestClient
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1467,7 +1466,7 @@ def test_mcp_tools_call_select_agent_denies_without_active_stream(service_client
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1483,7 +1482,7 @@ def test_mcp_tools_call_select_agent_denies_without_active_stream(service_client
     result_text = response.json()["result"]["content"][0]["text"]
     assert json.loads(result_text) == {
         "status": "error",
-        "message": "no active Studio coding-agent session",
+        "message": "no active Studio copilot session",
     }
 
 
@@ -1491,7 +1490,7 @@ def test_mcp_tools_call_select_dataset_file_denies_without_active_stream(service
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1507,7 +1506,7 @@ def test_mcp_tools_call_select_dataset_file_denies_without_active_stream(service
     result_text = response.json()["result"]["content"][0]["text"]
     assert json.loads(result_text) == {
         "status": "error",
-        "message": "no active Studio coding-agent session",
+        "message": "no active Studio copilot session",
     }
 
 
@@ -1515,7 +1514,7 @@ def test_mcp_tools_call_select_model_denies_without_active_stream(service_client
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/mcp/{session_id}",
+        f"/v2/copilot/mcp/{session_id}",
         json={
             "jsonrpc": "2.0",
             "id": 1,
@@ -1531,7 +1530,7 @@ def test_mcp_tools_call_select_model_denies_without_active_stream(service_client
     result_text = response.json()["result"]["content"][0]["text"]
     assert json.loads(result_text) == {
         "status": "error",
-        "message": "no active Studio coding-agent session",
+        "message": "no active Studio copilot session",
     }
 
 
@@ -1540,13 +1539,13 @@ async def test_resolve_permission_rejects_cross_session_request():
     other_session_id = str(uuid.uuid4())
     request_id = str(uuid.uuid4())
     future = asyncio.get_running_loop().create_future()
-    coding_agents._pending_permissions[request_id] = (owner_session_id, future)
+    copilot._pending_permissions[request_id] = (owner_session_id, future)
 
     with pytest.raises(HTTPException) as exc_info:
-        await coding_agents.resolve_permission(
+        await copilot.resolve_permission(
             other_session_id,
             request_id,
-            coding_agents.PermissionDecision(approved=True),
+            copilot.PermissionDecision(approved=True),
         )
 
     assert exc_info.value.status_code == 404
@@ -1557,12 +1556,12 @@ async def test_resolve_permission_sets_result_for_owning_session():
     session_id = str(uuid.uuid4())
     request_id = str(uuid.uuid4())
     future = asyncio.get_running_loop().create_future()
-    coding_agents._pending_permissions[request_id] = (session_id, future)
+    copilot._pending_permissions[request_id] = (session_id, future)
 
-    response = await coding_agents.resolve_permission(
+    response = await copilot.resolve_permission(
         session_id,
         request_id,
-        coding_agents.PermissionDecision(approved=True),
+        copilot.PermissionDecision(approved=True),
     )
 
     assert response == {"ok": True}
@@ -1573,12 +1572,12 @@ async def test_resolve_agent_input_sets_result_for_owning_session():
     session_id = str(uuid.uuid4())
     request_id = str(uuid.uuid4())
     future = asyncio.get_running_loop().create_future()
-    coding_agents._pending_agent_inputs[request_id] = (session_id, future)
+    copilot._pending_agent_inputs[request_id] = (session_id, future)
 
-    response = await coding_agents.resolve_agent_input(
+    response = await copilot.resolve_agent_input(
         session_id,
         request_id,
-        coding_agents.AgentInputDecision(value={"agent": "react-agent"}),
+        copilot.AgentInputDecision(value={"agent": "react-agent"}),
     )
 
     assert response == {"ok": True}
@@ -1587,16 +1586,16 @@ async def test_resolve_agent_input_sets_result_for_owning_session():
 
 async def test_request_agent_input_rejects_reserved_response_keys():
     session_id = str(uuid.uuid4())
-    coding_agents._session_streams[session_id] = asyncio.Queue()
+    copilot._session_streams[session_id] = asyncio.Queue()
 
-    request_task = asyncio.create_task(coding_agents._request_agent_input(session_id, "agent", {}))
-    _, payload = await coding_agents._session_streams[session_id].get()
+    request_task = asyncio.create_task(copilot._request_agent_input(session_id, "agent", {}))
+    _, payload = await copilot._session_streams[session_id].get()
     request_id = json.loads(payload)["request_id"]
 
-    await coding_agents.resolve_agent_input(
+    await copilot.resolve_agent_input(
         session_id,
         request_id,
-        coding_agents.AgentInputDecision(value={"agent": "react-agent", "status": "submitted"}),
+        copilot.AgentInputDecision(value={"agent": "react-agent", "status": "submitted"}),
     )
 
     assert await request_task == {
@@ -1607,24 +1606,24 @@ async def test_request_agent_input_rejects_reserved_response_keys():
 
 async def test_permission_request_waits_until_user_resolves_it():
     session_id = str(uuid.uuid4())
-    coding_agents._session_streams[session_id] = asyncio.Queue()
+    copilot._session_streams[session_id] = asyncio.Queue()
 
     request_task = asyncio.create_task(
-        coding_agents._request_permission(
+        copilot._request_permission(
             session_id,
             {"tool_name": "AskUserQuestion", "input": {"question": "Continue?"}},
         )
     )
-    _, payload = await coding_agents._session_streams[session_id].get()
+    _, payload = await copilot._session_streams[session_id].get()
     request_id = json.loads(payload)["request_id"]
 
     await asyncio.sleep(0)
     assert not request_task.done()
 
-    await coding_agents.resolve_permission(
+    await copilot.resolve_permission(
         session_id,
         request_id,
-        coding_agents.PermissionDecision(approved=True),
+        copilot.PermissionDecision(approved=True),
     )
 
     assert await request_task == {"behavior": "allow", "updatedInput": {"question": "Continue?"}}
@@ -1632,25 +1631,25 @@ async def test_permission_request_waits_until_user_resolves_it():
 
 async def test_agent_input_request_cleans_up_when_wait_is_cancelled():
     session_id = str(uuid.uuid4())
-    coding_agents._session_streams[session_id] = asyncio.Queue()
+    copilot._session_streams[session_id] = asyncio.Queue()
 
-    request_task = asyncio.create_task(coding_agents._request_agent_input(session_id, "agent", {}))
-    _, payload = await coding_agents._session_streams[session_id].get()
+    request_task = asyncio.create_task(copilot._request_agent_input(session_id, "agent", {}))
+    _, payload = await copilot._session_streams[session_id].get()
     request_id = json.loads(payload)["request_id"]
 
-    assert request_id in coding_agents._pending_agent_inputs
+    assert request_id in copilot._pending_agent_inputs
     request_task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await request_task
-    assert request_id not in coding_agents._pending_agent_inputs
+    assert request_id not in copilot._pending_agent_inputs
 
 
 async def test_blocking_mcp_tool_response_streams_keepalives_until_user_responds():
     session_id = str(uuid.uuid4())
-    coding_agents._session_streams[session_id] = asyncio.Queue()
+    copilot._session_streams[session_id] = asyncio.Queue()
     result = asyncio.get_running_loop().create_future()
 
-    response = await coding_agents._blocking_mcp_tool_response(session_id, 7, result)
+    response = await copilot._blocking_mcp_tool_response(session_id, 7, result)
 
     assert response.media_type == "text/event-stream"
     assert response.headers["cache-control"] == "no-cache, no-transform"
@@ -1680,7 +1679,7 @@ async def test_blocking_mcp_tool_response_streams_keepalives_until_user_responds
         await anext(iterator)
 
 
-def test_platform_route_stream_uses_deployed_nemo_agent(monkeypatch: pytest.MonkeyPatch):
+def test_platform_route_stream_uses_deployed_copilot(monkeypatch: pytest.MonkeyPatch):
     service = StudioService()
     app = FastAPI()
     app.include_router(service.app.router, prefix="/apis/studio")
@@ -1705,18 +1704,18 @@ def test_platform_route_stream_uses_deployed_nemo_agent(monkeypatch: pytest.Monk
                 "studio_system_prompt": studio_system_prompt,
             }
         )
-        yield coding_agents._sse(json.dumps({"type": "system", "subtype": "init"}))
-        yield coding_agents._sse("", event="done")
+        yield copilot._sse(json.dumps({"type": "system", "subtype": "init"}))
+        yield copilot._sse("", event="done")
 
-    monkeypatch.setattr(coding_agents, "_stream_nemo_agent", fake_stream)
+    monkeypatch.setattr(copilot, "_stream_copilot", fake_stream)
 
     response = client.post(
-        f"/apis/studio/v2/coding-agents/sessions/{session_id}/messages",
+        f"/apis/studio/v2/copilot/sessions/{session_id}/messages",
         json={
             "message": "hello",
             "workspace": "default",
             "studio_base_url": "https://studio.test/studio",
-            "studio_pathname": "/workspaces/default/dashboard/code-agent",
+            "studio_pathname": "/workspaces/default/dashboard/copilot",
         },
     )
 
@@ -1725,13 +1724,13 @@ def test_platform_route_stream_uses_deployed_nemo_agent(monkeypatch: pytest.Monk
     assert "event: done" in response.text
     assert captured["session_id"] == session_id
     assert captured["agent_url"] == (
-        "http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
+        "http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/nemo-studio-copilot/-/v1/chat/completions"
     )
     assert captured["headers"] == {}
     assert captured["message"] == "hello"
     assert "Current Studio workspace: default" in captured["studio_system_prompt"]
     assert "Studio UI base URL: https://studio.test/studio" in captured["studio_system_prompt"]
-    assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
+    assert "Current Studio route path: /workspaces/default/dashboard/copilot" in captured["studio_system_prompt"]
     assert "you MUST call select_agent" in captured["studio_system_prompt"]
     assert "you MUST call select_model" in captured["studio_system_prompt"]
     # The options-picker directive is present and rewritten to the deployed agent's tool name.
@@ -1796,13 +1795,13 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
                 "studio_system_prompt": studio_system_prompt,
             }
         )
-        yield coding_agents._sse(json.dumps({"type": "system", "subtype": "init"}))
-        yield coding_agents._sse("", event="done")
+        yield copilot._sse(json.dumps({"type": "system", "subtype": "init"}))
+        yield copilot._sse("", event="done")
 
-    monkeypatch.setattr(coding_agents, "_stream_nemo_agent", fake_stream)
+    monkeypatch.setattr(copilot, "_stream_copilot", fake_stream)
 
     response = client.post(
-        f"/apis/studio/v2/coding-agents/sessions/{session_id}/messages",
+        f"/apis/studio/v2/copilot/sessions/{session_id}/messages",
         json={
             "message": "can you give me a link to it?",
             "workspace": "default",
@@ -1810,41 +1809,41 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
         headers={
             "host": "attacker.example",
             "origin": "http://ns.local.aire.nvidia.com:5173",
-            "referer": "http://ns.local.aire.nvidia.com:5173/workspaces/default/dashboard/code-agent",
+            "referer": "http://ns.local.aire.nvidia.com:5173/workspaces/default/dashboard/copilot",
         },
     )
 
     assert response.status_code == 200
     assert captured["agent_url"] == (
-        "http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/nemo-agent-local-poc/-/v1/chat/completions"
+        "http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/nemo-studio-copilot/-/v1/chat/completions"
     )
     assert captured["message"] == "can you give me a link to it?"
     assert "Studio UI base URL: http://ns.local.aire.nvidia.com:5173" in captured["studio_system_prompt"]
-    assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
+    assert "Current Studio route path: /workspaces/default/dashboard/copilot" in captured["studio_system_prompt"]
 
 
-def test_coding_agent_url_uses_only_configured_base_url(monkeypatch: pytest.MonkeyPatch):
+def test_copilot_url_uses_only_configured_base_url(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("NMP_BASE_URL", "https://nmp.dev.aire.nvidia.com")
 
-    assert coding_agents._studio_coding_agent_url("default") == (
+    assert copilot._studio_copilot_url("default") == (
         "https://nmp.dev.aire.nvidia.com/apis/agents/v2/workspaces/default/"
-        "agents/nemo-agent-local-poc/-/v1/chat/completions"
+        "agents/nemo-studio-copilot/-/v1/chat/completions"
     )
 
 
 def test_validated_workspace_uses_default_and_rejects_path_injection():
-    assert coding_agents._validated_workspace_or_default(None) == "default"
-    assert coding_agents._validated_workspace_or_default(" default ") == "default"
+    assert copilot._validated_workspace_or_default(None) == "default"
+    assert copilot._validated_workspace_or_default(" default ") == "default"
 
     with pytest.raises(HTTPException, match="workspace must match the expected entity-name pattern"):
-        coding_agents._validated_workspace_or_default("../internal?target=metadata")
+        copilot._validated_workspace_or_default("../internal?target=metadata")
 
 
 def test_platform_route_rejects_workspace_path_injection(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
     response = service_client.post(
-        f"/v2/coding-agents/sessions/{session_id}/messages",
+        f"/v2/copilot/sessions/{session_id}/messages",
         json={"message": "hello", "workspace": "../internal?target=metadata"},
         headers={"host": "attacker.example"},
     )
@@ -1852,22 +1851,22 @@ def test_platform_route_rejects_workspace_path_injection(service_client: TestCli
     assert response.status_code == 422
 
 
-def test_nemo_agent_error_detail_does_not_expose_exception_text():
+def test_copilot_error_detail_does_not_expose_exception_text():
     request = httpx.Request("POST", "https://platform.test/agent")
     response = httpx.Response(502, request=request)
     status_error = httpx.HTTPStatusError("private upstream detail", request=request, response=response)
 
-    assert coding_agents._nemo_agent_error_detail(status_error) == "The deployed NeMo Agent returned HTTP 502."
-    assert coding_agents._nemo_agent_error_detail(RuntimeError("private stack detail")) == (
-        "The deployed NeMo Agent returned an invalid response."
+    assert copilot._copilot_error_detail(status_error) == "The deployed NeMo Copilot returned HTTP 502."
+    assert copilot._copilot_error_detail(RuntimeError("private stack detail")) == (
+        "The deployed NeMo Copilot returned an invalid response."
     )
 
 
-def test_nemo_agent_request_payload_keeps_session_outside_model_messages():
+def test_copilot_request_payload_keeps_session_outside_model_messages():
     messages = [{"role": "user", "content": "hello"}]
     session_id = str(uuid.uuid4())
 
-    payload = coding_agents._nemo_agent_request_payload(messages, session_id)
+    payload = copilot._copilot_request_payload(messages, session_id)
 
     assert payload == {
         "messages": messages,
@@ -1885,11 +1884,11 @@ def test_public_mcp_route_is_mounted_before_static_fallback():
     session_id = str(uuid.uuid4())
 
     response = client.post(
-        f"/studio/api/coding-agents/mcp/{session_id}",
+        f"/studio/api/copilot/mcp/{session_id}",
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
     )
-    get_response = client.get(f"/studio/api/coding-agents/mcp/{session_id}")
-    delete_response = client.delete(f"/studio/api/coding-agents/mcp/{session_id}")
+    get_response = client.get(f"/studio/api/copilot/mcp/{session_id}")
+    delete_response = client.delete(f"/studio/api/copilot/mcp/{session_id}")
 
     assert response.status_code == 200
     assert [tool["name"] for tool in response.json()["result"]["tools"]] == [
@@ -1907,10 +1906,10 @@ def test_public_mcp_route_is_mounted_before_static_fallback():
     assert delete_response.headers["allow"] == "POST"
 
 
-def test_coding_agent_routes_are_available_by_default():
+def test_copilot_routes_are_available_by_default():
     client = TestClient(StudioService().app)
 
-    response = client.post("/v2/coding-agents/sessions")
+    response = client.post("/v2/copilot/sessions")
 
     assert response.status_code == 200
     uuid.UUID(response.json()["session_id"])
