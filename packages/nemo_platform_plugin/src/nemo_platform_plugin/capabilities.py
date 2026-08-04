@@ -113,12 +113,13 @@ def _probe_docker_uncached(*, docker_host: str | None) -> ProbeResult:
 
     client = None
     try:
-        # Prefer from_env for the default host so DOCKER_* env vars apply; when an
-        # explicit host is set, DockerClient(base_url=...) matches deployments.
+        # Always use from_env so DOCKER_TLS_VERIFY / cert paths still apply when
+        # an explicit docker_host (base_url) override is set — matches deployments
+        # DockerDeploymentBackend._create_client.
+        kwargs: dict[str, object] = {"timeout": _DOCKER_PROBE_TIMEOUT_SECONDS}
         if docker_host:
-            client = docker.DockerClient(base_url=docker_host, timeout=_DOCKER_PROBE_TIMEOUT_SECONDS)
-        else:
-            client = docker.from_env(timeout=_DOCKER_PROBE_TIMEOUT_SECONDS)
+            kwargs["base_url"] = docker_host
+        client = docker.from_env(**kwargs)
         client.ping()
         return ProbeResult(available=True, detail=None)
     except (DockerException, RequestsConnectionError, RequestsTimeout, OSError) as exc:

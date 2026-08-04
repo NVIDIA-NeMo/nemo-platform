@@ -56,7 +56,8 @@ def require_container_runtime(backend_label: str, *, num_nodes: int = 1) -> None
         return
 
     # Capability probe — independent of Runtime.DOCKER vs soft-downgraded NONE.
-    result = probe_docker()
+    # Do not use the process cache: compile may be retried after the user starts Docker.
+    result = probe_docker(use_cache=False)
     if result.available:
         return
 

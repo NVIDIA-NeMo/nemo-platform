@@ -97,16 +97,20 @@ def test_probe_docker_host_keys_are_independent() -> None:
     remote_client = MagicMock()
     remote_client.ping.side_effect = DockerException("remote down")
 
-    with (
-        patch("docker.from_env", return_value=default_client),
-        patch("docker.DockerClient", return_value=remote_client) as docker_client,
-    ):
+    def _from_env(**kwargs):
+        if kwargs.get("base_url") == "tcp://remote:2375":
+            return remote_client
+        return default_client
+
+    with patch("docker.from_env", side_effect=_from_env) as from_env:
         default = probe_docker()
         remote = probe_docker(docker_host="tcp://remote:2375")
 
     assert default.available is True
     assert remote.available is False
-    docker_client.assert_called_once_with(base_url="tcp://remote:2375", timeout=5)
+    assert from_env.call_count == 2
+    from_env.assert_any_call(timeout=5)
+    from_env.assert_any_call(timeout=5, base_url="tcp://remote:2375")
 
 
 def test_require_docker_raises_when_unavailable() -> None:
