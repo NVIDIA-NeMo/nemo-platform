@@ -466,7 +466,7 @@ def test_clone_agent_repo_parses_fragment_and_depth(tmp_path: Path, monkeypatch:
 
     monkeypatch.setattr(repo.subprocess, "run", fake_run)
     src = clone_agent_repo("ssh://git@h/g/r.git@main#pkg/agent", tmp_path / "dest", clone_depth=2)
-    assert src == AgentSource(repo_url="ssh://git@h/g/r.git", ref="main", agent_path="pkg/agent")
+    assert src == AgentSource(repo_url="https://h/g/r.git", ref="main", agent_path="pkg/agent")
     clone, clone_kwargs = next(call for call in calls if call[0][:2] == ["git", "clone"])
     assert "--depth" in clone and clone[clone.index("--depth") + 1] == "2"
     # the #fragment is stripped from the clone URL (only repo+ref reach git clone)
@@ -533,6 +533,18 @@ def test_clone_agent_repo_redacts_credentials_in_repo_url(tmp_path: Path, monkey
 
     source = clone_agent_repo("https://oauth2:token@gitlab.com/org/repo.git", tmp_path / "dest")  # trufflehog:ignore
     assert source.repo_url == "https://***@gitlab.com/org/repo.git"
+
+
+def test_clone_agent_repo_converts_scp_style_provenance_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        repo.subprocess,
+        "run",
+        lambda *_args, **_kwargs: repo.subprocess.CompletedProcess(args=[], returncode=0, stdout="main\n"),
+    )
+
+    source = clone_agent_repo("git@github.com:org/repo.git@main", tmp_path / "dest")
+
+    assert source.repo_url == "https://github.com/org/repo.git"
 
 
 # ---------------------------------------------------------------------------

@@ -70,4 +70,4 @@ def test_experiment_metadata_is_identity_only():
 
 
 def test_pseudo_source_link_is_a_url():
-    assert m.pseudo_source_link("opt-run-1", "agent-0") == "opt://opt-run-1/candidate/agent-0"
+    assert m.pseudo_source_link("opt-run-1", "agent-0") == "https://nemo.local/optimizations/opt-run-1/candidate/agent-0"

@@ -42,6 +42,19 @@ def _redact_url(url: str) -> str:
     return _CREDENTIAL_RE.sub("://***@", url)
 
 
+def _provenance_url(url: str) -> str:
+    """Return an HTTP(S) URL suitable for an Experiment ``source_link``."""
+    if url.startswith("git@"):
+        host, separator, path = url.removeprefix("git@").partition(":")
+        if host and separator and path:
+            return f"https://{host}/{path}"
+    parsed = urlsplit(url)
+    if parsed.scheme in {"ssh", "git"} and parsed.hostname:
+        port = f":{parsed.port}" if parsed.port is not None else ""
+        return f"https://{parsed.hostname}{port}/{parsed.path.lstrip('/')}"
+    return _redact_url(url)
+
+
 def _validated_agent_path(agent_path: str) -> str:
     """Return a safe relative POSIX agent path or raise a controlled error."""
     agent_path = agent_path.removesuffix("/").removeprefix("./")
@@ -207,9 +220,8 @@ def clone_agent_repo(spec: str, dest: Path, *, clone_depth: int | None = None) -
             ["git", "-C", str(dest), "rev-parse", "--abbrev-ref", "HEAD"],
             "git rev-parse",
         ).stdout.strip()
-    # repo_url is provenance (it becomes the candidate's source_link), so keep it
-    # credential-free; the conventional ssh ``git`` user is not a secret.
-    repo_url = url if url.startswith("ssh://git@") or "://" not in url else _redact_url(url)
+    # repo_url becomes an Experiment source_link, which accepts HTTP(S) URLs only.
+    repo_url = _provenance_url(url)
     return AgentSource(repo_url=repo_url, ref=ref, agent_path=agent_path)
 
 
