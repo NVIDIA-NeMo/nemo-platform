@@ -21,8 +21,9 @@ and the analyst keeps adaptive thinking on for reasoning quality, so the
 change-set is returned as a final structured message validated against the
 ``AnalystResult`` schema.
 
-The analyst's persona, task, the agent-under-test name, and the optional AUT
-spec are all formatted into the instructions by ``build_analyst_agent``; the
+The analyst's persona, task, the agent-under-test name, the optional AUT
+spec, and the optional seeded findings from a prior analysis are all
+formatted into the instructions by ``build_analyst_agent``; the
 run is seeded with only the minimal ``KICKOFF`` user turn (the Anthropic
 Messages API requires a non-empty ``messages`` array). The per-run config the
 tools need is carried in :class:`~nemo_insights_plugin.analyst.deps.AnalystDeps`.
@@ -66,13 +67,14 @@ INFERENCE_GATEWAY_BASE_URL = "https://inference-api.nvidia.com"
 # ``output_config.effort`` level (it rejects the older fixed ``budget_tokens``
 # form). We set these explicitly because the gateway-aliased model name hides
 # the model identity from Pydantic AI's profile-based inference.
-THINKING_EFFORT = "medium"
-MAX_TOKENS = 16000
+THINKING_EFFORT = "high"
+MAX_TOKENS = 32000
 
 # Safety cap on model requests per run so a misbehaving loop cannot spin
 # forever. Each tool-calling round is one request, so this bounds the analyst
-# to roughly this many tool-use steps.
-MAX_REQUESTS = 50
+# to roughly this many tool-use steps. Sized to leave headroom for the deep
+# drill-down pass (see the Method section) after the initial breadth survey.
+MAX_REQUESTS = 150
 
 # ---------------------------------------------------------------------------
 # Analyst persona + task + methodology, derived from docs/prd-por.md.
@@ -115,10 +117,20 @@ noisy Insight burns developer trust and is worse than no Insight at all.
    filing a new one. If you find new evidence for an existing open
    Insight, append it to that Insight rather than creating a
    near-duplicate.
-5. Prioritize by impact. Negative end-user and developer feedback
-   ranks highest, then explicit error-status spans, then evaluator
-   regressions, then latency or cost outliers, then divergence from
-   the agent's described intent. Issues that are more widespread and occur in many different sessions are higher impact than those that occur in one session.
+5. Prioritize by impact, and keep the agent's core job in view.
+   Negative end-user and developer feedback ranks highest, then
+   divergence from the agent's core decision loop and stated success
+   criteria (the substance of what it is supposed to do well), then
+   explicit error-status spans, then evaluator regressions, then latency
+   or cost outliers. Issues that are more widespread and occur in many
+   different sessions are higher impact than those that occur in one
+   session. Infrastructure, harness, and tooling failures (timeouts,
+   CLI/schema mismatches, sandbox errors) are real and worth reporting,
+   but they must not crowd out insights about the agent's own
+   reasoning and decisions — a run full of plumbing bugs and no
+   core-behavior insight has missed the point. Cover both: aim to file
+   at least one well-evidenced insight about the agent's core decision
+   loop, and surface high-impact infra/tooling issues alongside it.
 
 ## Method
 
@@ -145,7 +157,26 @@ noisy Insight burns developer trust and is worse than no Insight at all.
    ``fetch_spans`` with that filter (or ``get_span`` for one span) to
    find the actual LLM and tool calls where the root cause lives.
    Correlate feedback to its session via the session or trace id.
-4. Check the existing Insights for the agent so you know which of your
+4. Go deep, not just wide. The breadth survey (steps 1-2) only tells
+   you *where* to look; the real evidence lives inside the sessions.
+   After surveying, pick the 3-5 strongest candidate clusters and
+   investigate each one exhaustively before you file. For each, pull the
+   full content of the relevant spans with ``mode="detailed"`` (LLM
+   messages, tool inputs/outputs, error messages, and any round/summary
+   spans), scoped to a ``session_id`` or ``trace_id`` and with an
+   explicit high ``limit`` — the per-fetch ceiling is now large enough
+   to read a long session's rounds in one or two fetches, so use it.
+   Read the actual text: the decision the agent made, the numbers it
+   acted on, the message it emitted. Then confirm the pattern recurs by
+   opening several *different* sessions that show the same behavior, not
+   just one. Every claim in an Insight should be anchored to a concrete
+   value you read in a span — a quoted number, an error string, a
+   verbatim message fragment, a specific tool call — not a paraphrase or
+   an inference. Prefer one deeply-evidenced, quantified Insight
+   (specific rounds, specific measurements, cross-checked across
+   sessions) over several thin ones. Stay on the substance of the
+   agent's behavior rather than drifting into generic commentary.
+5. Check the existing Insights for the agent so you know which of your
    findings are new and which extend an Insight that already exists.
 
 ## Reporting your findings
@@ -184,6 +215,25 @@ Flag agent divergence from the spec. The spec was authored by the
 developer of the application and should be considered the purpose and goals.
 """
 
+SEEDED_FINDINGS_HEADER = """
+## Seeded Findings
+
+Findings from a prior analysis of this agent, supplied to focus this run.
+They describe behavior that was *observed*, not behavior that is intended.
+Unlike the Agent Spec they are not a contract and nothing in them is
+authoritative — they are a starting point, not a conclusion.
+
+- Treat any trace, span, or session id below as a direct entry point: fetch
+  it and read the real content rather than trusting the summary.
+- Confirm every pattern against live spans you read yourself in this run,
+  and check whether it still holds over the window you are analyzing.
+- Do not file an Insight that merely restates a seeded finding. File one
+  only on evidence you gathered yourself, and prefer appending that evidence
+  to an existing Insight when one already covers the pattern.
+- A seeded finding you cannot reproduce is worth saying so in the summary.
+- Absence from this list is not evidence of absence. Survey normally.
+"""
+
 KICKOFF = (
     "Analyze recent traces for the agent under test and file Insights for the highest-impact failure patterns you find."
 )
@@ -193,20 +243,27 @@ def build_analyst_agent(
     agent: str,
     agent_spec: str | None = None,
     observability: AnalystObservability | None = None,
+    seeded_findings: str | None = None,
 ) -> Agent[AnalystDeps, AnalystResult]:
     """Build the analyst :class:`~pydantic_ai.Agent`.
 
     Args:
         agent: Name of the agent under test, formatted into the instructions.
         agent_spec: Optional spec describing the agent under test. When given,
-            it is appended as the final paragraph of the instructions (under
-            ``AGENT_SPEC_HEADER``) so the analyst can flag divergence from it.
+            it is appended to the instructions (under ``AGENT_SPEC_HEADER``)
+            so the analyst can flag divergence from it.
         observability: Optional Pydantic AI OTel instrumentation for dogfooding
             analyst self-observability.
+        seeded_findings: Optional findings from a prior analysis. When given,
+            they are appended after the spec (under
+            ``SEEDED_FINDINGS_HEADER``) as observed-but-unverified leads the
+            analyst re-checks against live spans, not as a contract.
     """
     instructions = INSTRUCTIONS.format(agent=agent)
     if agent_spec and agent_spec.strip():
         instructions = f"{instructions}\n{AGENT_SPEC_HEADER}\n\n{agent_spec.strip()}\n"
+    if seeded_findings and seeded_findings.strip():
+        instructions = f"{instructions}\n{SEEDED_FINDINGS_HEADER}\n\n{seeded_findings.strip()}\n"
     capabilities: list[Any] = [CodeMode()]
     if observability is not None:
         capabilities.append(Instrumentation(settings=observability.instrumentation_settings))

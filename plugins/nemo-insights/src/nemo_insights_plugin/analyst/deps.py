@@ -49,4 +49,8 @@ class AnalystDeps:
     backend: AnalystBackend | None = None  # set by the CLI per run
     since: datetime | None = None
     evaluation_id: str | None = None  # run scope; AND-pinned onto every span read
-    max_results: int = 200
+    # Raised from 200 to give the deep drill-down pass room to read a long
+    # session's full round/LLM/tool content in one scoped fetch. Keep detailed
+    # (input/output-bearing) fetches scoped to a session so this ceiling buys
+    # depth without flooding context.
+    max_results: int = 600

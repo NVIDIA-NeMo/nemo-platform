@@ -45,6 +45,7 @@ async def run_analyst(
     verbose: bool = False,
     since: datetime | None = None,
     evaluation_id: str | None = None,
+    seeded_findings: str | None = None,
 ) -> str:
     """Build and run the analyst agent against an agent's telemetry.
 
@@ -61,6 +62,8 @@ async def run_analyst(
         verbose: Whether to stream model/tool events to stderr.
         since: Optional incremental lower bound enforced on trace/span reads.
         evaluation_id: Optional run scope; AND-pinned onto every span read.
+        seeded_findings: Optional markdown findings from a prior analysis,
+            used to focus this run. Leads to re-verify, not a contract.
     """
     observability = None
     insights_output_path = str(insights_output) if insights_output else None
@@ -88,6 +91,7 @@ async def run_analyst(
             agent=agent,
             agent_spec=agent_spec,
             observability=observability,
+            seeded_findings=seeded_findings,
         )
         result = await _run_agent(analyst, deps, verbose=verbose)
         return await backend.persist_result(workspace=workspace, agent=agent, result=result)

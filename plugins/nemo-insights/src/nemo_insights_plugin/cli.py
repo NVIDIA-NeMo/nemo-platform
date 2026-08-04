@@ -37,6 +37,7 @@ from nemo_insights_plugin.preflight import (
     check_environment,
     check_profile,
     read_agent_spec,
+    read_seeded_findings,
 )
 from nemo_insights_plugin.profile import AnalysisProfile, load_profile, pick_agent_spec
 from nemo_platform import NeMoPlatformError
@@ -51,12 +52,13 @@ _PREFLIGHT_PROBES: AnalysisProbes | None = None
 class _ResolvedAnalysis:
     agent: str
     agent_spec: str | None
+    seeded_findings: str | None
     workspace: str
     base_url: str
     insights_output: Path | None
     profile_output: Path | None
     profile_dir: Path | None
-    spec_checks: tuple[CheckResult, ...]
+    artifact_checks: tuple[CheckResult, ...]
 
 
 def _load_profile_or_error(profile_path: Path | None) -> tuple[AnalysisProfile | None, str | None]:
@@ -100,6 +102,7 @@ def _resolve_analysis(
     *,
     agent: str | None,
     agent_spec: Path | None,
+    seeded_findings: Path | None,
     workspace: str | None,
     base_url: str | None,
     profile_path: Path | None,
@@ -129,6 +132,7 @@ def _resolve_analysis(
         except ProfileError as exc:
             spec_error = str(exc)
     spec_content, spec_checks = read_agent_spec(spec_path, spec_error)
+    findings_content, findings_checks = read_seeded_findings(seeded_findings)
 
     resolved_base_url = resolve_base_url(base_url)
     profile_output = None
@@ -140,17 +144,18 @@ def _resolve_analysis(
     return _ResolvedAnalysis(
         agent=resolved_agent,
         agent_spec=spec_content,
+        seeded_findings=findings_content,
         workspace=resolved_workspace,
         base_url=resolved_base_url,
         insights_output=resolved_output,
         profile_output=profile_output,
         profile_dir=profile.profile_dir if profile is not None else None,
-        spec_checks=tuple(spec_checks),
+        artifact_checks=tuple(spec_checks + findings_checks),
     )
 
 
 async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
-    checks = list(analysis.spec_checks)
+    checks = list(analysis.artifact_checks)
     checks.extend(check_credentials(analysis.profile_dir, probes=_PREFLIGHT_PROBES))
     _preflight_or_exit(checks)
 
@@ -165,6 +170,7 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
         return await run_analyst(
             agent=analysis.agent,
             agent_spec=analysis.agent_spec,
+            seeded_findings=analysis.seeded_findings,
             workspace=analysis.workspace,
             base_url=analysis.base_url,
             client=client,
@@ -202,6 +208,21 @@ def analyze(
         help="Path to a markdown file describing the agent under test (its spec).",
         exists=True,
         readable=True,
+    ),
+    seeded_findings: Path | None = typer.Option(
+        None,
+        "--seeded-findings",
+        help=(
+            "Path to a markdown file of findings from a prior analysis "
+            "(e.g. a digest of earlier runs). Seeds the analyst with leads "
+            "to focus on. Treated as observed-but-unverified evidence, not "
+            "as the agent's contract: the analyst re-checks each pattern "
+            "against live spans before filing. Any trace/span ids in the "
+            "file become direct entry points."
+        ),
+        exists=True,
+        readable=True,
+        dir_okay=False,
     ),
     workspace: str | None = typer.Option(
         None,
@@ -246,14 +267,15 @@ def analyze(
     """Run the analyst agent against a running NMP instance.
 
     Builds the analyst agent with ``--agent`` (and optional
-    ``--agent-spec``) formatted into its instructions and tools scoped
-    to ``--agent`` / ``--workspace`` / ``--base-url``, runs it, and
-    prints whatever the agent returns.
+    ``--agent-spec`` / ``--seeded-findings``) formatted into its
+    instructions and tools scoped to ``--agent`` / ``--workspace`` /
+    ``--base-url``, runs it, and prints whatever the agent returns.
     """
     try:
         analysis = _resolve_analysis(
             agent=agent,
             agent_spec=agent_spec,
+            seeded_findings=seeded_findings,
             workspace=workspace,
             base_url=base_url,
             profile_path=profile_path,

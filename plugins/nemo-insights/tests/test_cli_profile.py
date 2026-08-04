@@ -686,6 +686,78 @@ def test_commands_reject_unreadable_agent_spec(
     assert "Traceback" not in result.output
 
 
+def test_analyze_passes_seeded_findings_to_the_runner(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    digest = profile_tree / "digest.md"
+    digest.write_text("# Prior digest\nspan-abc timed out", encoding="utf-8")
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["analyze", "--seeded-findings", str(digest)])
+
+    assert result.exit_code == 0, result.output
+    assert recorder.kwargs is not None
+    assert recorder.kwargs["seeded_findings"] == "# Prior digest\nspan-abc timed out"
+    # The spec still flows independently of the seeded findings.
+    assert recorder.kwargs["agent_spec"] == "# Flight planner"
+
+
+def test_analyze_seeded_findings_default_to_none(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["analyze"])
+
+    assert result.exit_code == 0, result.output
+    assert recorder.kwargs is not None
+    assert recorder.kwargs["seeded_findings"] is None
+
+
+def test_analyze_rejects_missing_seeded_findings_before_runner(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["analyze", "--seeded-findings", str(profile_tree / "nope.md")])
+
+    assert result.exit_code != 0
+    assert recorder.kwargs is None
+
+
+def test_analyze_rejects_unreadable_seeded_findings(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreadable digest blocks the run rather than being silently dropped."""
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    digest = profile_tree / "digest.md"
+    digest.write_bytes(b"\xff\xfe")
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["analyze", "--seeded-findings", str(digest)])
+
+    assert result.exit_code == 1
+    assert recorder.kwargs is None
+    assert "seeded findings" in result.output.lower()
+    assert "UTF-8" in result.output
+    assert "Traceback" not in result.output
+
+
 async def _queryable() -> bool:
     return True
 

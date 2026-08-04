@@ -104,6 +104,52 @@ def check_agent_spec(
     return read_agent_spec(spec_path, spec_error)[1]
 
 
+def _read_markdown_artifact(
+    path: Path | None,
+    *,
+    check_name: str,
+    label: str,
+) -> tuple[str | None, list[CheckResult]]:
+    """Read an optional markdown artifact as UTF-8 and report its readiness.
+
+    Absent is fine (advisory pass); present-but-unreadable blocks the run,
+    because a silently dropped artifact would change what the analyst sees
+    without saying so.
+    """
+    if path is None:
+        return None, [
+            CheckResult(
+                name=check_name,
+                group="artifacts",
+                status="pass",
+                severity="advisory",
+                message=f"{label} omitted (optional)",
+            )
+        ]
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        return None, [
+            CheckResult(
+                name=check_name,
+                group="artifacts",
+                status="fail",
+                severity="required",
+                message=f"Could not read {label} {path} as UTF-8: {exc}",
+                hint="ensure the file is readable and encoded as UTF-8",
+            )
+        ]
+    return content, [
+        CheckResult(
+            name=check_name,
+            group="artifacts",
+            status="pass",
+            severity="required",
+            message=f"{label} readable at {path}",
+        )
+    ]
+
+
 def read_agent_spec(
     spec_path: Path | None,
     spec_error: str | None,
@@ -119,38 +165,16 @@ def read_agent_spec(
                 message=spec_error,
             )
         ]
-    if spec_path is None:
-        return None, [
-            CheckResult(
-                name="agent-spec",
-                group="artifacts",
-                status="pass",
-                severity="advisory",
-                message="agent spec omitted (optional)",
-            )
-        ]
-    try:
-        content = spec_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        return None, [
-            CheckResult(
-                name="agent-spec",
-                group="artifacts",
-                status="fail",
-                severity="required",
-                message=f"Could not read agent spec {spec_path} as UTF-8: {exc}",
-                hint="ensure the file is readable and encoded as UTF-8",
-            )
-        ]
-    return content, [
-        CheckResult(
-            name="agent-spec",
-            group="artifacts",
-            status="pass",
-            severity="required",
-            message=f"agent spec readable at {spec_path}",
-        )
-    ]
+    return _read_markdown_artifact(spec_path, check_name="agent-spec", label="agent spec")
+
+
+def read_seeded_findings(findings_path: Path | None) -> tuple[str | None, list[CheckResult]]:
+    """Read the optional seeded-findings artifact and return its readiness check.
+
+    Unlike the agent spec there is no profile-resolution step, so the only
+    failure mode is an unreadable path.
+    """
+    return _read_markdown_artifact(findings_path, check_name="seeded-findings", label="seeded findings")
 
 
 def check_credentials(
