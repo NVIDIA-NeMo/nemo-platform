@@ -32,6 +32,7 @@ const expectedValue = (item?: Record<string, unknown>): string | null => {
   for (const field of EXPECTED_FIELDS) {
     const value = item[field];
     if (typeof value === 'string' && value) return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   }
   return null;
 };
@@ -73,6 +74,13 @@ export const DatasetEvalRowResultsPanel: FC<DatasetEvalRowResultsPanelProps> = (
     [rows, pageIndex, pageSize]
   );
 
+  // The table only receives the current page, so a row's table index restarts
+  // at 0 on every page; offset it to stay unique across pages.
+  const absoluteIndex = useCallback(
+    (relativeIndex: number) => pageIndex * pageSize + relativeIndex,
+    [pageIndex, pageSize]
+  );
+
   const makeColumns = useCallback<
     ComponentProps<typeof StudioDataView<DatasetEvalRow>>['makeColumns']
   >(
@@ -82,7 +90,7 @@ export const DatasetEvalRowResultsPanel: FC<DatasetEvalRowResultsPanelProps> = (
         header: 'Row',
         size: 70,
         cell: ({ row }) => (
-          <Text kind="body/semibold/sm">{row.original.row_index ?? row.index}</Text>
+          <Text kind="body/semibold/sm">{row.original.row_index ?? absoluteIndex(row.index)}</Text>
         ),
       }),
       col.display({
@@ -104,7 +112,7 @@ export const DatasetEvalRowResultsPanel: FC<DatasetEvalRowResultsPanelProps> = (
         cell: ({ row }) => (
           <LongCell
             content={inputText(row.original)}
-            title={`Row ${row.original.row_index ?? row.index} — Input`}
+            title={`Row ${row.original.row_index ?? absoluteIndex(row.index)} — Input`}
             onExpand={setExpandedCell}
           />
         ),
@@ -133,13 +141,13 @@ export const DatasetEvalRowResultsPanel: FC<DatasetEvalRowResultsPanelProps> = (
         cell: ({ row }) => (
           <LongCell
             content={row.original.sample?.output_text ?? ''}
-            title={`Row ${row.original.row_index ?? row.index} — Agent Response`}
+            title={`Row ${row.original.row_index ?? absoluteIndex(row.index)} — Agent Response`}
             onExpand={setExpandedCell}
           />
         ),
       }),
     ],
-    []
+    [absoluteIndex]
   );
 
   if (rows.length === 0) {
@@ -158,7 +166,8 @@ export const DatasetEvalRowResultsPanel: FC<DatasetEvalRowResultsPanelProps> = (
               data: pageRows,
               totalCount: rows.length,
               reactTableOptions: {
-                getRowId: (row, relativeIndex) => String(row.row_index ?? relativeIndex),
+                getRowId: (row, relativeIndex) =>
+                  String(row.row_index ?? absoluteIndex(relativeIndex)),
               },
             },
           }}

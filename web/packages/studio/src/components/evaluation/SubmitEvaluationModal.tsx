@@ -78,6 +78,8 @@ const DATASET_FILENAME = 'dataset.jsonl';
 const README_FILENAME = 'README.md';
 
 const NO_DEPLOYMENT_MESSAGE = 'This agent has no active deployment.';
+const DEPLOYMENT_CHECK_FAILED_MESSAGE =
+  'Could not verify this agent has a running deployment. Try again.';
 
 const submitEvaluationBaseSchema = z.object({
   agent: z.string().min(1, 'Agent is required'),
@@ -215,7 +217,16 @@ const loadPersistedSpec = async (
         );
       }
     } catch (uploadErr) {
-      await filesDeleteFileset(workspace, name, signal).catch(() => {});
+      try {
+        await filesDeleteFileset(workspace, name, signal);
+      } catch (cleanupErr) {
+        const uploadDetail = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+        const cleanupDetail = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+        throw new Error(
+          `${uploadDetail} — the partially created fileset "${name}" could not be removed (${cleanupDetail}); delete it before retrying.`,
+          { cause: uploadErr }
+        );
+      }
       throw uploadErr;
     }
     return spec;
@@ -276,20 +287,27 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const mode = useWatch({ control, name: 'mode' });
   const selectedAgent = useWatch({ control, name: 'agent' });
 
-  const { data: runningDeployments, isLoading: isDeploymentsLoading } = useAgentsListDeployments(
-    workspace,
-    runningDeploymentsQuery(selectedAgent),
-    { query: { enabled: open && Boolean(selectedAgent) } }
-  );
+  const {
+    data: runningDeployments,
+    isLoading: isDeploymentsLoading,
+    isError: isDeploymentsError,
+  } = useAgentsListDeployments(workspace, runningDeploymentsQuery(selectedAgent), {
+    query: { enabled: open && Boolean(selectedAgent) },
+  });
 
   const hasRunningDeployment = (runningDeployments?.data ?? []).length > 0;
 
-  const noDeploymentError =
-    selectedAgent && !isDeploymentsLoading && !hasRunningDeployment
-      ? NO_DEPLOYMENT_MESSAGE
-      : undefined;
+  const deploymentVerified =
+    Boolean(selectedAgent) && !isDeploymentsLoading && !isDeploymentsError && hasRunningDeployment;
 
-  const agentFieldError = errors.agent?.message ?? noDeploymentError;
+  const deploymentError = ((): string | undefined => {
+    if (!selectedAgent || isDeploymentsLoading) return undefined;
+    if (isDeploymentsError) return DEPLOYMENT_CHECK_FAILED_MESSAGE;
+    if (!hasRunningDeployment) return NO_DEPLOYMENT_MESSAGE;
+    return undefined;
+  })();
+
+  const agentFieldError = errors.agent?.message ?? deploymentError;
   const exampleKey = useWatch({ control, name: 'exampleKey' });
 
   // Fetch and parse the selected example config early to detect metric type and default model.
@@ -417,7 +435,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       submitButtonText="Submit"
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
-      submitDisabled={Boolean(noDeploymentError)}
+      submitDisabled={!deploymentVerified}
       loading={isPending}
       errorText={errorMessage}
       className="w-[690px]! max-w-[95vw]!"
@@ -427,9 +445,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
           {agentProp ? (
             <Stack gap="density-xs">
               <Text kind="body/semibold/lg">{agentProp}</Text>
-              {noDeploymentError && (
+              {deploymentError && (
                 <Text kind="body/regular/sm" className="text-[var(--text-color-feedback-danger)]">
-                  {noDeploymentError}
+                  {deploymentError}
                 </Text>
               )}
             </Stack>

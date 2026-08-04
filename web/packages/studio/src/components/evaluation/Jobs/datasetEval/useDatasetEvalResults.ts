@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEvaluatorGetEvaluateJobResult } from '@nemo/sdk/generated/evaluator/api';
+import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import type { DatasetEvalRow } from '@studio/components/evaluation/Jobs/datasetEval/DatasetEvalRowResultsPanel';
 import type { DatasetEvalAggregateScore } from '@studio/components/evaluation/Jobs/datasetEval/DatasetEvalScoresPanel';
 import { useQuery } from '@tanstack/react-query';
@@ -45,7 +46,7 @@ export const useDatasetEvalResults = (workspace: string, jobName: string, status
     status === 'canceled' ||
     status === 'failed' ||
     status === 'cancelling';
-  const enabled = !!workspace && !!jobName && !isPending && !hasFailed;
+  const enabled = !!workspace && !!jobName && status === PlatformJobStatus.completed;
 
   const {
     data: scoresMetadata,

@@ -8,8 +8,8 @@
 # assistant inside a mail client: the operator selects one or more messages and
 # optionally types a question. The eval's heterogeneity comes from how the human
 # engages -- one message or six, question or none, "is this safe?" vs "write a
-# warning for the team" -- not from artificially varied material. The
-# email-phishing sample is the dataset-driven counterpart.
+# warning for the team" -- not from artificially varied material.
+# eval-config.dataset-driven.json is the dataset-driven counterpart.
 #
 # `return_direct` lists every tool, which ends the graph on the tool result rather
 # than running a second generation over it. That is what makes each tool's
