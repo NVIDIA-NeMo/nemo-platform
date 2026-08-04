@@ -7,7 +7,7 @@ import { server } from '@studio/mocks/node';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { useLocation } from 'react-router';
+import { Route, Routes, useLocation } from 'react-router';
 
 /**
  * React Router wraps location updates in React.startTransition, so the mount-time
@@ -73,19 +73,19 @@ describe('IntakeSpansTable', () => {
     async () => {
       const user = userEvent.setup();
 
-      renderRoute(undefined, {
-        history: '/workspaces/default/intake/spans',
-        routes: [
-          {
-            path: '/workspaces/:workspace/intake/spans',
-            element: <IntakeSpansTable workspace="default" />,
-          },
-          {
-            path: '/workspaces/:workspace/intake/sessions/:sessionId',
-            element: <LocationProbe />,
-          },
-        ],
-      });
+      renderRoute(
+        <Routes>
+          <Route
+            path="/workspaces/:workspace/intake/spans"
+            element={<IntakeSpansTable workspace="default" />}
+          />
+          <Route
+            path="/workspaces/:workspace/intake/sessions/:sessionId"
+            element={<LocationProbe />}
+          />
+        </Routes>,
+        { history: '/workspaces/default/intake/spans' }
+      );
 
       await waitForSeededTable();
       await user.click(
