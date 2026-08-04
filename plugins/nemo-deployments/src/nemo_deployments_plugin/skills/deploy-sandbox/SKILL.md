@@ -152,11 +152,23 @@ Commands below assume `nemo` and `openshell` are on your PATH. In a repo checkou
    .venv/bin/python -c "import python_on_whales, openshell" && echo DEPS_OK || echo DEPS_MISSING
    ```
 
-   If `DEPS_MISSING`, install the extras: `uv sync --package nemo-deployments-plugin
-   --extra openshell` for the backend, and `uv pip install -e
-   'plugins/nemo-agents[container]'` for packaging. Base `make bootstrap-python` does
-   not install the platform-restricted `openshell` wheel or the agents `container`
-   extra, so both need this step.
+   If `DEPS_MISSING`, add the extras INTO the existing workspace venv with `uv pip
+   install`. These commands install the two missing pieces without touching the rest
+   of the venv:
+
+   ```bash
+   uv pip install "openshell>=0.0.92" "grpcio>=1.78.0" "protobuf>=6.31.1"
+   uv pip install -e 'plugins/nemo-agents[container]'
+   ```
+
+   The first line adds the OpenShell SDK the backend needs; the second adds
+   `python-on-whales` (the agents `container` extra) for packaging. Base `make
+   bootstrap-python` installs neither, so both need this step. Do NOT run `uv sync
+   --package nemo-deployments-plugin --extra openshell` here: `uv sync --package`
+   narrows the venv to that one package's dependency set, which uninstalls `nmp`,
+   `nemo_agents_plugin`, and `python-on-whales`, so `nemo services run` then fails
+   with `No module named 'nmp.platform_runner'`. `uv pip install` adds the deps
+   additively and leaves the platform intact.
 
 Convenience variable for the curl steps:
 
@@ -349,7 +361,7 @@ docker compose -f plugins/nemo-deployments/examples/openshell/docker-compose.yml
 | Invoke returns 503 `inference service unavailable` (in the response or the serve log) | The `inference.local` route resolved, but the gateway's upstream hop to the platform failed | Almost always a platform bound to `127.0.0.1`; restart it with `--host 0.0.0.0`. Confirm the address the sandbox actually dials with `openshell sandbox exec --name <nmp-hash> -- cat /etc/hosts` (look for `host.openshell.internal`) and check the platform answers there (`curl -sf http://<that-ip>:8080/health/ready`). A clean `openshell inference set` does NOT rule this out: it validates from the host |
 | Invoke returns empty/error `value`, or serve log shows connection refused to `inference.local` | `inference.local` route not wired, or model misbehaved | Confirm `openshell inference get` shows the `nemo-igw` provider + your model; re-run Step 1's `provider create` / `inference set`; try a gpt-4o-mini-class model |
 | `example.com` reachable in Step 7 | Egress policy not applied | Confirm executor is `openshell-local` and the generated default-deny policy is attached to the sandbox |
-| `ModuleNotFoundError: openshell` at deploy, or `python-on-whales` missing at package | workspace extras not installed | `uv sync --package nemo-deployments-plugin --extra openshell` and `uv pip install -e 'plugins/nemo-agents[container]'` |
+| `ModuleNotFoundError: openshell` at deploy, or `python-on-whales` missing at package | workspace extras not installed | `uv pip install "openshell>=0.0.92" "grpcio>=1.78.0" "protobuf>=6.31.1"` then `uv pip install -e 'plugins/nemo-agents[container]'` (do NOT use `uv sync --package`: it narrows the venv and uninstalls `nmp`/`nemo_agents_plugin`/`python-on-whales`, breaking `nemo services run`) |
 
 Do not claim the deployment succeeded until Step 6 prints a non-empty `value`.
 
