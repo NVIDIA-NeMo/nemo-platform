@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { CardSelect } from '@nemo/common/src/components/CardSelect';
 import { ControlledDatasetFileSelect } from '@nemo/common/src/components/DatasetFileSelect/ControlledDatasetFileSelect';
 import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSelect/parseFilesetLocation';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
+import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getEntityNameError } from '@nemo/common/src/utils/entityName';
@@ -24,7 +24,14 @@ import {
   filesDownloadFile,
   filesUploadFile,
 } from '@nemo/sdk/generated/platform/api';
-import { Anchor, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  Anchor,
+  Flex,
+  RadioGroupRoot,
+  SegmentedControl,
+  Stack,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import { isConflictError, type EvalSeedFile } from '@studio/api/evaluation/eval-config-fileset';
@@ -461,16 +468,26 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
               {mode === MODE_DEFAULT ? (
                 <>
                   <Stack gap="density-sm">
-                    <CardSelect
-                      label="Eval config template"
+                    <RadioGroupRoot
+                      name="eval-config-template"
+                      orientation="horizontal"
+                      className="w-full"
+                      aria-label="Eval config template"
                       value={exampleKey}
-                      onChange={(key) => setValue('exampleKey', key, { shouldValidate: true })}
-                      options={EVAL_CONFIG_SAMPLES.map((sample) => ({
-                        value: sample.key,
-                        title: sample.displayName,
-                        description: sample.description,
-                      }))}
-                    />
+                      onValueChange={(key) => setValue('exampleKey', key, { shouldValidate: true })}
+                    >
+                      <Flex gap="density-md" className="w-full *:flex-1">
+                        {EVAL_CONFIG_SAMPLES.map((sample) => (
+                          <RadioCard
+                            key={sample.key}
+                            value={sample.key}
+                            label={sample.displayName}
+                            description={sample.description}
+                            showIndicator={false}
+                          />
+                        ))}
+                      </Flex>
+                    </RadioGroupRoot>
                     <Text kind="body/regular/md" color="secondary">
                       Learn more about{' '}
                       <Anchor
