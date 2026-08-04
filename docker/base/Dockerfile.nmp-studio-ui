@@ -3,7 +3,9 @@ ARG NODE_VERSION=22
 ARG DOCKERHUB_MIRROR=docker.io/library
 
 # --------------- BASE --------------- #
-FROM ${DOCKERHUB_MIRROR}/node:${NODE_VERSION}-bookworm AS base
+# dist/ is architecture-independent JS/CSS/HTML, so build it once on the builder's
+# native arch. Emulated arm64 builds hang in Vite chunk rendering under QEMU.
+FROM --platform=$BUILDPLATFORM ${DOCKERHUB_MIRROR}/node:${NODE_VERSION}-bookworm AS base
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # Preserve the Platform repository layout so SDK generation can resolve
