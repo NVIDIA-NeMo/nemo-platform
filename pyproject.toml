@@ -390,6 +390,7 @@ nemo-agents-plugin = { workspace = true }
 nemo-deployments-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
 nemo-agents-example-email-phishing = { workspace = true }
+nemo-agents-example-email-security = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
@@ -450,6 +451,7 @@ members = [
   "plugins/nemo-experimentalist",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
+  "plugins/nemo-agents/examples/email-security-analyst",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
   "plugins/nemo-unsloth",
