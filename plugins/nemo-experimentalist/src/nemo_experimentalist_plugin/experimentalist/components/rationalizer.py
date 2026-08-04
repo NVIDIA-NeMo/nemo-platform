@@ -9,8 +9,7 @@ from collections import Counter, defaultdict  # noqa: F401
 from pathlib import Path
 from typing import Any
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Task
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DependencyRuntime
+from nemo_experimentalist_plugin.entities import DependencyRuntime, Task
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -38,7 +37,7 @@ class RationalizerConfig(BaseModel):
     )
 
 
-class Rationalizer(Agent, llm=get_smart_model()):
+class Rationalizer(Agent):
     """Your role is to bootstrap the reference reasoning trace.
 
     You are the bootstrapping reasoner for trace analysis. Your output is
@@ -79,7 +78,7 @@ class Rationalizer(Agent, llm=get_smart_model()):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or RationalizerConfig()
         self._workspace_path = workspace
         self.shell = GuardedShellTools(cwd=workspace)

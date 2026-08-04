@@ -7,7 +7,7 @@ import { DataDesignerIconFc } from '@studio/constants/constants';
 import {
   ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
-  CODING_AGENT_STUDIO_ENABLED,
+  COPILOT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
   DASHBOARD_ENABLED,
   DATA_DESIGNER_ENABLED,
@@ -69,7 +69,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
 
   const items = useMemo(() => {
     const dashboardNav =
-      DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED
+      DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED
         ? [
             {
               id: 'dashboard',

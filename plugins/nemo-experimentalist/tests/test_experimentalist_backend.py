@@ -14,18 +14,15 @@ import json
 import traceback
 from pathlib import Path
 from typing import cast
-from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist import experimentalist_backend as beim
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import EvaluationResult
 from nemo_experimentalist_plugin.experimentalist.components.repository import AgentCloneError, AgentSource
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     CandidateStorageConfig,
     LocalExperimentalistBackend,
-    RemoteExperimentalistBackend,
 )
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
@@ -135,8 +132,7 @@ async def test_get_agent_code_local_copies_returns_none(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("backend_factory", ["local", "remote"])
-def test_get_agent_code_git_dispatches_to_clone(backend_factory, tmp_path, monkeypatch):  # noqa: ANN001
+def test_get_agent_code_git_dispatches_to_clone(tmp_path, monkeypatch):  # noqa: ANN001
     calls: list[tuple[str, Path]] = []
 
     def fake_clone(spec: str, dest: Path, *, clone_depth: int | None = None) -> AgentSource:
@@ -146,11 +142,7 @@ def test_get_agent_code_git_dispatches_to_clone(backend_factory, tmp_path, monke
 
     monkeypatch.setattr(beim, "clone_agent_repo", fake_clone)
 
-    backend = (
-        _local_backend(tmp_path)
-        if backend_factory == "local"
-        else RemoteExperimentalistBackend(client=_as_platform_client(None), path=tmp_path / "backend")
-    )
+    backend = _local_backend(tmp_path)
     spec = "ssh://git@h/g/r.git@main"
     dest = tmp_path / "agent-src"
 
@@ -210,12 +202,6 @@ async def test_get_agent_code_git_suppresses_legacy_called_process_error(
     assert exc_info.value.__cause__ is None
 
 
-async def test_get_agent_code_remote_nongit_raises(tmp_path: Path) -> None:
-    backend = RemoteExperimentalistBackend(client=_as_platform_client(None), path=tmp_path / "backend")
-    with pytest.raises(NotImplementedError):
-        await backend.get_agent_code(workspace="w", agent="some-live-agent-name", dest=tmp_path / "d")
-
-
 # ---------------------------------------------------------------------------
 # get_agent_spec — local path copies to dest and returns dest
 # ---------------------------------------------------------------------------
@@ -248,7 +234,7 @@ async def test_get_agent_spec_remote_delegates_to_files(tmp_path: Path) -> None:
     spec_file = tmp_path / "AGENT-SPEC.md"
     spec_file.write_text("# Remote Agent\n")
     dest = tmp_path / "workspace" / "AGENT-SPEC.md"
-    backend = RemoteExperimentalistBackend(client=_as_platform_client(None), path=tmp_path / "backend")
+    backend = _local_backend(tmp_path / "backend")
 
     result = await backend.get_agent_spec(workspace="w", spec=str(spec_file), dest=dest)
 
@@ -367,21 +353,3 @@ async def test_persist_result_preserves_generated_optimization_report(tmp_path: 
     await backend.persist_result(workspace="w", result=result)
 
     assert report_path.read_text() == "# Full optimization report\n\nInsight Suite Metrics"
-
-
-# ---------------------------------------------------------------------------
-# persist_evaluation
-# ---------------------------------------------------------------------------
-
-
-async def test_remote_forwards_to_local(tmp_path: Path) -> None:
-    """Remote delegates persist_evaluation verbatim to its local file backend."""
-    backend = RemoteExperimentalistBackend(client=_as_platform_client(None), path=tmp_path / "backend")
-    delegate = AsyncMock()
-    backend._files.persist_evaluation = delegate
-    result = EvaluationResult(id="r1")
-    candidate = _cand()
-
-    await backend.persist_evaluation(workspace="w", result=result, candidate=candidate, split="train")
-
-    delegate.assert_called_once_with(workspace="w", result=result, candidate=candidate, split="train")

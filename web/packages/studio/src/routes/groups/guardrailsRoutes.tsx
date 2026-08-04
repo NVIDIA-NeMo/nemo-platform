@@ -3,6 +3,7 @@
 
 import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { ROUTES } from '@studio/constants/routes';
+import { GUARDRAIL_CHECKS_DEFAULT_SUB_TAB } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { gateGuardrailsRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
 import { Navigate, type RouteObject } from 'react-router-dom';
@@ -25,6 +26,12 @@ const GuardrailConfigTab = lazy(() =>
   }))
 );
 
+const GuardrailChecksTab = lazy(() =>
+  import('@studio/routes/guardrails/GuardrailChecksTab').then((m) => ({
+    default: m.GuardrailChecksTab,
+  }))
+);
+
 export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
   {
     path: ROUTES.workspace.guardrails,
@@ -43,6 +50,14 @@ export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
       {
         path: ROUTES.workspace.guardrailConfig,
         element: <GuardrailConfigTab />,
+      },
+      {
+        path: ROUTES.workspace.guardrailChecks,
+        element: <Navigate to={GUARDRAIL_CHECKS_DEFAULT_SUB_TAB} replace />,
+      },
+      {
+        path: ROUTES.workspace.guardrailChecksSubTab,
+        element: <GuardrailChecksTab />,
       },
     ],
   },

@@ -206,6 +206,9 @@ export function ChatCompletionInput<TFieldValues extends FieldValues = FieldValu
                 SelectTrigger: {
                   className: cn(
                     'border-none flex h-8 min-h-0 max-h-8 items-center p-0 shadow-none bg-transparent',
+                    // The inner trigger button carries foundations' own 12px inline-start
+                    // padding; zero it so the role badge left-aligns with the message body.
+                    '[&_button]:!pl-0',
                     'data-[state=open]:shadow-none'
                   ),
                 },

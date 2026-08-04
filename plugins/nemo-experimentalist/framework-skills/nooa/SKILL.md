@@ -4,7 +4,7 @@ description: Build, modify, debug, or optimize agents using NVIDIA-labs OO Agent
 compatibility: Python >= 3.12,<3.14; uv; nooa at the revision pinned in pyproject.toml
 metadata:
   upstream: https://github.com/NVIDIA-NeMo/labs-OO-Agents
-  revision: bea4614a0e2a6cf88f76225466159af883da80a0
+  revision: 6e0274dd03f883254a084cfb9f871ea580e03434
 ---
 <!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
@@ -15,7 +15,7 @@ Use the `nooa` package and namespace pinned in this repository.
 
 For detailed framework guidance, consult the skills at the immutable upstream
 revision this repository pins:
-https://github.com/NVIDIA-NeMo/labs-OO-Agents/tree/bea4614a0e2a6cf88f76225466159af883da80a0/skills
+https://github.com/NVIDIA-NeMo/labs-OO-Agents/tree/6e0274dd03f883254a084cfb9f871ea580e03434/skills
 
 Before changing framework behavior, inspect the pinned implementation or the
 matching upstream skill instead of guessing. In Optimizer:

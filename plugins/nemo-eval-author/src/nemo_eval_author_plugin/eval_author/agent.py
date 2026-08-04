@@ -12,20 +12,15 @@ import logging
 from pathlib import Path
 from typing import Any
 
-# Populates EXPERIMENTALIST_* from AUTHOR_*, which the Experimentalist agent imports below
-# read when their class bodies execute. Must stay ahead of them; isort keeps it there.
-import nemo_eval_author_plugin._env_bridge  # noqa: F401
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_eval_author_plugin.model_config import get_fast_model, get_smart_model
-from nemo_experimentalist_plugin.experimentalist.components import cache
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
-    Dataset,
-    DatasetValidationError,
-    Task,
-    TrialResult,
+from nemo_eval_author_plugin.model_config import (
+    bridge_author_env_to_experimentalist,
+    get_fast_model,
+    get_smart_model,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, ResourceRef, Task, TrialResult
+from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
@@ -39,6 +34,7 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_explorer impor
     TraceExplorer,
     TurnInfo,
 )
+from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
@@ -51,23 +47,36 @@ from nooa.tools import TodoManager
 logger = logging.getLogger(__name__)
 
 
-class EvalAuthor(Agent, llm=get_smart_model()):
+class EvalAuthor(Agent):
     """Insights are failure modes of an agent in production.
 
     The role of the Eval Author is to create or augment the evaluation suite in such a way that it can be used to detect the failure mode.
     This suite will be used for optimization and regression testing.
     """
 
-    def __init__(self, experiment_dir: Path, config: EvalAuthorConfig | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        experiment_dir: Path,
+        config: EvalAuthorConfig | None = None,
+        reporter: RunReporter | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Initialize the Eval Author for the given experiment directory.
 
         Args:
             experiment_dir: Absolute path to the experiment root.
             config: Tuning parameters; defaults to ``EvalAuthorConfig()``.
+            reporter: Optional parent run narrator (Experimentalist insight mode).
+                When set, emits mid-run progress lines; never owns header/footer.
             **kwargs: Forwarded to ``Agent.__init__``.
         """
-        super().__init__(**kwargs)
+        # Eval Author still reuses a few Experimentalist agents (TraceAnalyzer,
+        # TraceExplorer). They read NEMO_EXPERIMENTALIST_* when constructed, so bridge the
+        # AUTHOR_* credentials before any of them is built.
+        bridge_author_env_to_experimentalist()
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or EvalAuthorConfig()
+        self._reporter = reporter
         self.experiment_dir = experiment_dir
         self.shell = GuardedShellTools(cwd=experiment_dir)
         self.todos = TodoManager()
@@ -277,6 +286,10 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             validation_dataset: The validation dataset, returned unchanged.
             client: Existing NeMo Platform client used for Intake requests.
         """
+        reporter = self._reporter
+        if reporter is not None:
+            reporter.progress(phase="eval author · starting")
+
         resolved_agent = self.experiment_dir / agent_path
         insight_id = insight.id
         if not insight_id:
@@ -284,6 +297,9 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         refs = insight.trace_refs[: self._config.max_traces]
 
         if not refs:
+            if reporter is not None:
+                reporter.note("no trace refs — nothing to analyze")
+                reporter.progress(phase="eval author · complete")
             return EvalAuthorResult(
                 train_dataset=train_dataset,
                 validation_dataset=validation_dataset,
@@ -297,9 +313,24 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         )
         try:
             staged_tasks = insight_suite.stage(refs)
-            for staged in staged_tasks:
+            total_tasks = len(staged_tasks)
+            if reporter is not None:
+                reporter.progress(
+                    phase="eval author · materializing tasks",
+                    completed=0,
+                    total=total_tasks,
+                    unit="task",
+                )
+            for completed, staged in enumerate(staged_tasks, start=1):
                 await self.fill_task_template(staged.trace_ref, staged.task, client, insight.workspace)
                 insight_suite.validate(staged)
+                if reporter is not None:
+                    reporter.progress(
+                        phase="eval author · materializing tasks",
+                        completed=completed,
+                        total=total_tasks,
+                        unit="task",
+                    )
             materialized_dataset = insight_suite.promote_local(refs, staged_tasks)
         except BaseException:
             insight_suite.discard()
@@ -312,6 +343,13 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         diagnostics: list[tuple[str, Diagnostic]] = []
         analyzer_config = TraceAnalyzerConfig(max_summary_tokens=self._config.max_summary_tokens)
         analyzers = [TraceAnalyzer(experiment_dir=self.experiment_dir, config=analyzer_config) for _ in trials]
+        if reporter is not None:
+            reporter.progress(
+                phase="eval author · analyzing traces",
+                completed=0,
+                total=len(trials),
+                unit="trace",
+            )
         raw_diagnostics: list[Diagnostic | BaseException] = list(
             await asyncio.gather(
                 *[
@@ -334,15 +372,28 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                 raise result
             if isinstance(result, BaseException):
                 logger.warning("Trace analysis failed for %s: %s", ref, result)
+                if reporter is not None:
+                    reporter.note(f"trace analysis failed for {ref}: {result}")
                 analysis_statuses[task.id] = ("failed", str(result))
                 continue
             cache.store(self.experiment_dir, cache.task_hash(f"eval_author:{ref}"), result)
             diagnostics.append((ref, result))
             analysis_statuses[task.id] = ("completed", None)
         insight_suite.record_analysis(analysis_statuses)
+        if reporter is not None:
+            reporter.progress(
+                phase="eval author · analyzing traces",
+                completed=len(diagnostics),
+                total=len(trials),
+                unit="trace",
+            )
 
         self.context["dataset_documentation"] = doc(type(materialized_dataset), inline_depth=1)
+        if reporter is not None:
+            reporter.progress(phase="eval author · discovering runner")
         runner_conventions = await self.discover_runner(materialized_dataset)
+        if reporter is not None:
+            reporter.progress(phase="eval author · authoring metrics")
         summary = await self.author_insight_metrics(
             insight,
             diagnostics,
@@ -361,6 +412,13 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                     self._config.max_validation_repair_attempts,
                     exc,
                 )
+                if reporter is not None:
+                    reporter.progress(
+                        phase="eval author · repairing metrics",
+                        completed=repair_attempt + 1,
+                        total=self._config.max_validation_repair_attempts,
+                        unit="attempt",
+                    )
                 summary = await self.author_insight_metrics(
                     insight,
                     diagnostics,
@@ -370,6 +428,8 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                 )
             else:
                 finalized_suite = insight_suite.finalize()
+                if reporter is not None:
+                    reporter.progress(phase="eval author · complete")
                 return EvalAuthorResult(
                     train_dataset=train_dataset,
                     validation_dataset=validation_dataset,
@@ -384,6 +444,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
 def build_eval_author_agent(
     experiment_dir: Path,
     config: EvalAuthorConfig | None = None,
+    reporter: RunReporter | None = None,
 ) -> EvalAuthor:
     """Build and return a configured top-level Eval Author agent."""
-    return EvalAuthor(experiment_dir=experiment_dir, config=config)
+    return EvalAuthor(experiment_dir=experiment_dir, config=config, reporter=reporter)

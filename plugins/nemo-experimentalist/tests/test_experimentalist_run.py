@@ -4,12 +4,12 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
 import pytest
+from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist import run as experimentalist_run
 from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
@@ -37,7 +37,6 @@ class ExperimentRunPaths:
 class BackendFactoryCall:
     client: ClosingClient | None
     experiments_output: str
-    mode: Literal["local", "remote"]
 
 
 @dataclass
@@ -99,14 +98,12 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
         *,
         client: ClosingClient | None,
         experiments_output: str,
-        mode: Literal["local", "remote"],
         storage: object = None,
     ) -> LocalExperimentalistBackend:
         backend_calls.append(
             BackendFactoryCall(
                 client=client,
                 experiments_output=experiments_output,
-                mode=mode,
             )
         )
         return backend
@@ -134,7 +131,6 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
         workspace="workspace-a",
         client=cast(AsyncNeMoPlatform, client),
         config=optimizer_config,
-        mode="local",
     )
 
     assert summary == "optimization complete"
@@ -143,7 +139,6 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
         BackendFactoryCall(
             client=client,
             experiments_output=str(paths.experiment.resolve()),
-            mode="local",
         )
     ]
     assert agent_calls == [AgentFactoryCall(working_dir=paths.experiment.resolve(), config=optimizer_config)]
@@ -192,7 +187,6 @@ async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
         workspace="workspace-a",
         client=cast(AsyncNeMoPlatform, client),
         config=EvolutionaryOptimizerConfig(),
-        mode="remote",
     )
 
     assert experimentalist.deps is not None
@@ -253,7 +247,6 @@ async def test_run_experimentalist_does_not_close_caller_client_when_backend_cre
             workspace="default",
             client=cast(AsyncNeMoPlatform, client),
             config=EvolutionaryOptimizerConfig(),
-            mode="remote",
         )
 
     assert not client.closed

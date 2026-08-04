@@ -158,6 +158,9 @@ AUTHENTIK_DOCKER_E2E_CONFIG = pytest.mark.e2e_config(
     "contrib/auth/authentik/config/platform-compose-authentik.yaml",
     {
         "auth": {
+            "access_keys": {
+                "enabled": True,
+            },
             "oidc": {
                 "additional_issuers": [
                     "http://authentik-server:9000/application/o/nemo/",
@@ -171,7 +174,7 @@ AUTHENTIK_DOCKER_E2E_CONFIG = pytest.mark.e2e_config(
                     "https://nemo-gateway:8080/application/o/nemo-workload/",
                     "${gateway_url}/application/o/nemo-workload/",
                 ],
-            }
+            },
         },
     },
     {

@@ -33,7 +33,7 @@ export const PLATFORM_BASE_URL = resolveBrowserBaseUrl(getEnvVar('VITE_PLATFORM_
 export const AGENTS_ENABLED = featureFlags.agentsEnabled !== false;
 export const ANONYMIZER_ENABLED = featureFlags.anonymizerEnabled !== false;
 export const BASE_MODELS_ENABLED = featureFlags.baseModelsEnabled !== false;
-export const CODING_AGENT_STUDIO_ENABLED = featureFlags.codingAgentStudioEnabled !== false;
+export const COPILOT_STUDIO_ENABLED = featureFlags.copilotStudioEnabled !== false;
 export const CUSTOMIZER_ENABLED = featureFlags.customizerEnabled !== false;
 export const DASHBOARD_ENABLED = featureFlags.dashboardEnabled !== false;
 export const DATA_DESIGNER_ENABLED = featureFlags.dataDesignerEnabled !== false;

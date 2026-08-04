@@ -18,7 +18,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "Ask my NeMo agent how to reset a Jira password.",
+      "prompt": "Ask my deployed NeMo agent how to reset a Jira password.",
       "expected_skill": "nemo-try-agent"
     },
     {
@@ -32,18 +32,18 @@
       "expected_skill": "nemo-try-agent"
     },
     {
-      "type": "contextual",
-      "prompt": "I have the it-helpdesk agent deployed and want to test it with a real question. Also curious how it handles a question outside its categories.",
+      "type": "implicit",
+      "prompt": "Invoke the local agents/support-agent/agent.yaml once with the input hello.",
       "expected_skill": "nemo-try-agent"
     },
     {
-      "type": "contextual",
-      "prompt": "Deployment finished a minute ago. Hit it with three categories of questions and show me the raw output.",
+      "type": "implicit",
+      "prompt": "Try my legacy NAT workflow YAML locally with a sample support question.",
       "expected_skill": "nemo-try-agent"
     },
     {
-      "type": "contextual",
-      "prompt": "Want to see what the support-triage agent says before the team review at 2pm. Three test prompts is enough.",
+      "type": "implicit",
+      "prompt": "Invoke the support-triage deployment before the team review and show me the raw output for three test prompts.",
       "expected_skill": "nemo-try-agent"
     },
     {
@@ -59,6 +59,16 @@
     {
       "type": "negative-control",
       "prompt": "Ask ChatGPT to write a poem about coffee.",
+      "expected_skill_not": "nemo-try-agent"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Build and deploy a new support agent from this specification.",
+      "expected_skill_not": "nemo-try-agent"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Write an agent.yaml for a new code review agent.",
       "expected_skill_not": "nemo-try-agent"
     }
   ]

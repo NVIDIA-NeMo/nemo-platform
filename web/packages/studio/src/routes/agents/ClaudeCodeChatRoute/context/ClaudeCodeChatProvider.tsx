@@ -22,7 +22,7 @@ interface ClaudeCodeChatProviderProps {
 }
 
 /**
- * Owns the single Code Agent chat runtime for a workspace. Mounted above both
+ * Owns the single NeMo Copilot chat runtime for a workspace. Mounted above both
  * the full chat route and the top-bar pop-out so an in-flight run (and its
  * thinking / awaiting-input state) survives navigating between them.
  */
@@ -74,7 +74,9 @@ export const ClaudeCodeChatProvider: FC<ClaudeCodeChatProviderProps> = ({
       } catch (error: unknown) {
         if (requestedSessionIdRef.current !== trimmedSessionId) return;
         setLoadStatus('error');
-        toast.error(error instanceof Error ? error.message : 'Could not load NeMo Agent session.');
+        toast.error(
+          error instanceof Error ? error.message : 'Could not load NeMo Copilot session.'
+        );
       }
     },
     [applySession, sessionId, toast]

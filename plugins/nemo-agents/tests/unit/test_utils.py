@@ -1473,6 +1473,83 @@ class TestValidateLLMModels:
 
         assert vms.calls == [{"name": "shared-model", "workspace": "default"}]
 
+    def test_strips_workspace_qualifier_before_lookup(self) -> None:
+        """A ``{workspace}/model`` value is stripped to bare ``model`` before retrieve.
+
+        Mirrors IGW's OpenAI proxy. ``nemo setup`` stores the qualified form as
+        the default, so ``${NEMO_DEFAULT_MODEL}`` resolves to e.g.
+        ``default/nvidia-nemotron`` — the VM route takes workspace as a separate
+        path segment, so the bare name is what must reach the SDK.
+        """
+        config = {
+            "llms": {
+                "agent_llm": {"_type": "openai", "model_name": "default/nvidia-nemotron"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        assert vms.calls == [{"name": "nvidia-nemotron", "workspace": "default"}]
+
+    def test_qualified_name_routes_to_its_own_workspace(self) -> None:
+        """A qualified ``ws/model`` looks up ``model`` in ``ws``, not the path workspace.
+
+        ``parse_qualified_name`` splits on the first ``/``: a qualifier always
+        wins over the fallback workspace, so a cross-workspace reference resolves
+        where it points. Bare names fall back to the path workspace.
+        """
+        config = {
+            "llms": {
+                "bare": {"_type": "openai", "model_name": "plain-model"},
+                "other_ws": {"_type": "openai", "model_name": "prod/foo"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        calls = sorted((c["workspace"], c["name"]) for c in vms.calls)
+        assert calls == [("default", "plain-model"), ("prod", "foo")]
+
+    def test_qualified_and_bare_forms_dedupe_to_one_lookup(self) -> None:
+        """``default/foo`` and ``foo`` normalize to the same name → one retrieve.
+
+        Dedup happens *after* stripping, so the same model spelled both ways
+        across LLM keys costs a single lookup.
+        """
+        config = {
+            "llms": {
+                "qualified": {"_type": "openai", "model_name": "default/foo"},
+                "bare": {"_type": "openai", "model_name": "foo"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        assert vms.calls == [{"name": "foo", "workspace": "default"}]
+
+    def test_bare_workspace_prefix_normalizes_to_empty_and_is_skipped(self) -> None:
+        """A ``model_name`` of exactly ``{workspace}/`` strips to '' and is skipped.
+
+        The empty string is not a routable model name; it must not reach the SDK.
+        """
+        config = {
+            "llms": {
+                "empty_after_strip": {"_type": "openai", "model_name": "default/"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        assert vms.calls == []
+
     def test_distinct_model_names_each_get_one_call(self) -> None:
         config = {
             "llms": {
@@ -1504,7 +1581,7 @@ class TestValidateLLMModels:
         message = str(exc_info.value)
         # Names the missing model + the YAML key + the workspace, and points
         # the user at concrete recovery steps.
-        assert "'missing-model'" in message
+        assert "'default/missing-model'" in message
         assert "llms.judge_llm.model_name" in message
         assert "'default'" in message
         assert "NEMO_DEFAULT_MODEL" in message
@@ -1524,8 +1601,8 @@ class TestValidateLLMModels:
             validate_llm_models(config, workspace="default", sdk=sdk)
 
         message = str(exc_info.value)
-        assert "'missing-1'" in message
-        assert "'missing-2'" in message
+        assert "'default/missing-1'" in message
+        assert "'default/missing-2'" in message
 
     def test_non_igw_llm_types_are_skipped(self) -> None:
         """LLMs whose ``_type`` doesn't route through IGW aren't validatable here."""
@@ -1738,4 +1815,4 @@ class TestPreflightValidateLLMModels:
 
         # Sanity-check the message shape; full message coverage lives in
         # TestValidateLLMModels.
-        assert "'missing-model'" in str(exc_info.value)
+        assert "'default/missing-model'" in str(exc_info.value)

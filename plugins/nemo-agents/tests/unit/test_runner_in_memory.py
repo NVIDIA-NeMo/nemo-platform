@@ -20,6 +20,7 @@ CLI) rely on:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -198,7 +199,14 @@ async def test_create_deployment_validates_platform_agent_config(tmp_path: Path)
         "name": "fabric-agent",
         "default_harness": "hermes",
         "harnesses": {"hermes": {"kind": "hermes"}},
-        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+        "models": {
+            "default": {
+                "provider": "nvidia",
+                "model": "default/test-model",
+                "base_url": "http://platform/apis/inference-gateway/v2/workspaces/ws/openai/-/v1",
+                "api_key_env": "NVIDIA_API_KEY",
+            }
+        },
     }
     validation_calls: list[Any] = []
 
@@ -208,8 +216,9 @@ async def test_create_deployment_validates_platform_agent_config(tmp_path: Path)
 
     fake_process = SimpleNamespace(pid=4242, returncode=None, poll=lambda: None)
 
-    def _spawn_fabric(self_, name, config_path, log_path, port):  # noqa: ANN001
+    def _spawn_fabric(self_, name, config_path, log_path, port, credential_env=None):  # noqa: ANN001
         del self_, name, config_path, port
+        assert credential_env == {"NVIDIA_API_KEY": "not-used"}
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text("")
         return fake_process
@@ -249,8 +258,8 @@ async def test_delete_deployment_removes_fabric_deployment(tmp_path: Path) -> No
     fake_process = SimpleNamespace(pid=4242, returncode=None, poll=lambda: None)
     terminate_calls: list[tuple[str, Any]] = []
 
-    def _spawn_fabric(self_, name, config_path, log_path, port):  # noqa: ANN001
-        del self_, name, config_path, port
+    def _spawn_fabric(self_, name, config_path, log_path, port, credential_env=None):  # noqa: ANN001
+        del self_, name, config_path, port, credential_env
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text("")
         return fake_process
@@ -300,15 +309,25 @@ async def test_create_deployment_cleans_fabric_base_dir_on_validation_failure(tm
     assert await backend.get_deployment_status("ws", "fabric-dep") is None
 
 
-def test_spawn_fabric_uses_current_python_and_platform_server(tmp_path: Path) -> None:
+def test_spawn_fabric_uses_current_python_and_platform_server(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     backend = _backend(tmp_path)
     config_path = tmp_path / "agent.yaml"
     config_path.write_text("name: test-agent\n")
     log_path = tmp_path / "agent.log"
     process = SimpleNamespace()
+    monkeypatch.setenv("NVIDIA_API_KEY", "real-controller-key")
 
     with patch("nemo_agents_plugin.runner.in_memory.subprocess.Popen", return_value=process) as popen:
-        spawned = backend._spawn_fabric("fabric-dep", config_path, log_path, 49212)
+        spawned = backend._spawn_fabric(
+            "fabric-dep",
+            config_path,
+            log_path,
+            49212,
+            {"NVIDIA_API_KEY": "not-used"},
+        )
 
     assert spawned is process
     popen.assert_called_once_with(
@@ -325,7 +344,10 @@ def test_spawn_fabric_uses_current_python_and_platform_server(tmp_path: Path) ->
         ],
         stdout=ANY,
         stderr=subprocess.STDOUT,
+        env=ANY,
     )
+    assert popen.call_args.kwargs["env"]["NVIDIA_API_KEY"] == "not-used"
+    assert os.environ["NVIDIA_API_KEY"] == "real-controller-key"
 
 
 @pytest.mark.asyncio

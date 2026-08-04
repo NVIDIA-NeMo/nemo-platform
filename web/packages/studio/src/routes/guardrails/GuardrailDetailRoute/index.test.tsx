@@ -5,6 +5,8 @@ import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { mockGuardrailConfigs } from '@studio/mocks/handlers/guardrails';
 import { server } from '@studio/mocks/node';
+import { GuardrailChecksTab } from '@studio/routes/guardrails/GuardrailChecksTab';
+import { GUARDRAIL_CHECKS_DEFAULT_SUB_TAB } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailConfigTab } from '@studio/routes/guardrails/GuardrailConfigTab';
 import { GuardrailDetailRoute } from '@studio/routes/guardrails/GuardrailDetailRoute';
 import { getGuardrailDetailRoute } from '@studio/routes/utils';
@@ -27,6 +29,11 @@ const routes = [
     children: [
       { index: true, element: <Navigate to="config" replace /> },
       { path: ROUTES.workspace.guardrailConfig, element: <GuardrailConfigTab /> },
+      {
+        path: ROUTES.workspace.guardrailChecks,
+        element: <Navigate to={GUARDRAIL_CHECKS_DEFAULT_SUB_TAB} replace />,
+      },
+      { path: ROUTES.workspace.guardrailChecksSubTab, element: <GuardrailChecksTab /> },
     ],
   },
   {
@@ -42,7 +49,7 @@ const renderDetail = (name: string) =>
   });
 
 describe('GuardrailDetailRoute', () => {
-  it('renders the Configuration tab from the detail endpoint', async () => {
+  it('renders the config details from the detail endpoint', async () => {
     renderDetail('pii-filter');
 
     expect(

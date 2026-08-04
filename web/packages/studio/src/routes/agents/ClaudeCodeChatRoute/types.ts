@@ -64,13 +64,13 @@ export interface ClaudeCodeChatJobArtifact {
   href?: string;
 }
 
-export type ClaudeCodeChatModelSource = 'coding_agent' | 'selection' | 'spec';
+export type ClaudeCodeChatModelSource = 'copilot' | 'selection' | 'spec';
 
 export interface ClaudeCodeChatArtifacts {
   agent?: string;
   model?: string;
   model_source?: ClaudeCodeChatModelSource;
-  coding_agent_model?: string;
+  copilot_model?: string;
   workspace?: string;
   selections: ClaudeCodeChatSelectionArtifact[];
   files: ClaudeCodeChatFileArtifact[];

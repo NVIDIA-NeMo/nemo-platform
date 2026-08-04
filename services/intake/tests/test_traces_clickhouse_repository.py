@@ -13,6 +13,8 @@ from nmp.intake.repository.clickhouse.tables import ClickHouseTable
 from nmp.intake.repository.clickhouse.trace import TRACE_COLUMNS, ClickHouseTraceRepository, _order_by
 from nmp.intake.spans.domain import TraceListFilter
 
+_TRACE_PAGE_COLUMNS = [*TRACE_COLUMNS, "started_at_us"]
+
 
 class _QueryResult:
     def __init__(self, rows: list[tuple[object, ...]], columns: list[str] | None = None) -> None:
@@ -45,6 +47,10 @@ class _Client(ClickHouseExecutor):
 
 def _repository(client: _Client) -> ClickHouseTraceRepository:
     return ClickHouseTraceRepository(client)
+
+
+def _with_started_at_us(row: tuple[object, ...], started_at_us: int) -> tuple[object, ...]:
+    return (*row, started_at_us)
 
 
 def test_order_by_whitelists_supported_trace_sort_keys():
@@ -123,12 +129,15 @@ async def test_latest_trace_started_at_by_group_aggregates_all_references_in_one
 
 @pytest.mark.asyncio
 async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
-    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    page_row = _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False)
+    started_at = datetime(2026, 1, 1, microsecond=123456, tzinfo=timezone.utc)
+    page_row = _with_started_at_us(
+        _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False),
+        1767225600123456,
+    )
     client = _Client(
         query_results=[
             _QueryResult([(1,)]),
-            _QueryResult([page_row], TRACE_COLUMNS),
+            _QueryResult([page_row], _TRACE_PAGE_COLUMNS),
         ]
     )
     repository = _repository(client)
@@ -144,6 +153,7 @@ async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
     assert len(client.queries) == 3
     assert "trace_roots.root_input" not in client.queries[1]
     assert "trace_roots.root_output" not in client.queries[1]
+    assert "toUnixTimestamp64Micro(traces.started_at) AS started_at_us" in client.queries[1]
     assert "LIMIT %(limit)s OFFSET %(offset)s" in client.queries[1]
     assert "substringUTF8(trace_roots.root_input, 1, %(payload_char_limit)s)" in client.queries[2]
     assert "substringUTF8(trace_roots.root_output, 1, %(payload_char_limit)s)" in client.queries[2]
@@ -159,17 +169,24 @@ async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
     assert client.external_data[2] is None
     assert client.parameters[2]["page_trace_ids"] == ["trace-a"]
     assert client.parameters[2]["page_trace_keys"] == [("otel", "trace-a")]
+    assert "root_started_at >= fromUnixTimestamp64Micro(%(page_started_at_min_us)s)" in client.queries[2]
+    assert "root_started_at <= fromUnixTimestamp64Micro(%(page_started_at_max_us)s)" in client.queries[2]
+    assert client.parameters[2]["page_started_at_min_us"] == 1767225600123456
+    assert client.parameters[2]["page_started_at_max_us"] == 1767225600123456
     assert "page_root_keys" not in client.parameters[2]
 
 
 @pytest.mark.asyncio
 async def test_detailed_mode_adds_trace_aggregate_block():
     started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    page_row = _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False)
+    page_row = _with_started_at_us(
+        _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False),
+        1767225600000000,
+    )
     client = _Client(
         query_results=[
             _QueryResult([(1,)]),
-            _QueryResult([page_row], TRACE_COLUMNS),
+            _QueryResult([page_row], _TRACE_PAGE_COLUMNS),
         ]
     )
     repository = _repository(client)
@@ -208,11 +225,14 @@ async def test_list_traces_maps_detailed_row():
     ended_at = started_at + timedelta(milliseconds=2500)
     ingested_at = started_at + timedelta(seconds=3)
     row = _trace_row(started_at=started_at, ended_at=ended_at, ingested_at=ingested_at)
-    page_row = _trace_row(started_at=started_at, ended_at=ended_at, ingested_at=ingested_at, detailed=False)
+    page_row = _with_started_at_us(
+        _trace_row(started_at=started_at, ended_at=ended_at, ingested_at=ingested_at, detailed=False),
+        1767225600000000,
+    )
     client = _Client(
         query_results=[
             _QueryResult([(1,)]),
-            _QueryResult([page_row], TRACE_COLUMNS),
+            _QueryResult([page_row], _TRACE_PAGE_COLUMNS),
             _QueryResult([row], TRACE_COLUMNS),
         ]
     )
@@ -272,12 +292,15 @@ async def test_non_summary_empty_page_skips_hydration_query():
 async def test_non_summary_reconciles_hydration_misses_and_restores_page_order(caplog: pytest.LogCaptureFixture):
     started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     page_rows = [
-        _trace_row(
-            trace_id=trace_id,
-            started_at=started_at,
-            ended_at=None,
-            ingested_at=started_at,
-            detailed=False,
+        _with_started_at_us(
+            _trace_row(
+                trace_id=trace_id,
+                started_at=started_at,
+                ended_at=None,
+                ingested_at=started_at,
+                detailed=False,
+            ),
+            1767225600000000,
         )
         for trace_id in ("trace-a", "trace-b", "trace-c")
     ]
@@ -288,7 +311,7 @@ async def test_non_summary_reconciles_hydration_misses_and_restores_page_order(c
     client = _Client(
         query_results=[
             _QueryResult([(3,)]),
-            _QueryResult(page_rows, TRACE_COLUMNS),
+            _QueryResult(page_rows, _TRACE_PAGE_COLUMNS),
             _QueryResult(hydrated_rows, TRACE_COLUMNS),
         ]
     )

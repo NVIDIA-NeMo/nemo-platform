@@ -111,11 +111,11 @@ export const GlobalNav: FC<Props> = ({ sideNav }) => {
   const isDashboardRoute =
     matchPath({ path: ROUTES.workspace.dashboard, end: true }, location.pathname) !== null;
   const isClaudeCodeChatRoute =
-    matchPath({ path: ROUTES.workspace.claudeCodeChat, end: true }, location.pathname) !== null;
+    matchPath({ path: ROUTES.workspace.copilotChat, end: true }, location.pathname) !== null;
 
   return (
     <GlobalNavContent
-      key={isClaudeCodeChatRoute ? 'code-agent' : 'default'}
+      key={isClaudeCodeChatRoute ? 'copilot' : 'default'}
       sideNav={sideNav}
       isDashboardRoute={isDashboardRoute}
       isClaudeCodeChatRoute={isClaudeCodeChatRoute}

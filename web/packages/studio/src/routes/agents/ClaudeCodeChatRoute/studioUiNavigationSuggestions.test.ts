@@ -117,7 +117,7 @@ describe('getStudioUiNavigationSuggestion', () => {
     );
   });
 
-  it('does not interrupt ordinary coding-agent prompts', () => {
+  it('does not interrupt ordinary copilot prompts', () => {
     const prompts = [
       'Review the current working tree',
       'Fix the settings page component',

@@ -22,45 +22,48 @@ make bootstrap
 
 ## 2. Start NeMo Platform
 
-Once you have the platform installed and configured, you can start it. Run this block from the repository root. This will start the platform in a background process:
+Agent traces are stored in ClickHouse, which runs as its own container. Start it first, from the repository root:
 
 ```bash
-set -a
-source packages/nmp_platform/config/local.env
-set +a
 services/intake/scripts/spans/run_clickhouse.sh
-uv run nemo services start --config packages/nmp_platform/config/local.yaml
+```
+
+Then run setup. This starts the platform services in the background and walks you through the configuration required to run the platform:
+
+```bash
+uv run nemo setup
 ```
 
 You should now be able to navigate to `http://localhost:8080` and see the NeMo Platform web UI.
 
-## 3. Prepare Tau2 and run the airline agent
+## 3. Prepare τ-Bench and run the airline agent
 
-Now that we have a running NeMo Platform, it's time to load up some data! This example uses the τ-Bench from Sierra. It's a great representation of a simplified agent that performs a business-critical task. Our first step will be to download the tau2 repository and install the dependencies to run it.
-
-Then, we'll run a script to go through 30 of the tasks from the Tau 2 Airline dataset. In order to make our example more realistic and representative of the kind of agent data we typically see in production, we won't record whether the tasks passed verification – we want to see if we can gain useful insights even without ground truth data. This could take up to 20 minutes, and will cost about a dollar.
+Now that we have a running NeMo Platform, it's time to load up some data! This example uses the τ-Bench from Sierra. It's a great representation of a simplified agent that performs a business-critical task. Our first step will be to set up our environment variables so that we can run models properly.
 
 ```bash
-git init tmp/tau2-bench
-git -C tmp/tau2-bench remote add origin https://github.com/sierra-research/tau2-bench.git
-git -C tmp/tau2-bench fetch --depth 1 origin 8ebb7499622fc2be9b9d510d6f7a7653461f4f29
-git -C tmp/tau2-bench checkout --detach FETCH_HEAD
-uv --directory tmp/tau2-bench sync --frozen
-uv --directory tmp/tau2-bench run --frozen tau2 check-data
-
-export NMP_BASE_URL=http://localhost:8080
-export INFERENCE_API_KEY=sk-...
-export OPENAI_API_KEY="$INFERENCE_API_KEY"
-export OPENAI_API_BASE=https://inference-api.nvidia.com/v1
-
-uv run --directory plugins/nemo-insights --frozen \
-  python -m testbed run tau2-airline \
-  --base "$NMP_BASE_URL" \
-  --set include_rewards=false \
-  --set tau2_repo="$PWD/tmp/tau2-bench"
+cp plugins/nemo-experimentalist/examples/tau3-nooa-agent/.env.example plugins/nemo-experimentalist/examples/tau3-nooa-agent/.env
 ```
 
-The testbed runs the 30-task airline train split and ingests realistic traces into the `tau2-airline` workspace. At this point you can navigate to the traces view and see the traces from the agent.
+Then, update the `.env` file to have an appropriate API key for your inference endpoint, and source the `.env` file.
+
+```bash
+source plugins/nemo-experimentalist/examples/tau3-nooa-agent/.env
+```
+
+Then, we'll run a script to download the benchmark datasets and put it into the appropriate directories:
+
+```bash
+plugins/nemo-experimentalist/examples/tau3-nooa-agent/prepare-airline-datasets.sh
+```
+
+Finally, we'll run our agent using the dataset tasks and record the data to NeMo Platform:
+
+```bash
+uv run --frozen plugins/nemo-experimentalist/examples/tau3-nooa-agent/record_tau_airline_traces.py
+```
+
+At this point you can navigate to the [traces tab](http://localhost:8080/studio/workspaces/tau3-airline/intake/traces) and see the traces from the agent.
+
 
 ## 4. Run the Analyst
 
@@ -71,50 +74,40 @@ If the analyst discovers issues in your application, it will create what we call
 Let's run it:
 
 ```bash
-uv run --frozen nemo insights analyze \
-  --agent tau2-airline \
-  --workspace tau2-airline \
+uv run --frozen nemo agents analyst run \
+  --agent nemo-experimentalist-tau3-nooa \
+  --workspace tau3-airline \
   --base-url "$NMP_BASE_URL"
 ```
 
-This will take a few minutes to run. Once it's done, you can navigate to the insights page to see the issues the analyst discovered in the τ-Bench Airline Agent.
+This will take a few minutes to run. Once it's done, you can navigate to the [insights tab](http://localhost:8080/studio/workspaces/tau3-airline/optimizer) to see the issues the analyst discovered in the τ-Bench Airline Agent.
 
-## 5. Prepare a Tau3 Airline smoke dataset
+## 5. Optimize performance with the experimentalist
 
 The next step is to improve the τ-Bench agent using the experimentalist. The
 experimentalist will run your evals, debug failures using trace data, understand
 the root cause of the failure and attempt to fix it. After it makes the change,
 it will run the evals again to validate whether the change improved the
-performance of your agent on the evalaution.
+performance of your agent on the evaluation.
 
-This is a shortened example that only uses a few tasks, but it can still take up to an hour to finish. First, set your environment variables and set up the task dataset:
+This is a shortened example that only uses a few tasks, but it can still take up
+to an hour to finish. First we will set up a new workspace for the optimization process:
 
 ```bash
-export OPENAI_API_KEY="$INFERENCE_API_KEY"
-export OPENAI_BASE_URL=https://inference-api.nvidia.com/v1
-export TAU2_USER_MODEL=openai/openai/openai/gpt-5-mini
-export TAU2_NL_ASSERTIONS_MODEL=openai/openai/openai/gpt-5-mini
-export AUT_MODEL_NAME=openai/openai/openai/gpt-5-mini
-export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5-mini
-export EXPERIMENTALIST_MID_MODEL_NAME=openai/openai/openai/gpt-5-mini
-export EXPERIMENTALIST_FAST_MODEL_NAME=openai/openai/openai/gpt-5-mini
-
 uv run --frozen nemo workspaces create canonical-tau3-airline \
   --description "Tau3 Airline Experimentalist runs" \
   --exist-ok
-
-plugins/nemo-experimentalist/examples/tau3-nooa-agent/prepare-airline-smoke.sh
 ```
 
 Now we're ready to run the experimentalist!
 
 ```bash
-uv run --frozen nemo experimentalist run \
+uv run --frozen nemo agents experimentalist run \
   --no-insight \
   --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
   --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \
-  --train-dataset plugins/nemo-experimentalist/tmp/tau3-airline-smoke/train \
-  --validation-dataset plugins/nemo-experimentalist/tmp/tau3-airline-smoke/validation \
+  --train-dataset plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
+  --validation-dataset plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
   --workspace canonical-tau3-airline \
   --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
   --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-smoke.yaml \
@@ -123,6 +116,7 @@ uv run --frozen nemo experimentalist run \
 ```
 
 The trace records include the Experimentalist evaluation ID and Tau3 task ID.
-After the run completes, inspect `eval-and-optimize/run.json` for the selected
-winner and compare the `agent-0` and `agent-1` directories to review the code
-change that was evaluated.
+After the run completes, inspect
+`plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist/eval-and-optimize/run.json`
+for the selected winner and compare the `agent-0` and `agent-1` directories to
+review the code change that was evaluated.

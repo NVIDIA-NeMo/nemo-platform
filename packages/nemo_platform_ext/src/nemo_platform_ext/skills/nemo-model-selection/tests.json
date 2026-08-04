@@ -37,17 +37,17 @@
       "expected_skill": "nemo-model-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "nemo-explore is finished. The agent does triage, three tools, cloud deploy. What model do I put in the spec?",
       "expected_skill": "nemo-model-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "I went through agent design but skipped past the model question. Let's settle that now.",
       "expected_skill": "nemo-model-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
       "prompt": "Spec is done except for the model. It's a code-review agent that reads PRs and suggests fixes.",
       "expected_skill": "nemo-model-selection"
     },
@@ -67,9 +67,34 @@
       "expected_skill": "nemo-model-selection"
     },
     {
-      "type": "contextual",
+      "type": "implicit",
+      "prompt": "Which model should go in models.default for this Platform agent.yaml?",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Should this Hermes harness override the agent's default model or reuse it?",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Codex is my selected harness and I want to use an NVIDIA model through Platform IGW. Verify that the exact model route supports the Responses API before recommending it.",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "implicit",
+      "prompt": "The Codex candidate failed its valid Responses API compatibility request. Exclude that combination and test the next candidate before recommending it.",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "implicit",
       "prompt": "I've already picked gpt-4o-mini. Tell me what I'm trading off vs alternatives.",
       "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Validate the completed agent.yaml and finish its harness configuration.",
+      "expected_skill_not": "nemo-model-selection"
     },
     {
       "type": "negative-control",

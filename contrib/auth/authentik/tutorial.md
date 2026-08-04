@@ -8,6 +8,7 @@ The tutorial covers:
 
 - NeMo CLI login through Authentik.
 - NeMo API calls through the Authentik gateway.
+- NeMo Scoped Access Keys through the Authentik gateway.
 - Workload identity token exchange through a workload job.
 
 For shared identities, token lifetimes, and automated test harness commands,
@@ -141,6 +142,7 @@ helm --kube-context "${KUBE_CONTEXT}" upgrade --install "${HELM_RELEASE}" contri
   --set-string nemo-platform.core.image.tag="${BAKE_TAG}" \
   --set-string nemo-platform.platformConfig.platform.image_registry="${IMAGE_REGISTRY}" \
   --set-string nemo-platform.platformConfig.platform.image_tag="${BAKE_TAG}" \
+  --set nemo-platform.platformConfig.auth.access_keys.enabled=true \
   --set-file workloadTokenSigningKey.privateKeyPem=contrib/auth/authentik/.generated/workload-token-private-key.pem
 ```
 
@@ -267,6 +269,84 @@ uv run nemo --context "$AUTHENTIK_CONTEXT" workspaces members create \
 
 Expected result: the human user can manage the workspace, and the workload
 identity can read the workspace from a job and upload the job logs.
+
+## Test Scoped Access Keys
+
+Create a short-lived Scoped Access Key for the logged-in user. The command
+prints the key once, so store it in a shell variable and do not echo it:
+
+```bash
+ACCESS_KEY="$(uv run nemo --context "$AUTHENTIK_CONTEXT" auth access-keys create \
+  --name "authentik-reference-${AUTHENTIK_RUNTIME}" \
+  --expires-in 600)"
+
+test -n "$ACCESS_KEY"
+```
+
+Authenticate through the gateway with the access key:
+
+```bash
+curl --cacert "$AUTHENTIK_GATEWAY_CA" -sf \
+  -H "Authorization: Bearer ${ACCESS_KEY}" \
+  "${AUTHENTIK_BASE_URL}/apis/auth/authenticate"
+```
+
+Expected result: the response contains `"token_kind":"access_key"` and the
+principal for the logged-in demo user.
+
+Use the same access key against a workspace API:
+
+```bash
+curl --cacert "$AUTHENTIK_GATEWAY_CA" -sf \
+  -H "Authorization: Bearer ${ACCESS_KEY}" \
+  "${AUTHENTIK_BASE_URL}/apis/entities/v2/workspaces/${WORKSPACE}"
+```
+
+Expected result: the response contains `"name":"authentik-demo"`. This uses the
+`nemo-editors` workspace role grant from the previous section.
+
+Save the access key as a separate CLI context and verify that normal CLI
+commands can use it:
+
+```bash
+ACCESS_KEY_CONTEXT="${AUTHENTIK_CONTEXT}-access-key"
+
+uv run nemo config set \
+  --context "$ACCESS_KEY_CONTEXT" \
+  --base-url "$AUTHENTIK_BASE_URL" \
+  --access-token "$ACCESS_KEY" \
+  --workspace "$WORKSPACE"
+
+uv run nemo --context "$ACCESS_KEY_CONTEXT" workspaces get "$WORKSPACE"
+uv run nemo config use-context "$AUTHENTIK_CONTEXT"
+```
+
+Expected result: `workspaces get` returns the same workspace through the saved
+access-key context. The final command restores the logged-in Authentik context
+for the rest of the tutorial.
+
+Verify that the gateway rejects a malformed access key:
+
+```bash
+INVALID_ACCESS_KEY="${ACCESS_KEY%?}A"
+if [ "$INVALID_ACCESS_KEY" = "$ACCESS_KEY" ]; then
+  INVALID_ACCESS_KEY="${ACCESS_KEY%?}B"
+fi
+
+INVALID_STATUS="$(curl --cacert "$AUTHENTIK_GATEWAY_CA" -sS -o /dev/null -w "%{http_code}" \
+  -H "Authorization: Bearer ${INVALID_ACCESS_KEY}" \
+  "${AUTHENTIK_BASE_URL}/apis/auth/authenticate")"
+
+test "$INVALID_STATUS" = "401"
+```
+
+Expected result: the malformed key returns HTTP `401`. The valid key expires
+after 600 seconds. When you are finished with the valid key, remove it from the
+current shell:
+
+```bash
+unset ACCESS_KEY ACCESS_KEY_CONTEXT INVALID_ACCESS_KEY INVALID_STATUS
+```
 
 ## Run A Workload Job
 

@@ -13,7 +13,7 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Get started
 
-**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14,<0.10.0`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, and Node.js 22.18.x with `pnpm` if you want the web UI.
+**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14,<0.10.0`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, and — if you want the web UI — Node.js `>=22.23.2 <23` with `pnpm>=10.34.5`.
 
 Quick install from PyPI:
 
@@ -40,6 +40,8 @@ nemo setup
 ```
 
 `nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and deploys a sample agent (see more below).
+
+Review [Telemetry and Privacy](docs/telemetry-and-privacy.mdx) for the omnibus disclosure covering anonymous telemetry, bundled library telemetry, third-party endpoint notes, and opt-out controls.
 
 See **[SETUP.md](SETUP.md)** for the full source setup playbook (local data dir, DB reset, manual service start, troubleshooting).
 
@@ -79,7 +81,7 @@ nemo services run
 <details>
 <summary>Studio (web UI) bootstrap troubleshooting</summary>
 
-If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Install Node 22.18.x with `pnpm env use --global 22.18.0`, then run `make bootstrap-studio` from the repo root.
+If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Install Node 22.23.x with `pnpm env use --global 22.23.2`, then run `make bootstrap-studio` from the repo root.
 
 </details>
 
@@ -176,6 +178,7 @@ The demo agent uses `${NEMO_DEFAULT_MODEL}` for both execution and the judge LLM
 
 Full documentation: [NeMo Platform docs](https://docs.nvidia.com/nemo-platform)
 
+- [Telemetry and privacy](https://docs.nvidia.com/nemo-platform/documentation/telemetry-and-privacy): anonymous telemetry, data collection, and opt-out controls.
 - [Setup](https://docs.nvidia.com/nemo-platform/documentation/get-started): installation, providers, SDK.
 - [CLI reference](https://docs.nvidia.com/nemo-platform/documentation/reference/cli-reference): all commands.
 - [API reference](https://docs.nvidia.com/nemo-platform/documentation/reference/api-reference): REST endpoints.

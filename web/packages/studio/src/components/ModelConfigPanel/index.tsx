@@ -32,7 +32,7 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
   onRemove,
   onClose,
 }) => {
-  const { control, getValues } = useFormContext<JobBuilderFormValues>();
+  const { control, getValues, setValue } = useFormContext<JobBuilderFormValues>();
   const modelIndex = getValues('models').findIndex((model) => model.id === modelId);
   const aliasPath = `models.${modelIndex}.alias` as const;
   const { field: modelField } = useController({ control, name: `models.${modelIndex}.model` });
@@ -56,9 +56,25 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
   );
   const modelValue: ModelSelection | null = modelField.value ? { model: modelField.value } : null;
 
+  const { field: aliasField } = useController({ control, name: aliasPath });
+
   const handleModelChange = (selection: ModelSelection) => {
+    const oldAlias = aliasField.value as string;
+    const newAlias = selection.model.split('/').pop()?.split('@')[0] ?? selection.model;
+
     modelField.onChange(selection.model);
     providerField.onChange(providerForSelection(selection));
+
+    if (newAlias && newAlias !== oldAlias) {
+      aliasField.onChange(newAlias);
+      const columns = getValues('columns');
+      const updated = columns.map((col) =>
+        col.values?.model_alias === oldAlias
+          ? { ...col, values: { ...col.values, model_alias: newAlias } }
+          : col
+      );
+      setValue('columns', updated);
+    }
   };
 
   return (

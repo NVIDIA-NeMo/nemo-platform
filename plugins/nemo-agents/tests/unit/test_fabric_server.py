@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -131,6 +132,30 @@ def test_startup_loads_and_validates_agent_config(
         assert isinstance(app.state.session_manager, FabricSessionManager)
 
     assert mock_validate_agent_config == [(app.state.agent_config, tmp_path)]
+
+
+def test_main_starts_packaged_server(tmp_path: Path) -> None:
+    config_path = _write_agent_config(tmp_path)
+    app = object()
+
+    with (
+        patch("nemo_agents_plugin.fabric.server.create_fabric_serving_app", return_value=app) as create_app,
+        patch("uvicorn.run") as run,
+    ):
+        result = server.main(
+            [
+                "--agent-config",
+                str(config_path),
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000",
+            ]
+        )
+
+    assert result == 0
+    create_app.assert_called_once_with(config_path, settings=FabricServingSettings())
+    run.assert_called_once_with(app, host="0.0.0.0", port=8000, log_config=None)
 
 
 def test_shutdown_stops_all_registered_runtimes(
@@ -570,7 +595,22 @@ def test_chat_completion_maps_failed_run_result(
     assert response.json() == {"detail": "adapter failed"}
 
 
-def test_chat_completion_request_translates_final_user_turn() -> None:
+def test_chat_completion_request_preserves_single_user_turn() -> None:
+    request = ChatCompletionRequest.model_validate(
+        {
+            "messages": [{"role": "user", "content": "Say hello."}],
+            "model": "test-model",
+            "stream": False,
+        }
+    )
+
+    invocation_request = server._to_fabric_invocation_request(request, session_id="session-1")
+
+    assert invocation_request.input == "Say hello."
+    assert invocation_request.caller_context == {"session_id": "session-1"}
+
+
+def test_chat_completion_request_serializes_full_transcript() -> None:
     request = ChatCompletionRequest.model_validate(
         {
             "messages": [
@@ -585,7 +625,7 @@ def test_chat_completion_request_translates_final_user_turn() -> None:
 
     invocation_request = server._to_fabric_invocation_request(request, session_id="session-1")
 
-    assert invocation_request.input == "Say hello."
+    assert invocation_request.input == ("system: Be concise.\n\nassistant: How can I help?\n\nuser: Say hello.")
     assert invocation_request.caller_context == {"session_id": "session-1"}
 
 
