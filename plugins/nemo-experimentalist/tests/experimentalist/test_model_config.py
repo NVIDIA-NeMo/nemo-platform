@@ -198,3 +198,36 @@ def test_reward_summary_is_separate_from_the_dimensions() -> None:
 
     assert "summary" not in record.metrics
     assert record.summary == 0.7
+
+
+def test_record_reward_merges_rather_than_replaces() -> None:
+    """A second writer must not drop what the first measured.
+
+    No production path writes a channel twice today, so nothing else would catch a
+    change to replace semantics — but the channel set is open by design, and the loss
+    would be silent.
+    """
+    from nemo_experimentalist_plugin.entities import Candidate
+
+    candidate = Candidate(run_id="run-1", label="agent-0", round=0, optimization="baseline")
+    candidate.record_reward("insight", metrics={"reward": 0.5})
+    candidate.record_reward("insight", metadata={"suite_identity": "sha256:abc"})
+
+    record = candidate.reward("insight")
+    assert record.metrics == {"reward": 0.5}
+    assert record.metadata == {"suite_identity": "sha256:abc"}
+
+
+def test_an_unmeasured_channel_is_distinguishable_from_an_empty_one() -> None:
+    """``reward()`` erases the difference on purpose; ``in`` is how you ask.
+
+    Eight call sites gate evaluation on ``channel not in candidate.rewards``, so a
+    read must never make a channel appear measured. This is why the mapping cannot
+    become a ``defaultdict``, whose ``__missing__`` inserts.
+    """
+    from nemo_experimentalist_plugin.entities import Candidate
+
+    candidate = Candidate(run_id="run-1", label="agent-0", round=0, optimization="baseline")
+
+    assert candidate.reward("train").metrics == {}
+    assert "train" not in candidate.rewards

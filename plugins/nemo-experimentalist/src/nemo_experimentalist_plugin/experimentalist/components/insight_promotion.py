@@ -14,7 +14,6 @@ from nemo_experimentalist_plugin.entities import (
     Candidate,
     Dataset,
     EvaluationResult,
-    RewardRecord,
     Task,
     TrialResult,
     local_path_from_uri,
@@ -23,7 +22,7 @@ from nemo_experimentalist_plugin.entities import (
 
 def candidate_suite_identity(candidate: Candidate) -> str | None:
     """The Insight-suite identity this candidate's insight reward was measured against."""
-    value = candidate.rewards.get("insight", RewardRecord()).metadata.get("suite_identity")
+    value = candidate.reward("insight").metadata.get("suite_identity")
     return value if isinstance(value, str) else None
 
 
@@ -35,7 +34,7 @@ def candidate_metric_keys(candidate: Candidate) -> list[str]:
     (``[1]`` to ``["1"]``) would let malformed metadata pass as a valid measurement and
     skip a fresh evaluation.
     """
-    value = candidate.rewards.get("insight", RewardRecord()).metadata.get("metric_keys")
+    value = candidate.reward("insight").metadata.get("metric_keys")
     if not isinstance(value, list) or not all(isinstance(key, str) for key in value):
         return []
     return list(value)

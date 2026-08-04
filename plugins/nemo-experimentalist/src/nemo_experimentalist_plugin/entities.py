@@ -534,7 +534,7 @@ class Candidate(NemoEntity, entity_type="candidate"):
         """
         return self.rewards.get(channel) or RewardRecord()
 
-    def set_reward(
+    def record_reward(
         self,
         channel: str,
         *,
@@ -543,7 +543,15 @@ class Candidate(NemoEntity, entity_type="candidate"):
         trials: Sequence[TrialResult] | None = None,
         metadata: dict[str, DataValue] | None = None,
     ) -> None:
-        """Merge a measurement into *channel*, leaving unspecified parts untouched."""
+        """Merge a measurement into *channel*, leaving unspecified parts untouched.
+
+        Named ``record_`` rather than ``set_`` because it merges: an argument left as
+        ``None`` keeps whatever the channel already holds. Every caller today writes a
+        channel exactly once, so nothing currently depends on that — but the channel set
+        is open, and a second writer adding ``metadata`` to a channel another path
+        measured should not silently drop its ``metrics``. Replace semantics would make
+        that a data loss no test would catch.
+        """
         current = self.rewards.get(channel) or RewardRecord()
         update = {
             key: value

@@ -568,7 +568,7 @@ class EvolutionaryOptimizer(Agent):
                     candidate=candidates[0],
                     split="validation",
                 )
-                candidates[0].set_reward(
+                candidates[0].record_reward(
                     "validation",
                     metrics=validation_result.aggregate_metrics,
                     trials=validation_result.trials,
@@ -668,7 +668,7 @@ class EvolutionaryOptimizer(Agent):
                             candidate=survivor,
                             split="train",
                         )
-                        survivor.set_reward(
+                        survivor.record_reward(
                             "train",
                             metrics=train_candidate_results[survivor.label].aggregate_metrics,
                             trials=train_candidate_results[survivor.label].trials,
@@ -795,7 +795,7 @@ class EvolutionaryOptimizer(Agent):
                             candidate=candidate,
                             split="validation",
                         )
-                        candidate.set_reward(
+                        candidate.record_reward(
                             "validation",
                             metrics=validation_candidate_results[candidate.label].aggregate_metrics,
                             trials=validation_candidate_results[candidate.label].trials,
@@ -824,7 +824,7 @@ class EvolutionaryOptimizer(Agent):
                     )
                     for candidate in candidates:
                         if candidate.label in trajectory_results:
-                            candidate.set_reward(
+                            candidate.record_reward(
                                 "validation-trajectory",
                                 metrics=trajectory_results[candidate.label]["reward"],
                             )
@@ -1507,7 +1507,7 @@ class EvolutionaryOptimizer(Agent):
                 candidate=candidate,
                 split="insight",
             )
-            candidate.set_reward(
+            candidate.record_reward(
                 "insight",
                 metrics=result.aggregate_metrics,
                 trials=result.trials,
