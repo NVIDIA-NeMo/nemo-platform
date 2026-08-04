@@ -371,3 +371,47 @@ def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     assert env["NMP_BASE_URL"] == "http://platform.example:8080"
     assert env["VLLM_ENDPOINT"] == "http://127.0.0.1:8000"
     assert len(docker.server_config.containers) == 2
+
+
+def test_lora_sidecar_rewrites_loopback_nmp_base_url_for_docker() -> None:
+    """Docker LoRA sidecars must not keep host loopback as NMP_BASE_URL (jobs/auth-proxy pattern)."""
+    config = DeploymentsPluginConfig()
+    platform = MagicMock()
+    platform.base_url = "http://127.0.0.1:8080"
+    platform.loopback_address = None
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_qualified_image",
+            return_value="registry/nmp-api:tag",
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_platform_config",
+            return_value=platform,
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.determine_loopback_override",
+            return_value=None,
+        ),
+    ):
+        k8s = compile_model_deployment(_resolved("vllm", lora=True), config)
+        docker = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
+
+    k8s_env = {item.name: item.value for item in k8s.server_config.init_containers[-1].env}
+    docker_env = {item.name: item.value for item in docker.server_config.containers[1].env}
+    assert k8s_env["NMP_BASE_URL"] == "http://127.0.0.1:8080"
+    assert docker_env["NMP_BASE_URL"] == "http://host.docker.internal:8080"
+
+    platform.loopback_address = "172.16.83.1"
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_qualified_image",
+            return_value="registry/nmp-api:tag",
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_platform_config",
+            return_value=platform,
+        ),
+    ):
+        docker_bridge = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
+    bridge_env = {item.name: item.value for item in docker_bridge.server_config.containers[1].env}
+    assert bridge_env["NMP_BASE_URL"] == "http://172.16.83.1:8080"

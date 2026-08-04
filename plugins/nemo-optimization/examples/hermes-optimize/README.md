@@ -37,8 +37,10 @@ From the `nemo-platform` repo root:
 
 3. **Fabric Hermes MCP (FABRIC-167)** — Hermes 0.18+ needs `discover_mcp_tools()` after
    the adapter writes `config.yaml`, and capability planning must preserve
-   `mcp.servers.*.env`. Use a Fabric build that includes that fix (or patch the
-   installed adapter equivalently).
+   `mcp.servers.*.env`. Install a Fabric **0.2.0+** build that includes that fix
+   (e.g. `just wheels` in NeMo-Fabric, then `uv pip install --find-links … --force-reinstall
+   --no-deps`). Plain `uv run` re-syncs the lock and **downgrades** Fabric to 0.1.0 —
+   after installing local wheels, always use `uv run --no-sync …`.
 
 4. `NVIDIA_API_KEY` in the environment. For `https://inference-api.nvidia.com/v1`,
    list models your key can call (`GET /v1/models`) and use the **full id**
@@ -54,7 +56,7 @@ YAML are relative to the process CWD — run from the repo root.
 ```bash
 cd /path/to/nemo-platform
 
-uv run --package nemo-agents-plugin nemo agents optimize run \
+uv run --no-sync --package nemo-agents-plugin nemo agents optimize run \
   --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-chatonly.yaml" \
   --workspace default
 ```
@@ -91,7 +93,7 @@ export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-
 test -d "$PHISHING_AGENT_SRC" || { echo "missing PHISHING_AGENT_SRC=$PHISHING_AGENT_SRC"; exit 1; }
 test -x "$PHISHING_MCP_BIN" || { echo "missing PHISHING_MCP_BIN=$PHISHING_MCP_BIN (uv sync in agent checkout)"; exit 1; }
 
-uv run --package nemo-agents-plugin nemo agents optimize run \
+uv run --no-sync --package nemo-agents-plugin nemo agents optimize run \
   --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-mcp.e2e.yaml" \
   --workspace default
 ```
