@@ -231,14 +231,29 @@ EntityTypeLike = Type[EntityT] | EntityToken
 
 
 class EntityGetterProtocol(Protocol[EntityT]):
-    """Protocol for entity clients that can fetch entities by workspace/name."""
+    """Protocol for entity clients that can fetch entities by workspace/name.
 
-    async def get(self, entity_type: Type[EntityT], *, name: str, workspace: str) -> EntityT: ...
+    ``parent`` addresses a **child** entity, which is unique within
+    ``(workspace, entity_type, parent, name)`` rather than by name alone. It is optional, so
+    fetching a root entity is unchanged.
+    """
+
+    async def get(
+        self,
+        entity_type: Type[EntityT],
+        *,
+        name: str,
+        workspace: str,
+        parent: Optional[str] = None,
+    ) -> EntityT: ...
 
 
 class EntityDeleteClientProtocol(EntityGetterProtocol[EntityT], Protocol[EntityT]):
     """Protocol for entity clients that can list and delete entities."""
 
+    # ``filter_str`` and ``filter_obj`` exist on the client but are deliberately absent here:
+    # ``filter_operation`` is the sanctioned structured form, and the other two are a JSON-string
+    # variant and an exact-match shorthand kept for older callers.
     async def list(
         self,
         entity_type: Type[EntityT],
@@ -256,6 +271,7 @@ class EntityDeleteClientProtocol(EntityGetterProtocol[EntityT], Protocol[EntityT
         name: str,
         *,
         workspace: str,
+        parent: Optional[str] = None,
         expected_db_version: Optional[int] = None,
     ) -> object: ...
 
@@ -264,6 +280,20 @@ class EntityClientProtocol(EntityDeleteClientProtocol[EntityT], Protocol[EntityT
     """Protocol for the common entity CRUD operations used by plugins."""
 
     async def create(self, entity: EntityT) -> EntityT: ...
+
+
+class EntityUpdateClientProtocol(Protocol[EntityT]):
+    """Protocol for entity clients that can update an existing entity.
+
+    Separate from :class:`EntityClientProtocol` rather than folded into it: ``update`` is a
+    read-modify-write against the ``db_version`` optimistic lock, and most services never need it.
+    Compose it with the CRUD protocol where a service does::
+
+        class Store(EntityClientProtocol[MyEntity], EntityUpdateClientProtocol[MyEntity], Protocol):
+            ...
+    """
+
+    async def update(self, entity: EntityT, *, original_name: Optional[str] = None) -> EntityT: ...
 
 
 class AnyEntityGetterProtocol(Protocol):
