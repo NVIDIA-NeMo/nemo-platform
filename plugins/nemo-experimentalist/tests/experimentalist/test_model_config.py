@@ -218,9 +218,9 @@ def test_record_reward_merges_rather_than_replaces() -> None:
     change to replace semantics — but the channel set is open by design, and the loss
     would be silent.
     """
-    from nemo_experimentalist_plugin.entities import Candidate
+    from doubles import make_candidate
 
-    candidate = Candidate(run_id="run-1", label="agent-0", round=0, optimization="baseline")
+    candidate = make_candidate(label="agent-0", description="baseline")
     candidate.record_reward("insight", metrics={"reward": 0.5})
     candidate.record_reward("insight", metadata={"suite_identity": "sha256:abc"})
 
@@ -236,9 +236,9 @@ def test_an_unmeasured_channel_is_distinguishable_from_an_empty_one() -> None:
     read must never make a channel appear measured. This is why the mapping cannot
     become a ``defaultdict``, whose ``__missing__`` inserts.
     """
-    from nemo_experimentalist_plugin.entities import Candidate
+    from doubles import make_candidate
 
-    candidate = Candidate(run_id="run-1", label="agent-0", round=0, optimization="baseline")
+    candidate = make_candidate(label="agent-0", description="baseline")
 
     assert candidate.reward("train").metrics == {}
     assert "train" not in candidate.rewards

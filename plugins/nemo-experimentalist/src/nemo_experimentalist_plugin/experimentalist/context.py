@@ -387,7 +387,7 @@ class ExperimentContext:
             )
         else:
             record = result if metadata is None else result.model_copy(update={"metadata": dict(metadata)})
-        candidate.set_reward(
+        candidate.record_reward(
             channel,
             metrics=record.metrics,
             summary=record.summary,

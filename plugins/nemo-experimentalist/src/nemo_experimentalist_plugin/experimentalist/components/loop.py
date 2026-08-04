@@ -1215,11 +1215,29 @@ class EvolutionaryOptimizer(Agent):
             return_exceptions=True,
         )
 
+        # Cancellation is not a build failure and must not be swallowed as one:
+        # `CancelledError` derives from BaseException, so the filter below would let a
+        # cancelled candidate through as if it had built, and it would go on to be
+        # committed, evaluated and ranked. Re-raise so the whole round unwinds instead.
+        for outcome in outcomes:
+            if isinstance(outcome, asyncio.CancelledError):
+                raise outcome
+
         built: list[Candidate] = []
         agents_dir = self.working_dir / "eval-and-optimize" / "agents"
         for proposal, build, outcome in zip(buildable, builds, outcomes, strict=True):
             if isinstance(outcome, BaseException):
-                logger.warning(f"Build failed for {build.name}: {outcome}")
+                # `return_exceptions=True` means a failure arrives as a value, not a
+                # raise, so the reason is only ever seen if it is logged here. A build
+                # that never became a candidate is the one thing a run cannot cheaply
+                # reproduce, so keep the exception and its traceback.
+                logger.warning(
+                    "Build failed for %s — %s: %s",
+                    build.name,
+                    type(outcome).__name__,
+                    outcome,
+                    exc_info=outcome,
+                )
                 continue
             built.append(
                 await ctx.commit_candidate(

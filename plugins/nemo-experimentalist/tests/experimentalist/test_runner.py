@@ -420,7 +420,7 @@ async def test_an_insight_suite_mismatch_does_not_fail_a_completed_run(monkeypat
     baseline = _insight_candidate("agent-0", round_num=0, insight=0.0, validation=0.5)
     winner = _insight_candidate("agent-1", round_num=1, insight=1.0, validation=0.75)
     # The winner was scored against a different suite than the run ended up with.
-    winner.set_reward(
+    winner.record_reward(
         "insight", metadata={**winner.rewards["insight"].metadata, "suite_identity": "sha256:" + "e" * 64}
     )
 
