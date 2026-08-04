@@ -27,6 +27,8 @@ export interface RadioCardProps extends Omit<ComponentProps<typeof RadioGroupIte
   labelId?: string;
   /** Which side of the card the radio input renders on. @default "right" */
   labelSide?: 'left' | 'right';
+  /** Shows the radio indicator dot. When false the input stays in the DOM (still focusable and form-participating) but is visually hidden, so the card's selected border conveys state on its own. @default true */
+  showIndicator?: boolean;
   /** When true, shows the card as selected. When used inside RadioGroupRoot, the group's value controls this; pass checked so the card reflects the active state (e.g. checked={value === 'this-option'}). */
   checked?: boolean;
   /** Whether the underlying radio input is disabled */
@@ -56,6 +58,7 @@ export const RadioCard: FC<RadioCardProps> = ({
   value,
   labelId,
   labelSide = 'right',
+  showIndicator = true,
   checked,
   disabled,
   className,
@@ -64,16 +67,20 @@ export const RadioCard: FC<RadioCardProps> = ({
   const id = labelId ?? `${String(value).replace(/\s+/g, '-')}-label`;
   const hasDescription = isDefined(description);
 
-  const textStartClass = 'text-left ' + (labelSide === 'right' ? 'col-start-2' : 'col-start-1');
+  const textStartClass =
+    'text-left ' + (showIndicator && labelSide === 'right' ? 'col-start-2' : 'col-start-1');
   const labelClass = `${textStartClass} row-start-1`;
   const descriptionClass = `${textStartClass} row-start-2`;
 
-  const colClass =
-    labelSide === 'right'
+  // The hidden input is absolutely positioned, so it leaves grid flow entirely.
+  const colClass = !showIndicator
+    ? '[&_.nv-card-content]:grid-cols-1'
+    : labelSide === 'right'
       ? '[&_.nv-card-content]:grid-cols-[auto_1fr]'
       : '[&_.nv-card-content]:grid-cols-[1fr_auto]';
-  const inputClass =
-    labelSide === 'right'
+  const inputClass = !showIndicator
+    ? ''
+    : labelSide === 'right'
       ? '[&_.nv-radio-group-input]:col-start-1'
       : '[&_.nv-radio-group-input]:col-start-2';
   const gapClass = hasDescription
@@ -91,9 +98,11 @@ export const RadioCard: FC<RadioCardProps> = ({
         className={cn(
           'cursor-pointer [&_*]:cursor-pointer',
           'hover:bg-interaction-hover',
-          'group-data-[state=checked]:border-interaction-selected',
+          // KUI's RadioGroupItem does not emit data-state/data-disabled, so key
+          // these off the real input via :has().
+          'has-[:checked]:border-interaction-selected',
           checked === true && 'border-interaction-selected',
-          'group-data-[disabled]:pointer-events-none group-data-[disabled]:opacity-50',
+          'has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50',
           nvPanelContentClass,
           className
         )}
@@ -102,6 +111,7 @@ export const RadioCard: FC<RadioCardProps> = ({
         <RadioGroupInput
           value={value}
           disabled={disabled}
+          showIndicator={showIndicator}
           aria-labelledby={id}
           {...attributes?.RadioGroupInput}
         />
