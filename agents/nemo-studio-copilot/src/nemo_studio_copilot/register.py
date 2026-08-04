@@ -91,6 +91,27 @@ _DIRECT_LIST_RESOURCES = (
     (re.compile(r"\bmodels?\b", re.IGNORECASE), "models"),
     (re.compile(r"\bworkspaces?\b", re.IGNORECASE), "workspaces"),
 )
+_DIRECT_LIST_CONTEXT_TARGET = re.compile(
+    r"^\s*(?:list|show|what|which)\b.*?\b(?:"
+    r"(?P<providers>(?:model\s+)?providers?)|"
+    r"(?P<filesets>filesets?)|"
+    r"(?P<datasets>datasets?)|"
+    r"(?P<benchmarks>benchmarks?)|"
+    r"(?P<metrics>metrics?)|"
+    r"(?P<models>models?)|"
+    r"(?P<workspaces>workspaces?)"
+    r")\b",
+    re.IGNORECASE,
+)
+_DIRECT_LIST_CONTEXT_RESOURCES = {
+    "providers": "inference.providers",
+    "filesets": "files.filesets",
+    "datasets": "datasets",
+    "benchmarks": "evaluation.benchmarks",
+    "metrics": "evaluation.metrics",
+    "models": "models",
+    "workspaces": "workspaces",
+}
 
 _client: NeMoPlatform | None = None
 
@@ -111,6 +132,9 @@ def _direct_list_resource(messages: list[Any]) -> str | None:
         return None
     if _FAST_PATH_MUTATION.search(latest_user_text) or _FAST_PATH_ANALYSIS.search(latest_user_text):
         return None
+    context_target = _DIRECT_LIST_CONTEXT_TARGET.search(latest_user_text)
+    if context_target and context_target.lastgroup:
+        return _DIRECT_LIST_CONTEXT_RESOURCES[context_target.lastgroup]
     for pattern, resource_path in _DIRECT_LIST_RESOURCES:
         if pattern.search(latest_user_text):
             return resource_path

@@ -603,6 +603,8 @@ class TestDirectListFastPath:
             ("What models are available?", "models"),
             ("List the available models in workspace default.", "models"),
             ("List the model providers in workspace default.", "inference.providers"),
+            ("List models for provider X.", "models"),
+            ("List workspaces containing models.", "workspaces"),
             ("Show filesets", "files.filesets"),
         ],
     )
