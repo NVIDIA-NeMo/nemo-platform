@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { GlobalNav } from '@studio/components/Layouts/GlobalNav';
-import { CODING_AGENT_STUDIO_ENABLED } from '@studio/constants/environment';
+import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { useAuthAutoLogin } from '@studio/providers/auth';
 import { useAuthTokenStatus } from '@studio/providers/auth/useAuthTokenStatus';
@@ -47,7 +47,7 @@ export const PageLayout = ({ sideNav }: { sideNav?: (collapsed: boolean) => Reac
     <div
       className={`min-h-screen relative grid size-full text-primary grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_1fr] ${gridAreas}`}
     >
-      {CODING_AGENT_STUDIO_ENABLED && workspace ? (
+      {COPILOT_STUDIO_ENABLED && workspace ? (
         <ClaudeCodeChatProvider key={workspace} workspace={workspace}>
           {layout}
         </ClaudeCodeChatProvider>

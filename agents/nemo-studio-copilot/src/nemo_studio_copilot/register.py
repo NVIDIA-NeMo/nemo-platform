@@ -51,7 +51,7 @@ the matching `select_*` tool rather than asking in plain text.
 SKILLS_DIR = Path(__file__).parent / "skills"
 DEFAULT_WORKSPACE = "default"
 DEFAULT_RECURSION_LIMIT = 24
-STUDIO_CALLBACK_PATH = "/studio/api/coding-agents/mcp/{session_id}"
+STUDIO_CALLBACK_PATH = "/studio/api/copilot/mcp/{session_id}"
 STUDIO_CALLBACK_TIMEOUT_SECONDS = 3600.0
 _READ_ONLY_SDK_ACTIONS = frozenset(
     {
@@ -80,14 +80,38 @@ _FAST_PATH_MUTATION = re.compile(
 )
 _FAST_PATH_ANALYSIS = re.compile(r"\b(analy[sz]e|audit|compare|explain|investigate|why)\b", re.IGNORECASE)
 _DIRECT_LIST_RESOURCES = (
-    (re.compile(r"\bworkspaces?\b", re.IGNORECASE), "workspaces"),
-    (re.compile(r"\bmodels?\b", re.IGNORECASE), "models"),
+    # Match the requested resource before the contextual workspace qualifier.
+    # Provider prompts commonly include both "model" and "workspace", so the
+    # most specific resource must come first and workspace must come last.
     (re.compile(r"\bproviders?\b", re.IGNORECASE), "inference.providers"),
     (re.compile(r"\bfilesets?\b", re.IGNORECASE), "files.filesets"),
     (re.compile(r"\bdatasets?\b", re.IGNORECASE), "datasets"),
     (re.compile(r"\bbenchmarks?\b", re.IGNORECASE), "evaluation.benchmarks"),
     (re.compile(r"\bmetrics?\b", re.IGNORECASE), "evaluation.metrics"),
+    (re.compile(r"\bmodels?\b", re.IGNORECASE), "models"),
+    (re.compile(r"\bworkspaces?\b", re.IGNORECASE), "workspaces"),
 )
+_DIRECT_LIST_CONTEXT_TARGET = re.compile(
+    r"^\s*(?:list|show|what|which)\b.*?\b(?:"
+    r"(?P<providers>(?:model\s+)?providers?)|"
+    r"(?P<filesets>filesets?)|"
+    r"(?P<datasets>datasets?)|"
+    r"(?P<benchmarks>benchmarks?)|"
+    r"(?P<metrics>metrics?)|"
+    r"(?P<models>models?)|"
+    r"(?P<workspaces>workspaces?)"
+    r")\b",
+    re.IGNORECASE,
+)
+_DIRECT_LIST_CONTEXT_RESOURCES = {
+    "providers": "inference.providers",
+    "filesets": "files.filesets",
+    "datasets": "datasets",
+    "benchmarks": "evaluation.benchmarks",
+    "metrics": "evaluation.metrics",
+    "models": "models",
+    "workspaces": "workspaces",
+}
 
 _client: NeMoPlatform | None = None
 
@@ -108,6 +132,9 @@ def _direct_list_resource(messages: list[Any]) -> str | None:
         return None
     if _FAST_PATH_MUTATION.search(latest_user_text) or _FAST_PATH_ANALYSIS.search(latest_user_text):
         return None
+    context_target = _DIRECT_LIST_CONTEXT_TARGET.search(latest_user_text)
+    if context_target and context_target.lastgroup:
+        return _DIRECT_LIST_CONTEXT_RESOURCES[context_target.lastgroup]
     for pattern, resource_path in _DIRECT_LIST_RESOURCES:
         if pattern.search(latest_user_text):
             return resource_path
@@ -147,7 +174,7 @@ def _list_resource_names(resource_path: str) -> str:
         resource = _resolve_resource(_get_client(), resource_path)
         serialized = _serialize(_call_sdk_method(resource, "list"))
     except Exception as exc:
-        logger.exception("nemo-agent: direct list fast path failed for resource=%s", resource_path)
+        logger.exception("nemo-studio-copilot: direct list fast path failed for resource=%s", resource_path)
         return _direct_list_error(resource_path, exc)
 
     if isinstance(serialized, dict):
@@ -157,7 +184,7 @@ def _list_resource_names(resource_path: str) -> str:
     names = [item.get("name") for item in serialized if isinstance(item, dict) and isinstance(item.get("name"), str)]
     if not names:
         return f"No {resource_path.rsplit('.', maxsplit=1)[-1]} found in workspace '{_active_workspace()}'."
-    logger.info("nemo-agent: direct list fast path resource=%s count=%d", resource_path, len(names))
+    logger.info("nemo-studio-copilot: direct list fast path resource=%s count=%d", resource_path, len(names))
     return "\n".join(names)
 
 
@@ -169,7 +196,7 @@ def _delete_fileset(name: str) -> str:
         _call_sdk_method(resource, "delete", {"name": name})
         serialized = _serialize(_call_sdk_method(resource, "list"))
     except Exception as exc:
-        logger.exception("nemo-agent: direct fileset delete failed for name=%s", name)
+        logger.exception("nemo-studio-copilot: direct fileset delete failed for name=%s", name)
         if isinstance(exc, ValueError) and "workspace" in str(exc).lower():
             return f"Which workspace should I use to delete fileset '{name}'?"
         return f"I couldn't delete fileset '{name}' in workspace '{workspace}': {type(exc).__name__}: {exc}"
@@ -187,7 +214,7 @@ def _delete_fileset(name: str) -> str:
     if name in remaining_names:
         return f"I couldn't verify deletion: fileset '{name}' still exists in workspace '{workspace}'."
 
-    logger.info("nemo-agent: direct fileset delete name=%s workspace=%s", name, workspace)
+    logger.info("nemo-studio-copilot: direct fileset delete name=%s workspace=%s", name, workspace)
     return f"Deleted fileset '{name}' from workspace '{workspace}'."
 
 
@@ -663,7 +690,7 @@ _nemo_tools = [
 class _StreamSafeGraph:
     """Wraps a CompiledStateGraph with NAT-compatible incremental streaming.
 
-    The custom ``nemo_agent_wrapper`` accepts Deep Agent state deltas that do
+    The custom ``nemo_studio_copilot_wrapper`` accepts Deep Agent state deltas that do
     not contain ``messages``. Delegate to the graph's real ``astream`` so NAT
     can forward chunks as each graph step completes instead of buffering the
     entire run behind ``ainvoke``.
@@ -778,7 +805,9 @@ def _disable_nat_method_retries(model: Any) -> Any:
         object.__setattr__(model, name, types.MethodType(wrapped, model))
         disabled.append(name)
     if disabled:
-        logger.info("nemo-agent: disabled NAT automatic retry wrappers for model methods: %s", ", ".join(disabled))
+        logger.info(
+            "nemo-studio-copilot: disabled NAT automatic retry wrappers for model methods: %s", ", ".join(disabled)
+        )
     return model
 
 
@@ -829,7 +858,7 @@ def _build_backend() -> CompositeBackend:
     return CompositeBackend(default=StateBackend(), routes=routes)
 
 
-def create_nemo_agent(config=None):
+def create_nemo_studio_copilot(config=None):
     """Create the NeMo Platform Deep Agent.
 
     Args:
@@ -845,14 +874,14 @@ def create_nemo_agent(config=None):
     skills = [str(SKILLS_DIR)] if discovered else None
     if SKILLS_DIR.is_dir() and not discovered:
         logger.warning(
-            "nemo-agent: SKILLS_DIR=%s is configured but no spec-compliant "
+            "nemo-studio-copilot: SKILLS_DIR=%s is configured but no spec-compliant "
             "skills were discovered (each skill must be a subdirectory with "
             "a SKILL.md starting with '---' YAML frontmatter). Agent will "
             "run without playbook scaffolding.",
             SKILLS_DIR,
         )
     elif discovered:
-        logger.info("nemo-agent: loaded %d skills: %s", len(discovered), ", ".join(discovered))
+        logger.info("nemo-studio-copilot: loaded %d skills: %s", len(discovered), ", ".join(discovered))
     backend = _build_backend()
     graph = create_deep_agent(
         model=model,
@@ -864,10 +893,10 @@ def create_nemo_agent(config=None):
     return _StreamSafeGraph(graph)
 
 
-# Module-level graph factory. The active workflow type is `nemo_agent_wrapper`
-# (see ./wrapper.py), which calls ``create_nemo_agent`` directly. This alias is
+# Module-level graph factory. The active workflow type is `nemo_studio_copilot_wrapper`
+# (see ./wrapper.py), which calls ``create_nemo_studio_copilot`` directly. This alias is
 # kept so the graph can also be loaded via ``_type: langgraph_wrapper`` with
 # ``graph: .../register.py:agent`` for ad-hoc debugging — note that path will
-# hit the NAT 1.6.0 input/output schema bugs that ``nemo_agent_wrapper``
+# hit the NAT 1.6.0 input/output schema bugs that ``nemo_studio_copilot_wrapper``
 # exists to work around.
-agent = create_nemo_agent
+agent = create_nemo_studio_copilot

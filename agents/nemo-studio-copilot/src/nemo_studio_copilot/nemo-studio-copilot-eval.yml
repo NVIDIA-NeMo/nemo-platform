@@ -1,9 +1,9 @@
-# Eval config for the built-in nemo-agent.
+# Eval config for the built-in nemo-studio-copilot.
 #
-# Uses the custom `nemo_agent_wrapper` workflow type (defined in
-# src/nemo_agent/wrapper.py) so the same config works whether the agent runs
+# Uses the custom `nemo_studio_copilot_wrapper` workflow type (defined in
+# src/nemo_studio_copilot/wrapper.py) so the same config works whether the agent runs
 # inline (no --agent) or against the deployed agent's `/generate/full` endpoint
-# (--agent nemo-agent). The wrapper accepts both the `{"messages": [...]}`
+# (--agent nemo-studio-copilot). The wrapper accepts both the `{"messages": [...]}`
 # shape used by chat clients and the `{"input_message": "..."}` shape that
 # `nvidia-nat-eval`'s remote workflow client posts to `/generate/full`.
 #
@@ -13,13 +13,13 @@
 #
 # Run inline (in-process, no deployed agent needed):
 #   nemo agents evaluate run \
-#       --eval-config plugins/nemo-agents/builtin_agents/nemo-agent/src/nemo_agent/nemo-eval.yml \
+#       --eval-config agents/nemo-studio-copilot/src/nemo_studio_copilot/nemo-studio-copilot-eval.yml \
 #       --output ./eval-out
 #
-# Run against the deployed agent (requires `nemo agents deploy nemo-agent`):
+# Run against the deployed agent (requires `nemo agents deploy nemo-studio-copilot`):
 #   nemo agents evaluate run \
-#       --eval-config plugins/nemo-agents/builtin_agents/nemo-agent/src/nemo_agent/nemo-eval.yml \
-#       --agent nemo-agent \
+#       --eval-config agents/nemo-studio-copilot/src/nemo_studio_copilot/nemo-studio-copilot-eval.yml \
+#       --agent nemo-studio-copilot \
 #       --output ./eval-out
 
 llms:
@@ -47,7 +47,7 @@ llms:
   # only meaningful when something resolves it back to the upstream model.
   #
   # Caveat: the agent's tools (`nemo_api`, `check_status`) still call platform
-  # APIs via the Python SDK. The current `nemo-eval-data.json` exercises
+  # APIs via the Python SDK. The current `nemo-studio-copilot-eval-data.json` exercises
   # platform resources, including workspace and model/provider operations, so
   # bypassing the gateway is not an LLM-only smoke test. A fully self-contained
   # bypass run requires a separate pure-LLM dataset that does not invoke
@@ -67,16 +67,16 @@ llms:
   #     max_tokens: 1024
 
 workflow:
-  _type: nemo_agent_wrapper
+  _type: nemo_studio_copilot_wrapper
   description: NeMo Platform assistant using LangChain Deep Agents
 
 eval:
   general:
     max_concurrency: 1
-    output_dir: eval/nemo-agent
+    output_dir: eval/nemo-studio-copilot
     dataset:
       _type: json
-      file_path: nemo-eval-data.json
+      file_path: nemo-studio-copilot-eval-data.json
       structure:
         question_key: input_message
         answer_key: expected_output

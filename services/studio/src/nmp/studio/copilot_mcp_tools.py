@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""MCP tool catalog for Studio coding-agent sessions."""
+"""MCP tool catalog for Studio copilot sessions."""
 
 from typing import Any
 
@@ -177,9 +177,9 @@ STUDIO_UI_TOOL_NAMES = (
     STUDIO_LINK_TOOL_NAME,
 )
 
-STUDIO_CODING_AGENT_CONTEXT = "\n".join(
+STUDIO_COPILOT_CONTEXT = "\n".join(
     [
-        "You are NeMo Agent, running inside NeMo Studio.",
+        "You are NeMo Copilot, running inside NeMo Studio.",
         (
             "NeMo Studio and the NeMo Platform API are already installed, set up, and running for this "
             "workspace. Treat the platform as healthy and available."

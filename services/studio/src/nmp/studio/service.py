@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import HTMLResponse
 from nmp.common.http_clients import shared_async_http_client
 from nmp.common.service import RouterConfig, Service
-from nmp.studio import coding_agents
+from nmp.studio import copilot
 from nmp.studio.config import StudioConfig
 from nmp.studio.static_files import SPAStaticFiles
 from starlette.responses import Response
@@ -65,7 +65,7 @@ class StudioService(Service[StudioConfig]):
     @property
     def description(self) -> str:
         """Service description for OpenAPI docs."""
-        return "Serves the NeMo Studio web application and local coding-agent bridge"
+        return "Serves the NeMo Studio web application and local copilot bridge"
 
     def get_routers(self) -> List[RouterConfig]:
         """Return routers for the studio service.
@@ -75,9 +75,9 @@ class StudioService(Service[StudioConfig]):
         """
         return [
             RouterConfig(
-                coding_agents.router,
-                tag="Studio Coding Agents",
-                description="Local coding-agent bridge endpoints",
+                copilot.router,
+                tag="NeMo Copilot",
+                description="Local copilot bridge endpoints",
             )
         ]
 
@@ -91,12 +91,12 @@ class StudioService(Service[StudioConfig]):
             app: The platform's FastAPI application
         """
         self._mount_telemetry_proxy(app)
-        self._mount_coding_agent_mcp(app)
+        self._mount_copilot_mcp(app)
         self._mount_static_files(app)
 
-    def _mount_coding_agent_mcp(self, app: FastAPI) -> None:
+    def _mount_copilot_mcp(self, app: FastAPI) -> None:
         """Mount the auth-bypassed MCP callback before the /studio static app."""
-        coding_agents.mount_public_mcp_route(app)
+        copilot.mount_public_mcp_route(app)
 
     def _get_config(self) -> StudioConfig:
         """Get the studio config, creating a default if none is set.

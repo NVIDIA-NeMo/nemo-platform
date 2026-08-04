@@ -41,11 +41,11 @@ RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \
     uv pip install . && \
     chmod -R a+rX /opt/uv /workspace/.venv
 
-LABEL org.opencontainers.image.title="builtin-nemo-agent" \
+LABEL org.opencontainers.image.title="nemo-studio-copilot" \
       org.opencontainers.image.version="0.1.0" \
       org.opencontainers.image.authors="NVIDIA" \
       org.opencontainers.image.created="2026-07-22T20:51:42.179931+00:00" \
-      org.opencontainers.image.description="Built-in NeMo Platform agent — a LangChain Deep Agent that uses the NeMo SDK to perform platform tasks." \
+      org.opencontainers.image.description="NeMo Copilot — a LangChain Deep Agent that uses the NeMo SDK to perform platform tasks." \
       org.opencontainers.image.revision="" \
       org.opencontainers.image.source="" \
       com.nemo.agent.id="790bd61b98d0" \
@@ -53,7 +53,7 @@ LABEL org.opencontainers.image.title="builtin-nemo-agent" \
       com.nemo.agent.nat-version="1.8.0" \
       com.nemo.agent.contract-version="0.0.0"
 
-ENV NAT_CONFIG_FILE=/workspace/src/nemo_agent/nemo-agent.yml
+ENV NAT_CONFIG_FILE=/workspace/src/nemo_studio_copilot/nemo-studio-copilot.yml
 
 ENV PATH="/workspace/.venv/bin:$PATH"
 

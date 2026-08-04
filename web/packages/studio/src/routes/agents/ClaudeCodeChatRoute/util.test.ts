@@ -11,19 +11,19 @@ import {
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import type { ClaudeCodeSessionHistory } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import {
-  getClaudeCodeChatRouteForSession,
+  getCopilotChatRouteForSession,
   getClaudeCodeHistoryMessages,
   getSelectedClaudeCodeSessionId,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
-import { getClaudeCodeChatRoute } from '@studio/routes/utils';
+import { getCopilotChatRoute } from '@studio/routes/utils';
 
 describe('Claude Code utilities', () => {
   it('builds and reads selected session URLs', () => {
     const workspace = 'default';
     const sessionId = '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a';
 
-    expect(getClaudeCodeChatRouteForSession(workspace, sessionId)).toBe(
-      `${getClaudeCodeChatRoute(workspace)}?session=${sessionId}`
+    expect(getCopilotChatRouteForSession(workspace, sessionId)).toBe(
+      `${getCopilotChatRoute(workspace)}?session=${sessionId}`
     );
     expect(getSelectedClaudeCodeSessionId(`?session=${sessionId}`)).toBe(sessionId);
     expect(getSelectedClaudeCodeSessionId('?session=')).toBeUndefined();

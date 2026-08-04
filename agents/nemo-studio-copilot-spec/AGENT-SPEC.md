@@ -1,13 +1,13 @@
 ---
-name: nemo-agent-local
+name: nemo-studio-copilot
 created_timestamp: 2026-07-28T20:09:49Z
 author: Danielle Ali and Codex
 ---
 
-# Agent Spec: nemo-agent-local
+# Agent Spec: nemo-studio-copilot
 
 > This file is the durable contract for the local NeMo Platform assistant.
-> Keep it aligned with the implementation under `agents/nemo-agent-local/`.
+> Keep it aligned with the implementation under `agents/nemo-studio-copilot/`.
 
 ## Role
 
@@ -81,15 +81,15 @@ The mission is grounded in the current deployment proof of concept and its imple
 
 ## Evaluation Setup
 
-Unit coverage lives in `agents/nemo-agent-local/tests/test_nemo_agent.py`. Run it with:
+Unit coverage lives in `agents/nemo-studio-copilot/tests/test_nemo_studio_copilot.py`. Run it with:
 
 ```bash
-uv run --frozen pytest agents/nemo-agent-local/tests/test_nemo_agent.py -v
+uv run --frozen pytest agents/nemo-studio-copilot/tests/test_nemo_studio_copilot.py -v
 ```
 
-The NAT evaluation workflow is `agents/nemo-agent-local/src/nemo_agent/nemo-eval.yml`, with inputs in `nemo-eval-data.json`. It currently evaluates workspace creation, workspace listing, and model/provider listing with a tunable RAG judge weighted for coverage (0.5), correctness (0.3), and relevance (0.2). No formal aggregate pass threshold is defined.
+The NAT evaluation workflow is `agents/nemo-studio-copilot/src/nemo_studio_copilot/nemo-studio-copilot-eval.yml`, with inputs in `nemo-studio-copilot-eval-data.json`. It currently evaluates workspace creation, workspace listing, and model/provider listing with a tunable RAG judge weighted for coverage (0.5), correctness (0.3), and relevance (0.2). No formal aggregate pass threshold is defined.
 
-Manual Studio validation is documented in `agents/nemo-agent-local/tests/smoke_test.md`. Current coverage gaps include fileset listing, missing-workspace clarification, fast-path failure containment, destructive-action ambiguity, iteration limits, retry limits, cancellation, and end-to-end latency thresholds.
+Manual Studio validation is documented in `agents/nemo-studio-copilot/tests/smoke_test.md`. Current coverage gaps include fileset listing, missing-workspace clarification, fast-path failure containment, destructive-action ambiguity, iteration limits, retry limits, cancellation, and end-to-end latency thresholds.
 
 ## Change Scope
 

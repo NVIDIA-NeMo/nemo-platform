@@ -4,7 +4,7 @@ description: "Benchmark task execution contract: complete every numbered require
 ---
 # Benchmark execution contract
 
-This skill defines the execution requirements that every nemo-agent run under
+This skill defines the execution requirements that every nemo-studio-copilot run under
 `tests/agentic-use/` must satisfy so the canonical gate
 (`tests/agentic-use/passrate_token_policy_gate.py`) can score the run on
 verifier pass-rate and token totals. See

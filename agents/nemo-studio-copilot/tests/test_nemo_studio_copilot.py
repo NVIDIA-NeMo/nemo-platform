@@ -10,7 +10,7 @@ import pytest
 import yaml
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from nat.data_models.api_server import ChatRequest
-from nemo_agent.register import (
+from nemo_studio_copilot.register import (
     DEFAULT_RECURSION_LIMIT,
     SKILLS_DIR,
     _active_workspace,
@@ -28,10 +28,14 @@ from nemo_agent.register import (
     _studio_callback_url,
     ask_user_question,
     check_status,
-    create_nemo_agent,
+    create_nemo_studio_copilot,
     nemo_api,
 )
-from nemo_agent.wrapper import NemoAgentWrapperConfig, NemoAgentWrapperFunction, NemoAgentWrapperOutput
+from nemo_studio_copilot.wrapper import (
+    NemoStudioCopilotWrapperConfig,
+    NemoStudioCopilotWrapperFunction,
+    NemoStudioCopilotWrapperOutput,
+)
 from pydantic import BaseModel
 
 # The underlying functions wrapped by langchain's @tool decorator.
@@ -41,7 +45,7 @@ _nemo_api = nemo_api.func  # ty: ignore[unresolved-attribute]
 _check_status = check_status.func  # ty: ignore[unresolved-attribute]
 _ask_user_question = ask_user_question.func  # ty: ignore[unresolved-attribute]
 
-AGENT_CONFIG = Path(__file__).parents[1] / "src" / "nemo_agent" / "nemo-agent.yml"
+AGENT_CONFIG = Path(__file__).parents[1] / "src" / "nemo_studio_copilot" / "nemo-studio-copilot.yml"
 TRUSTED_SESSION_ID = "00000000-0000-4000-8000-000000000001"
 TRUSTED_CONFIG = {"configurable": {"studio_session_id": TRUSTED_SESSION_ID}}
 
@@ -170,8 +174,8 @@ class TestNemoApiTool:
         monkeypatch.delenv("NEMO_BASE_URL", raising=False)
 
         with (
-            patch("nemo_agent.register._client", None),
-            patch("nemo_agent.register.NeMoPlatform") as platform_client,
+            patch("nemo_studio_copilot.register._client", None),
+            patch("nemo_studio_copilot.register.NeMoPlatform") as platform_client,
         ):
             _get_client()
 
@@ -184,8 +188,8 @@ class TestNemoApiTool:
         monkeypatch.delenv("NMP_WORKSPACE", raising=False)
 
         with (
-            patch("nemo_agent.register._client", None),
-            patch("nemo_agent.register.NeMoPlatform") as platform_client,
+            patch("nemo_studio_copilot.register._client", None),
+            patch("nemo_studio_copilot.register.NeMoPlatform") as platform_client,
         ):
             _get_client()
 
@@ -194,9 +198,9 @@ class TestNemoApiTool:
 
     def test_workspace_create(self, mock_client):
         with (
-            patch("nemo_agent.register._get_client", return_value=mock_client),
+            patch("nemo_studio_copilot.register._get_client", return_value=mock_client),
             patch(
-                "nemo_agent.register._call_studio_tool",
+                "nemo_studio_copilot.register._call_studio_tool",
                 return_value={"behavior": "allow"},
             ),
         ):
@@ -210,7 +214,7 @@ class TestNemoApiTool:
         assert "test-workspace" in str(result)
 
     def test_workspace_list(self, mock_client):
-        with patch("nemo_agent.register._get_client", return_value=mock_client):
+        with patch("nemo_studio_copilot.register._get_client", return_value=mock_client):
             result = _nemo_api(
                 resource="workspaces",
                 action="list",
@@ -220,7 +224,7 @@ class TestNemoApiTool:
         assert isinstance(result, str)
 
     def test_nested_resource(self, mock_client):
-        with patch("nemo_agent.register._get_client", return_value=mock_client):
+        with patch("nemo_studio_copilot.register._get_client", return_value=mock_client):
             _nemo_api(
                 resource="inference.providers",
                 action="list",
@@ -230,9 +234,9 @@ class TestNemoApiTool:
 
     def test_studio_mutation_requires_approval(self, mock_client):
         with (
-            patch("nemo_agent.register._get_client", return_value=mock_client),
+            patch("nemo_studio_copilot.register._get_client", return_value=mock_client),
             patch(
-                "nemo_agent.register._call_studio_tool",
+                "nemo_studio_copilot.register._call_studio_tool",
                 return_value={"behavior": "deny", "message": "not now"},
             ) as studio_tool,
         ):
@@ -259,7 +263,7 @@ class TestNemoApiTool:
         )
 
     def test_mutation_without_trusted_session_is_denied(self, mock_client):
-        with patch("nemo_agent.register._get_client", return_value=mock_client):
+        with patch("nemo_studio_copilot.register._get_client", return_value=mock_client):
             result = _nemo_api(
                 resource="workspaces",
                 action="create",
@@ -282,7 +286,7 @@ class TestNemoApiTool:
             "session-id",
             studio_base_url="https://studio.example/studio",
         ) == (
-            "http://host.docker.internal:8080/studio/api/coding-agents/mcp/session-id"
+            "http://host.docker.internal:8080/studio/api/copilot/mcp/session-id"
             "?workspace=developer-workspace&studio_base_url=https%3A%2F%2Fstudio.example%2Fstudio"
         )
 
@@ -311,7 +315,7 @@ class TestNemoApiTool:
 
 class TestCheckStatusTool:
     def test_evaluation_job_status(self, mock_client):
-        with patch("nemo_agent.register._get_client", return_value=mock_client):
+        with patch("nemo_studio_copilot.register._get_client", return_value=mock_client):
             result = _check_status(
                 service="evaluation",
                 job_name="job-123",
@@ -324,7 +328,7 @@ class TestCheckStatusTool:
         mock_client.evaluation.benchmark_jobs.get_status.return_value = FakeJobStatus(
             name="job-456", status="completed"
         )
-        with patch("nemo_agent.register._get_client", return_value=mock_client):
+        with patch("nemo_studio_copilot.register._get_client", return_value=mock_client):
             result = _check_status(service="evaluation", job_name="job-456")
         assert "completed" in result.lower()
 
@@ -390,23 +394,23 @@ class TestAgentGraph:
         """Mock create_deep_agent to return a fake CompiledStateGraph."""
         fake_graph = MagicMock()
         fake_graph.nodes = {"tools": MagicMock(bound=MagicMock(tools_by_name={"nemo_api": 1, "check_status": 1}))}
-        with patch("nemo_agent.register.create_deep_agent", return_value=fake_graph):
+        with patch("nemo_studio_copilot.register.create_deep_agent", return_value=fake_graph):
             yield fake_graph
 
     def test_create_agent_returns_stream_safe_graph(self, mock_graph):
-        from nemo_agent.register import _StreamSafeGraph
+        from nemo_studio_copilot.register import _StreamSafeGraph
 
-        graph = create_nemo_agent()
+        graph = create_nemo_studio_copilot()
         assert isinstance(graph, _StreamSafeGraph)
 
     def test_stream_safe_graph_delegates_attribute_access(self, mock_graph):
-        graph = create_nemo_agent()
+        graph = create_nemo_studio_copilot()
         _ = graph.nodes
         assert mock_graph.nodes is not None
 
     @pytest.mark.asyncio
     async def test_stream_safe_graph_forwards_incremental_chunks(self):
-        from nemo_agent.register import _StreamSafeGraph
+        from nemo_studio_copilot.register import _StreamSafeGraph
 
         class StreamingGraph:
             def __init__(self):
@@ -438,7 +442,7 @@ class TestAgentGraph:
 
     @pytest.mark.asyncio
     async def test_stream_safe_graph_defaults_to_assistant_message_chunks(self):
-        from nemo_agent.register import _StreamSafeGraph
+        from nemo_studio_copilot.register import _StreamSafeGraph
 
         class MessageStreamingGraph:
             def __init__(self):
@@ -487,9 +491,9 @@ class TestAgentGraph:
         assert inner.calls[0][1] == {"recursion_limit": DEFAULT_RECURSION_LIMIT}
 
     def test_agent_has_expected_tools(self, mock_graph):
-        create_nemo_agent()
+        create_nemo_studio_copilot()
 
-        from nemo_agent.register import create_deep_agent
+        from nemo_studio_copilot.register import create_deep_agent
 
         tools = create_deep_agent.call_args.kwargs["tools"]
         tool_names = {agent_tool.name for agent_tool in tools}
@@ -511,10 +515,10 @@ class TestAgentGraph:
     def test_create_agent_passes_backend_visible_skills(self, mock_graph):
         from deepagents.middleware.skills import _list_skills_with_errors  # ty: ignore[unresolved-import]
 
-        graph = create_nemo_agent()
+        graph = create_nemo_studio_copilot()
         assert graph is not None
 
-        from nemo_agent.register import create_deep_agent
+        from nemo_studio_copilot.register import create_deep_agent
 
         kwargs = create_deep_agent.call_args.kwargs
         assert kwargs["skills"] == [str(SKILLS_DIR)]
@@ -529,7 +533,7 @@ class TestAskUserQuestion:
 
     def test_routes_through_approval_prompt_and_returns_answers(self):
         with patch(
-            "nemo_agent.register._call_studio_tool",
+            "nemo_studio_copilot.register._call_studio_tool",
             return_value={"behavior": "allow", "updatedInput": {"Model": "70B"}},
         ) as studio_tool:
             result = _ask_user_question(
@@ -557,14 +561,14 @@ class TestAskUserQuestion:
 
     def test_declined_returns_message(self):
         with patch(
-            "nemo_agent.register._call_studio_tool",
+            "nemo_studio_copilot.register._call_studio_tool",
             return_value={"behavior": "deny", "message": "dismissed"},
         ):
             result = _ask_user_question(studio_session_id=TRUSTED_SESSION_ID, questions=self._QUESTIONS)
         assert result == "User declined to answer: dismissed"
 
     def test_invalid_json_is_reported_not_raised(self):
-        with patch("nemo_agent.register._call_studio_tool") as studio_tool:
+        with patch("nemo_studio_copilot.register._call_studio_tool") as studio_tool:
             result = _ask_user_question(studio_session_id=TRUSTED_SESSION_ID, questions="not json")
         assert result.startswith("Error: `questions` must be a JSON array string")
         studio_tool.assert_not_called()
@@ -581,7 +585,7 @@ class TestAskUserQuestion:
         ],
     )
     def test_non_question_array_is_rejected_without_calling_studio(self, questions):
-        with patch("nemo_agent.register._call_studio_tool") as studio_tool:
+        with patch("nemo_studio_copilot.register._call_studio_tool") as studio_tool:
             result = _ask_user_question(studio_session_id=TRUSTED_SESSION_ID, questions=questions)
         assert result == "Error: `questions` must be a non-empty JSON array of question objects."
         studio_tool.assert_not_called()
@@ -597,6 +601,10 @@ class TestDirectListFastPath:
         [
             ("List the available workspaces. Return only their names.", "workspaces"),
             ("What models are available?", "models"),
+            ("List the available models in workspace default.", "models"),
+            ("List the model providers in workspace default.", "inference.providers"),
+            ("List models for provider X.", "models"),
+            ("List workspaces containing models.", "workspaces"),
             ("Show filesets", "files.filesets"),
         ],
     )
@@ -621,7 +629,10 @@ class TestDirectListFastPath:
         resource = MagicMock()
         resource.list.return_value = [FakeWorkspace(name="danielleali"), FakeWorkspace(name="default")]
 
-        with patch("nemo_agent.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _list_resource_names("workspaces")
 
         assert result == "danielleali\ndefault"
@@ -630,7 +641,10 @@ class TestDirectListFastPath:
         resource = MagicMock()
         resource.list.side_effect = ValueError("Missing workspace argument")
 
-        with patch("nemo_agent.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _list_resource_names("files.filesets")
 
         assert result == "Which workspace should I use to list filesets?"
@@ -640,7 +654,7 @@ class TestDirectListFastPath:
         inner = MagicMock()
         graph = _StreamSafeGraph(inner)
 
-        with patch("nemo_agent.register._list_resource_names", return_value="danielleali\nsystem\ndefault"):
+        with patch("nemo_studio_copilot.register._list_resource_names", return_value="danielleali\nsystem\ndefault"):
             chunks = [
                 chunk
                 async for chunk in graph.astream(
@@ -657,7 +671,7 @@ class TestDirectListFastPath:
         graph = _StreamSafeGraph(inner)
 
         with patch(
-            "nemo_agent.register._list_resource_names",
+            "nemo_studio_copilot.register._list_resource_names",
             return_value="Which workspace should I use to list filesets?",
         ):
             chunks = [
@@ -697,7 +711,10 @@ class TestDirectFilesetDeleteFastPath:
         resource = MagicMock()
         resource.list.return_value = [FakeWorkspace(name="other-fileset")]
 
-        with patch("nemo_agent.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _delete_fileset("phishing_dataset")
 
         resource.delete.assert_called_once_with(name="phishing_dataset")
@@ -708,7 +725,10 @@ class TestDirectFilesetDeleteFastPath:
         resource = MagicMock()
         resource.delete.side_effect = RuntimeError("service unavailable")
 
-        with patch("nemo_agent.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _delete_fileset("phishing_dataset")
 
         assert "I couldn't delete fileset 'phishing_dataset'" in result
@@ -718,7 +738,10 @@ class TestDirectFilesetDeleteFastPath:
         resource = MagicMock()
         resource.list.return_value = []
 
-        with patch("nemo_agent.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _delete_fileset("phishing_dataset")
 
         assert result == "Deleted fileset 'phishing_dataset' from workspace 'default'."
@@ -731,11 +754,11 @@ class TestDirectFilesetDeleteFastPath:
 
         with (
             patch(
-                "nemo_agent.register._delete_fileset",
+                "nemo_studio_copilot.register._delete_fileset",
                 return_value="Deleted fileset 'phishing_dataset' from workspace 'default'.",
             ) as delete_fileset,
             patch(
-                "nemo_agent.register._call_studio_tool",
+                "nemo_studio_copilot.register._call_studio_tool",
                 return_value={"behavior": "allow"},
             ) as studio_tool,
         ):
@@ -771,9 +794,9 @@ class TestDirectFilesetDeleteFastPath:
         graph = _StreamSafeGraph(inner)
 
         with (
-            patch("nemo_agent.register._delete_fileset") as delete_fileset,
+            patch("nemo_studio_copilot.register._delete_fileset") as delete_fileset,
             patch(
-                "nemo_agent.register._call_studio_tool",
+                "nemo_studio_copilot.register._call_studio_tool",
                 return_value={"behavior": "deny", "message": "not now"},
             ),
         ):
@@ -796,10 +819,10 @@ class TestDirectFilesetDeleteFastPath:
 
         with (
             patch(
-                "nemo_agent.register._delete_fileset",
+                "nemo_studio_copilot.register._delete_fileset",
                 return_value="Deleted fileset 'phishing_dataset' from workspace 'default'.",
             ) as delete_fileset,
-            patch("nemo_agent.register._call_studio_tool") as studio_tool,
+            patch("nemo_studio_copilot.register._call_studio_tool") as studio_tool,
         ):
             chunks = [
                 chunk
@@ -842,7 +865,7 @@ class FailingStreamingGraph:
         raise self.error
 
 
-class TestNemoAgentWrapper:
+class TestNemoStudioCopilotWrapper:
     @pytest.mark.parametrize(
         ("messages", "expected"),
         [
@@ -852,9 +875,9 @@ class TestNemoAgentWrapper:
         ],
     )
     def test_convert_to_str_normalizes_message_representations(self, messages, expected):
-        output = NemoAgentWrapperOutput.model_construct(messages=messages)
+        output = NemoStudioCopilotWrapperOutput.model_construct(messages=messages)
 
-        assert NemoAgentWrapperFunction.convert_to_str(output) == expected
+        assert NemoStudioCopilotWrapperFunction.convert_to_str(output) == expected
 
     def test_chat_request_converts_trusted_session_to_invocation_config(self):
         request = ChatRequest.model_validate(
@@ -864,14 +887,14 @@ class TestNemoAgentWrapper:
             }
         )
 
-        value = NemoAgentWrapperFunction.convert_chat_request(request)
+        value = NemoStudioCopilotWrapperFunction.convert_chat_request(request)
 
-        assert NemoAgentWrapperFunction._invocation_config(value) == TRUSTED_CONFIG
+        assert NemoStudioCopilotWrapperFunction._invocation_config(value) == TRUSTED_CONFIG
 
     @pytest.mark.asyncio
     async def test_wrapper_passes_trusted_session_config_to_graph(self):
         graph = FakeWrapperGraph([{"messages": [AIMessage(content="done")]}])
-        wrapper = NemoAgentWrapperFunction(config=NemoAgentWrapperConfig(), graph=graph)
+        wrapper = NemoStudioCopilotWrapperFunction(config=NemoStudioCopilotWrapperConfig(), graph=graph)
         value = wrapper.convert_chat_request(
             ChatRequest.model_validate(
                 {
@@ -895,10 +918,10 @@ class TestNemoAgentWrapper:
         ],
     )
     def test_stream_value_hides_tool_messages(self, message):
-        output = NemoAgentWrapperFunction._parse({"messages": [message]})
+        output = NemoStudioCopilotWrapperFunction._parse({"messages": [message]})
 
         assert output.value == ""
-        assert NemoAgentWrapperFunction.convert_to_chat_response_chunk(output).choices[0].delta.content == ""
+        assert NemoStudioCopilotWrapperFunction.convert_to_chat_response_chunk(output).choices[0].delta.content == ""
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -910,8 +933,8 @@ class TestNemoAgentWrapper:
         ],
     )
     async def test_stream_failure_emits_visible_terminal_message(self, error, expected):
-        wrapper = NemoAgentWrapperFunction(
-            config=NemoAgentWrapperConfig(),
+        wrapper = NemoStudioCopilotWrapperFunction(
+            config=NemoStudioCopilotWrapperConfig(),
             graph=FailingStreamingGraph(error),
         )
 
@@ -928,7 +951,7 @@ class TestNemoAgentWrapper:
                 {"messages": [AIMessage(content="completed")]},
             ]
         )
-        wrapper = NemoAgentWrapperFunction(config=NemoAgentWrapperConfig(), graph=graph)
+        wrapper = NemoStudioCopilotWrapperFunction(config=NemoStudioCopilotWrapperConfig(), graph=graph)
 
         result = await wrapper._ainvoke_with_empty_response_retry({"messages": [HumanMessage(content="do task")]})
 
@@ -948,7 +971,7 @@ class TestNemoAgentWrapper:
                 {"messages": [AIMessage(content="completed")]},
             ]
         )
-        wrapper = NemoAgentWrapperFunction(config=NemoAgentWrapperConfig(), graph=graph)
+        wrapper = NemoStudioCopilotWrapperFunction(config=NemoStudioCopilotWrapperConfig(), graph=graph)
 
         result = await wrapper._ainvoke_with_empty_response_retry({"messages": [HumanMessage(content="do task")]})
 
@@ -969,7 +992,7 @@ class TestNemoAgentWrapper:
                 {"messages": [AIMessage(content="completed")]},
             ]
         )
-        wrapper = NemoAgentWrapperFunction(config=NemoAgentWrapperConfig(), graph=graph)
+        wrapper = NemoStudioCopilotWrapperFunction(config=NemoStudioCopilotWrapperConfig(), graph=graph)
 
         result = await wrapper._ainvoke_with_empty_response_retry({"messages": [HumanMessage(content="do task")]})
 
@@ -982,7 +1005,7 @@ class TestNemoAgentWrapper:
     @pytest.mark.asyncio
     async def test_non_empty_final_response_does_not_retry(self):
         graph = FakeWrapperGraph([{"messages": [AIMessage(content="completed")]}])
-        wrapper = NemoAgentWrapperFunction(config=NemoAgentWrapperConfig(), graph=graph)
+        wrapper = NemoStudioCopilotWrapperFunction(config=NemoStudioCopilotWrapperConfig(), graph=graph)
 
         result = await wrapper._ainvoke_with_empty_response_retry({"messages": [HumanMessage(content="do task")]})
 
