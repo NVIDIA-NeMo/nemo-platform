@@ -15,12 +15,19 @@ from nemo_platform_plugin.config import Configuration
 
 @pytest.fixture(autouse=True)
 def _clear_model_cache() -> Iterator[None]:
-    """Drop every cached client so each test resolves credentials from scratch."""
+    """Drop every cached client so each test resolves credentials from scratch.
+
+    ``Configuration`` goes with them: the bridge writes ``NEMO_EXPERIMENTALIST_*`` and
+    Experimentalist resolves those through a process-global settings cache that
+    ``monkeypatch`` does not touch. Without this, a test that bridges an endpoint leaves
+    it visible to every test that runs after it.
+    """
 
     def clear() -> None:
         model_config.get_smart_model.cache_clear()
         model_config.get_fast_model.cache_clear()
         model_config._completion_client.cache_clear()
+        Configuration.clear_cache()
 
     clear()
     yield

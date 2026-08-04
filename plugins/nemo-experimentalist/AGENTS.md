@@ -77,7 +77,7 @@ breaking rename with no compatibility aliases:
 - the `experiment` verb is now `run`: `nemo experimentalist run`
 - `OPTIMIZER_API_BASE`, `OPTIMIZER_API_KEY`, `OPTIMIZER_{SMART,MID,FAST}_MODEL_NAME`,
   `OPTIMIZER_MODEL`, `NEMO_OPTIMIZER_E2E`, and `NEMO_OPTIMIZER_RUNTIME_CACHE` are
-  now `NEMO_EXPERIMENTALIST_*` / `NEMO_EXPERIMENTALIST_*`
+  now `NEMO_EXPERIMENTALIST_*`
 - the dataset cache moved from `~/.cache/nemo-optimizer/` to
   `~/.cache/nemo-experimentalist/`, so cached datasets re-download once
 

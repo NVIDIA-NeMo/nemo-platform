@@ -1746,7 +1746,7 @@ nltk==3.10.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (pl
     --hash=sha256:4fbac1d98203cbcd1b5d94a2877fb822300072d80604a5e7fae49d2c5f84e8c1 \
     --hash=sha256:54ff84d4916d3ef127e8953bee0023f6a6b320b75d634a19e06ef056d3d244bf
     # via rouge-score
-nooa @ git+https://github.com/NVIDIA-NeMo/labs-OO-Agents.git@bea4614a0e2a6cf88f76225466159af883da80a0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nooa @ git+https://github.com/NVIDIA-NeMo/labs-OO-Agents.git@6e0274dd03f883254a084cfb9f871ea580e03434 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
     #   nemo-eval-author-plugin
     #   nemo-experimentalist-plugin

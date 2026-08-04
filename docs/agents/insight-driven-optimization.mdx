@@ -562,7 +562,7 @@ variable:
 | Variable | Used by | Default and notes |
 |----------|---------|-------------------|
 | `INFERENCE_API_KEY` | Analyst | Required. API key for the Analyst model, reached through the NVIDIA Inference Gateway. |
-| `NEMO_EXPERIMENTALIST_API_BASE` | Experimenter, Eval Author | Required. OpenAI-compatible model API base URL. Also settable as `api_base` under the `experimentalist:` config section; the environment wins. |
+| `NEMO_EXPERIMENTALIST_API_BASE` | Experimenter, Eval Author | OpenAI-compatible model API base URL. `run` and `doctor` fall back to the NVIDIA Inference Gateway when it is unset, so it is only required against another endpoint. Also settable as `api_base` under the `experimentalist:` config section; the environment wins. |
 | `NEMO_EXPERIMENTALIST_API_KEY` | Experimenter, Eval Author | Required. Model API key. On the gateway, `INFERENCE_API_KEY` fills this. |
 | `NEMO_EXPERIMENTALIST_MODELS_SMART` | Experimenter, Eval Author | Required. High-capability model for analysis, proposing, coding, and curation. No default: a model name is only meaningful against a specific endpoint. |
 | `NEMO_EXPERIMENTALIST_MODELS_MID` | Experimenter, Eval Author | Required. Mid-tier model, used by the Coder's `apply_change` among others. No default. |

@@ -64,6 +64,22 @@ def test_log_model_config_tolerates_unset_tiers(monkeypatch) -> None:
     assert "(unset)" in log_model_config()
 
 
+def test_log_model_config_survives_a_wholly_unconfigured_install(monkeypatch) -> None:
+    """The banner must not raise on the install it exists to diagnose.
+
+    ``_shown`` always guarded the tiers, but the endpoint and key were resolved
+    unguarded, so the one case where you most want to see the banner was the one case
+    that raised.
+    """
+    for name in (*TIER_ENV.values(), "NEMO_EXPERIMENTALIST_API_BASE", "NEMO_EXPERIMENTALIST_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    Configuration.clear_cache()
+
+    rendered = log_model_config()
+
+    assert rendered.count("(unset)") == 5
+
+
 def test_log_model_config_masks_the_key(monkeypatch) -> None:
     """The banner is printed to logs, so it must never carry the whole credential."""
     _credentials(monkeypatch, key="sk-abcdefghijkl")

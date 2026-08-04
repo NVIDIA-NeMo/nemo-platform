@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import functools
+from collections.abc import Callable
 from urllib.parse import urlparse
 
 from nemo_experimentalist_plugin.settings import TIERS, ExperimentalistConfig
@@ -117,18 +118,27 @@ def log_model_config() -> str:
 
     """
 
-    def _shown(tier: str) -> str:
-        try:
-            return model_name(tier)
-        except ValueError:
-            return "(unset)"
+    def _or_unset(resolve: Callable[[], str]) -> str | None:
+        """Return the resolved value, or None when it is configured nowhere.
 
-    smart, mid, fast = (_shown(tier) for tier in TIERS)
+        Every field is optional here on purpose: this banner is most useful on exactly
+        the misconfigured install that cannot resolve one, so it must never be the thing
+        that raises. The callers that actually need a value still go through
+        ``api_base()`` / ``api_key()`` / ``model_name()`` and fail there.
+        """
+        try:
+            return resolve()
+        except ValueError:
+            return None
+
+    smart, mid, fast = (_or_unset(lambda t=tier: model_name(t)) or "(unset)" for tier in TIERS)
+    base = _or_unset(api_base)
+    key = _or_unset(api_key)
     return (
         "Experimentalist model config:\n"
         f"  smart model: {smart}\n"
         f"  mid model:   {mid}\n"
         f"  fast model:  {fast}\n"
-        f"  api base:    {_sanitize_url(api_base())}\n"
-        f"  api key:     {_mask_key(api_key())}"
+        f"  api base:    {_sanitize_url(base) if base else '(unset)'}\n"
+        f"  api key:     {_mask_key(key) if key else '(unset)'}"
     )

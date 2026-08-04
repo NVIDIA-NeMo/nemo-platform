@@ -244,6 +244,9 @@ async def test_mirror_projects_every_measured_channel_without_an_allowlist() -> 
     The mirror used to iterate a hardcoded SPLITS tuple and look rewards up through an
     explicit per-field dict, so an unknown channel was invisible.
     """
+    experiments = AsyncMock()
+    experiments.create.return_value = SimpleNamespace(id="exp-x")
+    mirror = ExperimentMirror(_client(AsyncMock(), experiments), workspace="default")
     candidate = _cand(
         rewards={
             "validation": RewardRecord(metrics={"reward": 1.0}),
@@ -251,6 +254,10 @@ async def test_mirror_projects_every_measured_channel_without_an_allowlist() -> 
         }
     )
 
-    assert set(candidate.rewards) == {"validation", "some-new-channel"}
-    assert candidate.reward("some-new-channel").metrics == {"score": 0.25}
+    await mirror.project_candidate(candidate)
+
+    # The channel the mirror never knew about must still reach Studio. Asserting on the
+    # entity alone would pass even if project_candidate went back to a fixed allowlist.
+    projected = {call.kwargs["metadata"]["split"] for call in experiments.create.await_args_list}
+    assert projected == {"validation", "some-new-channel"}
     assert candidate.reward("never-measured").metrics == {}

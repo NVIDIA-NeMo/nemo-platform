@@ -973,7 +973,7 @@ class EvolutionaryOptimizer(Agent):
         Trial Analysis; Complementary Failures; Failure Patterns; Root Causes;
         Mechanical/Infrastructure Errors).
 
-        If at least one agent has a non-empty `insight_reward`, the round analysis must name
+        If at least one agent has a non-empty `insight_rewards` entry, the round analysis must name
         every available Insight Suite dimension and show its values in the separate Insight
         Suite Reward table. Never blend those metrics into train/validation rewards or imply
         that they affected ranking. These metrics may steer this analysis, the goal tree, and
@@ -1751,6 +1751,13 @@ class EvolutionaryOptimizer(Agent):
         # raise, so the reason is only ever seen if we log it here. Keep the exception
         # itself: "Impl failed: agent-1" with no cause is not diagnosable after the fact,
         # and a killed candidate is the one thing a run cannot reproduce cheaply.
+        # Cancellation is not a build failure and must not be swallowed as one:
+        # `CancelledError` derives from BaseException, so the `Exception` filter below
+        # would let a cancelled candidate through as if it had built, and it would go on
+        # to be evaluated and ranked. Re-raise so the whole round unwinds instead.
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
         failures = {c.name: r for c, r in zip(candidates, results, strict=True) if isinstance(r, Exception)}
         # Persist a killed marker on failed candidates so a later resume via
         # EvolutionTree.from_dir does not resurrect them as active survivors

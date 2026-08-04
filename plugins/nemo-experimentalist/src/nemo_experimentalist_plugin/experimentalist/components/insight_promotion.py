@@ -28,9 +28,17 @@ def candidate_suite_identity(candidate: Candidate) -> str | None:
 
 
 def candidate_metric_keys(candidate: Candidate) -> list[str]:
-    """The validated metric keys recorded alongside this candidate's insight reward."""
+    """The validated metric keys recorded alongside this candidate's insight reward.
+
+    Anything that is not a list of strings reads as "not recorded" rather than being
+    coerced. This value gates whether a cached insight reward is reused, so coercing
+    (``[1]`` to ``["1"]``) would let malformed metadata pass as a valid measurement and
+    skip a fresh evaluation.
+    """
     value = candidate.rewards.get("insight", RewardRecord()).metadata.get("metric_keys")
-    return [str(key) for key in value] if isinstance(value, list) else []
+    if not isinstance(value, list) or not all(isinstance(key, str) for key in value):
+        return []
+    return list(value)
 
 
 _GENERIC_METRIC_NAMES = frozenset({"reward", "score"})
