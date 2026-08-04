@@ -3,46 +3,42 @@
 
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
 import { GuardrailChecksDataView } from '@studio/components/dataViews/GuardrailChecksDataView';
 import { ResultSummary } from '@studio/components/dataViews/GuardrailChecksDataView/ResultSummary';
+import { GuardrailCheckDetailSidePanel } from '@studio/components/sidePanels/GuardrailCheckDetailSidePanel';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
-import {
-  GUARDRAIL_CHECKS_DEFAULT_SUB_TAB,
-  GuardrailChecksSubTab,
-  isGuardrailChecksSubTab,
-} from '@studio/routes/guardrails/GuardrailChecksTab/constants';
+import { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailTestCard } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCard';
 import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { ListChecks, Plus, Settings } from 'lucide-react';
 import type { FC } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link } from 'react-router-dom';
 
 interface GuardrailTestCasesEditorProps {
   workspace: string;
   configId: string;
+  /** The config's rails, used by the result panel to list guardrail coverage. */
+  configData: RailsConfigOutput | undefined;
   checks: GuardrailCheckEntity[];
+  /** Which sub-tab to show. The route owns this; an unknown segment redirects upstream. */
+  subTab: GuardrailChecksSubTab;
 }
 
 export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
   workspace,
   configId,
+  configData,
   checks,
+  subTab,
 }) => {
   const toast = useToast();
   const { guardrailConfigName } = useRequiredPathParams([ROUTE_PARAMS.guardrailConfigName]);
-
-  // An unknown segment falls back to the default rather than redirecting, so a hand-typed
-  // URL still renders something useful.
-  const params = useParams();
-  const subTabParam = params[ROUTE_PARAMS.guardrailChecksSubTab];
-  const subTab = isGuardrailChecksSubTab(subTabParam)
-    ? subTabParam
-    : GUARDRAIL_CHECKS_DEFAULT_SUB_TAB;
 
   const runMutation = useRunGuardrailChecks({
     onSuccess: (results) => {
@@ -152,7 +148,21 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
         /* Test Results tab — summary + table over the loaded checks */
         <Stack gap="density-lg" className="w-full min-h-0">
           <ResultSummary checks={checks} />
-          <GuardrailChecksDataView checks={checks} />
+          <GuardrailChecksDataView
+            checks={checks}
+            renderDetail={(detail) => (
+              <GuardrailCheckDetailSidePanel
+                open={detail.open}
+                onClose={detail.onClose}
+                check={detail.check}
+                configData={configData}
+                checkIndex={detail.checkIndex}
+                visibleIndex={detail.visibleIndex}
+                visibleCount={detail.visibleCount}
+                onNavigate={detail.onNavigate}
+              />
+            )}
+          />
         </Stack>
       )}
     </Stack>

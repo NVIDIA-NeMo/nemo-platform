@@ -7,13 +7,20 @@ import { useGuardrailChecksForConfig } from '@studio/api/guardrail-checks/hooks'
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import {
+  GUARDRAIL_CHECKS_DEFAULT_SUB_TAB,
+  isGuardrailChecksSubTab,
+} from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailTestCasesEditor } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCasesEditor';
+import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import type { FC } from 'react';
+import { Navigate, useParams } from 'react-router-dom';
 
 export const GuardrailChecksTab: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { guardrailConfigName } = useRequiredPathParams([ROUTE_PARAMS.guardrailConfigName]);
+  const subTab = useParams()[ROUTE_PARAMS.guardrailChecksSubTab];
 
   const { data: config, isPending: isConfigPending } = useGuardrailsGetGuardrailConfig(
     workspace,
@@ -31,6 +38,22 @@ export const GuardrailChecksTab: FC = () => {
     { page_size: 1000 },
     { enabled: Boolean(config?.id) }
   );
+
+  // Resolved ahead of the loading gate so a hand-typed sub-tab corrects itself on the
+  // first render, instead of sitting on a "Loading checks..." spinner for a URL that
+  // is about to be thrown away.
+  if (!isGuardrailChecksSubTab(subTab)) {
+    return (
+      <Navigate
+        replace
+        to={getGuardrailChecksSubTabRoute(
+          workspace,
+          guardrailConfigName,
+          GUARDRAIL_CHECKS_DEFAULT_SUB_TAB
+        )}
+      />
+    );
+  }
 
   if (isConfigPending || isChecksPending) {
     return <Loading description="Loading checks..." />;
@@ -56,6 +79,12 @@ export const GuardrailChecksTab: FC = () => {
   }
 
   return (
-    <GuardrailTestCasesEditor workspace={workspace} configId={config.id} checks={checksPage.data} />
+    <GuardrailTestCasesEditor
+      workspace={workspace}
+      configId={config.id}
+      configData={config.data}
+      checks={checksPage.data}
+      subTab={subTab}
+    />
   );
 };
