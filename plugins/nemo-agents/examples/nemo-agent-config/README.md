@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-This directory contains Platform-owned `nemo-agents-spec-v1` configs for
+This directory contains Platform-managed `nemo-agents-spec-v1` configs for
 NeMo Agents. Run the commands below from the repository root.
 
 Fabric, Relay, Claude, Codex, and DeepAgents dependencies are installed with

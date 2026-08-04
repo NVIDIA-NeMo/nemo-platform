@@ -23,7 +23,7 @@ allowed-tools: [Read, Write, Edit, Bash]
 # NeMo Platform agent spec
 
 Turn the answers from `nemo-explore` into a durable artifact. The spec is
-the contract `nemo-build-agent` reads before producing the Platform-owned
+the contract `nemo-build-agent` reads before producing the Platform-managed
 `agent.yaml` or preserving an existing NAT compatibility workflow, and
 the `AGENT-SPEC.md` that downstream optimization agents read as
 their primary context. Without it, downstream skills have to re-ask

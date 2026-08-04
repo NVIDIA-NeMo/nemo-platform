@@ -5,7 +5,7 @@ as first-class managed resources.
 
 The plugin supports two agent flows:
 
-- **Platform-backed agents** use the Platform-owned `nemo-agents-spec-v1`
+- **Platform-backed agents** use the Platform-managed `nemo-agents-spec-v1`
   `agent.yaml` contract. This is the recommended flow for new agents.
 - **NVIDIA Agent Toolkit (NAT) workflows** use the legacy `nat-workflow-v1`
   configuration format and remain supported for existing agents.
@@ -25,7 +25,7 @@ Both flows provide:
 
 ## Platform-backed agents
 
-For new agents, use the Platform-owned configuration contract. It supports
+For new agents, use the Platform-managed configuration contract. It supports
 shared instructions, models, skills, tools, MCP servers, environment settings,
 telemetry, and a selectable harness. NeMo Agents validates that contract and
 executes it through the selected harness.
@@ -70,7 +70,7 @@ nemo-relay --version
 | Area | Recommended flow | Legacy NAT workflows |
 |---|---|---|
 | Recommended use | New agents and multi-harness Platform flows | Existing NAT workflow integrations |
-| Config contract | Platform-owned `nemo-agents-spec-v1` `agent.yaml` | NAT `nat-workflow-v1` workflow YAML |
+| Config contract | Platform-managed `nemo-agents-spec-v1` `agent.yaml` | NAT `nat-workflow-v1` workflow YAML |
 | Runtime | Platform-managed execution through supported harness adapters | NVIDIA Agent Toolkit runtime |
 | Local execution | Invoked through the Platform agent runtime | Delegated to `nat run` |
 | Platform lifecycle | `nemo agents create`, `deploy`, and `invoke` | The same Platform lifecycle commands |
@@ -262,7 +262,7 @@ referenced-artifact checks. It can produce an image that fails at startup.
 Before a build, Platform agent packaging:
 
 1. Loads `agent.yaml` using the strict `nemo-agents-spec-v1` schema.
-2. Translates the Platform-owned config into the runtime configuration.
+2. Translates the Platform-managed config into the runtime configuration.
 3. Runs the runtime planner to verify that it can resolve the execution plan.
 4. Validates every referenced artifact included in the build context.
 
@@ -439,7 +439,7 @@ nemo agents invoke \
 Docker mode requires a configured Docker executor. Kubernetes mode uses the
 same flow with `--mode k8s` and a registry-reachable image.
 
-When `nemo agents create` registers a Platform-owned agent, it uploads the
+When `nemo agents create` registers a Platform-managed agent, it uploads the
 directory containing `agent.yaml` to the `{agent-name}-spec` fileset. Docker and
 Kubernetes deployments stage that fileset beside `agent.yaml`, preserving
 referenced skills and other text artifacts. If the fileset is unavailable, the

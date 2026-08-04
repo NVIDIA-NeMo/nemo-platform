@@ -40,7 +40,7 @@ Choose the invocation mode from the user's target:
 - **Local one-shot:** the user provides an `agent.yaml` or legacy NAT workflow
   YAML path. Read the config format and model settings before deciding whether
   Platform readiness is required:
-  - A Platform-owned `nemo-agents-spec-v1` config invokes Fabric directly and
+  - A Platform-managed `nemo-agents-spec-v1` config invokes Fabric directly and
     does not require Platform readiness.
   - A legacy NAT config requires Platform readiness when any `openai` or `nim`
     LLM omits `base_url`; local invocation injects the Platform IGW URL for
@@ -72,7 +72,7 @@ stale "running" state from held locks after the process has died.
 Require these checks for a deployed invocation and for a local NAT invocation
 that depends on injected Platform IGW routing. If `PLATFORM_UNREACHABLE` or
 `PLATFORM_DOWN`, route to `nemo-setup` and stop. If `PLATFORM_WEDGED`, route to
-`nemo-status` and stop. Do not require the checks for Platform-owned Fabric
+`nemo-status` and stop. Do not require the checks for Platform-managed Fabric
 local invocation or a NAT config with directly usable explicit endpoints.
 
 ## What you do
