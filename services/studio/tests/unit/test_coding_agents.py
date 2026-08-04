@@ -1863,6 +1863,26 @@ def test_nemo_agent_error_detail_does_not_expose_exception_text():
     )
 
 
+def test_parse_tool_step_input_extracts_python_repr_dict():
+    payload = "**Input:**\n```json\n{'action': 'list', 'resource': 'secrets'}\n```\n**Output:** ..."
+    assert coding_agents._parse_tool_step_input(payload) == {"action": "list", "resource": "secrets"}
+
+
+def test_parse_tool_step_input_returns_empty_on_unparseable():
+    assert coding_agents._parse_tool_step_input("no dict here") == {}
+    assert coding_agents._parse_tool_step_input(None) == {}
+    assert coding_agents._parse_tool_step_input("**Input:** [1, 2, 3]") == {}
+
+
+def test_tool_use_stream_event_shape():
+    event_type, payload = coding_agents._tool_use_stream_event("nemo_api", {"resource": "secrets"})
+    assert event_type == "agent"
+    block = json.loads(payload)["message"]["content"][0]
+    assert block["type"] == "tool_use"
+    assert block["name"] == "nemo_api"
+    assert block["input"] == {"resource": "secrets"}
+
+
 def test_nemo_agent_request_payload_keeps_session_outside_model_messages():
     messages = [{"role": "user", "content": "hello"}]
     session_id = str(uuid.uuid4())
@@ -1871,7 +1891,7 @@ def test_nemo_agent_request_payload_keeps_session_outside_model_messages():
 
     assert payload == {
         "messages": messages,
-        "stream": False,
+        "stream": True,
         "studio_session_id": session_id,
     }
     assert session_id not in json.dumps(payload["messages"])

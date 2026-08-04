@@ -3,6 +3,7 @@
 
 """Local coding-agent bridge for Studio."""
 
+import ast
 import asyncio
 import json
 import logging
@@ -1298,9 +1299,64 @@ def _nemo_agent_request_payload(
 ) -> dict[str, Any]:
     return {
         "messages": messages,
-        "stream": False,
+        # Stream so the agent runs its streaming path and emits NAT
+        # ``intermediate_data:`` tool steps we relay to the chat as tool-use parts.
+        "stream": True,
         "studio_session_id": studio_session_id,
     }
+
+
+_TOOL_STEP_PREFIX = "Tool: "
+
+
+def _parse_tool_step_input(payload: Any) -> dict[str, Any]:
+    """Best-effort extract the tool input dict from a NAT step markdown payload.
+
+    Payloads look like ``**Input:**\\n```json\\n{'resource': 'secrets'}...``; the
+    dict is a Python repr (single quotes), so parse the first balanced ``{...}``
+    with ``ast.literal_eval`` and fall back to an empty dict.
+    """
+    if not isinstance(payload, str):
+        return {}
+    start = payload.find("{")
+    if start == -1:
+        return {}
+    depth = 0
+    for index in range(start, len(payload)):
+        if payload[index] == "{":
+            depth += 1
+        elif payload[index] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    value = ast.literal_eval(payload[start : index + 1])
+                except (ValueError, SyntaxError):
+                    return {}
+                return value if isinstance(value, dict) else {}
+    return {}
+
+
+def _tool_use_stream_event(tool_name: str, tool_input: dict[str, Any]) -> tuple[str, str]:
+    return (
+        "agent",
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": f"nemo-agent-tool-{uuid.uuid4()}",
+                    "model": _studio_coding_agent_name(),
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": f"tool-{uuid.uuid4()}",
+                            "name": tool_name,
+                            "input": tool_input,
+                        }
+                    ],
+                },
+            }
+        ),
+    )
 
 
 async def _invoke_nemo_agent(
@@ -1315,17 +1371,59 @@ async def _invoke_nemo_agent(
         write=60.0,
         pool=10.0,
     )
+    queue = _session_streams.get(studio_session_id)
+    content_parts: list[str] = []
+    model = _studio_coding_agent_name()
+    seen_tool_ids: set[str] = set()
     async with httpx.AsyncClient(timeout=timeout) as client:
         # The origin and agent name are server-configured. The only request-derived URL
         # component is a NAME_PATTERN-validated, percent-encoded workspace path segment.
         # codeql[py/partial-ssrf]
-        response = await client.post(
+        async with client.stream(
+            "POST",
             agent_url,
             headers=dict(headers),
             json=_nemo_agent_request_payload(messages, studio_session_id),
-        )
-        response.raise_for_status()
-        return _nemo_agent_response(response.json())
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.startswith("data:"):
+                    data = line[len("data:") :].strip()
+                    if not data or data == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(chunk, dict):
+                        continue
+                    if chunk.get("model"):
+                        model = chunk["model"]
+                    for choice in chunk.get("choices", []):
+                        piece = (choice.get("delta") or {}).get("content")
+                        if isinstance(piece, str) and piece:
+                            content_parts.append(piece)
+                elif line.startswith("intermediate_data:") and queue is not None:
+                    data = line[len("intermediate_data:") :].strip()
+                    try:
+                        step = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    name = step.get("name") if isinstance(step, dict) else None
+                    if not isinstance(name, str) or not name.startswith(_TOOL_STEP_PREFIX):
+                        continue
+                    step_id = step.get("id")
+                    if step_id in seen_tool_ids:
+                        continue
+                    if isinstance(step_id, str):
+                        seen_tool_ids.add(step_id)
+                    await queue.put(
+                        _tool_use_stream_event(
+                            name[len(_TOOL_STEP_PREFIX) :].strip(),
+                            _parse_tool_step_input(step.get("payload")),
+                        )
+                    )
+    return "".join(content_parts), model
 
 
 async def _stream_nemo_agent(
