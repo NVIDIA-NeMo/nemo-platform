@@ -270,10 +270,12 @@ nemo files list nemo-agent-telemetry
 
 The `nemo agents optimize run` command runs Fabric-backed numeric
 optimization through `agents.optimize` (implementation in
-`nemo-optimization`). Use `nemo agents optimize convert nat-to-fabric`
-to migrate legacy NAT YAML once before submitting.
+`nemo-optimization`). Input must be a Fabric-native agent package
+(`schema_version: fabric.agent/v1alpha1`). The golden-path harness is
+Hermes (`nvidia.fabric.hermes`); see
+`plugins/nemo-optimization/examples/hermes-optimize/`.
 
-For the ReAct example:
+For the Hermes optimize example:
 
 <Tabs>
 
@@ -281,8 +283,7 @@ For the ReAct example:
 
 ```bash
 nemo agents optimize run \
-  --optimize-config plugins/nemo-agents/examples/react-agent/react-optimize.yml \
-  --agent react-agent
+  --optimize-config plugins/nemo-optimization/examples/hermes-optimize/package.yaml
 ```
 
 </Tab>
@@ -319,7 +320,9 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 WORKSPACE = "default"
-optimize_config = Path("plugins/nemo-agents/examples/react-agent/react-optimize.yml")
+optimize_config = Path(
+    "plugins/nemo-optimization/examples/hermes-optimize/package.yaml"
+).resolve()
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -330,7 +333,6 @@ result = NemoJobScheduler().run_local(
     OptimizeJob,
     {
         "optimize_config": str(optimize_config),
-        "agent": "react-agent",
         "workspace": WORKSPACE,
     },
     workspace=WORKSPACE,

@@ -45,7 +45,8 @@ def require_fabric_agent_config(config: Mapping[str, Any], *, label: str = "agen
             f"{label} appears to be legacy NAT workflow YAML. "
             "Optimize now requires Fabric-native input "
             f"(schema_version: {FABRIC_AGENT_SCHEMA_VERSION}). "
-            "Convert legacy configs with scripts/nat_to_fabric.py before submitting."
+            "Submit a Fabric-native agent package "
+            f"(schema_version: {FABRIC_AGENT_SCHEMA_VERSION}) instead."
         )
     raise FabricOptimizeError(
         f"{label} must declare schema_version {FABRIC_AGENT_SCHEMA_VERSION!r}. "

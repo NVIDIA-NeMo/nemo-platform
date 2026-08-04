@@ -18,8 +18,7 @@ The ``evaluate`` command is auto-generated from the
 ``EvaluateAgentJob`` registered under the
 ``nemo.jobs`` entry-point group — the platform injects it into this CLI
 group at startup. Numeric optimize is likewise auto-injected from
-``agents.optimize`` (``OptimizeJob`` in ``nemo-optimization``); the
-``convert`` subgroup is registered locally on that job CLI.
+``agents.optimize`` (``OptimizeJob`` in ``nemo-optimization``).
 
 **Agent Resources commands (require a running cluster):**
 
@@ -131,14 +130,6 @@ class AgentsCLI(NemoCLI):
                 continue
             app.add_typer(cli, name=name, rich_help_panel="Platform agents")
         return app
-
-    def update_job_cli(self, job_cls: type, group: typer.Typer) -> None:
-        """Attach ``convert`` under ``nemo agents optimize``."""
-        from nemo_optimization.cli_convert import convert_app
-        from nemo_optimization.jobs.optimize import OptimizeJob
-
-        if job_cls is OptimizeJob:
-            group.add_typer(convert_app, name="convert")
 
 
 # ---------------------------------------------------------------------------
@@ -277,8 +268,7 @@ def _register_local_commands(app: typer.Typer) -> None:
 
 
 # Note: ``evaluate`` and ``optimize`` (run/submit/explain) are auto-generated
-# from ``nemo.jobs`` entry points. ``optimize convert`` is attached via
-# ``AgentsCLI.update_job_cli``.
+# from ``nemo.jobs`` entry points.
 
 
 # ---------------------------------------------------------------------------

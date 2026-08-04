@@ -14,8 +14,8 @@ from nemo_optimization.fabric import (
 
 FABRIC_AGENT = {
     "schema_version": "fabric.agent/v1alpha1",
-    "metadata": {"name": "react-optimize-agent"},
-    "harness": {"adapter_id": "nvidia.fabric.langchain.react"},
+    "metadata": {"name": "hermes-optimize-demo"},
+    "harness": {"adapter_id": "nvidia.fabric.hermes"},
 }
 
 NAT_AGENT = {

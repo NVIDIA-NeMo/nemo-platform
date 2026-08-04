@@ -1,0 +1,38 @@
+# Optimizer/eval overlay only. Merge with agent.yaml via a platform agent
+# reference (`--agent <name>`) or use package.yaml for a self-contained run.
+optimizer:
+  numeric:
+    enabled: true
+    n_trials: 2
+  reps_per_param_set: 1
+  eval_metrics:
+    average_score:
+      evaluator_name: average_score
+      direction: maximize
+      weight: 1.0
+  search_space:
+    temperature:
+      type: fabric
+      path: models.default.temperature
+      values: [0.0, 0.2]
+eval:
+  general:
+    dataset:
+      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset.json
+    max_concurrency: 1
+  fabric:
+    base_dir: plugins/nemo-optimization/examples/hermes-optimize
+    capture_trajectory: true
+    timeout_s: 300
+  evaluators:
+    accuracy:
+      _type: tunable_rag_evaluator
+      llm_name: judge
+      default_scoring: true
+      default_score_weights:
+        coverage: 0.5
+        correctness: 0.3
+        relevance: 0.2
+      judge_llm_prompt: >
+        Score whether the generated answer correctly addresses the question
+        compared to the expected answer. Return JSON only.

@@ -1,0 +1,84 @@
+# Self-contained Hermes optimize package (inline Fabric agent + optimizer).
+# Fill models.*.model / base_url before running.
+#
+#   nemo agents optimize run \
+#     --optimize-config plugins/nemo-optimization/examples/hermes-optimize/package.yaml
+schema_version: fabric.agent/v1alpha1
+metadata:
+  name: hermes-optimize-demo
+  description: Hermes-backed numeric HPO demo agent (chat-only).
+harness:
+  adapter_id: nvidia.fabric.hermes
+  resolution: preinstalled
+  settings:
+    max_tokens: 512
+    reasoning_config:
+      effort: none
+models:
+  default:
+    provider: openai
+    model: REPLACE_ME
+    base_url: REPLACE_ME
+    api_key: not-used
+    allow_empty_api_key: true
+    temperature: 0.0
+    top_p: 1.0
+  judge:
+    provider: openai
+    model: REPLACE_ME
+    base_url: REPLACE_ME
+    api_key: not-used
+    allow_empty_api_key: true
+    temperature: 0.0
+    max_tokens: 512
+instructions:
+  system:
+    content: >
+      Answer the user's question in one short sentence. Prefer factual,
+      concise replies.
+runtime:
+  input_schema: chat
+  output_schema: message
+  max_turns: 4
+  timeout_seconds: 60
+  artifacts: ./artifacts
+environment:
+  provider: local
+  workspace: ./.tmp/workspace
+  artifacts: ./artifacts
+optimizer:
+  numeric:
+    enabled: true
+    n_trials: 2
+  reps_per_param_set: 1
+  eval_metrics:
+    average_score:
+      evaluator_name: average_score
+      direction: maximize
+      weight: 1.0
+  search_space:
+    temperature:
+      type: fabric
+      path: models.default.temperature
+      values: [0.0, 0.2]
+eval:
+  general:
+    dataset:
+      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset.json
+    max_concurrency: 1
+  fabric:
+    base_dir: plugins/nemo-optimization/examples/hermes-optimize
+    capture_trajectory: true
+    timeout_s: 300
+  evaluators:
+    accuracy:
+      _type: tunable_rag_evaluator
+      llm_name: judge
+      default_scoring: true
+      default_score_weights:
+        coverage: 0.5
+        correctness: 0.3
+        relevance: 0.2
+      judge_llm_prompt: >
+        Score whether the generated answer correctly addresses the question
+        compared to the expected answer. Return JSON only.

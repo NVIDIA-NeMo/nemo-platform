@@ -18,7 +18,7 @@ from nemo_platform_plugin.run_dependencies import LocalRunError
 
 FABRIC_AGENT = {
     "schema_version": "fabric.agent/v1alpha1",
-    "metadata": {"name": "react-optimize-agent"},
+    "metadata": {"name": "hermes-optimize-demo"},
 }
 
 

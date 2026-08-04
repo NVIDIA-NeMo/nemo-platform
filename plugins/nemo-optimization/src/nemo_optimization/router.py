@@ -11,7 +11,7 @@ Integration boundaries (Part A §3):
 | ``OptimizeRouter`` | Backend selection from ``optimizer.*.enabled`` flags |
 | Tune backend (``optuna``) | Study loop, profile overlays, artifact writers, rep averaging |
 | ``AgentEvaluator`` + ``FabricAgentRuntime`` | Per-trial agent execution, scoring input, ATIF evidence |
-| NeMo Fabric + adapters | Harness runtime (e.g. ``langchain-react``) |
+| NeMo Fabric + adapters | Harness runtime (e.g. ``nvidia.fabric.hermes``) |
 | Jobs | ``ctx.results.save`` persistence for study artifacts |
 """
 

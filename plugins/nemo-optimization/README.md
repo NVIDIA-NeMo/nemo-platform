@@ -7,8 +7,10 @@ Primary user surface (Alt 5):
 
 ```bash
 nemo agents optimize run|submit|explain
-nemo agents optimize convert nat-to-fabric ...
 ```
+
+Golden-path agent shape: Fabric Hermes (``nvidia.fabric.hermes``). See
+``examples/hermes-optimize/``.
 
 Job registration: ``agents.optimize`` (mounted by the agents plugin).
 Backend registry: ``nemo.optimization.backends`` (``optuna``, ``ga`` stub).

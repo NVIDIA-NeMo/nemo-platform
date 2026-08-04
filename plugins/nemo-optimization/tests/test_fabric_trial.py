@@ -27,7 +27,7 @@ def _payload(dataset: Path) -> dict[str, Any]:
     return {
         "schema_version": "fabric.agent/v1alpha1",
         "metadata": {"name": "demo"},
-        "harness": {"adapter_id": "nvidia.fabric.langchain.react"},
+        "harness": {"adapter_id": "nvidia.fabric.hermes"},
         "models": {
             "default": {"provider": "openai", "model": "agent", "base_url": "http://agent/v1"},
             "judge": {"provider": "openai", "model": "judge", "base_url": "http://judge/v1"},
