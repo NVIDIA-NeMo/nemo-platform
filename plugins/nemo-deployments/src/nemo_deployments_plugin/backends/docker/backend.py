@@ -114,6 +114,14 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._executor_config = DockerExecutorConfig.model_validate(self._config)
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         self._gpu_pool = get_shared_gpu_pool()
+        docker_host = self._executor_config.docker_host
+        from nemo_platform_plugin.capabilities import probe_docker
+
+        probe = probe_docker(docker_host=docker_host)
+        if not probe.available:
+            raise MissingBackendDependencyError(
+                probe.detail or "Docker daemon is unavailable. Docker-backed deployments will be disabled."
+            )
         try:
             self._client = self._create_client()
         except (DockerException, RequestsConnectionError, RequestsTimeout, OSError) as exc:

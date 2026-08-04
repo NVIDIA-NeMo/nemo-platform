@@ -911,7 +911,7 @@ class TestMaybeStartServices:
         with (
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._wait_for_platform", wait),
-            patch(f"{SETUP_MOD}.validate_docker_available", return_value=False),
+            patch(f"{SETUP_MOD}.probe_docker", return_value=MagicMock(available=False)),
             patch(f"{SETUP_MOD}.log_path_for", return_value=MagicMock(__str__=lambda self: "/tmp/services.log")),
             patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),
@@ -935,7 +935,7 @@ class TestMaybeStartServices:
         with (
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
-            patch(f"{SETUP_MOD}.validate_docker_available", return_value=False),
+            patch(f"{SETUP_MOD}.probe_docker", return_value=MagicMock(available=False)),
             patch(f"{SETUP_MOD}.log_path_for", return_value=log),
             patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),
@@ -954,7 +954,7 @@ class TestMaybeStartServices:
         with (
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
-            patch(f"{SETUP_MOD}.validate_docker_available", return_value=True),
+            patch(f"{SETUP_MOD}.probe_docker", return_value=MagicMock(available=True)),
             patch(f"{SETUP_MOD}.log_path_for", return_value=log),
             patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),

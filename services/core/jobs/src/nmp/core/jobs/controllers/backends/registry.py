@@ -7,7 +7,7 @@ from typing import Self, Sequence
 
 from docker.errors import DockerException
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.config import validate_docker_available
+from nemo_platform_plugin.capabilities import CapabilityUnavailableError, probe_docker
 from nmp.core.jobs.app.profiles import ExecutionProfileT
 from nmp.core.jobs.app.schemas import BackendRef, ProfileRef, ProviderRef
 from nmp.core.jobs.controllers.backends.base import DEFAULT_PROFILE, DEFAULT_PROVIDER, JobBackend
@@ -24,9 +24,16 @@ from requests.exceptions import Timeout as RequestsTimeout
 
 logger = logging.getLogger(__name__)
 
-# Skip Docker backends only for daemon/connection failures after validate_docker_available()
-# was True. ValidationError and other programming/config errors must still fail startup.
-_DOCKER_BACKEND_INIT_SKIPPABLE_ERRORS = (DockerException, RequestsConnectionError, RequestsTimeout, OSError)
+# Skip Docker backends only for daemon/connection failures after probe_docker()
+# was True, or when init raises CapabilityUnavailableError. ValidationError and
+# other programming/config errors must still fail startup.
+_DOCKER_BACKEND_INIT_SKIPPABLE_ERRORS = (
+    CapabilityUnavailableError,
+    DockerException,
+    RequestsConnectionError,
+    RequestsTimeout,
+    OSError,
+)
 
 
 @dataclass(frozen=True)
@@ -133,7 +140,7 @@ class BackendRegistry:
 
             if executor.backend == "docker":
                 if docker_available is None:
-                    docker_available = validate_docker_available()
+                    docker_available = probe_docker().available
                 if not docker_available:
                     logger.warning(
                         "Skipping job executor profile %s/%s using backend 'docker' because Docker is unavailable.",

@@ -6,6 +6,7 @@ import pathlib
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nemo_platform_plugin.capabilities import ProbeResult
 from nmp.common.config import Configuration, Runtime
 from nmp.core.jobs.app.providers import (
     ComputeResources,
@@ -415,7 +416,10 @@ def test_backend_registry_skips_docker_when_unavailable(mock_nmp_client, caplog)
     ]
 
     caplog.set_level(logging.WARNING)
-    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
+    with patch(
+        "nmp.core.jobs.controllers.backends.registry.probe_docker",
+        return_value=ProbeResult(available=False, detail="down"),
+    ):
         registry = BackendRegistry.from_config(
             nmp_sdk=mock_nmp_client,
             profiles=profiles,
@@ -452,7 +456,10 @@ def test_backend_registry_registered_profile_keys_match_constructed_backends(moc
         ),
     ]
 
-    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
+    with patch(
+        "nmp.core.jobs.controllers.backends.registry.probe_docker",
+        return_value=ProbeResult(available=False, detail="down"),
+    ):
         registry = BackendRegistry.from_config(
             nmp_sdk=mock_nmp_client,
             profiles=profiles,
@@ -491,7 +498,7 @@ def test_backend_registry_skips_docker_init_connection_errors(mock_nmp_client, c
     ]
 
     caplog.set_level(logging.WARNING)
-    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=True):
+    with patch("nmp.core.jobs.controllers.backends.registry.probe_docker", return_value=ProbeResult(available=True)):
         registry = BackendRegistry.from_config(
             nmp_sdk=mock_nmp_client,
             profiles=profiles,
@@ -520,7 +527,7 @@ def test_backend_registry_propagates_non_connection_errors_for_docker(mock_nmp_c
     ]
 
     with (
-        patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=True),
+        patch("nmp.core.jobs.controllers.backends.registry.probe_docker", return_value=ProbeResult(available=True)),
         pytest.raises(ValueError, match="bad executor config"),
     ):
         BackendRegistry.from_config(
@@ -550,7 +557,10 @@ def test_from_config_prunes_skipped_docker_from_mutable_profiles(mock_nmp_client
     ]
 
     caplog.set_level(logging.WARNING)
-    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
+    with patch(
+        "nmp.core.jobs.controllers.backends.registry.probe_docker",
+        return_value=ProbeResult(available=False, detail="down"),
+    ):
         registry = BackendRegistry.from_config(
             nmp_sdk=mock_nmp_client,
             profiles=advertised,
@@ -635,7 +645,10 @@ def test_merge_executor_profiles_skips_container_backends_for_none_runtime(caplo
     ]
 
     caplog.set_level(logging.WARNING)
-    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=False) as validate:
+    with patch(
+        "nmp.core.jobs.controllers.backends.config.probe_docker",
+        return_value=ProbeResult(available=False, detail="down"),
+    ) as validate:
         merged = merge_executor_profiles(custom, defaults, runtime=Runtime.NONE)
 
     assert [(p.provider, p.profile, p.backend) for p in merged] == [
@@ -665,7 +678,10 @@ def test_merge_executor_profiles_skips_docker_when_unavailable_under_docker_runt
     ]
 
     caplog.set_level(logging.WARNING)
-    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=False) as validate:
+    with patch(
+        "nmp.core.jobs.controllers.backends.config.probe_docker",
+        return_value=ProbeResult(available=False, detail="down"),
+    ) as validate:
         merged = merge_executor_profiles(custom, defaults, runtime=Runtime.DOCKER)
 
     assert [(p.provider, p.profile, p.backend) for p in merged] == [
@@ -687,7 +703,9 @@ def test_merge_executor_profiles_keeps_docker_executor_for_none_runtime_when_doc
         )
     ]
 
-    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=True) as validate:
+    with patch(
+        "nmp.core.jobs.controllers.backends.config.probe_docker", return_value=ProbeResult(available=True)
+    ) as validate:
         merged = merge_executor_profiles(custom, defaults, runtime=Runtime.NONE)
 
     assert [(p.provider, p.profile, p.backend) for p in merged] == [
@@ -857,7 +875,10 @@ def test_merge_executor_profiles_keeps_subprocess_override_for_none_runtime(capl
         ),
     ]
 
-    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=False):
+    with patch(
+        "nmp.core.jobs.controllers.backends.config.probe_docker",
+        return_value=ProbeResult(available=False, detail="down"),
+    ):
         merged = merge_executor_profiles(custom_executors, default_executors, runtime=Runtime.NONE)
 
     assert [(p.provider, p.profile, p.backend) for p in merged] == [("subprocess", "default", "subprocess")]

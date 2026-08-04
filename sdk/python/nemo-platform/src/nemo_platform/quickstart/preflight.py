@@ -96,11 +96,12 @@ class PreflightChecker:
 
     def _check_docker_available(self) -> None:
         """Verify Docker daemon is running and accessible."""
-        try:
-            import docker
+        from nemo_platform_plugin.capabilities import probe_docker, reset_capability_cache
 
-            client = docker.from_env()
-            client.ping()
+        # Preflight can be re-run after the user starts Docker.
+        reset_capability_cache()
+        result = probe_docker(use_cache=False)
+        if result.available:
             self.results.append(
                 PreflightResult(
                     name="Docker Available",
@@ -108,13 +109,13 @@ class PreflightChecker:
                     message="Docker daemon is running",
                 )
             )
-        except Exception as e:
+        else:
             self.results.append(
                 PreflightResult(
                     name="Docker Available",
                     status=CheckStatus.FAIL,
                     message="Docker daemon is not accessible",
-                    details=str(e),
+                    details=result.detail or "Docker daemon unreachable",
                 )
             )
 

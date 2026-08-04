@@ -30,14 +30,14 @@ def validate_docker_available() -> ValidationResult:
     Returns:
         ValidationResult indicating success or failure.
     """
-    try:
-        import docker
+    from nemo_platform_plugin.capabilities import probe_docker, reset_capability_cache
 
-        client = docker.from_env()
-        client.ping()
+    # CLI may re-run after the user starts Docker; do not pin a prior miss.
+    reset_capability_cache()
+    result = probe_docker(use_cache=False)
+    if result.available:
         return ValidationResult(True, "Docker is available")
-    except Exception as e:
-        return ValidationResult(False, f"Docker is not available: {e}")
+    return ValidationResult(False, result.detail or "Docker is not available")
 
 
 def validate_ngc_credentials(api_key: str) -> ValidationResult:

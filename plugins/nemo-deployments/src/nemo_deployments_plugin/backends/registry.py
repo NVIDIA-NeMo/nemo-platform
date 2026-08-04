@@ -98,7 +98,9 @@ class ExecutorRegistry:
             if default_executor and default_executor not in executors:
                 raise ExecutorNotFoundError(
                     f"default_executor '{default_executor}' is not registered "
-                    "(unavailable backend or missing from executor config)."
+                    "(unavailable backend capability or missing from executor config). "
+                    "Configure a non-Docker default_executor when Docker is unavailable, "
+                    "or ensure the Docker daemon is reachable."
                 )
         except Exception:
             for backend in executors.values():

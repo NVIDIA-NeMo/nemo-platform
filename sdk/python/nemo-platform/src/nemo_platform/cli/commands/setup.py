@@ -27,8 +27,8 @@ import httpx
 import typer
 import yaml as _yaml
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.config import validate_docker_available
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 from nmp.common.config import nmp_user_data_dir
@@ -1057,7 +1057,7 @@ def _should_hint_docker_unavailable(*, exit_code: int | None, log_path: Path | N
     """
     if _services_log_suggests_docker_failure(log_path):
         return True
-    if exit_code is not None and not validate_docker_available():
+    if exit_code is not None and not probe_docker(use_cache=False).available:
         return True
     return False
 
