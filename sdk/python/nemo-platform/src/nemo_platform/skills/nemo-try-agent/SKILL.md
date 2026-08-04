@@ -60,7 +60,7 @@ context for the current shell and add local process and health checks before
 listing deployments:
 
 ```bash
-export NMP_BASE_URL=http://127.0.0.1:8080
+export NMP_BASE_URL=http://localhost:8080
 lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 || { echo "PLATFORM_DOWN"; exit 1; }
 curl -sS --connect-timeout 2 --max-time 5 "$NMP_BASE_URL/health/ready" -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -q "^200$" || { echo "PLATFORM_WEDGED"; exit 1; }
 .venv/bin/nemo agents deployments list 2>/dev/null
@@ -99,11 +99,11 @@ local invocation or a NAT config with directly usable explicit endpoints.
 if [ "$INVOCATION_MODE" = "local" ]; then
   RESP=$(.venv/bin/nemo agents invoke \
     --agent-config "$AGENT_CONFIG_PATH" \
-    --input "<user query>")
+    --input "$USER_QUERY")
 else
   RESP=$(.venv/bin/nemo agents invoke \
     --agent-deployment "$DEPLOYMENT_NAME" \
-    --input "<user query>")
+    --input "$USER_QUERY")
 fi
 RC=$?
 ```
