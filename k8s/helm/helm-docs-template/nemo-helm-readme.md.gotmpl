@@ -49,9 +49,11 @@ the Helm release namespace. The Secret key must match
 `externalClickhouse.existingSecretPasswordKey`:
 
 ```shell
+NMP_NAMESPACE="your-release-namespace"
+CLICKHOUSE_PASSWORD_FILE="/path/to/clickhouse-password"
 kubectl create secret generic clickhouse-credentials \
-  --namespace <release-namespace> \
-  --from-literal=password='<clickhouse-password>'
+  --namespace "$NMP_NAMESPACE" \
+  --from-file="password=$CLICKHOUSE_PASSWORD_FILE"
 ```
 
 Then configure the external connection:

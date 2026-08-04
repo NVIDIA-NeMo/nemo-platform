@@ -97,9 +97,11 @@ To use an external ClickHouse database in the Helm chart:
 2. Create a Secret containing the ClickHouse password in the same namespace as the NeMo Platform release:
 
    ```sh
+   NMP_NAMESPACE="your-release-namespace"
+   CLICKHOUSE_PASSWORD_FILE="/path/to/clickhouse-password"
    kubectl create secret generic clickhouse-credentials \
      --namespace "$NMP_NAMESPACE" \
-     --from-literal=password='<clickhouse-password>'
+     --from-file="password=$CLICKHOUSE_PASSWORD_FILE"
    ```
 
 3. Configure the external HTTP endpoint in `values.yaml`:
