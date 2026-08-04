@@ -62,8 +62,10 @@ class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]
         default=None,
         description=(
             "Path to the directory containing the built static UI assets. "
-            "When unset, defaults to the `static/` directory bundled alongside the "
-            "`nmp.studio` package (populated by the wheel build)."
+            "When unset, Studio looks for the `static/` directory bundled alongside the "
+            "`nmp.studio` package (populated by the wheel build), then `/static/studio` "
+            "(where NeMo Platform container images place the bundle), then "
+            "`web/packages/studio/dist` in a source checkout."
         ),
     )
     platform_base_url: str = Field(

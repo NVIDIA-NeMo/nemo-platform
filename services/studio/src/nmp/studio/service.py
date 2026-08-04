@@ -39,6 +39,36 @@ HOP_BY_HOP_HEADERS = {
     "upgrade",
 }
 
+CONTAINER_STATIC_FILES_PATH = Path("/static/studio")
+
+SOURCE_CHECKOUT_TIPS_HTML = """      <h2>Build tips</h2>
+      <p>Run these commands from the repository root.</p>
+      <p>Studio uses the Node.js and pnpm engines in <code>web/package.json</code>.</p>
+      <p>If you use nvm:</p>
+      <pre>source ~/.nvm/nvm.sh
+nvm install 22
+nvm use 22
+make bootstrap-studio
+nemo services restart</pre>
+      <p>If you use pnpm-managed Node.js:</p>
+      <pre>pnpm env use --global 22.18.0
+make bootstrap-studio
+nemo services restart</pre>"""
+
+PACKAGED_INSTALL_TIPS_HTML = f"""      <h2>How to fix</h2>
+      <p>This is a packaged install, not a source checkout, so there is nothing to build here.</p>
+      <p>Point Studio at a directory that already contains a built bundle:</p>
+      <pre>NMP_STUDIO_STATIC_FILES_PATH=/path/to/studio/assets</pre>
+      <p>
+        The same value can be set as <code>studio.static_files_path</code> in the NeMo Platform
+        configuration file, but the environment variable takes precedence over it.
+      </p>
+      <p>
+        Official container images ship the bundle at
+        <code>{escape(str(CONTAINER_STATIC_FILES_PATH))}</code>, which is used automatically when
+        nothing is configured.
+      </p>"""
+
 
 class StudioService(Service[StudioConfig]):
     """Studio service for serving the NeMo Studio UI static assets.
@@ -252,36 +282,29 @@ class StudioService(Service[StudioConfig]):
         @app.get("/studio/", include_in_schema=False)
         @app.get("/studio/{path:path}", include_in_schema=False)
         async def studio_static_files_missing(path: str = "") -> HTMLResponse:
-            return self._missing_static_files_response(static_path, path)
+            return self._missing_static_files_response(
+                static_path, path, source_checkout=self._source_static_files_path() is not None
+            )
 
     @staticmethod
-    def _missing_static_files_response(static_path: Path, requested_path: str = "") -> HTMLResponse:
+    def _missing_static_files_response(
+        static_path: Path, requested_path: str = "", source_checkout: bool = True
+    ) -> HTMLResponse:
         route = "/studio" if requested_path == "" else f"/studio/{requested_path}"
+        recovery_html = SOURCE_CHECKOUT_TIPS_HTML if source_checkout else PACKAGED_INSTALL_TIPS_HTML
         html = f"""<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>NeMo Studio assets are not built</title>
+    <title>NeMo Studio assets were not found</title>
   </head>
   <body>
     <main>
-      <h1>NeMo Studio assets are not built</h1>
+      <h1>NeMo Studio assets were not found</h1>
       <p>The platform is running, but Studio cannot be served because the built web assets were not found.</p>
       <p>Requested path: <code>{escape(route)}</code></p>
       <p>Expected assets at: <code>{escape(str(static_path))}</code></p>
-      <h2>Build tips</h2>
-      <p>Run these commands from the repository root.</p>
-      <p>Studio uses the Node.js and pnpm engines in <code>web/package.json</code>.</p>
-      <p>If you use nvm:</p>
-      <pre>source ~/.nvm/nvm.sh
-nvm install 22
-nvm use 22
-make bootstrap-studio
-nemo services restart</pre>
-      <p>If you use pnpm-managed Node.js:</p>
-      <pre>pnpm env use --global 22.18.0
-make bootstrap-studio
-nemo services restart</pre>
+{recovery_html}
     </main>
   </body>
 </html>
@@ -297,7 +320,8 @@ nemo services restart</pre>
 
         Returns:
             The configured static_files_path from StudioConfig, falling back to the
-            packaged `static/` directory or source checkout `web/packages/studio/dist`.
+            packaged `static/` directory, the container image bundle at
+            `/static/studio`, or source checkout `web/packages/studio/dist`.
         """
         configured = self._get_config().static_files_path
         if configured is not None:
@@ -306,6 +330,10 @@ nemo services restart</pre>
         packaged_static = self._packaged_static_files_path()
         if self._static_assets_ready(packaged_static):
             return packaged_static
+
+        container_static = self._container_static_files_path()
+        if self._static_assets_ready(container_static):
+            return container_static
 
         source_static = self._source_static_files_path()
         if source_static is not None:
@@ -317,6 +345,11 @@ nemo services restart</pre>
     def _packaged_static_files_path() -> Path:
         """Return the package-local Studio static asset directory."""
         return Path(__file__).parent / "static"
+
+    @staticmethod
+    def _container_static_files_path() -> Path:
+        """Return the Studio bundle location baked into NeMo Platform container images."""
+        return CONTAINER_STATIC_FILES_PATH
 
     @staticmethod
     def _static_assets_ready(path: Path) -> bool:
