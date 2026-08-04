@@ -97,8 +97,8 @@ describe('IntakeSpansTable', () => {
     await user.click(await screen.findByTestId('open-filters-button'));
 
     expect(await screen.findByText('Trace ID')).toBeInTheDocument();
-    expect(screen.getAllByText('Status').length).toBeGreaterThan(1);
     expect(screen.getAllByText('Kind').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('Status').length).toBeGreaterThan(1);
     expect(screen.getByText('Started At')).toBeInTheDocument();
     expect(screen.queryByText('Session ID')).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Search by span ID')).not.toBeInTheDocument();
