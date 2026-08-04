@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from enum import Enum
 
-from nemo_platform_plugin.capabilities import probe_docker, reset_capability_cache
+from nemo_platform_plugin.capabilities import probe_docker
 
 from .config import QuickstartConfig
 
@@ -99,7 +99,6 @@ class PreflightChecker:
     def _check_docker_available(self) -> None:
         """Verify Docker daemon is running and accessible."""
         # Preflight can be re-run after the user starts Docker.
-        reset_capability_cache()
         result = probe_docker(use_cache=False)
         if result.available:
             self.results.append(

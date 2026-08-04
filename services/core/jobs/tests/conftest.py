@@ -573,6 +573,11 @@ async def test_client(mock_dispatcher, mock_store, job_config_with_many_profiles
     from nmp.common.service.dependencies import get_sdk_client
 
     with subprocess_job_executor_patch(job_config_with_many_profiles.executors):
+        from nmp.core.jobs.config import mark_execution_profiles_ready
+
+        # Simulate controller registry construction so GET /v2/execution-profiles
+        # is not gated behind 503 in API unit tests.
+        mark_execution_profiles_ready()
         app = FastAPI()
 
         # Add auth middleware with auth disabled - this sets up auth_client_context

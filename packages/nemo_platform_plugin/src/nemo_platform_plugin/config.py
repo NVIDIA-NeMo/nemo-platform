@@ -379,7 +379,7 @@ def determine_loopback_override() -> str | None:
 
 
 def validate_docker_available() -> bool:
-    """Validate that Docker is available using a lightweight check.
+    """Validate Docker reachability with an uncached probe (≤5s).
 
     Thin wrapper over :func:`nemo_platform_plugin.capabilities.probe_docker`.
     Prefer ``probe_docker`` when callers need the failure detail or a

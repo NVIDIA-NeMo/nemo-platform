@@ -67,6 +67,20 @@ async def test_get_execution_profiles_parses_response(jobs_client: AsyncJobsClie
     assert isinstance(profiles, list)
 
 
+@pytest.mark.asyncio
+async def test_get_execution_profiles_returns_503_until_ready(test_client: AsyncClient):
+    """Advertise profiles only after the jobs controller registry is ready."""
+    from nmp.core.jobs import config as jobs_config
+
+    jobs_config.reset_execution_profiles_ready_for_tests()
+    try:
+        raw = await test_client.get("/apis/jobs/v2/execution-profiles")
+        assert raw.status_code == 503
+        assert "not ready" in raw.json()["detail"].lower()
+    finally:
+        jobs_config.mark_execution_profiles_ready()
+
+
 async def _create_hello_world_job(test_client: AsyncClient, name: str = "e2e-client-job") -> None:
     """Create a job via the hello-world factory route (service-specific body)."""
     resp = await test_client.post(

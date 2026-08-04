@@ -140,8 +140,10 @@ class BackendRegistry:
 
             if executor.backend == "docker":
                 # Process-lifetime cache is intentional: executor registration is
-                # fixed at controller startup. Callers that need a fresh probe
-                # (CLI / compile retries) use probe_docker(use_cache=False).
+                # fixed at controller startup. Import-time merge uses
+                # probe_docker(use_cache=False) so it does not pin this cache;
+                # compile shares the cached boot verdict (restart required after
+                # starting Docker mid-process).
                 if docker_available is None:
                     docker_available = probe_docker().available
                 if not docker_available:
@@ -186,6 +188,11 @@ class BackendRegistry:
                 )
                 profiles.clear()
                 profiles.extend(kept)
+
+        # Advertised profiles are now aligned with backends that registered.
+        from nmp.core.jobs.config import mark_execution_profiles_ready
+
+        mark_execution_profiles_ready()
 
         return cls(registry)
 

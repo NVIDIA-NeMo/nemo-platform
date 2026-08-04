@@ -148,7 +148,10 @@ def merge_executor_profiles(
     def _docker_is_available() -> bool:
         nonlocal docker_available
         if docker_available is None:
-            docker_available = probe_docker().available
+            # Uncached: this runs at jobs config import and must not pin the
+            # process-wide probe cache before BackendRegistry.from_config's
+            # authoritative boot probe.
+            docker_available = probe_docker(use_cache=False).available
         return docker_available
 
     # Add default profiles first
