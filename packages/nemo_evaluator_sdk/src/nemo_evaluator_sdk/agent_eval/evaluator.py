@@ -21,8 +21,6 @@ from urllib.parse import urlparse
 
 import httpx
 import nemo_evaluator_sdk.inference as inference
-from nemo_evaluator_sdk.agent_eval.dashboard import write_dashboard
-from nemo_evaluator_sdk.agent_eval.persistence import persist_run
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import (
     AgentEvalDiagnostic,
@@ -196,10 +194,9 @@ class AgentEvaluator:
             scores=scores,
             summary=AgentEvalSummary.from_scores(scores, tasks=task_list, extra_scores=runner_scores),
             metadata=metadata,
+            work_dir=runtime_config.work_dir,
         )
 
-        if runtime_config.output_dir is not None:
-            result = _persist_with_optional_dashboard(result, runtime_config.output_dir, runtime_config.write_dashboard)
         return result
 
     def run_sync(
@@ -342,8 +339,8 @@ class AgentEvaluator:
                         "invocation_id": f"{config.run_id}:{task.id}:{target.name}",
                     }
                     evidence_dir = (
-                        _task_evidence_dir(Path(config.output_dir), index=index, task_id=task.id)
-                        if config.output_dir is not None and isinstance(target, AgentBase)
+                        _task_evidence_dir(Path(config.work_dir), index=index, task_id=task.id)
+                        if config.work_dir is not None and isinstance(target, AgentBase)
                         else None
                     )
                     resolved_inference_fn = self.inference_fn
@@ -768,18 +765,6 @@ def _collect_runner_aggregate_scores(target: object) -> list[AggregateScore]:
             continue
         collected.append(score)
     return collected
-
-
-def _persist_with_optional_dashboard(
-    result: AgentEvalResult,
-    output_dir: Path,
-    write_html: bool,
-) -> AgentEvalResult:
-    path = Path(output_dir)
-    dashboard_path = None
-    if write_html:
-        dashboard_path = write_dashboard(result.model_copy(update={"output_dir": path}), path / "report.html")
-    return persist_run(result.model_copy(update={"output_dir": path, "dashboard_path": dashboard_path}), path)
 
 
 def _new_run_id() -> str:

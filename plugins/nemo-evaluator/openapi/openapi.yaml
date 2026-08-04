@@ -2676,10 +2676,12 @@ components:
           description: Name of the score.
         count:
           title: Count
-          description: "Number of samples evaluated (excluding NaN). Serialized as\
-            \ null when the sample size is unknown \u2014 e.g. a figure imported from\
-            \ a backend that reports statistics without the n behind them. Distinct\
-            \ from 0, which asserts that nothing was evaluated."
+          description: "Number of samples evaluated (excluding NaN). Omitted when\
+            \ the sample size is unknown \u2014 e.g. a figure imported from a backend\
+            \ that reports statistics without the n behind them. Distinct from 0,\
+            \ which asserts that nothing was evaluated. (``None`` on the model; the\
+            \ result routes serialize with exclude_none, so the field is absent from\
+            \ the response rather than null.)"
           type: integer
         nan_count:
           type: integer
@@ -2759,10 +2761,12 @@ components:
           description: Name of the score.
         count:
           title: Count
-          description: "Number of samples evaluated (excluding NaN). Serialized as\
-            \ null when the sample size is unknown \u2014 e.g. a figure imported from\
-            \ a backend that reports statistics without the n behind them. Distinct\
-            \ from 0, which asserts that nothing was evaluated."
+          description: "Number of samples evaluated (excluding NaN). Omitted when\
+            \ the sample size is unknown \u2014 e.g. a figure imported from a backend\
+            \ that reports statistics without the n behind them. Distinct from 0,\
+            \ which asserts that nothing was evaluated. (``None`` on the model; the\
+            \ result routes serialize with exclude_none, so the field is absent from\
+            \ the response rather than null.)"
           type: integer
         nan_count:
           type: integer
@@ -2844,10 +2848,12 @@ components:
           description: Name of the score.
         count:
           title: Count
-          description: "Number of samples evaluated (excluding NaN). Serialized as\
-            \ null when the sample size is unknown \u2014 e.g. a figure imported from\
-            \ a backend that reports statistics without the n behind them. Distinct\
-            \ from 0, which asserts that nothing was evaluated."
+          description: "Number of samples evaluated (excluding NaN). Omitted when\
+            \ the sample size is unknown \u2014 e.g. a figure imported from a backend\
+            \ that reports statistics without the n behind them. Distinct from 0,\
+            \ which asserts that nothing was evaluated. (``None`` on the model; the\
+            \ result routes serialize with exclude_none, so the field is absent from\
+            \ the response rather than null.)"
           type: integer
         nan_count:
           type: integer
@@ -2914,23 +2920,15 @@ components:
       - nan_count
       - value
       title: AggregateScalarScore
-      description: 'A single pre-computed value with no underlying distribution available.
-
-
-        For figures a backend reports as one number (e.g. an environment''s own ``pass@1``
-        or Elo) rather
-
-        than a set of per-sample values the SDK could aggregate itself. ``value``
-        carries the number;
-
-        ``mean``/``min``/``max`` are left unset because there is no sample to describe.
-        Distinct from
-
-        :class:`AggregateRangeScore` so a reader can tell "this is the whole story"
-        from "this summarizes
-
-        ``count`` samples", instead of seeing a range score with a suspicious ``count``
-        of 1.'
+      description: "A single pre-computed value with no underlying distribution available.\n\
+        \nFor figures a backend reports as one number (e.g. an environment's own ``pass@1``\
+        \ or Elo) rather\nthan a set of per-sample values the SDK could aggregate\
+        \ itself. ``value`` carries the number;\n``mean``/``min``/``max`` are optional\
+        \ and normally unset, since there is no sample to describe \u2014\na producer\
+        \ may still supply them, but readers key off ``score_type`` and read ``value``.\
+        \ Distinct from\n:class:`AggregateRangeScore` so a reader can tell \"this\
+        \ is the whole story\" from \"this summarizes\n``count`` samples\", instead\
+        \ of seeing a range score with a suspicious ``count`` of 1."
     AggregatedMetricResult:
       properties:
         scores:

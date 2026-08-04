@@ -114,7 +114,7 @@ def _selected_task_names(args: argparse.Namespace) -> list[str] | None:
 
 async def _run_reward_only(args: argparse.Namespace) -> AgentEvalResult:
     """Minimal plumbing: discover + run + score LAB's official reward in one call."""
-    run_config = AgentEvalRunConfig(output_dir=Path(args.output_dir), parallelism=args.parallelism)
+    run_config = AgentEvalRunConfig(work_dir=Path(args.output_dir), parallelism=args.parallelism)
     return await run_harbor_eval(
         _build_config(args),
         args.dataset_path,
@@ -135,7 +135,7 @@ async def _run_with_components(args: argparse.Namespace) -> AgentEvalResult:
 
     # Restrict the Harbor run itself to the selected tasks (not just the scoring).
     runner = HarborAgentTaskRunner(config=_build_config(args), task_names=[task.id for task in tasks])
-    run_config = AgentEvalRunConfig(output_dir=Path(args.output_dir), parallelism=args.parallelism)
+    run_config = AgentEvalRunConfig(work_dir=Path(args.output_dir), parallelism=args.parallelism)
     return await AgentEvaluator().run(tasks=tasks, target=runner, config=run_config)
 
 
@@ -144,6 +144,9 @@ async def _main(args: argparse.Namespace) -> None:
         result = await _run_with_components(args)
     else:
         result = await _run_reward_only(args)
+
+    # Storing is explicit; both modes persist into the run's work_dir.
+    result.persist()
 
     print(f"run_id: {result.run_id}  tasks: {result.summary.task_count}  trials: {result.summary.trial_count}")
     print("Aggregate scores:")

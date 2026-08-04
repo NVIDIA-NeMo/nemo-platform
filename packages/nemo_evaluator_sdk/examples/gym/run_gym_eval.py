@@ -99,15 +99,18 @@ async def _main(args: argparse.Namespace) -> int:
     result = await AgentEvaluator().run(
         tasks=tasks,
         target=runner,
-        config=AgentEvalRunConfig(output_dir=output_dir, parallelism=1),
+        config=AgentEvalRunConfig(work_dir=output_dir, parallelism=1),
     )
+    # Storing the run is its own step. Defaults to the run's work_dir, so the bundle contains the
+    # evidence the trials point at.
+    location = result.persist()
 
     print("=== RESULT ===")
     print(f"tasks: {result.summary.task_count}  trials: {result.summary.trial_count}")
     print("aggregate scores:")
     for aggregate in result.summary.scores.scores:
         print(f"  {aggregate.name}: mean={aggregate.mean}")
-    print(f"\nRun bundle (run.json, trials.jsonl, scores.jsonl, report.html): {output_dir}")
+    print(f"\nRun bundle (run.json, trials.jsonl, scores.jsonl, report.html): {location.output_dir}")
     return 0
 
 

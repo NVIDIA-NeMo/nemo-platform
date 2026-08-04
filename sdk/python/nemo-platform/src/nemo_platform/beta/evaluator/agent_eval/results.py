@@ -109,8 +109,30 @@ class RunMetadata(BaseModel):
     sdk_version: str | None = Field(default=None, description="nemo-evaluator-sdk version that produced the run.")
 
 
+class BundleLocation(BaseModel):
+    """Where a run was written, returned by :meth:`AgentEvalResult.persist`.
+
+    Kept off :class:`AgentEvalResult` because it is not a property of the evaluation — it is the
+    outcome of choosing to store it. Holding one means the bundle exists, so there is no optional to
+    re-check; a run that was never persisted simply has no ``BundleLocation``.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    output_dir: Path = Field(description="Directory the run bundle was written to.")
+    dashboard_path: Path | None = Field(
+        default=None,
+        description="Path to the rendered HTML dashboard, or None when dashboard writing was disabled.",
+    )
+
+
 class AgentEvalResult(BaseModel):
-    """Root result for a completed agent evaluation: tasks, trials, scores, summary, and bundle metadata."""
+    """Root result for a completed agent evaluation: tasks, trials, scores, and summary.
+
+    Describes the evaluation and nothing else — storing it is a separate decision, made by calling
+    :meth:`persist`. Because the result carries no paths, it never holds a location that was unknown
+    when it was constructed, and nothing has to mutate it after the fact.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -123,8 +145,39 @@ class AgentEvalResult(BaseModel):
         default_factory=RunMetadata,
         description="Run provenance: labels, target identity, timings, SDK version.",
     )
-    output_dir: Path | None = Field(default=None, description="Directory the run bundle was written to, if any.")
-    dashboard_path: Path | None = Field(default=None, description="Path to the rendered dashboard, if written.")
+    work_dir: Path | None = Field(
+        default=None,
+        description="Directory the run worked in, where its runtimes wrote trial evidence. Known "
+        "before the run starts (it comes from the run config), so unlike a bundle location it is "
+        "never attached after the fact. None for a purely in-memory run.",
+    )
+
+    def persist(self, output_dir: str | Path | None = None, *, write_dashboard: bool = True) -> BundleLocation:
+        """Write this run to a bundle and return where it landed.
+
+        Deliberately a call rather than something ``AgentEvaluator.run`` does for you: computing an
+        evaluation and storing one are separate decisions (the same reasoning as ``publish_to_intake``).
+
+        Defaults to :attr:`work_dir`, which is the directory the trials' evidence already lives under —
+        so the bundle is self-contained and survives being moved. Passing a different ``output_dir``
+        leaves those evidence references pointing back at the original directory. That is supported (a
+        re-scored run may reference an earlier run's deliverables) but the resulting bundle only
+        resolves while the original directory is still there.
+
+        Set ``write_dashboard=False`` to skip rendering ``report.html``.
+        """
+        # Imported here rather than at module scope: persistence imports this module for the types it
+        # writes, so a top-level import would be circular.
+        from nemo_platform.beta.evaluator.agent_eval.persistence import persist_run
+
+        target = output_dir if output_dir is not None else self.work_dir
+        if target is None:
+            raise ValueError(
+                "this run has no work_dir to persist into (it ran in memory); pass an explicit "
+                "output_dir, or set work_dir on the AgentEvalRunConfig so evidence and bundle share "
+                "a directory"
+            )
+        return persist_run(self, target, write_html_dashboard=write_dashboard)
 
 
 def _aggregate_scores(

@@ -74,7 +74,7 @@ class AgentEvalPipeline:
             target=target,
             config=self._run_config(output_dir=output_dir, run_id=run_id, labels=labels),
         )
-        self._maybe_write_gate(result)
+        self._persist_and_gate(result, output_dir)
         return result
 
     async def score_trials(
@@ -93,7 +93,7 @@ class AgentEvalPipeline:
             trials=list(trials),
             config=self._run_config(output_dir=output_dir, run_id=run_id, labels=labels),
         )
-        self._maybe_write_gate(result)
+        self._persist_and_gate(result, output_dir)
         return result
 
     def _run_config(
@@ -104,10 +104,9 @@ class AgentEvalPipeline:
         labels: dict[str, str] | None,
     ) -> AgentEvalRunConfig:
         return AgentEvalRunConfig(
-            output_dir=output_dir,
+            work_dir=output_dir,
             run_id=run_id,
             parallelism=self.config.parallelism,
-            write_dashboard=self.config.write_dashboard,
             labels=dict(labels or {}),
         )
 
@@ -122,8 +121,12 @@ class AgentEvalPipeline:
             return task
         return task.model_copy(update={"metrics": metrics + appended})
 
-    def _maybe_write_gate(self, result: AgentEvalResult) -> None:
-        if not (self.config.write_gate and result.output_dir is not None):
+    def _persist_and_gate(self, result: AgentEvalResult, output_dir: Path | None) -> None:
+        """Store the run (when a directory was given) and write the gate report beside it."""
+        if output_dir is None:
+            return
+        location = result.persist(write_dashboard=self.config.write_dashboard)
+        if not self.config.write_gate:
             return
         baseline = (
             load_baseline_summary(self.config.baseline_summary_path)
@@ -131,7 +134,7 @@ class AgentEvalPipeline:
             else None
         )
         report = evaluate_gate(result, thresholds=self.config.gate_thresholds, baseline_summary=baseline)
-        write_gate_report(report, result.output_dir)
+        write_gate_report(report, location.output_dir)
 
 
 __all__ = [

@@ -135,8 +135,8 @@ Swap `agent_name` (or `agent_import_path`) for your own agent to get a real scor
 2. The runner reads that reward onto each trial's metadata, and `HarborRewardMetric` scores it — the
    `reward` value, or `0.0` for a trial whose verifier emitted none.
 3. `result.summary` aggregates the reward across tasks (`harbor_reward.reward`), `result.trials` holds
-   each trial's status and evidence, and — if you pass a `config` with an `output_dir` to `run()` — the
-   run **bundle** (including `report.html`) is written like any other agent-eval run.
+   each trial's status and evidence, and — if you call `result.persist()` — the run **bundle**
+   (including `report.html`) is written like any other agent-eval run.
 
 ## Attempts, concurrency, and caching
 

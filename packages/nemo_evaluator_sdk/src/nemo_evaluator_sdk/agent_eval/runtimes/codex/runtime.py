@@ -288,7 +288,7 @@ class CodexCliAgentRuntime:
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
         root = self._work_root
         if root is None:
-            root = (config.output_dir or Path.cwd()) / "evidence" / "codex"
+            root = (config.work_dir or Path.cwd()) / "evidence" / "codex"
         safe_task_id = _safe_path_name(task.id)
         task_dir = f"{index:06d}-{safe_task_id}" if safe_task_id else f"task-{index:06d}"
         return Path(root) / task_dir

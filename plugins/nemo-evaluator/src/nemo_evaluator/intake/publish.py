@@ -212,8 +212,14 @@ def _publish_failure_message(
     report: PublishReport,
     failures: list[tuple[str, BaseException]],
 ) -> str:
-    """Build an actionable error: what failed, where the results are cached, how to recover."""
-    location = f"cached locally at {result.output_dir}" if result.output_dir is not None else "in the local run bundle"
+    """Build an actionable error: what failed, what survives locally, how to recover."""
+    # work_dir is where the runtimes wrote trial evidence, NOT a bundle location: a bundle exists only
+    # if the caller chose to persist(), and persist() can be pointed elsewhere. Say only what is true.
+    location = (
+        f"still in memory, and the run's trial evidence is under {result.work_dir}"
+        if result.work_dir is not None
+        else "still in memory and have not been written to disk (call result.persist() to keep them)"
+    )
     detail = "\n  ".join(f"{trial_id}: {type(error).__name__}: {error}" for trial_id, error in failures)
     return (
         f"publish_to_intake: {len(failures)} of {len(result.trials)} trial(s) failed to publish "

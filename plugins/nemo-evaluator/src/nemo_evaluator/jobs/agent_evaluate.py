@@ -43,7 +43,6 @@ from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator.task_refs import resolve_agent_eval_tasks
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
-from nemo_evaluator_sdk.agent_eval.persistence import persist_run
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
@@ -373,7 +372,9 @@ class AgentEvalJob(NemoJob):
     def _write_result_files(result: AgentEvalResult, persistent_dir: Path) -> AgentEvalResultFiles:
         """Persist the run bundle (trials/scores/tasks/summary) under the job's storage."""
         bundle_dir = persistent_dir / AGENT_BUNDLE_DIR
-        persist_run(result, bundle_dir)
+        # No HTML dashboard for job runs: the artifact is consumed programmatically, and the job
+        # config asked for no dashboard before persistence became an explicit call.
+        result.persist(bundle_dir, write_dashboard=False)
         return AgentEvalResultFiles(bundle_dir=bundle_dir, summary=bundle_dir / SUMMARY_FILE_NAME)
 
     def run(
@@ -394,7 +395,6 @@ class AgentEvalJob(NemoJob):
             parallelism=spec.max_concurrent_tasks,
             labels=spec.labels,
             fail_fast=spec.fail_fast,
-            write_dashboard=False,
         )
         # `run` may be injected a sync `sdk` (submitted jobs, via get_task_sdk) and/or an
         # `async_sdk`; forward whichever identity is present, preferring async when both are — the

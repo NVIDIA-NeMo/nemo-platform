@@ -1338,7 +1338,7 @@ async def run_harbor_eval(
     return await AgentEvaluator().run(
         tasks=tasks,
         target=runner,
-        config=run_config or AgentEvalRunConfig(write_dashboard=False),
+        config=run_config or AgentEvalRunConfig(),
     )
 
 

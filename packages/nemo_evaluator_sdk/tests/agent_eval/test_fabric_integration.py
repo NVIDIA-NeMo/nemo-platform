@@ -210,7 +210,7 @@ async def test_fabric_runner_eval_exposes_trajectory_to_metric(tmp_path: Path, m
     result = AgentEvaluator().run_sync(
         tasks=[_task()],
         target=runtime,
-        config=AgentEvalRunConfig(output_dir=tmp_path / "out", parallelism=1, write_dashboard=False),
+        config=AgentEvalRunConfig(work_dir=tmp_path / "out", parallelism=1),
     )
 
     trial = result.trials[0]
@@ -293,7 +293,7 @@ def test_fabric_codex_live_eval_captures_atif_trajectory(tmp_path: Path) -> None
     result = AgentEvaluator().run_sync(
         tasks=[_task()],
         target=runtime,
-        config=AgentEvalRunConfig(output_dir=tmp_path / "out", parallelism=1, write_dashboard=False),
+        config=AgentEvalRunConfig(work_dir=tmp_path / "out", parallelism=1),
     )
 
     trial = result.trials[0]

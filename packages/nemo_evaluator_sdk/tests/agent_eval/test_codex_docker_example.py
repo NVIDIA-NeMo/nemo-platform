@@ -66,7 +66,7 @@ def test_default_output_dir_is_under_repo_temp(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.asyncio
 async def test_codex_docker_example_scores_workspace_artifact(tmp_path: Path) -> None:
-    result = await codex_docker.evaluate(
+    result, location = await codex_docker.evaluate(
         output_dir=tmp_path / "run",
         runtime=_FakeCodexRuntime(tmp_path / "workspace"),
         write_dashboard=False,
@@ -80,6 +80,8 @@ async def test_codex_docker_example_scores_workspace_artifact(tmp_path: Path) ->
         "workspace_artifact.output_matches": True,
     }
     assert (tmp_path / "run" / "run.json").is_file()
+    assert location.output_dir == tmp_path / "run"
+    assert location.dashboard_path is None  # write_dashboard=False
 
 
 @pytest.mark.asyncio
