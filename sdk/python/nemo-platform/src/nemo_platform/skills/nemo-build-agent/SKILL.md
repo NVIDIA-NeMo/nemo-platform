@@ -31,7 +31,7 @@ allowed-tools: [Bash, Read, Write, Edit]
 # NeMo Platform agent build
 
 Build a deployable NeMo Platform agent from an approved `AGENT-SPEC.md`. Use
-the Platform-owned `nemo-agents-spec-v1` `agent.yaml` path by default. Treat
+the Platform-managed `nemo-agents-spec-v1` `agent.yaml` path by default. Treat
 NAT workflow YAML as a supported compatibility path, not the default output.
 
 Use `nemo-agent-config` for the machine-readable config shape. Do not expose
@@ -69,7 +69,7 @@ NAT_WORKFLOW_PATH=<path-to-workflow-yaml>
    replace them. Follow the lifecycle branches below before create or deploy.
 4. For an unchanged NAT-only run, confirm `$NAT_WORKFLOW_PATH` exists and read
    it before continuing. Do not require `AGENT-SPEC.md` or a spec fileset.
-5. For the default Platform-owned path, confirm
+5. For the default Platform-managed path, confirm
    `agents/$AGENT_NAME-spec/AGENT-SPEC.md` exists. If it does not, route through
    `nemo-explore` and `nemo-spec` first.
 6. Read the spec and extract the agent name, instructions, capabilities,
@@ -83,7 +83,7 @@ NAT_WORKFLOW_PATH=<path-to-workflow-yaml>
      || { echo "spec_fileset_missing - run nemo-spec first"; exit 1; }
    ```
 
-Steps 5 through 7 apply only to the default Platform-owned path or an explicit
+Steps 5 through 7 apply only to the default Platform-managed path or an explicit
 NAT migration.
 
 ### Existing-resource lifecycle
@@ -125,7 +125,7 @@ and deploy commands in Step 1:
 
 ## Prepare the selected config
 
-### Default: Platform-owned `agent.yaml`
+### Default: Platform-managed `agent.yaml`
 
 For a new build, invoke `nemo-agent-config` and create:
 
