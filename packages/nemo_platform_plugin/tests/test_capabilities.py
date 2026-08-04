@@ -98,7 +98,8 @@ def test_probe_docker_host_keys_are_independent() -> None:
     remote_client.ping.side_effect = DockerException("remote down")
 
     def _from_env(**kwargs):
-        if kwargs.get("base_url") == "tcp://remote:2375":
+        env = kwargs.get("environment") or {}
+        if env.get("DOCKER_HOST") == "tcp://remote:2375":
             return remote_client
         return default_client
 
@@ -110,7 +111,16 @@ def test_probe_docker_host_keys_are_independent() -> None:
     assert remote.available is False
     assert from_env.call_count == 2
     from_env.assert_any_call(timeout=5)
-    from_env.assert_any_call(timeout=5, base_url="tcp://remote:2375")
+    remote_call = next(c for c in from_env.call_args_list if c.kwargs.get("environment"))
+    assert remote_call.kwargs["timeout"] == 5
+    assert remote_call.kwargs["environment"]["DOCKER_HOST"] == "tcp://remote:2375"
+
+
+def test_probe_docker_explicit_host_returns_unavailable_without_typeerror() -> None:
+    """Regression: docker-py 7.x rejects base_url= on from_env; must not raise TypeError."""
+    result = probe_docker(docker_host="tcp://127.0.0.1:1", use_cache=False)
+    assert result.available is False
+    assert result.detail is not None
 
 
 def test_require_docker_raises_when_unavailable() -> None:

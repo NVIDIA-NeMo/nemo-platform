@@ -118,8 +118,9 @@ class DockerDeploymentBackend(DeploymentBackend):
         docker_host = self._executor_config.docker_host
         probe = probe_docker(docker_host=docker_host)
         if not probe.available:
+            detail = probe.detail or "Docker daemon unreachable"
             raise MissingBackendDependencyError(
-                probe.detail or "Docker daemon is unavailable. Docker-backed deployments will be disabled."
+                f"Docker daemon is unavailable ({detail}). Docker-backed deployments will be disabled."
             )
         try:
             self._client = self._create_client()
@@ -129,9 +130,11 @@ class DockerDeploymentBackend(DeploymentBackend):
             ) from exc
 
     def _create_client(self) -> docker.DockerClient:
+        # docker-py 7.x rejects base_url= on from_env; override DOCKER_HOST instead
+        # so TLS env vars (DOCKER_TLS_VERIFY, cert paths) still apply.
         kwargs: dict[str, Any] = {"timeout": self._executor_config.docker_timeout}
         if self._executor_config.docker_host:
-            kwargs["base_url"] = self._executor_config.docker_host
+            kwargs["environment"] = {**os.environ, "DOCKER_HOST": self._executor_config.docker_host}
         client = self._docker.from_env(**kwargs)
         client.api.timeout = self._executor_config.docker_timeout
         client.ping()

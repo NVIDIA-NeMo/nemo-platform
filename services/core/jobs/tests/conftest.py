@@ -3,6 +3,7 @@
 
 import datetime
 import tempfile
+from collections.abc import Iterator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import AsyncGenerator
@@ -13,6 +14,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.capabilities import reset_capability_cache
 from nemo_platform_plugin.jobs.api_factory import ContainerSpec as FactoryContainerSpec
 from nemo_platform_plugin.jobs.api_factory import CPUExecutionProviderSpec as FactoryCPUExecutionProviderSpec
 from nemo_platform_plugin.jobs.api_factory import PlatformJobEnvironmentVariableParam, job_route_factory
@@ -67,6 +69,14 @@ blockbuster = blockbuster_fixture(autouse=True)
 # ============================================================================
 # Pytest Hooks
 # ============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _reset_capability_cache() -> Iterator[None]:
+    """Prevent probe_docker process cache from poisoning jobs unit tests."""
+    reset_capability_cache()
+    yield
+    reset_capability_cache()
 
 
 def pytest_collection_modifyitems(config, items):

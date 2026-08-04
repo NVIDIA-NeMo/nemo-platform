@@ -7,35 +7,26 @@ Runtime (``platform.runtime``) describes *where the platform process runs*.
 Capability probes answer *which backends can run jobs/deployments right now*.
 
 This module owns the Docker probe used by jobs, deployments, setup, and
-customization. GPU and Kubernetes helpers are stubs for a future capability
-registry (AIRCORE-972); they must not import ``nmp_common``.
+customization. GPU/Kubernetes probes are deferred to AIRCORE-972.
 
 Caching
 -------
-Results are memoized per Docker endpoint for long-lived server processes.
-CLI / preflight / tests that re-check after the user starts Docker must call
-:func:`reset_capability_cache` (or pass ``use_cache=False``) so a prior miss
-does not stick for the process lifetime.
+Results are memoized per Docker endpoint for long-lived server processes
+(registry boot). CLI / preflight paths that need a fresh verdict should pass
+``use_cache=False``. Tests that construct Docker backends should call
+:func:`reset_capability_cache` so a prior miss does not poison later fixtures.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 from dataclasses import dataclass
-from enum import Enum
-from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
 _DOCKER_PROBE_TIMEOUT_SECONDS = 5
-
-
-class Capability(str, Enum):
-    """Named platform backend capabilities."""
-
-    DOCKER = "docker"
-    GPU = "gpu"
-    KUBERNETES = "kubernetes"
 
 
 class CapabilityUnavailableError(RuntimeError):
@@ -56,12 +47,6 @@ class ProbeResult:
     detail: str | None = None
 
 
-class CapabilityProbe(Protocol):
-    """Pluggable capability probe (AIRCORE-972 extension point)."""
-
-    def probe(self) -> ProbeResult: ...
-
-
 # Cache keyed by docker host (None → default DOCKER_HOST / from_env).
 _docker_probe_cache: dict[str | None, ProbeResult] = {}
 
@@ -69,8 +54,9 @@ _docker_probe_cache: dict[str | None, ProbeResult] = {}
 def reset_capability_cache() -> None:
     """Clear memoized probe results.
 
-    Call from CLI retry paths (``nemo setup``, quickstart preflight) and from
-    test fixtures so a prior unavailable verdict does not pin the process.
+    Call from test fixtures so a prior unavailable verdict does not pin the
+    process. CLI helpers that need a fresh probe should prefer
+    ``probe_docker(use_cache=False)`` instead of resetting the whole cache.
     """
     _docker_probe_cache.clear()
 
@@ -85,7 +71,9 @@ def probe_docker(
     Args:
         docker_host: Optional Docker API URL override (same meaning as
             ``DOCKER_HOST`` / deployments ``docker_host``). ``None`` uses the
-            environment default via ``docker.from_env``.
+            environment default via ``docker.from_env``. Passed by setting
+            ``DOCKER_HOST`` in the env dict — docker-py 7.x rejects
+            ``base_url=`` on ``from_env``.
         use_cache: When True (default), reuse a prior result for this host key.
             Pass False for CLI retry UX after the user starts Docker.
     """
@@ -97,6 +85,14 @@ def probe_docker(
     if use_cache:
         _docker_probe_cache[cache_key] = result
     return result
+
+
+def _docker_from_env_kwargs(*, timeout: float, docker_host: str | None) -> dict[str, object]:
+    """Build kwargs for ``docker.from_env`` that docker-py 7.x accepts."""
+    kwargs: dict[str, object] = {"timeout": timeout}
+    if docker_host:
+        kwargs["environment"] = {**os.environ, "DOCKER_HOST": docker_host}
+    return kwargs
 
 
 def _probe_docker_uncached(*, docker_host: str | None) -> ProbeResult:
@@ -113,13 +109,9 @@ def _probe_docker_uncached(*, docker_host: str | None) -> ProbeResult:
 
     client = None
     try:
-        # Always use from_env so DOCKER_TLS_VERIFY / cert paths still apply when
-        # an explicit docker_host (base_url) override is set — matches deployments
-        # DockerDeploymentBackend._create_client.
-        kwargs: dict[str, object] = {"timeout": _DOCKER_PROBE_TIMEOUT_SECONDS}
-        if docker_host:
-            kwargs["base_url"] = docker_host
-        client = docker.from_env(**kwargs)
+        client = docker.from_env(
+            **_docker_from_env_kwargs(timeout=_DOCKER_PROBE_TIMEOUT_SECONDS, docker_host=docker_host)
+        )
         client.ping()
         return ProbeResult(available=True, detail=None)
     except (DockerException, RequestsConnectionError, RequestsTimeout, OSError) as exc:
@@ -128,10 +120,8 @@ def _probe_docker_uncached(*, docker_host: str | None) -> ProbeResult:
         return ProbeResult(available=False, detail=detail)
     finally:
         if client is not None:
-            try:
+            with contextlib.suppress(Exception):
                 client.close()
-            except Exception:  # noqa: BLE001 — best-effort close
-                pass
 
 
 def require_docker(*, docker_host: str | None = None, use_cache: bool = True) -> None:
@@ -139,19 +129,3 @@ def require_docker(*, docker_host: str | None = None, use_cache: bool = True) ->
     result = probe_docker(docker_host=docker_host, use_cache=use_cache)
     if not result.available:
         raise CapabilityUnavailableError(result.detail or "Docker daemon is unavailable")
-
-
-def probe_gpu() -> ProbeResult:
-    """GPU capability stub — implementation deferred (do not import nmp_common)."""
-    return ProbeResult(
-        available=False,
-        detail="GPU capability probe is not implemented in nemo_platform_plugin (AIRCORE-972)",
-    )
-
-
-def probe_kubernetes() -> ProbeResult:
-    """Kubernetes reachability stub — implementation deferred to AIRCORE-972."""
-    return ProbeResult(
-        available=False,
-        detail="Kubernetes capability probe is not implemented yet (AIRCORE-972)",
-    )
