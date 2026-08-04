@@ -55,19 +55,10 @@ nemo services restart</pre>
 make bootstrap-studio
 nemo services restart</pre>"""
 
-PACKAGED_INSTALL_TIPS_HTML = f"""      <h2>How to fix</h2>
-      <p>This is a packaged install, not a source checkout, so there is nothing to build here.</p>
-      <p>Point Studio at a directory that already contains a built bundle:</p>
-      <pre>NMP_STUDIO_STATIC_FILES_PATH=/path/to/studio/assets</pre>
-      <p>
-        The same value can be set as <code>studio.static_files_path</code> in the NeMo Platform
-        configuration file, but the environment variable takes precedence over it.
-      </p>
-      <p>
-        Official container images ship the bundle at
-        <code>{escape(str(CONTAINER_STATIC_FILES_PATH))}</code>, which is used automatically when
-        nothing is configured.
-      </p>"""
+DOCS_URL = "https://docs.nvidia.com/nemo-platform"
+
+PACKAGED_INSTALL_NOTICE_HTML = f"""      <p>This install ships with the Studio bundle, so this is unexpected.</p>
+      <p>See the <a href="{DOCS_URL}">NeMo Platform documentation</a> for help.</p>"""
 
 
 class StudioService(Service[StudioConfig]):
@@ -291,7 +282,7 @@ class StudioService(Service[StudioConfig]):
         static_path: Path, requested_path: str = "", source_checkout: bool = True
     ) -> HTMLResponse:
         route = "/studio" if requested_path == "" else f"/studio/{requested_path}"
-        recovery_html = SOURCE_CHECKOUT_TIPS_HTML if source_checkout else PACKAGED_INSTALL_TIPS_HTML
+        recovery_html = SOURCE_CHECKOUT_TIPS_HTML if source_checkout else PACKAGED_INSTALL_NOTICE_HTML
         html = f"""<!doctype html>
 <html lang="en">
   <head>

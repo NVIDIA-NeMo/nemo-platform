@@ -389,7 +389,7 @@ class TestStaticFilesPath:
     def test_missing_static_files_route_omits_build_tips_outside_a_checkout(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        """Test that packaged installs are pointed at the config knob instead of a repo build."""
+        """Test that packaged installs get a docs pointer instead of repo build steps."""
         missing_static = tmp_path / "missing-static"
         service = StudioService()
         monkeypatch.setattr(service, "_get_static_files_path", lambda: missing_static)
@@ -402,11 +402,10 @@ class TestStaticFilesPath:
         response = client.get("/studio/")
 
         assert response.status_code == 503
-        assert "NMP_STUDIO_STATIC_FILES_PATH" in response.text
-        assert "studio.static_files_path" in response.text
-        assert "/static/studio" in response.text
+        assert "https://docs.nvidia.com/nemo-platform" in response.text
         assert "make bootstrap-studio" not in response.text
         assert "nvm" not in response.text
+        assert "NMP_STUDIO_STATIC_FILES_PATH" not in response.text
         assert str(missing_static) in response.text
 
     def test_static_dir_without_index_route_explains_recovery(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
