@@ -2,19 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { IntakeTracesTable } from '@studio/components/IntakeLists/IntakeTracesTable';
+import { ROUTES } from '@studio/constants/routes';
 import { mockTracesPage } from '@studio/mocks/intake/telemetry';
 import { server } from '@studio/mocks/node';
+import { LOCATION_DISPLAY_TEST_ID } from '@studio/tests/util/constants';
+import { LocationDisplay } from '@studio/tests/util/LocationDisplay';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { useLocation } from 'react-router';
-
-const LocationProbe = () => {
-  const location = useLocation();
-  return (
-    <output data-testid="trace-detail-location">{`${location.pathname}${location.search}`}</output>
-  );
-};
 
 describe('IntakeTracesTable', () => {
   it('loads trace rows in preview mode for bounded payloads and aggregate metrics', async () => {
@@ -50,19 +45,19 @@ describe('IntakeTracesTable', () => {
       history: '/workspaces/default/intake/traces',
       routes: [
         {
-          path: '/workspaces/:workspace/intake/traces',
+          path: ROUTES.workspace.intakeTraces,
           element: <IntakeTracesTable workspace="default" />,
         },
         {
-          path: '/workspaces/:workspace/intake/sessions/:sessionId',
-          element: <LocationProbe />,
+          path: ROUTES.workspace.intakeSession,
+          element: <LocationDisplay />,
         },
       ],
     });
 
     await user.click(await screen.findByText('Answer customer policy question'));
 
-    expect(await screen.findByTestId('trace-detail-location')).toHaveTextContent(
+    expect(await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).toHaveTextContent(
       '/workspaces/default/intake/sessions/session-agent-run-001?traceId=trace-agent-run-001'
     );
   });
@@ -103,7 +98,7 @@ describe('IntakeTracesTable', () => {
     await screen.findByText('Answer customer policy question');
     await user.click(await screen.findByTestId('open-filters-button'));
 
-    expect(screen.getByText('Trace ID')).toBeInTheDocument();
+    expect(await screen.findByText('Trace ID')).toBeInTheDocument();
     expect(screen.getByText('Started At')).toBeInTheDocument();
     expect(screen.queryByText('Status')).not.toBeInTheDocument();
     expect(screen.queryByText('Session ID')).not.toBeInTheDocument();
