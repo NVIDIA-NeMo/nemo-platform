@@ -383,10 +383,15 @@ def validate_docker_available() -> bool:
 
     Thin wrapper over :func:`nemo_platform_plugin.capabilities.probe_docker`.
     Prefer ``probe_docker`` when callers need the failure detail or a
-    ``docker_host`` override. Results are process-cached; CLI retry paths
-    should call :func:`~nemo_platform_plugin.capabilities.reset_capability_cache`.
+    ``docker_host`` override.
+
+    Uses ``use_cache=False`` so :meth:`NemoPlatformConfig.validate_runtime`
+    soft-downgrade does not pin a Docker-unavailable verdict into the
+    process-wide cache before jobs/deployments registry construction.
+    Long-lived server paths that want memoization should call
+    ``probe_docker()`` directly.
     """
-    return probe_docker().available
+    return probe_docker(use_cache=False).available
 
 
 class ImagePullSecret(BaseSettings):
