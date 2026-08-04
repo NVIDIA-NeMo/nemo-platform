@@ -30,7 +30,7 @@ import {
 import { ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { FilesetDetailTab } from '@studio/routes/FilesetDetailRoute/constants';
-import { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
+import type { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { generatePath, RouteObject } from 'react-router';
 
 const gateRoutes = (enabled: boolean, routes: RouteObject | RouteObject[]) => {
