@@ -54,9 +54,42 @@ def test_api_base_falls_back_to_experimentalist(
     assert model_config._api_base() == "https://experimentalist.example/v1"
 
 
+def test_api_base_falls_back_to_openai_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AUTHOR_API_BASE", raising=False)
+    monkeypatch.delenv("AUTHOR_API_KEY", raising=False)
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+
+    assert model_config._api_base() == "https://api.openai.com/v1"
+    assert model_config._api_key() == "sk-openai"
+
+
+def test_fast_inherits_smart_when_fast_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
+    monkeypatch.setenv("AUTHOR_API_KEY", "eval-key")
+    monkeypatch.setenv("AUTHOR_SMART_MODEL_NAME", "vendor/smart-only")
+    monkeypatch.delenv("AUTHOR_FAST_MODEL_NAME", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_MODELS_FAST", raising=False)
+
+    assert model_config.get_fast_model().model == "vendor/smart-only"
+
+
+def test_smart_accepts_slash_shaped_nemo_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTHOR_API_BASE", "https://eval-author.example/v1")
+    monkeypatch.setenv("AUTHOR_API_KEY", "eval-key")
+    monkeypatch.delenv("AUTHOR_SMART_MODEL_NAME", raising=False)
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_MODELS_SMART", raising=False)
+    monkeypatch.setenv("NEMO_DEFAULT_MODEL", "openai/openai/openai/gpt-5.5")
+
+    assert model_config.get_smart_model().model == "openai/openai/openai/gpt-5.5"
+
+
 def test_api_base_requires_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AUTHOR_API_BASE", raising=False)
     monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_BASE", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
 
     with pytest.raises(ValueError, match="AUTHOR_API_BASE"):
         model_config._api_base()
@@ -139,6 +172,12 @@ def test_model_name_prefers_author_then_experimentalist_then_default(
 
     getter.cache_clear()
     monkeypatch.delenv(experimentalist_var)
+    if tier == "FAST":
+        # Collapse reads the smart tier when fast is unset; clear it so the
+        # built-in fast default is what we assert against.
+        monkeypatch.delenv("AUTHOR_SMART_MODEL_NAME", raising=False)
+        monkeypatch.delenv("NEMO_EXPERIMENTALIST_MODELS_SMART", raising=False)
+        monkeypatch.delenv("NEMO_DEFAULT_MODEL", raising=False)
     assert getter().model == default
 
 

@@ -30,7 +30,6 @@ Workspace and base URL aren't in the instructions because the tools are already
 scoped to them via ``AnalystDeps``.
 """
 
-import os
 from typing import Any
 
 from nemo_insights_plugin.analyst.deps import AnalystDeps
@@ -49,23 +48,18 @@ from nemo_insights_plugin.analyst.observability import (
     AnalystObservability,
 )
 from nemo_insights_plugin.analyst.result import AnalystResult
+from nemo_insights_plugin.model_config import (
+    DEFAULT_MODEL,
+    GATEWAY_ANTHROPIC_BASE,
+    build_model_and_settings,
+)
 from pydantic_ai import Agent, PromptedOutput
 from pydantic_ai.capabilities import Instrumentation
-from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
-from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai_harness import CodeMode
 
-# The analyst runs on Claude Opus 4.8, but reached over the native Anthropic
-# Messages wire format rather than Anthropic's own endpoint: NVIDIA's Inference
-# Gateway (a LiteLLM proxy) exposes ``/v1/messages`` and authenticates with the
-# gateway virtual key in ``INFERENCE_API_KEY``. The Anthropic SDK appends
-# ``/v1/messages`` to the base URL, so we point it at the gateway root.
-DEFAULT_MODEL = "aws/anthropic/bedrock-claude-opus-4-8"
-INFERENCE_GATEWAY_BASE_URL = "https://inference-api.nvidia.com"
-# Extended thinking effort. Opus 4.8 only accepts adaptive thinking with an
-# ``output_config.effort`` level (it rejects the older fixed ``budget_tokens``
-# form). We set these explicitly because the gateway-aliased model name hides
-# the model identity from Pydantic AI's profile-based inference.
+# Historical aliases kept for tests / importers that referenced these from agent.py.
+# Prefer ``nemo_insights_plugin.model_config`` for new code.
+INFERENCE_GATEWAY_BASE_URL = GATEWAY_ANTHROPIC_BASE
 THINKING_EFFORT = "medium"
 MAX_TOKENS = 16000
 
@@ -73,6 +67,17 @@ MAX_TOKENS = 16000
 # forever. Each tool-calling round is one request, so this bounds the analyst
 # to roughly this many tool-use steps.
 MAX_REQUESTS = 50
+
+__all__ = [
+    "DEFAULT_MODEL",
+    "INFERENCE_GATEWAY_BASE_URL",
+    "INSTRUCTIONS",
+    "KICKOFF",
+    "MAX_REQUESTS",
+    "MAX_TOKENS",
+    "THINKING_EFFORT",
+    "build_analyst_agent",
+]
 
 # ---------------------------------------------------------------------------
 # Analyst persona + task + methodology, derived from docs/prd-por.md.
@@ -210,14 +215,9 @@ def build_analyst_agent(
     capabilities: list[Any] = [CodeMode()]
     if observability is not None:
         capabilities.append(Instrumentation(settings=observability.instrumentation_settings))
+    model, model_settings = build_model_and_settings()
     return Agent(
-        AnthropicModel(
-            DEFAULT_MODEL,
-            provider=AnthropicProvider(
-                api_key=os.environ["INFERENCE_API_KEY"],
-                base_url=INFERENCE_GATEWAY_BASE_URL,
-            ),
-        ),
+        model,
         deps_type=AnalystDeps,
         name=ANALYST_OBSERVABILITY_AGENT_NAME,
         instructions=instructions,
@@ -229,11 +229,7 @@ def build_analyst_agent(
                 "The complete set of insights from this analysis. Emit this once, at the end; it ends the run."
             ),
         ),
-        model_settings=AnthropicModelSettings(
-            max_tokens=MAX_TOKENS,
-            anthropic_thinking={"type": "adaptive"},
-            anthropic_effort=THINKING_EFFORT,
-        ),
+        model_settings=model_settings,
         # Code mode (Pydantic AI Harness) collapses the analyst's read tools
         # into a single sandboxed ``run_code`` tool, so the model orchestrates
         # multi-step trace triage in one Python program instead of dozens of

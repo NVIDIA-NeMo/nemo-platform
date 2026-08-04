@@ -66,9 +66,9 @@ def _env_or_default(*names: str, default: str) -> str:
 
 
 def _api_base() -> str:
-    base = _env("AUTHOR_API_BASE", "NEMO_EXPERIMENTALIST_API_BASE")
+    base = _env("AUTHOR_API_BASE", "NEMO_EXPERIMENTALIST_API_BASE", "OPENAI_BASE_URL")
     if not base:
-        raise ValueError("AUTHOR_API_BASE (or NEMO_EXPERIMENTALIST_API_BASE) must be set")
+        raise ValueError("AUTHOR_API_BASE (or NEMO_EXPERIMENTALIST_API_BASE / OPENAI_BASE_URL) must be set")
     return base
 
 
@@ -93,6 +93,7 @@ def _api_key() -> str:
     2. ``NEMO_EXPERIMENTALIST_API_KEY``
     3. ``INFERENCE_API_KEY``, but only when the resolved base is the HTTPS NVIDIA
        Inference Gateway, matching how the Experimentalist CLI forwards that key.
+    4. ``OPENAI_API_KEY`` for any other (custom / OpenAI-compatible) base.
 
     Returns:
         str: the resolved API key.
@@ -108,9 +109,13 @@ def _api_key() -> str:
         inference = _env("INFERENCE_API_KEY")
         if inference:
             return inference
+    openai_key = _env("OPENAI_API_KEY")
+    if openai_key:
+        return openai_key
     raise ValueError(
         "AUTHOR_API_KEY (or NEMO_EXPERIMENTALIST_API_KEY) must be set; "
-        "when using the NVIDIA Inference Gateway, INFERENCE_API_KEY is also accepted"
+        "when using the NVIDIA Inference Gateway, INFERENCE_API_KEY is also accepted; "
+        "OPENAI_API_KEY fills a custom OpenAI-compatible base"
     )
 
 
@@ -153,17 +158,21 @@ def get_smart_model() -> CompletionClient:
         ValueError: if Eval Author API credentials are unset or empty.
 
     """
-    name = _env_or_default(
-        "AUTHOR_SMART_MODEL_NAME",
-        "NEMO_EXPERIMENTALIST_MODELS_SMART",
-        default=_SMART_MODEL_DEFAULT,
-    )
+    name = _env("AUTHOR_SMART_MODEL_NAME", "NEMO_EXPERIMENTALIST_MODELS_SMART")
+    if not name:
+        default_model = _env("NEMO_DEFAULT_MODEL")
+        if default_model and "/" in default_model:
+            name = default_model
+    name = name or _SMART_MODEL_DEFAULT
     return _completion_client(name, _api_base(), _api_key())
 
 
 @functools.cache
 def get_fast_model() -> CompletionClient:
     """Return the cached fast (low-latency) LLM client configured from environment variables.
+
+    When ``AUTHOR_FAST_MODEL_NAME`` (and the Experimentalist fast tier) are unset but a
+    smart model is configured, fast inherits smart so a single-model setup works.
 
     Returns:
         CompletionClient: the singleton fast-model client.
@@ -172,11 +181,14 @@ def get_fast_model() -> CompletionClient:
         ValueError: if Eval Author API credentials are unset or empty.
 
     """
-    name = _env_or_default(
-        "AUTHOR_FAST_MODEL_NAME",
-        "NEMO_EXPERIMENTALIST_MODELS_FAST",
-        default=_FAST_MODEL_DEFAULT,
-    )
+    name = _env("AUTHOR_FAST_MODEL_NAME", "NEMO_EXPERIMENTALIST_MODELS_FAST")
+    if not name:
+        name = _env("AUTHOR_SMART_MODEL_NAME", "NEMO_EXPERIMENTALIST_MODELS_SMART")
+    if not name:
+        default_model = _env("NEMO_DEFAULT_MODEL")
+        if default_model and "/" in default_model:
+            name = default_model
+    name = name or _FAST_MODEL_DEFAULT
     return _completion_client(name, _api_base(), _api_key())
 
 

@@ -7,11 +7,18 @@ import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
 from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.contracts.checks import CheckResult, make_check_result
+from nemo_insights_plugin.model_config import (
+    DEFAULT_MODEL,
+    GATEWAY_ANTHROPIC_BASE,
+    is_anthropic_host,
+    sanitize_url,
+)
 from nemo_insights_plugin.profile import AnalysisProfile
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatformError
 
@@ -157,26 +164,70 @@ def check_credentials(
     profile_dir: Path | None,
     probes: AnalysisProbes | None = None,
 ) -> list[CheckResult]:
-    """Check that the analyst's required inference credential is present."""
+    """Check that the analyst's required ``ANALYST_API_KEY`` is present."""
     active = probes or AnalysisProbes()
     env_path = profile_dir / ".env" if profile_dir is not None else None
     credential_hint = (
-        f"save it in {env_path} or export INFERENCE_API_KEY=<key>"
+        f"save ANALYST_API_KEY in {env_path}"
         if env_path is not None
-        else "export INFERENCE_API_KEY=<key>"
+        else "export ANALYST_API_KEY=<key>"
     )
-    credential = bool(active.env.get("INFERENCE_API_KEY", "").strip())
-    return [
+    has_key = bool(active.env.get("ANALYST_API_KEY", "").strip())
+    results = [
         make_check_result(
-            "INFERENCE_API_KEY",
+            "ANALYST_API_KEY",
             "credentials",
-            credential,
+            has_key,
             "required",
-            "INFERENCE_API_KEY set",
-            "INFERENCE_API_KEY not set",
+            "ANALYST_API_KEY set",
+            "ANALYST_API_KEY not set",
             hint=credential_hint,
         )
     ]
+    if not has_key:
+        return results
+
+    base = active.env.get("ANALYST_API_BASE", "").strip() or GATEWAY_ANTHROPIC_BASE
+    name = active.env.get("ANALYST_MODEL_NAME", "").strip() or DEFAULT_MODEL
+    try:
+        hostname = urlsplit(base).hostname
+    except ValueError:
+        hostname = None
+    transport = "anthropic-messages" if is_anthropic_host(hostname) else "openai-chat"
+    results.append(
+        CheckResult(
+            name="analyst-model",
+            group="credentials",
+            status="pass",
+            severity="advisory",
+            message=(f"model {name!r} via {transport} at {sanitize_url(base)}"),
+        )
+    )
+    results.extend(_mismatch_warnings(base, name))
+    return results
+
+
+def _mismatch_warnings(api_base: str, model: str) -> list[CheckResult]:
+    """Warn when the model id shape looks wrong for the configured base."""
+    try:
+        host = urlsplit(api_base).hostname or ""
+    except ValueError:
+        return []
+    slash_count = model.count("/")
+    if host == "api.openai.com" and slash_count >= 2:
+        return [
+            CheckResult(
+                name="analyst-model-shape",
+                group="credentials",
+                status="warn",
+                severity="advisory",
+                message=(
+                    f"model {model!r} looks gateway/LiteLLM-shaped while base is api.openai.com; "
+                    "direct OpenAI usually wants a bare model id (e.g. gpt-5.5)"
+                ),
+            )
+        ]
+    return []
 
 
 async def check_environment(

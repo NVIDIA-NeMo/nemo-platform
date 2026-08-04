@@ -31,6 +31,7 @@ from nemo_insights_plugin.contracts.profile import (
     load_env_file,
     resolve_base_url,
 )
+from nemo_insights_plugin.model_config import log_model_config
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
     check_credentials,
@@ -297,6 +298,10 @@ def doctor(
         _, spec_results = read_agent_spec(spec_path, spec_error)
 
         async def _flow() -> list[CheckResult]:
+            try:
+                typer.echo(log_model_config(), err=True)
+            except ValueError:
+                pass
             results = check_profile(profile, profile_error)
             results.extend(spec_results)
             results.extend(

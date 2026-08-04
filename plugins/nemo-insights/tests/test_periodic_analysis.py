@@ -513,7 +513,7 @@ def test_analyze_job_records_success(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 async def test_analyze_job_compile_requests_persistent_storage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
+    monkeypatch.delenv("ANALYST_API_KEY", raising=False)
     platform_spec = await AnalyzeJob.compile(
         workspace="default",
         spec=AnalyzeSpec(agent="research-agent"),
@@ -551,7 +551,7 @@ async def test_analyze_job_compile_can_reference_inference_secret() -> None:
             "value": DEFAULT_JOB_STORAGE_PATH,
         },
         {
-            "name": "INFERENCE_API_KEY",
+            "name": "ANALYST_API_KEY",
             "from_secret": {"name": "insights-inference-api-key"},
         },
     ]
@@ -561,7 +561,7 @@ async def test_analyze_job_compile_can_reference_inference_secret() -> None:
 async def test_analyze_job_compile_can_forward_local_inference_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("INFERENCE_API_KEY", "test-key")
+    monkeypatch.setenv("ANALYST_API_KEY", "test-key")
 
     platform_spec = await AnalyzeJob.compile(
         workspace="default",
@@ -577,7 +577,7 @@ async def test_analyze_job_compile_can_forward_local_inference_env(
             "name": PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
             "value": DEFAULT_JOB_STORAGE_PATH,
         },
-        {"name": "INFERENCE_API_KEY", "value": "test-key"},
+        {"name": "ANALYST_API_KEY", "value": "test-key"},
     ]
 
 

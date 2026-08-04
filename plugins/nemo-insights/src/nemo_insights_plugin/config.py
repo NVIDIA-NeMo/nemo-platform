@@ -92,7 +92,7 @@ class AnalystSchedulerConfig(BaseModel):
         default=None,
         description=(
             "Optional platform secret name whose value is exposed to analyst "
-            "jobs as INFERENCE_API_KEY. Temporary until FP-202 moves analyst "
+            "jobs as ANALYST_API_KEY. Temporary until FP-202 moves analyst "
             "model execution to platform-registered models."
         ),
     )

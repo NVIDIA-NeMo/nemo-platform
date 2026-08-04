@@ -17,7 +17,7 @@ from pydantic_ai import AgentRunError
 from typer.testing import CliRunner
 
 runner = CliRunner()
-_PROFILE_ENV_KEYS = ("NMP_BASE_URL", "INFERENCE_API_KEY")
+_PROFILE_ENV_KEYS = ("NMP_BASE_URL", "ANALYST_API_KEY")
 
 
 class AnalystRecorder:
@@ -57,7 +57,7 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch, restore_profile_env: None) 
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
+            env={"ANALYST_API_KEY": "k"},
             http_ok=lambda base_url: True,
             workspace_ok=queryable,
         ),
@@ -137,7 +137,7 @@ def test_analyze_renders_invalid_profile_env_as_command_error(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
+            env={"ANALYST_API_KEY": "k"},
             http_ok=lambda base_url: probe_calls.append("http") or True,
             workspace_ok=record_workspace_probe,
         ),
@@ -175,7 +175,7 @@ def test_doctor_renders_invalid_profile_env_as_command_error(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
+            env={"ANALYST_API_KEY": "k"},
             http_ok=lambda base_url: probe_calls.append("http") or True,
             workspace_ok=record_workspace_probe,
         ),
@@ -236,7 +236,7 @@ def test_doctor_resolves_base_url_after_profile_env_loading(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
+            env={"ANALYST_API_KEY": "k"},
             http_ok=lambda base_url: http_urls.append(base_url) or True,
             workspace_ok=record_workspace_probe,
         ),
@@ -353,15 +353,15 @@ def test_malformed_discovered_profile_warns_with_agent_only(app: typer.Typer, tm
 def test_malformed_discovered_profile_still_loads_env_file(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
     recorder = AnalystRecorder()
     monkeypatch.setattr(cli, "run_analyst", recorder)
-    monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
+    monkeypatch.delenv("ANALYST_API_KEY", raising=False)
     (tmp_path / "optimizer.yaml").write_text("agent: ''\n", encoding="utf-8")
-    (tmp_path / ".env").write_text("INFERENCE_API_KEY=from-env-file\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("ANALYST_API_KEY=from-env-file\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["run", "--agent", "other"])
 
     assert result.exit_code == 0, result.output
-    assert os.environ["INFERENCE_API_KEY"] == "from-env-file"
+    assert os.environ["ANALYST_API_KEY"] == "from-env-file"
     assert recorder.kwargs is not None
 
 
@@ -421,7 +421,7 @@ def test_analyze_blocks_before_runner_when_preflight_fails(
     result = runner.invoke(app, ["run"])
 
     assert result.exit_code == 1
-    assert "INFERENCE_API_KEY not set" in result.output
+    assert "ANALYST_API_KEY not set" in result.output
     assert recorder.kwargs is None
 
 
@@ -440,7 +440,7 @@ def test_analyze_runs_only_the_credential_check(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
+            env={"ANALYST_API_KEY": "k"},
             http_ok=lambda base_url: probe_calls.append("http") or False,
             workspace_ok=record_workspace_probe,
         ),
@@ -725,7 +725,7 @@ def test_doctor_missing_profile_still_runs_environment_checks(
 
     assert result.exit_code == 1
     assert "no optimizer.yaml found" in result.output
-    assert "INFERENCE_API_KEY not set" in result.output
+    assert "ANALYST_API_KEY not set" in result.output
     assert http_urls == ["https://flag.example"]
     assert workspace_urls == []
 
@@ -737,4 +737,4 @@ def test_doctor_reports_healthy_profile(app: typer.Typer, profile_tree: Path, mo
 
     assert result.exit_code == 0, result.output
     assert "Profile\n  ✓ profile for agent 'flight-planner'" in result.output
-    assert "Credentials\n  ✓ INFERENCE_API_KEY set" in result.output
+    assert "Credentials\n  ✓ ANALYST_API_KEY set" in result.output

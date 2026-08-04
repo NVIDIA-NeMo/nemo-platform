@@ -10,7 +10,7 @@ Registered under ``nemo.cli.agents`` and mounted by ``AgentsCLI`` as
 import asyncio
 import os
 import uuid
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
@@ -410,6 +410,7 @@ class ExperimentalistCLI(NemoCLI):
                 base_url=base_url_resolved,
                 probes=_PREFLIGHT_PROBES,
             )
+            results += _model_shape_warnings()
             results.append(asyncio.run(_check_platform_client_bootstrap(base_url_resolved)))
             if profile_obj is not None:
                 if plan is not None:
@@ -508,27 +509,66 @@ def _is_gateway_base(value: str) -> bool:
 
 
 def _apply_credential_defaults(env: MutableMapping[str, str] = os.environ) -> list[str]:
-    """Fill gateway-shaped credential gaps; returns what was applied.
+    """Fill credential and model-tier gaps; returns what was applied.
 
-    ``NEMO_EXPERIMENTALIST_API_BASE`` defaults to the NVIDIA Inference Gateway, and when
-    the effective base IS the gateway, ``INFERENCE_API_KEY`` can power the
-    experimentalist too. A custom base never inherits the gateway key.
+    ``NEMO_EXPERIMENTALIST_API_BASE`` prefers ``OPENAI_BASE_URL``, then the NVIDIA
+    Inference Gateway. When the effective base IS the gateway, ``INFERENCE_API_KEY``
+    can power the experimentalist; otherwise ``OPENAI_API_KEY`` fills an unset key.
+    A custom base never inherits the gateway key.
+
+    When only ``NEMO_EXPERIMENTALIST_MODELS_SMART`` is set, mid and fast inherit it
+    so a single-model setup (including ``NEMO_DEFAULT_MODEL`` when slash-shaped)
+    works without a three-tier setup UI.
 
     This still writes to the environment rather than to
     :class:`~nemo_experimentalist_plugin.settings.ExperimentalistConfig`, because the
     environment is the highest-precedence source and this runs before anything resolves
-    the config. Whether the copy should exist at all is a separate open question.
+    the config.
     """
+    from nemo_platform_plugin.config import Configuration
+
     applied: list[str] = []
     if not env.get("NEMO_EXPERIMENTALIST_API_BASE", "").strip():
-        env["NEMO_EXPERIMENTALIST_API_BASE"] = _GATEWAY_BASE
-        applied.append(f"NEMO_EXPERIMENTALIST_API_BASE={_GATEWAY_BASE}")
-    if _is_gateway_base(env["NEMO_EXPERIMENTALIST_API_BASE"]):
-        inference = env.get("INFERENCE_API_KEY", "").strip()
-        optimizer = env.get("NEMO_EXPERIMENTALIST_API_KEY", "").strip()
-        if inference and not optimizer:
-            env["NEMO_EXPERIMENTALIST_API_KEY"] = inference
-            applied.append("NEMO_EXPERIMENTALIST_API_KEY=INFERENCE_API_KEY")
+        openai_base = env.get("OPENAI_BASE_URL", "").strip()
+        if openai_base:
+            env["NEMO_EXPERIMENTALIST_API_BASE"] = openai_base
+            applied.append(f"NEMO_EXPERIMENTALIST_API_BASE={openai_base}")
+        else:
+            env["NEMO_EXPERIMENTALIST_API_BASE"] = _GATEWAY_BASE
+            applied.append(f"NEMO_EXPERIMENTALIST_API_BASE={_GATEWAY_BASE}")
+
+    if not env.get("NEMO_EXPERIMENTALIST_API_KEY", "").strip():
+        base = env["NEMO_EXPERIMENTALIST_API_BASE"]
+        if _is_gateway_base(base):
+            inference = env.get("INFERENCE_API_KEY", "").strip()
+            if inference:
+                env["NEMO_EXPERIMENTALIST_API_KEY"] = inference
+                applied.append("NEMO_EXPERIMENTALIST_API_KEY=INFERENCE_API_KEY")
+        else:
+            openai_key = env.get("OPENAI_API_KEY", "").strip()
+            if openai_key:
+                env["NEMO_EXPERIMENTALIST_API_KEY"] = openai_key
+                applied.append("NEMO_EXPERIMENTALIST_API_KEY=OPENAI_API_KEY")
+
+    if not env.get("NEMO_EXPERIMENTALIST_MODELS_SMART", "").strip():
+        default_model = env.get("NEMO_DEFAULT_MODEL", "").strip()
+        # Platform entity IDs are hyphenated; LiteLLM/gateway ids contain ``/``.
+        if "/" in default_model:
+            env["NEMO_EXPERIMENTALIST_MODELS_SMART"] = default_model
+            applied.append(f"NEMO_EXPERIMENTALIST_MODELS_SMART={default_model}")
+
+    smart = env.get("NEMO_EXPERIMENTALIST_MODELS_SMART", "").strip()
+    if smart:
+        for tier, env_name in (
+            ("mid", "NEMO_EXPERIMENTALIST_MODELS_MID"),
+            ("fast", "NEMO_EXPERIMENTALIST_MODELS_FAST"),
+        ):
+            if not env.get(env_name, "").strip():
+                env[env_name] = smart
+                applied.append(f"{env_name}=NEMO_EXPERIMENTALIST_MODELS_SMART")
+
+    if applied:
+        Configuration.clear_cache()
     return applied
 
 
@@ -536,6 +576,42 @@ def _announce_credential_defaults() -> None:
     applied = _apply_credential_defaults()
     if applied:
         typer.echo("Credential defaults: " + ", ".join(applied), err=True)
+    from nemo_experimentalist_plugin.experimentalist.components.model_config import log_model_config
+
+    typer.echo(log_model_config(), err=True)
+
+
+def _model_shape_warnings(env: Mapping[str, str] | None = None) -> list[CheckResult]:
+    """Advisory warnings when model ids look mismatched to the configured base."""
+    active = env if env is not None else os.environ
+    base = active.get("NEMO_EXPERIMENTALIST_API_BASE", "").strip()
+    if not base:
+        return []
+    try:
+        host = urlsplit(base).hostname or ""
+    except ValueError:
+        return []
+    warnings: list[CheckResult] = []
+    for tier, env_name in (
+        ("smart", "NEMO_EXPERIMENTALIST_MODELS_SMART"),
+        ("mid", "NEMO_EXPERIMENTALIST_MODELS_MID"),
+        ("fast", "NEMO_EXPERIMENTALIST_MODELS_FAST"),
+    ):
+        model = active.get(env_name, "").strip()
+        if host == "api.openai.com" and model.count("/") >= 2:
+            warnings.append(
+                CheckResult(
+                    name=f"model-shape-{tier}",
+                    group="credentials-experiment",
+                    status="warn",
+                    severity="advisory",
+                    message=(
+                        f"{env_name}={model!r} looks gateway/LiteLLM-shaped while base is "
+                        "api.openai.com; direct OpenAI usually wants a bare model id"
+                    ),
+                )
+            )
+    return warnings
 
 
 def _load_config_payload(config: Path | None) -> dict | None:

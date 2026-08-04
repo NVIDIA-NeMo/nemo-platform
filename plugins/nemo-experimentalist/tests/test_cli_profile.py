@@ -762,6 +762,38 @@ def test_credential_defaults_inference_key_powers_gateway_experiment() -> None:
     assert len(applied) == 2
 
 
+def test_credential_defaults_openai_bridge_and_collapsed_tiers() -> None:
+    env = {
+        "OPENAI_BASE_URL": "https://api.openai.com/v1",
+        "OPENAI_API_KEY": "sk-openai",
+        "NEMO_EXPERIMENTALIST_MODELS_SMART": "gpt-5.5",
+    }
+    applied = cli._apply_credential_defaults(env)
+    assert env["NEMO_EXPERIMENTALIST_API_BASE"] == "https://api.openai.com/v1"
+    assert env["NEMO_EXPERIMENTALIST_API_KEY"] == "sk-openai"
+    assert env["NEMO_EXPERIMENTALIST_MODELS_MID"] == "gpt-5.5"
+    assert env["NEMO_EXPERIMENTALIST_MODELS_FAST"] == "gpt-5.5"
+    assert "NEMO_EXPERIMENTALIST_API_BASE=https://api.openai.com/v1" in applied
+    assert "NEMO_EXPERIMENTALIST_API_KEY=OPENAI_API_KEY" in applied
+
+
+def test_credential_defaults_nemo_default_model_slash_shaped() -> None:
+    env = {
+        "INFERENCE_API_KEY": "sk-gateway",
+        "NEMO_DEFAULT_MODEL": "openai/openai/openai/gpt-5.5",
+    }
+    cli._apply_credential_defaults(env)
+    assert env["NEMO_EXPERIMENTALIST_MODELS_SMART"] == "openai/openai/openai/gpt-5.5"
+    assert env["NEMO_EXPERIMENTALIST_MODELS_MID"] == "openai/openai/openai/gpt-5.5"
+    assert env["NEMO_EXPERIMENTALIST_MODELS_FAST"] == "openai/openai/openai/gpt-5.5"
+
+
+def test_credential_defaults_ignore_hyphenated_platform_entity_id() -> None:
+    env = {"INFERENCE_API_KEY": "sk-gateway", "NEMO_DEFAULT_MODEL": "gpt-5-5"}
+    cli._apply_credential_defaults(env)
+    assert "NEMO_EXPERIMENTALIST_MODELS_SMART" not in env
+
+
 def test_credential_defaults_never_fill_analyst_key() -> None:
     env = {"NEMO_EXPERIMENTALIST_API_KEY": "sk-gateway"}
     cli._apply_credential_defaults(env)
@@ -793,6 +825,17 @@ def test_credential_defaults_never_override() -> None:
     }
     assert cli._apply_credential_defaults(env) == []
     assert env["NEMO_EXPERIMENTALIST_API_KEY"] == "sk-b"
+
+
+def test_model_shape_warnings_for_openai_host() -> None:
+    warnings = cli._model_shape_warnings(
+        {
+            "NEMO_EXPERIMENTALIST_API_BASE": "https://api.openai.com/v1",
+            "NEMO_EXPERIMENTALIST_MODELS_SMART": "openai/openai/openai/gpt-5.5",
+        }
+    )
+    assert len(warnings) == 1
+    assert warnings[0].name == "model-shape-smart"
 
 
 def test_experiment_defaults_to_shared_insights_file(app, profile_tree: Path, monkeypatch) -> None:

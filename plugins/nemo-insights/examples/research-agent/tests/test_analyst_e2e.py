@@ -19,11 +19,10 @@ Docker):
 - ``NMP_INSIGHTS_E2E=1`` — opt in; otherwise the test skips.
 - ``NVIDIA_API_KEY`` and ``TAVILY_API_KEY`` — for the research agent's NIM
   model + Tavily search. Read from the example's ``.env`` (or the shell).
-- ``INFERENCE_API_KEY`` — the ``sk-...`` NVIDIA Inference Gateway virtual key
-  for the analyst's Claude Opus (served over the Anthropic wire format). The
-  analyst's LLM ``base_url`` is pinned in
-  :mod:`nemo_insights_plugin.analyst.agent`, so no base-url override is
-  required.
+- ``ANALYST_API_KEY`` — API key for the analyst's own ``ANALYST_*`` contract
+  (typically the NVIDIA Inference Gateway virtual key when using the default
+  Opus path). Optional ``ANALYST_API_BASE`` / ``ANALYST_MODEL_NAME`` override
+  the defaults in :mod:`nemo_insights_plugin.model_config`.
 - Docker — required to auto-start ClickHouse if one isn't already at
   ``NMP_INTAKE_CLICKHOUSE_URL`` (default ``http://localhost:8123``). A missing
   Docker daemon fails the test.
@@ -148,7 +147,7 @@ def _cli_cmd(name: str, *args: str) -> list[str]:
 
 def _require_keys() -> None:
     env = _subprocess_env()
-    missing = [key for key in ("NVIDIA_API_KEY", "TAVILY_API_KEY", "INFERENCE_API_KEY") if not env.get(key)]
+    missing = [key for key in ("NVIDIA_API_KEY", "TAVILY_API_KEY", "ANALYST_API_KEY") if not env.get(key)]
     if missing:
         pytest.skip(f"missing required API keys: {', '.join(missing)}")
 

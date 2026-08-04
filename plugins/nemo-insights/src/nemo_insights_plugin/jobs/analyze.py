@@ -102,14 +102,14 @@ class AnalyzeJob(NemoJob):
         if canonical.inference_api_key_secret_name:
             environment.append(
                 EnvironmentVariable(
-                    name="INFERENCE_API_KEY",
+                    name="ANALYST_API_KEY",
                     from_secret=EnvironmentVariableFromSecret(name=canonical.inference_api_key_secret_name),
                 )
             )
-        elif inference_api_key := os.environ.get("INFERENCE_API_KEY"):
+        elif analyst_api_key := os.environ.get("ANALYST_API_KEY"):
             # Local smoke-test fallback until FP-202 moves analyst model
             # execution onto platform-registered models/secrets.
-            environment.append(EnvironmentVariable(name="INFERENCE_API_KEY", value=inference_api_key))
+            environment.append(EnvironmentVariable(name="ANALYST_API_KEY", value=analyst_api_key))
 
         return PlatformJobSpec(
             steps=[

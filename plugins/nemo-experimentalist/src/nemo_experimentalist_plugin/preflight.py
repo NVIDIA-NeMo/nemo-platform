@@ -450,9 +450,13 @@ def _check_agent_source(
 # fix is actionable without hunting through the README.
 _ENV_SOURCES = {
     "NEMO_EXPERIMENTALIST_API_BASE": (
-        "OpenAI-compatible LLM endpoint for the experimentalist (defaults to https://inference-api.nvidia.com/v1)"
+        "OpenAI-compatible LLM endpoint (defaults to OPENAI_BASE_URL or "
+        "https://inference-api.nvidia.com/v1)"
     ),
-    "NEMO_EXPERIMENTALIST_API_KEY": "API key for NEMO_EXPERIMENTALIST_API_BASE (on the gateway, INFERENCE_API_KEY fills this)",
+    "NEMO_EXPERIMENTALIST_API_KEY": (
+        "API key for NEMO_EXPERIMENTALIST_API_BASE "
+        "(gateway: INFERENCE_API_KEY; otherwise OPENAI_API_KEY)"
+    ),
 }
 
 _ENV_EXAMPLE_POINTER = "see docs/get-started/example-agent.mdx"

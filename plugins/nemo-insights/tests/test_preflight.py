@@ -41,7 +41,7 @@ def test_missing_inference_key_is_required_failure(tmp_path: Path) -> None:
         )
     )
 
-    assert any(result.name == "INFERENCE_API_KEY" and result.status == "fail" for result in results)
+    assert any(result.name == "ANALYST_API_KEY" and result.status == "fail" for result in results)
     assert required_failures(results)
 
 
@@ -53,14 +53,14 @@ def test_check_environment_without_profile_skips_workspace_probe(tmp_path: Path)
             base_url="http://localhost:8080",
             profile_dir=None,
             probes=AnalysisProbes(
-                env={"INFERENCE_API_KEY": "k"},
+                env={"ANALYST_API_KEY": "k"},
                 http_ok=lambda base_url: True,
                 workspace_ok=never_queryable,
             ),
         )
     )
 
-    assert [result.name for result in results] == ["INFERENCE_API_KEY", "platform-reachable"]
+    assert [result.name for result in results] == ["ANALYST_API_KEY", "analyst-model", "platform-reachable"]
 
 
 def test_default_http_probe_treats_invalid_base_url_as_unreachable() -> None:
@@ -75,7 +75,7 @@ def test_workspace_query_failure_is_advisory(tmp_path: Path) -> None:
             base_url="http://localhost:8080",
             profile_dir=tmp_path,
             probes=AnalysisProbes(
-                env={"INFERENCE_API_KEY": "k"},
+                env={"ANALYST_API_KEY": "k"},
                 http_ok=lambda base_url: True,
                 workspace_ok=never_queryable,
             ),
@@ -160,7 +160,7 @@ def test_healthy_setup_formats_grouped_report(tmp_path: Path) -> None:
             base_url="http://localhost:8080",
             profile_dir=tmp_path,
             probes=AnalysisProbes(
-                env={"INFERENCE_API_KEY": "k"},
+                env={"ANALYST_API_KEY": "k"},
                 http_ok=lambda base_url: True,
                 workspace_ok=always_queryable,
             ),
@@ -170,6 +170,6 @@ def test_healthy_setup_formats_grouped_report(tmp_path: Path) -> None:
     report = format_report(results)
 
     assert "Profile\n  ✓ profile for agent 'a'" in report
-    assert "Credentials\n  ✓ INFERENCE_API_KEY set" in report
+    assert "Credentials\n  ✓ ANALYST_API_KEY set" in report
     assert "Platform\n  ✓ http://localhost:8080 reachable" in report
     assert not required_failures(results)
