@@ -244,6 +244,7 @@ function vendorPlugin(): Plugin {
   let outdir = '';
   let projectRoot = '';
   let isServe = false;
+  let isPreview = false;
   let pending: Promise<void> | null = null;
 
   // buildVendorBundles wipes outdir and rebuilds on every vite process start,
@@ -275,14 +276,21 @@ function vendorPlugin(): Plugin {
     // beats optimizeDeps. In build mode rolldownOptions.external handles
     // the same specifiers; resolveId is a no-op there.
     enforce: 'pre',
+    // `command` is 'serve' under `vite preview` too, and isPreview is only on
+    // ConfigEnv — preview serves an existing dist, so it must not rebuild.
+    config(_, env) {
+      isPreview = env.isPreview === true;
+    },
     async configResolved(config) {
       base = config.base;
-      isServe = config.command === 'serve';
+      isServe = config.command === 'serve' && !isPreview;
       projectRoot = config.root;
       outdir = isServe
         ? path.resolve(projectRoot, DEV_VENDOR_DIR)
         : path.resolve(projectRoot, 'public', 'vendor');
-      await ensureBuilt();
+      if (!isPreview) {
+        await ensureBuilt();
+      }
     },
     buildStart() {
       return ensureBuilt();
