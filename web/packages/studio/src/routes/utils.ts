@@ -428,7 +428,7 @@ export const getGuardrailChecksSubTabRoute = (
   workspace: string,
   guardrailConfigName: string,
   subTab: GuardrailChecksSubTab
-) => {
+): ReturnType<typeof generatePath> => {
   return generatePath(ROUTES.workspace.guardrailChecksSubTab, {
     workspace,
     guardrailConfigName,
