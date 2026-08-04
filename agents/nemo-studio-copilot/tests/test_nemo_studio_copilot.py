@@ -601,6 +601,8 @@ class TestDirectListFastPath:
         [
             ("List the available workspaces. Return only their names.", "workspaces"),
             ("What models are available?", "models"),
+            ("List the available models in workspace default.", "models"),
+            ("List the model providers in workspace default.", "inference.providers"),
             ("Show filesets", "files.filesets"),
         ],
     )
@@ -625,7 +627,10 @@ class TestDirectListFastPath:
         resource = MagicMock()
         resource.list.return_value = [FakeWorkspace(name="danielleali"), FakeWorkspace(name="default")]
 
-        with patch("nemo_studio_copilot.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _list_resource_names("workspaces")
 
         assert result == "danielleali\ndefault"
@@ -634,7 +639,10 @@ class TestDirectListFastPath:
         resource = MagicMock()
         resource.list.side_effect = ValueError("Missing workspace argument")
 
-        with patch("nemo_studio_copilot.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _list_resource_names("files.filesets")
 
         assert result == "Which workspace should I use to list filesets?"
@@ -701,7 +709,10 @@ class TestDirectFilesetDeleteFastPath:
         resource = MagicMock()
         resource.list.return_value = [FakeWorkspace(name="other-fileset")]
 
-        with patch("nemo_studio_copilot.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _delete_fileset("phishing_dataset")
 
         resource.delete.assert_called_once_with(name="phishing_dataset")
@@ -712,7 +723,10 @@ class TestDirectFilesetDeleteFastPath:
         resource = MagicMock()
         resource.delete.side_effect = RuntimeError("service unavailable")
 
-        with patch("nemo_studio_copilot.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _delete_fileset("phishing_dataset")
 
         assert "I couldn't delete fileset 'phishing_dataset'" in result
@@ -722,7 +736,10 @@ class TestDirectFilesetDeleteFastPath:
         resource = MagicMock()
         resource.list.return_value = []
 
-        with patch("nemo_studio_copilot.register._resolve_resource", return_value=resource):
+        with (
+            patch("nemo_studio_copilot.register._get_client", return_value=MagicMock()),
+            patch("nemo_studio_copilot.register._resolve_resource", return_value=resource),
+        ):
             result = _delete_fileset("phishing_dataset")
 
         assert result == "Deleted fileset 'phishing_dataset' from workspace 'default'."

@@ -80,13 +80,16 @@ _FAST_PATH_MUTATION = re.compile(
 )
 _FAST_PATH_ANALYSIS = re.compile(r"\b(analy[sz]e|audit|compare|explain|investigate|why)\b", re.IGNORECASE)
 _DIRECT_LIST_RESOURCES = (
-    (re.compile(r"\bworkspaces?\b", re.IGNORECASE), "workspaces"),
-    (re.compile(r"\bmodels?\b", re.IGNORECASE), "models"),
+    # Match the requested resource before the contextual workspace qualifier.
+    # Provider prompts commonly include both "model" and "workspace", so the
+    # most specific resource must come first and workspace must come last.
     (re.compile(r"\bproviders?\b", re.IGNORECASE), "inference.providers"),
     (re.compile(r"\bfilesets?\b", re.IGNORECASE), "files.filesets"),
     (re.compile(r"\bdatasets?\b", re.IGNORECASE), "datasets"),
     (re.compile(r"\bbenchmarks?\b", re.IGNORECASE), "evaluation.benchmarks"),
     (re.compile(r"\bmetrics?\b", re.IGNORECASE), "evaluation.metrics"),
+    (re.compile(r"\bmodels?\b", re.IGNORECASE), "models"),
+    (re.compile(r"\bworkspaces?\b", re.IGNORECASE), "workspaces"),
 )
 
 _client: NeMoPlatform | None = None
