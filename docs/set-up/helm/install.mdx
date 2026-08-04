@@ -172,6 +172,11 @@ postgresql:
   persistence:
     storageClass: gp3
     size: 20Gi
+
+clickhouse:
+  persistence:
+    storageClass: gp3
+    size: 20Gi
 ```
 
 If you store Files service data in S3, configure the file storage backend and make AWS credentials available through IRSA or another boto3-supported credential source:
@@ -187,6 +192,8 @@ platformConfig:
 ```
 
 For multi-node GPU jobs on EKS, also configure EFA networking as described in [Multinode Networking](/documentation/self-managed-deployment/setup/helm/multinode-networking).
+
+For production Intake deployments, use a separately managed ClickHouse service. See [Database Setup](/documentation/self-managed-deployment/setup/helm/database-setup#clickhouse-for-intake).
 
 ## Install Volcano
 

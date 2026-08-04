@@ -243,12 +243,11 @@ externalDatabase:
     key: ""
 
 # -- Embedded ClickHouse configuration for Intake.
-# The embedded deployment is a single-node convenience topology. Use an external,
-# replicated ClickHouse deployment for production environments that require high availability.
 # These values are used only when `clickhouse.enabled` is true.
 # @default -- This object has the following default values for the embedded ClickHouse configuration.
 clickhouse:
   # -- Whether to deploy the embedded ClickHouse. Set to false to use `externalClickhouse`.
+  # It is not recommended to use the embedded ClickHouse for production deployments. It is enabled by default for ease of getting started with the platform.
   enabled: true
   image:
     # -- ClickHouse image repository. Intake is tested against the 26.3 LTS release line.
@@ -278,7 +277,7 @@ clickhouse:
   persistence:
     # -- Whether to persist embedded ClickHouse data.
     enabled: true
-    # -- PersistentVolumeClaim size. See the Intake and ClickHouse sizing guidance in the chart README.
+    # -- PersistentVolumeClaim size.
     size: 20Gi
     # -- Storage class for the ClickHouse PVC. If unset, the cluster default is used.
     storageClass: ""

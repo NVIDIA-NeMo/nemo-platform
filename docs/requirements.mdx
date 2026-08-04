@@ -30,6 +30,7 @@ clusters, use the NeMo Platform Helm chart on Kubernetes.
 | Kubernetes | minikube, kind, EKS, AKS, GKE, OKE, OpenShift, or on-prem Kubernetes | Use a cluster with storage, networking, and image-pull access configured before installing the chart. |
 | Helm | Helm 3 | Required to install and upgrade the NeMo Platform chart. |
 | Storage | ReadWriteMany-capable persistent storage | Required for shared files and job storage in multi-pod deployments. |
+| ClickHouse for Intake | External production service, or the chart's embedded development/testing instance | Embedded ClickHouse creates a separate RWO PVC. Use a separately managed ClickHouse service for production. See [Database Setup](/documentation/self-managed-deployment/setup/helm/database-setup#clickhouse-for-intake). |
 | Image access | NGC credentials and Kubernetes image pull secrets | Required to pull NeMo Platform container images. |
 
 ## GPU Requirements
