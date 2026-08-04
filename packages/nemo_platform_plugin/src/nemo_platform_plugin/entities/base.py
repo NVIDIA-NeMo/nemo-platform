@@ -312,9 +312,10 @@ class EntityNotFoundError(EntityStoreError):
 class EntityConflictError(EntityStoreError):
     """Entity conflict error.
 
-    Raised in two scenarios:
+    Raised when an entity operation conflicts with the current store state:
     - Entity already exists (conflict on create)
     - Entity version mismatch (optimistic locking conflict on update)
+    - Query expected one result but matched multiple entities
     """
 
     pass
@@ -584,6 +585,51 @@ class EntityClient:
         if group_counts is None:
             raise EntityStoreError("Grouped counts not found in response")
         return TypeAdapter(dict[str, int]).validate_python(group_counts)
+
+    async def find_one(
+        self,
+        entity_type: EntityTypeLike,
+        *,
+        workspace: str = DEFAULT_WORKSPACE,
+        filter_operation: FilterOperation | None = None,
+        filter_str: Optional[str] = None,
+        filter_obj: Optional[Dict[str, Any]] = None,
+        sort: Optional[str] = None,
+    ) -> EntityT:
+        """Find exactly one entity matching a query.
+
+        This is intentionally query-based, not identity-based. It is useful for
+        cross-workspace lookups where the caller expects a field such as ``name``
+        to be globally unique by convention even though the entity store only
+        enforces workspace-scoped uniqueness.
+
+        Prefer this over ``get_by_field`` when duplicate matches are an error.
+
+        Raises:
+            EntityNotFoundError: No entity matches the query
+            EntityConflictError: More than one entity matches the query
+        """
+        result = await self.list(
+            entity_type,
+            workspace=workspace,
+            filter_operation=filter_operation,
+            filter_str=filter_str,
+            filter_obj=filter_obj,
+            sort=sort,
+            page=1,
+            page_size=2,
+        )
+
+        entity_type_name = _get_entity_type(entity_type)
+        match_count = result.pagination.total_results
+        if not result.data:
+            raise EntityNotFoundError(f"No {entity_type_name} entity found matching query in workspace '{workspace}'")
+        if len(result.data) > 1 or match_count > 1:
+            raise EntityConflictError(
+                f"Multiple {entity_type_name} entities found matching query in workspace '{workspace}'"
+            )
+
+        return result.data[0]
 
     async def create(self, entity: EntityT) -> EntityT:
         """Create a new entity.
@@ -875,7 +921,9 @@ class EntityClient:
         Get a single entity by field value(s).
 
         This is a convenience method for looking up entities by arbitrary fields.
-        It uses list() under the hood and returns the first match.
+        It uses list() under the hood and returns the first match. Use
+        ``find_one`` instead when the caller requires exactly one match and
+        duplicates should raise ``EntityConflictError``.
 
         Args:
             entity_type: The entity class to return

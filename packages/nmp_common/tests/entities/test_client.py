@@ -18,9 +18,10 @@ from nmp.common.entities import (
     DatetimeFilter,
     EntityBase,
     EntityClient,
+    EntityConflictError,
+    EntityNotFoundError,
     StringFilter,
 )
-from nmp.common.entities.client import EntityConflictError
 from pydantic import BaseModel, Discriminator, Field, PrivateAttr, Tag, computed_field
 
 
@@ -452,6 +453,106 @@ async def test_entity_client_list_wildcard_with_pagination():
     assert result.pagination.page_size == 50
     assert result.pagination.total_pages == 3
     assert result.pagination.total_results == 150
+
+
+@pytest.mark.asyncio
+async def test_entity_client_find_one_returns_single_match():
+    """find_one() returns the only entity matching the query."""
+
+    class TestEntity(EntityBase):
+        field_1: str
+
+    now = datetime.now()
+    mock_api = Mock()
+    mock_api.list_entities = AsyncMock(
+        return_value=_page_resp(
+            [
+                Entity(
+                    entity_type="test_entity",
+                    name="test-name",
+                    workspace="workspace-1",
+                    id="id-1",
+                    created_at=now,
+                    updated_at=now,
+                    db_version=1,
+                    data={"field_1": "value"},
+                ),
+            ],
+            total_pages=1,
+            total_results=1,
+        )
+    )
+    client = EntityClient(mock_api)
+
+    result = await client.find_one(TestEntity, workspace=ALL_WORKSPACES, filter_obj={"name": "test-name"})
+
+    assert result.name == "test-name"
+    assert result.workspace == "workspace-1"
+    assert result.field_1 == "value"
+    mock_api.list_entities.assert_called_once()
+    call_args = mock_api.list_entities.call_args
+    assert call_args.kwargs["workspace"] == ALL_WORKSPACES
+    assert call_args.kwargs["query_params"]["page"] == 1
+    assert call_args.kwargs["query_params"]["page_size"] == 2
+    assert json.loads(call_args.kwargs["query_params"]["filter"]) == {"name": "test-name"}
+
+
+@pytest.mark.asyncio
+async def test_entity_client_find_one_raises_not_found_for_no_match():
+    """find_one() raises when no entity matches the query."""
+
+    class TestEntity(EntityBase):
+        field_1: str
+
+    mock_api = Mock()
+    mock_api.list_entities = AsyncMock(return_value=_page_resp([], total_pages=0, total_results=0))
+    client = EntityClient(mock_api)
+
+    with pytest.raises(EntityNotFoundError, match="No test_entity entity found"):
+        await client.find_one(TestEntity, workspace=ALL_WORKSPACES, filter_obj={"name": "missing"})
+
+
+@pytest.mark.asyncio
+async def test_entity_client_find_one_raises_conflict_for_multiple_matches():
+    """find_one() raises rather than returning the first ambiguous match."""
+
+    class TestEntity(EntityBase):
+        field_1: str
+
+    now = datetime.now()
+    mock_api = Mock()
+    mock_api.list_entities = AsyncMock(
+        return_value=_page_resp(
+            [
+                Entity(
+                    entity_type="test_entity",
+                    name="same-name",
+                    workspace="workspace-1",
+                    id="id-1",
+                    created_at=now,
+                    updated_at=now,
+                    db_version=1,
+                    data={"field_1": "first"},
+                ),
+                Entity(
+                    entity_type="test_entity",
+                    name="same-name",
+                    workspace="workspace-2",
+                    id="id-2",
+                    created_at=now,
+                    updated_at=now,
+                    db_version=1,
+                    data={"field_1": "second"},
+                ),
+            ],
+            total_pages=1,
+            total_results=2,
+        )
+    )
+    client = EntityClient(mock_api)
+
+    with pytest.raises(EntityConflictError, match="Multiple test_entity entities found"):
+        await client.find_one(TestEntity, workspace=ALL_WORKSPACES, filter_obj={"name": "same-name"})
 
 
 @pytest.mark.asyncio
