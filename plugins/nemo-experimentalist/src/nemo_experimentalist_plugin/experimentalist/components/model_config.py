@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import functools
-from typing import Any, cast
 from urllib.parse import urlparse
 
 from nemo_experimentalist_plugin.settings import TIERS, ExperimentalistConfig
@@ -79,43 +78,6 @@ def get_model(tier: str) -> CompletionClient:
 
     """
     return _client(model_name(tier), api_base(), api_key())
-
-
-class LazyModel:
-    """Deferred :class:`CompletionClient` for sites that cannot resolve at call time.
-
-    Agent classes resolve their tier in ``__init__``. Method-level overrides
-    (``@strategy(..., llm=...)``) are decorator arguments, so they evaluate when the
-    module is imported -- before credentials are necessarily set. This proxy keeps the
-    override declarative while deferring construction to first use, which is what makes
-    importing a component module credential-free.
-    """
-
-    def __init__(self, tier: str) -> None:
-        self._tier = tier
-        self._resolved: CompletionClient | None = None
-
-    def _target(self) -> CompletionClient:
-        if self._resolved is None:
-            self._resolved = get_model(self._tier)
-        return self._resolved
-
-    def __getattr__(self, item: str) -> Any:
-        return getattr(self._target(), item)
-
-    def __repr__(self) -> str:
-        state = "unresolved" if self._resolved is None else repr(self._resolved)
-        return f"LazyModel(tier={self._tier!r}, {state})"
-
-
-def lazy_model(tier: str) -> CompletionClient:
-    """A :class:`LazyModel` typed as a client, for ``@strategy(llm=...)`` overrides.
-
-    The cast is deliberate: ``LazyModel`` is a forwarding proxy, not a subclass. nooa
-    accepts the override as ``Any``, stores it with ``setattr`` and reads it back with
-    ``getattr`` without an ``isinstance`` check, so a proxy is transparent to it.
-    """
-    return cast(CompletionClient, LazyModel(tier))
 
 
 def get_smart_model() -> CompletionClient:

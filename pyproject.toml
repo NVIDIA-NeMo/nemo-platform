@@ -377,9 +377,9 @@ nemo-insights-plugin = { workspace = true }
 nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
 # Not published to PyPI yet, so this pins an immutable public commit. It is a commit
-# rather than a tag because the MCP transport-timeout fix landed after v0.0.6; move
-# back to a tag once one ships that contains it.
-nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "bea4614a0e2a6cf88f76225466159af883da80a0" }
+# rather than a tag because the callable `@strategy(llm=...)` support this plugin now
+# depends on landed after v0.0.8; move back to a tag once one ships that contains it.
+nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "6e0274dd03f883254a084cfb9f871ea580e03434" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
@@ -644,11 +644,14 @@ exclude = [
 
 # nooa agents declare their LLM-generated methods as annotated signatures with an
 # ellipsis body; the framework fills them in at runtime. ty reads that as a missing
-# return, so the rule is off for the Experimentalist and Eval Author agent classes only.
+# return, so the rule is off for the Experimentalist and Eval Author agent classes only
+# -- plus the one test module that defines throwaway agents to pin nooa's own
+# llm-resolution contract, where the ellipsis bodies are there for the same reason.
 [[tool.ty.overrides]]
 include = [
   "plugins/nemo-experimentalist/src/**",
   "plugins/nemo-eval-author/src/**",
+  "plugins/nemo-experimentalist/tests/experimentalist/test_method_llm_injection.py",
 ]
 
 [tool.ty.overrides.rules]

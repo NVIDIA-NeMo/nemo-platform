@@ -108,26 +108,6 @@ def test_importing_components_resolves_no_model() -> None:
     assert completed.returncode == 0, f"a model was resolved at import time\n{completed.stderr}"
 
 
-def test_lazy_model_defers_construction_until_first_use(monkeypatch) -> None:
-    """The ``@strategy(llm=...)`` proxy must not touch settings until used."""
-    from nemo_experimentalist_plugin.experimentalist.components.model_config import LazyModel
-
-    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_BASE", raising=False)
-    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
-    proxy = LazyModel("fast")  # constructing it with no credentials must not raise
-    assert "unresolved" in repr(proxy)
-
-    _credentials(monkeypatch, base="https://example.test/v1", key="test-key")
-    monkeypatch.setenv(TIER_ENV["fast"], "vendor/fast-1")
-    Configuration.clear_cache()
-    _client.cache_clear()
-    try:
-        assert proxy.model == "vendor/fast-1"  # forwards to the real client
-        assert "unresolved" not in repr(proxy)
-    finally:
-        _client.cache_clear()
-
-
 # ---------------------------------------------------------------------------
 # Where settings come from
 # ---------------------------------------------------------------------------

@@ -25,7 +25,7 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .model_config import api_base, api_key, get_fast_model, get_smart_model, lazy_model
+from .model_config import api_base, api_key, get_fast_model, get_mid_model, get_smart_model
 from .tools import GuardedShellTools
 from .util import load_framework_skills
 
@@ -584,6 +584,9 @@ class Coder(Agent):
     ):
         """Initialize the coder for the given workspace."""
         super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        # create_architecture_doc runs on the mid tier. Resolved here, like every other
+        # tier this component uses, and read off the instance by the decorator's callable.
+        self._mid_model = get_mid_model()
         self._config = config or CoderConfig()
         self._workspace_path = workspace.resolve()
         self.shell = GuardedShellTools(cwd=self._workspace_path)
@@ -1031,7 +1034,9 @@ class Coder(Agent):
             options=smoke_options,
         )
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)), llm=lazy_model("mid"))
+    @strategy(
+        CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)), llm=lambda self: self._mid_model
+    )
     async def create_architecture_doc(
         self, agent_id: str, source_path: str | None = None, entrypoint: str | None = None
     ) -> None:

@@ -29,7 +29,7 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from . import cache
-from .model_config import get_fast_model, get_smart_model, lazy_model
+from .model_config import get_fast_model, get_smart_model
 from .rationalizer import Rationale, Rationalizer, RationalizerConfig  # noqa: F401
 from .tools import GuardedShellTools
 from .util import load_framework_skills
@@ -238,6 +238,9 @@ class AgentAnalyzer(Agent):
         self._workspace_path = workspace
         self._framework_skills_dirs: list[Path] = framework_skills_dirs or []
         self.shell = GuardedShellTools(cwd=workspace)
+        # Two generation methods run on the fast tier. Resolved here, like every other
+        # tier this component uses, and read off the instance by the decorator's callable.
+        self._fast_model = get_fast_model()
         self.todos = TodoManager()
         self.context["file_match"] = doc(Match)
         self.skills: SkillRegistry = SkillRegistry(self)
@@ -245,13 +248,13 @@ class AgentAnalyzer(Agent):
         load_framework_skills(self.skills, self._framework_skills_dirs)
         TokenBudgetSummarizer.install(
             self,
-            llm=get_fast_model(),
+            llm=self._fast_model,
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
     @strategy(
         CodeActStrategy(config=CodeActConfig(max_iterations=20, cell_timeout=3600.0)),
-        llm=lazy_model("fast"),
+        llm=lambda self: self._fast_model,
     )
     async def select_trials(
         self,
@@ -307,7 +310,7 @@ class AgentAnalyzer(Agent):
 
     @strategy(
         CodeActStrategy(config=CodeActConfig(max_iterations=30, cell_timeout=3600.0)),
-        llm=lazy_model("fast"),
+        llm=lambda self: self._fast_model,
     )
     async def classify_failures(
         self,
