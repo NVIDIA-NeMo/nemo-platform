@@ -270,7 +270,6 @@ function vendorPlugin(): Plugin {
     // beats optimizeDeps. In build mode rolldownOptions.external handles
     // the same specifiers; resolveId is a no-op there.
     enforce: 'pre',
-    // Vite snapshots publicDir at startup and 404s bundles written after it.
     async configResolved(config) {
       base = config.base;
       isServe = config.command === 'serve';
@@ -464,8 +463,6 @@ export default defineConfig(({ mode }) => {
     // them to /vendor/* instead without Vite racing to pre-bundle first.
     optimizeDeps: {
       exclude: [...VENDOR_EXTERNALS],
-      // KUI's unoptimized `/lib` subpath imports this as CJS; without
-      // pre-bundling it, the named `c` export is missing.
       include: ['@nvidia/foundations-react-core > react-compiler-runtime'],
     },
     build: {
