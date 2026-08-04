@@ -100,9 +100,9 @@ export const RadioCard: FC<RadioCardProps> = ({
           'hover:bg-interaction-hover',
           // KUI's RadioGroupItem does not emit data-state/data-disabled, so key
           // these off the real input via :has().
-          'has-[:checked]:border-interaction-selected',
+          'has-[.nv-radio-group-input:checked]:border-interaction-selected',
           checked === true && 'border-interaction-selected',
-          'has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50',
+          'has-[.nv-radio-group-input:disabled]:pointer-events-none has-[.nv-radio-group-input:disabled]:opacity-50',
           nvPanelContentClass,
           className
         )}
