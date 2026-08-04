@@ -1,10 +1,10 @@
 ---
 title: "Sandboxed Deployments"
-description: ""
+description: "Deploy a NAT agent as an OpenShell sandbox under a generated SandboxPolicy: Landlock filesystem isolation, a non-root user, and default-deny network egress."
 ---
 <a id="sandboxed-deployments"></a>
 
-Deploy an ordinary NAT agent through the standard deployments API, but with the executor set to `openshell-local` so the agent runs inside an [OpenShell](https://github.com/NVIDIA/openshell) sandbox under an automatically generated SandboxPolicy. The same agent image, deployed unchanged, gets Landlock filesystem isolation, a non-root `sandbox` user, and a default-deny network policy for free. Its model calls are brokered by the OpenShell gateway through the `inference.local` route, so the sandbox itself is granted no direct network egress at all: a call from the sandbox to anywhere else is blocked at the boundary.
+Deploy an ordinary NAT agent through the standard deployments API, but with the executor set to `openshell-local` so the agent runs inside an [OpenShell](https://github.com/NVIDIA/openshell) sandbox under an automatically generated SandboxPolicy. The agent image must be packaged with the OpenShell runtime profile (`nemo agents package --sandbox-runtime openshell`), which adds the non-root `sandbox` user the policy runs as; packaged that way, the agent gets Landlock filesystem isolation, that non-root user, and a default-deny network policy for free. Its model calls are brokered by the OpenShell gateway through the `inference.local` route, so the sandbox itself is granted no direct network egress at all: a call from the sandbox to anywhere else is blocked at the boundary.
 
 <Note>
 
@@ -16,11 +16,11 @@ Sandboxed deployments are experimental and verified end-to-end on Linux (glibc >
 
 When you deploy with `executor: openshell-local`, the OpenShell backend generates a default-deny SandboxPolicy from the executor config and the sandbox filesystem defaults, then applies it to the created sandbox:
 
-- **Landlock filesystem policy.** Read-only access to the interpreter and base system paths (`/opt`, `/usr`, `/bin`, `/lib`, `/etc`), and read-write access only to the paths the runtime needs (`/home/sandbox`, `/tmp`, `/dev/shm` for the Dask cluster `nat serve` spins up).
+- **Landlock filesystem policy.** Read-only access to the interpreter and base system paths (`/opt`, `/usr`, `/bin`, `/lib`, `/etc`), and read-write access only to the paths the runtime needs (`/home/sandbox`, `/tmp`, `/dev/shm` for the Dask cluster `nat serve` spins up). The executor's `landlock_compatibility` defaults to `best_effort`, which enforces this policy where the kernel supports Landlock but fails open (no filesystem confinement) on kernels without it. Set `landlock_compatibility: hard_requirement` on the executor to make a missing-Landlock kernel fail the sandbox instead of running it unconfined.
 - **`run_as_user: sandbox`.** The workload runs as the image's non-root `sandbox` user, not root.
 - **Default-deny network egress.** With `platform_egress: null` (the shipped default) the policy has no egress rules at all. The agent reaches models through the gateway-managed `inference.local` route, so the sandbox needs no direct egress. A direct connection to any other host is blocked.
 
-The generated policy is equivalent to the reference at `plugins/nemo-deployments/examples/openshell/local-sandbox-policy.yaml`. To pin a hand-written policy instead, point the executor's `default_policy_path` at your own YAML.
+With the shipped `platform_egress: null`, the generated policy is pure default-deny with no egress rules at all. The reference at `plugins/nemo-deployments/examples/openshell/local-sandbox-policy.yaml` documents the policy shape and the alternate direct-egress variant: its `network_policies.igw` rule allows the sandbox to reach the Inference Gateway directly at `host.docker.internal:8080`, which the zero-egress default does not grant. Pin a hand-written policy by pointing the executor's `default_policy_path` at your own YAML.
 
 ## Model Access Through `inference.local`
 
@@ -69,7 +69,7 @@ openshell inference get      # verifies the route gateway-side
 
   </Note>
 
-- **Packaging and backend dependencies.** Packaging needs the agents plugin `container` extra (`python-on-whales`), and the OpenShell backend needs the deployments plugin `openshell` extra (the `openshell` SDK). Base bootstrap installs neither, so add them: `uv sync --package nemo-deployments-plugin --extra openshell` and `uv pip install -e 'plugins/nemo-agents[container]'`.
+- **Packaging and backend dependencies.** Packaging needs the agents plugin `container` extra (`python-on-whales`), and the OpenShell backend needs the deployments plugin `openshell` extra (the `openshell` SDK). Base bootstrap installs neither, so add them additively (do not use `uv sync --package`, which narrows the workspace venv and uninstalls the platform): `uv pip install "openshell>=0.0.92" "grpcio>=1.78.0" "protobuf>=6.31.1"` and `uv pip install -e 'plugins/nemo-agents[container]'`.
 
 ## Package the Agent for the Sandbox
 
@@ -123,19 +123,27 @@ Behind the scenes the backend generates the default-deny SandboxPolicy, creates 
 Wait for `READY`, then read the endpoint and invoke the agent:
 
 ```bash
+status=""
 for i in $(seq 1 30); do
   status=$(curl -sf "$BASE/deployments/igw-agent" | jq -r '.status')
   echo "$status"
   [ "$status" = "READY" ] && break
-  [ "$status" = "FAILED" ] && { echo "DEPLOY_FAILED"; break; }
+  [ "$status" = "FAILED" ] && break
   sleep 3
 done
-URL=$(curl -sf "$BASE/deployments/igw-agent" | jq -r '.endpoints[0].url')
 
-# The agent's LLM call goes to inference.local, which the gateway routes to the
-# platform Inference Gateway. The sandbox makes no direct egress.
-curl -sf -X POST "${URL}generate" -H 'content-type: application/json' \
-  -d '{"input_message":"What is the current date and time? Use your current_datetime tool"}' | jq .
+# Only invoke once the deployment is actually READY. On FAILED or timeout, stop and
+# read the status message / logs instead of curling a URL that will not answer.
+if [ "$status" != "READY" ]; then
+  echo "deployment did not reach READY (last status: ${status:-unknown})"
+else
+  URL=$(curl -sf "$BASE/deployments/igw-agent" | jq -r '.endpoints[0].url')
+
+  # The agent's LLM call goes to inference.local, which the gateway routes to the
+  # platform Inference Gateway. The sandbox makes no direct egress.
+  curl -sf -X POST "${URL}generate" -H 'content-type: application/json' \
+    -d '{"input_message":"What is the current date and time? Use your current_datetime tool"}' | jq .
+fi
 ```
 
 A non-empty `value` in the response confirms the full path: sandbox to gateway to Inference Gateway and back.
