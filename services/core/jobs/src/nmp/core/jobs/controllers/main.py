@@ -24,11 +24,16 @@ def _sync_advertised_profiles_to_registry(backend_registry: BackendRegistry) -> 
     """Keep GET /v2/execution-profiles aligned with backends that actually registered.
 
     ``profiles`` is built at import time; ``BackendRegistry.from_config`` may later
-    soft-skip Docker backends. Mutate the shared list in place so the API process
-    (same process in local standalone) stops advertising unusable executors.
+    skip unavailable Docker backends. The jobs API imports the same list object, so we
+    replace its contents in place (``clear`` + ``extend``) rather than rebinding the
+    name — that way local standalone stops advertising executors that never registered.
     """
     registered = backend_registry.registered_profile_keys()
-    kept = [profile for profile in profiles if (profile.provider, profile.profile) in registered]
+    kept = []
+    for profile in profiles:
+        if (profile.provider, profile.profile) in registered:
+            kept.append(profile)
+
     skipped = len(profiles) - len(kept)
     if skipped:
         logger.warning(
@@ -36,7 +41,8 @@ def _sync_advertised_profiles_to_registry(backend_registry: BackendRegistry) -> 
             "profiles match the jobs controller registry.",
             skipped,
         )
-        profiles[:] = kept
+        profiles.clear()
+        profiles.extend(kept)
 
 
 def handle_sighup(signum, frame):

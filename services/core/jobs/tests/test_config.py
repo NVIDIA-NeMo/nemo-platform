@@ -465,7 +465,7 @@ def test_backend_registry_registered_profile_keys_match_constructed_backends(moc
     assert registry.registered_profile_keys() == frozenset({("subprocess", "default")})
 
 
-def test_backend_registry_soft_skips_docker_init_connection_errors(mock_nmp_client, caplog):
+def test_backend_registry_skips_docker_init_connection_errors(mock_nmp_client, caplog):
     from docker.errors import DockerException
 
     class DummyBackend:

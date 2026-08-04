@@ -845,7 +845,7 @@ _DOCKER_FAILURE_LOG_MARKERS = (
 
 
 def _services_log_suggests_docker_failure(log_path: Path | None) -> bool:
-    """Return True when services.log contains known Docker soft-skip / daemon errors."""
+    """Return True when services.log contains known Docker skip / daemon errors."""
     if log_path is None or not log_path.is_file():
         return False
     try:

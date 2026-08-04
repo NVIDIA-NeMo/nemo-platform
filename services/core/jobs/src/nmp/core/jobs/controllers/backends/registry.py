@@ -24,9 +24,9 @@ from requests.exceptions import Timeout as RequestsTimeout
 
 logger = logging.getLogger(__name__)
 
-# Soft-skip only daemon/connection failures after validate_docker_available() was True.
-# ValidationError and other programming/config errors must still fail startup.
-_DOCKER_BACKEND_INIT_SOFT_SKIP_ERRORS = (DockerException, RequestsConnectionError, RequestsTimeout, OSError)
+# Skip Docker backends only for daemon/connection failures after validate_docker_available()
+# was True. ValidationError and other programming/config errors must still fail startup.
+_DOCKER_BACKEND_INIT_SKIPPABLE_ERRORS = (DockerException, RequestsConnectionError, RequestsTimeout, OSError)
 
 
 @dataclass(frozen=True)
@@ -147,7 +147,7 @@ class BackendRegistry:
             # config into the backend's expected format and validate it
             try:
                 registry[registry_key] = backend(nmp_sdk, executor.config, executor.profile)
-            except _DOCKER_BACKEND_INIT_SOFT_SKIP_ERRORS as exc:
+            except _DOCKER_BACKEND_INIT_SKIPPABLE_ERRORS as exc:
                 if executor.backend != "docker":
                     raise
                 logger.warning(
