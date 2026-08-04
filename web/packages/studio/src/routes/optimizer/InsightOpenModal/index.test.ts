@@ -4,11 +4,11 @@
 import { buildOptimizerExperimentCommand } from '@studio/routes/optimizer/InsightOpenModal/command';
 
 describe('buildOptimizerExperimentCommand', () => {
-  it('uses the optimizer experiment contract and quotes the insight and workspace', () => {
+  it('uses the experimentalist run contract and quotes the insight and workspace', () => {
     const command = buildOptimizerExperimentCommand("insight-'quoted", "workspace-'quoted");
 
     expect(command).toBe(
-      'nemo optimizer experiment \\\n' +
+      'nemo agents experimentalist run \\\n' +
         "  --insight 'insight-'\\''quoted' \\\n" +
         '  --train-dataset "<train-dataset-path>" \\\n' +
         '  --validation-dataset "<validation-dataset-path>" \\\n' +

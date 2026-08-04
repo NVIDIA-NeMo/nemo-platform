@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Eval Author plugin CLI — ``nemo eval-author ...`` subcommands.
+"""Eval Author plugin CLI — ``nemo agents eval-author ...`` subcommands.
+
+Registered under ``nemo.cli.agents`` and mounted by ``AgentsCLI`` as
+``nemo agents eval-author <verb>``.
 
 Scaffolding. Every verb is registered under its final name so the command tree is
 discoverable and the child tickets have a landing spot, and each body exits non-zero
@@ -21,14 +24,17 @@ import typer
 from nemo_platform_plugin.cli import NemoCLI
 
 
-def _not_implemented(command: str, ticket: str) -> NoReturn:
-    """Fail loudly, so a placeholder verb can never be mistaken for a successful run."""
-    typer.echo(f"`nemo eval-author {command}` is not implemented yet ({ticket}).", err=True)
+def _not_implemented(ctx: typer.Context, ticket: str) -> NoReturn:
+    """Fail loudly, so a placeholder verb can never be mistaken for a successful run.
+
+    The message quotes ``ctx.command_path`` rather than a hardcoded path.
+    """
+    typer.echo(f"`{ctx.command_path}` is not implemented yet ({ticket}).", err=True)
     raise typer.Exit(code=1)
 
 
 class EvalAuthorCLI(NemoCLI):
-    """``nemo eval-author ...`` subcommands."""
+    """``nemo agents eval-author ...`` subcommands."""
 
     name: ClassVar[str] = "eval-author"
     description: ClassVar[str] = "NeMo Eval Author commands."
@@ -41,33 +47,33 @@ class EvalAuthorCLI(NemoCLI):
             """Force subcommand dispatch even when only one verb is registered."""
 
         @app.command("discover")
-        def discover() -> None:
+        def discover(ctx: typer.Context) -> None:
             """Discover candidate evaluation cases from agent traces."""
             # TODO(ASE-677): declare flags and wire discovery.
-            _not_implemented("discover", "ASE-677")
+            _not_implemented(ctx, "ASE-677")
 
         @app.command("audit")
-        def audit() -> None:
+        def audit(ctx: typer.Context) -> None:
             """Audit an existing eval suite for coverage gaps."""
             # TODO(ASE-676): declare flags and wire the audit.
-            _not_implemented("audit", "ASE-676")
+            _not_implemented(ctx, "ASE-676")
 
         @app.command("propose")
-        def propose() -> None:
+        def propose(ctx: typer.Context) -> None:
             """Propose eval suite additions for review."""
             # TODO(ASE-675): declare flags and wire the proposal.
-            _not_implemented("propose", "ASE-675")
+            _not_implemented(ctx, "ASE-675")
 
         @app.command("run")
-        def run() -> None:
+        def run(ctx: typer.Context) -> None:
             """Run the Eval Author pipeline end to end."""
             # TODO(ASE-673): declare flags and wire the pipeline to run_eval_author.
-            _not_implemented("run", "ASE-673")
+            _not_implemented(ctx, "ASE-673")
 
         @app.command("doctor")
-        def doctor() -> None:
+        def doctor(ctx: typer.Context) -> None:
             """Diagnose Eval Author setup: credentials, platform, runtime."""
             # TODO(ASE-678): report the prerequisites the other verbs gate on.
-            _not_implemented("doctor", "ASE-678")
+            _not_implemented(ctx, "ASE-678")
 
         return app

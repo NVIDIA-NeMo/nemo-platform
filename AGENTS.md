@@ -99,6 +99,10 @@ Before doing anything that requires a running NeMo platform (`nemo services`, `n
 
 When working with the NeMo CLI (`nemo`), always check available skills first before exploring `--help`. Skills contain exact command syntax, JSON structures, and working examples that are much faster than trial-and-error discovery.
 
+## Building a Studio plugin web UI
+
+A plugin can ship a web UI that Studio loads at runtime and renders **inside its own React tree** — sharing Studio's React, router, and KUI design system rather than bundling its own. Before writing or reviewing plugin web code, read [plugins/example-plugin/web/AGENTS.md](plugins/example-plugin/web/AGENTS.md): it holds the contract (a `Root` component + `navItems`, externalized shared deps, KUI + theme tokens, auth rules) and is the canonical template to copy.
+
 ## Writing Python Code
 
 - Don't put `__init__.py` files in packages. Instead prefer implicit namespace packages.
@@ -242,7 +246,7 @@ Ensure all pre-commit hooks pass by running `uv run pre-commit run -a`. A clean 
 - **uv version pin:** Root `pyproject.toml` requires `uv>=0.9.14,<0.10.0`. Newer uv releases (e.g. 0.11.x) fail `uv sync` with a version mismatch. Install the pinned range before bootstrapping: `pip install 'uv>=0.9.14,<0.10.0'`.
 - **Native build deps:** `make bootstrap-python` builds `annoy` (via `nemoguardrails`). Install system headers once per VM image: `sudo apt-get install -y python3-dev build-essential`.
 - **Python bootstrap:** Run `make bootstrap-python` from repo root (creates `.venv`, runs `uv sync --frozen --all-packages`). See [SETUP.md](SETUP.md) for the full playbook.
-- **Studio (optional):** `make bootstrap-studio` requires Node **22.18.x** and pnpm per `web/package.json` engines. The VM may ship an older Node (e.g. 22.14); API services still run without Studio assets. Upgrade Node then run `make bootstrap-studio` if you need `http://localhost:8080/studio/`.
+- **Studio (optional):** `make bootstrap-studio` requires Node **22.23.x** and pnpm per `web/package.json` engines. The VM may ship an older Node (e.g. 22.14); API services still run without Studio assets. Upgrade Node then run `make bootstrap-studio` if you need `http://localhost:8080/studio/`.
 
 ### Running the platform
 

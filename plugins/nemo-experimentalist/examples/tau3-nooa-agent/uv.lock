@@ -730,15 +730,15 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = "==1.25.0" },
-    { name = "nooa", extras = ["tracing"], git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?rev=bea4614a0e2a6cf88f76225466159af883da80a0" },
+    { name = "nooa", extras = ["tracing"], git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?rev=6e0274dd03f883254a084cfb9f871ea580e03434" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "orjson", specifier = "==3.11.9" },
 ]
 
 [[package]]
 name = "nooa"
-version = "0.0.7.dev46"
-source = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?rev=bea4614a0e2a6cf88f76225466159af883da80a0#bea4614a0e2a6cf88f76225466159af883da80a0" }
+version = "0.0.9.dev46"
+source = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?rev=6e0274dd03f883254a084cfb9f871ea580e03434#6e0274dd03f883254a084cfb9f871ea580e03434" }
 dependencies = [
     { name = "httpx" },
     { name = "litellm" },

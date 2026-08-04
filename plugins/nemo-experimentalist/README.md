@@ -10,22 +10,18 @@ or Git-backed agent against Harbor-compatible train and validation datasets.
 
 ## Install and develop
 
-From the root of this checkout:
+This plugin lives in the `nemo-platform` monorepo and shares the root `.venv`.
+From the root of the checkout:
 
 ```bash
 uv sync
 export NEMO="$PWD/.venv/bin/nemo"
 ```
 
-For a NeMo Platform source checkout, use the
-[source-Platform installer](docs/e2e/install-experimentalist-plugin.sh), which keeps
-Platform packages editable while installing both plugins' direct runtime
-dependencies:
+Requires `uv >=0.9.14,<0.10.0`.
 
-```bash
-REPO="$PWD" PLAT=/path/to/nemo-platform bash docs/e2e/install-experimentalist-plugin.sh
-export NEMO=/path/to/nemo-platform/.venv/bin/nemo
-```
+**To verify an end-to-end run, follow
+[Get started with an example agent](../../docs/get-started/example-agent.mdx).**
 
 The source dependencies are pinned to tagged or immutable revisions in
 `pyproject.toml`. NVIDIA-labs OO Agents (NOOA) is pinned to a public GitHub
@@ -36,12 +32,12 @@ commit, currently one past `v0.0.6` that carries an MCP transport-timeout fix.
 The supported handoff is:
 
 ```text
-nemo insights analyze → .nemo-optimizer/insights.yaml or Platform Insight ID
-                    → nemo experimentalist doctor
-                    → nemo experimentalist run
+nemo agents analyst run → .nemo-optimizer/insights.yaml or Platform Insight ID
+                       → nemo agents experimentalist doctor
+                       → nemo agents experimentalist run
 ```
 
-Run `nemo insights analyze` using the Platform Insights plugin and its
+Run `nemo agents analyst run` using the Platform Insights plugin and its
 documented trace, workspace, and output options. The producer may write the
 local profile default, `.nemo-optimizer/insights.yaml`, or persist an Insight
 on Platform and report its ID. The Experimentalist does not analyze traces,
@@ -51,12 +47,12 @@ From an agent directory with an `optimizer.yaml` profile, validate the
 effective inputs:
 
 ```bash
-$NEMO experimentalist doctor
+$NEMO agents experimentalist doctor
 ```
 
 ## Run the Experimentalist locally
 
-`nemo experimentalist run` runs the local Experimentalist loop. It evaluates
+`nemo agents experimentalist run` runs the local Experimentalist loop. It evaluates
 a baseline agent on Harbor-compatible train and validation datasets, proposes
 candidate mutations, and records its artifacts under the selected experiment
 directory.
@@ -78,14 +74,15 @@ repo="$(git rev-parse --show-toplevel)"
 sbx create --clone --name nemo-experimentalist shell "$repo"
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env EXPERIMENTALIST_API_BASE \
-  --env EXPERIMENTALIST_API_KEY \
-  --env EXPERIMENTALIST_SMART_MODEL_NAME \
-  --env EXPERIMENTALIST_MID_MODEL_NAME \
-  --env EXPERIMENTALIST_FAST_MODEL_NAME \
+  --env INFERENCE_API_KEY \
+  --env NEMO_EXPERIMENTALIST_API_BASE \
+  --env NEMO_EXPERIMENTALIST_API_KEY \
+  --env NEMO_EXPERIMENTALIST_MODELS_SMART \
+  --env NEMO_EXPERIMENTALIST_MODELS_MID \
+  --env NEMO_EXPERIMENTALIST_MODELS_FAST \
   nemo-experimentalist \
   uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
-  nemo experimentalist run
+  nemo agents experimentalist run
 ```
 
 Append the run options described below. `UV_PROJECT_ENVIRONMENT` keeps the
@@ -106,14 +103,49 @@ Harbor tasks that publish only `linux/amd64` images do not run in the
 `linux/arm64` sandbox. This currently includes the Terminal-Bench `fix-git`
 task; use an x86_64 machine or VM for that suite.
 
-Configure the models before running an experiment:
+### Endpoint and model settings
+
+Which endpoint the Experimentalist talks to, and with which models, is a *deployment*
+setting: one per install, not per experiment. Like every other NeMo plugin it is a
+`NemoConfig`, so it can be set either in the `experimentalist:` section of the platform
+config file or through the environment, and **the environment wins**.
+`nemo experimentalist doctor` reports what is unset.
+
+| Variable | Config key | Default | Used by |
+|---|---|---|---|
+| `NEMO_EXPERIMENTALIST_API_BASE` | `api_base` | `https://inference-api.nvidia.com/v1` | all optimizer agents |
+| `NEMO_EXPERIMENTALIST_API_KEY` | `api_key` | — (required) | all optimizer agents |
+| `NEMO_EXPERIMENTALIST_MODELS_SMART` | `models.smart` | — (required) | Coder, Analyzer, Proposer, Rationalizer, TraceAnalyzer |
+| `NEMO_EXPERIMENTALIST_MODELS_MID` | `models.mid` | — (required) | trajectory scorer, architecture doc |
+| `NEMO_EXPERIMENTALIST_MODELS_FAST` | `models.fast` | — (required) | Terminator, goal tree, summarizers |
+
+The tiers exist to buy capability where it changes the result and speed where it does not,
+so give them different models — smart writes the code, fast runs the high-volume judging:
 
 ```bash
-export EXPERIMENTALIST_API_BASE=https://inference-api.nvidia.com/v1
-export EXPERIMENTALIST_API_KEY=sk-...
-export EXPERIMENTALIST_SMART_MODEL_NAME=openai/openai/openai/gpt-5.5
-export EXPERIMENTALIST_FAST_MODEL_NAME=openai/openai/openai/gpt-5-mini
+export NEMO_EXPERIMENTALIST_API_KEY=sk-...
+export NEMO_EXPERIMENTALIST_MODELS_SMART=openai/openai/openai/gpt-5.6-sol
+export NEMO_EXPERIMENTALIST_MODELS_MID=openai/openai/openai/gpt-5.6-terra
+export NEMO_EXPERIMENTALIST_MODELS_FAST=openai/openai/openai/gpt-5.6-luna
 ```
+
+Model names have no default: a name is only meaningful against a specific endpoint, so
+an unset tier fails before the run starts rather than at the first LLM call. Name them
+as *your* endpoint does — `openai/openai/openai/gpt-5.6-sol` on the NVIDIA gateway,
+`gpt-5.6-sol` against OpenAI directly. The
+[example agent's `.env.example`](examples/tau3-nooa-agent/.env.example) is a working set.
+
+Credentials are the one place a default applies: when the API base is the NVIDIA gateway,
+a set `INFERENCE_API_KEY` fills `NEMO_EXPERIMENTALIST_API_KEY`. A custom base never
+inherits it, so a key scoped to the gateway is not forwarded elsewhere.
+
+The `--config` YAML is the other kind of configuration: it holds what *one experiment*
+does (`max_rounds`, `max_survivors`, per-component tuning) and takes no environment
+override, so the file is an accurate record of the run.
+
+The agent under test is separate: it reads `AUT_MODEL_NAME`
+plus `OPENAI_API_KEY` / `OPENAI_BASE_URL`, which are the only variables forwarded
+into the evaluation container.
 
 ### Insight-driven optimization
 
@@ -121,7 +153,7 @@ A single local Insight in `.nemo-optimizer/insights.yaml` is selected by
 default:
 
 ```bash
-$NEMO experimentalist run
+$NEMO agents experimentalist run
 ```
 
 Use `--insight` to name another local file. Local files can contain one
@@ -129,7 +161,7 @@ Insight object or an `insights` list. A list with multiple entries requires
 `--insight-id`, which accepts an exact ID, exact title, or zero-based index:
 
 ```bash
-$NEMO experimentalist run \
+$NEMO agents experimentalist run \
   --insight path/to/insights.yaml \
   --insight-id 0
 ```
@@ -137,7 +169,7 @@ $NEMO experimentalist run \
 For an Insight persisted by Platform, pass its ID with its Platform location:
 
 ```bash
-$NEMO experimentalist run \
+$NEMO agents experimentalist run \
   --insight <platform-insight-id> \
   --workspace <workspace> \
   --base-url https://<platform-host>
@@ -153,7 +185,7 @@ Use `--no-insight` to bypass both an explicit Insight and the profile-local
 default. Supply a baseline agent when the profile does not provide one:
 
 ```bash
-$NEMO experimentalist run \
+$NEMO agents experimentalist run \
   --no-insight \
   --agent path/to/agent \
   --train-dataset path/to/train \
@@ -161,10 +193,14 @@ $NEMO experimentalist run \
   --task-template path/to/task_template
 ```
 
-Pass one or more framework skill directories with `--framework-skills` when
-the agent needs framework-specific modification guidance. The checked-in Tau2
-profile demonstrates profile-owned datasets and task template configuration:
-[`examples/tau2-nemo-oo-agent/optimizer.yaml`](examples/tau2-nemo-oo-agent/optimizer.yaml).
+`--task-template` is only required with `--insight`; a dataset-driven run does
+not need one. Pass one or more framework skill directories with
+`--framework-skills` when the agent needs framework-specific modification
+guidance — `framework-skills/nooa` for the Tau3 example agent.
+
+Step 5 of [the example-agent guide](../../docs/get-started/example-agent.mdx) is
+a complete worked instance of this command against the checked-in Tau3 Airline
+example, including the `.env` contents and dataset preparation.
 
 Each run writes its local artifacts under `--experiment-dir`, or under
 `.nemo-optimizer/experiments/` beside the governing profile by default.

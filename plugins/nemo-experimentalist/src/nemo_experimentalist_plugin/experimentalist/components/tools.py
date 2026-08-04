@@ -195,18 +195,13 @@ class WorkspaceTool:
             values if the file is missing or unreadable.
 
         """
-        from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
-            LocalExperimentalistBackend,
-        )
+        # Function-local import: experimentalist_backend imports this module.
+        from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import load_candidate
 
         path = self._agents_root / agent_id / "metadata.json"
-        # Build a throw-away backend instance scoped to the workspace root so we
-        # can reuse its deserialization logic without duplicating it here.
-        _backend = LocalExperimentalistBackend.__new__(LocalExperimentalistBackend)
-        _backend._eo = self._eval_root  # type: ignore[attr-defined]
         if not path.exists():
             raise FileNotFoundError(f"Metadata file not found: {path}")
-        return _backend._load_candidate(path)
+        return load_candidate(path)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 

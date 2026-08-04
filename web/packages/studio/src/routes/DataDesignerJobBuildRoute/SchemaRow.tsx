@@ -6,7 +6,7 @@ import { CardIconBadge } from '@studio/components/common/SelectableCard';
 import type { BuilderColumn } from '@studio/routes/DataDesignerJobBuildRoute/columns';
 import { describeColumn } from '@studio/routes/DataDesignerJobBuildRoute/describeColumn';
 import { Box, Trash2 } from 'lucide-react';
-import type { FC } from 'react';
+import { type FC, memo } from 'react';
 
 /** Accent color → NVIDIA Foundations text token, matching the DAG node icon styling. */
 const ACCENT_ICON_CLASS: Record<string, string> = {
@@ -24,8 +24,8 @@ export interface SchemaRowProps {
   /** Names of columns this one references, shown inline as `{{ name }}` relationship tags. */
   references: string[];
   selected: boolean;
-  onSelect: () => void;
-  onDelete: () => void;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 /**
@@ -33,13 +33,13 @@ export interface SchemaRowProps {
  * the column name, a type badge, a one-line summary, and its relationship tags. Selecting the
  * row opens the same config pane the DAG canvas uses; the trailing button deletes the column.
  */
-export const SchemaRow: FC<SchemaRowProps> = ({
+export const SchemaRow: FC<SchemaRowProps> = memo(function SchemaRow({
   column,
   references,
   selected,
   onSelect,
   onDelete,
-}) => {
+}) {
   const { option } = column;
   const { typeLabel, detail } = describeColumn(column);
   const Icon = option.icon ?? Box;
@@ -54,7 +54,7 @@ export const SchemaRow: FC<SchemaRowProps> = ({
       <button
         type="button"
         data-select=""
-        onClick={onSelect}
+        onClick={() => onSelect(column.id)}
         aria-pressed={selected}
         className="flex min-w-0 flex-1 items-center gap-density-md px-density-lg py-density-md text-left focus-visible:outline-none cursor-pointer"
       >
@@ -93,7 +93,7 @@ export const SchemaRow: FC<SchemaRowProps> = ({
           kind="tertiary"
           color="danger"
           size="tiny"
-          onClick={onDelete}
+          onClick={() => onDelete(column.id)}
           aria-label={`Delete ${column.name || option.label}`}
           className="h-full rounded-none opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
         >
@@ -102,4 +102,4 @@ export const SchemaRow: FC<SchemaRowProps> = ({
       </Flex>
     </Flex>
   );
-};
+});

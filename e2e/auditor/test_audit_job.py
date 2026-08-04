@@ -181,7 +181,7 @@ def test_audit_job_submit_blank_probe(
     }
 
     job = sdk.auditor.submit(config=config, target=target, workspace=audit_workspace)
-    job_name = job["name"]
+    job_name = job.name
     try:
         final_status = _wait_for_audit_job(sdk, job_name, audit_workspace)
         assert final_status == "completed", (
@@ -205,7 +205,7 @@ def test_audit_job_submit_with_entity_refs(
         target=f"{audit_workspace}/{audit_target_name}",
         workspace=audit_workspace,
     )
-    job_name = job["name"]
+    job_name = job.name
     try:
         final_status = _wait_for_audit_job(sdk, job_name, audit_workspace)
         assert final_status == "completed", (
@@ -227,7 +227,7 @@ def test_audit_job_appears_in_list(
         target=f"{audit_workspace}/{audit_target_name}",
         workspace=audit_workspace,
     )
-    job_name = job["name"]
+    job_name = job.name
     try:
         jobs = sdk.auditor.list_jobs(workspace=audit_workspace)
         job_names = [j["name"] for j in jobs.get("data", [])]

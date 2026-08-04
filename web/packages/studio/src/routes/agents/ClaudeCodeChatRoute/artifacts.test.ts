@@ -48,7 +48,7 @@ describe('Claude Code chat artifacts', () => {
     }
   );
 
-  it('keeps the latest streamed coding-agent model', () => {
+  it('keeps the latest streamed copilot model', () => {
     const initial = createEmptyClaudeCodeChatArtifacts();
     const first = updateClaudeCodeChatArtifactsFromEvent(initial, {
       type: 'assistant',
@@ -61,10 +61,10 @@ describe('Claude Code chat artifacts', () => {
 
     expect(updated.model).toBeUndefined();
     expect(updated.model_source).toBeUndefined();
-    expect(updated.coding_agent_model).toBe('claude-sonnet-4-6');
+    expect(updated.copilot_model).toBe('claude-sonnet-4-6');
   });
 
-  it('promotes agent and selected model answers while preserving coding-agent model', () => {
+  it('promotes agent and selected model answers while preserving copilot model', () => {
     const withCodingModel = updateClaudeCodeChatArtifactsFromEvent(
       createEmptyClaudeCodeChatArtifacts(),
       {
@@ -91,7 +91,7 @@ describe('Claude Code chat artifacts', () => {
     expect(withSelections.agent).toBe('beach-finder');
     expect(withSelections.model).toBe('nvidia-build - meta/llama-3.3-70b-instruct');
     expect(withSelections.model_source).toBe('selection');
-    expect(withSelections.coding_agent_model).toBe('claude-sonnet-4-6');
+    expect(withSelections.copilot_model).toBe('claude-sonnet-4-6');
     expect(withSelections.selections).toEqual([
       { label: 'Agent', value: 'beach-finder' },
       { label: 'Model', value: 'nvidia-build - meta/llama-3.3-70b-instruct' },
@@ -243,7 +243,7 @@ describe('Claude Code chat artifacts', () => {
     ]);
   });
 
-  it('promotes draft spec name and model over the coding-agent model', () => {
+  it('promotes draft spec name and model over the copilot model', () => {
     const withCodingModel = updateClaudeCodeChatArtifactsFromEvent(
       createEmptyClaudeCodeChatArtifacts(),
       {
@@ -280,7 +280,7 @@ describe('Claude Code chat artifacts', () => {
     expect(afterCodeModelUpdate.agent).toBe('cat-identifier');
     expect(afterCodeModelUpdate.model).toBe('cloud, nvidia/llama-3.3-nemotron-super-49b-v1');
     expect(afterCodeModelUpdate.model_source).toBe('spec');
-    expect(afterCodeModelUpdate.coding_agent_model).toBe('claude-opus-4-6');
+    expect(afterCodeModelUpdate.copilot_model).toBe('claude-opus-4-6');
   });
 
   it('derives spec artifacts from loaded transcript items', () => {

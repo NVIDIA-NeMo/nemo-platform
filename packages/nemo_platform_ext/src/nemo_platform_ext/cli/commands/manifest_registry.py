@@ -12,7 +12,6 @@ TOP_LEVEL_ENTRIES = (
         name="auth",
         panel="Setup",
         kind="group",
-        hidden=True,
     ),
     TopLevelEntry(
         import_path="nemo_platform_ext.cli.commands.config:app",

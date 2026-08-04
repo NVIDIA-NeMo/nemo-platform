@@ -187,6 +187,7 @@ enabled-plugins = [
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
   "nemo-unsloth-plugin",
+  "nemo-rl-plugin",
 ]
 
 # Legacy runtime needed specifically for task images that still invoke
@@ -376,9 +377,9 @@ nemo-insights-plugin = { workspace = true }
 nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
 # Not published to PyPI yet, so this pins an immutable public commit. It is a commit
-# rather than a tag because the MCP transport-timeout fix landed after v0.0.6; move
-# back to a tag once one ships that contains it.
-nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "bea4614a0e2a6cf88f76225466159af883da80a0" }
+# rather than a tag because the callable `@strategy(llm=...)` support this plugin now
+# depends on landed after v0.0.8; move back to a tag once one ships that contains it.
+nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "6e0274dd03f883254a084cfb9f871ea580e03434" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
@@ -389,6 +390,7 @@ nemo-agents-plugin = { workspace = true }
 nemo-deployments-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
 nemo-agents-example-email-phishing = { workspace = true }
+nemo-agents-example-email-security = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
@@ -449,6 +451,7 @@ members = [
   "plugins/nemo-experimentalist",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
+  "plugins/nemo-agents/examples/email-security-analyst",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
   "plugins/nemo-unsloth",
@@ -556,9 +559,9 @@ extra-paths = [
   # nemo-agents plugin is not a workspace member; add its src so ty can
   # resolve nemo_agents_plugin imports when checking plugin test files.
   "plugins/nemo-agents/src",
-  # The built-in NeMo Agent is a standalone deployable with its own lockfile;
-  # add its src so ty can resolve nemo_agent imports from its tests.
-  "agents/nemo-agent-local/src",
+  # The built-in NeMo Copilot is a standalone deployable with its own lockfile;
+  # add its src so ty can resolve nemo_studio_copilot imports from its tests.
+  "agents/nemo-studio-copilot/src",
   # example-plugin is not a workspace member; add its src so ty can
   # resolve nmp.example_plugin imports when checking plugin test files.
   "plugins/example-plugin/src",
@@ -580,12 +583,6 @@ extra-paths = [
   # on sys.path in tests/conftest.py.
   "tests/agentic-use",
   "tests/agentic-use/shared",
-  # nemo-rl is a workspace member but is temporarily excluded from enabled-plugins
-  # (RL/DPO backend disabled pending nmp-rl-training CVE remediation), so it is not
-  # installed in the default env. Add its src + the services/rl src so ty can still
-  # resolve nemo_rl_plugin / nmp.rl imports when checking the RL source and tests.
-  "plugins/nemo-rl/src",
-  "services/rl/src",
 ]
 
 [tool.ty.src]

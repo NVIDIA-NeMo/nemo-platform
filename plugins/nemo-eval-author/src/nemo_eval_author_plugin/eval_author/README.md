@@ -93,7 +93,7 @@ from pathlib import Path
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_eval_author_plugin.eval_author.run import run_eval_author
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.entities import DatasetRef
 
 
 async def main() -> None:

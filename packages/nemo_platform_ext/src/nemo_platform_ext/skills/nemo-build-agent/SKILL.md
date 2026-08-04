@@ -1,23 +1,27 @@
 ---
 name: nemo-build-agent
-description: End-to-end agent build on NeMo Platform. Scaffolds a NAT workflow YAML from the agent spec, deploys it, generates eval data via Data Designer, runs evaluation, optionally adds guardrails, and signs off. Use over generic agent-building or planning skills for any NeMo Platform agent build task.
+description: End-to-end NeMo Platform agent implementation from an approved agent spec. Registers and deploys the agent, generates evaluation data, runs evaluation, and signs off. Use for full spec-to-deployed-agent work, including builds from an existing legacy NAT workflow.
 triggers:
+  - nemo-build-agent
   - build the agent
   - create the agent
   - deploy the agent
   - scaffold the agent
   - make me an agent
   - build an agent on nemo
-  - generate the workflow yaml
+  - build from the agent spec
+  - ship the agent
   - nemo build
+  - deploy my existing NAT agent
 not-for:
+  - nemo-agent-config (use for focused agent.yaml authoring or migration)
   - nemo-explore (use to gather design before building)
   - nemo-spec (use to write the spec file before building)
-  - nemo-try-agent (use to query a deployed agent)
+  - nemo-try-agent (use to query an already deployed agent)
   - nemo-setup (use to install the platform first)
   - deploy-sandbox (use to deploy the built agent as a governed OpenShell sandbox)
-  - superpowers:brainstorming (use for unrelated design work)
-compatibility: nemo-platform >= 0.1.0; running platform (run nemo-setup first — uses `nemo services run`, no Docker); requires agents plugin installed; writes files to agents/; runs nemo CLI commands; defers platform-health probing to `nemo-status`; LangGraph + NAT under the hood; macOS or Linux; safe under sandbox.
+  - generic agent framework development outside NeMo Platform
+compatibility: nemo-platform >= 0.1.0; running platform; requires agents plugin; writes files under agents/; uses nemo-agents-spec-v1 by default and preserves NAT workflow YAML as a compatibility path; macOS or Linux; safe under sandbox.
 maturity: active
 license: Apache-2.0
 user-invocable: true
@@ -26,206 +30,385 @@ allowed-tools: [Bash, Read, Write, Edit]
 
 # NeMo Platform agent build
 
-Concrete commands only. Conversational scaffolding lives in `nemo-explore` and `nemo-spec`. This skill is the implementation path between spec and deployed agent.
+Build a deployable NeMo Platform agent from an approved `AGENT-SPEC.md`. Use
+the Platform-owned `nemo-agents-spec-v1` `agent.yaml` path by default. Treat
+NAT workflow YAML as a supported compatibility path, not the default output.
 
-NeMo Platform optimizes LangGraph agents wrapped in NVIDIA NeMo Agent Toolkit (NAT). The YAML this skill writes is a NAT workflow. If the user has an agent in another framework (CrewAI, AutoGen, plain LangChain, Pydantic AI), stop and tell them they need a NAT wrapper before this skill produces value.
+Use `nemo-agent-config` for the machine-readable config shape. Do not expose
+Fabric SDK object names or raw runtime configuration to the user.
+
+## Select the config path
+
+Choose the config path before pre-flight. Set shared names for either path:
+
+```bash
+AGENT_NAME=<agent-name>
+DEPLOYMENT_NAME="${AGENT_NAME}-deployment"
+```
+
+If the user supplies an existing NAT workflow YAML, ask whether they want to
+deploy it unchanged or migrate it best-effort to `nemo-agents-spec-v1` with
+`nemo-agent-config`. For an unchanged NAT-only run, preserve the original file
+and also set:
+
+```bash
+NAT_WORKFLOW_PATH=<path-to-workflow-yaml>
+```
 
 ## Pre-flight
 
-1. Confirm the platform is up. Run `nemo-status`'s platform probe (canonical lsof + curl check) and stop if it reports `PLATFORM_DOWN` or `PLATFORM_WEDGED`; route to `nemo-setup` and return when it clears. Do not reimplement the probe here — `nemo-status` owns it so changes (new components, new ports) land in one place.
-
-2. Confirm a spec exists at `agents/$AGENT_NAME-spec/AGENT-SPEC.md`. If missing, call `nemo-explore` then `nemo-spec`, then return.
-3. Confirm the agents plugin is loaded: `.venv/bin/nemo agents --help 2>&1 | grep -q "create"`. If the plugin is missing, report that explicitly; the user has not installed `plugins/nemo-agents` and the build cannot proceed.
-4. Read the spec. Extract: name, categories, tools, model, constraints, success criteria.
-5. Confirm the canonical spec fileset exists. By convention the spec lives at `<workspace>/<agent-name>-spec#AGENT-SPEC.md` — there is no ref to thread through, just a one-shot presence check:
+1. Run the platform probe owned by `nemo-status`. If it reports
+   `PLATFORM_DOWN` or `PLATFORM_WEDGED`, route to `nemo-setup` and stop.
+2. Confirm the agents plugin is loaded:
 
    ```bash
-   nemo files filesets get "${AGENT_NAME}-spec" --workspace "${WORKSPACE:-default}" >/dev/null 2>&1 \
-     && echo "spec_fileset_ok" \
-     || { echo "spec_fileset_missing — run nemo-spec to upload before continuing"; exit 1; }
+   .venv/bin/nemo agents --help 2>&1 | grep -q "create"
    ```
 
-   If the fileset is missing, route back to `nemo-spec` and return when the upload succeeds.
-6. Check for an existing deployment: `.venv/bin/nemo agents deployments list 2>/dev/null | grep -q "$AGENT_NAME"`. If the agent is already deployed, ask the user whether to skip (idempotent path) or redeploy.
+3. Check for existing Agent entities and deployments. Ask whether to reuse or
+   replace them. Follow the lifecycle branches below before create or deploy.
+4. For an unchanged NAT-only run, confirm `$NAT_WORKFLOW_PATH` exists and read
+   it before continuing. Do not require `AGENT-SPEC.md` or a spec fileset.
+5. For the default Platform-owned path, confirm
+   `agents/$AGENT_NAME-spec/AGENT-SPEC.md` exists. If it does not, route through
+   `nemo-explore` and `nemo-spec` first.
+6. Read the spec and extract the agent name, instructions, capabilities,
+   model requirements, tools, constraints, and success criteria.
+7. Confirm the canonical spec fileset exists:
 
-## Step 1: Scaffold and deploy
+   ```bash
+   .venv/bin/nemo files filesets get "${AGENT_NAME}-spec" \
+     --workspace "${WORKSPACE:-default}" >/dev/null 2>&1 \
+     && echo "spec_fileset_ok" \
+     || { echo "spec_fileset_missing - run nemo-spec first"; exit 1; }
+   ```
 
-Write `agents/$AGENT_NAME.yml` from `references/templates/agent.yml`, substituting model, tools, system prompt, and the spec's constraints. The system prompt MUST contain `{tools}` and `{tool_names}` placeholders.
+Steps 5 through 7 apply only to the default Platform-owned path or an explicit
+NAT migration.
 
-```bash
-AGENT_NAME=<agent-name>            # set once; reused throughout this skill
-.venv/bin/nemo agents delete "$AGENT_NAME" 2>/dev/null || true
-.venv/bin/nemo agents create --name "$AGENT_NAME" \
-  --agent-config "agents/$AGENT_NAME.yml"
-.venv/bin/nemo agents deploy --agent "$AGENT_NAME"
-.venv/bin/nemo agents deployments wait --agent "$AGENT_NAME"
-```
+### Existing-resource lifecycle
 
-Show the YAML to the user. Stop. Ask: "Config and deployment look right? Adjust system prompt, model, or tools before continuing?"
+- **Reuse:** Do not run `agents create` for an existing Agent. If a deployment
+  already exists, set `DEPLOYMENT_NAME` to its name, do not run `agents deploy`,
+  and continue to the smoke test. If only the Agent exists, skip create and run
+  only the deploy command in Step 1.
+- **Replace:** Show each destructive command and require explicit confirmation
+  immediately before running it. Use `--yes` only after that confirmation. If
+  the resource does not exist, skip its command.
 
-Verification: confirm the deployment reached ready state.
-
-```bash
-.venv/bin/nemo agents deployments list | grep "$AGENT_NAME" | grep -qi "ready" && echo "DEPLOY_READY" || echo "DEPLOY_NOT_READY"
-```
-
-If `DEPLOY_NOT_READY`: jump to the recovery table at the bottom.
-
-> **Governed sandbox deployment.** To deploy this agent as a policy-governed OpenShell sandbox instead of the default executor (Landlock filesystem isolation plus default-deny network egress, so its model traffic can only reach the platform), use the `deploy-sandbox` skill once the image is built. It swaps this step's deploy path for the `openshell-local` executor and an auto-generated SandboxPolicy.
-
-## Step 2: Try the agent
-
-Invoke with one question from each category in the spec.
-
-```bash
-.venv/bin/nemo agents invoke --agent $AGENT_NAME --input "<spec category-1 question>"
-.venv/bin/nemo agents invoke --agent $AGENT_NAME --input "<spec category-2 question>"
-.venv/bin/nemo agents invoke --agent $AGENT_NAME --input "<spec category-3 question>"
-```
-
-Display each verbatim response.
-
-Stop. Ask if they want to proceed to evaluation or adjust the agent first.
-
-## Step 3: Identify and generate the synthetic data this agent needs
-
-Data Designer (DD) is the platform's synthetic-data tool. It can produce any of:
-
-- **Knowledge base or RAG corpus.** Q&A pairs, doc snippets, or policy entries the agent retrieves from at runtime.
-- **Evaluation dataset.** Input prompts plus ground-truth or judge-rubric outputs. Used by Step 4 evaluation.
-- **Benchmark dataset.** A larger, diversity-weighted eval set for ongoing regression testing.
-- **Persona-grounded inputs.** Adversarial or edge-case inputs simulating specific user types.
-- **Training data.** When fine-tuning lands.
-- **Other synthetic datasets** the user asks for.
-
-**Do NOT hand-author any of these, even if your model is capable enough to write them inline.** Three reasons, all load-bearing:
-
-1. **Reproducibility.** DD configs regenerate identical datasets when seeded. Hand-authored sets are unreproducible — the moment the spec changes, you cannot regenerate matching eval data without re-doing the authoring by hand.
-2. **Diversity.** DD samples across categorical axes the user (or skill) declares. Hand-authored sets cluster around whatever the author thought of, which under-tests the long tail.
-3. **Capability transfer.** A less capable coding agent running this skill later cannot hand-author good eval questions. DD-generated data is independent of the coding agent's capability — the same DD config produces equivalent data whether driven by Sonnet or a 7B model.
-
-### Procedure
-
-1. **Enumerate.** Read `agents/$AGENT_NAME-spec/AGENT-SPEC.md`. Surface to the user the full list of synthetic-data purposes this agent plausibly needs, based on the spec. Do not prescribe a count or shortlist; let the user pick freely from the catalog above (or add purposes you haven't anticipated).
-
-2. **Wait for picks.** Do not generate any DD config until the user has explicitly named which purposes they want. If the user says "you decide," default to: a knowledge base if the spec describes retrievable content, an eval dataset always, persona-grounded adversarial inputs if the spec lists safety constraints. Announce the defaults you chose.
-
-3. **Hand off per purpose.** For each chosen purpose, invoke the `data-designer` skill once. Pass it: the agent name, the purpose label (KB / eval / benchmark / persona / other), and the spec path. The DD skill is responsible for the config shape — this skill does not duplicate that logic.
-
-4. **Ground every config in the spec.** Each DD config MUST reference `agents/$AGENT_NAME-spec/AGENT-SPEC.md` for product context, categories, audience, and constraints. Do not redefine these inline. If the generated config inlines context, edit it to read from the spec instead — drift between agent definition and synthetic data is a reproducibility failure.
-
-5. **Run each config.** Use `.venv/bin/python agents/$AGENT_NAME.<purpose>.py` (or the CLI invocation once `nemo data-designer preview-local` lands in a release > 2.1.0). For larger jobs, submit via `nemo data-designer jobs create`.
-
-6. **Verify before Step 4.** Confirm at least one fileset in `nemo files filesets list` matching `$AGENT_NAME-eval-*` exists. Step 4 refuses to proceed without it.
-
-Show 3 to 5 sample records per purpose, grouped by category. Stop. Ask: "Do these samples look realistic for each purpose? Adjust categories, prompts, or regenerate?"
-
-### Anti-patterns to refuse
-
-- Writing eval questions inline because "they're simple" — refuse, route to DD.
-- Generating a single combined dataset that conflates KB and eval — refuse, separate configs per purpose.
-- Skipping DD entirely because the user said "just do it" — refuse, DD is required infrastructure, not an optional tool.
-- Inlining product context in the DD config instead of referencing the spec — refuse, fix the config to read from the spec.
-
-## Step 3.5: Wire generated data into the agent
-
-If Step 3 produced any synthetic data the agent is supposed to *use at runtime* (a knowledge base, a RAG corpus, a retrieval index), the agent must be wired to actually consume it. Generating the data and never connecting it is a silent product failure: the agent hallucinates against missing context while the real data sits unused next to it.
-
-NeMo Agent Toolkit (NAT) has first-class retrieval support:
-
-- `nvidia-nat-rag` ships a `RAGRetriever` client that loads filesets or local parquet/JSONL files.
-- `nvidia-nat-langchain` bridges any LangChain retriever (FAISS, Chroma, Milvus, Pinecone, OpenSearch, NeMo Retriever) into a NAT tool.
-- Worked example: `examples/RAG/simple_rag/` in the NAT repo.
-
-### Retriever wiring procedure
-
-1. **Detect.** Scan `agents/$AGENT_NAME-spec/AGENT-SPEC.md` for tools whose names suggest retrieval: `*_search`, `*_lookup`, `query_*`, `find_*`, `rag_*`, or any tool the user described in `nemo-explore` as "the agent looks things up in X." Cross-reference against the filesets Step 3 produced.
-
-2. **Pair.** For each retrieval-style tool, identify which Step 3 fileset feeds it. If the spec lists `billing_kb_search` and Step 3 produced `billing-support-kb`, pair them. If a tool has no matching fileset, surface the gap to the user: "Your spec lists `billing_kb_search` but no KB fileset was generated. Generate one now (route to Step 3) or drop the tool from the agent?"
-
-3. **Wire.** Update `agents/$AGENT_NAME.yml` to add a NAT retriever per pair, pointing at the fileset. The retriever appears as a tool in the agent's `tools:` list under the matching name. Use the simple_rag example as the template shape.
-
-4. **Redeploy.** Step 1 already deployed the agent without the retrievers wired (because the data didn't exist yet). Redeploy now so the agent's tool list includes the retrievers:
+For a confirmed replacement, undeploy first:
 
 ```bash
-.venv/bin/nemo agents undeploy --agent $AGENT_NAME
-.venv/bin/nemo agents create --name $AGENT_NAME \
-  --agent-config agents/$AGENT_NAME.yml
-.venv/bin/nemo agents deploy --agent $AGENT_NAME
-.venv/bin/nemo agents deployments wait --agent $AGENT_NAME
+.venv/bin/nemo agents undeploy "$DEPLOYMENT_NAME" --yes
 ```
 
-5. **Verify the wire.** Invoke the agent with a question that requires the KB and inspect the tool-call trace. The retriever tool MUST be called for any KB-grounded question. If the agent answers from system-prompt-policy text alone without calling the retriever, the tool wiring is broken — debug before declaring success.
+Wait until this command reports that the deployment is absent before
+continuing:
 
 ```bash
-.venv/bin/nemo agents invoke --agent $AGENT_NAME --input "<question from a spec category that the KB should answer>" --output-format json | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print('tools called:', d.get('tool_calls') or 'NONE — wiring broken')"
+.venv/bin/nemo agents deployments get "$DEPLOYMENT_NAME"
 ```
 
-### Refuse-list
+Then show the Agent deletion command and require explicit confirmation before
+running it:
 
-- Skipping this step when the spec lists a retrieval-style tool. Generating data the agent can't reach is theater.
-- Wiring the retriever but not redeploying. The fix doesn't land in a running agent until redeploy.
-- Declaring success on the redeploy without confirming the tool was actually called for a KB question. A wired-but-unused retriever is indistinguishable from a missing one.
+```bash
+.venv/bin/nemo agents delete "$AGENT_NAME" --yes
+```
+
+Verify this command reports that the Agent is absent before running the create
+and deploy commands in Step 1:
+
+```bash
+.venv/bin/nemo agents get "$AGENT_NAME"
+```
+
+## Prepare the selected config
+
+### Default: Platform-owned `agent.yaml`
+
+For a new build, invoke `nemo-agent-config` and create:
+
+```txt
+agents/<agent-name>-spec/
+  AGENT-SPEC.md
+  agent.yaml
+```
+
+Delegate authoring to `nemo-agent-config`. It selects the supported harness and
+uses `nemo-model-selection` to verify the exact model against that harness's
+model contract before writing the model block. Translate the approved spec into
+system instructions, skills, MCP servers, tools, environment paths, and
+telemetry. Keep every local path relative to the directory containing
+`agent.yaml`.
+
+Before registration, inspect `skills.paths`:
+
+- If it is empty, continue with the normal deployment lifecycle below.
+- If it is non-empty, verify every relative directory is inside the agent
+  packaging context and contains `SKILL.md`. Package the complete bundle before
+  deployment:
+
+  ```bash
+  IMAGE_TAG="${AGENT_NAME}:local"
+  .venv/bin/nemo agents package \
+    --agent "agents/$AGENT_NAME-spec/agent.yaml" \
+    --tag "$IMAGE_TAG"
+  ```
+
+  Use the packaged-image deploy command below. Do not use subprocess deployment
+  or the default container image because those paths materialize only
+  `agent.yaml` and do not stage relative skill directories.
+
+### Compatibility: existing NAT workflow YAML
+
+If the user selected migration, preserve the original YAML. If a workflow,
+tool, or custom Python component has no supported harness equivalent, keep the
+NAT path or identify the need for a custom adapter. Never claim arbitrary NAT
+workflows convert mechanically.
+
+Use `references/templates/agent.yml` only when the user explicitly chooses the
+legacy NAT path or needs a new NAT compatibility workflow.
+
+## Step 1: Register and deploy
+
+For the default path:
+
+For each operation retained by the selected lifecycle branch, follow the
+`nemo-agent-config` confirmation requirement. Show the create command and ask
+for explicit confirmation immediately before running it:
+
+```bash
+.venv/bin/nemo agents create \
+  --name "$AGENT_NAME" \
+  --agent-config "agents/$AGENT_NAME-spec/agent.yaml"
+```
+
+After create succeeds, show the deploy command and ask for explicit
+confirmation immediately before running it:
+
+```bash
+.venv/bin/nemo agents deploy \
+  --agent "$AGENT_NAME" \
+  --name "$DEPLOYMENT_NAME"
+```
+
+If `skills.paths` is non-empty, show this command instead and ask for explicit
+confirmation immediately before running it:
+
+```bash
+.venv/bin/nemo agents deploy \
+  --agent "$AGENT_NAME" \
+  --name "$DEPLOYMENT_NAME" \
+  --mode docker \
+  --image "$IMAGE_TAG"
+```
+
+For Kubernetes, publish the packaged image and replace `docker` and
+`$IMAGE_TAG` with `k8s` and the published image tag.
+
+These commands assume the Agent and deployment are absent. If pre-flight found
+existing resources, complete the selected lifecycle branch before running them.
+
+`nemo agents deploy` waits for `running` by default. If the user passed
+`--no-wait`, wait explicitly:
+
+```bash
+.venv/bin/nemo agents deployments wait "$DEPLOYMENT_NAME"
+```
+
+Show `agent.yaml` and the deployment result. Stop and ask whether the config,
+model, harness, and instructions look right before continuing.
+
+For an unchanged NAT workflow, registration defaults configs without
+`config_format` to `nat-workflow-v1`:
+
+Apply the same immediate confirmation requirement. Show the create command and
+wait for explicit confirmation before running it:
+
+```bash
+.venv/bin/nemo agents create \
+  --name "$AGENT_NAME" \
+  --agent-config "$NAT_WORKFLOW_PATH"
+```
+
+After create succeeds, show the deploy command and wait for explicit
+confirmation before running it:
+
+```bash
+.venv/bin/nemo agents deploy \
+  --agent "$AGENT_NAME" \
+  --name "$DEPLOYMENT_NAME"
+```
+
+## Step 2: Try the deployed agent
+
+For the default path, invoke one question from each category in the spec. For
+an unchanged NAT-only run without a spec, use representative questions from the
+workflow and the user's stated requirements:
+
+```bash
+.venv/bin/nemo agents invoke \
+  --agent-deployment "$DEPLOYMENT_NAME" \
+  --input "<smoke-test question-1>"
+.venv/bin/nemo agents invoke \
+  --agent-deployment "$DEPLOYMENT_NAME" \
+  --input "<smoke-test question-2>"
+.venv/bin/nemo agents invoke \
+  --agent-deployment "$DEPLOYMENT_NAME" \
+  --input "<smoke-test question-3>"
+```
+
+Display each response verbatim. Stop and ask whether to adjust the agent or
+continue to evaluation.
+
+Before Step 3, branch explicitly:
+
+1. For an unchanged NAT-only run without `AGENT-SPEC.md`, stop after the smoke
+   test. Do not execute Steps 3–5 and do not require an evaluation fileset.
+2. Continue into the spec-driven purpose selection and Data Designer flow only
+   when the user requests it and `agents/$AGENT_NAME-spec/AGENT-SPEC.md` exists.
+   If the user requests evaluation but the spec is absent, create and confirm
+   the spec first; do not continue to Step 3 yet.
+
+## Step 3: Generate synthetic data
+
+Use Data Designer for every synthetic dataset. Do not hand-author evaluation,
+knowledge-base, benchmark, persona, or training data.
+
+1. Always select evaluation as a required data purpose. Read
+   `agents/$AGENT_NAME-spec/AGENT-SPEC.md` and list any additional plausible
+   purposes: knowledge/RAG corpus, benchmark, personas/adversarial inputs,
+   training, or another user-requested purpose.
+2. Wait for the user to choose any additional purposes. Evaluation cannot be
+   omitted. If they delegate the decision, add a knowledge base when the spec
+   requires retrieval and adversarial personas when it contains safety
+   constraints.
+3. Invoke `data-designer` once per selected purpose, passing the agent name,
+   purpose, and spec path.
+4. Require every generated config to read product context from
+   `AGENT-SPEC.md`; do not duplicate that context inline.
+5. Run each generated config. For evaluation, validate the generated records,
+   verify the resulting fileset exists, and record its exact dataset reference
+   as `EVAL_DATASET_REF`.
+6. Show 3 to 5 sample records per purpose and ask for approval.
+
+A validated `$AGENT_NAME-eval-*` fileset and its exact `EVAL_DATASET_REF` must
+exist before evaluation proceeds.
+
+## Step 3.5: Connect runtime data
+
+If the generated data must be available during invocation, connect it through
+the selected harness's supported skills, MCP, or tool configuration. Update
+`agents/$AGENT_NAME-spec/agent.yaml` through `nemo-agent-config`, then follow the
+confirmed replacement branch before creating and deploying the Agent again.
+
+Do not invent a generic retriever field. If the selected harness cannot consume
+the required data, surface that limitation and choose a supported integration,
+the NAT compatibility path, or a custom adapter.
+
+For a legacy NAT workflow, NAT-specific retrievers may be wired into its
+`functions` and `workflow` blocks using the matching NAT RAG integration.
+
+After the replacement deployment, invoke a question that requires the data and
+verify the expected tool or retrieval path was actually used.
 
 ## Step 4: Evaluate
 
+Select the actual Platform model reference as `EVAL_MODEL`. Create
+`agents/$AGENT_NAME.eval-job.json` from `references/templates/eval-job.json` and
+replace every placeholder. Its `model` must equal `EVAL_MODEL`, and its
+`dataset` must equal the recorded `EVAL_DATASET_REF` from Step 3.
+
+Validate the rendered file before creating the benchmark job:
+
 ```bash
-.venv/bin/nemo evaluation benchmarks list
-.venv/bin/nemo evaluation benchmark-jobs create $AGENT_NAME-eval \
-  --input-file agents/$AGENT_NAME.eval-job.json
+.venv/bin/python -m json.tool "agents/$AGENT_NAME.eval-job.json" >/dev/null
+if grep -Eq '<[^>]+>' "agents/$AGENT_NAME.eval-job.json"; then
+  echo "eval job still contains template placeholders" >&2
+  exit 1
+fi
 ```
 
-Template for the eval-job JSON in `references/templates/eval-job.json`. Poll job status:
+Also read the validated payload back and confirm its `model` and `dataset`
+values match `EVAL_MODEL` and `EVAL_DATASET_REF`. Do not invoke
+`benchmark-jobs create` if JSON validation, model validation, dataset
+validation, or fileset validation fails.
+
+After all validation succeeds:
+
+```bash
+.venv/bin/nemo evaluation benchmarks list
+.venv/bin/nemo evaluation benchmark-jobs create "$AGENT_NAME-eval" \
+  --input-file "agents/$AGENT_NAME.eval-job.json"
+```
+
+Poll until the job reaches `completed` or `failed`, then download aggregate
+scores. Show the score table and compare it with the success bar in
+`AGENT-SPEC.md`.
 
 ```bash
 for i in $(seq 1 24); do
-  status=$(.venv/bin/nemo evaluation benchmark-jobs get-status $AGENT_NAME-eval 2>/dev/null)
+  status=$(.venv/bin/nemo evaluation benchmark-jobs get-status "$AGENT_NAME-eval" 2>/dev/null)
   echo "$status"
   echo "$status" | grep -qE "completed|failed" && break
   sleep 10
 done
-.venv/bin/nemo evaluation benchmark-jobs results aggregate-scores download $AGENT_NAME-eval
-```
 
-Verification: confirm the job reached `completed`, not `failed`. Display the score table. Stop. Ask if scores meet the bar from the spec.
+.venv/bin/nemo evaluation benchmark-jobs results aggregate-scores download \
+  "$AGENT_NAME-eval"
+```
 
 ## Step 5: Guardrails (optional)
 
-If the spec lists constraints, add a content-safety intercept to the YAML (see `references/templates/agent-with-guardrails.yml` if present, or write inline) and redeploy:
+For `nemo-agents-spec-v1`, `AgentConfig` has no guardrail field and the current
+skills do not define a supported composition between an Agent and an IGW
+guardrailed VirtualModel. Do not add guardrail fields to `agent.yaml` or claim
+that guardrails are attached. If the spec requires guardrails, report this as an
+unmet requirement and stop before sign-off. `nemo-guardrails` may be used to
+configure IGW VirtualModel middleware as a separate workflow, but do not treat
+it as integrated with the Agent until its model routing has been explicitly
+configured and validated.
 
-```bash
-.venv/bin/nemo agents undeploy --agent $AGENT_NAME
-.venv/bin/nemo agents create --name $AGENT_NAME \
-  --agent-config agents/$AGENT_NAME.yml
-.venv/bin/nemo agents deploy --agent $AGENT_NAME
-.venv/bin/nemo agents deployments wait --agent $AGENT_NAME
-```
+For a legacy NAT workflow, keep the NAT compatibility behavior: add supported
+guardrail `intercepts` to the NAT workflow YAML, then follow the confirmed
+replacement branch before creating and deploying it again. Never add NAT
+`intercepts` to a `nemo-agents-spec-v1` config.
 
-Test with one adversarial and one legitimate prompt. Stop and report.
+For the NAT path, test one adversarial prompt and one legitimate prompt. Report
+both responses and do not continue to sign-off until the expected policy is
+enforced without blocking the legitimate request.
 
 ## Step 6: Sign off
 
-Run the success-criteria question from the spec through `nemo agents invoke` once more and print the verbatim output. That output is the formal sign-off.
+Invoke the success-criteria prompt from the spec against
+`$DEPLOYMENT_NAME`. Print the verbatim response as the formal sign-off. Do not
+claim success until the deployment is `running`, evaluation has completed, and
+the sign-off returns an actual model response.
 
 ## If verification fails
 
 | Symptom | Cause | Recovery |
-| --- | --- | --- |
-| `agents plugin unavailable` | `plugins/nemo-agents` not installed | Re-run the install loop from `nemo-setup` Step 3 for that package only |
-| `DEPLOY_NOT_READY` after wait | Container startup error or YAML rejected | Run `.venv/bin/nemo agents deployments get $AGENT_NAME`; check status detail and logs |
-| YAML rejected with `extra fields` | Top-level keys beyond `functions`, `llms`, `workflow`, `intercepts`, `middleware` | Strip extras from the YAML; only those five top-level keys are valid |
-| Empty agent response | `{tools}` and `{tool_names}` missing from system prompt | Add both placeholders; redeploy |
-| Eval job `failed` | Dataset path or model id wrong | Run `.venv/bin/nemo evaluation benchmark-jobs get $AGENT_NAME-eval` for the error string |
-| Eval times out at 4 minutes | Long-running benchmark | Extend the poll loop budget; do not declare success on a timed-out job |
+|---|---|---|
+| Agents plugin unavailable | `plugins/nemo-agents` is not installed | Route to `nemo-setup` |
+| Config validation fails | Config does not match its declared format | Use `nemo-agent-config` for `nemo-agents-spec-v1`; use NAT schema rules only for NAT YAML |
+| Deployment reaches `failed` | Runtime, adapter, image, or config startup failure | Run `.venv/bin/nemo agents deployments get "$DEPLOYMENT_NAME"` and `.venv/bin/nemo agents logs "$DEPLOYMENT_NAME"` |
+| Referenced file is missing | Path is outside or absent from the staged agent directory | Keep paths relative to the config and package the complete agent bundle into the deployed image |
+| Adapter or binary is missing | Selected harness dependency is not installed | Install the matching adapter/runtime package or select an available harness |
+| Empty response | Runtime invocation failed or the selected configuration is incomplete | Inspect deployment logs and the returned structured error |
+| Eval job fails | Dataset reference or model ID is invalid | Get the benchmark job details and correct the named input |
 
-If none of these apply, tail recent service logs (`.venv/bin/nemo services logs -n 100`) and surface the last error to the user. Do not claim the build succeeded until the success-criteria sign-off in Step 6 prints an actual model response.
+## Hard rules
 
-## Gotchas
-
-- **NAT workflow YAML required keys.** Top level must be `functions`, `llms`, `workflow`. Optional: `intercepts`, `middleware`. Extra top-level keys (`name`, `description`, `model`, `tools`, `system_prompt`) cause NAT to reject the config.
-- **`{tools}` and `{tool_names}` are mandatory in the system prompt.** Without them the agent crashes on startup with no useful error.
-- **Two model name formats coexist.** Entity-name with hyphens for NAT YAML and `nemo chat` and `nemo agents`. API-Catalog format with slashes for Data Designer. Mixing them causes silent failures or 404s.
-- **`agents delete` is positional.** `nemo agents delete $AGENT_NAME`, not `--name`. Other commands take `--agent $AGENT_NAME`.
-- **Data Designer uses Python config files.** Pass the `.py` file to the CLI when `preview-local` is available; otherwise run via the venv Python as shown above.
-- **Guardrails are NAT intercepts, not a separate service.** They go in the same YAML under `intercepts:`. There is no `nemo guardrails create` step in the agent build.
-- **Framework constraint.** Only LangGraph-in-NAT agents work end-to-end today.
+- Default new builds to `agents/$AGENT_NAME-spec/agent.yaml` with
+  `config_format: nemo-agents-spec-v1`.
+- Keep `AGENT-SPEC.md` as the human-readable design and `agent.yaml` as the
+  machine-readable implementation config.
+- Preserve legacy NAT YAML unless the user explicitly requests migration.
+- Do not mix NAT-only keys such as `functions`, `llms`, `workflow`, or
+  `intercepts` into `nemo-agents-spec-v1`.
+- Do not put Platform `agent.yaml` fields into NAT workflow YAML.
+- Use a named deployment and invoke it with `--agent-deployment`.
+- Keep local artifact paths relative to the config directory.
+- After changing persisted Agent config, use the confirmed replacement branch
+  before creating and deploying it again.

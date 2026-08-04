@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Jinja2-based Dockerfile renderer for NAT agents.
+"""Jinja2-based Dockerfile rendering primitives for packaged agents.
 
-Renders a Dockerfile from a built-in template using values resolved from
-CLI flags, environment variables, or sensible defaults.
+The built-in templates target NAT and Fabric agents. Shared render parameters
+are kept separate from runtime-specific parameters so both packaging paths can
+reuse the image, project, sandbox, and metadata contract without inheriting
+fields owned by the other runtime.
 
 Two rendering modes are supported:
 
@@ -63,7 +65,7 @@ _DEFAULTS: dict[str, str] = {
     "base_image_url": "nvcr.io/nvidia/base/ubuntu",
     "base_image_tag": "noble-20260217",
     "python_version": "3.13",
-    "uv_version": "0.8.15",
+    "uv_version": "0.9.14",
     # Default NAT version — used ONLY as a last-resort fallback.  Callers are
     # expected to pass ``--nat-version`` (or set ``NAT_VERSION``) explicitly
     # so that image tags, labels, and the ``nvidia-nat[most]`` constraint
@@ -80,16 +82,20 @@ _DEFAULTS: dict[str, str] = {
 }
 
 _ENV_MAP: dict[str, str] = {
-    "base_image_url": "NAT_BASE_IMAGE_URL",
-    "base_image_tag": "NAT_BASE_IMAGE_TAG",
-    "python_version": "NAT_PYTHON_VERSION",
+    "base_image_url": "NEMO_AGENTS_BASE_IMAGE_URL",
+    "base_image_tag": "NEMO_AGENTS_BASE_IMAGE_TAG",
+    "python_version": "NEMO_AGENTS_PYTHON_VERSION",
     "nat_version": "NAT_VERSION",
-    "uv_version": "NAT_UV_VERSION",
+    "uv_version": "NEMO_AGENTS_UV_VERSION",
 }
+
+PINNED_NEMO_RELAY_CLI_VERSION = "0.6.0"
+PINNED_NEMO_RELAY_INSTALLER_COMMIT = "40c5990361afc26ae8b901ff1f49c2b03ddd9ede"
+PINNED_NEMO_RELAY_INSTALLER_SHA256 = "ba2585a32e568643819992fa66b750004328351fce422b979d8c11cfc8bbfadb"
 
 # -- Jinja2 template --------------------------------------------------------
 
-DOCKERFILE_TEMPLATE = (
+NAT_DOCKERFILE_TEMPLATE = (
     f"""\
 {DOCKERFILE_SENTINEL}
 """
@@ -186,6 +192,101 @@ ENTRYPOINT ["sh", "-c", "exec nat serve --config_file=$NAT_CONFIG_FILE --host 0.
 """
 )
 
+FABRIC_DOCKERFILE_TEMPLATE = (
+    f"""\
+{DOCKERFILE_SENTINEL}
+"""
+    + """\
+ARG BASE_IMAGE_URL={{ base_image_url }}
+ARG BASE_IMAGE_TAG={{ base_image_tag }}
+ARG PYTHON_VERSION={{ python_version }}
+FROM ${BASE_IMAGE_URL}:${BASE_IMAGE_TAG}
+ARG PYTHON_VERSION
+
+COPY --from=ghcr.io/astral-sh/uv:{{ uv_version }} /uv /uvx /bin/
+
+ENV PYTHONDONTWRITEBYTECODE=1
+
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \\
+    UV_LINK_MODE=copy
+
+RUN apt-get update && \\
+    apt-get install -y --no-install-recommends g++ gcc ca-certificates curl{% if sandbox_apt_packages %} {{ sandbox_apt_packages }}{% endif %} && \\
+    update-ca-certificates && \\
+    rm -rf /var/lib/apt/lists/*
+
+# Claude and Codex Relay integration launches this external CLI. Authenticate
+# the immutable installer before root execution; it separately verifies the
+# pinned release binary before placing it on the global runtime PATH.
+RUN curl -fsSL https://raw.githubusercontent.com/NVIDIA/NeMo-Relay/{{ pinned_nemo_relay_installer_commit }}/install.sh -o /tmp/install-nemo-relay.sh && \\
+    echo "{{ pinned_nemo_relay_installer_sha256 }}  /tmp/install-nemo-relay.sh" | sha256sum -c - && \\
+    NEMO_RELAY_VERSION={{ pinned_nemo_relay_cli_version }} sh /tmp/install-nemo-relay.sh --install-dir /usr/local/bin && \\
+    rm /tmp/install-nemo-relay.sh && \\
+    nemo-relay --version
+
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
+WORKDIR /workspace
+
+# Preserve the complete agent bundle so paths in agent.yaml continue to resolve
+# relative to the packaged config directory.
+COPY ./ /workspace
+{% if has_pyproject %}
+# Install the release-matched NeMo Agents runtime and the packaged project in
+# one resolution so incompatible project constraints fail during image build.
+RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
+    uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
+    . /workspace/.venv/bin/activate && \\
+    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" . && \\
+    chmod -R a+rX /opt/uv /workspace/.venv
+{% else %}
+# The plugin owns the supported Fabric adapter and harness dependency set.
+RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
+    uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
+    . /workspace/.venv/bin/activate && \\
+    uv pip install "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" && \\
+    chmod -R a+rX /opt/uv /workspace/.venv
+{% endif %}
+
+LABEL org.opencontainers.image.title="{{ agent_name | dockerfile_escape }}" \\
+      org.opencontainers.image.version="{{ agent_version | dockerfile_escape }}" \\
+      org.opencontainers.image.authors="{{ agent_author | dockerfile_escape }}" \\
+      org.opencontainers.image.created="{{ build_timestamp | dockerfile_escape }}" \\
+      org.opencontainers.image.description="{{ description | dockerfile_escape }}" \\
+      org.opencontainers.image.revision="{{ revision | dockerfile_escape }}" \\
+      org.opencontainers.image.source="{{ source | dockerfile_escape }}" \\
+{%- if licenses %}
+      org.opencontainers.image.licenses="{{ licenses | dockerfile_escape }}" \\
+{%- endif %}
+      com.nemo.agent.id="{{ agent_id | dockerfile_escape }}" \\
+      com.nemo.agent.framework="{{ agent_framework | dockerfile_escape }}" \\
+      com.nemo.agent.contract-version="{{ contract_version | dockerfile_escape }}"
+
+ENV AGENT_CONFIG_PATH={{ config_file_path }}
+ENV PORT=8000
+ENV PATH="/workspace/.venv/bin:$PATH"
+
+EXPOSE 8000
+
+{% if sandbox_user_setup %}
+# Sandbox-runtime compatibility ({{ sandbox_runtime }}). The supervisor resolves
+# this user by name, so the uid is not load-bearing; --system keeps it out of the
+# 1000/1001 range the agent user reclaims below.
+RUN {{ sandbox_user_setup }}
+{% endif %}
+{% if not allow_root %}
+RUN if getent passwd 1000 >/dev/null; then userdel -rf "$(getent passwd 1000 | cut -d: -f1)" 2>/dev/null || true; fi && \\
+    if getent group  1000 >/dev/null; then groupdel -f "$(getent group  1000 | cut -d: -f1)" 2>/dev/null || true; fi && \\
+    groupadd -g 1000 agent && useradd -u 1000 -g agent -m agent && \\
+    chown -R agent:agent /workspace
+USER agent
+{% endif %}
+ENV VIRTUAL_ENV=/workspace/.venv
+ENTRYPOINT ["sh", "-c", "exec python -m nemo_agents_plugin.fabric.server --agent-config \\\"$AGENT_CONFIG_PATH\\\" --host 0.0.0.0 --port \\\"$PORT\\\""]
+"""
+)
+
 DOCKERIGNORE_TEMPLATE = f"""\
 {DOCKERIGNORE_SENTINEL}
 .env
@@ -208,17 +309,16 @@ node_modules/
 """
 
 
-# -- Data class for render parameters --------------------------------------
+# -- Data classes for render parameters ------------------------------------
 
 
 @dataclass
-class RenderParams:
-    """Resolved parameters for Dockerfile rendering."""
+class SharedRenderParams:
+    """Resolved Dockerfile parameters shared by all agent runtimes."""
 
     base_image_url: str = ""
     base_image_tag: str = ""
     python_version: str = ""
-    nat_version: str = ""
     uv_version: str = ""
     has_pyproject: bool = False
     config_file_path: str = "/workspace/config.yaml"
@@ -238,6 +338,18 @@ class RenderParams:
     revision: str = ""
     source: str = ""
     extra: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class NatRenderParams(SharedRenderParams):
+    """Resolved parameters specific to NAT Dockerfile rendering."""
+
+    nat_version: str = ""
+
+
+@dataclass
+class FabricRenderParams(SharedRenderParams):
+    """Resolved parameters specific to Fabric Dockerfile rendering."""
 
 
 # -- Public API -------------------------------------------------------------
@@ -311,10 +423,102 @@ def _jinja_env() -> jinja2.Environment:
         undefined=jinja2.StrictUndefined,
     )
     env.filters["dockerfile_escape"] = _dockerfile_escape
+    env.globals["pinned_nemo_relay_cli_version"] = PINNED_NEMO_RELAY_CLI_VERSION
+    env.globals["pinned_nemo_relay_installer_commit"] = PINNED_NEMO_RELAY_INSTALLER_COMMIT
+    env.globals["pinned_nemo_relay_installer_sha256"] = PINNED_NEMO_RELAY_INSTALLER_SHA256
     return env
 
 
-def render_dockerfile(
+def resolve_shared_render_params(
+    agent_config: Path,
+    pyproject: Path | None = None,
+    *,
+    base_image_url: str | None = None,
+    base_image_tag: str | None = None,
+    python_version: str | None = None,
+    uv_version: str | None = None,
+    allow_root: bool = False,
+    sandbox_runtime: str | None = None,
+    agent_version: str | None = None,
+    agent_author: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> SharedRenderParams:
+    """Resolve image, project, sandbox, and metadata fields shared by runtimes."""
+    from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+    has_pyproject = pyproject is not None and pyproject.exists()
+
+    if has_pyproject:
+        assert pyproject is not None
+        try:
+            relative_config = agent_config.resolve().relative_to(pyproject.resolve().parent)
+        except ValueError as exc:
+            raise ValueError(
+                f"agent config {agent_config} is outside the pyproject build "
+                f"context ({pyproject.resolve().parent}); move it into the "
+                "project tree or omit --pyproject to use the config's directory "
+                "as the build context."
+            ) from exc
+        config_file_path = f"/workspace/{relative_config.as_posix()}"
+    else:
+        config_file_path = f"/workspace/{agent_config.name}"
+
+    sandbox_runtime_name = ""
+    sandbox_apt_packages = ""
+    sandbox_user_setup = ""
+    if sandbox_runtime:
+        from nemo_agents_plugin.container.sandbox import (
+            render_apt_packages,
+            render_user_setup,
+            resolve_sandbox_profile,
+        )
+
+        profile = resolve_sandbox_profile(sandbox_runtime)
+        sandbox_runtime_name = profile.name
+        sandbox_apt_packages = render_apt_packages(profile)
+        sandbox_user_setup = render_user_setup(profile)
+
+    if metadata is None:
+        metadata = extract_agent_metadata(
+            agent_config,
+            pyproject,
+            agent_version=agent_version,
+            agent_author=agent_author,
+        )
+
+    return SharedRenderParams(
+        base_image_url=resolve_value("base_image_url", base_image_url),
+        base_image_tag=resolve_value("base_image_tag", base_image_tag),
+        python_version=resolve_value("python_version", python_version),
+        uv_version=resolve_value("uv_version", uv_version),
+        has_pyproject=has_pyproject,
+        config_file_path=config_file_path,
+        allow_root=allow_root,
+        sandbox_runtime=sandbox_runtime_name,
+        sandbox_apt_packages=sandbox_apt_packages,
+        sandbox_user_setup=sandbox_user_setup,
+        contract_version=get_contract_version(),
+        agent_id=metadata["agent_id"],
+        agent_name=metadata["agent_name"],
+        agent_version=metadata["agent_version"],
+        agent_author=metadata["agent_author"],
+        agent_framework=metadata["agent_framework"],
+        build_timestamp=metadata["build_timestamp"],
+        description=metadata["description"],
+        licenses=metadata["licenses"],
+        revision=metadata["revision"],
+        source=metadata["source"],
+    )
+
+
+def _render_context(params: SharedRenderParams) -> dict[str, object]:
+    """Flatten shared and runtime-specific dataclass fields for Jinja."""
+    ctx = {f.name: getattr(params, f.name) for f in fields(params) if f.name != "extra"}
+    ctx.update(params.extra)
+    return ctx
+
+
+def render_nat_dockerfile(
     agent_config: Path,
     pyproject: Path | None = None,
     *,
@@ -362,79 +566,22 @@ def render_dockerfile(
             would otherwise produce an image that crashes at startup
             looking for the missing config file).
     """
-    from nemo_agents_plugin.container.metadata import extract_agent_metadata
-
-    has_pyproject = pyproject is not None and pyproject.exists()
-
-    if has_pyproject:
-        assert pyproject is not None
-        try:
-            relative_config = agent_config.resolve().relative_to(pyproject.resolve().parent)
-        except ValueError as exc:
-            # Falling back to ``Path(agent_config.name)`` here is unsafe —
-            # the rendered image would set ``NAT_CONFIG_FILE=/workspace/<name>``
-            # while the COPY of the project tree never picks up the
-            # out-of-tree config. The container would build successfully and
-            # then crash at ``nat serve`` startup with file-not-found.
-            raise ValueError(
-                f"agent config {agent_config} is outside the pyproject build "
-                f"context ({pyproject.resolve().parent}); move it into the "
-                "project tree or omit --pyproject to use the config's directory "
-                "as the build context."
-            ) from exc
-        config_file_path = f"/workspace/{relative_config.as_posix()}"
-    else:
-        config_file_path = f"/workspace/{agent_config.name}"
-
-    resolved_nat = resolve_value("nat_version", nat_version)
-    contract_version = _get_contract_version()
-
-    sandbox_runtime_name = ""
-    sandbox_apt_packages = ""
-    sandbox_user_setup = ""
-    if sandbox_runtime:
-        from nemo_agents_plugin.container.sandbox import (
-            render_apt_packages,
-            render_user_setup,
-            resolve_sandbox_profile,
-        )
-
-        profile = resolve_sandbox_profile(sandbox_runtime)
-        sandbox_runtime_name = profile.name
-        sandbox_apt_packages = render_apt_packages(profile)
-        sandbox_user_setup = render_user_setup(profile)
-
-    if metadata is None:
-        metadata = extract_agent_metadata(
-            agent_config,
-            pyproject,
-            agent_version=agent_version,
-            agent_author=agent_author,
-        )
-
-    params = RenderParams(
-        base_image_url=resolve_value("base_image_url", base_image_url),
-        base_image_tag=resolve_value("base_image_tag", base_image_tag),
-        python_version=resolve_value("python_version", python_version),
-        nat_version=resolved_nat,
-        uv_version=resolve_value("uv_version", uv_version),
-        has_pyproject=has_pyproject,
-        config_file_path=config_file_path,
+    shared = resolve_shared_render_params(
+        agent_config,
+        pyproject,
+        base_image_url=base_image_url,
+        base_image_tag=base_image_tag,
+        python_version=python_version,
+        uv_version=uv_version,
         allow_root=allow_root,
-        sandbox_runtime=sandbox_runtime_name,
-        sandbox_apt_packages=sandbox_apt_packages,
-        sandbox_user_setup=sandbox_user_setup,
-        contract_version=contract_version,
-        agent_id=metadata["agent_id"],
-        agent_name=metadata["agent_name"],
-        agent_version=metadata["agent_version"],
-        agent_author=metadata["agent_author"],
-        agent_framework=metadata["agent_framework"],
-        build_timestamp=metadata["build_timestamp"],
-        description=metadata["description"],
-        licenses=metadata["licenses"],
-        revision=metadata["revision"],
-        source=metadata["source"],
+        sandbox_runtime=sandbox_runtime,
+        agent_version=agent_version,
+        agent_author=agent_author,
+        metadata=metadata,
+    )
+    params = NatRenderParams(
+        **{f.name: getattr(shared, f.name) for f in fields(shared)},
+        nat_version=resolve_value("nat_version", nat_version),
     )
 
     if template_path:
@@ -450,20 +597,66 @@ def render_dockerfile(
         except (OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"failed to read --template file {template_path}: {exc}") from exc
     else:
-        template_source = DOCKERFILE_TEMPLATE
+        template_source = NAT_DOCKERFILE_TEMPLATE
 
     template = _jinja_env().from_string(template_source)
-    ctx = {f.name: getattr(params, f.name) for f in fields(params) if f.name != "extra"}
-    ctx.update(params.extra)
-    return template.render(**ctx)
+    return template.render(**_render_context(params))
 
 
-def _get_contract_version() -> str:
-    """Return the ``nemo-agents-plugin`` package version."""
+def render_fabric_dockerfile(
+    agent_config: Path,
+    pyproject: Path | None = None,
+    *,
+    base_image_url: str | None = None,
+    base_image_tag: str | None = None,
+    python_version: str | None = None,
+    uv_version: str | None = None,
+    allow_root: bool = False,
+    sandbox_runtime: str | None = None,
+    agent_version: str | None = None,
+    agent_author: str | None = None,
+    template_path: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> str:
+    """Render a Dockerfile string for a Fabric-backed agent."""
+    shared = resolve_shared_render_params(
+        agent_config,
+        pyproject,
+        base_image_url=base_image_url,
+        base_image_tag=base_image_tag,
+        python_version=python_version,
+        uv_version=uv_version,
+        allow_root=allow_root,
+        sandbox_runtime=sandbox_runtime,
+        agent_version=agent_version,
+        agent_author=agent_author,
+        metadata=metadata,
+    )
+    if shared.contract_version == "0.0.0":
+        raise ValueError(
+            "Unable to resolve the installed nemo-platform contract version; "
+            "Fabric packaging requires an installed release version."
+        )
+    params = FabricRenderParams(**{f.name: getattr(shared, f.name) for f in fields(shared)})
+
+    if template_path:
+        try:
+            template_source = Path(template_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ValueError(f"failed to read --template file {template_path}: {exc}") from exc
+    else:
+        template_source = FABRIC_DOCKERFILE_TEMPLATE
+
+    template = _jinja_env().from_string(template_source)
+    return template.render(**_render_context(params))
+
+
+def get_contract_version() -> str:
+    """Return the published ``nemo-platform`` package version."""
     from importlib.metadata import PackageNotFoundError, version
 
     try:
-        return version("nemo-agents-plugin")
+        return version("nemo-platform")
     except PackageNotFoundError:
         return "0.0.0"
 

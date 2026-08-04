@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 import pytest
 from nemo_experimentalist_plugin import cli
 from nemo_experimentalist_plugin.preflight import Probes
@@ -23,8 +24,8 @@ def quiet_probes(env: dict | None = None) -> Probes:
         http_ok=lambda url: True,
         env=env
         or {
-            "EXPERIMENTALIST_API_BASE": "http://llm",
-            "EXPERIMENTALIST_API_KEY": "k",
+            "NEMO_EXPERIMENTALIST_API_BASE": "http://llm",
+            "NEMO_EXPERIMENTALIST_API_KEY": "k",
             "INFERENCE_API_KEY": "k",
         },
     )
@@ -304,6 +305,41 @@ def test_doctor_healthy_exits_zero(app, profile_tree: Path, monkeypatch) -> None
     assert "✓" in result.output
 
 
+def test_doctor_fails_when_run_client_bootstrap_fails(app, profile_tree: Path, monkeypatch) -> None:
+    write_task_toml(profile_tree)
+
+    def fail_client(_base_url: str) -> FakePlatformClient:
+        raise httpx.UnsupportedProtocol("invalid cached auth context")
+
+    monkeypatch.setattr(cli, "make_client", fail_client)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["doctor", "--base-url", "https://platform.example"])
+
+    assert result.exit_code == 1
+    assert "Platform client initialization failed (UnsupportedProtocol)" in result.output
+    assert "invalid cached auth context" not in result.output
+
+
+def test_doctor_bootstraps_and_closes_run_client(app, profile_tree: Path, monkeypatch) -> None:
+    write_task_toml(profile_tree)
+    clients: list[FakePlatformClient] = []
+
+    def record_client(base_url: str) -> FakePlatformClient:
+        client = FakePlatformClient(base_url)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "make_client", record_client)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["doctor", "--base-url", "https://platform.example"])
+
+    assert result.exit_code == 0, result.output
+    assert clients == [FakePlatformClient("https://platform.example", closed=True)]
+    assert "Platform client initialized with the effective authentication path" in result.output
+
+
 def test_doctor_no_profile_exits_one_with_skeleton(app, tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(cli, "_PREFLIGHT_PROBES", quiet_probes())
     monkeypatch.chdir(tmp_path)
@@ -378,7 +414,7 @@ def test_doctor_redacts_model_and_platform_display_urls(app, profile_tree: Path,
     monkeypatch.setattr(
         cli,
         "_PREFLIGHT_PROBES",
-        quiet_probes(env={"EXPERIMENTALIST_API_BASE": model_base, "EXPERIMENTALIST_API_KEY": "k"}),
+        quiet_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": model_base, "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
     )
     monkeypatch.chdir(profile_tree)
 
@@ -401,7 +437,7 @@ def test_experiment_hard_fails_on_required_check(app, profile_tree: Path, monkey
         Probes(
             run_cmd=lambda argv: (1, "docker down"),
             http_ok=lambda url: True,
-            env={"EXPERIMENTALIST_API_BASE": "b", "EXPERIMENTALIST_API_KEY": "k"},
+            env={"NEMO_EXPERIMENTALIST_API_BASE": "b", "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.chdir(profile_tree)
@@ -421,7 +457,7 @@ def test_experiment_advisory_warns_but_runs(app, profile_tree: Path, monkeypatch
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=lambda url: False,  # platform unreachable → advisory
-            env={"EXPERIMENTALIST_API_BASE": "b", "EXPERIMENTALIST_API_KEY": "k"},
+            env={"NEMO_EXPERIMENTALIST_API_BASE": "b", "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.chdir(profile_tree)
@@ -449,7 +485,7 @@ def test_experiment_effective_storage_requires_git_before_runner(
         Probes(
             run_cmd=missing_git,
             http_ok=lambda url: True,
-            env={"EXPERIMENTALIST_API_BASE": "b", "EXPERIMENTALIST_API_KEY": "k"},
+            env={"NEMO_EXPERIMENTALIST_API_BASE": "b", "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     config = profile_tree / "experiment.yaml"
@@ -515,8 +551,8 @@ def test_missing_creds_reported_before_any_resolution(app, profile_tree: Path, m
     result = runner.invoke(app, ["run", "--insight", "ins-1", "-o", str(profile_tree / "o")])
     assert result.exit_code == 1
     assert recorder.kwargs is None
-    assert "EXPERIMENTALIST_API_BASE" in result.output
-    assert "export EXPERIMENTALIST_API_BASE" in result.output  # the hint, not a bare ValueError
+    assert "NEMO_EXPERIMENTALIST_API_BASE" in result.output
+    assert "export NEMO_EXPERIMENTALIST_API_BASE" in result.output  # the hint, not a bare ValueError
 
 
 def test_insightless_run_skips_template_checks(app, profile_tree: Path, monkeypatch) -> None:
@@ -620,7 +656,7 @@ def test_doctor_loads_nmp_base_url_from_profile_env(app, profile_tree: Path, mon
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=record_http,
-            env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"},
+            env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.delenv("NMP_BASE_URL", raising=False)
@@ -695,7 +731,7 @@ def test_default_experiment_dir_is_not_reserved_before_required_preflight(app, p
         Probes(
             run_cmd=lambda argv: (1, "docker down"),
             http_ok=lambda url: True,
-            env={"EXPERIMENTALIST_API_BASE": "b", "EXPERIMENTALIST_API_KEY": "k"},
+            env={"NEMO_EXPERIMENTALIST_API_BASE": "b", "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.chdir(profile_tree)
@@ -721,21 +757,21 @@ def test_explicit_experiment_dir_still_wins(app, profile_tree: Path, monkeypatch
 def test_credential_defaults_inference_key_powers_gateway_experiment() -> None:
     env = {"INFERENCE_API_KEY": "sk-gateway"}
     applied = cli._apply_credential_defaults(env)
-    assert env["EXPERIMENTALIST_API_BASE"] == "https://inference-api.nvidia.com/v1"
-    assert env["EXPERIMENTALIST_API_KEY"] == "sk-gateway"
+    assert env["NEMO_EXPERIMENTALIST_API_BASE"] == "https://inference-api.nvidia.com/v1"
+    assert env["NEMO_EXPERIMENTALIST_API_KEY"] == "sk-gateway"
     assert len(applied) == 2
 
 
 def test_credential_defaults_never_fill_analyst_key() -> None:
-    env = {"EXPERIMENTALIST_API_KEY": "sk-gateway"}
+    env = {"NEMO_EXPERIMENTALIST_API_KEY": "sk-gateway"}
     cli._apply_credential_defaults(env)
     assert "INFERENCE_API_KEY" not in env
 
 
 def test_credential_defaults_custom_base_never_inherits_gateway_key() -> None:
-    custom = {"EXPERIMENTALIST_API_BASE": "https://api.openai.com/v1", "INFERENCE_API_KEY": "sk-gateway"}
+    custom = {"NEMO_EXPERIMENTALIST_API_BASE": "https://api.openai.com/v1", "INFERENCE_API_KEY": "sk-gateway"}
     cli._apply_credential_defaults(custom)
-    assert "EXPERIMENTALIST_API_KEY" not in custom
+    assert "NEMO_EXPERIMENTALIST_API_KEY" not in custom
 
 
 def test_credential_defaults_reject_gateway_lookalike_hosts() -> None:
@@ -744,19 +780,19 @@ def test_credential_defaults_reject_gateway_lookalike_hosts() -> None:
         "https://evil-inference-api.nvidia.com/v1",
         "http://inference-api.nvidia.com/v1",
     ):
-        env = {"EXPERIMENTALIST_API_BASE": base, "INFERENCE_API_KEY": "sk-secret"}
+        env = {"NEMO_EXPERIMENTALIST_API_BASE": base, "INFERENCE_API_KEY": "sk-secret"}
         cli._apply_credential_defaults(env)
-        assert "EXPERIMENTALIST_API_KEY" not in env
+        assert "NEMO_EXPERIMENTALIST_API_KEY" not in env
 
 
 def test_credential_defaults_never_override() -> None:
     env = {
         "INFERENCE_API_KEY": "sk-a",
-        "EXPERIMENTALIST_API_BASE": "https://inference-api.nvidia.com/v1",
-        "EXPERIMENTALIST_API_KEY": "sk-b",
+        "NEMO_EXPERIMENTALIST_API_BASE": "https://inference-api.nvidia.com/v1",
+        "NEMO_EXPERIMENTALIST_API_KEY": "sk-b",
     }
     assert cli._apply_credential_defaults(env) == []
-    assert env["EXPERIMENTALIST_API_KEY"] == "sk-b"
+    assert env["NEMO_EXPERIMENTALIST_API_KEY"] == "sk-b"
 
 
 def test_experiment_defaults_to_shared_insights_file(app, profile_tree: Path, monkeypatch) -> None:
@@ -1177,7 +1213,7 @@ def test_doctor_nmp_base_url_precedence_and_ignores_nemo_base_url(
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=lambda url: not urls.append(url),
-            env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"},
+            env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.setenv("NEMO_BASE_URL", "https://legacy-must-be-ignored.example")
@@ -1203,5 +1239,5 @@ def test_experiment_help_names_insights_writer(app) -> None:
 
     assert result.exit_code == 0, result.output
     help_text = " ".join(result.output.replace("│", " ").split())
-    assert "nemo insights analyze" in help_text
+    assert "nemo agents analyst run" in help_text
     assert "writes by default" in help_text

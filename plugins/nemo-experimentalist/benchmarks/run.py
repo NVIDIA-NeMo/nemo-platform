@@ -15,18 +15,19 @@ from typing import Any, Literal, Self
 
 import yaml
 from harbor.registry.client.package import PackageDatasetClient
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
-    HarborEvaluator,
-    HarborEvaluatorConfig,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.entities import (
     DatasetRef,
     EvaluationResult,
     TrialResult,
     local_path_from_uri,
 )
-from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig, resolve_dataset
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
+    HarborDataset,
+    HarborEvaluator,
+    HarborEvaluatorConfig,
+)
+from nemo_experimentalist_plugin.resolve import resolve_dataset
 from pydantic import BaseModel, Field, model_validator
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -193,19 +194,19 @@ def validate_canonical_suite(
 
 
 def _configure_models(models: ModelSpec) -> None:
-    api_key = os.environ.get("INFERENCE_API_KEY") or os.environ.get("EXPERIMENTALIST_API_KEY")
+    api_key = os.environ.get("INFERENCE_API_KEY") or os.environ.get("NEMO_EXPERIMENTALIST_API_KEY")
     if not api_key:
-        raise RuntimeError("INFERENCE_API_KEY or EXPERIMENTALIST_API_KEY is required")
-    api_base = os.environ.get("INFERENCE_API_BASE") or os.environ.get("EXPERIMENTALIST_API_BASE")
+        raise RuntimeError("INFERENCE_API_KEY or NEMO_EXPERIMENTALIST_API_KEY is required")
+    api_base = os.environ.get("INFERENCE_API_BASE") or os.environ.get("NEMO_EXPERIMENTALIST_API_BASE")
     api_base = api_base or "https://inference-api.nvidia.com/v1"
     os.environ.setdefault("INFERENCE_API_KEY", api_key)
-    os.environ.setdefault("EXPERIMENTALIST_API_KEY", api_key)
+    os.environ.setdefault("NEMO_EXPERIMENTALIST_API_KEY", api_key)
     os.environ.setdefault("INFERENCE_API_BASE", api_base)
-    os.environ.setdefault("EXPERIMENTALIST_API_BASE", api_base)
+    os.environ.setdefault("NEMO_EXPERIMENTALIST_API_BASE", api_base)
     os.environ["AUT_MODEL_NAME"] = models.aut
-    os.environ["EXPERIMENTALIST_SMART_MODEL_NAME"] = models.experimentalist_smart
-    os.environ["EXPERIMENTALIST_MID_MODEL_NAME"] = models.experimentalist_mid
-    os.environ["EXPERIMENTALIST_FAST_MODEL_NAME"] = models.experimentalist_fast
+    os.environ["NEMO_EXPERIMENTALIST_MODELS_SMART"] = models.experimentalist_smart
+    os.environ["NEMO_EXPERIMENTALIST_MODELS_MID"] = models.experimentalist_mid
+    os.environ["NEMO_EXPERIMENTALIST_MODELS_FAST"] = models.experimentalist_fast
     os.environ.setdefault("NEMO_EXPERIMENTALIST_RUNTIME_CACHE", str(DEFAULT_RUNTIME_CACHE))
     if models.user_simulator is not None:
         # tau-style tasks run a user simulator and NL-assertion judge inside the task

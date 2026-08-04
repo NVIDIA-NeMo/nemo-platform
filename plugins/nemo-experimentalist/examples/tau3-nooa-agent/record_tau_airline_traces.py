@@ -13,12 +13,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from nemo_experimentalist_plugin.client import make_client
+from nemo_experimentalist_plugin.entities import TrialResult, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import TrialResult, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
 
@@ -45,9 +45,9 @@ def _experiment_id() -> str:
 
 
 def _configure_models(*, model: str, user_model: str, api_base: str) -> None:
-    api_key = os.environ.get("INFERENCE_API_KEY") or os.environ.get("EXPERIMENTALIST_API_KEY")
+    api_key = os.environ.get("INFERENCE_API_KEY") or os.environ.get("NEMO_EXPERIMENTALIST_API_KEY")
     if not api_key:
-        raise RuntimeError("INFERENCE_API_KEY or EXPERIMENTALIST_API_KEY is required")
+        raise RuntimeError("INFERENCE_API_KEY or NEMO_EXPERIMENTALIST_API_KEY is required")
 
     normalized_base = api_base.rstrip("/")
     openai_base = normalized_base if normalized_base.endswith("/v1") else f"{normalized_base}/v1"

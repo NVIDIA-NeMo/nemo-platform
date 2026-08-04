@@ -24,14 +24,16 @@ make bootstrap
 
 ## 2. Start NeMo Platform
 
-Once you have the platform installed and configured, you can start it. Run this block from the repository root. This will start the platform in a background process:
+Agent traces are stored in ClickHouse, which runs as its own container. Start it first, from the repository root:
 
 ```bash
-set -a
-source packages/nmp_platform/config/local.env
-set +a
 services/intake/scripts/spans/run_clickhouse.sh
-uv run nemo services start --config packages/nmp_platform/config/local.yaml
+```
+
+Then run setup. This starts the platform services in the background and walks you through the configuration required to run the platform:
+
+```bash
+uv run nemo setup
 ```
 
 You should now be able to navigate to `http://localhost:8080` and see the NeMo Platform web UI.
@@ -74,7 +76,7 @@ If the analyst discovers issues in your application, it will create what we call
 Let's run it:
 
 ```bash
-uv run --frozen nemo insights analyze \
+uv run --frozen nemo agents analyst run \
   --agent nemo-experimentalist-tau3-nooa \
   --workspace tau3-airline \
   --base-url "$NMP_BASE_URL"
@@ -119,11 +121,11 @@ sbx exec --workdir "$repo" \
   --env INFERENCE_API_BASE \
   --env OPENAI_API_KEY \
   --env OPENAI_BASE_URL \
-  --env EXPERIMENTALIST_API_KEY \
-  --env EXPERIMENTALIST_API_BASE \
-  --env EXPERIMENTALIST_SMART_MODEL_NAME \
-  --env EXPERIMENTALIST_MID_MODEL_NAME \
-  --env EXPERIMENTALIST_FAST_MODEL_NAME \
+  --env NEMO_EXPERIMENTALIST_API_KEY \
+  --env NEMO_EXPERIMENTALIST_API_BASE \
+  --env NEMO_EXPERIMENTALIST_MODELS_SMART \
+  --env NEMO_EXPERIMENTALIST_MODELS_MID \
+  --env NEMO_EXPERIMENTALIST_MODELS_FAST \
   --env TAU2_USER_MODEL \
   --env TAU2_NL_ASSERTIONS_MODEL \
   --env AUT_MODEL_NAME \
@@ -132,7 +134,7 @@ sbx exec --workdir "$repo" \
     export NO_PROXY="${NO_PROXY:+$NO_PROXY,}ofhuhcpkvzjlejydnvyd.supabase.co"
     export no_proxy="$NO_PROXY"
     exec uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
-      nemo experimentalist run \
+      nemo agents experimentalist run \
       --no-insight \
       --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
       --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \

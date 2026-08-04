@@ -953,3 +953,24 @@ resources:
       retrieve: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}
       update: put /apis/intake/v2/workspaces/{workspace}/experiments/{name}
       delete: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}
+  auth:
+    standalone_api: true
+    models:
+      authenticate_error_response: AuthenticateErrorResponse
+      authenticate_response: AuthenticateResponse
+    methods:
+      authenticate_get: get /apis/auth/authenticate
+      authenticate: post /apis/auth/authenticate
+  access_keys:
+    standalone_api: true
+    models:
+      access_key_create_request: AccessKeyCreateRequest
+      access_key_create_response: AccessKeyCreateResponse
+      access_key_error_response: AccessKeyErrorResponse
+      access_key_list_response: AccessKeyListResponse
+      access_key_metadata_response: AccessKeyMetadataResponse
+      access_key_not_implemented_error_response: AccessKeyNotImplementedErrorResponse
+    methods:
+      list: get /apis/auth/v2/access-keys
+      create: post /apis/auth/v2/access-keys
+      delete: delete /apis/auth/v2/access-keys/{jti}

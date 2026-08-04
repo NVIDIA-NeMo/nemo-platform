@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Experimentalist plugin CLI — ``nemo experimentalist ...`` subcommands."""
+"""Experimentalist plugin CLI — ``nemo agents experimentalist ...`` subcommands.
+
+Registered under ``nemo.cli.agents`` and mounted by ``AgentsCLI`` as
+``nemo agents experimentalist <verb>``.
+"""
 
 import asyncio
 import os
@@ -9,9 +13,10 @@ import uuid
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import ClassVar
 from urllib.parse import urlsplit
 
+import httpx
 import typer
 import yaml
 from nemo_experimentalist_plugin.client import make_client
@@ -42,17 +47,16 @@ from nemo_insights_plugin.contracts.profile import (
     load_env_file,
     resolve_base_url,
 )
+from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
 
 DEFAULT_WORKSPACE = "default"
 
 _PREFLIGHT_PROBES: Probes | None = None  # test seam; None → real probes
 
-# Lazily imported in the experiment command: importing experimentalist.run reaches model
-# construction that requires EXPERIMENTALIST_API_* env at import time, and this module
-# must import env-less so `nemo experimentalist doctor` can diagnose the missing creds.
-# Tests monkeypatch this global with a recorder, which bypasses the lazy import.
-run_experimentalist = None
+run_experimentalist = None  # lazily imported by the run command; tests monkeypatch it
+
+_PLATFORM_CLIENT_ERRORS = (NeMoPlatformError, httpx.HTTPError, OSError, RuntimeError, ValueError)
 
 # TODO: Add remote train/validation dataset support when remote experiment mode is implemented.
 
@@ -74,7 +78,7 @@ def _default_experiment_dir(profile: AgentProfile | None) -> Path:
 
 
 class ExperimentalistCLI(NemoCLI):
-    """``nemo experimentalist ...`` subcommands."""
+    """``nemo agents experimentalist ...`` subcommands."""
 
     name: ClassVar[str] = "experimentalist"
     description: ClassVar[str] = "NeMo Experimentalist commands."
@@ -112,7 +116,7 @@ class ExperimentalistCLI(NemoCLI):
                     "(surfaced in Studio). A path that exists on disk is read locally; "
                     "otherwise it is fetched from the platform. Default: "
                     "<profile-dir>/.nemo-optimizer/insights.yaml when it exists (where "
-                    "`nemo insights analyze` writes by default)."
+                    "`nemo agents analyst run` writes by default)."
                 ),
             ),
             insight_id: str | None = typer.Option(
@@ -165,11 +169,6 @@ class ExperimentalistCLI(NemoCLI):
                 file_okay=False,
                 dir_okay=True,
             ),
-            mode: Literal["local", "remote"] = typer.Option(
-                "local",
-                "--mode",
-                help="Mode of the optimizer run.",
-            ),
             workspace: str | None = typer.Option(
                 None,
                 "--workspace",
@@ -208,9 +207,6 @@ class ExperimentalistCLI(NemoCLI):
             if no_insight and (insight is not None or insight_id is not None):
                 typer.echo("--no-insight cannot be combined with --insight or --insight-id", err=True)
                 raise typer.Exit(code=1)
-            if mode == "remote":
-                typer.echo("Remote mode is not implemented yet", err=True)
-                raise typer.Exit(code=1)
 
             async def _flow() -> str:
                 """Resolve inputs (profile + flags) and run the Experimentalist."""
@@ -227,7 +223,7 @@ class ExperimentalistCLI(NemoCLI):
                 if no_insight:
                     typer.echo("Insight disabled: --no-insight (Mode 2)", err=True)
                 elif effective_insight.is_profile_default:
-                    # `nemo insights analyze` writes here by default: the verbs connect flag-free.
+                    # `nemo agents analyst run` writes here by default: the verbs connect flag-free.
                     typer.echo(
                         f"Insight file: {effective_insight.ref} (default; pass --insight to override)",
                         err=True,
@@ -236,7 +232,7 @@ class ExperimentalistCLI(NemoCLI):
                 # Phase 1 — cheap environment checks BEFORE resolution: certain failures
                 # (missing creds, docker down, harbor absent) surface as the grouped
                 # report before any dataset download or the loop-chain import (which
-                # itself requires EXPERIMENTALIST_API_* env) can preempt them. check_profile is
+                # itself requires NEMO_EXPERIMENTALIST_API_* env) can preempt them. check_profile is
                 # doctor-only on purpose: flags may fully specify the run, and resolution
                 # reports missing inputs with the skeleton.
                 _preflight_or_exit(
@@ -313,7 +309,6 @@ class ExperimentalistCLI(NemoCLI):
                         workspace=inputs.workspace,
                         client=client,
                         config=inputs.config,
-                        mode=mode,
                         framework_skills_dirs=inputs.framework_skills_dirs,
                     )
                 finally:
@@ -415,6 +410,7 @@ class ExperimentalistCLI(NemoCLI):
                 base_url=base_url_resolved,
                 probes=_PREFLIGHT_PROBES,
             )
+            results.append(asyncio.run(_check_platform_client_bootstrap(base_url_resolved)))
             if profile_obj is not None:
                 if plan is not None:
                     results += check_artifacts(
@@ -431,6 +427,39 @@ class ExperimentalistCLI(NemoCLI):
                 raise typer.Exit(code=1)
 
         return app
+
+
+async def _check_platform_client_bootstrap(base_url: str) -> CheckResult:
+    """Verify doctor can construct the same Platform client used by a run."""
+    try:
+        client = make_client(base_url)
+    except _PLATFORM_CLIENT_ERRORS as exc:
+        return CheckResult(
+            name="platform-client-bootstrap",
+            group="platform",
+            status="fail",
+            severity="required",
+            message=f"Platform client initialization failed ({type(exc).__name__})",
+            hint="check --base-url/NMP_BASE_URL and the active authentication context",
+        )
+    try:
+        await client.close()
+    except _PLATFORM_CLIENT_ERRORS as exc:
+        return CheckResult(
+            name="platform-client-bootstrap",
+            group="platform",
+            status="fail",
+            severity="required",
+            message=f"Platform client cleanup failed ({type(exc).__name__})",
+            hint="check the active authentication context and retry",
+        )
+    return CheckResult(
+        name="platform-client-bootstrap",
+        group="platform",
+        status="pass",
+        severity="required",
+        message="Platform client initialized with the effective authentication path",
+    )
 
 
 def _load_profile_or_error(profile_path: Path | None) -> tuple[AgentProfile | None, str | None]:
@@ -481,20 +510,25 @@ def _is_gateway_base(value: str) -> bool:
 def _apply_credential_defaults(env: MutableMapping[str, str] = os.environ) -> list[str]:
     """Fill gateway-shaped credential gaps; returns what was applied.
 
-    ``EXPERIMENTALIST_API_BASE`` defaults to the NVIDIA Inference Gateway, and when
+    ``NEMO_EXPERIMENTALIST_API_BASE`` defaults to the NVIDIA Inference Gateway, and when
     the effective base IS the gateway, ``INFERENCE_API_KEY`` can power the
     experimentalist too. A custom base never inherits the gateway key.
+
+    This still writes to the environment rather than to
+    :class:`~nemo_experimentalist_plugin.settings.ExperimentalistConfig`, because the
+    environment is the highest-precedence source and this runs before anything resolves
+    the config. Whether the copy should exist at all is a separate open question.
     """
     applied: list[str] = []
-    if not env.get("EXPERIMENTALIST_API_BASE", "").strip():
-        env["EXPERIMENTALIST_API_BASE"] = _GATEWAY_BASE
-        applied.append(f"EXPERIMENTALIST_API_BASE={_GATEWAY_BASE}")
-    if _is_gateway_base(env["EXPERIMENTALIST_API_BASE"]):
+    if not env.get("NEMO_EXPERIMENTALIST_API_BASE", "").strip():
+        env["NEMO_EXPERIMENTALIST_API_BASE"] = _GATEWAY_BASE
+        applied.append(f"NEMO_EXPERIMENTALIST_API_BASE={_GATEWAY_BASE}")
+    if _is_gateway_base(env["NEMO_EXPERIMENTALIST_API_BASE"]):
         inference = env.get("INFERENCE_API_KEY", "").strip()
-        optimizer = env.get("EXPERIMENTALIST_API_KEY", "").strip()
+        optimizer = env.get("NEMO_EXPERIMENTALIST_API_KEY", "").strip()
         if inference and not optimizer:
-            env["EXPERIMENTALIST_API_KEY"] = inference
-            applied.append("EXPERIMENTALIST_API_KEY=INFERENCE_API_KEY")
+            env["NEMO_EXPERIMENTALIST_API_KEY"] = inference
+            applied.append("NEMO_EXPERIMENTALIST_API_KEY=INFERENCE_API_KEY")
     return applied
 
 

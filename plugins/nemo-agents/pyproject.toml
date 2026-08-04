@@ -8,6 +8,7 @@ dependencies = [
     "nemo-deployments-plugin",
     "nemo-agents-example-calculator",
     "nemo-agents-example-email-phishing",
+    "nemo-agents-example-email-security",
     "nvidia-nat-core>=1.8.0,<1.9",
     "nvidia-nat-langchain>=1.8.0,<1.9",
     "nvidia-nat-config-optimizer>=1.8.0,<1.9",
@@ -20,11 +21,11 @@ dependencies = [
     # improvement/ subpackage — agent-improvement workflow (POC).
     "anthropic>=0.88.0",
     "rich>=13.7.1",
-    "nemo-fabric[claude,codex,deepagents,relay]>=0.1.0rc6,<0.2.0",
+    "nemo-fabric[claude,codex,deepagents,relay]>=0.1.0,<0.2.0",
     # TODO(AIRCORE-952): Switch to the metapackage's `hermes-agent` extra once hermes-agent
     # relaxes its vulnerable exact dependency pins — that extra applies [harness], which
     # pins requests==2.33.0.
-    "nemo-fabric-adapters-hermes>=0.1.0rc6,<0.2.0; python_version < '3.14'",
+    "nemo-fabric-adapters-hermes>=0.1.0,<0.2.0; python_version < '3.14'",
 ]
 version = "0.0.0"
 
@@ -97,6 +98,7 @@ nemo-platform-plugin = { workspace = true }
 nemo-deployments-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
 nemo-agents-example-email-phishing = { workspace = true }
+nemo-agents-example-email-security = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

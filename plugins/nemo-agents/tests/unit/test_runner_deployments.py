@@ -12,6 +12,7 @@ import pytest
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, DeploymentsRunnerConfig
 from nemo_agents_plugin.entities import Endpoint
+from nemo_agents_plugin.fabric.gateway_credentials import PLATFORM_IGW_API_KEY_ENV, PLATFORM_IGW_API_KEY_PLACEHOLDER
 from nemo_agents_plugin.runner.deployments_backend import (
     DeploymentsRunnerBackend,
     UnreachableGatewayURLError,
@@ -22,7 +23,8 @@ from nemo_agents_plugin.runner.deployments_backend import (
     rewrite_config_base_urls,
     rewrite_fabric_config_base_urls,
 )
-from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
+from nemo_agents_plugin.runner.fabric_artifact_staging import FabricArtifactStagingError
+from nemo_deployments_plugin.entities import ConfigFile, Deployment, DeploymentConfig
 from nemo_deployments_plugin.types import Endpoint as PluginEndpoint
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
@@ -263,7 +265,12 @@ _FABRIC_AGENT_CONFIG = {
     "harnesses": {
         "main": {
             "provider": "codex",
-            "model": {"provider": "openai", "model": "test-model", "settings": {}},
+            "model": {
+                "provider": "openai",
+                "model": "test-model",
+                "base_url": "http://platform/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                "settings": {},
+            },
         }
     },
 }
@@ -302,6 +309,9 @@ def test_build_deployment_config_fabric_docker_uses_fabric_server() -> None:
     assert not any(e.name == "NAT_CONFIG_YAML" for e in container.env)
     assert any(e.name == "AGENT_CONFIG_PATH" and e.value == "/workspace/agent.yaml" for e in container.env)
     assert next(e.value for e in container.env if e.name == "NMP_BASE_URL") == "http://host.docker.internal:8080"
+    assert next(e.value for e in container.env if e.name == PLATFORM_IGW_API_KEY_ENV) == (
+        PLATFORM_IGW_API_KEY_PLACEHOLDER
+    )
     assert "nemo_agents_plugin.fabric.server" in container.args[0]
     assert container.readiness_probe is not None
     assert container.readiness_probe.http_get is not None
@@ -328,7 +338,93 @@ def test_build_deployment_config_fabric_k8s_uses_fabric_entrypoint() -> None:
     assert "/workspace/agent.yaml" in container.args
     assert "--host" in container.args and "0.0.0.0" in container.args
     assert not any(e.name == "NAT_CONFIG_YAML" for e in container.env)
+    assert next(e.value for e in container.env if e.name == PLATFORM_IGW_API_KEY_ENV) == (
+        PLATFORM_IGW_API_KEY_PLACEHOLDER
+    )
     assert cfg.config_files[0].path == "/workspace/agent.yaml"
+
+
+def test_build_deployment_config_fabric_direct_endpoint_has_no_placeholder() -> None:
+    config = {
+        **_FABRIC_AGENT_CONFIG,
+        "harnesses": {
+            "main": {
+                "provider": "codex",
+                "model": {
+                    "provider": "openai",
+                    "model": "gpt-test",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key_env": "OPENAI_API_KEY",
+                },
+            }
+        },
+    }
+
+    cfg = build_deployment_config(
+        name="fabric-dep",
+        workspace="default",
+        image="fabric-runtime:latest",
+        port=8000,
+        agent_config=config,
+        platform_base_url="http://host.docker.internal:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="docker",
+    )
+
+    assert not any(e.name in {PLATFORM_IGW_API_KEY_ENV, "OPENAI_API_KEY"} for e in cfg.containers[0].env)
+
+
+def test_build_deployment_config_fabric_docker_materializes_multiple_config_files() -> None:
+    staged_files = [
+        ConfigFile(path="/workspace/agent.yaml", content="name: fabric-agent\n"),
+        ConfigFile(path="/workspace/skills/review/SKILL.md", content="# Review\n"),
+        ConfigFile(path="/workspace/prompts/system.md", content="You are helpful.\n"),
+    ]
+    cfg = build_deployment_config(
+        name="fabric-dep",
+        workspace="default",
+        image="fabric-runtime:latest",
+        port=8000,
+        agent_config=_FABRIC_AGENT_CONFIG,
+        platform_base_url="http://host.docker.internal:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="docker",
+        config_files=staged_files,
+    )
+    container = cfg.containers[0]
+    assert container.command == ["sh", "-c"]
+    assert not any(e.name == "AGENT_CONFIG_YAML" for e in container.env)
+    assert any(e.name == "STAGED_CONFIG_FILES_B64_JSON" for e in container.env)
+    assert "python -c" in container.args[0]
+    assert "nemo_agents_plugin.fabric.server" in container.args[0]
+    assert len(cfg.config_files) == 3
+    assert {item.path for item in cfg.config_files} == {
+        "/workspace/agent.yaml",
+        "/workspace/skills/review/SKILL.md",
+        "/workspace/prompts/system.md",
+    }
+
+
+def test_build_deployment_config_fabric_k8s_mounts_multiple_config_files() -> None:
+    staged_files = [
+        ConfigFile(path="/workspace/agent.yaml", content="name: fabric-agent\n"),
+        ConfigFile(path="/workspace/skills/review/SKILL.md", content="# Review\n"),
+    ]
+    cfg = build_deployment_config(
+        name="fabric-dep",
+        workspace="default",
+        image="fabric-runtime:latest",
+        port=8000,
+        agent_config=_FABRIC_AGENT_CONFIG,
+        platform_base_url="http://nmp-api:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="k8s",
+        config_files=staged_files,
+    )
+    container = cfg.containers[0]
+    assert container.command == ["python"]
+    assert not any(e.name == "STAGED_CONFIG_FILES_B64_JSON" for e in container.env)
+    assert len(cfg.config_files) == 2
 
 
 def _backend(**deployments_kwargs: Any) -> DeploymentsRunnerBackend:
@@ -816,3 +912,138 @@ def test_agent_deployment_defaults_are_subprocess() -> None:
     assert dep.endpoints == []
     assert dep.image == ""
     assert dep.plugin_deployment == ""
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_fabric_docker_stages_fileset_artifacts() -> None:
+    backend = _backend(default_image="fabric:latest", default_executor="local-docker")
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "main",
+        "skills": {"paths": ["skills/review"]},
+        "harnesses": {"main": {"kind": "codex", "settings": {}}},
+    }
+    staged_files = [
+        ConfigFile(path="/workspace/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
+        ConfigFile(path="/workspace/skills/review/SKILL.md", content="# Review\n"),
+    ]
+    sdk = MagicMock()
+
+    with (
+        patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.get_async_platform_sdk",
+            return_value=sdk,
+        ),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.stage_fabric_spec_config_files",
+            new_callable=AsyncMock,
+            return_value=staged_files,
+        ) as mock_stage,
+    ):
+        info = await backend.create_deployment(
+            workspace="default",
+            name="fabric-dep",
+            config=config,
+            port=0,
+            deployment_mode="docker",
+            agent="fabric-agent",
+        )
+
+    assert info.status == "starting"
+    mock_stage.assert_awaited_once()
+    created_config = entities.create.await_args_list[0].args[0]
+    assert len(created_config.config_files) == 2
+    assert any(e.name == "STAGED_CONFIG_FILES_B64_JSON" for e in created_config.containers[0].env)
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_fabric_k8s_stages_fileset_artifacts() -> None:
+    backend = _backend(
+        default_image="fabric:latest",
+        default_executor="k8s",
+        k8s_internal_base_url="http://nmp-api:8080",
+    )
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "main",
+        "skills": {"paths": ["skills/review"]},
+        "harnesses": {"main": {"kind": "codex", "settings": {}}},
+    }
+    staged_files = [
+        ConfigFile(path="/workspace/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
+        ConfigFile(path="/workspace/skills/review/SKILL.md", content="# Review\n"),
+    ]
+    sdk = MagicMock()
+
+    with (
+        patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.get_async_platform_sdk",
+            return_value=sdk,
+        ),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.stage_fabric_spec_config_files",
+            new_callable=AsyncMock,
+            return_value=staged_files,
+        ),
+    ):
+        info = await backend.create_deployment(
+            workspace="default",
+            name="fabric-dep",
+            config=config,
+            port=0,
+            deployment_mode="k8s",
+            agent="fabric-agent",
+        )
+
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    assert len(created_config.config_files) == 2
+    assert created_config.containers[0].command == ["python"]
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_fabric_staging_error_fails_before_entity_create() -> None:
+    backend = _backend(default_image="fabric:latest", default_executor="local-docker")
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "main",
+        "skills": {"paths": ["skills/review"]},
+        "harnesses": {"main": {"kind": "codex", "settings": {}}},
+    }
+    sdk = MagicMock()
+
+    with (
+        patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.get_async_platform_sdk",
+            return_value=sdk,
+        ),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.stage_fabric_spec_config_files",
+            new_callable=AsyncMock,
+            side_effect=FabricArtifactStagingError("missing skills/review"),
+        ),
+    ):
+        info = await backend.create_deployment(
+            workspace="default",
+            name="fabric-dep",
+            config=config,
+            port=0,
+            deployment_mode="docker",
+            agent="fabric-agent",
+        )
+
+    assert info.status == "failed"
+    assert "skills/review" in info.error
+    entities.create.assert_not_called()

@@ -902,3 +902,46 @@ def test_profile_storage_flags_reads_inline_and_path_forms(tmp_path: Path) -> No
     )
     path_profile = load_profile(tmp_path / "optimizer.yaml")
     assert profile_storage_flags(path_profile) == {"archive_candidates": True}
+
+
+def test_run_config_rejects_a_models_block() -> None:
+    """Model tiers are a deployment setting, not a per-run one.
+
+    Silently ignoring the key would be worse than failing: a run config that names models
+    reads as though it chose them, while the run would actually use whatever the install
+    is configured with.
+    """
+    import pytest
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+
+    with pytest.raises(ValueError, match="NEMO_EXPERIMENTALIST_MODELS"):
+        EvolutionaryOptimizerConfig.model_validate({"models": {"smart": "a/b"}})
+
+
+def test_run_config_takes_no_environment_override(monkeypatch) -> None:
+    """``--config`` is the whole story for run parameters.
+
+    An ambient variable truncating a run whose config file says otherwise would make
+    ``config_snapshot`` a dishonest record of what ran, so the run config deliberately has
+    no environment binding at all.
+    """
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_MAX_ROUNDS", "1")
+
+    assert EvolutionaryOptimizerConfig.model_validate({"max_rounds": 15}).max_rounds == 15
+
+
+def test_component_configs_are_the_component_owned_classes() -> None:
+    """The tree must hold the components' own classes, not re-declared twins."""
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+    from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
+    from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
+    from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
+
+    cfg = EvolutionaryOptimizerConfig()
+    assert type(cfg.coder) is CoderConfig
+    assert type(cfg.analyzer) is AnalyzerConfig
+    assert type(cfg.proposer) is ProposerConfig
+    assert type(cfg.goal_config) is GoalTreeConfig

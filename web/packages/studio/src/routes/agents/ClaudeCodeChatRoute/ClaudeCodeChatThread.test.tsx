@@ -42,7 +42,7 @@ vi.mock('@nemo/common/src/components/AssistantChat/AssistantChatThread', () => (
 }));
 
 const WORKSPACE = 'default';
-const CHAT_PATH = generatePath(ROUTES.workspace.claudeCodeChat, { workspace: WORKSPACE });
+const CHAT_PATH = generatePath(ROUTES.workspace.copilotChat, { workspace: WORKSPACE });
 
 const makeStudioNavigationRequest = (
   overrides?: Partial<StudioNavigationRequest>
@@ -85,7 +85,7 @@ const renderThread = (studioNavigationRequest = makeStudioNavigationRequest()) =
   const router = createMemoryRouter(
     [
       {
-        path: ROUTES.workspace.claudeCodeChat,
+        path: ROUTES.workspace.copilotChat,
         element: <ClaudeCodeChatThread chat={makeChat(studioNavigationRequest)} />,
       },
       { path: ROUTES.workspace.guardrails, element: <div data-testid="guardrails-route" /> },
@@ -105,7 +105,7 @@ describe('ClaudeCodeChatThread Studio UI navigation', () => {
     vi.clearAllMocks();
   });
 
-  it('offers the matching Studio UI before continuing with NeMo Agent', () => {
+  it('offers the matching Studio UI before continuing with NeMo Copilot', () => {
     renderThread();
 
     expect(screen.getByText('Studio UI available')).toBeInTheDocument();

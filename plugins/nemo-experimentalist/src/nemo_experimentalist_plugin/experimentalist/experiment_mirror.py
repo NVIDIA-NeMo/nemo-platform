@@ -25,7 +25,6 @@ from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError, omit
 
 logger = logging.getLogger(__name__)
 
-SPLITS: tuple[str, ...] = ("train", "validation", "insight")
 _NAME_RE = re.compile(r"[^a-z0-9-]+")
 
 
@@ -91,18 +90,6 @@ def experiment_metadata(candidate: Candidate, split: str) -> dict[str, str]:
 
     Platform ``metadata`` is ``dict[str, str]``, so ``round`` is serialized via ``str``."""
     return {"round": str(candidate.round), "candidate_id": candidate.label, "split": split}
-
-
-def _split_reward(candidate: Candidate, split: str) -> Any:
-    """The candidate's reward object for *split* — an explicit lookup over the known
-    split fields (``train_reward``/``validation_reward``/``insight_reward``) rather
-    than a dynamic attribute read. Used only as a presence check: the reward value
-    itself is never projected."""
-    return {
-        "train": candidate.train_reward,
-        "validation": candidate.validation_reward,
-        "insight": candidate.insight_reward,
-    }[split]
 
 
 class ExperimentMirror:
@@ -177,9 +164,9 @@ class ExperimentMirror:
     ) -> None:
         gname = group_name(candidate.run_id)
         gid = await self._group_id_for(candidate.run_id)
-        for split in SPLITS:
-            if _split_reward(candidate, split) is None:
-                continue  # split not evaluated yet (presence check only — reward is NOT copied)
+        for split in candidate.rewards:
+            # One Experiment per measured channel. Reward values are never copied here;
+            # the channel's presence in the map is the signal that it was measured.
             await self._upsert_experiment(
                 candidate=candidate,
                 split=split,
@@ -304,9 +291,7 @@ class ExperimentMirror:
         # redundant (and "deployed" overstates a draft PR). With no PR, preserve the
         # source_link stored during the run so a round-0 winner's real {repo}@{ref} isn't
         # clobbered by the full-replace update (agent_source isn't threaded into finalize).
-        for split in SPLITS:
-            if _split_reward(winner, split) is None:
-                continue
+        for split in winner.rewards:
             link = pr_url or await self._existing_source_link(gname, winner.label, split)
             await self._upsert_experiment(
                 candidate=winner,

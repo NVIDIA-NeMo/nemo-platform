@@ -82,6 +82,7 @@ from docker.errors import DockerException
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import Timeout as RequestsTimeout
 
 import docker
@@ -388,7 +389,7 @@ def validate_docker_available() -> bool:
         client = docker.from_env(timeout=5)
         client.ping()
         return True
-    except (DockerException, RequestsTimeout):
+    except (DockerException, RequestsConnectionError, RequestsTimeout, OSError):
         return False
     finally:
         if client:

@@ -6,6 +6,7 @@
 from pathlib import Path
 from typing import Any
 
+from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
     Evaluator,
     EvaluatorConfig,
@@ -16,7 +17,6 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Dataset, DatasetRef, Task
 
 _SUPPORTED_EVALUATOR_TYPES = {
     "harbor": (HarborDataset, HarborEvaluator, HarborEvaluatorConfig),
