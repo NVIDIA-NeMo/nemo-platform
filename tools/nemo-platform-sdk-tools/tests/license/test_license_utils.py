@@ -228,6 +228,47 @@ class TestFormatLicenses:
             '{"name": "cloudpickle", "license": "BSD-3-CLAUSE", "compatible": true}'
         )
 
+    def test_format_licenses_ignores_osv_packages_missing_from_exported_requirements(self, tmp_path):
+        """OSV-only conditional packages should not affect generated license reports."""
+        from nemo_platform_sdk_tools.license.generator import format_licenses
+
+        license_dir = tmp_path / "third_party"
+        license_dir.mkdir()
+        osv_json = license_dir / "osv-licenses.json"
+        osv_json.write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "packages": [
+                                {
+                                    "package": {"name": "aiofiles", "version": "25.1.0"},
+                                    "licenses": ["Apache-2.0"],
+                                },
+                                {
+                                    "package": {"name": "backports-tarfile", "version": "1.2.0"},
+                                    "licenses": ["MIT"],
+                                },
+                            ]
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        (license_dir / "requirements-main.txt").write_text(
+            "aiofiles==25.1.0 ; python_version >= '3.12' \\\n"
+            "    --hash=sha256:0000000000000000000000000000000000000000000000000000000000000000\n",
+            encoding="utf-8",
+        )
+        output_file = license_dir / "licenses.jsonl"
+
+        format_licenses(osv_json, output_file, format_type="jsonl")
+
+        assert output_file.read_text(encoding="utf-8") == (
+            '{"name": "aiofiles", "license": "APACHE-2.0", "compatible": true}'
+        )
+
     def test_format_licenses_csv_uses_third_party_license_columns(self, tmp_path, monkeypatch):
         """CSV output is Package, License, License URL and supports custom output directories."""
         from nemo_platform_sdk_tools.license import generator
