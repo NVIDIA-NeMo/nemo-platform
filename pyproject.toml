@@ -644,14 +644,11 @@ exclude = [
 
 # nooa agents declare their LLM-generated methods as annotated signatures with an
 # ellipsis body; the framework fills them in at runtime. ty reads that as a missing
-# return, so the rule is off for the Experimentalist and Eval Author agent classes only
-# -- plus the one test module that defines throwaway agents to pin nooa's own
-# llm-resolution contract, where the ellipsis bodies are there for the same reason.
+# return, so the rule is off for the Experimentalist and Eval Author agent classes only.
 [[tool.ty.overrides]]
 include = [
   "plugins/nemo-experimentalist/src/**",
   "plugins/nemo-eval-author/src/**",
-  "plugins/nemo-experimentalist/tests/experimentalist/test_method_llm_injection.py",
 ]
 
 [tool.ty.overrides.rules]
