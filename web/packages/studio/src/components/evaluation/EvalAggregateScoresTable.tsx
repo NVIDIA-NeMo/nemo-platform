@@ -5,7 +5,7 @@ import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataV
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Badge, Block, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { formatScore, scoreColor } from '@studio/components/evaluation/utils';
-import { type ComponentProps, type FC, useCallback } from 'react';
+import { type ComponentProps, type FC, useCallback, useMemo } from 'react';
 
 export interface EvalAggregateScoreRow {
   name: string;
@@ -46,6 +46,12 @@ export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
 }) => {
   const dataViewState = useStudioDataViewState();
   const hasRubric = scores.some((score) => !!score.rubric_distribution?.length);
+
+  const { pageIndex, pageSize } = dataViewState.pagination.state;
+  const pageScores = useMemo(
+    () => scores.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+    [scores, pageIndex, pageSize]
+  );
 
   const makeColumns = useCallback<
     ComponentProps<typeof StudioDataView<EvalAggregateScoreRow>>['makeColumns']
@@ -131,7 +137,7 @@ export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
         makeColumns={makeColumns}
         attributes={{
           DataViewRoot: {
-            data: scores,
+            data: pageScores,
             totalCount: scores.length,
             reactTableOptions: { getRowId: (row) => row.name },
           },
