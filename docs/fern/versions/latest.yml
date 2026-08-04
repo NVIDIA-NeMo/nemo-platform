@@ -261,6 +261,8 @@ navigation:
         contents:
           - page: Deploy Agents
             path: ../../agents/deploy-agents.mdx
+          - page: Sandboxed Deployments
+            path: ../../agents/sandboxed-deployments.mdx
           - page: Observe Agents
             path: ../../agents/observability.mdx
           - page: Optimize Agents

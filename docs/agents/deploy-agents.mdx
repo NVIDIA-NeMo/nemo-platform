@@ -161,7 +161,15 @@ secrets. Pass the image with `--image`, or set
 
 **2. A configured deployments executor.** The platform operator defines named
 executors in the platform configuration and points the agents plugin at them.
-A minimal Docker + Kubernetes configuration:
+Each executor names a `backend`:
+
+| Backend | Runs the agent as |
+|---------|-------------------|
+| `docker` | A Docker container |
+| `k8s` | A Kubernetes Deployment and Service |
+| `openshell` | An OpenShell sandbox under a generated SandboxPolicy (Landlock filesystem isolation, `run_as_user: sandbox`, and default-deny network egress). Opt-in per deployment rather than a `--mode`. See [Sandboxed Deployments](/documentation/agents/sandboxed-deployments). |
+
+A minimal configuration for the Docker, Kubernetes, and OpenShell backends:
 
 ```yaml
 agents:
@@ -187,6 +195,16 @@ deployments:
       config:
         # Omit kubeconfig_path to use in-cluster ServiceAccount auth
         default_namespace: default
+    - name: openshell-local
+      backend: openshell
+      config:
+        # OpenShell gateway (docker-driver default port; not 8080, the platform's)
+        gateway_endpoint: http://127.0.0.1:17670
+        # Sandbox-writable working directory for the agent's `nat serve` process
+        serve_workdir: /home/sandbox
+        # null grants the sandbox no direct network egress; model traffic is
+        # brokered through the gateway-managed inference.local route
+        platform_egress: null
 ```
 
 <Note>
@@ -197,6 +215,8 @@ ConfigMaps, and Pods in the target namespace. In the packaged Helm chart these
 run in the core controller, whose Role already grants those permissions.
 
 </Note>
+
+The `openshell` executor is not reachable through `nemo agents deploy --mode`; a sandboxed deployment is created directly through the deployments API with `executor: openshell-local`. It also needs a running OpenShell gateway and a one-time `inference.local` route wired on that gateway. See [Sandboxed Deployments](/documentation/agents/sandboxed-deployments) for the full prerequisites and deploy flow.
 
 ### Deploy on Docker
 
