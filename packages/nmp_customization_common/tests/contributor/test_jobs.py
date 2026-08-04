@@ -5,7 +5,7 @@
 
 Covers :func:`require_container_runtime` (automodel / unsloth) and
 :func:`require_distributed_runtime` (rl). We patch the platform config and the
-Docker-availability probe so the checks are exercised without a real runtime.
+Docker capability probe so the checks are exercised without a real runtime.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from nemo_platform_plugin.capabilities import ProbeResult
 from nemo_platform_plugin.config import Runtime
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nmp.customization_common.contributor import jobs as jobs_mod
@@ -33,8 +34,11 @@ def _patch_runtime(monkeypatch: pytest.MonkeyPatch):
             classmethod(lambda cls: SimpleNamespace(runtime=runtime)),
         )
         monkeypatch.setattr(
-            "nemo_platform_plugin.config.validate_docker_available",
-            lambda: docker_available,
+            "nemo_platform_plugin.capabilities.probe_docker",
+            lambda **kwargs: ProbeResult(
+                available=docker_available,
+                detail=None if docker_available else "Docker daemon unreachable (test)",
+            ),
         )
 
     return _apply
@@ -63,9 +67,14 @@ class TestRequireContainerRuntime:
         with pytest.raises(PlatformJobCompilationError, match="multi-node training .* requires"):
             require_container_runtime("Automodel", num_nodes=2)
 
-    def test_none_runtime_raises(self, _patch_runtime) -> None:
-        _patch_runtime(Runtime.NONE)
-        with pytest.raises(PlatformJobCompilationError, match="requires a container runtime"):
+    def test_none_runtime_with_docker_ok(self, _patch_runtime) -> None:
+        """Soft-downgraded NONE still allows compile when Docker is reachable."""
+        _patch_runtime(Runtime.NONE, docker_available=True)
+        require_container_runtime("Automodel")  # no raise
+
+    def test_none_runtime_without_docker_raises(self, _patch_runtime) -> None:
+        _patch_runtime(Runtime.NONE, docker_available=False)
+        with pytest.raises(PlatformJobCompilationError, match="reachable Docker daemon"):
             require_container_runtime("Automodel")
 
     def test_none_runtime_multi_node_raises_kubernetes_message(self, _patch_runtime) -> None:
