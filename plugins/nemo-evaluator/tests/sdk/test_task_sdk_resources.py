@@ -10,7 +10,13 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from nemo_evaluator.api.schemas import MetricRef, Revision, Task, TaskInput
+from nemo_evaluator.api.schemas import (
+    EvaluatorTaskDefinition,
+    MetricRef,
+    Revision,
+    Task,
+    TaskInput,
+)
 from nemo_evaluator.sdk.task_resources import AsyncEvaluatorTasksResource, EvaluatorTasksResource
 
 _BASE = "http://localhost:8080/apis/evaluator/v2/workspaces/default"
@@ -19,12 +25,14 @@ _BASE = "http://localhost:8080/apis/evaluator/v2/workspaces/default"
 def _task_payload(name: str) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     return Task(
+        spec=EvaluatorTaskDefinition(
+            intent="Answer the question.",
+            inputs={"instruction": "What is 2+2?"},
+            metrics=[MetricRef("default/stored-metric")],
+        ),
         id=f"task-{name}",
         name=name,
         workspace="default",
-        intent="Answer the question.",
-        inputs={"instruction": "What is 2+2?"},
-        metrics=[MetricRef("default/stored-metric")],
         revision=1,
         tags={"latest": 1},
         created_at=now,
@@ -33,7 +41,11 @@ def _task_payload(name: str) -> dict[str, Any]:
 
 
 def _task_input() -> TaskInput:
-    return TaskInput(intent="Answer.", inputs={"instruction": "x"}, metrics=[MetricRef("default/stored-metric")])
+    return TaskInput(
+        spec=EvaluatorTaskDefinition(
+            intent="Answer.", inputs={"instruction": "x"}, metrics=[MetricRef("default/stored-metric")]
+        )
+    )
 
 
 def _response(payload: Any) -> MagicMock:
@@ -63,7 +75,7 @@ def test_sync_create_posts_task_input_to_item_url() -> None:
     assert isinstance(result, Task)
     assert result.name == "task-1"
     assert http_client.post.call_args[0][0] == f"{_BASE}/tasks/task-1"
-    assert http_client.post.call_args.kwargs["json"]["intent"] == "Answer."
+    assert http_client.post.call_args.kwargs["json"]["spec"]["intent"] == "Answer."
 
 
 def test_sync_retrieve_targets_item_url_and_parses_dto() -> None:
@@ -74,7 +86,8 @@ def test_sync_retrieve_targets_item_url_and_parses_dto() -> None:
     result = resource.retrieve("task-1")
 
     assert isinstance(result, Task)
-    assert isinstance(result.metrics[0], MetricRef)
+    assert isinstance(result.spec, EvaluatorTaskDefinition)
+    assert isinstance(result.spec.metrics[0], MetricRef)
     assert http_client.get.call_args[0][0] == f"{_BASE}/tasks/task-1"
 
 
@@ -143,7 +156,7 @@ def test_sync_replace_puts_task_input_to_item_url() -> None:
     result = resource.replace("task-1", task=_task_input())
 
     assert http_client.put.call_args.args[0] == f"{_BASE}/tasks/task-1"
-    assert http_client.put.call_args.kwargs["json"]["intent"] == "Answer."
+    assert http_client.put.call_args.kwargs["json"]["spec"]["intent"] == "Answer."
     assert isinstance(result, Task)
 
 

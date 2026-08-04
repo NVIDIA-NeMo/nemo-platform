@@ -37,6 +37,7 @@ import cloudpickle
 import httpx
 import pytest
 from nemo_evaluator.api.schemas import (
+    EvaluatorTaskDefinition,
     MetricInline,
     TaskInput,
     TaskInputs,
@@ -554,9 +555,11 @@ def test_submit_over_taskset_ref_resolves_and_scores(subprocess_platform: str) -
         client.evaluator.tasks.create(
             name,
             task=TaskInput(
-                intent="Obtain a one-word reply from the model.",
-                inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
-                metrics=[MetricRef(f"{WORKSPACE}/{metric_name}")],
+                spec=EvaluatorTaskDefinition(
+                    intent="Obtain a one-word reply from the model.",
+                    inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
+                    metrics=[MetricRef(f"{WORKSPACE}/{metric_name}")],
+                )
             ),
         )
     taskset_name = _unique("done-suite")

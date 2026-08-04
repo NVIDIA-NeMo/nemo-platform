@@ -73,34 +73,63 @@ Reference the stored metric with a `MetricRef` (`workspace/name`, or a bare `nam
 the task's workspace). The service returns the stored `Task`.
 
 ```python
-from nemo_evaluator.api.schemas import MetadataItem, MetricRef, TaskInput, TaskInputs
+from nemo_evaluator.api.schemas import EvaluatorTaskDefinition, MetadataItem, MetricRef, TaskInput, TaskInputs
 
 task = TaskInput(
-    intent="Answer the user's geography question with the capital city.",
-    inputs=TaskInputs(instruction="What is the capital of France?"),
-    metrics=[MetricRef("default/answer-exact-match")],
+    spec=EvaluatorTaskDefinition(
+        intent="Answer the user's geography question with the capital city.",
+        inputs=TaskInputs(instruction="What is the capital of France?"),
+        metrics=[MetricRef("default/answer-exact-match")],
+    ),
     metadata=[MetadataItem(key="suite", value="geography")],
 )
 
 stored = tasks.create("capital-of-france", task=task)
-print(stored.id, stored.metrics)
+print(stored.id, stored.spec.metrics)
 ```
 
 ### `TaskInput` fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `intent` | `str` | Yes | Human-readable description of the desired agent behavior. |
-| `inputs` | `TaskInputs` | No | The task's recognized input fields. `instruction` is the agent's prompt; it falls back to `intent` when unset. |
-| `metrics` | `list[MetricRefOrInline]` | No | The metrics that score the task, as `MetricRef` references (`workspace/name`) to stored metrics. Pre-built inline metric bundles (`MetricInline`) are also accepted and are normalized to stored metrics on create. |
-| `views` | `dict[str, SemanticView]` | No | Optional reporting views mapping metric outputs into named semantic scores. |
+| `spec` | `TaskDefinition` | Yes | The task's content, discriminated by `kind` — see below. |
 | `metadata` | `list[MetadataItem]` | No | Key/value annotations. Keys must be unique. |
 | `tags` | `list[str]` | No | Tags to point at the revision this request publishes. `latest` is always applied server-side. |
+
+### Task kinds
+
+A task is an evaluation unit; its `kind` says which runner executes it. Both kinds are stored as the
+same record type, so a taskset can group them and you manage every evaluation unit in one place.
+
+`EvaluatorTaskDefinition` (`kind="evaluator"`) — scored by platform metrics:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `intent` | `str` | Yes | Human-readable description of the desired agent behavior. |
+| `inputs` | `TaskInputs` | No | The task's recognized input fields. `instruction` is the agent's prompt; it falls back to `intent` when unset. |
+| `reference` | `dict[str, Any]` | No | Grader-only ground truth (held-out tests, expected outputs, rubric data). Surfaced to metrics but never seeded into the agent's workspace or shown to the agent. Held out from the *agent*, not from the API. |
+| `metrics` | `list[MetricRefOrInline]` | No | The metrics that score the task, as `MetricRef` references (`workspace/name`) to stored metrics. Pre-built inline metric bundles (`MetricInline`) are also accepted and are normalized to stored metrics on create. |
+| `views` | `dict[str, SemanticView]` | No | Optional reporting views mapping metric outputs into named semantic scores. |
+
+`HarborTaskDefinition` (`kind="harbor"`) — a Harbor task, scored by Harbor's own reward:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `archive_ref` | `str` | Yes | Files reference to the task's packaged directory (`workspace/fileset#path`). One fileset per task, so a task shared by several tasksets is stored once. |
+| `archive_digest` | `str` | Yes | Content hash Harbor computed over the task directory. |
+| `instruction` | `str` | No | The task's instruction text, when it has one. |
+| `config` | `dict` | No | Harbor's own task configuration (verifier, agent, environment, steps), stored as published. |
+
+<Note>
+Storing a Harbor task is supported; **running one from storage is not yet**. A taskset may group both
+kinds, but expanding a `harbor` member is rejected with `422` before the run starts, whatever target
+you submit against. Harbor evaluations continue to run through the existing dataset-driven path.
+</Note>
 
 <Note>
 A stored task holds **metric references only**. Any inline metric bundle you pass on create is stored
 as a content-addressed *derived* metric, and the task record is normalized to reference it. This is
-why `stored.metrics` always comes back as a list of `MetricRef` references.
+why `stored.spec.metrics` always comes back as a list of `MetricRef` references.
 </Note>
 
 ### Retrieve, list, and delete
@@ -108,12 +137,12 @@ why `stored.metrics` always comes back as a list of `MetricRef` references.
 ```python
 # Retrieve one task by name (its current content)
 task = tasks.retrieve("capital-of-france")
-print(task.revision, task.tags)  # e.g. 1 {'latest': 1}
+print(task.spec.kind, task.revision, task.tags)  # e.g. evaluator 1 {'latest': 1}
 
 # List tasks in the workspace (paginated)
 page = tasks.list(page=1, page_size=100, sort="-created_at")
 for item in page.data:
-    print(item.name, item.intent)
+    print(item.name, item.spec.kind)
 
 # Delete a task (this also removes all of its revisions)
 tasks.delete("capital-of-france")
@@ -361,9 +390,10 @@ A fragment that no longer resolves fails the evaluation rather than falling back
 revision.
 
 <Note>
-Stored tasks carry no grader-only `reference` (held-out ground truth): that field lives only on inline
-`AgentEvalTaskInput`. Taskset-driven tasks therefore run with an empty `reference`, so use a taskset
-when your metrics score the agent's output directly rather than against per-task held-out data.
+A member's grader-only `reference` (held-out ground truth) is loaded from the pinned revision along
+with the rest of its content, so a taskset-driven run grades against the ground truth that revision
+fixed. Because `reference` is covered by the revision digest, changing it publishes a new revision —
+a pin fixes the grading, not just the prompt.
 </Note>
 
 ## Async usage

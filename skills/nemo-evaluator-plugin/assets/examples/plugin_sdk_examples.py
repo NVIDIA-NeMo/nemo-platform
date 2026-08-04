@@ -58,6 +58,7 @@ def submit_and_collect(client: Any, output_dir: Path) -> tuple[Any, Path]:
 def store_resources(client: Any) -> None:
     """Store one metric, task, and taskset."""
     from nemo_evaluator.api.schemas import (
+        EvaluatorTaskDefinition,
         MetricRef,
         TaskInput,
         TaskInputs,
@@ -72,14 +73,16 @@ def store_resources(client: Any) -> None:
     client.evaluator.tasks.create(
         "capital-france",
         task=TaskInput(
-            intent="Name the capital of France.",
-            inputs=TaskInputs(instruction="What is the capital of France?"),
-            metrics=[MetricRef("default/answer-exact")],
+            spec=EvaluatorTaskDefinition(
+                intent="Name the capital of France.",
+                inputs=TaskInputs(instruction="What is the capital of France?"),
+                metrics=[MetricRef("answer-exact")],
+            ),
         ),
     )
     client.evaluator.tasksets.create(
         "geography",
-        taskset=TasksetInput(tasks=[TaskRef("default/capital-france")]),
+        taskset=TasksetInput(tasks=[TaskRef("capital-france")]),
     )
 
 

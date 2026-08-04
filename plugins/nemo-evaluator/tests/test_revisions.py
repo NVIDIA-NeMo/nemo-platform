@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from typing import TypeVar
 
 import pytest
-from nemo_evaluator.api.schemas import LATEST_TAG, MetricRef, TaskInputs, TaskRef
+from nemo_evaluator.api.schemas import LATEST_TAG, EvaluatorTaskDefinition, MetricRef, TaskInputs, TaskRef
 from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity
 from nemo_evaluator.revisions import (
     RevisionConflictError,
@@ -202,11 +202,11 @@ class FakeStore:
 
 def _head(store: FakeStore, *, intent: str = "Answer the question.") -> TaskEntity:
     head = TaskEntity(
+        spec=EvaluatorTaskDefinition(
+            intent=intent, inputs=TaskInputs(instruction="What is 2+2?"), metrics=[MetricRef("default/stored-metric")]
+        ),
         name="task-1",
         workspace="default",
-        intent=intent,
-        inputs=TaskInputs(instruction="What is 2+2?"),
-        metrics=[MetricRef("default/stored-metric")],
     )
     head._id = "head-1"
     head._db_version = 0
@@ -223,11 +223,13 @@ def _head(store: FakeStore, *, intent: str = "Answer the question.") -> TaskEnti
 def _head_named(store: FakeStore, name: str) -> TaskEntity:
     """A second record with content identical to :func:`_head`'s — same digest, different parent."""
     head = TaskEntity(
+        spec=EvaluatorTaskDefinition(
+            intent="Answer the question.",
+            inputs=TaskInputs(instruction="What is 2+2?"),
+            metrics=[MetricRef("default/stored-metric")],
+        ),
         name=name,
         workspace="default",
-        intent="Answer the question.",
-        inputs=TaskInputs(instruction="What is 2+2?"),
-        metrics=[MetricRef("default/stored-metric")],
     )
     head._id = f"head-{name}"
     head._db_version = 0
@@ -307,7 +309,7 @@ async def test_changed_content_allocates_the_next_ordinal() -> None:
     store = FakeStore()
     head = _head(store)
     first, _ = await _publish(store, head)
-    head.intent = "Do something else."
+    head.spec.intent = "Do something else."
     second, created = await _publish(store, head)
     assert created
     assert second.revision == 2
@@ -325,7 +327,7 @@ async def test_contended_ordinal_is_retried() -> None:
     store = FakeStore()
     head = _head(store)
     await _publish(store, head)
-    head.intent = "Changed."
+    head.spec.intent = "Changed."
     store.contend_ordinals = {2}
     revision, created = await _publish(store, head)
     assert created
@@ -346,7 +348,7 @@ async def test_identical_contended_publish_adopts_the_winners_revision() -> None
     head = _head(store)
     await _publish(store, head)
 
-    head.intent = "Changed."
+    head.spec.intent = "Changed."
     store.contend_identically = {2}
     revision, created = await _publish(store, head)
 
@@ -372,7 +374,7 @@ async def test_contended_publish_of_different_content_still_allocates_a_new_ordi
     head = _head(store)
     await _publish(store, head)
 
-    head.intent = "Changed."
+    head.spec.intent = "Changed."
     store.contend_ordinals = {2}  # winner publishes *different* content
     revision, created = await _publish(store, head)
 
@@ -400,7 +402,7 @@ async def test_publishing_recovers_when_a_revision_exists_but_the_head_never_adv
     assert isinstance(stored, TaskEntity)
     stored.latest_revision, stored.tags = 0, {}
 
-    head.intent = "Changed."
+    head.spec.intent = "Changed."
     revision, created = await _publish(store, head)
 
     assert created
@@ -422,7 +424,7 @@ async def test_losing_the_head_race_does_not_leave_the_head_on_an_older_revision
 
     a = await store.get(TaskEntity, name="task-1", workspace="default")
     b = await store.get(TaskEntity, name="task-1", workspace="default")
-    a.intent, b.intent = "A's content.", "B's content."
+    a.spec.intent, b.spec.intent = "A's content.", "B's content."
 
     async def b_publishes() -> None:
         await publish_revision(store, store, b, TaskRevisionEntity)
@@ -435,13 +437,13 @@ async def test_losing_the_head_race_does_not_leave_the_head_on_an_older_revision
     latest = await get_revision(store, TaskRevisionEntity, stored, LATEST_TAG)
 
     assert stored.tags[LATEST_TAG] == 3
-    assert stored.intent == latest.intent == "B's content."
+    assert stored.spec.intent == latest.spec.intent == "B's content."
     assert stored.latest_revision == latest.revision, "the reported revision must describe the content served"
 
     # A's publish is not lost — it is a real revision, still resolvable by digest.
     assert a_revision.revision == 2
     pinned = await get_revision(store, TaskRevisionEntity, stored, a_revision.content_hash)
-    assert pinned.intent == "A's content."
+    assert pinned.spec.intent == "A's content."
 
 
 @pytest.mark.asyncio
@@ -464,7 +466,7 @@ async def test_latest_revision_never_rewinds() -> None:
     store = FakeStore()
     head = _head(store)
     first, _ = await _publish(store, head)
-    head.intent = "Changed."
+    head.spec.intent = "Changed."
     await _publish(store, head)
 
     head = await store.get(TaskEntity, "task-1", workspace="default")
@@ -534,7 +536,7 @@ async def test_user_tags_may_be_moved_backwards() -> None:
     store = FakeStore()
     head = _head(store)
     older, _ = await _publish(store, head, tags={"blessed"})
-    head.intent = "Newer content."
+    head.spec.intent = "Newer content."
     await _publish(store, head)
 
     head = await store.get(TaskEntity, "task-1", workspace="default")
@@ -556,10 +558,10 @@ async def test_reverting_to_earlier_content_publishes_a_new_revision() -> None:
     store = FakeStore()
     head = _head(store)
     await _publish(store, head)  # rev.1: "Answer the question."
-    head.intent = "Changed."
+    head.spec.intent = "Changed."
     await _publish(store, head)  # rev.2
 
-    head.intent = "Answer the question."  # back to rev.1's content
+    head.spec.intent = "Answer the question."  # back to rev.1's content
     revision, created = await _publish(store, head)
 
     assert created, "a revert is a publish, not a no-op"
@@ -567,7 +569,7 @@ async def test_reverting_to_earlier_content_publishes_a_new_revision() -> None:
     assert head.tags[LATEST_TAG] == 3
 
     latest = await get_revision(store, TaskRevisionEntity, head, LATEST_TAG)
-    assert latest.intent == head.intent, "the head and #latest must describe the same content"
+    assert latest.spec.intent == head.spec.intent, "the head and #latest must describe the same content"
 
 
 @pytest.mark.asyncio
@@ -578,9 +580,9 @@ async def test_a_digest_shared_by_two_revisions_resolves_to_the_newer_one() -> N
     store = FakeStore()
     head = _head(store)
     first, _ = await _publish(store, head)  # rev.1
-    head.intent = "Changed."
+    head.spec.intent = "Changed."
     await _publish(store, head)  # rev.2
-    head.intent = "Answer the question."
+    head.spec.intent = "Answer the question."
     third, _ = await _publish(store, head)  # rev.3, same digest as rev.1
 
     assert third.content_hash == first.content_hash
@@ -610,7 +612,7 @@ async def test_resolves_latest_by_default() -> None:
     store = FakeStore()
     head = _head(store)
     await _publish(store, head)
-    head.intent = "Changed."
+    head.spec.intent = "Changed."
     second, _ = await _publish(store, head)
     assert (await get_revision(store, TaskRevisionEntity, head)).content_hash == second.content_hash
 
@@ -620,7 +622,7 @@ async def test_resolves_a_digest_to_its_revision() -> None:
     store = FakeStore()
     head = _head(store)
     first, _ = await _publish(store, head)
-    head.intent = "Changed."
+    head.spec.intent = "Changed."
     await _publish(store, head)
     resolved = await get_revision(store, TaskRevisionEntity, head, first.content_hash)
     assert resolved.revision == 1
@@ -702,7 +704,7 @@ async def test_reading_a_revision_whose_content_was_tampered_with_is_refused() -
 
     stored = store.records[store._key(TaskRevisionEntity, revision_name(1), "default", head.id)]
     assert isinstance(stored, TaskRevisionEntity)
-    stored.intent = "Tampered with after publication."
+    stored.spec.intent = "Tampered with after publication."
 
     with pytest.raises(RevisionContentMismatchError, match="does not match its recorded digest"):
         await get_revision(store, TaskRevisionEntity, head, LATEST_TAG)
@@ -718,7 +720,7 @@ async def test_a_digest_pinned_read_is_verified_too() -> None:
 
     stored = store.records[store._key(TaskRevisionEntity, revision_name(1), "default", head.id)]
     assert isinstance(stored, TaskRevisionEntity)
-    stored.intent = "Tampered with after publication."
+    stored.spec.intent = "Tampered with after publication."
 
     with pytest.raises(RevisionContentMismatchError):
         await get_revision(store, TaskRevisionEntity, head, revision.content_hash)

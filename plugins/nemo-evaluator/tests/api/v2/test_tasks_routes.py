@@ -13,7 +13,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_evaluator.api.dependencies import get_task_service
-from nemo_evaluator.api.schemas import MetricInline, MetricRef, TaskInput, TaskInputs
+from nemo_evaluator.api.schemas import (
+    EvaluatorTaskDefinition,
+    HarborTaskDefinition,
+    MetricInline,
+    MetricRef,
+    TaskInput,
+    TaskInputs,
+)
 from nemo_evaluator.api.service.task_service import TaskService
 from nemo_evaluator.api.v2 import tasks as tasks_routes
 from nemo_platform_plugin.entity_client import NemoEntityConflictError
@@ -41,9 +48,9 @@ def client(entity_store) -> TestClient:
 
 def _body(*, intent: str = "Answer the question.", tags: list[str] | None = None) -> dict:
     return TaskInput(
-        intent=intent,
-        inputs=TaskInputs(instruction="What is 2+2?"),
-        metrics=[MetricRef("default/stored-metric")],
+        spec=EvaluatorTaskDefinition(
+            intent=intent, inputs=TaskInputs(instruction="What is 2+2?"), metrics=[MetricRef("default/stored-metric")]
+        ),
         tags=tags or [],
     ).model_dump(mode="json")
 
@@ -59,14 +66,14 @@ def test_create_then_get(client: TestClient) -> None:
     got = client.get(f"{_BASE}/task-1")
     assert got.status_code == 200
     body = got.json()
-    assert body["intent"] == "Answer the question."
-    assert body["metrics"] == ["default/stored-metric"]  # MetricRef serializes to a bare string
+    assert body["spec"]["intent"] == "Answer the question."
+    assert body["spec"]["metrics"] == ["default/stored-metric"]  # MetricRef serializes to a bare string
 
 
 def test_create_rejects_unrecognized_input_key(client: TestClient) -> None:
     # inputs is a strict TaskInputs (extra="forbid") — an unknown key is a 422, not silently stored.
     body = _body()
-    body["inputs"]["expected"] = "4"
+    body["spec"]["inputs"]["expected"] = "4"
     assert client.post(f"{_BASE}/task-1", json=body).status_code == 422
 
 
@@ -79,7 +86,7 @@ def test_create_rejects_duplicate_metadata_keys(client: TestClient) -> None:
 
 def test_create_missing_metric_ref_returns_422(client: TestClient) -> None:
     body = _body()
-    body["metrics"] = ["default/missing-metric"]
+    body["spec"]["metrics"] = ["default/missing-metric"]
     assert client.post(f"{_BASE}/task-1", json=body).status_code == 422
 
 
@@ -185,7 +192,7 @@ def test_get_returns_the_current_revision(client: TestClient) -> None:
     client.put(f"{_BASE}/task-1", json=_body(intent="Do something else."))
     got = client.get(f"{_BASE}/task-1").json()
     assert got["revision"] == 2
-    assert got["intent"] == "Do something else."
+    assert got["spec"]["intent"] == "Do something else."
 
 
 # --- Reading and tagging a specific revision ---------------------------------
@@ -214,9 +221,9 @@ def test_get_by_digest_returns_the_published_content(client: TestClient) -> None
     client.put(f"{_BASE}/task-1", json=_body(intent="Newer."))
 
     pinned = client.get(f"{_BASE}/task-1/revisions/{digest}").json()
-    assert pinned["intent"] == first["intent"]
+    assert pinned["spec"]["intent"] == first["spec"]["intent"]
     assert pinned["revision"] == 1
-    assert client.get(f"{_BASE}/task-1").json()["intent"] == "Newer."
+    assert client.get(f"{_BASE}/task-1").json()["spec"]["intent"] == "Newer."
 
 
 def test_get_by_tag_resolves(client: TestClient) -> None:
@@ -271,3 +278,24 @@ def test_concurrent_replace_returns_409_not_500(entity_store) -> None:
     entity_store.update = _stale
 
     assert client.put(f"{_BASE}/task-1", json=_body(intent="Newer.")).status_code == 409
+
+
+def test_list_includes_harbor_tasks(client: TestClient) -> None:
+    """Both kinds are one record type, so the listing must serialize either."""
+    client.post(f"{_BASE}/evaluator-task", json=_body())
+    client.post(
+        f"{_BASE}/harbor-task",
+        json=TaskInput(
+            spec=HarborTaskDefinition(
+                archive_ref="default/harbor#packages/o-n/abc/dist.tar.gz", archive_digest="a" * 64
+            )
+        ).model_dump(mode="json"),
+    )
+
+    response = client.get(_BASE)
+
+    assert response.status_code == 200
+    assert {t["name"]: t["spec"]["kind"] for t in response.json()["data"]} == {
+        "evaluator-task": "evaluator",
+        "harbor-task": "harbor",
+    }

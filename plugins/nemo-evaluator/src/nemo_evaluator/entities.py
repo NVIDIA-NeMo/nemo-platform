@@ -20,15 +20,13 @@ from __future__ import annotations
 from typing import ClassVar
 
 from nemo_evaluator.api.schemas import (
-    MetricRef,
     PinnedTaskRefList,
-    TaskInputs,
+    TaskDefinition,
     TaskMetadataList,
     TaskRefList,
 )
 from nemo_evaluator.content_hash import DIGEST_LENGTH, DIGEST_PATTERN
 from nemo_evaluator.shared.metric_bundles.bundles import BundledMetricOutputSpec
-from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult
 from nemo_platform_plugin.entities import EntityBase
@@ -51,6 +49,39 @@ REVISION_POINTER_FIELDS = frozenset({"latest_revision", "tags"})
 #: The mirror of :data:`REVISION_POINTER_FIELDS` on a revision record. A revision's digest covers
 #: neither itself nor the ordinal that was assigned because of it.
 REVISION_SELF_FIELDS = frozenset({"content_hash", "revision"})
+
+#: Spec fields excluded from the revision digest.
+#:
+#: The rule for what belongs *in* the digest: any field that affects the output of a task's
+#: execution or the mechanism used to grade it. A field may only be excluded if it is a derived
+#: view of content the digest already covers by another route.
+#:
+#: ``HarborTaskDefinition.config`` qualifies. It is a projection of ``task.toml``, which lives
+#: inside the archive, and Harbor reads the real ``task.toml`` out of the materialized archive at
+#: run time — this copy is never an execution input, only a queryable convenience. ``archive_digest``
+#: is authoritative over every file in that directory including ``task.toml``, so a config change
+#: that actually alters execution or grading already moves the digest. Hashing the projection too
+#: would add no coverage and would make revision history sensitive to Harbor's serialization: a
+#: release that reordered keys or emitted a new defaulted field would cut a revision for
+#: byte-identical files.
+#:
+#: That makes ``archive_digest`` load-bearing. If a Harbor field ever becomes an execution input in
+#: its own right — read from the stored record rather than from the archive — it must be digested.
+_DERIVED_SPEC_FIELDS = {"config"}
+
+#: What a *head* record excludes when digesting: its revision pointers, plus derived spec fields.
+#: Nested form, because the derived fields live inside ``spec``.
+REVISION_POINTER_EXCLUDE: dict[str, object] = {
+    **dict.fromkeys(REVISION_POINTER_FIELDS, True),
+    "spec": set(_DERIVED_SPEC_FIELDS),
+}
+
+#: The mirror for a *revision* record. Both must exclude the same derived fields, or the head and
+#: its revision would digest differently and publish-time dedup would never fire.
+REVISION_SELF_EXCLUDE: dict[str, object] = {
+    **dict.fromkeys(REVISION_SELF_FIELDS, True),
+    "spec": set(_DERIVED_SPEC_FIELDS),
+}
 
 
 class MetricBundleEntity(EntityBase):
@@ -209,27 +240,23 @@ class _RevisionedCommon(BaseModel):
 
 
 class TaskEntity(_RevisionedCommon, EntityBase):
-    """Persisted, queryable agent-eval task, addressed by workspace/name.
+    """Persisted, queryable task, addressed by workspace/name.
 
-    Maps to the SDK :class:`~nemo_evaluator_sdk.agent_eval.tasks.AgentEvalTask`: the task's stable
-    ``id`` is the record ``name``, and ``metrics`` are stored in their wire form (inline bundles
-    and/or references to stored metrics) so a task can reference curated metrics or carry its own;
-    references resolve to inline runtime metrics when the task is run.
+    A task is an evaluation unit; ``spec`` says what it is and which runner executes it. Both kinds
+    live in one record type so a user manages every evaluation unit in one place, and so a taskset
+    can group them without caring how each one runs — the same way ``AgentRunnerTarget`` already
+    treats codex/fabric/harbor as members of one union on the target side.
+
+    Content is nested under ``spec`` rather than flattened with nullable per-kind fields, so each
+    variant's required fields stay genuinely required and the revision digest covers the spec as one
+    unit. An agent-eval task's ``metrics`` are stored as references (inline metrics submitted on
+    create are normalized to derived stored metrics); a Harbor task's files live in a fileset, and
+    the spec holds a reference to them.
     """
 
     __entity_type__: ClassVar[str] = "task"
 
-    intent: str = Field(description="Human-readable description of the desired agent behavior.")
-    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
-    metrics: list[MetricRef] = Field(
-        default_factory=list,
-        description="References to the metrics that score this task. Inline metrics submitted with the "
-        "task are normalized to (derived) stored metrics, so a persisted task only ever holds refs.",
-    )
-    views: dict[str, SemanticView] = Field(
-        default_factory=dict,
-        description="Optional reporting views mapping this task's metric outputs into named semantic scores.",
-    )
+    spec: TaskDefinition = Field(description="The task's content, discriminated by which runner executes it.")
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
 
 
@@ -320,16 +347,7 @@ class TaskRevisionEntity(_RevisionCommon, EntityBase):
 
     __entity_type__: ClassVar[str] = "task_revision"
 
-    intent: str = Field(description="Human-readable description of the desired agent behavior.")
-    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
-    metrics: list[MetricRef] = Field(
-        default_factory=list,
-        description="References to the metrics that score this task, as of this revision.",
-    )
-    views: dict[str, SemanticView] = Field(
-        default_factory=dict,
-        description="Reporting views mapping this task's metric outputs into named semantic scores.",
-    )
+    spec: TaskDefinition = Field(description="The task's content as of this revision.")
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
 
 

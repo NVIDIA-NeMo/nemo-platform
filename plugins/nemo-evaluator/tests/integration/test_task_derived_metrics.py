@@ -22,7 +22,7 @@ import os
 import uuid
 
 import pytest
-from nemo_evaluator.api.schemas import MetricInline, TaskInput
+from nemo_evaluator.api.schemas import EvaluatorTaskDefinition, MetricInline, TaskInput
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
@@ -55,7 +55,11 @@ def _inline_metric(marker: str) -> MetricInline:
 
 
 def _task_input(metric: MetricInline) -> TaskInput:
-    return TaskInput(intent="Answer the question.", inputs={"instruction": "What is 2+2?"}, metrics=[metric])
+    return TaskInput(
+        spec=EvaluatorTaskDefinition(
+            intent="Answer the question.", inputs={"instruction": "What is 2+2?"}, metrics=[metric]
+        )
+    )
 
 
 @pytest.mark.timeout(300)
@@ -70,14 +74,16 @@ def test_inline_task_metric_normalizes_to_derived_metric(subprocess_platform: st
     try:
         # The inline metric is offloaded: the stored task holds a single derived reference, not a bundle.
         created_a = client.evaluator.tasks.create(task_a, task=_task_input(inline), workspace=WORKSPACE)
-        assert len(created_a.metrics) == 1
-        derived_ref = created_a.metrics[0].root
+        assert isinstance(created_a.spec, EvaluatorTaskDefinition)
+        assert len(created_a.spec.metrics) == 1
+        derived_ref = created_a.spec.metrics[0].root
         assert derived_ref.startswith(f"{WORKSPACE}/derived.")
         derived_name = derived_ref.split("/", 1)[1]
 
         # A second task with byte-identical inline content dedupes to the same derived metric.
         created_b = client.evaluator.tasks.create(task_b, task=_task_input(inline), workspace=WORKSPACE)
-        assert created_b.metrics[0].root == derived_ref
+        assert isinstance(created_b.spec, EvaluatorTaskDefinition)
+        assert created_b.spec.metrics[0].root == derived_ref
 
         # The derived metric is a real, Files-backed, flagged metric.
         fetched = client.evaluator.metrics.retrieve(derived_name, workspace=WORKSPACE)

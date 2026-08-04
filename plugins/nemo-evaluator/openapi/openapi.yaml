@@ -3461,6 +3461,63 @@ components:
       title: EvaluateSpec
       description: Canonical SDK evaluation spec with platform model and metric references
         resolved.
+    EvaluatorTaskDefinition:
+      properties:
+        kind:
+          type: string
+          const: evaluator
+          title: Kind
+          default: evaluator
+        intent:
+          type: string
+          title: Intent
+          description: Human-readable description of the desired agent behavior.
+        inputs:
+          allOf:
+          - $ref: '#/components/schemas/TaskInputs'
+          description: The task's recognized input fields.
+        metrics:
+          items:
+            anyOf:
+            - $ref: '#/components/schemas/MetricInline'
+            - $ref: '#/components/schemas/MetricRef'
+          type: array
+          title: Metrics
+          description: "Metrics that score this task \u2014 stored-metric references,\
+            \ and inline bundles on create (normalized to derived stored metrics before\
+            \ the task is persisted)."
+        reference:
+          additionalProperties: true
+          type: object
+          title: Reference
+          description: 'Grader-only ground truth (held-out tests, expected outputs,
+            rubric data). Surfaced to metrics but never seeded into the agent''s workspace
+            or shown to the agent, so a metric can grade against artifacts the agent
+            cannot influence. Held out from the *agent*, not from the API: anyone
+            who can read the task can read this.'
+        views:
+          additionalProperties:
+            $ref: '#/components/schemas/SemanticView'
+          type: object
+          title: Views
+          description: Optional reporting views mapping metric outputs into named
+            semantic scores.
+      additionalProperties: false
+      type: object
+      required:
+      - intent
+      title: EvaluatorTaskDefinition
+      description: "What the agent should do, and how the platform scores it.\n\n\
+        ``metrics`` accepts inline bundles on the way in and holds references once\
+        \ stored: the service\noffloads an inline metric to a content-addressed *derived*\
+        \ metric on create, so a persisted task\nonly ever names metrics it does not\
+        \ own. That narrowing is a service invariant rather than a\ntype-level one\
+        \ \u2014 a single model keeps the API surface small, at the cost of this field\
+        \ being\nwider than what a stored task actually contains.\n\nEvery field here\
+        \ is covered by the revision digest, ``reference`` included: it decides what\
+        \ a\nmetric grades against, so two revisions that score differently must not\
+        \ share a digest. Pinning\na revision therefore fixes the grading, not just\
+        \ the prompt."
     EvidenceDescriptor:
       anyOf:
       - required:
@@ -3764,6 +3821,59 @@ components:
 
         injected from the job''s storage at run time; only the harness-selection and
         run knobs live here.'
+    HarborTaskDefinition:
+      properties:
+        kind:
+          type: string
+          const: harbor
+          title: Kind
+          default: harbor
+        archive_ref:
+          type: string
+          pattern: ^[\w\-.]+/[\w\-.]+#[\w\-./]+$
+          title: Archive Ref
+          description: 'Files reference to the task''s packaged directory (format:
+            workspace/fileset#path).'
+        archive_digest:
+          type: string
+          maxLength: 64
+          minLength: 64
+          pattern: ^[0-9a-f]{64}$
+          title: Archive Digest
+          description: "Content hash Harbor computed over the task directory. This\
+            \ is the authoritative identity of a Harbor task's content \u2014 every\
+            \ file, including task.toml."
+        instruction:
+          title: Instruction
+          description: The task's instruction text, when it has one (multi-step tasks
+            may not).
+          type: string
+        config:
+          additionalProperties: true
+          type: object
+          title: Config
+          description: "Harbor's own task configuration (verifier, agent, environment,\
+            \ steps), as published. A queryable projection of task.toml \u2014 inspect\
+            \ a task's verifier without downloading the archive. Opaque here: Harbor\
+            \ owns this schema."
+      additionalProperties: false
+      type: object
+      required:
+      - archive_ref
+      - archive_digest
+      title: HarborTaskDefinition
+      description: "A reference to the task's packaged files, plus a projection of\
+        \ Harbor's own config.\n\nHarbor identifies a task by a *directory* \u2014\
+        \ ``task.toml``, an instruction, an environment \u2014 so\nwhat is stored\
+        \ is a reference to that directory's archive in the Files service, not the\
+        \ files\nthemselves. One fileset per task, so a task shared by several tasksets\
+        \ is stored once. The\narchive is materialized back into ``<dir>/<task-name>/``\
+        \ at run time, which is the layout\nHarbor's own discovery expects.\n\nWhich\
+        \ agent runs the task is *not* stored here. That comes from the run's target\n\
+        (``HarborRunnerTarget``), so the same stored task can be evaluated against\
+        \ different agents.\nHarbor's own ``[agent]`` block \u2014 carried inside\
+        \ ``config`` \u2014 configures how the agent *phase*\nruns (timeout, user,\
+        \ network policy), not which agent it is."
     HelloResponse:
       properties:
         message:
@@ -5026,29 +5136,18 @@ components:
           title: Project
           description: The project associated with this task.
           type: string
-        intent:
-          type: string
-          title: Intent
-          description: Human-readable description of the desired agent behavior.
-        inputs:
-          allOf:
-          - $ref: '#/components/schemas/TaskInputs'
-          description: The task's recognized input fields.
-        metrics:
-          items:
-            $ref: '#/components/schemas/MetricRef'
-          type: array
-          title: Metrics
-          description: References to the metrics that score this task; inline metrics
-            submitted on create are normalized to (derived) stored metrics, so a stored
-            task holds refs only.
-        views:
-          additionalProperties:
-            $ref: '#/components/schemas/SemanticView'
-          type: object
-          title: Views
-          description: Optional reporting views mapping metric outputs into named
-            semantic scores.
+        spec:
+          oneOf:
+          - $ref: '#/components/schemas/EvaluatorTaskDefinition'
+          - $ref: '#/components/schemas/HarborTaskDefinition'
+          title: Spec
+          description: The task's content, discriminated by which runner executes
+            it.
+          discriminator:
+            propertyName: kind
+            mapping:
+              evaluator: '#/components/schemas/EvaluatorTaskDefinition'
+              harbor: '#/components/schemas/HarborTaskDefinition'
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'
@@ -5085,7 +5184,7 @@ components:
       - id
       - name
       - workspace
-      - intent
+      - spec
       - revision
       - created_at
       - updated_at
@@ -5120,30 +5219,18 @@ components:
       type: object
     TaskInput:
       properties:
-        intent:
-          type: string
-          title: Intent
-          description: Human-readable description of the desired agent behavior.
-        inputs:
-          allOf:
-          - $ref: '#/components/schemas/TaskInputs'
-          description: The task's recognized input fields.
-        metrics:
-          items:
-            anyOf:
-            - $ref: '#/components/schemas/MetricInline'
-            - $ref: '#/components/schemas/MetricRef'
-          type: array
-          title: Metrics
-          description: "Metrics that score this task \u2014 inline bundles and/or\
-            \ stored-metric refs."
-        views:
-          additionalProperties:
-            $ref: '#/components/schemas/SemanticView'
-          type: object
-          title: Views
-          description: Optional reporting views mapping metric outputs into named
-            semantic scores.
+        spec:
+          oneOf:
+          - $ref: '#/components/schemas/EvaluatorTaskDefinition'
+          - $ref: '#/components/schemas/HarborTaskDefinition'
+          title: Spec
+          description: The task's content, discriminated by which runner executes
+            it.
+          discriminator:
+            propertyName: kind
+            mapping:
+              evaluator: '#/components/schemas/EvaluatorTaskDefinition'
+              harbor: '#/components/schemas/HarborTaskDefinition'
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'
@@ -5160,7 +5247,7 @@ components:
       additionalProperties: false
       type: object
       required:
-      - intent
+      - spec
       title: TaskInput
       description: "Create/replace body for a stored task (the name comes from the\
         \ path).\n\nThe authorable subset of :class:`Task` \u2014 the SDK ``AgentEvalTask``\

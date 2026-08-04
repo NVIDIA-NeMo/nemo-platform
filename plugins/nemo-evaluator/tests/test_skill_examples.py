@@ -445,13 +445,20 @@ def test_multiple_metric_platform_submission_uses_cli() -> None:
     assert "nemo evaluator evaluate submit --spec-file multi-metric.json" in section
 
 
-def test_resources_show_inline_task_before_held_out_reference_guidance() -> None:
+def test_resources_show_a_stored_task_carrying_held_out_reference() -> None:
+    """Held-out ground truth belongs on a *stored* task, so it survives taskset expansion.
+
+    The skill used to steer users to an inline ``AgentEvalTaskInput`` because the stored spec had no
+    ``reference`` field. It has one now, and routing them back to inline would cost them tasksets
+    and revision pinning for no reason.
+    """
     reference = (_repo_root() / "skills/nemo-evaluator-plugin/references/resources.md").read_text(encoding="utf-8")
 
-    example_position = reference.index("inline_task = AgentEvalTaskInput(")
+    example_position = reference.index('"capital-france-graded"')
     guidance_position = reference.index("Stored tasks keep metric references.")
     assert example_position < guidance_position
     assert 'reference={"expected": "Paris"}' in reference
+    assert "EvaluatorTaskDefinition(" in reference
 
 
 def test_agent_evaluation_shows_how_to_retrieve_stored_trials() -> None:
