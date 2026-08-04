@@ -1906,6 +1906,47 @@ async def test_authorized_workspace_caches_per_session(respx_mock):
 
 
 @pytest.mark.asyncio
+async def test_authorized_workspace_cache_is_not_shared_across_callers(respx_mock):
+    """A cached authorization decision must never be reused for a different caller."""
+    route = respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "my-ws"}], "pagination": {"total_pages": 1}})
+    )
+    session_id = "shared-session"
+    caller_a = {"authorization": "Bearer token-a"}
+    caller_b = {"authorization": "Bearer token-b"}
+
+    await coding_agents._authorized_workspace("my-ws", caller_a, session_id)
+    assert route.call_count == 1
+    # Same session id, different credential: must re-verify against the Entity Store.
+    await coding_agents._authorized_workspace("my-ws", caller_b, session_id)
+    assert route.call_count == 2
+    # Each caller still gets its own cache hit on repeat.
+    await coding_agents._authorized_workspace("my-ws", caller_a, session_id)
+    assert route.call_count == 2
+    # The raw credential is never retained in the cache key material.
+    assert "token-a" not in str(coding_agents._session_workspace_cache)
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_unauthorized_caller_is_rejected_on_cached_session(respx_mock):
+    """An unauthorized caller cannot ride a session that already resolved the workspace."""
+    session_id = "shared-session"
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"data": [{"name": "my-ws"}], "pagination": {"total_pages": 1}}),
+            # The second caller is not a member of that workspace.
+            httpx.Response(200, json={"data": [{"name": "other-ws"}], "pagination": {"total_pages": 1}}),
+        ]
+    )
+
+    assert await coding_agents._authorized_workspace("my-ws", {"authorization": "a"}, session_id) == "my-ws"
+
+    with pytest.raises(HTTPException) as excinfo:
+        await coding_agents._authorized_workspace("my-ws", {"authorization": "b"}, session_id)
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_authorized_workspace_rejects_unknown_workspace(respx_mock):
     respx_mock.get(_WORKSPACES_LIST_URL).mock(
         return_value=httpx.Response(200, json={"data": [{"name": "team-a"}], "pagination": {"total_pages": 1}})

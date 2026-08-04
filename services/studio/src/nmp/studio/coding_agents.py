@@ -5,6 +5,7 @@
 
 import ast
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -141,10 +142,12 @@ _pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _pending_agent_inputs: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _session_conversations: dict[str, list[dict[str, str]]] = {}
 _session_mtimes: dict[str, float] = {}
-# Cache of Entity-Store-confirmed workspace names, keyed by session then by the
-# requested workspace, so the membership lookup runs once per session/workspace
-# rather than on every message. Cleared when a session is evicted.
-_session_workspace_cache: dict[str, dict[str, str]] = {}
+# Cache of Entity-Store-confirmed workspace names, keyed by session then by
+# (caller fingerprint, requested workspace), so the membership lookup runs once per
+# session/caller/workspace rather than on every message. Session ids are not bound to
+# a caller, so the caller's credential participates in the key: a cached authorization
+# decision must never be reused for a different caller. Cleared on session eviction.
+_session_workspace_cache: dict[str, dict[tuple[str, str], str]] = {}
 _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 
 
@@ -1259,6 +1262,16 @@ _WORKSPACE_LOOKUP_PAGE_SIZE = 100
 _WORKSPACE_LOOKUP_MAX_PAGES = 50
 
 
+def _caller_fingerprint(headers: Mapping[str, str]) -> str:
+    """Return a stable, non-reversible fingerprint of the caller's forwarded credentials.
+
+    Used only to scope cached authorization decisions to the caller they were made
+    for. The raw credential is never retained -- just the digest.
+    """
+    material = json.dumps({name.lower(): value for name, value in sorted(headers.items())}, sort_keys=True)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
 async def _authorized_workspace(workspace: str, headers: Mapping[str, str], session_id: str) -> str:
     """Confirm the caller may target ``workspace`` and return the platform's own
     spelling of the name.
@@ -1268,15 +1281,17 @@ async def _authorized_workspace(workspace: str, headers: Mapping[str, str], sess
     that later becomes part of the agent request URL cannot be attacker-controlled.
     The list request itself carries no user-provided value in its URL.
 
-    The confirmed name is cached per (session, requested workspace) so the lookup
-    runs once per session/workspace instead of on every message; only successful
-    resolutions are cached.
+    The confirmed name is cached per (session, caller, requested workspace) so the
+    lookup runs once per session/caller/workspace instead of on every message; only
+    successful resolutions are cached. The caller fingerprint is part of the key so
+    one caller's authorization decision is never reused for another.
     """
     # ``default`` is our own fallback constant, always addressable; skip the lookup.
     if workspace == "default":
         return "default"
 
-    cached = _session_workspace_cache.get(session_id, {}).get(workspace)
+    cache_key = (_caller_fingerprint(headers), workspace)
+    cached = _session_workspace_cache.get(session_id, {}).get(cache_key)
     if cached is not None:
         return cached
 
@@ -1300,7 +1315,7 @@ async def _authorized_workspace(workspace: str, headers: Mapping[str, str], sess
                     name = entry.get("name") if isinstance(entry, dict) else None
                     if isinstance(name, str) and name == workspace:
                         # ``name`` is sourced from the platform response, not the request.
-                        _session_workspace_cache.setdefault(session_id, {})[workspace] = name
+                        _session_workspace_cache.setdefault(session_id, {})[cache_key] = name
                         return name
                 pagination = body.get("pagination") if isinstance(body, dict) else None
                 total_pages = pagination.get("total_pages") if isinstance(pagination, dict) else None
