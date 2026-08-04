@@ -101,21 +101,9 @@ def split_agent_spec(spec: str) -> tuple[str, str]:
     return core, _validated_agent_path(agent_path)
 
 
-# Glob patterns for files never copied into the published branch: generated/run-local
-# files, VCS/tool dirs, and build artifacts. Matched with fnmatch against each name.
-_EXCLUDE_GLOBS = (
-    "metadata.json",
-    "harbor_wrapper.py",
-    "dind_environment.py",
-    "architecture.md",
-    ".git",
-    "__pycache__",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-    "*.pyc",
-    "*.pyo",
-)
+# Candidate files are staged with ``git add -A``, so the repository's .gitignore
+# determines what is committed. Never copy a nested Git repository from a candidate.
+_EXCLUDE_GLOBS = (".git",)
 
 
 class AgentSource(BaseModel):
@@ -290,11 +278,7 @@ class PRPublisher:
 
     @staticmethod
     def _overlay(winner_dir: Path, dest: Path) -> None:
-        """Copy the winner's agent files over *dest*, excluding files matching ``_EXCLUDE_GLOBS``.
-
-        Exclusions apply at the top level and recursively (via ``shutil.ignore_patterns``),
-        so nested ``__pycache__``/``*.pyc`` and the like never reach the published branch.
-        """
+        """Copy candidate files over *dest*; Git decides what is staged via .gitignore."""
         dest.mkdir(parents=True, exist_ok=True)
         ignore = shutil.ignore_patterns(*_EXCLUDE_GLOBS)
         for item in winner_dir.iterdir():
@@ -327,16 +311,17 @@ class PRPublisher:
         """Replace the ``agent_path`` subtree with *src_dir*'s files (deletions captured).
 
         ``git rm`` the existing subtree first so files the candidate removed don't linger,
-        using literal pathspec semantics, then overlay the candidate's files. ``agent_path``
+        using literal pathspec semantics, then overlay the candidate's files. ``git add -A``
+        applies the repository's .gitignore when staging the resulting delta. ``agent_path``
         ``"."`` targets the whole repo.
         """
         self._validated_subtree(agent_path)
         self._run(["git", "--literal-pathspecs", "rm", "-r", "-q", "-f", "--ignore-unmatch", "--", agent_path])
         subtree = self._validated_subtree(agent_path)
-        stale_items = (
-            (item for item in subtree.iterdir() if item.name.casefold() != ".git") if agent_path == "." else (subtree,)
-        )
-        for item in stale_items:
+        subtree.mkdir(parents=True, exist_ok=True)
+        for item in subtree.iterdir():
+            if item.name.casefold() == ".git":
+                continue
             if item.is_dir() and not item.is_symlink():
                 shutil.rmtree(item)
             else:

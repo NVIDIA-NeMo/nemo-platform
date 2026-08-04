@@ -160,7 +160,7 @@ def _winner(tmp_path: Path) -> Path:
     w = tmp_path / "winner"
     w.mkdir()
     (w / "main.py").write_text("print('improved')\n")
-    (w / "metadata.json").write_text("{}")  # must be skipped
+    (w / "metadata.json").write_text("{}")
     return w
 
 
@@ -197,8 +197,7 @@ def test_publish_gitlab_opens_draft_mr(tmp_path: Path) -> None:
     assert ["git", "fetch", "origin", "main"] in pub.calls
     assert ["git", "push", "--force-with-lease", "-u", "origin", "optimizer/run-1-agent-2"] in pub.calls
     assert ["git", "ls-remote", "--heads", "origin", "main"] in pub.calls
-    # Generated file was not committed (overlay skipped it).
-    assert not (agent_dir / "metadata.json").exists()
+    assert (agent_dir / "metadata.json").exists()
     assert (agent_dir / "main.py").read_text() == "print('improved')\n"
 
 
@@ -222,10 +221,10 @@ def test_publish_github_opens_draft_pr(tmp_path: Path) -> None:
     assert gh[:3] == ["gh", "pr", "create"] and "--draft" in gh
 
 
-def test_publish_skips_build_artifacts(tmp_path: Path) -> None:
+def test_publish_copies_all_candidate_files(tmp_path: Path) -> None:
     agent_dir = tmp_path / "clone"
     agent_dir.mkdir()
-    # Winner dir with top-level and NESTED build artifacts that must not be committed.
+    # Candidate files are copied; .gitignore determines what Git ultimately stages.
     winner = tmp_path / "winner"
     (winner / "pkg" / "__pycache__").mkdir(parents=True)
     (winner / "main.py").write_text("print('improved')\n")
@@ -242,12 +241,12 @@ def test_publish_skips_build_artifacts(tmp_path: Path) -> None:
     )
     pub.publish(winner_dir=winner, branch="b", base_ref="main", title="t", body="b")
 
-    # Real source copied; build artifacts (top-level + nested) excluded.
+    # All candidate files are copied into the Git worktree.
     assert (agent_dir / "main.py").exists()
     assert (agent_dir / "pkg" / "mod.py").exists()
-    assert not (agent_dir / "__pycache__").exists()
-    assert not (agent_dir / "stray.pyc").exists()
-    assert not (agent_dir / "pkg" / "__pycache__").exists()
+    assert (agent_dir / "__pycache__").exists()
+    assert (agent_dir / "stray.pyc").exists()
+    assert (agent_dir / "pkg" / "__pycache__").exists()
 
 
 def test_publish_tag_source_targets_default_branch(tmp_path: Path) -> None:
@@ -580,7 +579,7 @@ def test_push_branch_archives_candidate(tmp_path: Path) -> None:
         "pkg/agent",
     ] in pub.calls
     assert (agent_dir / "pkg" / "agent" / "main.py").read_text() == "print('improved')\n"
-    assert not (agent_dir / "pkg" / "agent" / "metadata.json").exists()  # generated file excluded
+    assert (agent_dir / "pkg" / "agent" / "metadata.json").exists()
 
 
 def test_snapshot_subtree_recreates_removed_nested_destination_with_real_git(tmp_path: Path) -> None:
@@ -600,9 +599,40 @@ def test_snapshot_subtree_recreates_removed_nested_destination_with_real_git(tmp
 
     assert not old_file.exists()
     assert not stale.exists()
-    assert not (checkout / "pkg" / "agent" / "metadata.json").exists()
+    assert (checkout / "pkg" / "agent" / "metadata.json").exists()
     assert (checkout / "pkg" / "agent" / "main.py").read_text(encoding="utf-8") == "print('improved')\n"
-    assert _git(checkout, "ls-files") == ["pkg/agent/main.py"]
+    assert _git(checkout, "ls-files") == ["pkg/agent/main.py", "pkg/agent/metadata.json"]
+
+
+def test_snapshot_subtree_includes_candidate_runtime_support_files(tmp_path: Path) -> None:
+    checkout = tmp_path / "repo"
+    checkout.mkdir()
+    _git(checkout, "init", "-q")
+
+    winner = _winner(tmp_path)
+    (winner / "harbor_wrapper.py").write_text("# candidate runtime wrapper\n", encoding="utf-8")
+
+    PRPublisher(agent_dir=checkout)._snapshot_subtree(winner, ".")
+
+    assert (checkout / "harbor_wrapper.py").read_text(encoding="utf-8") == "# candidate runtime wrapper\n"
+    assert _git(checkout, "ls-files") == ["harbor_wrapper.py", "main.py", "metadata.json"]
+
+
+def test_snapshot_subtree_respects_gitignore(tmp_path: Path) -> None:
+    checkout = tmp_path / "repo"
+    checkout.mkdir()
+    _git(checkout, "init", "-q")
+    (checkout / ".gitignore").write_text(".env\n", encoding="utf-8")
+    _git(checkout, "add", ".gitignore")
+
+    winner = _winner(tmp_path)
+    (winner / ".gitignore").write_text(".env\n", encoding="utf-8")
+    (winner / ".env").write_text("INFERENCE_API_KEY=secret\n", encoding="utf-8")
+
+    PRPublisher(agent_dir=checkout)._snapshot_subtree(winner, ".")
+
+    assert (checkout / ".env").exists()
+    assert ".env" not in _git(checkout, "ls-files")
 
 
 def test_snapshot_subtree_rejects_symlink_ancestor_before_commands_or_overlay(
@@ -699,6 +729,7 @@ def test_push_branch_scopes_snapshot_status_and_commit_to_agent_path(
     assert pushed is True
     assert _git(checkout, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD") == [
         "pkg/agent/main.py",
+        "pkg/agent/metadata.json",
         "pkg/agent/old.py",
     ]
     assert _git(checkout, "diff", "--cached", "--name-only") == ["unrelated.txt"]
