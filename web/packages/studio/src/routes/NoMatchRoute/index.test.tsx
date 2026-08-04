@@ -7,8 +7,7 @@ import { LocationDisplay } from '@studio/tests/util/LocationDisplay';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter } from 'react-router';
-import { RouterProvider } from 'react-router/dom';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 
 const renderRoute = () => {
   const router = createMemoryRouter(

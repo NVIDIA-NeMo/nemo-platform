@@ -6,8 +6,7 @@ import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { SIDE_NAV_OPEN_KEY } from '@studio/util/localStorage';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, generatePath, MemoryRouter } from 'react-router';
-import { RouterProvider } from 'react-router/dom';
+import { createMemoryRouter, generatePath, MemoryRouter, RouterProvider } from 'react-router';
 
 vi.mock('@studio/components/Breadcrumbs', () => ({
   Breadcrumbs: () => <div data-testid="breadcrumbs" />,

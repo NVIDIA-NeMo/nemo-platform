@@ -19,8 +19,7 @@ import { TestProviders } from '@studio/tests/util/TestProviders';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { createMemoryRouter } from 'react-router';
-import { RouterProvider } from 'react-router/dom';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 
 // Mock useChatCompletion to capture the request parameters
 const mockMutateAsync = vi.fn();
