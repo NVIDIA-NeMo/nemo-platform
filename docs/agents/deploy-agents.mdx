@@ -49,6 +49,15 @@ on `nemo agents undeploy`. No image or executor configuration is required.
 <Tab title="CLI">
 
 ```bash
+# Confirm that the local Platform instance is ready
+export NMP_BASE_URL=http://localhost:8080
+
+curl -fsS --connect-timeout 2 --max-time 5 \
+  "$NMP_BASE_URL/health/ready" >/dev/null || {
+  echo "NeMo Platform is not ready at $NMP_BASE_URL"
+  exit 1
+}
+
 # Register the calculator agent from agent.yaml
 nemo agents create \
   --name calculator-agent \

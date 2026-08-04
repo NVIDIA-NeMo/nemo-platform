@@ -30,20 +30,6 @@ shared instructions, models, skills, tools, MCP servers, environment settings,
 telemetry, and a selectable harness. NeMo Agents validates that contract and
 executes it through the selected harness.
 
-### How this differs from legacy NAT
-
-| Area | Recommended flow | Legacy NAT workflows |
-|---|---|---|
-| Recommended use | New agents and multi-harness Platform flows | Existing NAT workflow integrations |
-| Config contract | Platform-owned `nemo-agents-spec-v1` `agent.yaml` | NAT `nat-workflow-v1` workflow YAML |
-| Runtime | Platform-managed execution through supported harness adapters | NVIDIA Agent Toolkit runtime |
-| Local execution | Invoked through the Platform agent runtime | Delegated to `nat run` |
-| Platform lifecycle | `nemo agents create`, `deploy`, and `invoke` | The same Platform lifecycle commands |
-| Packaging | Automatically selects the Platform agent image pipeline | Automatically selects the NAT image pipeline |
-| Compatibility status | First-class flow | Supported legacy flow |
-
----
-
 ### Prerequisites
 
 | Requirement | Notes |
@@ -79,6 +65,20 @@ nemo-relay --version
 > **Working directory:** Platform-backed examples use paths relative to the
 > repository root. Run them from there unless an example says otherwise.
 
+### How this differs from legacy NAT
+
+| Area | Recommended flow | Legacy NAT workflows |
+|---|---|---|
+| Recommended use | New agents and multi-harness Platform flows | Existing NAT workflow integrations |
+| Config contract | Platform-owned `nemo-agents-spec-v1` `agent.yaml` | NAT `nat-workflow-v1` workflow YAML |
+| Runtime | Platform-managed execution through supported harness adapters | NVIDIA Agent Toolkit runtime |
+| Local execution | Invoked through the Platform agent runtime | Delegated to `nat run` |
+| Platform lifecycle | `nemo agents create`, `deploy`, and `invoke` | The same Platform lifecycle commands |
+| Packaging | Automatically selects the Platform agent image pipeline | Automatically selects the NAT image pipeline |
+| Compatibility status | First-class flow | Supported legacy flow |
+
+---
+
 ### Calculator agent demo — Codex + Relay
 
 [`examples/nemo-agent-config/calculator-agent/agent.yaml`](examples/nemo-agent-config/calculator-agent/agent.yaml)
@@ -96,13 +96,26 @@ terminal for the remaining steps.
 nemo services run
 ```
 
-#### Step 2 — Configure the model provider and harness
+#### Preflight — Verify Platform readiness
 
-In a new terminal, set the local Platform URL and NVIDIA API key, then verify
-that Codex and NeMo Relay are ready:
+In the second terminal, set the local Platform URL and confirm that an existing
+instance is running and ready before continuing:
 
 ```bash
-export NMP_BASE_URL=http://127.0.0.1:8080
+export NMP_BASE_URL=http://localhost:8080
+
+curl -fsS --connect-timeout 2 --max-time 5 \
+  "$NMP_BASE_URL/health/ready" >/dev/null || {
+  echo "NeMo Platform is not ready at $NMP_BASE_URL"
+  exit 1
+}
+```
+
+#### Step 2 — Configure the model provider and harness
+
+Set the NVIDIA API key, then verify that Codex and NeMo Relay are ready:
+
+```bash
 export NVIDIA_API_KEY="<your NVIDIA API key>"
 
 codex login
@@ -560,7 +573,7 @@ automatically into the agent config — you only need to:
 2. Create the agent and deploy it
 3. Invoke through the gateway
 
-#### Step 1 — Start the platform
+#### NAT Step 1 — Start the platform
 
 Run this in a **dedicated terminal** — it stays in the foreground.  Use a
 separate terminal for all subsequent steps.
@@ -569,7 +582,7 @@ separate terminal for all subsequent steps.
 nemo services run
 ```
 
-#### Step 2 — Create an inference provider
+#### NAT Step 2 — Create an inference provider
 
 In a new terminal, export the base URL once so all subsequent `nemo` commands
 pick it up automatically:
@@ -600,7 +613,7 @@ entities:
 nemo wait inference provider nvidia-build
 ```
 
-#### Step 3 — Create and deploy the agent
+#### NAT Step 3 — Create and deploy the agent
 
 ```bash
 # Register the agent config with the platform
@@ -648,7 +661,7 @@ nemo agents deploy --agent react-agent --no-wait
 nemo agents deployments wait --agent react-agent
 ```
 
-#### Step 4 — Invoke through the gateway
+#### NAT Step 4 — Invoke through the gateway
 
 ```bash
 nemo agents invoke \
@@ -685,7 +698,7 @@ below, or see [Cleanup](#cleanup-optional) to tear everything down.
 Evaluation delegates to `nat eval`, which sends dataset questions to the
 agent's `/generate/full` endpoint and scores responses with a judge LLM.
 
-The agent must be deployed and running (see Step 3 above) before evaluating.
+The agent must be deployed and running (see NAT Step 3 above) before evaluating.
 
 ```bash
 nemo agents evaluate \

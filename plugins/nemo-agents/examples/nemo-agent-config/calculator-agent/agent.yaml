@@ -46,7 +46,7 @@ telemetry:
     filename_template: trajectory-{session_id}.atif.json
     storage:
       - type: http
-        endpoint: http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif
+        endpoint: http://localhost:8080/apis/intake/v2/workspaces/default/ingest/atif
         timeout_millis: 3000
   atof:
     enabled: true
