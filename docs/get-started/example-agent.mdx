@@ -103,9 +103,9 @@ uv run --frozen nemo workspaces create canonical-tau3-airline \
   --exist-ok
 ```
 
-The Experimentalist generates a draft pull request when it receives a GitHub
-or GitLab agent source. It creates a branch only when a changed candidate wins
-validation.
+The Experimentalist generates a draft pull request (PR) or merge request (MR)
+when it receives a GitHub or GitLab agent source. It creates a branch only when
+a changed candidate wins validation.
 
 To optimize the example agent, create a private GitHub repository with the
 [GitHub CLI](https://cli.github.com/) and populate it with the example source.
@@ -129,8 +129,10 @@ git -C "$EXAMPLE_AGENT_REPO" push -u origin main
 export AGENT_REPO_URL="$(git -C "$EXAMPLE_AGENT_REPO" remote get-url origin)"
 ```
 
-Run the Experimentalist against the Git repository. It clones the baseline,
-pushes a validated winner to a new branch, and opens a draft PR against `main`:
+Run the Experimentalist against the Git repository. The `@main` suffix selects
+the source ref to optimize. It clones that baseline, pushes a validated winner
+to a new branch, and opens a draft PR or MR against `main`. To use a different
+target branch, set `storage.pr_base_branch` in the configuration.
 
 ```bash
 uv run --frozen nemo agents experimentalist run \
@@ -156,7 +158,7 @@ After the run completes, inspect
 for the selected winner and compare the `agent-0` and `agent-1` directories to
 review the code change that was evaluated.
 
-### Optional: run locally without creating a pull request
+### Optional: run locally without creating a PR or MR
 
 Use this alternative if you do not want to create or push to a repository. It
 changes only the checked-out example agent and never creates a PR/MR:

@@ -40,11 +40,16 @@ INSIGHTS_TASKS=(
 )
 EXPERIMENTALIST_TRAIN_TASKS=(
   "tau3-bench__tau3-airline-0"
+  "tau3-bench__tau3-airline-4"
+  "tau3-bench__tau3-airline-10"
   "tau3-bench__tau3-airline-20"
+  "tau3-bench__tau3-airline-34"
   "tau3-bench__tau3-airline-39"
 )
 EXPERIMENTALIST_VALIDATION_TASKS=(
   "tau3-bench__tau3-airline-3"
+  "tau3-bench__tau3-airline-12"
+  "tau3-bench__tau3-airline-27"
   "tau3-bench__tau3-airline-36"
 )
 
