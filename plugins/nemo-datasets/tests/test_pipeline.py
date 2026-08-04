@@ -11,7 +11,7 @@ import pyarrow.parquet as pq
 from nemo_datasets_plugin.profiler.digest import content_digest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
-from nemo_datasets_plugin.profiler.pipeline import profile
+from nemo_datasets_plugin.profiler.pipeline import _measure, profile
 from nemo_datasets_plugin.profiler.splits import resolve_splits
 from nemo_platform_plugin.files.dataset_profile import DatasetProfile
 
@@ -501,3 +501,19 @@ def test_profile_isolates_detected_format_with_no_reader(tmp_path, monkeypatch):
     records = {f.path: f for p in result.partitions for s in p.splits for f in s.files}
     assert records["extra.xyz"].num_rows is None  # kept, but unreadable
     assert result.sampling.exhaustive is False
+
+
+def test_measure_infers_from_rows_when_some_files_declared_no_schema():
+    # derive_features uses the declared schema *if present at all*, so a group where only some files
+    # declare one erased every column the schemaless files were the sole witness for. That is the
+    # defect `_split_by_format` worked around by making partitions format-homogeneous; the fix
+    # belongs in schema derivation, and dropping that homogeneity is what makes this path reachable.
+    declared = pa.schema([pa.field("prompt", pa.string())])
+    rows = [{"prompt": "a"}, {"prompt": "b", "extra": "only in the schemaless file"}]
+
+    features, stats, _ = _measure(rows, [declared], exhaustive=True, all_declared=False)
+    assert [f.name for f in features] == ["prompt", "extra"]  # the sole witness survives
+    assert set(stats) <= {f.name for f in features}
+
+    features, _, _ = _measure(rows, [declared], exhaustive=True, all_declared=True)
+    assert [f.name for f in features] == ["prompt"]  # declared schema trusted when it covers everything

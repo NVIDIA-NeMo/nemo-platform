@@ -5,13 +5,17 @@
 
 Roles are inferred from column names, gated by dtype, and stacked onto the feature nodes as
 ``semantic_role`` markers. The dataset type is the most specific structure the assigned roles
-satisfy. Verifiability and content-probe corroboration are added by a later stage.
+satisfy.
+
+Content probes are *measured* in :mod:`stats` over every column; this module only interprets the
+counts. Roles still order that interpretation — a column known to be the ground truth is a better
+answer than one that merely looks like it — but they no longer gate it, so a dataset whose columns
+carry unrecognized names keeps whatever its content proves.
 """
 
 from __future__ import annotations
 
-import re
-
+from nemo_datasets_plugin.profiler.stats import ColumnProbes, derive_probes
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
     Evidence,
@@ -207,11 +211,7 @@ def _detect_type(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -
     return "unknown"
 
 
-# --- content probes ------------------------------------------------------------------------------
-
-_TRANSCRIPT_MARKER = re.compile(r"\n\n(?:Human|Assistant|User):")
-_GSM8K_ANSWER = re.compile(r"####\s*-?[\d.,/]+\s*$")
-_BOXED_ANSWER = re.compile(r"\\boxed\{")
+# --- interpreting the content probes --------------------------------------------------------------
 
 # A verification target must cover at least this fraction of sampled rows to be asserted. Below it,
 # a "hit" is noise -- e.g. one completion in thousands coincidentally ending in `#### <number>` does
@@ -223,51 +223,51 @@ def _pct(fraction: float) -> str:
     return f"{round(fraction * 100)}%"
 
 
-def _completion_texts(features: list[FeatureSchema], rows: list[dict]) -> list[str]:
-    completion = next((feature for feature in features if feature.semantic_role == "completion"), None)
-    if completion is None:
-        return []
-    texts: list[str] = []
-    for row in rows:
-        value = row.get(completion.name)
-        if isinstance(value, str):
-            texts.append(value)
-        elif isinstance(value, list) and value and isinstance(value[-1], dict):
-            content = value[-1].get("content")  # the final assistant turn for a conversational completion
-            if isinstance(content, str):
-                texts.append(content)
-    return texts
+def _detect_verifiability(features: list[FeatureSchema], probes: dict[str, ColumnProbes]) -> Verifiability | None:
+    """The strongest verification target the probes found, if any clears the coverage floor.
 
-
-def _detect_verifiability(features: list[FeatureSchema], rows: list[dict]) -> Verifiability | None:
-    if not rows:
-        return None
-
-    # Each method wins only if it clears the coverage floor; otherwise fall through to the next, so a
-    # sparse ground_truth column can still yield to an extractable-answer signal instead of masking it.
+    Each method wins only if it clears the floor; otherwise fall through to the next, so a sparse
+    ground_truth column yields to an extractable-answer signal instead of masking it.
+    """
     ground_truth = next((feature for feature in features if feature.semantic_role == "ground_truth"), None)
     if ground_truth is not None:
-        present = sum(1 for row in rows if row.get(ground_truth.name) not in (None, "", []))
-        coverage = present / len(rows)
-        if coverage >= _MIN_VERIFIABILITY_COVERAGE:
-            detail = f"'{ground_truth.name}' present in {_pct(coverage)} of {len(rows)} sampled rows"
-            return Verifiability(
-                method="ground_truth_column",
-                coverage=coverage,
-                evidence=[Evidence(kind="content_probe", detail=detail)],
-            )
+        probe = probes.get(ground_truth.name)
+        if probe is not None and probe.rows:
+            coverage = probe.non_empty / probe.rows
+            if coverage >= _MIN_VERIFIABILITY_COVERAGE:
+                detail = f"'{ground_truth.name}' present in {_pct(coverage)} of {probe.rows} sampled rows"
+                return Verifiability(
+                    method="ground_truth_column",
+                    coverage=coverage,
+                    evidence=[Evidence(kind="content_probe", detail=detail)],
+                )
 
-    texts = _completion_texts(features, rows)
-    if texts:
-        hits = sum(1 for text in texts if _GSM8K_ANSWER.search(text) or _BOXED_ANSWER.search(text))
-        coverage = hits / len(texts)
-        if coverage >= _MIN_VERIFIABILITY_COVERAGE:
-            detail = f"completion ends with an extractable answer (#### or \\boxed) in {_pct(coverage)} of {len(texts)} sampled rows"
-            return Verifiability(
-                method="extractable_final_answer",
-                coverage=coverage,
-                evidence=[Evidence(kind="content_probe", detail=detail)],
-            )
+    # A named completion is the authoritative place to look. Without one, take whichever column the
+    # probes found the strongest signal in and name it — the markers are a fact about that column
+    # whether or not its name happened to be in the alias table.
+    completion = next((feature for feature in features if feature.semantic_role == "completion"), None)
+    searched = [completion] if completion is not None else features
+    best_name: str | None = None
+    best_coverage = 0.0
+    for feature in searched:
+        probe = probes.get(feature.name)
+        if probe is None or not probe.texts:
+            continue
+        coverage = probe.extractable_answer / probe.texts
+        if coverage > best_coverage:
+            best_name, best_coverage = feature.name, coverage
+
+    if best_name is not None and best_coverage >= _MIN_VERIFIABILITY_COVERAGE:
+        sampled = probes[best_name].texts
+        detail = (
+            f"'{best_name}' ends with an extractable answer (#### or \\boxed) in "
+            f"{_pct(best_coverage)} of {sampled} sampled rows"
+        )
+        return Verifiability(
+            method="extractable_final_answer",
+            coverage=best_coverage,
+            evidence=[Evidence(kind="content_probe", detail=detail)],
+        )
     return None
 
 
@@ -279,17 +279,21 @@ def _common_prefix_len(left: str, right: str) -> int:
     return index
 
 
-def _implicit_prompt_evidence(features: list[FeatureSchema], rows: list[dict]) -> Evidence | None:
+def _implicit_prompt_evidence(
+    features: list[FeatureSchema], probes: dict[str, ColumnProbes], rows: list[dict]
+) -> Evidence | None:
+    targets = [f for f in features if f.semantic_role in {"chosen", "rejected", "completion"} and f.dtype == "string"]
+    counted = [probes[f.name] for f in targets if f.name in probes]
+    sampled = sum(probe.texts for probe in counted)
+    marked = sum(probe.transcript_marker for probe in counted)
+    if sampled and marked:
+        detail = f"embedded transcript markers in {_pct(marked / sampled)} of sampled completions - prompt is embedded"
+        return Evidence(kind="content_probe", detail=detail)
+
+    # The shared-prefix check is *relational* — it compares two columns against each other — so it
+    # has no per-column probe to read and still works from the rows themselves.
     if not rows:
         return None
-
-    targets = [f for f in features if f.semantic_role in {"chosen", "rejected", "completion"} and f.dtype == "string"]
-    texts = [value for f in targets for row in rows if isinstance((value := row.get(f.name)), str)]
-    if texts:
-        marked = sum(1 for text in texts if _TRANSCRIPT_MARKER.search(text))
-        if marked:
-            detail = f"embedded transcript markers in {_pct(marked / len(texts))} of sampled completions - prompt is embedded"
-            return Evidence(kind="content_probe", detail=detail)
 
     chosen = next((f for f in features if f.semantic_role == "chosen" and f.dtype == "string"), None)
     rejected = next((f for f in features if f.semantic_role == "rejected" and f.dtype == "string"), None)
@@ -309,14 +313,21 @@ def _implicit_prompt_evidence(features: list[FeatureSchema], rows: list[dict]) -
 
 
 def classify(
-    features: list[FeatureSchema], stats: dict[str, ColumnStats], rows: list[dict] | None = None
+    features: list[FeatureSchema],
+    stats: dict[str, ColumnStats],
+    rows: list[dict] | None = None,
+    *,
+    probes: dict[str, ColumnProbes] | None = None,
 ) -> PartitionClassification:
     """Assign roles onto ``features`` in place and return the partition's classification.
 
-    ``rows`` (the sampled rows) drive the content probes — verifiability and implicit-prompt
-    detection; role/axis/type inference needs only the schema and stats.
+    ``probes`` are the per-column content measurements from :func:`~.stats.derive_probes`. They are
+    a pure function of ``(features, rows)``, so a caller that has not already computed them can pass
+    ``rows`` alone and get them derived here; the pipeline passes them in to avoid the second pass.
+    Role/axis/type inference needs neither — only the schema and stats.
     """
     rows = rows or []
+    probes = derive_probes(features, rows) if probes is None else probes
     _assign_roles(features, stats)
     roles = {feature.semantic_role for feature in features if feature.semantic_role}
     dataset_type = _detect_type(features, stats)
@@ -330,7 +341,7 @@ def classify(
     if fmt is not None:
         evidence.append(Evidence(kind="column_dtype", detail=f"{fmt} format from role column dtypes"))
     if prompt_form == "implicit":
-        embedded = _implicit_prompt_evidence(features, rows)
+        embedded = _implicit_prompt_evidence(features, probes, rows)
         if embedded is not None:
             evidence.append(embedded)
 
@@ -339,6 +350,6 @@ def classify(
         dataset_type=dataset_type,
         format=fmt,
         prompt_form=prompt_form,
-        verifiability=_detect_verifiability(features, rows),
+        verifiability=_detect_verifiability(features, probes),
         evidence=evidence,
     )

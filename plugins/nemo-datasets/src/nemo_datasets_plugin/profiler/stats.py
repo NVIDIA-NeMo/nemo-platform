@@ -1,19 +1,25 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Per-column statistics.
+"""Per-column statistics and content probes.
 
 Given a partition's features and its sampled rows, measure each top-level column according to its
 dtype: length quantiles and corruption signals for text, min/max/mean for numbers, chat-shape
 signals for messages, and cardinality for both. The result is sparse — a column with nothing worth
 measuring is omitted. Row values themselves are never stored, except a proven small enumeration
 under ``categorical.values`` when the read was exhaustive.
+
+:func:`derive_probes` additionally reads each column's *content* — answer markers, embedded
+transcripts — as plain per-column counts. Those are measurements, not interpretations: what they
+mean is classification's job, and keeping the looking here is what stops a content signal from
+being reachable only through a correctly named column.
 """
 
 from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from nemo_platform_plugin.files.dataset_profile import (
@@ -256,3 +262,70 @@ def _valid_alternation(messages: list) -> bool:
     """True when user/assistant turns alternate (ignoring any leading system turns)."""
     roles = [_role_of(m) for m in messages if isinstance(m, dict) and _role_of(m) != "system"]
     return all(roles[i] != roles[i + 1] for i in range(len(roles) - 1))
+
+
+# --- content probes ------------------------------------------------------------------------------
+
+# Probes run over *every* column, not only role-assigned ones. Gating them on roles made a content
+# signal reachable only through a recognized column name: a dataset whose answer column is called
+# `a` instead of `answer` lost verifiability entirely, even though the markers were sitting in the
+# data and the regex would have matched them. Classification reads these counts and decides what
+# they mean; it no longer does the looking.
+_TRANSCRIPT_MARKER = re.compile(r"\n\n(?:Human|Assistant|User):")
+_GSM8K_ANSWER = re.compile(r"####\s*-?[\d.,/]+\s*$")
+_BOXED_ANSWER = re.compile(r"\\boxed\{")
+
+
+@dataclass(frozen=True)
+class ColumnProbes:
+    """What the content probes saw in one column across the sampled rows.
+
+    Internal to the profiler rather than part of the stored contract: these are inputs to
+    classification, and promoting them to durable per-column facts is a separate contract change.
+    Counts, not rates — the caller divides, so a zero denominator stays visible instead of becoming
+    a silent 0.0.
+    """
+
+    rows: int  # rows considered for this column
+    non_empty: int  # value present and not "" / [] / {} — a usable target of any dtype
+    texts: int  # rows that yielded text: a string, or a chat column's final turn
+    extractable_answer: int  # of `texts`, how many carry `#### <number>` or `\boxed{`
+    transcript_marker: int  # of `texts`, how many embed a Human:/Assistant: transcript
+
+
+def derive_probes(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> dict[str, ColumnProbes]:
+    """Run the content probes over every top-level column, keyed by column name."""
+    probes: dict[str, ColumnProbes] = {}
+    for feature in features:
+        # Duplicate parquet field names: first wins, matching derive_stats so the two agree on which.
+        if feature.name in probes:
+            continue
+        probes[feature.name] = _column_probes([row.get(feature.name) for row in rows])
+    return probes
+
+
+def _column_probes(values: list[Any]) -> ColumnProbes:
+    texts = [text for value in values if (text := _probe_text(value)) is not None]
+    return ColumnProbes(
+        rows=len(values),
+        non_empty=sum(1 for value in values if value not in (None, "", [], {})),
+        texts=len(texts),
+        extractable_answer=sum(1 for text in texts if _GSM8K_ANSWER.search(text) or _BOXED_ANSWER.search(text)),
+        transcript_marker=sum(1 for text in texts if _TRANSCRIPT_MARKER.search(text)),
+    )
+
+
+def _probe_text(value: Any) -> str | None:
+    """The text a probe reads from one cell: the string itself, or a chat column's final turn.
+
+    The final turn is read through :func:`_message_field`, so ShareGPT's ``{from, value}`` spelling
+    works like ``{role, content}``. Both are handled everywhere else in this module and in schema
+    derivation; missing it here cost every ShareGPT-shaped dataset its verifiability.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list) and value and isinstance(value[-1], dict):
+        content = _message_field(value[-1], "content", "value")
+        if isinstance(content, str):
+            return content
+    return None

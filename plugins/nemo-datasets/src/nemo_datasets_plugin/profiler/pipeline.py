@@ -28,7 +28,7 @@ from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader, is_unsupported_data
 from nemo_datasets_plugin.profiler.schema import derive_features
 from nemo_datasets_plugin.profiler.splits import resolve_splits
-from nemo_datasets_plugin.profiler.stats import derive_stats
+from nemo_datasets_plugin.profiler.stats import derive_probes, derive_stats
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
     DatasetProfile,
@@ -172,21 +172,35 @@ def _unify_schemas(schemas: list[pa.Schema]) -> pa.Schema | None:
 
 
 def _measure(
-    partition_rows: list[dict], arrow_schemas: list[pa.Schema], exhaustive: bool
+    partition_rows: list[dict],
+    arrow_schemas: list[pa.Schema],
+    *,
+    exhaustive: bool,
+    all_declared: bool,
 ) -> tuple[list[FeatureSchema], dict[str, ColumnStats], PartitionClassification]:
     """Derive schema, stats and classification, degrading to structure-only if any of it fails.
 
-    These three stages are pure computation over rows already in memory, so a failure here is either
-    a profiler bug or data shaped in a way no detector anticipated. Reads are already isolated per
+    ``all_declared`` says whether *every* file that contributed rows carried a declared schema. When
+    one did not, the unified schema describes only some of the rows, and using it would erase any
+    column the schemaless files were the sole witness for — so infer from the rows instead, which
+    sees all of them. Declared type fidelity (int32 widening to int64) is the cost, and it is the
+    honest one: a declared schema cannot be asserted over files that declare nothing.
+
+    These stages are pure computation over rows already in memory, so a failure here is either a
+    profiler bug or data shaped in a way no detector anticipated. Reads are already isolated per
     file; leaving this stage unguarded meant one odd value — a chat message whose ``role`` is a number
     — could abort an otherwise complete profile from the one place nothing was catching. The
     partition's structure (files, splits, row counts) is established by then and stays useful, so the
     failure costs its measurements and says so, rather than the entire run.
     """
     try:
-        features = derive_features(partition_rows, _unify_schemas(arrow_schemas))
+        declared = _unify_schemas(arrow_schemas) if all_declared else None
+        features = derive_features(partition_rows, declared)
         stats = derive_stats(features, partition_rows, exhaustive=exhaustive)
-        return features, stats, classify(features, stats, partition_rows)
+        # Probes are measured over every column, independent of the roles classify is about to
+        # assign, so a content signal survives a column name the alias table does not know.
+        probes = derive_probes(features, partition_rows)
+        return features, stats, classify(features, stats, partition_rows, probes=probes)
     except Exception as exc:
         detail = f"could not measure this partition: {type(exc).__name__}: {exc}"
         return [], {}, PartitionClassification(dataset_type="unknown", evidence=[Evidence(kind="error", detail=detail)])
@@ -213,6 +227,7 @@ def _profile_partition(
     """
     partition_rows: list[dict] = []
     arrow_schemas: list[pa.Schema] = []
+    all_declared = True  # every file that contributed rows carried a declared schema
     rows_scanned = 0
     files_read = 0
     partition_scanned = True
@@ -243,6 +258,10 @@ def _profile_partition(
                 partition_rows.extend(result.rows)
                 if result.arrow_schema is not None:
                     arrow_schemas.append(result.arrow_schema)
+                elif result.rows:
+                    # Rows with no schema behind them: the unified schema no longer covers the
+                    # partition, so _measure must infer from rows rather than trust a partial one.
+                    all_declared = False
                 # Exhaustive requires parsing every row; a known footer count alone is not enough, and
                 # a partial read (corrupt lines skipped) is not exhaustive however many rows it got.
                 scanned_all = num_rows is not None and result.rows_scanned >= num_rows and error is None
@@ -270,7 +289,9 @@ def _profile_partition(
                 num_examples=split_examples if split_counts_known else None,
             )
         )
-    features, stats, classification = _measure(partition_rows, arrow_schemas, partition_scanned)
+    features, stats, classification = _measure(
+        partition_rows, arrow_schemas, exhaustive=partition_scanned, all_declared=all_declared
+    )
     partition = PartitionProfile(
         name=name,
         file_format=file_format,
