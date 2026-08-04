@@ -3,10 +3,10 @@
 
 """Insights CLI and contributed subcommands.
 
-The module-level :func:`analyze` and :func:`doctor` callbacks are shared with
-:class:`nemo_insights_plugin.analyst.cli.AnalystCLI`, which mounts them as the canonical
-``nemo agents analyst run`` and ``nemo agents analyst doctor``. They stay registered here
-as ``nemo insights analyze`` / ``nemo insights doctor`` for backward compatibility.
+The module-level :func:`analyze` and :func:`doctor` callbacks are the verb bodies for
+:class:`nemo_insights_plugin.analyst.cli.AnalystCLI` (``nemo agents analyst run`` /
+``nemo agents analyst doctor``). This module's ``InsightsCLI`` keeps the periodic
+``analysis`` surface and does not mount those agent verbs.
 """
 
 import asyncio
@@ -337,9 +337,6 @@ class InsightsCLI(NemoCLI):
             no_args_is_help=True,
         )
         app.add_typer(analysis_app, name="analysis")
-
-        app.command("analyze")(analyze)
-        app.command("doctor")(doctor)
 
         @analysis_app.command("enable")
         def enable_analysis(

@@ -3,9 +3,10 @@
 
 """Analyst CLI — ``nemo agents analyst ...`` subcommands.
 
-The verbs are the module-level callbacks that back ``nemo insights analyze``
-and ``nemo insights doctor``, so the two command trees cannot drift. The
-periodic-analysis and job surfaces stay on ``nemo insights``: they manage the
+Registered under ``nemo.cli.agents`` and mounted by ``AgentsCLI`` as
+``nemo agents analyst <verb>``. Verb bodies live as module-level callbacks in
+``nemo_insights_plugin.cli`` so the analyst implementation stays in one place.
+Periodic-analysis and job surfaces stay on ``nemo insights``: they manage the
 plugin's scheduled runs rather than driving the analyst itself.
 """
 

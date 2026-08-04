@@ -29,7 +29,7 @@ empty target and is not idempotent into a populated workspace. Legacy tar
 bundles (state-v1..v5) are restorable only from a pre-migration checkout; see
 testbed/README.md.
 
-This drives the analyst (`nemo insights analyze`) against registered subjects; it is not
+This drives the analyst (`nemo agents analyst run`) against registered subjects; it is not
 the product CLI and is not shipped in the wheel.
 """
 
