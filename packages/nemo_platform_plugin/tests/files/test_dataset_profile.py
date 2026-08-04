@@ -33,7 +33,6 @@ from pydantic import ValidationError
 # --- Fixture: trl-lib/OpenMathReasoning (conversational prompt_completion, verifiable) ---
 OPENMATHREASONING = """
 profile_schema_version: "1.0"
-content_digest: sha256:7be1...
 created_at: 2026-07-08T22:05:12Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {exhaustive: false, strategy: stratified_probes, rows_scanned: 2112,
@@ -76,7 +75,6 @@ partitions:
 # --- Fixture: trl-lib/hh-rlhf-helpful-base (conversational preference_pair, explicit) -----
 HH_RLHF_HELPFUL_BASE = """
 profile_schema_version: "1.0"
-content_digest: sha256:5d20...
 created_at: 2026-07-08T22:41:37Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {exhaustive: false, strategy: stratified_probes, rows_scanned: 1024,
@@ -118,7 +116,6 @@ partitions:
 # --- Fixture: nvidia/HelpSteer2 (standard scored_response, no verifiability) --------------
 HELPSTEER2 = """
 profile_schema_version: "1.0"
-content_digest: sha256:c41f...
 created_at: 2026-07-09T10:12:45Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {exhaustive: false, strategy: stratified_probes, rows_scanned: 1024,
@@ -172,7 +169,6 @@ FIXTURES = {
 def _build_profile() -> DatasetProfile:
     """A hand-built profile exercising every model in the contract."""
     return DatasetProfile(
-        content_digest="sha256:deadbeef",
         created_at=datetime(2026, 7, 13, 12, 0, 0),
         profiler_info={"name": "nemo-dataset-profiler", "version": "0.1.0"},
         sampling=SamplingInfo(
@@ -339,6 +335,18 @@ def test_unknown_fields_are_ignored_for_forward_compat():
     doc["some_future_top_level_field"] = {"anything": 1}
     doc["partitions"][0]["classification"]["future_axis"] = "value"
     profile = DatasetProfile.model_validate(doc)
+    assert profile.partitions[0].classification.dataset_type == "scored_response"
+
+
+def test_a_profile_written_before_the_digest_was_dropped_still_loads():
+    # `content_digest` was removed rather than repaired: it froze "which files count as inputs" into
+    # stored data at write time, and that judgment moves. Profiles already written with it have to
+    # keep loading, or removing it would break every one of them at once — the very failure mode the
+    # removal exists to avoid.
+    doc = yaml.safe_load(HELPSTEER2)
+    doc["content_digest"] = "sha256:7be1c0ffee"
+    profile = DatasetProfile.model_validate(doc)
+    assert not hasattr(profile, "content_digest")
     assert profile.partitions[0].classification.dataset_type == "scored_response"
 
 

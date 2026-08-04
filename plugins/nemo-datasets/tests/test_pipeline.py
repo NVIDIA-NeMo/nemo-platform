@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the profiling pipeline: digest, split/partition resolution, and envelope assembly."""
+"""Tests for the profiling pipeline: split/partition resolution and envelope assembly."""
 
 import json
 from datetime import datetime, timezone
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from nemo_datasets_plugin.profiler.digest import content_digest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.pipeline import _measure, profile
@@ -25,22 +24,6 @@ def _write_parquet(path, rows):
 
 def _entries(*paths):
     return [FileEntry(path=p, size_bytes=100) for p in paths]
-
-
-# --- content digest ------------------------------------------------------------------------------
-
-
-def test_content_digest_is_stable_and_order_independent():
-    a = _entries("train.parquet", "test.parquet")
-    b = list(reversed(a))
-    assert content_digest(a) == content_digest(b)
-    assert content_digest(a).startswith("sha256:")
-
-
-def test_content_digest_changes_with_size():
-    base = _entries("train.parquet")
-    bigger = [FileEntry(path="train.parquet", size_bytes=200)]
-    assert content_digest(base) != content_digest(bigger)
 
 
 # --- split resolution ----------------------------------------------------------------------------
@@ -128,7 +111,6 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
-    assert result.content_digest.startswith("sha256:")
     assert result.profiler_info["name"] == "nemo-dataset-profiler"
     assert len(result.partitions) == 1
     partition = result.partitions[0]
@@ -468,23 +450,23 @@ def test_profile_survives_a_hostile_directory(tmp_path):
     assert DatasetProfile.model_validate_json(result.model_dump_json()) == result
 
 
-def test_profile_digest_covers_only_stored_files(tmp_path):
-    _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
-    without_card = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+def test_stored_file_records_reproduce_the_input_list(tmp_path):
+    # The contract promises split membership is exhaustive and disjoint, which is what lets a
+    # consumer compare a stored profile against a fresh listing to decide whether it is current.
+    # That comparison is the whole reason the records carry path/size/checksum, so the invariant is
+    # worth asserting directly rather than through a digest that happened to depend on it.
+    _write_parquet(tmp_path / "train-00000-of-00002.parquet", [{"a": 1}])
+    _write_parquet(tmp_path / "train-00001-of-00002.parquet", [{"a": 2}])
+    _write_parquet(tmp_path / "test-00000-of-00001.parquet", [{"a": 3}])
+    (tmp_path / "README.md").write_text("a dataset card")  # not data; never becomes a FileRecord
 
-    (tmp_path / "README.md").write_text("a dataset card")  # a non-data file, never stored as a FileRecord
-    with_card = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+    source = LocalFileSource(tmp_path)
+    result = profile(source, created_at=FIXED_TIME)
 
-    # A file the profile does not store must not move the digest...
-    assert without_card.content_digest == with_card.content_digest
-    # ...and the digest is recomputable from exactly the FileRecords the profile stores.
-    stored = [
-        FileEntry(path=f.path, size_bytes=f.size_bytes, checksum=f.checksum)
-        for partition in with_card.partitions
-        for split in partition.splits
-        for f in split.files
-    ]
-    assert content_digest(stored) == with_card.content_digest
+    stored = [f.path for partition in result.partitions for split in partition.splits for f in split.files]
+    listed = [e.path for e in source.list_files() if e.path.endswith(".parquet")]
+    assert sorted(stored) == sorted(listed)  # exhaustive
+    assert len(stored) == len(set(stored))  # and disjoint
 
 
 def test_profile_isolates_detected_format_with_no_reader(tmp_path, monkeypatch):

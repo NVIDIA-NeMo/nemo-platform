@@ -249,8 +249,10 @@ class ColumnStats(BaseModel):
 class FileRecord(BaseModel):
     """One physical file, measured.
 
-    Stores the exact digest inputs (so a profile self-describes its ``content_digest`` and per-file
-    staleness is computable) plus what the reader learned cheaply.
+    Stores the file's identity as the listing reported it — path, size, checksum — plus what the
+    reader learned cheaply. Concatenating ``files`` across a partition's splits reproduces that
+    partition's input list exactly, which is what lets a consumer compare a stored profile against a
+    fresh listing to see what changed.
     """
 
     path: str = Field(description="Relative path within the fileset.")
@@ -258,8 +260,9 @@ class FileRecord(BaseModel):
     checksum: str | None = Field(
         default=None,
         description=(
-            'As the Files service reports it (e.g. "sha256:..."). None falls back to a (path, size) digest, '
-            "which cannot detect a same-size in-place edit."
+            'As the Files service reports it (e.g. "sha256:..."), when it reports one at all — no backend '
+            "does today. Without it, (path, size) is all there is to compare against a fresh listing: enough "
+            "to catch files added, removed, renamed or resized, but not a same-size in-place edit."
         ),
     )
     num_rows: int | None = Field(
@@ -398,13 +401,21 @@ class SamplingInfo(BaseModel):
 
 
 class DatasetProfile(BaseModel):
-    """The machine-owned dataset profile — the root of the stored contract."""
+    """The machine-owned dataset profile — the root of the stored contract.
+
+    Deliberately carries no staleness marker. A stored digest would freeze "which files count as
+    inputs" into the data at write time, and that judgment moves: once card front-matter drives
+    split declaration, ``README.md`` becomes an input. Changing the rule would then invalidate every
+    stored profile at once, with no way to tell a real change from a definition change. The
+    ``FileRecord``s already describe the inputs, so a consumer that needs to know whether a profile
+    is current compares them against a fresh listing — same cost, and it learns *what* changed
+    rather than merely *that* something did.
+    """
 
     profile_schema_version: str = Field(
         default=PROFILE_SCHEMA_VERSION,
         description='Semver of THIS contract (e.g. "1.0") — gates consumer compatibility.',
     )
-    content_digest: str = Field(description="Digest over the stored FileRecords; staleness = mismatch.")
     created_at: datetime
     profiler_info: dict = Field(
         default_factory=dict,

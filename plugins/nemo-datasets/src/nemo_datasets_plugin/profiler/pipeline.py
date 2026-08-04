@@ -22,7 +22,6 @@ from datetime import datetime, timezone
 
 import pyarrow as pa
 from nemo_datasets_plugin.profiler.classify import classify
-from nemo_datasets_plugin.profiler.digest import content_digest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader, is_unsupported_data
@@ -126,8 +125,6 @@ def profile(
         seed=None,  # head sampling makes no random choices; a seed would be theatre
     )
     return DatasetProfile(
-        # Digest only the files stored as FileRecords, so the profile can recompute its own digest.
-        content_digest=content_digest(data_entries),
         created_at=created_at,
         profiler_info=profiler_info,
         sampling=sampling,
