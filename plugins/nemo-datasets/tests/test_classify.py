@@ -4,6 +4,7 @@
 """Tests for classification: role assignment, format/prompt-form axes, and dataset type."""
 
 from nemo_datasets_plugin.profiler.classify import classify
+from nemo_datasets_plugin.profiler.stats import derive_probes
 from nemo_platform_plugin.files.dataset_profile import (
     CategoricalStats,
     ColumnStats,
@@ -252,3 +253,45 @@ def test_bare_scalar_ground_truth_alias_is_still_rejected():
     features = [_f("ground_truth", "int64")]
     classify(features, {})
     assert features[0].semantic_role is None
+
+
+def test_verifiability_survives_an_unrecognized_column_name():
+    # Gating the probes on roles made a content signal reachable only through a recognized column
+    # name: the `#### <n>` markers were in the data and the regex would have matched them, but
+    # nothing knew where to look. The finding must name the column it came from.
+    features = [_f("q", "string"), _f("a", "string")]
+    rows = [{"q": "what is 2+2?", "a": f"add them #### {i}"} for i in range(10)]
+    result = classify(features, {}, rows)
+
+    assert {f.semantic_role for f in features} == {None}  # still unroled, and honest about it
+    assert result.dataset_type == "unknown"
+    assert result.verifiability.method == "extractable_final_answer"
+    assert result.verifiability.coverage == 1.0
+    assert "'a'" in result.verifiability.evidence[0].detail
+
+
+def test_a_named_completion_still_decides_where_to_look():
+    # Roles order the interpretation even though they no longer gate it: a column *known* to be the
+    # completion is a better answer than one that merely looks like it.
+    features = [_f("completion", "string"), _f("notes", "string")]
+    rows = [{"completion": "just prose", "notes": "scratch #### 9"} for _ in range(10)]
+    assert classify(features, {}, rows).verifiability is None
+
+
+def test_verifiability_reads_a_sharegpt_conversational_completion():
+    features = [_f("prompt", "string"), _f("completion", "messages")]
+    rows = [{"prompt": "q", "completion": [{"from": "human", "value": "q"}, {"from": "gpt", "value": "#### 4"}]}]
+    result = classify(features, {}, rows)
+    assert result.verifiability.method == "extractable_final_answer"
+    assert result.verifiability.coverage == 1.0
+
+
+def test_precomputed_probes_and_derived_probes_agree():
+    # classify() derives probes when it is not given them; the pipeline passes them in to avoid the
+    # second pass. The two paths must not drift.
+    rows = [{"prompt": "q", "completion": f"steps #### {i}"} for i in range(10)]
+    derived = classify([_f("prompt", "string"), _f("completion", "string")], {}, rows)
+    features = [_f("prompt", "string"), _f("completion", "string")]
+    passed_in = classify(features, {}, rows, probes=derive_probes(features, rows))
+    assert derived.verifiability.coverage == passed_in.verifiability.coverage
+    assert derived.verifiability.evidence[0].detail == passed_in.verifiability.evidence[0].detail

@@ -3,7 +3,7 @@
 
 """Tests for per-column statistics."""
 
-from nemo_datasets_plugin.profiler.stats import derive_stats
+from nemo_datasets_plugin.profiler.stats import derive_probes, derive_stats
 from nemo_platform_plugin.files.dataset_profile import ColumnStats, FeatureSchema
 
 
@@ -161,3 +161,51 @@ def test_unmeasured_dtypes_are_omitted():
 def test_null_rate_is_reported():
     stats = derive_stats([_feature("t", "string")], _rows("t", ["a", None, "c", None]), exhaustive=False)["t"]
     assert stats.null_rate == 0.5
+
+
+# --- content probes ------------------------------------------------------------------------------
+
+
+def test_probes_are_measured_for_every_column_not_just_named_ones():
+    # The whole point of measuring probes here rather than in classify: a column whose name the
+    # alias table does not know still gets its content read.
+    features = [_feature("q", "string"), _feature("a", "string")]
+    rows = [{"q": "what is 2+2?", "a": "add them #### 4"}, {"q": "and 3+3?", "a": "no final answer"}]
+    probes = derive_probes(features, rows)
+
+    assert set(probes) == {"q", "a"}
+    assert probes["a"].texts == 2
+    assert probes["a"].extractable_answer == 1
+    assert probes["q"].extractable_answer == 0
+
+
+def test_probes_read_the_final_turn_of_a_chat_column():
+    rows = [{"m": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "steps #### 7"}]}]
+    probes = derive_probes([_feature("m", "messages")], rows)
+    assert probes["m"].texts == 1
+    assert probes["m"].extractable_answer == 1
+
+
+def test_probes_read_the_sharegpt_message_spelling():
+    # {from, value} is handled in schema derivation and message stats; reading only {role, content}
+    # here cost every ShareGPT-shaped dataset its verifiability.
+    rows = [{"m": [{"from": "human", "value": "q"}, {"from": "gpt", "value": "steps #### 7"}]}]
+    probes = derive_probes([_feature("m", "messages")], rows)
+    assert probes["m"].texts == 1
+    assert probes["m"].extractable_answer == 1
+
+
+def test_probes_count_non_empty_across_container_dtypes():
+    # `non_empty` is what a ground_truth column's coverage is measured from, and a verification
+    # target is just as often a list or struct as a string.
+    features = [_feature("gt", "list")]
+    rows = [{"gt": [{"in": "1"}]}, {"gt": []}, {"gt": None}]
+    probes = derive_probes(features, rows)
+    assert probes["gt"].rows == 3
+    assert probes["gt"].non_empty == 1
+
+
+def test_probes_detect_embedded_transcripts():
+    rows = [{"c": "\n\nHuman: hi\n\nAssistant: hello"}, {"c": "plain prose"}]
+    probes = derive_probes([_feature("c", "string")], rows)
+    assert probes["c"].transcript_marker == 1
