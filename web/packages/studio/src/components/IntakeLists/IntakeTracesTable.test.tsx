@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { IntakeTracesTable } from '@studio/components/IntakeLists/IntakeTracesTable';
+import { ROUTES } from '@studio/constants/routes';
 import { mockTracesPage } from '@studio/mocks/intake/telemetry';
 import { server } from '@studio/mocks/node';
+import { getIntakeSessionTraceRoute } from '@studio/routes/utils';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { Route, Routes, useLocation } from 'react-router';
+import { useLocation } from 'react-router';
 
 /**
  * React Router wraps location updates in React.startTransition, so the mount-time
@@ -18,6 +20,7 @@ import { Route, Routes, useLocation } from 'react-router';
  */
 const SETTLE = { timeout: 10_000 };
 const TEST_TIMEOUT = 30_000;
+const WORKSPACE = 'default';
 
 /** Resolves once the seeded filter has landed in the URL and been adopted by the table. */
 const waitForSeededTable = () => screen.findByTestId('clear-filters', undefined, SETTLE);
@@ -66,31 +69,29 @@ describe('IntakeTracesTable', () => {
     async () => {
       const user = userEvent.setup();
 
-      renderRoute(
-        <Routes>
-          <Route
-            path="/workspaces/:workspace/intake/traces"
-            element={<IntakeTracesTable workspace="default" />}
-          />
-          <Route
-            path="/workspaces/:workspace/intake/sessions/:sessionId"
-            element={<LocationProbe />}
-          />
-        </Routes>,
-        { history: '/workspaces/default/intake/traces' }
-      );
+      renderRoute(undefined, {
+        history: `/workspaces/${WORKSPACE}/intake/traces`,
+        routes: [
+          {
+            path: ROUTES.workspace.intakeTraces,
+            element: <IntakeTracesTable workspace={WORKSPACE} />,
+          },
+          {
+            path: ROUTES.workspace.intakeSession,
+            element: <LocationProbe />,
+          },
+        ],
+      });
 
       await waitForSeededTable();
       await user.click(
         await screen.findByText('Answer customer policy question', undefined, SETTLE)
       );
 
-      await waitFor(
-        () =>
-          expect(screen.getByTestId('trace-detail-location')).toHaveTextContent(
-            '/workspaces/default/intake/sessions/session-agent-run-001?traceId=trace-agent-run-001'
-          ),
-        SETTLE
+      expect(
+        await screen.findByTestId('trace-detail-location', undefined, SETTLE)
+      ).toHaveTextContent(
+        getIntakeSessionTraceRoute(WORKSPACE, 'session-agent-run-001', 'trace-agent-run-001')
       );
     },
     TEST_TIMEOUT
