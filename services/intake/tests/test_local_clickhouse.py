@@ -113,7 +113,7 @@ class FakeContainers:
         data_dir = Path(next(iter(volumes)))
         ports = cast(dict[str, tuple[str, int | None]], kwargs["ports"])
         http_binding = ports[CLICKHOUSE_HTTP_PORT_KEY]
-        host_port = http_binding[1] if http_binding[1] is not None else 55123
+        host_port = http_binding[1] or 55123
         container = FakeContainer(
             name=name,
             image=image,
@@ -205,7 +205,7 @@ def test_provision_creates_data_directory_owned_container_with_dynamic_loopback_
     run = client.containers.run_calls[0]
     data_dir = (tmp_path / "intake-clickhouse").resolve()
     assert run["name"] == _managed_container_name(data_dir)
-    assert run["ports"] == {CLICKHOUSE_HTTP_PORT_KEY: ("127.0.0.1", None)}
+    assert run["ports"] == {CLICKHOUSE_HTTP_PORT_KEY: ("127.0.0.1", 0)}
     assert run["restart_policy"] == {"Name": "unless-stopped"}
 
 

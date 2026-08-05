@@ -258,7 +258,7 @@ def _create_container(
                 CLICKHOUSE_NATIVE_PORT_KEY: ("127.0.0.1", CLICKHOUSE_NATIVE_PORT),
             }
             if legacy_script_mode
-            else {CLICKHOUSE_HTTP_PORT_KEY: ("127.0.0.1", None)}
+            else {CLICKHOUSE_HTTP_PORT_KEY: ("127.0.0.1", 0)}
         ),
         "volumes": {str(data_dir): {"bind": CLICKHOUSE_DATA_PATH, "mode": "rw"}},
         "labels": _expected_labels(data_dir, data_instance_id),
