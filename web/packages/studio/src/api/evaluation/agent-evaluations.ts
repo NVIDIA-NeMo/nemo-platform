@@ -3,7 +3,6 @@
 
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import {
-  evaluatorCancelAgentEvaluateJob,
   evaluatorCreateAgentEvaluateJob,
   evaluatorGetAgentEvalResult,
   evaluatorGetAgentEvaluateJob,
@@ -81,14 +80,6 @@ export const fetchAgentEvalJob = async (
     if (e?.response?.status === 404 || e?.status === 404) return null;
     throw err;
   }
-};
-
-export const cancelAgentEvalJob = async (
-  workspace: string,
-  name: string,
-  signal: AbortSignal
-): Promise<void> => {
-  await evaluatorCancelAgentEvaluateJob(workspace, name, signal);
 };
 
 export const submitAgentEvalJob = async (
