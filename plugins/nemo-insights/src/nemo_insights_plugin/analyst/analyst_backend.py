@@ -147,7 +147,7 @@ class AnalystBackend(ABC):
     The read surface is a thin, uniform pass-through over the Intake SDK: every
     list method takes the raw Intake ``filter`` dict and ``sort`` field and
     drains pages up to ``limit``, and there are get-by-id and evaluator-score
-    primitives. The analyst composes these in ``run_code`` rather than relying
+    primitives. The analyst composes these in Nooa CodeAct rather than relying
     on a wide catalog of narrow tools. Reads always hit the live platform, even
     in local insights mode.
     """

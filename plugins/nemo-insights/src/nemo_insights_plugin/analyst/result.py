@@ -7,9 +7,9 @@ Instead of mutating platform state through a series of tool calls
 (``create_insight`` / ``update_insight``) while it
 reasons, the analyst reads observability data only, then emits one
 :class:`AnalystResult` struct that captures *every* change it wants to make.
-That struct is the agent's typed output: Pydantic AI surfaces it as a single
-``analyst_result`` tool, and the model calling that tool both ends the run and
-hands the whole change-set back to the CLI.
+That struct is the agent's typed output: Nooa validates the value passed to
+``return_result``, which ends the run and hands the whole change-set back to
+the CLI.
 
 These models intentionally know nothing about how the change-set is persisted.
 Each :class:`~nemo_insights_plugin.analyst.analyst_backend.AnalystBackend`
@@ -77,8 +77,8 @@ class AnalystResult(BaseModel):
     """The analyst's complete, final change-set for one run.
 
     The model populates this once, at the end of its analysis, in place of the
-    old mutating tool calls. Calling the ``analyst_result`` tool with this
-    struct ends the run; the CLI then hands it to the backend to persist.
+    old mutating tool calls. Calling ``return_result`` with this struct ends
+    the run; the CLI then hands it to the backend to persist.
     """
 
     model_config = ConfigDict(extra="forbid")
