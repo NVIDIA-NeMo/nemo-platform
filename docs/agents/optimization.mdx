@@ -421,8 +421,12 @@ print(result)
 
 When `--agent` is a platform-managed agent name, the job fetches the stored
 Fabric agent config, overlays the optimization settings, runs Inference Gateway
-model preflight, and dispatches to the Tune backend. Raw HTTP endpoint mode is
-removed; use a platform-managed agent reference or inline Fabric agent package.
+model preflight, and dispatches to the Tune backend. `--agent` must be a
+workspace agent name (`hermes-optimize-chatonly` or
+`default/hermes-optimize-chatonly`). Endpoint URLs and other URI forms
+(`http://...`, `https://...`, `file://...`) are rejected -- raw HTTP endpoint
+optimize mode was removed. Use a platform-managed agent reference or an inline
+Fabric agent package in `--optimize-config`.
 
 ## Troubleshooting
 

@@ -109,7 +109,7 @@ def test_run_rejects_endpoint_agent(tmp_path: Path, ctx: JobContext) -> None:
     optimize_yaml = tmp_path / "optimize.yml"
     optimize_yaml.write_text("optimizer:\n  numeric:\n    enabled: true\n")
 
-    with pytest.raises(LocalRunError, match="Endpoint URL optimize mode has been removed"):
+    with pytest.raises(LocalRunError, match="Endpoint URL / URI optimize mode has been removed"):
         OptimizeJob().run(
             {
                 "optimize_config": str(optimize_yaml),

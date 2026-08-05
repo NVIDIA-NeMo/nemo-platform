@@ -38,6 +38,10 @@ def test_dispatch_routes_numeric_to_optuna_study(ctx: JobContext) -> None:
     out_dir = ctx.storage.persistent / "results" / "optimizer_results"
     summary = json.loads((out_dir / "study_summary.json").read_text(encoding="utf-8"))
     assert summary["backend"] == "optuna"
+    debug = json.loads((out_dir / "study_debug.json").read_text(encoding="utf-8"))
+    assert debug["n_trials"] == 2
+    assert len(debug["trials"]) == 2
+    assert {t["state"] for t in debug["trials"]} == {"COMPLETE"}
     assert (out_dir / "optimized_config.yml").is_file()
 
 

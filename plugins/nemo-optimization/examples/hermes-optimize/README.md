@@ -202,6 +202,10 @@ base URL (401s for many keys that work on inference-api).
 
 ## Notes
 
+- Optional `--agent` must be a platform agent name (`hermes-optimize-chatonly` or
+  `default/hermes-optimize-chatonly`). Endpoint / URI forms (`http://...`,
+  `https://...`, `file://...`) are rejected; use an inline Fabric package in
+  `--optimize-config` when you are not referencing a stored agent.
 - `eval` / `optimizer` are platform overlays; they are stripped before `Fabric.run`.
 - `capture_trajectory: false` in these packages avoids requiring the Relay gateway binary
   for a first smoke. Set `true` after `script/dev-install-fabric.sh` if you need ATIF.

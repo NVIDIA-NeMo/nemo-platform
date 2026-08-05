@@ -198,7 +198,7 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
 
     scores = evaluator.evaluate(
         trial_number=7,
-        suggestions={"temperature": 0.2},
+        suggestions={"models.default.temperature": 0.2},
         trial_overlay={"metadata": {"name": "trial-007"}},
         rep=0,
     )

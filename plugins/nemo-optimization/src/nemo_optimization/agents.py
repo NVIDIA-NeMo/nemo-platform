@@ -26,9 +26,10 @@ def resolve_agent_config(
 
     if "://" in agent:
         raise LocalRunError(
-            "Endpoint URL optimize mode has been removed. Pass a platform-managed "
-            "Fabric agent reference (e.g. --agent react-agent) or include an inline "
-            "Fabric agent package in optimize_config."
+            "Endpoint URL / URI optimize mode has been removed. Pass a platform-managed "
+            "Fabric agent name (e.g. --agent hermes-optimize-chatonly or "
+            "--agent default/hermes-optimize-chatonly), not an http(s):// or file:// URL. "
+            "Or include an inline Fabric agent package in optimize_config."
         )
 
     if "/" in agent:

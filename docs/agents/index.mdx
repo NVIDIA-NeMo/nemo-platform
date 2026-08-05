@@ -50,6 +50,7 @@ Agents are managed end-to-end through the `nemo agents` command group:
 | Deploy    | `nemo agents deploy --agent <name>`                                                                           | Start a running service from the stored config.                                  |
 | Wait      | `nemo agents deployments wait --agent <name>`                                                                 | Block until the deployment is `running` or `failed`.                             |
 | Invoke    | `nemo agents invoke --agent <name> --input "..."` or `nemo agents invoke --agent-config <path> --input "..."` | Send a single request through the Agents gateway or run a local config directly. |
+| Optimize  | `nemo agents optimize run --optimize-config <path>`                                                           | Run Fabric-backed numeric HPO (Optuna). See [Optimize Agents](/documentation/agents/optimize-agents). |
 | Tear down | `nemo agents undeploy --agent <name>` then `nemo agents delete <name>`                                        | Stop the running service and remove the agent entity.                            |
 
 To run an `agent.yaml` directly without registering it on the platform, pass `--agent-config <path>` to `nemo agents invoke` or `nemo agents run`.
@@ -59,7 +60,6 @@ Legacy NAT-only commands:
 | Stage    | Command                                                            | What it does                                                                 |
 | -------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
 | Evaluate | `nemo agents evaluate run --eval-config <path> --agent <name>`     | Run a NAT evaluation against the deployed agent.                             |
-| Optimize | `nemo agents optimize run --optimize-config <path> --agent <name>` | Run NAT parameter or prompt tuning trials against the agent's stored config. |
 
 ## Agent Definition
 
@@ -212,8 +212,9 @@ config targets a deployed agent:
   durable container on Docker or Kubernetes, and invoke it through the Agents gateway.
 - [Observe Agents](/documentation/agents/observe-agents): ingest and query agent telemetry with NeMo
   Intake, then review traces, feedback, and evaluator results.
-- [Optimize Agents](/documentation/agents/optimize-agents): analyze deployed agents for model routing,
-  skill, prompt, and new-model opportunities. (Applies to NAT workflows)
+- [Optimize Agents](/documentation/agents/optimize-agents): Fabric-backed numeric HPO
+  (`nemo agents optimize run`), plus model-routing / skill / prompt suggestions for
+  deployed agents.
 - [Secure Agents](/documentation/agents/secure-agents): check guardrail coverage and scan recent
   telemetry for sensitive data.
 - [Plugins and Skills](/documentation/agents/plugins-and-skills): understand how agent, middleware, and

@@ -43,7 +43,6 @@ class OptimizeRouter:
     ) -> dict[str, Any]:
         """Route a Fabric-native optimize study to the selected Tune backend."""
         payload = build_optimize_payload(agent_config=agent_config, optimize_config=optimize_config)
-        require_fabric_agent_config(payload, label="merged optimize payload")
         backend_name = _select_backend(payload)
         backends = discover_optimization_backends()
         backend = backends.get(backend_name)

@@ -72,8 +72,11 @@ class OptunaBackend:
             "metric_names": list(result.metric_names),
             "agent": payload.get("metadata", {}).get("name"),
         }
-        (output_dir / "study_summary.json").write_text(
-            json.dumps(summary, indent=2) + "\n",
+        summary_path = output_dir / "study_summary.json"
+        summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        debug_path = output_dir / "study_debug.json"
+        debug_path.write_text(
+            json.dumps(_study_debug_payload(result), indent=2, default=str) + "\n",
             encoding="utf-8",
         )
         ref = ctx.results.save(RESULT_NAME, output_dir)
@@ -81,6 +84,36 @@ class OptunaBackend:
             **summary,
             "result": ref.model_dump(mode="json"),
         }
+
+
+def _study_debug_payload(result) -> dict[str, Any]:
+    """JSON-serializable Optuna study snapshot for debugging (not the Study object itself)."""
+    study = result.study
+    trials: list[dict[str, Any]] = []
+    for trial in study.trials:
+        trials.append(
+            {
+                "number": trial.number,
+                "state": trial.state.name,
+                "params": dict(trial.params),
+                "values": list(trial.values) if trial.values is not None else None,
+                "user_attrs": dict(trial.user_attrs),
+                "datetime_start": trial.datetime_start.isoformat() if trial.datetime_start else None,
+                "datetime_complete": trial.datetime_complete.isoformat() if trial.datetime_complete else None,
+                "duration_seconds": trial.duration.total_seconds() if trial.duration is not None else None,
+            }
+        )
+    return {
+        "study_name": study.study_name,
+        "directions": [direction.name for direction in study.directions],
+        "sampler": type(study.sampler).__name__,
+        "n_trials": result.n_trials,
+        "metric_names": list(result.metric_names),
+        "best_trial": result.best_trial.number,
+        "best_params": dict(result.best_trial.params),
+        "best_values": list(result.best_trial.values or []),
+        "trials": trials,
+    }
 
 
 def _build_trial_evaluator(

@@ -53,7 +53,11 @@ class TrialEvaluator(Protocol):
         trial_overlay: dict[str, Any],
         rep: int,
     ) -> dict[str, float]:
-        """Return metric name → score for one repetition."""
+        """Return metric name to score for one repetition.
+
+        ``suggestions`` must be keyed by Fabric dotted paths (the output of
+        ``suggestions_by_path``), matching ``apply_suggestions`` / trial YAML.
+        """
 
 
 @dataclass(frozen=True)
@@ -196,7 +200,7 @@ def run_numeric_study(
         rep_scores = [
             evaluator.evaluate(
                 trial_number=trial.number,
-                suggestions=dict(suggestions),
+                suggestions=dict(path_suggestions),
                 trial_overlay=trial_overlay,
                 rep=rep,
             )
