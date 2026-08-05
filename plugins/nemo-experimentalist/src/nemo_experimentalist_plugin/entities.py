@@ -658,7 +658,11 @@ class Candidate(NemoEntity, entity_type="candidate"):
         """Return a read-only copy without per-trial detail, for passing to LLM methods.
 
         Read-only because it is lossy: persisting one writes the emptied trials back over
-        the real ones, for every channel at once. ``update_candidate`` refuses it.
+        the real ones, for every channel at once. The marker that lets
+        ``update_candidate`` refuse it is a private attribute, so it is lost through JSON
+        — which is why a caller whose copies cross that boundary, as an LLM method's
+        return value does, looks the real candidates back up by id rather than relying
+        on the guard.
         """
         copy = self.model_copy(
             update={

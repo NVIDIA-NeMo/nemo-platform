@@ -154,7 +154,8 @@ class Builder(Component):
         """Write whatever a later build of *artifact* will want to read back.
 
         The Coder documents the architecture here, because the next build's proposal is
-        written against that document. A Builder with nothing to say does nothing, which
-        is why this is not abstract.
+        written against that document. The strategy calls this for the baseline; a
+        Builder calls it for the candidates it builds. A Builder with nothing to say does
+        nothing, which is why this is not abstract.
         """
         return None

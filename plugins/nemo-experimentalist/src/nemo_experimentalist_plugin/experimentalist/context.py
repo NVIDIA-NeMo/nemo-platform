@@ -328,7 +328,8 @@ class ExperimentContext:
 
         Raises:
             ValueError: if *candidate* was never committed, or is a lossy :meth:`~.slim`
-                copy whose emptied trials would be written back over the real ones.
+                copy whose emptied trials would be written back over the real ones. The
+                second check is best-effort: the marker does not survive serialization.
         """
         if not candidate.id:
             raise ValueError(

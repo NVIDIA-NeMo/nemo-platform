@@ -418,3 +418,49 @@ async def test_a_slim_copy_cannot_be_persisted(tmp_path: Path) -> None:
         await ctx.record_reward(candidate.slim(), channel="train", result=RewardRecord(metrics={"reward": 1.0}))
 
     assert (await ctx.candidates())[0].rewards["validation"].trials
+
+
+@pytest.mark.asyncio
+async def test_a_builder_documents_the_candidates_it_builds(tmp_path: Path) -> None:
+    """`describe` is a Builder verb so a subclass can replace it. The Coder called
+    `create_architecture_doc` directly, which honoured an override for the baseline and
+    bypassed it for every candidate built after.
+    """
+    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+
+    described: list[Path] = []
+
+    class QuietCoder(Coder):
+        """Create and modify agent source code as part of the optimization loop."""
+
+        async def describe(self, artifact: Path) -> None:
+            described.append(artifact)
+
+        async def apply_change(self, *args: object, **kwargs: object) -> None:
+            return None
+
+        async def wire_up_change(self, *args: object, **kwargs: object) -> None:
+            return None
+
+        async def run_pyright(self, *args: object, **kwargs: object) -> None:
+            return None
+
+        async def optimize_subproblem(self, *args: object, **kwargs: object) -> None:
+            return None
+
+        async def integration_check(self, *args: object, **kwargs: object) -> bool:
+            return True
+
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    baseline = await _import_baseline(ctx)
+    proposal = Proposal(
+        ancestor=baseline.id,
+        description="a change",
+        kind="code-change",
+        payload={"root_cause": "none", "optimization_type": "edit_config", "task_ids": []},
+    )
+
+    builder = QuietCoder(workspace=tmp_path, evaluator=ctx.evaluation, dataset=ctx.datasets["train"])
+    candidate = await builder.build(ctx, proposal, generation=1)
+
+    assert described == [ctx.candidate_dir(candidate)]
