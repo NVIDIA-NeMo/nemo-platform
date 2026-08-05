@@ -1,6 +1,6 @@
 ---
 name: contributor-create-pr
-description: Create, publish, or advance a GitHub pull request for NVIDIA-NeMo/nemo-platform with repository-aware branch checks, targeted validation, DCO sign-off enforcement, trusted PR-template completion, conventional titles, safe pushes, draft or ready-for-review creation, CI and CodeRabbit follow-up, and merge-conflict handling. Use when the user asks to commit and push work, create or open a PR, submit changes for review, mark a draft ready, monitor a PR, address automated review or CI feedback, or update a conflicted PR in nemo-platform.
+description: Create, publish, or advance a GitHub pull request for NVIDIA-NeMo/nemo-platform with repository-aware branch checks, targeted validation, DCO sign-off enforcement, trusted PR-template completion and post-push description refresh, conventional titles, safe pushes, draft or ready-for-review creation, CI and CodeRabbit follow-up, and merge-conflict handling. Use when the user asks to commit and push work, create or open a PR, submit changes for review, mark a draft ready, monitor a PR, address automated review or CI feedback, or update a conflicted PR in nemo-platform.
 ---
 
 <!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
@@ -267,12 +267,16 @@ git show "$NMP_BASE_REF:$NMP_TEMPLATE_PATH" > "$NMP_PR_BODY"
 
 Preserve the template's section order, comments, and checkbox semantics. Complete every applicable section from `git diff "$NMP_BASE_REF...HEAD"`. Check only items backed by command, hook, or CI evidence. Use `Fixes #NNN` or `Closes #NNN` only for a real related issue. Do not add a PR-body sign-off unless the trusted template requests it; the commit-level DCO audit remains mandatory.
 
-## 8. Push safely
+## 8. Push safely and refresh an existing PR
 
 Immediately before pushing, rerun the DCO audit, confirm the branch and remote, and inspect the outgoing commits:
 
 ```bash
 NMP_BRANCH="$(git branch --show-current)"
+NMP_HEAD_SELECTOR="$NMP_BRANCH"
+if [ "$NMP_PUSH_REPO" != "$NMP_REPO" ]; then
+  NMP_HEAD_SELECTOR="$NMP_HEAD_OWNER:$NMP_BRANCH"
+fi
 git log --oneline "$NMP_BASE_REF..HEAD"
 git push --set-upstream "$NMP_PUSH_REMOTE" "HEAD:refs/heads/$NMP_BRANCH"
 ```
@@ -291,12 +295,27 @@ git push \
 
 Never bypass branch protection or required checks. Stop on any access error.
 
+After every successful push to a branch with an open PR, rebuild `NMP_PR_BODY` from the trusted template as in section 7 and update it from the current diff and validation results. Refresh the summary, change list, checklist evidence, limitations, and related issue; remove claims that are no longer true. Then update and verify the live description:
+
+```bash
+NMP_PR_NUMBER="$(
+  gh pr list --repo "$NMP_REPO" --head "$NMP_HEAD_SELECTOR" \
+    --state open --limit 1 --json number --jq '.[0].number // empty'
+)"
+if [ -n "$NMP_PR_NUMBER" ]; then
+  gh pr edit "$NMP_PR_NUMBER" --repo "$NMP_REPO" --body-file "$NMP_PR_BODY"
+  gh pr view "$NMP_PR_NUMBER" --repo "$NMP_REPO" --json url,headRefOid,body
+fi
+```
+
+Do not leave the PR body describing an older head after a review fix, conflict resolution, validation change, or scope change.
+
 ## 9. Create a draft or ready PR
 
 Check for an existing open PR first:
 
 ```bash
-gh pr list --repo "$NMP_REPO" --head "$NMP_HEAD_OWNER:$NMP_BRANCH" --state open --json number,title,url,isDraft
+gh pr list --repo "$NMP_REPO" --head "$NMP_HEAD_SELECTOR" --state open --json number,title,url,isDraft
 ```
 
 Rerun the DCO audit immediately before creation. Use explicit metadata; do not use `--fill` because it bypasses trusted-template completion.
@@ -306,7 +325,7 @@ Create a draft when work, validation, or a required decision remains:
 ```bash
 gh pr create --repo "$NMP_REPO" \
   --base "$NMP_BASE_BRANCH" \
-  --head "$NMP_HEAD_OWNER:$NMP_BRANCH" \
+  --head "$NMP_HEAD_SELECTOR" \
   --title "<validated title>" \
   --body-file "$NMP_PR_BODY" \
   --draft
