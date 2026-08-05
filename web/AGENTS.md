@@ -90,7 +90,7 @@ If a package defines these scripts, CI will pick them up automatically. No addit
 
 - Use named exports over default exports
 - Use absolute imports via tsconfig path mapping (never relative)
-- **Never hand-sort imports — run `eslint --fix` and leave the result alone.**
+- **Never hand-sort imports — run `pnpm lint:fix` from `web/` and leave the result alone.**
   `import/order` runs as an _error_ (`eslint.config.js`) with
   `groups: [['builtin', 'external'], 'internal', ['parent', 'sibling', 'index']]`
   and `alphabetize: { order: 'asc' }`. The `@nemo` / `@nvidia` / `@studio` aliases
