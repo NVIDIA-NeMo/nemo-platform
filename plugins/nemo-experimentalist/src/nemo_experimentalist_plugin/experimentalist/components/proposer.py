@@ -3,9 +3,9 @@ import logging
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, ClassVar, Literal, get_args
 
-from nemo_experimentalist_plugin.entities import Proposal
+from nemo_experimentalist_plugin.entities import Proposal, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
@@ -112,6 +112,7 @@ class Proposer(Agent, roles.Proposer):
     """Propose the next round's isolated optimization candidates."""
 
     name = "code-change"
+    produces: ClassVar[frozenset[str]] = frozenset({CODE_CHANGE})
 
     def __init__(
         self,
@@ -175,19 +176,18 @@ class Proposer(Agent, roles.Proposer):
         available_types = sorted(all_types - set(tried_types))
         proposal_survivors = evolution_tree.survivors(round_num)
 
-        agents_dir = self._workspace_path / "eval-and-optimize" / "agents"
         survivor_context: list[dict[str, Any]] = []
         for s in proposal_survivors:
-            arch_path = agents_dir / s.label / "architecture.md"
-            try:
-                arch_text = arch_path.read_text()
-            except OSError:
-                arch_text = f"(architecture.md missing for {s.label})"
+            # Through the artifact the record addresses, never `agents/<label>/`: the
+            # label is a display handle and nothing may derive storage from it.
+            arch_text = f"(architecture.md missing for {s.label})"
+            meta: dict[str, Any] = {}
             try:
                 candidate = self.workspace.get_metadata(s.label)
                 meta = candidate.slim().model_dump()
-            except Exception:  # noqa: BLE001
-                meta = {}
+                arch_text = (local_path_from_uri(candidate.artifact.uri) / "architecture.md").read_text()
+            except Exception:  # noqa: BLE001 - a survivor without a readable doc is still proposable
+                pass
             survivor_context.append(
                 {
                     "id": s.id,

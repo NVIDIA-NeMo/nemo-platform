@@ -9,10 +9,9 @@ directory. The strategy is scripted rather than the evolutionary loop, because t
 needs an LLM for every step — but it is scripted to make the same calls in the same order,
 so the host-side half of resume is exercised end to end.
 
-This file exists because the resume path was the one thing no test drove. A review found
-five defects on it, three of which are reproduced below: a fresh run silently minted over
-a populated candidate store, a run stranded in ``status="running"`` when finalizing threw,
-and a torn ``run.json``. Each test states the failure it pins.
+Three failures are reproduced below: a fresh run silently minted over a populated
+candidate store, a run stranded in ``status="running"`` when finalizing threw, and a torn
+``run.json``. Each test states the failure it pins.
 """
 
 import json

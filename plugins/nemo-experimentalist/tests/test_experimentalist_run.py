@@ -46,6 +46,7 @@ class BackendFactoryCall:
 class AgentFactoryCall:
     working_dir: Path
     config: EvolutionaryOptimizerConfig
+    models: object
 
 
 @dataclass
@@ -101,10 +102,14 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
         return backend
 
     def build_agent(
-        *, working_dir: Path, config: EvolutionaryOptimizerConfig, framework_skills_dirs: list[Path] | None
+        *,
+        working_dir: Path,
+        config: EvolutionaryOptimizerConfig,
+        framework_skills_dirs: list[Path] | None,
+        models: object,
     ) -> object:
         assert framework_skills_dirs is None
-        agent_calls.append(AgentFactoryCall(working_dir=working_dir, config=config))
+        agent_calls.append(AgentFactoryCall(working_dir=working_dir, config=config, models=models))
         return strategy
 
     monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", make_backend)
@@ -129,7 +134,7 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     assert summary == "optimization complete"
     assert paths.experiment.is_dir()
     assert backend_calls == [BackendFactoryCall(client=client, experiments_output=str(paths.experiment.resolve()))]
-    assert agent_calls == [AgentFactoryCall(working_dir=paths.experiment.resolve(), config=optimizer_config)]
+    assert [(c.working_dir, c.config) for c in agent_calls] == [(paths.experiment.resolve(), optimizer_config)]
     assert litellm_calls == [True]
     assert not client.closed
 
@@ -145,6 +150,9 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     assert call["train_dataset"] == train_dataset
     assert call["validation_dataset"] == validation_dataset
     assert call["agent_spec"] is None
+    # One tiers object for the run: the strategy must not resolve its own, or the
+    # ``deployment`` block in the run record describes models the strategy never used.
+    assert agent_calls[0].models is call["models"]
 
 
 @pytest.mark.asyncio

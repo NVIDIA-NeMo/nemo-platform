@@ -102,6 +102,7 @@ def load_plugins(*, force: bool = False) -> None:
     # Marked loaded only after a full pass. Setting it up front means that if
     # ``entry_points()`` itself raises, discovery is recorded as done and never retried —
     # every later resolution then fails for a component that is installed and fine.
+    _LOAD_FAILURES.clear()
     for entry_point in entry_points(group=ENTRY_POINT_GROUP):
         try:
             entry_point.load()

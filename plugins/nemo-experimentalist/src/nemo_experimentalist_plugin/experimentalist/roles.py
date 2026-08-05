@@ -13,6 +13,7 @@ that strategy is what calls it.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import ClassVar
 
 from nemo_experimentalist_plugin.entities import Candidate, Dataset, Proposal
@@ -66,8 +67,9 @@ class Proposer(Component):
 
     role: ClassVar[str] = "proposer"
 
-    #: Proposal kinds this Proposer emits. Every one must be covered by a configured
-    #: Builder, or the round would build nothing.
+    #: Proposal kinds this Proposer emits, checked against the Builder's ``accepts``
+    #: before the run starts. Empty means undeclared, and the pairing is only found out
+    #: per proposal, a round at a time.
     produces: ClassVar[frozenset[str]] = frozenset()
 
 
@@ -94,6 +96,11 @@ class TrajectoryScorer(Component):
     """
 
     role: ClassVar[str] = "trajectory-scorer"
+
+    #: Whether the strategy should build and maintain a goal tree for this scorer. The
+    #: built-in one ranks traces against goal-tree leaves; a scorer that models something
+    #: else leaves this False and the strategy skips two LLM passes per round for it.
+    needs_goal_tree: ClassVar[bool] = False
 
 
 class Selector(Component):
@@ -142,3 +149,12 @@ class Builder(Component):
                 a generation means and the Builder is what holds the commit.
         """
         raise NotImplementedError
+
+    async def describe(self, artifact: Path) -> None:
+        """Write whatever a later build of *artifact* will want to read back.
+
+        The Coder documents the architecture here, because the next build's proposal is
+        written against that document. A Builder with nothing to say does nothing, which
+        is why this is not abstract.
+        """
+        return None

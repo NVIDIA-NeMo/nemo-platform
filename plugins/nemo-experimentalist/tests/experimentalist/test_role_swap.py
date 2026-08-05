@@ -8,12 +8,12 @@ optimization paradigm — HPO next — needs no edit to the strategy or to any e
 component. If a role cannot be named in config and resolved, that claim is false, and
 this file says so rather than leaving it to be discovered when HPO is written.
 
-Each replacement below is deliberately a stub. What is under test is resolution: that
-the role exists, that config names it, and that the registry hands back the class the
-config asked for.
+Resolution alone is not the bar: a component that resolves and then fails on its
+constructor is not swappable, so construction through the context is asserted too.
 """
 
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
@@ -48,6 +48,15 @@ ROLES = {
     "root-cause-analyzer": "analyzer",
     "trajectory-scorer": "trajectory_scorer",
 }
+
+
+async def _no_results(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+    """Stand in for a per-round step that needs a model."""
+    return {}
+
+
+async def _no_proposals(*_args: Any, **_kwargs: Any) -> list[Proposal]:
+    return []
 
 
 @pytest.fixture
@@ -132,16 +141,19 @@ def test_every_role_can_be_swapped_for_one_this_repo_does_not_know(isolated_regi
         assert issubclass(resolved, Swapped), f"{role} resolved to {resolved.__name__}, not the configured one"
 
 
-def test_a_role_can_be_turned_off_by_naming_no_component() -> None:
-    """Turning a step off is the degenerate case of choosing a different implementation.
+def test_turning_off_the_analyzer_skips_the_work_that_feeds_it(isolated_registry: None) -> None:
+    """`analyzer: null` must skip the train evaluation, which is the expensive half.
 
-    Only the genuinely optional steps accept it: a run with no proposer or no builder
-    would have nothing to do.
+    Asserted against the loop rather than the config, because the config echoing back
+    what it was handed says nothing about whether the loop reads it.
     """
-    config = EvolutionaryOptimizerConfig(analyzer=None, terminator=None, trajectory_scorer=None)
+    import inspect
 
-    assert (config.analyzer, config.terminator, config.trajectory_scorer) == (None, None, None)
-    assert config.proposer and config.builder and config.selector and config.strategy
+    from nemo_experimentalist_plugin.experimentalist.strategies import evolutionary
+
+    source = inspect.getsource(evolutionary.EvolutionaryStrategy._run)
+
+    assert "if config.analyzer is None" in source, "the loop no longer branches on a missing analyzer"
 
 
 def test_resolution_constructs_with_what_the_caller_passes(isolated_registry: None) -> None:
@@ -190,31 +202,78 @@ def test_an_installed_out_of_tree_package_is_discovered() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_round_budget_bounds_the_loop_without_a_terminator() -> None:
-    """`max_rounds` must hold even when no terminator is selected.
-
-    A component's opinion must not be the only thing between a config and an unbounded
-    run, so the bound cannot live inside whichever terminator happens to be selected.
+async def test_an_out_of_tree_strategy_runs_and_produces_a_winner(tmp_path, isolated_registry: None) -> None:
+    """Discovery is half of it. This drives the installed package end to end — it imports
+    a baseline, builds through `ctx.component`, scores, and returns a winner — because
+    resolving without running is what let a Builder that raised on construction pass.
     """
-    import inspect
+    pytest.importorskip("acme_strategies", reason="out-of-tree example package is not installed")
+    from doubles import FakeBackend, make_context
 
-    from nemo_experimentalist_plugin.experimentalist.strategies import evolutionary
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
 
-    source = inspect.getsource(evolutionary.EvolutionaryStrategy._run)
+    class NoopBuilder(Builder):
+        name = "acme-noop-build"
+        accepts: ClassVar[frozenset[str]] = frozenset({"code-change"})
 
-    assert "while True" not in source, "the optimization loop must bound itself"
-    assert "while round_num < config.max_rounds" in source
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        async def build(self, ctx: Any, proposal: Proposal, *, generation: int = 0) -> Candidate:
+            fork = await ctx.fork(proposal)
+            return await ctx.commit_candidate(proposal=proposal, artifact=fork.workdir, generation=generation)
+
+    config = EvolutionaryOptimizerConfig(max_rounds=1, max_candidates=1, builder="acme-noop-build")
+    strategy = resolve("strategy", "random-search")(config=config)
+
+    winner = await strategy.run(ctx)
+
+    assert winner is not None
+    assert len(await ctx.candidates()) == 2, "a baseline and one variant"
 
 
 @pytest.mark.asyncio
-async def test_a_swapped_component_can_actually_be_built_and_called(tmp_path, isolated_registry: None) -> None:
-    """Resolution is not the bar; construction and use are.
+async def test_the_round_budget_bounds_the_loop_without_a_terminator(tmp_path, isolated_registry: None) -> None:
+    """`max_rounds` must hold even when no terminator is selected.
 
-    Every default resolved by name and then failed on its constructor, because
-    `ctx.component` did not supply the run-scoped arguments a component cannot know for
-    itself. The earlier version of this file asserted `resolve(...) is not None` and
-    passed throughout — which is how two half-connected seams reached a review.
+    A component's opinion must not be the only thing between a config and an unbounded
+    run, so the loop is driven here with `terminator: null` and every per-round step
+    stubbed: it has to stop on the budget alone, and the count has to be exact.
     """
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
+
+    config = EvolutionaryOptimizerConfig(max_rounds=3, terminator=None, analyzer=None, trajectory_scorer=None)
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    rounds = 0
+
+    async def one_round(*_args: Any, **kwargs: Any) -> list[Proposal]:
+        nonlocal rounds
+        rounds += 1
+        if rounds > config.max_rounds:  # the bound is broken; stop rather than spin
+            raise AssertionError(f"loop ran round {rounds} with max_rounds={config.max_rounds}")
+        return []
+
+    async def baseline(*, ctx: Any, config: Any) -> None:
+        proposal = Proposal(ancestor=None, description="baseline", kind="import", payload={})
+        await ctx.component("builder", "import").build(ctx, proposal, generation=0)
+
+    loop._ensure_baseline = baseline
+    loop._propose_improvements = one_round
+    loop._evaluate_validation_candidates = _no_results
+    loop._record_baseline_validation = _no_results
+    loop._analyze_round = _no_results
+    loop._generate_initial_goal_tree = _no_results
+
+    await loop._run(ctx)
+
+    assert rounds == config.max_rounds
+
+
+@pytest.mark.asyncio
+async def test_every_default_constructs_through_the_context(tmp_path, isolated_registry: None) -> None:
+    """Resolution is not the bar; construction is."""
     from doubles import FakeBackend, make_context
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
@@ -225,6 +284,50 @@ async def test_a_swapped_component_can_actually_be_built_and_called(tmp_path, is
         name = getattr(EvolutionaryOptimizerConfig(), key)
         built = ctx.component(role, name)
         assert built is not None, f"{role}={name!r} resolved but could not be constructed"
+
+
+def test_the_context_supplies_every_run_scoped_argument(tmp_path, isolated_registry: None) -> None:
+    """A component cannot know these for itself, so the context is the only thing that
+    can supply them — and a default that quietly falls back hides their absence."""
+    from doubles import FakeBackend, make_context
+
+    seen: dict[str, Any] = {}
+
+    class Greedy(Builder):
+        name = "acme-greedy"
+
+        def __init__(self, workspace, working_dir, models, evaluator, dataset, **kwargs: Any) -> None:
+            seen.update(
+                workspace=workspace, working_dir=working_dir, models=models, evaluator=evaluator, dataset=dataset
+            )
+
+        async def build(self, ctx: Any, proposal: Proposal, *, generation: int) -> Candidate:
+            raise NotImplementedError
+
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+
+    ctx.component("builder", "acme-greedy")
+
+    assert seen == {
+        "workspace": ctx.root,
+        "working_dir": ctx.root,
+        "models": ctx.models,
+        "evaluator": ctx.evaluation,
+        "dataset": ctx.datasets["validation"],
+    }
+
+
+def test_the_built_in_coder_gets_what_it_needs_to_verify_a_build(tmp_path, isolated_registry: None) -> None:
+    """The out-of-tree example builds through `ctx.component`, and a Coder without an
+    evaluator or a dataset raises on its first build rather than at construction."""
+    from doubles import FakeBackend, make_context
+
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+
+    coder = ctx.component("builder", "coder")
+
+    assert coder._evaluator is ctx.evaluation
+    assert coder._dataset is ctx.datasets["validation"]
 
 
 @pytest.mark.asyncio
@@ -258,14 +361,8 @@ async def test_a_swapped_builder_runs_through_the_context(tmp_path, isolated_reg
 
 
 def test_registering_a_component_in_a_test_does_not_leak(isolated_registry: None) -> None:
-    """Four separate bugs have come from the registry being global mutable state.
-
-    A poisoned discovery flag; a fixture swapping the mapping instead of restoring its
-    contents; a fixture snapshotting before discovery ran; and a `monkeypatch.setattr`
-    given the object it was already holding, which restores it unchanged and leaves the
-    entry behind. Each was invisible to the full suite and showed up only in isolation or
-    reverse order, so the invariant is asserted here rather than assumed.
-    """
+    """The registry is global mutable state, and every leak from it has been invisible to
+    the full suite — visible only in isolation or in reverse order."""
     before = set(Component._registry)
 
     class Ephemeral(Terminator):
@@ -274,3 +371,136 @@ def test_registering_a_component_in_a_test_does_not_leak(isolated_registry: None
     assert ("terminator", "acme-ephemeral") in Component._registry
     # The fixture's teardown is what must remove it; this records the contract.
     assert set(Component._registry) - before == {("terminator", "acme-ephemeral")}
+
+
+@pytest.mark.asyncio
+async def test_a_proposer_and_builder_that_cannot_work_together_fail_before_the_run(
+    tmp_path, isolated_registry: None
+) -> None:
+    """A Proposer emitting only kinds the Builder rejects produces empty rounds that look
+    like a run doing work. Hours later it finishes with the baseline as winner."""
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
+
+    class ParameterProposer(Proposer):
+        name = "acme-hpo-only"
+        produces: ClassVar[frozenset[str]] = frozenset({"parameters"})
+
+    config = EvolutionaryOptimizerConfig(proposer="acme-hpo-only", builder="coder")
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+
+    with pytest.raises(ValueError, match="no proposal could be built"):
+        await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
+
+
+@pytest.mark.asyncio
+async def test_a_proposal_no_builder_accepts_is_dropped_not_raised(tmp_path, isolated_registry: None) -> None:
+    """One unbuildable proposal must not end a run that has already spent hours."""
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
+
+    config = EvolutionaryOptimizerConfig(builder="coder")
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    unbuildable = Proposal(ancestor=None, description="tune a knob", kind="parameters", payload={})
+
+    built = await loop._build_candidates(
+        ctx=ctx, dataset=ctx.datasets["train"], proposals=[unbuildable], generation=1, config=config
+    )
+
+    assert built == []
+
+
+def test_a_scorer_that_does_not_read_a_goal_tree_is_not_charged_for_one(isolated_registry: None) -> None:
+    """Building and updating a goal tree costs two LLM passes per round."""
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
+
+    class StepCountScorer(TrajectoryScorer):
+        name = "acme-steps-only"
+
+    loop = EvolutionaryStrategy(working_dir=Path("/tmp"), config=EvolutionaryOptimizerConfig())
+
+    assert loop._goal_tree_wanted(EvolutionaryOptimizerConfig()) is True
+    assert loop._goal_tree_wanted(EvolutionaryOptimizerConfig(trajectory_scorer="acme-steps-only")) is False
+    assert loop._goal_tree_wanted(EvolutionaryOptimizerConfig(trajectory_scorer=None)) is False
+
+
+@pytest.mark.asyncio
+async def test_the_architecture_doc_comes_from_the_configured_builder(tmp_path, isolated_registry: None) -> None:
+    """Not from the Coder: a builder that writes no architecture doc must not have one
+    written for it by a component the config never named."""
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
+
+    described: list[Path] = []
+
+    class DescribingBuilder(Builder):
+        name = "acme-describes"
+        accepts: ClassVar[frozenset[str]] = frozenset({"code-change"})
+
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        async def build(self, ctx: Any, proposal: Proposal, *, generation: int) -> Candidate:
+            raise NotImplementedError
+
+        async def describe(self, artifact: Path) -> None:
+            described.append(artifact)
+
+    config = EvolutionaryOptimizerConfig(builder="acme-describes")
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+
+    await loop._generate_architecture_doc(ctx=ctx, agent_dir=tmp_path / "candidate", config=config)
+
+    assert described == [tmp_path / "candidate"]
+
+
+@pytest.mark.asyncio
+async def test_the_loop_carries_full_candidates_forward_not_the_selectors_slim_copies(
+    tmp_path, isolated_registry: None
+) -> None:
+    """The selector is handed `slim()` copies so trials never reach a prompt. What it
+    returns are those same copies, and persisting one empties every channel's trials.
+    """
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
+
+    class KeepEverything(Selector):
+        name = "acme-keep-all"
+
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        async def survivors(self, candidates: list[Candidate], *, k: int) -> list[Candidate]:
+            return list(candidates)
+
+        def winner(self, candidates: list[Candidate]) -> Candidate | None:
+            return candidates[0] if candidates else None
+
+    config = EvolutionaryOptimizerConfig(
+        max_rounds=1, selector="acme-keep-all", terminator=None, analyzer=None, trajectory_scorer=None
+    )
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+
+    async def two_candidates(*, ctx: Any, config: Any) -> None:
+        for description in ("baseline", "a sibling"):
+            proposal = Proposal(ancestor=None, description=description, kind="import", payload={})
+            await ctx.component("builder", "import").build(ctx, proposal, generation=0)
+
+    async def scored(*, ctx: Any, candidates: list[Candidate]) -> dict[str, Any]:
+        from nemo_experimentalist_plugin.entities import RewardRecord
+
+        return {c.label: RewardRecord(metrics={"reward": 0.5}) for c in candidates}
+
+    loop._ensure_baseline = two_candidates
+    loop._evaluate_validation_candidates = scored
+    loop._record_baseline_validation = _no_results
+    loop._analyze_round = _no_results
+    loop._generate_initial_goal_tree = _no_results
+    loop._propose_improvements = _no_proposals
+
+    await loop._run(ctx)
+
+    assert all(c.rewards["validation"].metrics for c in await ctx.candidates())

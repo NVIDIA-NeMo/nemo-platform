@@ -10,13 +10,12 @@ record → validation-eval] across rounds, delegating every step to a resolved c
 from __future__ import annotations
 
 import asyncio
-import fnmatch
 import logging
 import random
 import shutil
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, ClassVar, Literal, cast, get_args
+from typing import Any, ClassVar, Literal, cast
 
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import (
@@ -27,7 +26,7 @@ from nemo_experimentalist_plugin.entities import (
     RewardRecord,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
+from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import (
     GoalTree,
     GoalTreeConfig,
@@ -50,7 +49,6 @@ from nemo_experimentalist_plugin.experimentalist.components.insight_promotion im
 from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
-    OptimizationType,
 )
 from nemo_experimentalist_plugin.experimentalist.components.tools import (
     GuardedShellTools,
@@ -58,7 +56,7 @@ from nemo_experimentalist_plugin.experimentalist.components.tools import (
 )
 from nemo_experimentalist_plugin.experimentalist.components.util import load_framework_skills
 from nemo_experimentalist_plugin.experimentalist.registry import get_component, resolve
-from nemo_experimentalist_plugin.experimentalist.roles import Builder, Selector, Strategy
+from nemo_experimentalist_plugin.experimentalist.roles import Builder, Proposer, Selector, Strategy, TrajectoryScorer
 from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
@@ -71,38 +69,6 @@ from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match
 
 logger = logging.getLogger(__name__)
-
-_BASELINE_AGENT_LABEL = "agent-0"
-
-_EXCLUDE_DIRS = {
-    "eval-and-optimize",
-    "__pycache__",
-    ".git",
-    ".runtime-cache",
-    ".claude",
-    ".uv",
-    ".venv",
-    "artifacts",
-    "dataset",
-    "scratch",
-}
-_EXCLUDE_GLOBS = {"*traces*", "*eval-and-optimize_*"}
-
-
-def _ignore_patterns(directory: str, contents: list[str]) -> set[str]:
-    ignored = set()
-    for name in contents:
-        if name in _EXCLUDE_DIRS:
-            ignored.add(name)
-        elif any(fnmatch.fnmatch(name, pattern) for pattern in _EXCLUDE_GLOBS):
-            ignored.add(name)
-    return ignored
-
-
-def _coerce_optimization_type(optimization_type: str | None) -> OptimizationType | None:
-    if optimization_type in get_args(OptimizationType):
-        return cast(OptimizationType, optimization_type)
-    return None
 
 
 def _trajectory_detail_from_reward(value: Any) -> dict[str, Any]:
@@ -362,6 +328,7 @@ class EvolutionaryStrategy(Agent, Strategy):
             runner turns that into the run's terminal result.
         """
         config = self.config
+        self._check_proposer_builder_pairing(config)
         agents_dir, analysis_dir, _ = self._init_structure()
         # train and validation are guaranteed by the runner; insight exists only when the
         # run was given an Insight, which is why it alone is optional.
@@ -406,9 +373,10 @@ class EvolutionaryStrategy(Agent, Strategy):
             )
 
         # ---- Initial goal tree (idempotent) ------------------------------
+        goal_tree_wanted = self._goal_tree_wanted(config)
         await self._generate_initial_goal_tree(
             dataset=train_eval_dataset,
-            disable_trajectory_scoring=config.trajectory_scorer is None,
+            wanted=goal_tree_wanted,
             config=config,
             agent_spec_path=agent_spec_path,
         )
@@ -438,11 +406,17 @@ class EvolutionaryStrategy(Agent, Strategy):
                     logger.info(f"phase=terminate reason={decision.reason}")
                     break
 
-            survivors = (
+            # The selector sees slim copies so per-trial detail never reaches an LLM
+            # prompt, but the population must keep the full records: a later
+            # record_reward persists the whole candidate, so carrying a slim copy
+            # forward would erase every other channel's trials in the store.
+            by_id = {c.id: c for c in candidates}
+            chosen = (
                 await self._selector(config).survivors([c.slim() for c in candidates], k=config.max_survivors)
                 if len(candidates) > 1
                 else list(candidates)
             )
+            survivors = [by_id[s.id] for s in chosen if s.id in by_id]
             survived = {s.id for s in survivors}
             for candidate in [c for c in candidates if c.id not in survived]:
                 await ctx.update_candidate(candidate, killed_generation=round_num)
@@ -478,14 +452,15 @@ class EvolutionaryStrategy(Agent, Strategy):
                 nmp_workspace=ctx.workspace,
                 agent_spec_path=agent_spec_path,
             )
-            await self._update_goal_tree(
-                analysis_dir=analysis_dir,
-                round_num=round_num,
-                analysis=analysis,
-                dataset=train_eval_dataset,
-                config=config,
-                agent_spec_path=agent_spec_path,
-            )
+            if goal_tree_wanted:
+                await self._update_goal_tree(
+                    analysis_dir=analysis_dir,
+                    round_num=round_num,
+                    analysis=analysis,
+                    dataset=train_eval_dataset,
+                    config=config,
+                    agent_spec_path=agent_spec_path,
+                )
 
             proposals = await self._propose_improvements(
                 analysis=analysis,
@@ -538,7 +513,7 @@ class EvolutionaryStrategy(Agent, Strategy):
                         channel="validation",
                         result=validation_candidate_results[candidate.label],
                     )
-            if config.trajectory_scorer is not None:
+            if goal_tree_wanted:
                 trajectory_results = await self._reward_trajectories(
                     ctx=ctx,
                     dataset=validation_eval_dataset,
@@ -764,7 +739,7 @@ class EvolutionaryStrategy(Agent, Strategy):
         proposal = import_proposal("baseline: the agent under test, unchanged")
         builder = cast("type[Builder]", resolve("builder", IMPORT))()
         baseline = await builder.build(ctx, proposal, generation=0)
-        await self._generate_architecture_doc(agent_dir=ctx.candidate_dir(baseline), config=config)
+        await self._generate_architecture_doc(ctx=ctx, agent_dir=ctx.candidate_dir(baseline), config=config)
         return baseline
 
     async def _load_round_analysis(
@@ -791,9 +766,6 @@ class EvolutionaryStrategy(Agent, Strategy):
             if best is None or n > best[0]:
                 best = (n, p)
         return best[1] if best else None
-
-    def _results_dir(self, result_id: str) -> Path:
-        return self.working_dir / "eval-and-optimize" / "results" / result_id
 
     def _load_goal_tree(
         self,
@@ -836,22 +808,18 @@ class EvolutionaryStrategy(Agent, Strategy):
     async def _generate_architecture_doc(
         self,
         *,
+        ctx: StrategyContext,
         agent_dir: Path,
         config: EvolutionaryOptimizerConfig,
     ) -> None:
-        """Generate ``architecture.md`` for *agent_dir* via Coder."""
+        """Ask the run's Builder to document *agent_dir*, unless it already is.
+
+        The configured Builder, not the Coder: a Builder that writes no architecture doc
+        must not have one written for it by a component the config did not name.
+        """
         if (agent_dir / "architecture.md").exists():
             return
-        await Coder(
-            workspace=self.working_dir,
-            config=self._coder_config(config),
-            framework_skills_dirs=self._framework_skills_dirs,
-            models=self._models,
-        ).create_architecture_doc(
-            agent_dir,
-            source_path=config.source.source_path,
-            entrypoint=config.source.entrypoint,
-        )
+        await self._new_builder(ctx=ctx, dataset=ctx.datasets["train"], config=config).describe(agent_dir)
 
     async def _evaluate_validation_candidates(
         self,
@@ -947,16 +915,41 @@ class EvolutionaryStrategy(Agent, Strategy):
         if expected_metric_keys is not None:
             dataset.metadata["insight_metric_keys"] = list(expected_metric_keys)
 
+    def _check_proposer_builder_pairing(self, config: EvolutionaryOptimizerConfig) -> None:
+        """Fail before the run spends anything if no proposal could ever be built.
+
+        A Proposer emitting only kinds the Builder rejects produces empty rounds that
+        look like a run doing work. Only checked when the Proposer declares what it
+        emits; an undeclared one is still caught per proposal, a round at a time.
+        """
+        produces = cast("type[Proposer]", resolve("proposer", config.proposer)).produces
+        accepts = cast("type[Builder]", resolve("builder", config.builder)).accepts
+        if produces and not produces & accepts:
+            raise ValueError(
+                f"proposer {config.proposer!r} emits {sorted(produces)} but builder "
+                f"{config.builder!r} accepts {sorted(accepts) or 'nothing'}; no proposal could be built"
+            )
+
+    def _goal_tree_wanted(self, config: EvolutionaryOptimizerConfig) -> bool:
+        """Whether the configured trajectory scorer ranks against a goal tree.
+
+        Building and updating one costs two LLM passes per round, so a scorer that reads
+        something else must not be charged for it.
+        """
+        if config.trajectory_scorer is None:
+            return False
+        return cast("type[TrajectoryScorer]", resolve("trajectory-scorer", config.trajectory_scorer)).needs_goal_tree
+
     async def _generate_initial_goal_tree(
         self,
         *,
         dataset: Dataset,
-        disable_trajectory_scoring: bool,
+        wanted: bool,
         config: EvolutionaryOptimizerConfig,
         agent_spec_path: Path | None = None,
     ) -> None:
         """Generate and persist the round-0 goal tree if it does not already exist."""
-        if disable_trajectory_scoring:
+        if not wanted:
             return
         tree_path = self._goal_tree_path(0)
         if tree_path.exists():

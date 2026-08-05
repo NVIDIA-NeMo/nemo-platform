@@ -103,6 +103,7 @@ class ExperimentRunner:
         validation_dataset: DatasetRef,
         task_template: DatasetRef | None = None,
         reporter: RunReporter | None = None,
+        models: ModelTiers | None = None,
     ) -> None:
         if agent is None and insight is None:
             raise ValueError("One of 'insight' or 'agent' must be set.")
@@ -120,6 +121,9 @@ class ExperimentRunner:
         self._validation_dataset = validation_dataset
         self._task_template = task_template
         self._reporter = reporter
+        # One object for the whole run, so every component runs on the tiers the run
+        # record reports and not on whatever the environment says at each construction.
+        self._models = models or ModelTiers()
         self._eo = self._root / "eval-and-optimize"
 
     async def run(self) -> ExperimentalistResult:
@@ -128,9 +132,7 @@ class ExperimentRunner:
         for subdir in ("agents", "analysis", "results"):
             (self._eo / subdir).mkdir(parents=True, exist_ok=True)
 
-        # Resolved once here so every component runs on the same tiers, and so the run
-        # record can say what they were rather than what was declared.
-        models = ModelTiers()
+        models = self._models
         evaluator = EvaluatorFactory().build_evaluator(
             self._config.evaluation, self._config.evaluator, experiment_dir=self._root
         )

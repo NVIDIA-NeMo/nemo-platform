@@ -58,6 +58,10 @@ class EvolutionaryOptimizerConfig(BaseModel):
     account of what ran. Letting an ambient environment variable override them would make
     that account wrong. Endpoint and model settings live in
     :class:`~nemo_experimentalist_plugin.settings.ExperimentalistConfig`.
+
+    Unknown keys are tolerated (``test_config_unknown_typed_nested_key_is_tolerated``), so a
+    key that was *removed* has to be rejected explicitly below — silently ignoring it would
+    change what the run does.
     """
 
     @model_validator(mode="before")

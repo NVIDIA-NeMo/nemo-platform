@@ -97,9 +97,8 @@ class Terminator(Agent, roles.Terminator):
     ) -> TerminationDecision:
         """Decide whether to early-stop before running another round.
 
-        Mirrors the original top-of-loop gating: returns ``stop=False`` immediately
-        when there is no prior analysis to reason about or when the convergence
-        there is no prior round to compare against. Otherwise consults :meth:`_has_converged`.
+        Returns ``stop=False`` without consulting a model when there is no prior round
+        to compare against. Otherwise consults :meth:`_has_converged`.
 
         Args:
             evolution_tree: Live tree of scored candidates across rounds.

@@ -651,6 +651,10 @@ class Coder(Agent, Builder):
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
+    async def describe(self, artifact: Path) -> None:
+        """Document the artifact's architecture, for the next round's proposal to read."""
+        await self.create_architecture_doc(artifact, source_path=self._source_path, entrypoint=self._entrypoint)
+
     async def list_available_models(self) -> list[str]:
         """Fetch available LLM model IDs from the configured inference API.
 

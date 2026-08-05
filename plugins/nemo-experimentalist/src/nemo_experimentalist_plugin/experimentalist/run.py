@@ -10,6 +10,7 @@ from typing import Protocol, TextIO, cast
 
 from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.agent import build_experimentalist_agent
+from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     make_experimentalist_backend,
 )
@@ -101,12 +102,15 @@ async def run_experimentalist(
         experiments_output=str(experiment_dir),
         storage=config.storage,
     )
+    models = ModelTiers()
     result = await ExperimentRunner(
         backend=backend,
+        models=models,
         strategy=build_experimentalist_agent(
             working_dir=experiment_dir,
             config=config,
             framework_skills_dirs=framework_skills_dirs,
+            models=models,
         ),
         config=config,
         workspace=workspace,

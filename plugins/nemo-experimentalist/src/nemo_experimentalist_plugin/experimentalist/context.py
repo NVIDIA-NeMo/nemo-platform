@@ -182,11 +182,9 @@ class ExperimentContext:
     def platform_client(self) -> AsyncNeMoPlatform | None:
         """Platform client, for reading ``intake://`` traces. Transitional.
 
-        This is the last piece of backend that still reaches a component: the trace
-        readers resolve ``intake://`` trial traces themselves, so they need a client.
-        A ``ctx`` verb that loads a trace by reference would close it; until that
-        exists, a strategy whose components read traces needs this, and a strategy
-        that does not should ignore it.
+        The last piece of backend still reaching a component: trace readers resolve
+        ``intake://`` refs themselves, so they need a client. A ``ctx`` verb that loads a
+        trace by reference would close it.
         """
         return self._backend.client
 
@@ -195,8 +193,8 @@ class ExperimentContext:
     async def candidates(self, *, include_discarded: bool = False) -> list[Candidate]:
         """The Candidates committed to this run, in store order.
 
-        This is what makes resume possible for a strategy the host did not write: the
-        population is persisted, so a strategy rebuilds it rather than checkpointing it.
+        Persisted rather than checkpointed, which is what lets a strategy the host did
+        not write rebuild its population on resume.
         """
         return await self._backend.list_candidates(
             workspace=self.workspace, run_id=self.run_id, include_discarded=include_discarded
@@ -327,11 +325,20 @@ class ExperimentContext:
 
         Update-only: the create path is private, so nothing can persist a Candidate that
         never went through :meth:`commit_candidate`.
+
+        Raises:
+            ValueError: if *candidate* was never committed, or is a lossy :meth:`~.slim`
+                copy whose emptied trials would be written back over the real ones.
         """
         if not candidate.id:
             raise ValueError(
                 f"Candidate {candidate.label!r} has no store id; a Candidate is created by "
                 "commit_candidate, never by updating one into existence"
+            )
+        if candidate._slim:
+            raise ValueError(
+                f"Candidate {candidate.label!r} is a slim() copy; persisting one empties every "
+                "channel's trials in the store. Look the real candidate up by id first."
             )
         for key, value in fields.items():
             setattr(candidate, key, value)
@@ -340,14 +347,9 @@ class ExperimentContext:
     async def discard_candidate(self, candidate: Candidate) -> None:
         """Mark *candidate* as rolled back, keeping both its record and its artifact.
 
-        The only thing that discards a candidate is rolling back a round that never
-        finished, and that work is about to be redone — so nothing here is lost history
-        worth destroying, and a rollback that turns out to be wrong stays recoverable.
-
-        Both halves survive together on purpose. Deleting the directory while keeping the
-        record would let :meth:`_reserve` hand out a label a discarded record still
-        claims, giving one run two candidates with the same handle. :meth:`candidates`
-        excludes discarded candidates, so nothing evaluates, ranks or publishes them.
+        Both halves survive together: deleting the directory while keeping the record
+        would let :meth:`_reserve` hand out a label the record still claims, giving one
+        run two candidates with the same handle. :meth:`candidates` excludes them.
         """
         await self.update_candidate(candidate, discarded=True)
 
@@ -478,14 +480,9 @@ class ExperimentContext:
     def component(self, role: str, name: str, **kwargs: Any) -> Any:
         """Resolve a component by name and build it against this run.
 
-        Supplies the run-scoped arguments a component cannot know for itself — the
-        resolved model tiers and the run's working directory — to whichever of them the
-        constructor actually accepts, and passes *kwargs* through untouched. Without
-        that, resolving a component by name still fails on its constructor, and
-        "swappable from config" is only true of the lookup.
-
-        Explicit *kwargs* win, so a strategy that means something else by ``workspace``
-        keeps saying so.
+        Supplies the run-scoped arguments a component cannot know for itself — the model
+        tiers, the run root, the evaluator, the primary dataset — to whichever of them the
+        constructor names, and passes *kwargs* through untouched. Explicit *kwargs* win.
 
         Raises:
             LookupError: if nothing is registered under that name.
@@ -497,6 +494,8 @@ class ExperimentContext:
             "models": self.models,
             "workspace": self.root,
             "working_dir": self.root,
+            "evaluator": self._evaluator,
+            "dataset": self.datasets[PRIMARY_SPLIT],
             **kwargs,
         }
         return component(**_accepted(component.__init__, supplied))

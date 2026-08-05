@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 from doubles import FakeBackend, make_candidate, make_context
-from nemo_experimentalist_plugin.entities import Candidate, Proposal, ResourceRef
+from nemo_experimentalist_plugin.entities import Candidate, Proposal, ResourceRef, RewardRecord, TrialResult
 
 
 def _proposal(ancestor: str | None = "agent-0") -> Proposal:
@@ -399,3 +399,22 @@ def test_a_candidate_keeps_its_identity_through_serialization() -> None:
     assert Candidate.model_validate(candidate.model_dump()).id == "a-real-uuid"
     assert Candidate.model_validate_json(candidate.model_dump_json()).id == "a-real-uuid"
     assert candidate.slim().id == "a-real-uuid"
+
+
+@pytest.mark.asyncio
+async def test_a_slim_copy_cannot_be_persisted(tmp_path: Path) -> None:
+    """`slim()` empties trials so a candidate can go into an LLM prompt. Persisting one
+    writes that loss back for every channel at once, and trajectory scoring — which reads
+    validation traces — then reports 0.0 for a candidate that has them. Refused instead.
+    """
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    candidate = await _import_baseline(ctx)
+    measured = RewardRecord(
+        metrics={"reward": 0.5}, trials=[TrialResult(id="t1", task_id="task-a", status="completed")]
+    )
+    await ctx.record_reward(candidate, channel="validation", result=measured)
+
+    with pytest.raises(ValueError, match="slim"):
+        await ctx.record_reward(candidate.slim(), channel="train", result=RewardRecord(metrics={"reward": 1.0}))
+
+    assert (await ctx.candidates())[0].rewards["validation"].trials

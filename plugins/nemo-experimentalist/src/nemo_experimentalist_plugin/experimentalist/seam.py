@@ -29,19 +29,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class Fork(BaseModel):
-    """A working copy, and the thing it was forked from.
-
-    Returned as one value because a fork inherently knows its upstream. Asking the
-    context separately for "the ancestor directory of a proposal" is a confused question:
-    the proposal describes a change, and only the fork knows where that change is being
-    made and what it is being made against.
-    """
+    """A working copy, and the thing it was forked from, as one value."""
 
     model_config = ConfigDict(frozen=True)
 
     workdir: Path = Field(description="Write here. Seeded from upstream, and this becomes the candidate's artifact.")
-    # Needed even though workdir is seeded from it: once the Builder edits, the parent is
-    # gone from its view, and architecture.md is excluded from the seeding by design.
+    # Still needed after seeding: once the Builder edits, the parent is gone from its
+    # view, and architecture.md is excluded from the seeding by design.
     upstream: Path | None = Field(
         default=None, description="The pristine parent, read-only; None when forked from the agent under test."
     )
@@ -53,16 +47,9 @@ class BuilderContext(Protocol):
     the finished thing.
 
     Both take the ``Proposal`` and return a ``Fork`` or a ``Candidate``. A Builder never
-    handles an id and never receives a path from outside — an id is the store's internal
-    currency, and a component that is handed one can only give it back. Resolving a
-    proposal's ancestor to a location is the context's job because the context is what
-    knows where candidates live, and that is exactly what lets candidate storage move
-    without changing a single Builder signature.
-
-    This is a Protocol, so it documents and type-checks rather than enforces; a component
-    handed the real context can still call anything on it. That is deliberate — plugin
-    authors are collaborators, not adversaries, and the context's job is to make the
-    supported surface obvious, not to sandbox hostile code.
+    handles an id and never receives a path from outside. Resolving a proposal's ancestor
+    to a location is the context's job, which is what lets candidate storage move without
+    changing a single Builder signature.
     """
 
     async def fork(self, proposal: Proposal) -> Fork:
@@ -92,7 +79,7 @@ class StrategyContext(BuilderContext, Protocol):
 
     @property
     def run_id(self) -> str:
-        """Durable id of this run, and the key every Candidate is grouped under."""
+        """Durable id of this run."""
         ...
 
     #: Evaluator-domain datasets keyed by split. ``validation`` is always present.
@@ -103,19 +90,13 @@ class StrategyContext(BuilderContext, Protocol):
 
     @property
     def evaluation(self) -> Evaluator:
-        """The run's configured evaluation component, for a strategy to hand to a
-        component it owns."""
+        """The run's configured evaluation component."""
         ...
 
     @property
     def platform_client(self) -> AsyncNeMoPlatform | None:
-        """Platform client, for reading ``intake://`` traces. **Transitional.**
-
-        The last piece of backend still reaching a component: trace readers resolve
-        ``intake://`` trial traces themselves. A context verb that loads a trace by
-        reference would close it, and M2's evaluator extraction is where that lands. A
-        strategy that does not read traces should ignore this.
-        """
+        """Platform client, for reading ``intake://`` traces. Transitional; see the
+        implementation."""
         ...
 
     async def candidates(self) -> list[Candidate]:

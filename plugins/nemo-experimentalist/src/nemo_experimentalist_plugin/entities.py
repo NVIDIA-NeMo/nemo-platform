@@ -23,7 +23,7 @@ from typing import Any, Literal, TypeAlias
 from urllib.parse import unquote, urlparse
 
 from nemo_platform_plugin.entity import NemoEntity
-from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SerializeAsAny, model_validator
 
 DataValue: TypeAlias = str | int | float | bool | dict[str, Any] | list[Any] | None
 MetricValue: TypeAlias = float | int
@@ -522,6 +522,10 @@ class Candidate(NemoEntity, entity_type="candidate"):
     and nothing may derive storage or lineage from it.
     """
 
+    #: Set by :meth:`slim`. A slim copy has had its trials emptied for prompting, so
+    #: persisting one would write that loss back; ``update_candidate`` refuses it.
+    _slim: bool = PrivateAttr(default=False)
+
     workspace: str = Field(
         default="default",
         description="NeMo Platform workspace this candidate belongs to.",
@@ -651,10 +655,16 @@ class Candidate(NemoEntity, entity_type="candidate"):
         return "".join(parts)
 
     def slim(self) -> "Candidate":
-        """Return a copy without per-trial detail (safe to pass to LLM methods)."""
-        return self.model_copy(
+        """Return a read-only copy without per-trial detail, for passing to LLM methods.
+
+        Read-only because it is lossy: persisting one writes the emptied trials back over
+        the real ones, for every channel at once. ``update_candidate`` refuses it.
+        """
+        copy = self.model_copy(
             update={
                 "rewards": RewardMap((c, r.model_copy(update={"trials": []})) for c, r in self.rewards.items()),
                 "trajectory_detail": None,
             }
         )
+        copy._slim = True
+        return copy

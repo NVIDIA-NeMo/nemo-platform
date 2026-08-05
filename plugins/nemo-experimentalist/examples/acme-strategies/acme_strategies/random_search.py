@@ -48,6 +48,7 @@ class RandomSearch(Strategy):
         """Accept the arguments the runner constructs a strategy with, and ignore the rest."""
         self._rounds = getattr(config, "max_rounds", 3)
         self._per_round = getattr(config, "max_candidates", 1)
+        self._builder = getattr(config, "builder", "coder")
 
     async def run(self, ctx: StrategyContext) -> Candidate | None:
         """Import the agent, then build and score random variants of it."""
@@ -65,7 +66,7 @@ class RandomSearch(Strategy):
                     kind=CODE_CHANGE,
                     payload={"root_cause": "chosen at random", "optimization_type": "add_method", "task_ids": []},
                 )
-                builder = ctx.component("builder", "coder")
+                builder = ctx.component("builder", self._builder)
                 candidate = await builder.build(ctx, proposal, generation=generation)
                 result = await ctx.evaluate(candidate)
                 await ctx.record_reward(candidate, channel="validation", result=result)

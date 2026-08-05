@@ -470,8 +470,7 @@ async def test_the_run_record_says_which_models_it_actually_used(monkeypatch, tm
     """`config_snapshot` is the only durable record of how a run was configured.
 
     Model tiers are deployment settings, so they are not in the run config at all — dump
-    it alone and the record cannot answer "which models did this run use". It has been
-    unable to since the plugin landed.
+    it alone and the record cannot answer "which models did this run use".
     """
     monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://example.test/v1")
     monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "secret-value")

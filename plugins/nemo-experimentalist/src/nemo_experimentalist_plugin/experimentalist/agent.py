@@ -6,6 +6,7 @@
 from pathlib import Path
 
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.registry import get_component
 from nemo_experimentalist_plugin.experimentalist.roles import Strategy
 
@@ -14,6 +15,7 @@ def build_experimentalist_agent(
     working_dir: Path,
     config: EvolutionaryOptimizerConfig | None = None,
     framework_skills_dirs: list[Path] | None = None,
+    models: ModelTiers | None = None,
 ) -> Strategy:
     """Resolve ``config.strategy`` by name and construct it.
 
@@ -27,6 +29,8 @@ def build_experimentalist_agent(
         config: Run configuration. When None the defaults select the evolutionary loop.
         framework_skills_dirs: Directories of framework skills to load into the
             strategy's agents.
+        models: The run's resolved model tiers, so the strategy runs on the tiers the
+            run record reports rather than re-reading the environment for itself.
 
     Raises:
         LookupError: if no strategy is registered under ``config.strategy`` — naming one
@@ -39,4 +43,5 @@ def build_experimentalist_agent(
         working_dir=working_dir,
         config=resolved,
         framework_skills_dirs=framework_skills_dirs or [],
+        models=models,
     )

@@ -14,8 +14,7 @@ IMPORT = "import"
 def import_proposal(description: str = "the agent under test, unchanged") -> Proposal:
     """A Proposal asking for the agent under test to be committed as-is.
 
-    ``ancestor`` is None because nothing precedes it — which is also what makes the
-    resulting Candidate the baseline. Nothing else distinguishes it.
+    ``ancestor`` is None, which is the only thing that makes the result the baseline.
     """
     return Proposal(ancestor=None, description=description, kind=IMPORT, payload={})
 
@@ -23,15 +22,9 @@ def import_proposal(description: str = "the agent under test, unchanged") -> Pro
 class Importer(Builder):
     """Commit a candidate that is the agent under test, unchanged.
 
-    The baseline is not a special kind of thing, only the first candidate and the one
-    with no parent. Modelling its arrival as a Proposal like any other is what removes
-    the alternative creation path: ``commit_candidate`` is the only way a Candidate is
-    born, ``generated_from`` is never empty, and a strategy that wants several roots —
-    importing three agents to compare — gets that for free rather than working around a
-    verb that assumed one.
-
-    It also lands on ``agent-0`` without anyone naming it: the first fork of a run
-    reserves the first free handle.
+    An ordinary build of an ordinary Proposal, so ``commit_candidate`` stays the only way
+    a Candidate is born and a strategy wanting several roots gets that for free. It lands
+    on ``agent-0`` without anyone naming it: the first fork takes the first free handle.
     """
 
     name = "import"
