@@ -1,7 +1,7 @@
 {
   "skill": "nemo-experiments-upload",
   "tests": [
-    { "type": "explicit", "prompt": "How do I log traces to NeMo intake?", "expected_skill": "nemo-experiments-upload" },
+    { "type": "explicit", "prompt": "How do I log evaluation traces to NeMo Experiments?", "expected_skill": "nemo-experiments-upload" },
     { "type": "explicit", "prompt": "Upload my Harbor eval results to NeMo Experiments", "expected_skill": "nemo-experiments-upload" },
     { "type": "explicit", "prompt": "log to experiments", "expected_skill": "nemo-experiments-upload" },
     { "type": "implicit", "prompt": "I ran an agent eval and want to see it in the platform leaderboard", "expected_skill": "nemo-experiments-upload" },

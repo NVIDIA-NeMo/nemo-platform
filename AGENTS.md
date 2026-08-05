@@ -31,6 +31,8 @@ User-facing skills in `packages/nemo_platform_ext/src/nemo_platform_ext/skills/`
 - `nemo-spec`: writes an agent spec from explore output.
 - `nemo-build-agent`: scaffolds NAT workflow YAML from the spec and deploys.
 - `nemo-try-agent`: test a deployed agent or chat with a model.
+- `nemo-intake`: instrument agents, choose an ingest format, upload/query telemetry, and attach evaluator results.
+- `nemo-experiments-upload`: publish named evaluation runs and scores to the Experiments leaderboard.
 - `nemo-status`: read-only health dashboard.
 - `nemo-teardown`: guided shutdown with confirmation.
 

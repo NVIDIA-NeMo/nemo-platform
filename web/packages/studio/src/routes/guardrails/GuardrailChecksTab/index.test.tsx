@@ -84,6 +84,15 @@ describe('GuardrailChecksTab', () => {
     );
   });
 
+  it('redirects an unknown sub-tab segment onto the default sub-tab', async () => {
+    renderChecks('pii-filter', `${getGuardrailChecksRoute(WORKSPACE, 'pii-filter')}/not-a-sub-tab`);
+
+    await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+    expect(screen.getByTestId('checks-location')).toHaveTextContent(
+      getGuardrailChecksSubTabRoute(WORKSPACE, 'pii-filter', GuardrailChecksSubTab.Tests)
+    );
+  });
+
   it('shows the summary and the results table on the Test Results sub-tab', async () => {
     const user = userEvent.setup();
     renderChecks('pii-filter');
