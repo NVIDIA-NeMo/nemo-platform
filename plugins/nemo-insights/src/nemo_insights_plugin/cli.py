@@ -143,14 +143,35 @@ def _resolve_analysis(
     )
 
 
+def _prepare_mirror(insights_output: Path | None) -> Path | None:
+    """Ready the mirror's directory, dropping the mirror if that fails.
+
+    The mirror is a convenience beside the platform, which is the source of
+    truth, so an unusable local path must not cost the user the analysis. This
+    matches how a failed mirror *write* is reported — a warning on the run
+    report rather than a failed run.
+    """
+    if insights_output is None:
+        return None
+    try:
+        insights_output.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        typer.echo(
+            f"warning: insights mirror disabled — could not create {insights_output.parent}: "
+            f"{_one_line_error(exc)}. Insights are still written to the platform.",
+            err=True,
+        )
+        return None
+    typer.echo(f"Insights file (mirror of the platform): {insights_output}", err=True)
+    return insights_output
+
+
 async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
     checks = list(analysis.spec_checks)
     checks.extend(check_credentials(analysis.profile_dir, probes=_PREFLIGHT_PROBES))
     _preflight_or_exit(checks)
 
-    if analysis.insights_output is not None:
-        analysis.insights_output.parent.mkdir(parents=True, exist_ok=True)
-        typer.echo(f"Insights file (mirror of the platform): {analysis.insights_output}", err=True)
+    insights_output = _prepare_mirror(analysis.insights_output)
     try:
         try:
             client = make_client(analysis.base_url)
@@ -162,7 +183,7 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             workspace=analysis.workspace,
             base_url=analysis.base_url,
             client=client,
-            insights_output=analysis.insights_output,
+            insights_output=insights_output,
             verbose=verbose,
         )
     except AgentRunError as exc:

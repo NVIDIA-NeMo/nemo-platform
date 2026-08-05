@@ -120,6 +120,32 @@ def test_insights_file_output_is_a_mirror_not_a_redirect(
     assert "local_only" not in recorder.kwargs, "the CLI must never ask for local-only persistence"
 
 
+def test_unusable_mirror_directory_drops_the_mirror_and_still_analyzes(
+    app: typer.Typer, profile_tree: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The platform is the source of truth; a bad local path must not cost the run."""
+    recorder = AnalystRecorder()
+    output = tmp_path / "unwritable" / "insights.yaml"
+    original_mkdir = Path.mkdir
+
+    def refuse_mirror_dir(self: Path, *args: object, **kwargs: object) -> None:
+        if self == output.parent:
+            raise PermissionError(13, "Permission denied")
+        original_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "mkdir", refuse_mirror_dir)
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["run", "--insights-file-output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert recorder.kwargs is not None, "the analysis must still run"
+    assert recorder.kwargs["insights_output"] is None
+    assert "insights mirror disabled" in result.stderr
+    assert "still written to the platform" in result.stderr
+
+
 def test_analyze_flags_override_profile(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:
     recorder = AnalystRecorder()
     monkeypatch.setattr(cli, "run_analyst", recorder)
