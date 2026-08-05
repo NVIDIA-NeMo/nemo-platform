@@ -16,5 +16,8 @@ export NMP_INTAKE_CLICKHOUSE_PASSWORD="${NMP_INTAKE_CLICKHOUSE_PASSWORD:-${CLICK
 export NMP_INTAKE_CLICKHOUSE_IMAGE="${NMP_INTAKE_CLICKHOUSE_IMAGE:-${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:${clickhouse_version}}}"
 export NMP_INTAKE_CLICKHOUSE_DATA_DIR="${NMP_INTAKE_CLICKHOUSE_DATA_DIR:-${CLICKHOUSE_DATA_DIR:-${repo_root}/tmp/intake-clickhouse}}"
 
+mkdir -p "${NMP_INTAKE_CLICKHOUSE_DATA_DIR}/tmp"
+chmod 755 "${NMP_INTAKE_CLICKHOUSE_DATA_DIR}" "${NMP_INTAKE_CLICKHOUSE_DATA_DIR}/tmp"
+
 cd "${repo_root}"
 exec uv run python -m nmp.intake.local_clickhouse

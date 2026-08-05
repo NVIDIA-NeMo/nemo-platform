@@ -154,7 +154,6 @@ def settings() -> ClickHouseSettings:
 
 def _patch_provisioning(monkeypatch: pytest.MonkeyPatch, client: FakeDockerClient, tmp_path: Path) -> None:
     monkeypatch.setenv("NMP_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr("nmp.intake.local_clickhouse._can_connect", lambda _settings: False)
     monkeypatch.setattr("nmp.intake.local_clickhouse._wait_until_ready", lambda _settings: None)
     monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", lambda **_kwargs: client)
 
@@ -282,8 +281,9 @@ def test_provision_adopts_legacy_container(
     tmp_path: Path,
     settings: ClickHouseSettings,
 ) -> None:
+    data_dir = (tmp_path / "intake-clickhouse").resolve()
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
-    legacy = FakeContainer(name=LEGACY_CONTAINER_NAME, image=image, host_port=8123)
+    legacy = FakeContainer(name=LEGACY_CONTAINER_NAME, image=image, data_dir=data_dir, host_port=8123)
     client = FakeDockerClient({LEGACY_CONTAINER_NAME: legacy})
     _patch_provisioning(monkeypatch, client, tmp_path)
 
@@ -291,6 +291,22 @@ def test_provision_adopts_legacy_container(
 
     assert url == "http://127.0.0.1:8123"
     assert client.containers.run_calls == []
+
+
+def test_provision_does_not_adopt_legacy_container_without_expected_data_mount(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    settings: ClickHouseSettings,
+) -> None:
+    image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
+    legacy = FakeContainer(name=LEGACY_CONTAINER_NAME, image=image, host_port=8123)
+    client = FakeDockerClient({LEGACY_CONTAINER_NAME: legacy})
+    _patch_provisioning(monkeypatch, client, tmp_path)
+
+    assert _provision_local_clickhouse(settings) == "http://127.0.0.1:55123"
+    assert len(client.containers.run_calls) == 1
+    assert client.containers.run_calls[0]["name"] == _managed_container_name((tmp_path / "intake-clickhouse").resolve())
+    assert legacy.removed is False
 
 
 def test_legacy_script_mode_preserves_container_name_and_ports(
@@ -317,7 +333,6 @@ def test_provision_reports_docker_daemon_unavailable(
     settings: ClickHouseSettings,
 ) -> None:
     docker_factory = MagicMock(side_effect=DockerException("daemon not running"))
-    monkeypatch.setattr("nmp.intake.local_clickhouse._can_connect", lambda _settings: False)
     monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", docker_factory)
 
     with pytest.raises(DockerUnavailableError, match="Docker daemon is unavailable") as error:
@@ -333,7 +348,6 @@ def test_provision_closes_client_when_docker_ping_fails(
     monkeypatch: pytest.MonkeyPatch,
     settings: ClickHouseSettings,
 ) -> None:
-    monkeypatch.setattr("nmp.intake.local_clickhouse._can_connect", lambda _settings: False)
     client = FakeDockerClient()
     client.ping = MagicMock(side_effect=DockerException("connection disappeared"))
     monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", lambda **_kwargs: client)
@@ -472,6 +486,43 @@ def test_remove_local_clickhouse_refuses_unowned_container(
         remove_local_clickhouse(data_dir=data_dir)
 
     assert container.removed is False
+
+
+def test_remove_local_clickhouse_removes_owned_legacy_container(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    data_dir = (tmp_path / "intake-clickhouse").resolve()
+    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    container = FakeContainer(
+        name=LEGACY_CONTAINER_NAME,
+        image=f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
+        labels=_expected_labels(data_dir, data_instance_id),
+        data_dir=data_dir,
+    )
+    client = FakeDockerClient({LEGACY_CONTAINER_NAME: container})
+    monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", lambda **_kwargs: client)
+
+    assert remove_local_clickhouse(data_dir=data_dir) is True
+    assert container.stopped is True
+    assert container.removed is True
+
+
+def test_remove_local_clickhouse_ignores_legacy_container_for_another_data_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    data_dir = (tmp_path / "intake-clickhouse").resolve()
+    legacy = FakeContainer(
+        name=LEGACY_CONTAINER_NAME,
+        image=f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
+        data_dir=tmp_path / "unrelated-clickhouse",
+    )
+    client = FakeDockerClient({LEGACY_CONTAINER_NAME: legacy})
+    monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", lambda **_kwargs: client)
+
+    assert remove_local_clickhouse(data_dir=data_dir) is False
+    assert legacy.removed is False
 
 
 def test_clickhouse_image_version_matches_service_pin() -> None:

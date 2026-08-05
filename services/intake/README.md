@@ -108,11 +108,6 @@ set its URL explicitly before starting the platform:
 export NMP_INTAKE_CLICKHOUSE_URL=https://clickhouse.example.com:8443
 ```
 
-For compatibility with the former local script, an unconfigured Intake also
-uses a ClickHouse already reachable at the default `http://localhost:8123` with
-the configured credentials. Intake may initialize its schema there. Set
-`NMP_INTAKE_CLICKHOUSE_URL` explicitly when that server is operator-owned.
-
 `services/intake/scripts/spans/run_clickhouse.sh` remains available as a manual
 compatibility command and delegates to the same Python provisioner.
 

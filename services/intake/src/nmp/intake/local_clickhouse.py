@@ -91,10 +91,6 @@ def _provision_local_clickhouse(
     data_dir: Path | None = None,
     legacy_script_mode: bool = False,
 ) -> str:
-    if _can_connect(settings):
-        logger.info("Using ClickHouse already reachable at %s", settings.url)
-        return settings.url
-
     resolved_data_dir = _resolve_data_dir(data_dir)
     container_name = LEGACY_CONTAINER_NAME if legacy_script_mode else _managed_container_name(resolved_data_dir)
     client = _connect_docker()
@@ -106,8 +102,13 @@ def _provision_local_clickhouse(
         container = _get_container(client, container_name)
         legacy = legacy_script_mode
         if container is None and not legacy_script_mode:
-            container = _get_container(client, LEGACY_CONTAINER_NAME)
-            legacy = container is not None
+            legacy_container = _get_container(client, LEGACY_CONTAINER_NAME)
+            if legacy_container is not None:
+                legacy_container.reload()
+                legacy_attrs = cast(dict[str, Any], legacy_container.attrs or {})
+                if _mounted_clickhouse_data_dir(legacy_attrs) == resolved_data_dir:
+                    container = legacy_container
+                    legacy = True
 
         if container is None:
             container = _create_container(
@@ -125,7 +126,7 @@ def _provision_local_clickhouse(
                     container,
                     expected_name=LEGACY_CONTAINER_NAME if legacy else container_name,
                     image=image,
-                    data_dir=None if legacy else resolved_data_dir,
+                    data_dir=resolved_data_dir,
                     data_instance_id=None if legacy else data_instance_id,
                     settings=settings,
                 )
@@ -162,18 +163,27 @@ def _provision_local_clickhouse(
 
 
 def remove_local_clickhouse(*, data_dir: Path | None = None) -> bool:
-    """Remove the managed ClickHouse container for a local NeMo data directory."""
+    """Remove managed ClickHouse containers for a local NeMo data directory."""
 
     resolved_data_dir = _resolve_data_dir(data_dir)
-    container_name = _managed_container_name(resolved_data_dir)
+    managed_container_name = _managed_container_name(resolved_data_dir)
     client = _connect_docker()
     try:
-        container = _get_container(client, container_name)
-        if container is None:
+        containers: list[tuple[str, Container]] = []
+        if (managed_container := _get_container(client, managed_container_name)) is not None:
+            containers.append((managed_container_name, managed_container))
+        if (legacy_container := _get_container(client, LEGACY_CONTAINER_NAME)) is not None:
+            legacy_container.reload()
+            legacy_attrs = cast(dict[str, Any], legacy_container.attrs or {})
+            if _mounted_clickhouse_data_dir(legacy_attrs) == resolved_data_dir:
+                containers.append((LEGACY_CONTAINER_NAME, legacy_container))
+        if not containers:
             return False
-        _validate_cleanup_target(container, expected_name=container_name, data_dir=resolved_data_dir)
-        _remove_container(container)
-        logger.info("Removed managed local ClickHouse container %s", container_name)
+        for container_name, container in containers:
+            _validate_cleanup_target(container, expected_name=container_name, data_dir=resolved_data_dir)
+        for container_name, container in containers:
+            _remove_container(container)
+            logger.info("Removed managed local ClickHouse container %s", container_name)
         return True
     except LocalClickHouseProvisioningError:
         raise
@@ -261,7 +271,7 @@ def _create_container(
             container,
             expected_name=name,
             image=image,
-            data_dir=None if legacy_script_mode else data_dir,
+            data_dir=data_dir,
             data_instance_id=None if legacy_script_mode else data_instance_id,
             settings=settings,
         )
@@ -273,7 +283,7 @@ def _validate_container(
     *,
     expected_name: str,
     image: str,
-    data_dir: Path | None,
+    data_dir: Path,
     data_instance_id: str | None,
     settings: ClickHouseSettings,
 ) -> None:
@@ -287,7 +297,7 @@ def _validate_container(
             "Preserve any data you need and remove or rename the container before retrying."
         )
 
-    if data_dir is not None and data_instance_id is not None:
+    if data_instance_id is not None:
         labels = container.labels or {}
         identity_labels = {
             _MANAGED_BY_LABEL: _MANAGED_BY_VALUE,
@@ -303,25 +313,20 @@ def _validate_container(
                 f"Container {expected_name} belongs to an earlier incarnation of data directory {data_dir}. "
                 "The stale container can be replaced without deleting data from the current directory."
             )
-        environment = _container_environment(attrs)
-        if (
-            environment.get("CLICKHOUSE_USER") != settings.user
-            or environment.get("CLICKHOUSE_PASSWORD") != settings.password
-        ):
-            raise LocalClickHouseProvisioningError(
-                f"ClickHouse credentials changed for container {expected_name}. Remove the container to re-provision "
-                "it with NMP_INTAKE_CLICKHOUSE_USER and NMP_INTAKE_CLICKHOUSE_PASSWORD, or restore the previous values."
-            )
-
-        mounts = cast(list[dict[str, Any]], attrs.get("Mounts") or [])
-        source = next(
-            (mount.get("Source") for mount in mounts if mount.get("Destination") == CLICKHOUSE_DATA_PATH),
-            None,
+    environment = _container_environment(attrs)
+    if (
+        environment.get("CLICKHOUSE_USER") != settings.user
+        or environment.get("CLICKHOUSE_PASSWORD") != settings.password
+    ):
+        raise LocalClickHouseProvisioningError(
+            f"ClickHouse credentials changed for container {expected_name}. Remove the container to re-provision "
+            "it with NMP_INTAKE_CLICKHOUSE_USER and NMP_INTAKE_CLICKHOUSE_PASSWORD, or restore the previous values."
         )
-        if source is None or Path(str(source)).resolve() != data_dir:
-            raise LocalClickHouseProvisioningError(
-                f"Container {expected_name} does not use the expected data directory {data_dir}"
-            )
+
+    if _mounted_clickhouse_data_dir(attrs) != data_dir:
+        raise LocalClickHouseProvisioningError(
+            f"Container {expected_name} does not use the expected data directory {data_dir}"
+        )
 
 
 def _validate_cleanup_target(container: Container, *, expected_name: str, data_dir: Path) -> None:
@@ -338,12 +343,7 @@ def _validate_cleanup_target(container: Container, *, expected_name: str, data_d
         )
 
     attrs = cast(dict[str, Any], container.attrs or {})
-    mounts = cast(list[dict[str, Any]], attrs.get("Mounts") or [])
-    source = next(
-        (mount.get("Source") for mount in mounts if mount.get("Destination") == CLICKHOUSE_DATA_PATH),
-        None,
-    )
-    if source is None or Path(str(source)).resolve() != data_dir:
+    if _mounted_clickhouse_data_dir(attrs) != data_dir:
         raise LocalClickHouseProvisioningError(
             f"Refusing to remove container {expected_name}: it does not mount {data_dir}"
         )
@@ -368,6 +368,15 @@ def _container_environment(attrs: dict[str, Any]) -> dict[str, str]:
     container_config = cast(dict[str, Any], attrs.get("Config") or {})
     entries = cast(list[str], container_config.get("Env") or [])
     return {key: value for entry in entries if "=" in entry for key, value in [entry.split("=", 1)]}
+
+
+def _mounted_clickhouse_data_dir(attrs: dict[str, Any]) -> Path | None:
+    mounts = cast(list[dict[str, Any]], attrs.get("Mounts") or [])
+    source = next(
+        (mount.get("Source") for mount in mounts if mount.get("Destination") == CLICKHOUSE_DATA_PATH),
+        None,
+    )
+    return Path(str(source)).resolve() if source is not None else None
 
 
 def _expected_labels(data_dir: Path, data_instance_id: str) -> dict[str, str]:
@@ -432,15 +441,6 @@ def _container_http_url(container: Container) -> str:
     if not host_port:
         raise LocalClickHouseProvisioningError(f"Container {container.name} has no assigned ClickHouse host port")
     return f"http://127.0.0.1:{int(host_port)}"
-
-
-def _can_connect(settings: ClickHouseSettings) -> bool:
-    try:
-        _ping_clickhouse(settings)
-    except Exception as exc:
-        logger.debug("ClickHouse is not reachable at %s: %s", settings.url, exc)
-        return False
-    return True
 
 
 def _wait_until_ready(settings: ClickHouseSettings) -> None:

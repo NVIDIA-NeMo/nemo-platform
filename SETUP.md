@@ -61,9 +61,17 @@ Ask whether the user wants to wipe local platform data before startup. This is a
 
 ```bash
 DATA_DIR="${NMP_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/nemo}"
+case "$DATA_DIR" in
+  ""|"/"|"$HOME"|"$HOME/"|"."|"./"|"$PWD"|"$PWD/")
+    echo "REFUSING_UNSAFE_DATA_DIR: '$DATA_DIR' — abort"; exit 1 ;;
+esac
+lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 && { echo "PLATFORM_STILL_RUNNING — abort before wipe"; exit 1; }
 CLICKHOUSE_DATA_DIR="${NMP_INTAKE_CLICKHOUSE_DATA_DIR:-$DATA_DIR/intake-clickhouse}"
 if [ -f "$CLICKHOUSE_DATA_DIR/.nmp-clickhouse-identity" ]; then
-  NMP_DATA_DIR="$DATA_DIR" .venv/bin/python -m nmp.intake.local_clickhouse --remove
+  NMP_DATA_DIR="$DATA_DIR" uv run python -m nmp.intake.local_clickhouse --remove || {
+    echo "CLICKHOUSE_CONTAINER_CLEANUP_FAILED — start Docker and retry; data was not deleted"
+    exit 1
+  }
 fi
 rm -rf "$DATA_DIR"
 ```

@@ -12,8 +12,6 @@ import pytest
 from docker.errors import DockerException, NotFound
 from nmp.intake.local_clickhouse import (
     CLICKHOUSE_HTTP_PORT_KEY,
-    LEGACY_CONTAINER_NAME,
-    _get_container,
     _managed_container_name,
     _provision_local_clickhouse,
     remove_local_clickhouse,
@@ -38,7 +36,6 @@ def _docker_is_available() -> bool:
 
 @pytest.mark.integration
 def test_data_directory_owned_container_uses_dynamic_loopback_port_and_is_reused(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     if not _docker_is_available():
@@ -52,13 +49,6 @@ def test_data_directory_owned_container_uses_dynamic_loopback_port_and_is_reused
         password="",
         database=f"intake_test_{uuid4().hex}",
     )
-    # An unrelated legacy ClickHouse may already own localhost:8123 on a developer machine.
-    monkeypatch.setattr("nmp.intake.local_clickhouse._can_connect", lambda _settings: False)
-    monkeypatch.setattr(
-        "nmp.intake.local_clickhouse._get_container",
-        lambda docker_client, name: None if name == LEGACY_CONTAINER_NAME else _get_container(docker_client, name),
-    )
-
     client = docker.from_env(timeout=10)
     try:
         first_url = _provision_local_clickhouse(settings, data_dir=data_dir)

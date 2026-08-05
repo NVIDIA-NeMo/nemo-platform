@@ -45,7 +45,8 @@ def test_intake_uses_provisioned_clickhouse_url(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.delenv("NMP_INTAKE_CLICKHOUSE_URL", raising=False)
     provision = AsyncMock(return_value="http://127.0.0.1:55123")
     monkeypatch.setattr("nmp.intake.service.provision_local_clickhouse", provision)
-    service = IntakeService().with_config(IntakeConfig(clickhouse_config=ClickHouseConfig()))
+    intake_config = IntakeConfig(clickhouse_config=ClickHouseConfig())
+    service = IntakeService().with_config(intake_config)
 
     async def start_and_stop() -> None:
         await service.on_startup()
@@ -57,9 +58,10 @@ def test_intake_uses_provisioned_clickhouse_url(monkeypatch: pytest.MonkeyPatch)
 
     asyncio.run(start_and_stop())
     provision.assert_awaited_once()
+    assert provision.await_args is not None
     assert provision.await_args.kwargs == {
-        "image": service.service_config.clickhouse_config.image,
-        "data_dir": service.service_config.clickhouse_config.data_dir,
+        "image": intake_config.clickhouse_config.image,
+        "data_dir": intake_config.clickhouse_config.data_dir,
     }
 
 
