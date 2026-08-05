@@ -62,7 +62,7 @@ from nemo_experimentalist_plugin.experimentalist.components.tools import (
 from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import (
     GroupLeafScorer,
 )
-from nemo_experimentalist_plugin.experimentalist.registry import get, resolve
+from nemo_experimentalist_plugin.experimentalist.registry import get_component, resolve
 from nemo_experimentalist_plugin.experimentalist.roles import Builder, Strategy
 from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
 from nemo_platform import AsyncNeMoPlatform
@@ -375,6 +375,8 @@ class EvolutionaryOptimizer(Agent, Strategy):
         """
         config = self.config
         agents_dir, analysis_dir, _ = self._init_structure()
+        # train and validation are guaranteed by the runner; insight exists only when the
+        # run was given an Insight, which is why it alone is optional.
         train_eval_dataset = ctx.datasets["train"]
         validation_eval_dataset = ctx.datasets["validation"]
         insight_eval_dataset = ctx.datasets.get("insight")
@@ -472,7 +474,7 @@ class EvolutionaryOptimizer(Agent, Strategy):
                 survivors=[c.slim() for c in survivors],
                 round_num=round_num,
                 config=config,
-                client=ctx.client,
+                client=ctx.platform_client,
                 nmp_workspace=ctx.workspace,
                 agent_spec_path=agent_spec_path,
             )
@@ -724,10 +726,9 @@ class EvolutionaryOptimizer(Agent, Strategy):
         results. Stale ``killed_generation`` markers whose killing round was itself rolled
         back are cleared, or those survivors stay dead.
         """
-        results_dir = self.working_dir / "eval-and-optimize" / "results"
-        analysis_dir = self.working_dir / "eval-and-optimize" / "analysis"
-        smoke_dataset_dir = self.working_dir / "eval-and-optimize" / "smoke-dataset"
-        smoke_results_dir = self.working_dir / "eval-and-optimize" / "smoke-results"
+        eo = self.working_dir / "eval-and-optimize"
+        results_dir, analysis_dir = eo / "results", eo / "analysis"
+        smoke_dataset_dir, smoke_results_dir = eo / "smoke-dataset", eo / "smoke-results"
 
         for candidate in await ctx.candidates():
             if candidate.generation > from_round:
@@ -1249,7 +1250,7 @@ class EvolutionaryOptimizer(Agent, Strategy):
         global one: a replacement shipped by another package targets *this* signature,
         because this is the strategy that resolves it.
         """
-        return get(
+        return get_component(
             "builder",
             config.builder,
             workspace=self.working_dir,
@@ -1331,7 +1332,7 @@ class EvolutionaryOptimizer(Agent, Strategy):
         logger.info(f"[TRAJ] Starting {len(keys)} GRA scoring tasks...")
 
         scorer = GroupLeafScorer(
-            workspace=self.working_dir, client=ctx.client, nmp_workspace=ctx.workspace, models=self._models
+            workspace=self.working_dir, client=ctx.platform_client, nmp_workspace=ctx.workspace, models=self._models
         )
         scoring_results = await asyncio.gather(
             *[scorer.run(node, traces_by_task[task_id], dataset) for node in nodes for task_id in traces_by_task]
@@ -1382,10 +1383,9 @@ class EvolutionaryOptimizer(Agent, Strategy):
             return None
 
         best = front[0]
-        # The tree is keyed by candidate id; the report writer reads the workspace, which
-        # is keyed by display handle. Neither substitutes for the other.
         evolution_tree.mark_best(best.candidate.id or best.label)
         try:
+            # The report writer reads the workspace, which files agents by display handle.
             await self.write_final_report(best.label)
         except Exception as exc:  # noqa: BLE001 - the runner falls back to a compact summary
             logger.warning(f"[FINAL] Failed to write final report: {exc}")

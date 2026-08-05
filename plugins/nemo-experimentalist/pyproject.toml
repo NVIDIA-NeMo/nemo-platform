@@ -28,6 +28,9 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 # per module, whose only job is to import it so its classes self-register. There are no
 # privileged built-ins — if this mechanism breaks, our loop stops resolving too, which is
 # the point.
+#
+# One entry per module, not per component: importing the module registers every class in
+# it, so the remaining roles join these lines as their modules gain a `name`.
 [project.entry-points."nemo.experimentalist.components"]
 "strategy.evolutionary" = "nemo_experimentalist_plugin.experimentalist.components.loop"
 "builder.coder" = "nemo_experimentalist_plugin.experimentalist.components.coder"

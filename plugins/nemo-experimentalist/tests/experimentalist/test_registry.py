@@ -16,7 +16,7 @@ import pytest
 from nemo_experimentalist_plugin.experimentalist import registry as registry_module
 from nemo_experimentalist_plugin.experimentalist.registry import (
     Component,
-    get,
+    get_component,
     load_plugins,
     registered,
     resolve,
@@ -127,7 +127,7 @@ def test_get_constructs_with_the_arguments_the_resolver_was_given() -> None:
             seen.update(kwargs)
 
     try:
-        instance = get("builder", "recording-builder-for-test", workspace="/tmp", config=None)
+        instance = get_component("builder", "recording-builder-for-test", workspace="/tmp", config=None)
 
         assert isinstance(instance, Recording)
         assert seen == {"workspace": "/tmp", "config": None}

@@ -3,7 +3,11 @@
 
 """The plugin-facing seam: everything a strategy is allowed to reach.
 
-A strategy receives one :class:`ExperimentContext` and nothing else. The context holds
+``ExperimentContext`` is the implementation; ``StrategyContext`` in :mod:`seam` is the
+Protocol it satisfies, and is what components are typed against so a role contract does
+not depend on this module.
+
+A strategy receives one context and nothing else. The context holds
 the :class:`~nemo_experimentalist_plugin.experimentalist.experimentalist_backend.ExperimentalistBackend`
 privately, so no component ever sees ``create_run``, ``publish_candidate``, or the
 platform client; the runner that built the context is the only code that holds a
@@ -161,7 +165,7 @@ class ExperimentContext:
         return self._evaluator
 
     @property
-    def client(self) -> AsyncNeMoPlatform | None:
+    def platform_client(self) -> AsyncNeMoPlatform | None:
         """Platform client, for reading ``intake://`` traces. Transitional.
 
         This is the last piece of backend that still reaches a component: the trace
@@ -315,8 +319,8 @@ class ExperimentContext:
         """Pick the next free candidate directory under the run's candidate root.
 
         Every fork gets a fresh directory, including one built from the agent under test
-        rather than from a parent — the HPO case — because a run may hold many of those
-        and they would otherwise overwrite each other and the baseline. Only
+        rather than from a parent: a run may hold many of those, and sharing a directory
+        would have them overwrite each other while still reporting separate rewards. Only
         :meth:`import_baseline` uses the fixed handle.
         """
         root = self._candidate_root

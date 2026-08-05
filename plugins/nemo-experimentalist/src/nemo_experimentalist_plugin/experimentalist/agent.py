@@ -6,7 +6,7 @@
 from pathlib import Path
 
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.experimentalist.registry import get
+from nemo_experimentalist_plugin.experimentalist.registry import get_component
 from nemo_experimentalist_plugin.experimentalist.roles import Strategy
 
 
@@ -33,7 +33,7 @@ def build_experimentalist_agent(
             that is not installed fails here, before the run spends anything.
     """
     resolved = config or EvolutionaryOptimizerConfig()
-    return get(
+    return get_component(
         "strategy",
         resolved.strategy,
         working_dir=working_dir,

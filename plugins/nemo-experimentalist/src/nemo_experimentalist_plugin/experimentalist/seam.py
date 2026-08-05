@@ -121,7 +121,7 @@ class StrategyContext(BuilderContext, Protocol):
         ...
 
     @property
-    def client(self) -> AsyncNeMoPlatform | None:
+    def platform_client(self) -> AsyncNeMoPlatform | None:
         """Platform client, for reading ``intake://`` traces. **Transitional.**
 
         The last piece of backend still reaching a component: trace readers resolve

@@ -147,7 +147,7 @@ def resolve(role: str, name: str) -> type[Component]:
     raise LookupError(f"no {role} registered as {name!r}{detail}")
 
 
-def get(role: str, name: str, **kwargs: Any) -> Any:
+def get_component(role: str, name: str, **kwargs: Any) -> Any:
     """Resolve *(role, name)* and construct it.
 
     Construction arguments are the consuming strategy's business, not the registry's: a
