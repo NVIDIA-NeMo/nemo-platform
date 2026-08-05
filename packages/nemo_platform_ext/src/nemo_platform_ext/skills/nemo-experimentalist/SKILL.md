@@ -25,6 +25,16 @@ allowed-tools: [Bash, Read, Write]
 Use the Experimentalist to improve an existing agent. It evaluates a baseline,
 proposes code changes, and keeps only candidates that improve validation.
 
+## Choose the optimizer
+
+Use `nemo agents optimize` for a deployed agent when the goal is to tune its
+model routing, skills, prompts, or cost/latency without changing its runtime
+implementation. Use the Experimentalist when the improvement belongs in the
+agent **harness**: the source that owns its workflow, tool use, state, and
+runtime behavior. The Experimentalist changes that source in candidate
+branches, evaluates each candidate against the agent's own harness, and can
+publish a validated winner for review.
+
 ## Prepare the agent
 
 The Experimentalist improves an existing, evaluable agent; it does not design
@@ -60,6 +70,12 @@ export NEMO_EXPERIMENTALIST_MODELS_SMART=<model-name>
 export NEMO_EXPERIMENTALIST_MODELS_MID=<model-name>
 export NEMO_EXPERIMENTALIST_MODELS_FAST=<model-name>
 ```
+
+Choose a strong frontier model for `SMART`: it performs the highest-stakes
+reasoning and code changes. Use a capable, lower-cost model for `MID`, where
+good judgment still matters but the work is less demanding. Use a fast,
+low-latency model for `FAST`; it serves high-volume supporting work and does
+not need the same reasoning depth.
 
 The CLI uses the NVIDIA Inference Gateway by default and reuses
 `INFERENCE_API_KEY` as the Experimentalist key. For another OpenAI-compatible
