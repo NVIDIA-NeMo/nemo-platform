@@ -12,6 +12,7 @@ import {
   buildDataDesignerConfig,
   buildGraph,
   defaultColumnName,
+  defaultColumnValues,
   extractJinjaReferences,
   findColumnOption,
   topologicalSortColumns,
@@ -67,6 +68,20 @@ describe('defaultColumnName', () => {
   });
 });
 
+describe('defaultColumnValues', () => {
+  it('turns on reasoning extraction for every LLM column type', () => {
+    for (const columnType of ['llm-text', 'llm-code', 'llm-structured', 'llm-judge']) {
+      expect(defaultColumnValues(optionFor(columnType))).toMatchObject({
+        extract_reasoning_content: 'true',
+      });
+    }
+  });
+
+  it('leaves column types without field defaults empty', () => {
+    expect(defaultColumnValues(optionFor('expression'))).toEqual({});
+  });
+});
+
 describe('buildColumnsFromTemplate', () => {
   it('resolves specs into placed columns with sequential ids and seeded values', () => {
     const columns = buildColumnsFromTemplate([
@@ -81,7 +96,22 @@ describe('buildColumnsFromTemplate', () => {
     expect(columns.map((c) => c.id)).toEqual(['col-0', 'col-1']);
     expect(columns.map((c) => c.name)).toEqual(['domain', 'instruction']);
     expect(columns[0].option.samplerType).toBe('category');
-    expect(columns[1].values).toEqual({ prompt: 'About {{ domain }}', model_alias: 'default' });
+    expect(columns[1].values).toEqual({
+      prompt: 'About {{ domain }}',
+      model_alias: 'default',
+      extract_reasoning_content: 'true',
+    });
+  });
+
+  it('lets a template override a field default', () => {
+    const [column] = buildColumnsFromTemplate([
+      {
+        columnType: 'llm-text',
+        name: 'answer',
+        values: { extract_reasoning_content: 'false' },
+      },
+    ]);
+    expect(column.values.extract_reasoning_content).toBe('false');
   });
 
   it('numbers ids from startId and skips unresolvable specs', () => {
