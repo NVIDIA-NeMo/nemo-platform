@@ -531,11 +531,11 @@ def test_measure_infers_from_rows_when_some_files_declared_no_schema():
     declared = pa.schema([pa.field("prompt", pa.string())])
     rows = [{"prompt": "a"}, {"prompt": "b", "extra": "only in the schemaless file"}]
 
-    features, stats, _ = _measure(rows, [declared], exhaustive=True, all_declared=False)
+    features, stats, _ = _measure(rows, [declared], all_declared=False)
     assert [f.name for f in features] == ["prompt", "extra"]  # the sole witness survives
     assert set(stats) <= {f.name for f in features}
 
-    features, _, _ = _measure(rows, [declared], exhaustive=True, all_declared=True)
+    features, _, _ = _measure(rows, [declared], all_declared=True)
     assert [f.name for f in features] == ["prompt"]  # declared schema trusted when it covers everything
 
 
@@ -543,7 +543,7 @@ def test_stats_completeness_is_per_partition(tmp_path):
     # A corrupt shard in one partition says nothing about the measurements in another, but a
     # fileset-wide flag downgraded every partition to the worst one. It was never even the value
     # that gated quoting a proven enumeration -- that was decided per partition and never stored.
-    rows = [{"tag": t} for t in ("a", "b", "a")]
+    rows = [{"label": t} for t in (True, False, True)]
     _write_parquet(tmp_path / "main" / "train.parquet", rows)
     _write_parquet(tmp_path / "socratic" / "train.parquet", rows)
     (tmp_path / "socratic" / "broken.parquet").write_bytes(b"not a parquet file")
@@ -552,9 +552,10 @@ def test_stats_completeness_is_per_partition(tmp_path):
 
     assert partitions["main"].stats_complete is True
     assert partitions["socratic"].stats_complete is False
-    # ...and it is the bit that decides whether a proven enumeration may be quoted.
-    assert partitions["main"].stats["tag"].categorical.values == ["a", "b"]
-    assert partitions["socratic"].stats["tag"].categorical.values is None
+    # Quoting is decided by role, not by completeness, so both keep their label vocabulary --
+    # stats_complete is what tells a consumer whether socratic's list is the whole of it.
+    assert partitions["main"].stats["label"].categorical.values == ["False", "True"]
+    assert partitions["socratic"].stats["label"].categorical.values == ["False", "True"]
 
 
 def test_dataset_wide_completeness_is_one_expression(tmp_path):

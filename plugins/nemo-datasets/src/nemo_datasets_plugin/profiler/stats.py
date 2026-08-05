@@ -6,8 +6,8 @@
 Given a partition's features and its sampled rows, measure each top-level column according to its
 dtype: length quantiles and corruption signals for text, min/max/mean for numbers, chat-shape
 signals for messages, and cardinality for both. The result is sparse — a column with nothing worth
-measuring is omitted. Row values themselves are never stored, except a proven small enumeration
-under ``categorical.values`` when the read was exhaustive.
+measuring is omitted. Row values themselves are never stored here at all; a small controlled
+vocabulary is added afterwards by :func:`quote_enumerations`, which gates on the column's role.
 
 :func:`derive_probes` additionally reads each column's *content* — answer markers, embedded
 transcripts — as plain per-column counts. Those are measurements, not interpretations: what they
@@ -33,14 +33,23 @@ from nemo_platform_plugin.files.dataset_profile import (
     TextStats,
 )
 
-# A proven enumeration is only stored when the read was exhaustive and this small.
+# A quotable enumeration holds at most this many distinct values.
 _MAX_ENUM_VALUES = 32
 
+# Roles that are controlled vocabularies by construction, and so are safe to quote at any dataset
+# size. Everything else -- prompts, completions, chosen/rejected, context, chat -- is free text no
+# matter how few distinct values a small sample happens to show, and unroled columns are unknown,
+# which is the same thing for this purpose. An allowlist, so an unrecognized column fails to silence
+# rather than to exposure.
+_QUOTABLE_ROLES = frozenset({"label", "provenance", "meta", "rank"})
 
-def derive_stats(
-    features: list[FeatureSchema], rows: list[dict[str, Any]], *, exhaustive: bool
-) -> dict[str, ColumnStats]:
-    """Measure each top-level column. Keys are a subset of the feature names (sparse)."""
+
+def derive_stats(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> dict[str, ColumnStats]:
+    """Measure each top-level column. Keys are a subset of the feature names (sparse).
+
+    Never fills in ``categorical.values``: that needs the roles, which classification has not
+    assigned yet. :func:`quote_enumerations` adds them afterwards.
+    """
     total = len(rows)
     stats: dict[str, ColumnStats] = {}
     for feature in features:
@@ -48,13 +57,39 @@ def derive_stats(
         # skipping the rest makes which one wins deterministic instead of "whichever came last".
         if feature.name in stats:
             continue
-        column = _column_stats(feature, [row.get(feature.name) for row in rows], total, exhaustive)
+        column = _column_stats(feature, [row.get(feature.name) for row in rows], total)
         if column is not None:
             stats[feature.name] = column
     return stats
 
 
-def _column_stats(feature: FeatureSchema, values: list[Any], total: int, exhaustive: bool) -> ColumnStats | None:
+def quote_enumerations(
+    features: list[FeatureSchema], stats: dict[str, ColumnStats], rows: list[dict[str, Any]]
+) -> None:
+    """Fill in ``categorical.values`` for columns whose role makes them a controlled vocabulary.
+
+    Runs after classification, because it needs the roles it gates on, and mutates ``stats`` in place
+    the way classification mutates ``features``. Deliberately fills in rather than redacting: skip
+    this pass and no values are stored, where a redaction pass that got skipped would leak them.
+
+    Cardinality is only the size bound. It cannot be the permission, because it inverts on small
+    data -- in a three-row dataset every column holds under 32 distinct values, free text included,
+    so an entire column of prompts was quotable. The role says what a column *is*, at any size.
+    """
+    for feature in features:
+        if feature.semantic_role not in _QUOTABLE_ROLES:
+            continue
+        column = stats.get(feature.name)
+        if column is None or column.categorical is None or column.categorical.distinct_count > _MAX_ENUM_VALUES:
+            continue
+        try:
+            distinct = {value for row in rows if (value := row.get(feature.name)) is not None}
+        except TypeError:
+            continue  # unhashable values have no enumeration to quote
+        column.categorical.values = sorted(str(value) for value in distinct)
+
+
+def _column_stats(feature: FeatureSchema, values: list[Any], total: int) -> ColumnStats | None:
     present = [value for value in values if value is not None]
     null_rate = (total - len(present)) / total if total else 0.0
 
@@ -65,14 +100,14 @@ def _column_stats(feature: FeatureSchema, values: list[Any], total: int, exhaust
             text = TextStats(chars=_quantiles([len(value) for value in strings]))
             quality = _text_quality(strings)
         # distinct_count is always safe to store and is the id-like signal (~= rows_scanned) the
-        # contract documents; only the values themselves are row data, and _cardinality already gates
-        # those on an exhaustive read. Withholding the count for high-cardinality strings dropped the
-        # signal precisely where it carries the most information.
-        categorical = _cardinality(present, exhaustive)
+        # contract documents. Only the values themselves are row data, and those are added later,
+        # by role. Withholding the count for high-cardinality strings dropped the signal precisely
+        # where it carries the most information.
+        categorical = _cardinality(present)
     elif feature.dtype == "bool":
         # The column that decides unpaired_preference deserves a measured class balance rather than
         # no stats at all.
-        categorical = _cardinality(present, exhaustive)
+        categorical = _cardinality(present)
     elif _is_numeric(feature.dtype):
         # Drop non-finite floats (NaN / +-inf): they serialize to JSON null and then fail to
         # re-validate against NumericStats' required floats, which would make the whole profile
@@ -84,7 +119,7 @@ def _column_stats(feature: FeatureSchema, values: list[Any], total: int, exhaust
         ]
         if numbers:
             numeric = NumericStats(min=min(numbers), max=max(numbers), mean=sum(numbers) / len(numbers))
-        categorical = _cardinality(present, exhaustive)
+        categorical = _cardinality(present)
     elif feature.dtype == "messages":
         messages = _message_stats([value for value in present if isinstance(value, list)])
 
@@ -114,15 +149,14 @@ def _quantiles(values: list[int]) -> Quantiles:
     return Quantiles(p50=at(50), p95=at(95), p99=at(99), max=ordered[-1] if ordered else 0)
 
 
-def _cardinality(present: list[Any], exhaustive: bool) -> CategoricalStats | None:
+def _cardinality(present: list[Any]) -> CategoricalStats | None:
+    """The count only. The values themselves are row data and are gated on role, not cardinality,
+    so :func:`quote_enumerations` adds them once classification has assigned one."""
     try:
         distinct = set(present)
     except TypeError:
         return None  # unhashable values (dicts / lists) have no cardinality signal
-    values = None
-    if exhaustive and len(distinct) <= _MAX_ENUM_VALUES:
-        values = sorted(str(value) for value in distinct)
-    return CategoricalStats(distinct_count=len(distinct), values=values)
+    return CategoricalStats(distinct_count=len(distinct))
 
 
 # --- text quality --------------------------------------------------------------------------------

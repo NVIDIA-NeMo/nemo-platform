@@ -28,7 +28,7 @@ from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader, is_unsupported_data
 from nemo_datasets_plugin.profiler.schema import derive_features
 from nemo_datasets_plugin.profiler.splits import resolve_splits
-from nemo_datasets_plugin.profiler.stats import derive_probes, derive_stats
+from nemo_datasets_plugin.profiler.stats import derive_probes, derive_stats, quote_enumerations
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
     DatasetProfile,
@@ -184,7 +184,6 @@ def _measure(
     partition_rows: list[dict],
     arrow_schemas: list[pa.Schema],
     *,
-    exhaustive: bool,
     all_declared: bool,
 ) -> tuple[list[FeatureSchema], dict[str, ColumnStats], PartitionClassification]:
     """Derive schema, stats and classification, degrading to structure-only if any of it fails.
@@ -205,11 +204,15 @@ def _measure(
     try:
         declared = _unify_schemas(arrow_schemas) if all_declared else None
         features = derive_features(partition_rows, declared)
-        stats = derive_stats(features, partition_rows, exhaustive=exhaustive)
+        stats = derive_stats(features, partition_rows)
         # Probes are measured over every column, independent of the roles classify is about to
         # assign, so a content signal survives a column name the alias table does not know.
         probes = derive_probes(features, partition_rows)
-        return features, stats, classify(features, stats, partition_rows, probes=probes)
+        classification = classify(features, stats, partition_rows, probes=probes)
+        # Last, because the roles classification assigns are what decide whether a column's values
+        # may be quoted at all — cardinality only bounds how many.
+        quote_enumerations(features, stats, partition_rows)
+        return features, stats, classification
     except Exception as exc:
         detail = f"could not measure this partition: {type(exc).__name__}: {exc}"
         return [], {}, PartitionClassification(dataset_type="unknown", evidence=[Evidence(kind="error", detail=detail)])
@@ -310,9 +313,7 @@ def _profile_partition(
                 num_examples=split_examples if split_counts_known else None,
             )
         )
-    features, stats, classification = _measure(
-        partition_rows, arrow_schemas, exhaustive=partition_scanned, all_declared=all_declared
-    )
+    features, stats, classification = _measure(partition_rows, arrow_schemas, all_declared=all_declared)
     partition = PartitionProfile(
         name=name,
         source_dir=source_dir,
