@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -418,6 +419,54 @@ class Binding:
     assert extras is not None
     assert extras["mcp_bindings"]["s1"]["audit"] == {"ok": True}
     assert extras["mcp_bindings"]["s1"]["result"] == {"label": "x"}
+    hook.cleanup(session)
+
+
+def test_mcp_run_binding_uses_audit_when_exactly_once_fails(tmp_path: Path) -> None:
+    """Multi-call agents still score when audit.json already has an analysis."""
+    audit_path = tmp_path / "audit.json"
+    audit_path.write_text(
+        json.dumps(
+            {
+                "run_id": "r1",
+                "input_sha256": "abc",
+                "invocation_count": 3,
+                "analysis": {"label": "phishing", "is_likely_phishing": True},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class _Binding:
+        def __init__(self) -> None:
+            self.audit_path = audit_path
+            self.mcp_command = tmp_path / "mcp"
+            self.mcp_command.write_text("x", encoding="utf-8")
+
+        @staticmethod
+        def create(prompt: str, parent: Path, **kwargs: Any) -> _Binding:
+            del prompt, parent, kwargs
+            return _Binding()
+
+        def verify_exactly_once(self) -> Any:
+            raise RuntimeError("shared analyzer must execute exactly once")
+
+        def cleanup(self) -> None:
+            return None
+
+    hook = McpRunBindingHook(
+        agent_src=tmp_path,
+        bindings=[{"server": "s1", "binding": _Binding}],
+    )
+    session = FabricTaskRunSession()
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    hook.prepare(_FakeConfig(), _FakeTask(), evidence, tmp_path, session)
+    extras = hook.after_success(_FakeTask(), None, session)
+    assert extras is not None
+    assert extras["mcp_bindings"]["s1"]["result"]["label"] == "phishing"
+    assert extras["analyzer_analysis"]["label"] == "phishing"
     hook.cleanup(session)
 
 

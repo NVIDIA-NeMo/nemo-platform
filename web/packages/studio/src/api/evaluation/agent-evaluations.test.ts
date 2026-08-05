@@ -91,18 +91,18 @@ describe('agentNameForJob', () => {
 });
 
 describe('evalConfigName', () => {
-  it('reads the fileset name from spec.benchmark.eval_config', () => {
+  it('reads the fileset name from spec.labels.eval_config_fileset', () => {
     const job = baseJob({
       spec: {
         target: { kind: 'agent', agent: { name: 'a' } },
         tasks: [{}],
-        benchmark: { eval_config_fileset: 'wise-blue' },
+        labels: { eval_config_fileset: 'wise-blue' },
       } as unknown as AgentEvaluateJob['spec'],
     });
     expect(evalConfigName(job)).toBe('wise-blue');
   });
 
-  it('returns null when benchmark is absent, ignoring any description', () => {
+  it('returns null when labels.eval_config_fileset is absent, ignoring any description', () => {
     expect(evalConfigName(baseJob({ description: 'legacy-desc' }))).toBeNull();
   });
 });

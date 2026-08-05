@@ -521,6 +521,39 @@ async def test_fabric_runtime_invokes_task_hook_lifecycle(tmp_path: Path, monkey
 
 
 @pytest.mark.asyncio
+async def test_fabric_runtime_recovers_mcp_binding_when_fabric_status_not_succeeded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _Hook:
+        def prepare(self, *, config, task, evidence_dir, workspace_dir, session):  # noqa: ANN001
+            return config
+
+        def after_success(self, *, task, result, session):  # noqa: ANN001
+            return {"analyzer_analysis": {"label": "phishing", "is_likely_phishing": True}}
+
+        def cleanup(self, *, session):  # noqa: ANN001
+            return None
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="failed", output={"response": ""})
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=_CONFIG,
+        work_root=tmp_path / "fabric",
+        capture_trajectory=False,
+        task_hook=_Hook(),
+    )
+
+    trials = await runtime.run_tasks([_TASK])
+
+    assert trials[0].status == "completed"
+    assert trials[0].metadata.get("recovered_from_mcp_binding") is True
+    assert trials[0].output is not None
+    assert "phishing" in (trials[0].output.output_text or "")
+
+
+@pytest.mark.asyncio
 async def test_fabric_runtime_task_hook_cleanup_runs_on_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

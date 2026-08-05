@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsOutput } from '@nemo/sdk/generated/platform/schema';
+import type { Rails } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Divider, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import {
   EmptyText,
@@ -61,7 +61,7 @@ const STAGES: StageDescriptor[] = [
   },
 ];
 
-const stageFlows = (rails: RailsOutput | undefined, key: StageKey): string[] => {
+const stageFlows = (rails: Rails | undefined, key: StageKey): string[] => {
   switch (key) {
     case 'input':
       return rails?.input?.flows ?? [];
@@ -78,7 +78,7 @@ const stageFlows = (rails: RailsOutput | undefined, key: StageKey): string[] => 
   }
 };
 
-const isParallel = (rails: RailsOutput | undefined, key: StageKey): boolean => {
+const isParallel = (rails: Rails | undefined, key: StageKey): boolean => {
   switch (key) {
     case 'input':
       return rails?.input?.parallel ?? false;
@@ -94,7 +94,7 @@ const isParallel = (rails: RailsOutput | undefined, key: StageKey): boolean => {
 };
 
 /** Stage-specific extra config rendered below the flow list. */
-const stageExtras = (rails: RailsOutput | undefined, key: StageKey): Field[] => {
+const stageExtras = (rails: Rails | undefined, key: StageKey): Field[] => {
   if (key === 'output') {
     const streaming = rails?.output?.streaming;
     const fields: Field[] = [];
@@ -170,7 +170,7 @@ const FlowRow: FC<{ flow: string; isFirst: boolean }> = ({ flow, isFirst }) => {
   );
 };
 
-const StageCard: FC<{ stage: StageDescriptor; rails: RailsOutput | undefined }> = ({
+const StageCard: FC<{ stage: StageDescriptor; rails: Rails | undefined }> = ({
   stage,
   rails,
 }) => {
@@ -218,10 +218,10 @@ const StageCard: FC<{ stage: StageDescriptor; rails: RailsOutput | undefined }> 
 };
 
 /** True when a non-core stage has any content worth rendering. */
-const stageHasContent = (rails: RailsOutput | undefined, key: StageKey): boolean =>
+const stageHasContent = (rails: Rails | undefined, key: StageKey): boolean =>
   stageFlows(rails, key).length > 0 || stageExtras(rails, key).length > 0;
 
-export const PipelineSection: FC<{ rails: RailsOutput | undefined }> = ({ rails }) => {
+export const PipelineSection: FC<{ rails: Rails | undefined }> = ({ rails }) => {
   const stages = STAGES.filter((stage) => stage.core || stageHasContent(rails, stage.key));
   return (
     <Panel slotHeading="Pipeline" slotIcon={<Waypoints />} elevation="high" density="compact">

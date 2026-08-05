@@ -14,7 +14,7 @@ import type {
   EntitiesListEntitiesParams,
   GuardrailCheckRequest,
   GuardrailCheckResponse,
-  RailsConfigOutput,
+  RailsConfig,
 } from '@nemo/sdk/generated/platform/schema';
 import { isVersionConflictError } from '@studio/api/common/utils';
 import {
@@ -174,7 +174,7 @@ export async function deleteGuardrailCheck(
  * we fall back to the first model that declares a `model` reference.
  */
 export function resolveConfigModel(
-  config: RailsConfigOutput | undefined,
+  config: RailsConfig | undefined,
   configLabel: string
 ): string {
   const models = config?.models ?? [];
@@ -230,7 +230,7 @@ export async function runGuardrailCheck(
   const configEntity = await entitiesGetEntityById(check.parent);
   // A guardrail_config entity nests the rails config under `data.data`
   // (`data` also carries the config's description).
-  const configData = (configEntity.data as { data?: RailsConfigOutput }).data;
+  const configData = (configEntity.data as { data?: RailsConfig }).data;
   const model = resolveConfigModel(configData, configEntity.name);
 
   const request: GuardrailCheckRequest = {
