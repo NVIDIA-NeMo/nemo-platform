@@ -77,8 +77,8 @@ export const DatasetProfilerSection: FC = () => {
             }
             description={
               isError
-                ? 'The profiler analysis could not be loaded for this job. Review the job logs below for details.'
-                : 'Review the job logs below for details.'
+                ? 'The profiler analysis could not be loaded for this job. Review the Logs tab for details.'
+                : 'Review the Logs tab for details.'
             }
           />
         </Stack>

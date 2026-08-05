@@ -157,7 +157,7 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
             onChange: (value: number) =>
               inferenceParamsField.onChange({
                 ...(inferenceParamsField.value ?? EMPTY_INFERENCE_PARAMS),
-                max_parallel_requests: value,
+                max_parallel_requests: Math.round(value),
               }),
           }}
           defaultValue={DEFAULT_MAX_PARALLEL_REQUESTS}
