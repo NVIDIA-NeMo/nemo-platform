@@ -31,9 +31,10 @@ export const HistorySessionButton = ({
   const tooltip = prompt ? `${timestamp}\n\n${prompt}` : timestamp;
 
   return (
-    <div
+    <Flex
+      align="center"
       className={cn(
-        'flex w-full items-center border-b border-base pr-density-sm transition-colors hover:bg-surface-sunken',
+        'w-full border-b border-base pr-density-sm transition-colors hover:bg-surface-sunken',
         active && 'bg-surface-sunken'
       )}
     >
@@ -83,6 +84,6 @@ export const HistorySessionButton = ({
           <Trash2 size={16} />
         </Button>
       </Tooltip>
-    </div>
+    </Flex>
   );
 };
