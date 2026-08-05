@@ -7,7 +7,7 @@ import { UserPopover } from '@studio/components/UserPopover';
 import { TOUR_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
-import { ClaudeCodeTopBarChat } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeTopBarChat';
+import { CopilotTopBarChat } from '@studio/routes/agents/CopilotChatRoute/CopilotTopBarChat';
 import { ThemeSwitch } from '@studio/routes/PageLayout/ThemeSwitch';
 import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { useSidebarState } from '@studio/util/hooks/useSidebarState';
@@ -25,18 +25,18 @@ interface Props {
 
 interface GlobalNavContentProps extends Props {
   isDashboardRoute: boolean;
-  isClaudeCodeChatRoute: boolean;
+  isCopilotChatRoute: boolean;
 }
 
 const GlobalNavContent: FC<GlobalNavContentProps> = ({
   sideNav,
   isDashboardRoute,
-  isClaudeCodeChatRoute,
+  isCopilotChatRoute,
 }) => {
   const workspace = useWorkspaceFromPathIfExists();
-  const { expanded, toggle } = useSidebarState(!isClaudeCodeChatRoute);
-  const shouldMountClaudeCodeTopBarChat = !isDashboardRoute && !isClaudeCodeChatRoute;
-  const sidebarBackground = isClaudeCodeChatRoute
+  const { expanded, toggle } = useSidebarState(!isCopilotChatRoute);
+  const shouldMountCopilotTopBarChat = !isDashboardRoute && !isCopilotChatRoute;
+  const sidebarBackground = isCopilotChatRoute
     ? 'bg-surface-sunken dark:bg-surface-base'
     : 'bg-surface-navigation';
 
@@ -86,7 +86,7 @@ const GlobalNavContent: FC<GlobalNavContentProps> = ({
                 <WelcomeTour />
               </Suspense>
             )}
-            {shouldMountClaudeCodeTopBarChat && <ClaudeCodeTopBarChat />}
+            {shouldMountCopilotTopBarChat && <CopilotTopBarChat />}
             <ThemeSwitch />
             <span data-tour="nav-user">
               <UserPopover />
@@ -96,7 +96,7 @@ const GlobalNavContent: FC<GlobalNavContentProps> = ({
       />
       {sideNav && (
         <div
-          className={`h-full max-h-[calc(100vh-var(--nv-app-bar-height))] overflow-y-auto [grid-area:sidebar] ${isClaudeCodeChatRoute ? `${sidebarBackground} [&_.nv-vertical-nav-root]:bg-transparent!` : ''}`}
+          className={`h-full max-h-[calc(100vh-var(--nv-app-bar-height))] overflow-y-auto [grid-area:sidebar] ${isCopilotChatRoute ? `${sidebarBackground} [&_.nv-vertical-nav-root]:bg-transparent!` : ''}`}
           data-tour="sidebar"
         >
           {sideNav(!expanded)}
@@ -110,15 +110,15 @@ export const GlobalNav: FC<Props> = ({ sideNav }) => {
   const location = useLocation();
   const isDashboardRoute =
     matchPath({ path: ROUTES.workspace.dashboard, end: true }, location.pathname) !== null;
-  const isClaudeCodeChatRoute =
+  const isCopilotChatRoute =
     matchPath({ path: ROUTES.workspace.copilotChat, end: true }, location.pathname) !== null;
 
   return (
     <GlobalNavContent
-      key={isClaudeCodeChatRoute ? 'copilot' : 'default'}
+      key={isCopilotChatRoute ? 'copilot' : 'default'}
       sideNav={sideNav}
       isDashboardRoute={isDashboardRoute}
-      isClaudeCodeChatRoute={isClaudeCodeChatRoute}
+      isCopilotChatRoute={isCopilotChatRoute}
     />
   );
 };

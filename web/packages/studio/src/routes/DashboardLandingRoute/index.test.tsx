@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ROUTES } from '@studio/constants/routes';
-import { getClaudeCodeActiveSessionStorageKey } from '@studio/routes/agents/ClaudeCodeChatRoute/activeSessionStorage';
+import { getCopilotActiveSessionStorageKey } from '@studio/routes/agents/CopilotChatRoute/activeSessionStorage';
 import { DashboardLandingRoute } from '@studio/routes/DashboardLandingRoute';
 import { mockFeatureFlags } from '@studio/tests/util/mockFeatureFlags';
 import { TestProviders } from '@studio/tests/util/TestProviders';
@@ -10,13 +10,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, generatePath, RouterProvider, useLocation } from 'react-router';
 
-vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', async (importOriginal) => {
+vi.mock('@studio/routes/agents/CopilotChatRoute/api', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('@studio/routes/agents/ClaudeCodeChatRoute/api')>();
+    await importOriginal<typeof import('@studio/routes/agents/CopilotChatRoute/api')>();
 
   return {
     ...actual,
-    listClaudeCodeHistorySessions: vi.fn(async () => []),
+    listCopilotHistorySessions: vi.fn(async () => []),
   };
 });
 
@@ -121,7 +121,7 @@ describe('DashboardLandingRoute', () => {
 
   it('clears the active NeMo Copilot session before starting from the landing composer', async () => {
     const user = userEvent.setup();
-    localStorage.setItem(getClaudeCodeActiveSessionStorageKey(workspace), 'session-existing');
+    localStorage.setItem(getCopilotActiveSessionStorageKey(workspace), 'session-existing');
     renderRoute();
 
     await user.type(
@@ -130,7 +130,7 @@ describe('DashboardLandingRoute', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Send message' }));
 
-    expect(localStorage.getItem(getClaudeCodeActiveSessionStorageKey(workspace))).toBeNull();
+    expect(localStorage.getItem(getCopilotActiveSessionStorageKey(workspace))).toBeNull();
   });
 
   it('submits the landing composer when Enter is pressed', async () => {
