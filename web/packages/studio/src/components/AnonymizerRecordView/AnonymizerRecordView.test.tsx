@@ -3,26 +3,10 @@
 
 import { AnonymizerRecordView } from '@studio/components/AnonymizerRecordView/AnonymizerRecordView';
 import { buildAnonymizerRecord } from '@studio/components/AnonymizerRecordView/parse';
+import { traceRow } from '@studio/components/AnonymizerRecordView/testFixtures';
 import { render, screen, waitFor } from '@testing-library/react';
 import type { FC } from 'react';
 import { MemoryRouter, useLocation } from 'react-router';
-
-const traceRow = {
-  biography: 'Bobby, a 40-year-old veterinarian.',
-  biography_replaced: 'Teddy, a 45-year-old veterinarian.',
-  final_entities: {
-    entities: [
-      { value: 'Bobby', label: 'first_name', start_position: 0, end_position: 5 },
-      { value: '40', label: 'age', start_position: 9, end_position: 11 },
-    ],
-  },
-  _replacement_map: {
-    replacements: [
-      { original: 'Bobby', label: 'first_name', synthetic: 'Teddy' },
-      { original: '40', label: 'age', synthetic: '45' },
-    ],
-  },
-};
 
 const SearchProbe: FC = () => <span data-testid="search">{useLocation().search}</span>;
 

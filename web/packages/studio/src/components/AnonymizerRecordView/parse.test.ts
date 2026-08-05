@@ -10,31 +10,13 @@ import {
   toSegments,
   toUtf16Offsets,
 } from '@studio/components/AnonymizerRecordView/parse';
-
-const ORIGINAL = 'Bobby, a 40-year-old veterinarian.';
-const REPLACED = 'Teddy, a 45-year-old veterinarian.';
-
-const entities = [
-  { value: 'Bobby', label: 'first_name', start: 0, end: 5 },
-  { value: '40', label: 'age', start: 9, end: 11 },
-];
-
-const replacements = [
-  { original: 'Bobby', label: 'first_name', synthetic: 'Teddy' },
-  { original: '40', label: 'age', synthetic: '45' },
-];
-
-const traceRow = {
-  biography: ORIGINAL,
-  biography_replaced: REPLACED,
-  final_entities: {
-    entities: [
-      { value: 'Bobby', label: 'first_name', start_position: 0, end_position: 5 },
-      { value: '40', label: 'age', start_position: 9, end_position: 11 },
-    ],
-  },
-  _replacement_map: { replacements },
-};
+import {
+  entities,
+  ORIGINAL,
+  replacements,
+  REPLACED,
+  traceRow,
+} from '@studio/components/AnonymizerRecordView/testFixtures';
 
 describe('parseEntities', () => {
   it('reads spans out of the wrapped entity list', () => {
@@ -130,6 +112,24 @@ describe('buildReplacedEntities', () => {
 
     expect(buildReplacedEntities(bobby, replacements, source, output)).toEqual([
       { value: 'Teddy', label: 'first_name', start: 10, end: 15 },
+    ]);
+  });
+
+  it('skips an identical literal that a length-changing replacement moved past', () => {
+    const source = 'Alexander knows Teddy and Bobby';
+    const output = 'Al knows Teddy and Teddy';
+    const shifted = [
+      { value: 'Alexander', label: 'first_name', start: 0, end: 9 },
+      { value: 'Bobby', label: 'first_name', start: 26, end: 31 },
+    ];
+    const shorter = [
+      { original: 'Alexander', label: 'first_name', synthetic: 'Al' },
+      { original: 'Bobby', label: 'first_name', synthetic: 'Teddy' },
+    ];
+
+    expect(buildReplacedEntities(shifted, shorter, source, output)).toEqual([
+      { value: 'Al', label: 'first_name', start: 0, end: 2 },
+      { value: 'Teddy', label: 'first_name', start: 19, end: 24 },
     ]);
   });
 

@@ -40,19 +40,17 @@ export const ReplacementMapTable: FC<ReplacementMapTableProps> = memo(({ replace
     ComponentProps<typeof StudioDataView<EntityReplacement>>['makeColumns']
   >(
     (col) => [
-      col.display({
-        id: 'label',
+      col.accessor('label', {
         header: 'Label',
-        cell: ({ row }) => (
-          <Badge color={entityTagColor(row.original.label)} kind="outline">
-            {row.original.label}
+        cell: ({ getValue }) => (
+          <Badge color={entityTagColor(getValue())} kind="outline">
+            {getValue()}
           </Badge>
         ),
       }),
-      col.display({
-        id: 'original',
+      col.accessor('original', {
         header: 'Original',
-        cell: ({ row }) => <Text kind="body/regular/sm">{row.original.original}</Text>,
+        cell: ({ getValue }) => <Text kind="body/regular/sm">{getValue()}</Text>,
       }),
       col.display({
         id: 'arrow',
@@ -60,10 +58,9 @@ export const ReplacementMapTable: FC<ReplacementMapTableProps> = memo(({ replace
         size: ARROW_COLUMN_SIZE,
         cell: () => <ArrowRight aria-hidden size={14} />,
       }),
-      col.display({
-        id: 'synthetic',
+      col.accessor('synthetic', {
         header: 'Replacement',
-        cell: ({ row }) => <Text kind="body/regular/sm">{row.original.synthetic}</Text>,
+        cell: ({ getValue }) => <Text kind="body/regular/sm">{getValue()}</Text>,
       }),
     ],
     []
@@ -81,5 +78,3 @@ export const ReplacementMapTable: FC<ReplacementMapTableProps> = memo(({ replace
     />
   );
 });
-
-ReplacementMapTable.displayName = 'ReplacementMapTable';

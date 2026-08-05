@@ -43,5 +43,3 @@ export const AnonymizerRecordView: FC<AnonymizerRecordViewProps> = memo(
     </Stack>
   )
 );
-
-AnonymizerRecordView.displayName = 'AnonymizerRecordView';

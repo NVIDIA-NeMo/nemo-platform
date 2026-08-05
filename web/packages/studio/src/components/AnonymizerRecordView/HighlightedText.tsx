@@ -35,5 +35,3 @@ export const HighlightedText: FC<HighlightedTextProps> = memo(({ segments, empty
     </Text>
   )
 );
-
-HighlightedText.displayName = 'HighlightedText';
