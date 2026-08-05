@@ -67,11 +67,10 @@ async def run_analyst(
         since: Optional incremental lower bound enforced on trace/span reads.
         evaluation_id: Optional run scope; AND-pinned onto every span read.
     """
-    _enable_litellm_drop_params()
-
     observability = None
     insights_output_path = str(insights_output) if insights_output else None
     try:
+        _enable_litellm_drop_params()
         backend = make_analyst_backend(
             client=client,
             insights_output=insights_output_path,

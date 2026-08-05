@@ -96,6 +96,26 @@ async def test_client_closed_when_backend_construction_raises(monkeypatch: pytes
     assert client.closed
 
 
+async def test_client_closed_when_litellm_initialization_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeClient()
+
+    def raising_litellm_initialization() -> None:
+        raise RuntimeError("litellm failed")
+
+    monkeypatch.setattr(run_module, "_enable_litellm_drop_params", raising_litellm_initialization)
+
+    with pytest.raises(RuntimeError, match="litellm failed"):
+        await run_module.run_analyst(
+            agent="agent",
+            agent_spec=None,
+            workspace="workspace",
+            base_url="https://platform",
+            client=cast(AsyncNeMoPlatform, client),
+        )
+
+    assert client.closed
+
+
 def test_verbose_echo_maps_nooa_reasoning_tools_and_execution(capsys: pytest.CaptureFixture[str]) -> None:
     run_module._echo_event(
         LLMComplete(

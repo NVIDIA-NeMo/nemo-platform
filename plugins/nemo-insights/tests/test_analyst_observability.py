@@ -3,6 +3,7 @@
 
 """Nooa tracing adapter tests."""
 
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -47,3 +48,33 @@ def test_shutdown_flushes_nooa_traces(monkeypatch: pytest.MonkeyPatch) -> None:
     observability.AnalystObservability(endpoint="endpoint", session_id="session").shutdown()
 
     assert flushed == [True]
+
+
+def test_remote_http_export_never_attaches_auth_headers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    seen: dict[str, object] = {}
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("configured: true\n")
+
+    def fake_otlp(*, endpoint: str, headers: dict[str, str] | None) -> object:
+        seen["otlp"] = (endpoint, headers)
+        return object()
+
+    def unexpected_config_load(*args: object, **kwargs: object) -> object:
+        raise AssertionError("remote HTTP must be rejected before loading bearer credentials")
+
+    monkeypatch.setattr(observability.Config, "get_default_config_path", lambda: config_path)
+    monkeypatch.setattr(observability.Config, "load", unexpected_config_load)
+    monkeypatch.setattr(observability.exporters, "otlp", fake_otlp)
+    monkeypatch.setattr(observability, "enable_tracing", lambda **kwargs: None)
+    monkeypatch.setattr(observability, "set_session", lambda session_id: None)
+
+    configured = observability.setup_analyst_observability(
+        base_url="http://platform.example",
+        workspace="workspace",
+        target_agent="target-agent",
+    )
+
+    assert seen["otlp"] == (configured.endpoint, None)

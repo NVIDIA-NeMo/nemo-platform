@@ -68,9 +68,10 @@ def setup_analyst_observability(
 
 def _otlp_auth_headers(base_url: str) -> dict[str, str] | None:
     """Return Bearer auth headers for remote Intake OTLP ingest, if available."""
-    host = (urlparse(base_url).hostname or "").lower()
+    parsed = urlparse(base_url)
+    host = (parsed.hostname or "").lower()
     config_path = Config.get_default_config_path()
-    if host in LOOPBACK_HOSTS or not config_path.exists():
+    if parsed.scheme.lower() != "https" or host in LOOPBACK_HOSTS or not config_path.exists():
         return None
 
     config = Config.load(config_path, overrides={"base_url": base_url})

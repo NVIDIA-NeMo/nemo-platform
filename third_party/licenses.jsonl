@@ -79,14 +79,12 @@
 {"name": "flatbuffers", "license": "APACHE-2.0", "compatible": true}
 {"name": "frozenlist", "license": "APACHE-2.0", "compatible": true}
 {"name": "fsspec", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "genai-prices", "license": "MIT", "compatible": true}
 {"name": "gitdb", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "gitpython", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "google-auth", "license": "APACHE-2.0", "compatible": true}
 {"name": "google-genai", "license": "APACHE-2.0", "compatible": true}
 {"name": "googleapis-common-protos", "license": "APACHE-2.0", "compatible": true}
 {"name": "greenlet", "license": "MIT", "compatible": true}
-{"name": "griffelib", "license": "ISC", "compatible": true}
 {"name": "grpcio", "license": "APACHE-2.0", "compatible": true}
 {"name": "gunicorn", "license": "MIT", "compatible": true}
 {"name": "h11", "license": "MIT", "compatible": true}
@@ -95,12 +93,10 @@
 {"name": "hf-xet", "license": "APACHE-2.0", "compatible": true}
 {"name": "hpack", "license": "MIT", "compatible": true}
 {"name": "httpcore", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "httpcore2", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "httptools", "license": "MIT", "compatible": true}
 {"name": "httpx", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "httpx-retries", "license": "MIT", "compatible": true}
 {"name": "httpx-sse", "license": "MIT", "compatible": true}
-{"name": "httpx2", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "huggingface-hub", "license": "APACHE-2.0", "compatible": true}
 {"name": "hvac", "license": "APACHE-2.0", "compatible": true}
 {"name": "hyperframe", "license": "MIT", "compatible": true}
@@ -153,7 +149,6 @@
 {"name": "langsmith", "license": "MIT", "compatible": true}
 {"name": "lark", "license": "MIT", "compatible": true}
 {"name": "litellm", "license": "MIT", "compatible": true}
-{"name": "logfire-api", "license": "MIT", "compatible": true}
 {"name": "loguru", "license": "MIT", "compatible": true}
 {"name": "lxml", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "lz4", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -258,12 +253,8 @@
 {"name": "pyasn1-modules", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pycparser", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pydantic", "license": "MIT", "compatible": true}
-{"name": "pydantic-ai-harness", "license": "MIT", "compatible": true}
-{"name": "pydantic-ai-slim", "license": "MIT", "compatible": true}
 {"name": "pydantic-core", "license": "MIT", "compatible": true}
 {"name": "pydantic-extra-types", "license": "MIT", "compatible": true}
-{"name": "pydantic-graph", "license": "MIT", "compatible": true}
-{"name": "pydantic-monty", "license": "MIT", "compatible": true}
 {"name": "pydantic-settings", "license": "MIT", "compatible": true}
 {"name": "pygments", "license": "BSD-2-CLAUSE", "compatible": true}
 {"name": "pyjwt", "license": "MIT", "compatible": true}
@@ -335,7 +326,6 @@
 {"name": "tornado", "license": "APACHE-2.0", "compatible": true}
 {"name": "tqdm", "license": "MIT", "compatible": true}
 {"name": "transformers", "license": "APACHE-2.0", "compatible": true}
-{"name": "truststore", "license": "MIT", "compatible": true}
 {"name": "typer", "license": "MIT", "compatible": true}
 {"name": "types-aioboto3", "license": "MIT", "compatible": true}
 {"name": "types-aiobotocore", "license": "MIT", "compatible": true}
