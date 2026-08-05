@@ -36,7 +36,9 @@ class _StubSDK:
 
 
 def test_preflight_noop_without_sdk() -> None:
-    preflight_validate_llm_models({"models": {"default": {"provider": "nvidia", "model": "x"}}}, workspace="ws", sdk=None)
+    preflight_validate_llm_models(
+        {"models": {"default": {"provider": "nvidia", "model": "x"}}}, workspace="ws", sdk=None
+    )
 
 
 def test_preflight_validates_fabric_models_without_base_url() -> None:
