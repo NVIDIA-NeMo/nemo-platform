@@ -44,13 +44,19 @@ from nemo_platform_plugin.files.dataset_profile import (
 PROFILER_NAME = "nemo-dataset-profiler"
 PROFILER_VERSION = "0.1.0"
 
-# Rows read per file by default. Every file is still opened — head-sampling a *subset of files* would
-# hide columns that appear only in later shards — but each is capped, so peak memory scales with the
-# file count rather than the dataset size. Uncapped, a partition materializes every row of every file
-# as Python dicts at roughly 6x the on-disk parquet size, which puts a 10 GB dataset far past any
-# reasonable machine. A thousand rows per file is ample for the statistics computed here (length
-# quantiles, rates, cardinality); pass ``row_cap=None`` for a genuinely exhaustive scan.
-DEFAULT_ROW_CAP = 1000
+# Rows a partition may read, in total, by default. Every file is still opened — head-sampling a
+# *subset of files* would hide columns that appear only in later shards — but the budget is divided
+# across them, so peak memory tracks the budget rather than the shard count. A per-file cap put the
+# knob on the wrong axis: at 1000 rows each, resharding a dataset from 100 files to 10,000 took peak
+# heap from 135 MB to 13.5 GB while describing exactly the same data. Ten thousand rows is ample for
+# the statistics computed here (length quantiles, rates, cardinality); pass ``row_budget=None`` for a
+# genuinely exhaustive scan.
+DEFAULT_ROW_BUDGET = 10_000
+
+# Rows read from a file however thin the budget gets. Below this a file cannot contribute the columns
+# it alone witnesses, which is the whole reason every file is opened rather than a subset sampled. It
+# is what makes the budget a target rather than a ceiling: 10,000 shards read this many each.
+MIN_ROWS_PER_FILE = 10
 
 
 def _format_of(path: str) -> str:
@@ -66,14 +72,14 @@ def profile(
     source: FileSource,
     *,
     created_at: datetime | None = None,
-    row_cap: int | None = DEFAULT_ROW_CAP,
+    row_budget: int | None = DEFAULT_ROW_BUDGET,
     column_roles: dict[str, str] | None = None,
 ) -> DatasetProfile:
     """Profile the dataset behind ``source`` into a ``DatasetProfile``.
 
-    ``row_cap`` bounds how many rows are read from each file; ``None`` reads every row, which is
-    exact but scales memory with the dataset rather than the file count. Files smaller than the cap
-    are still read to the end, so a capped profile of a small dataset stays exhaustive.
+    ``row_budget`` bounds how many rows each *partition* reads in total, divided across its files;
+    ``None`` reads every row, which is exact but scales memory with the dataset. Files smaller than
+    their share are read to the end, so a budgeted profile of a small dataset stays complete.
 
     ``column_roles`` maps a column name to a role the caller is asserting, for datasets whose column
     names the role table does not recognize. Hints take precedence over name detection but still have
@@ -110,7 +116,7 @@ def profile(
     groups = group_partitions(data_entries)
     for source_dir, partition_entries in groups:
         name = _partition_label(source_dir, len(groups))
-        outcome = _profile_partition(source, name, source_dir, partition_entries, row_cap, column_roles or {})
+        outcome = _profile_partition(source, name, source_dir, partition_entries, row_budget, column_roles or {})
         partitions.append(outcome.partition)
         rows_scanned += outcome.rows_scanned
         files_read += outcome.files_read
@@ -128,7 +134,7 @@ def profile(
         # Every data file, readable or not: the denominator that makes `files_read` a fraction rather
         # than a bare count. Non-data files (a README, a LICENSE) are not data and are counted nowhere.
         files_present=len(data_entries) + len(unreadable_files),
-        per_file_row_cap=row_cap,
+        row_budget=row_budget,
         seed=None,  # head sampling makes no random choices; a seed would be theatre
     )
     return DatasetProfile(
@@ -138,6 +144,22 @@ def profile(
         partitions=partitions,
         unreadable_files=unreadable_files,
     )
+
+
+def _per_file_cap(row_budget: int | None, file_count: int) -> int | None:
+    """Split a partition's row budget across its files.
+
+    Bounded below by :data:`MIN_ROWS_PER_FILE`, which is what makes the budget a target rather than a
+    ceiling: at a thousand shards the arithmetic share is ten rows, and at ten thousand it would be
+    one, which is too thin to witness a column. Overshooting the budget there is the right trade --
+    the alternative is sampling a *subset of files*, which hides columns that appear only in later
+    shards, and file-level sampling is the tier of this problem still to solve.
+    """
+    if row_budget is None:
+        return None
+    if file_count <= 1:
+        return row_budget
+    return max(MIN_ROWS_PER_FILE, row_budget // file_count)
 
 
 def _add_known(total: int | None, addend: int | None) -> int | None:
@@ -239,7 +261,7 @@ def _profile_partition(
     name: str,
     source_dir: str | None,
     entries: list[FileEntry],
-    row_cap: int | None,
+    row_budget: int | None,
     column_roles: dict[str, str],
 ) -> _PartitionOutcome:
     """Profile one partition — the files of one source directory, whatever formats they are in.
@@ -261,6 +283,7 @@ def _profile_partition(
     files_read = 0
     rows_present: int | None = 0
     partition_scanned = True
+    row_cap = _per_file_cap(row_budget, len(entries))
     read_strategy = "full" if row_cap is None else "head"
     split_profiles: list[SplitProfile] = []
     for split in resolve_splits(entries):
@@ -304,6 +327,7 @@ def _profile_partition(
                     checksum=entry.checksum,
                     file_format=file_format,
                     read_strategy=read_strategy,
+                    row_cap=row_cap,
                     num_rows=num_rows,
                     error=error,
                 )

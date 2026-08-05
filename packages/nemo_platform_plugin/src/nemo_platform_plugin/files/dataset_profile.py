@@ -323,6 +323,15 @@ class FileRecord(BaseModel):
             "in the same partition can only be read from the top."
         ),
     )
+    row_cap: int | None = Field(
+        default=None,
+        description=(
+            "Rows this file's read was bounded to, None when unbounded. Derived from "
+            "`SamplingInfo.row_budget` divided across the partition's files, so it is per file rather "
+            "than a global setting: the same budget yields 1000 rows each across ten shards and ten "
+            "each across a thousand, which is what keeps peak memory flat as a dataset is resharded."
+        ),
+    )
     num_rows: int | None = Field(
         default=None,
         description="Exact only (parquet footer / exhaustive scan), else None.",
@@ -507,7 +516,17 @@ class SamplingInfo(BaseModel):
             "these two to match until scale forces file-level sampling."
         ),
     )
-    per_file_row_cap: int | None = Field(default=None, description="Cap that bounded per-file reads, if any.")
+    row_budget: int | None = Field(
+        default=None,
+        description=(
+            "Rows the caller allowed per partition, None for an unbounded read. A budget rather than a "
+            "per-file cap because the cost is per partition: a per-file cap made peak memory scale with "
+            "shard count, so the same dataset resharded from 100 files to 10,000 went from megabytes to "
+            "gigabytes without holding any more data. The per-file cap this produced is on each "
+            "`FileRecord.row_cap`. Not a hard ceiling: every file is still read at least a few rows, "
+            "since a file sampled too thinly cannot contribute the columns it alone witnesses."
+        ),
+    )
     seed: int | None = Field(default=None, description="RNG seed used for row selection, for reproducibility.")
 
 
