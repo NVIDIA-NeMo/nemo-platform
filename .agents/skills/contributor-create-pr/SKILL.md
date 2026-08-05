@@ -18,7 +18,7 @@ Create and follow up on pull requests for `NVIDIA-NeMo/nemo-platform`. Treat the
 - Preserve sign-offs during history updates with `git rebase --signoff` or `git merge --signoff`.
 - Audit every commit in the PR range for an appropriate `Signed-off-by:` trailer before every push and immediately before PR creation.
 - Do not forge another contributor's sign-off. Stop when a commit author must provide or correct their own DCO declaration.
-- Never use `git reset --soft origin/main` or reset to any commit that is not an ancestor of `HEAD`.
+- Never use `git reset --soft "$NMP_BASE_REF"` or reset to any commit that is not an ancestor of `HEAD`.
 - Never use plain `--force`. Use an exact `--force-with-lease` only after the user approves rewriting a published branch.
 - Stop on GitHub authentication, authorization, SSO, remote-access, or push-permission failures. Do not search for tokens, change credentials, switch remote protocols, or try another identity.
 - Do not alter an unrelated branch or PR. Do not create a duplicate PR for a branch that already has one.
@@ -31,21 +31,63 @@ Run these checks before a GitHub read or write:
 NMP_REPO=NVIDIA-NeMo/nemo-platform
 gh auth status
 gh repo view "$NMP_REPO" --json nameWithOwner,defaultBranchRef,url
-git remote get-url origin
+
+nmp_repo_for_url() {
+  case "$1" in
+    https://github.com/*|git@github.com:*|ssh://git@github.com/*) ;;
+    *) printf 'Unsupported or unencrypted Git remote URL: %s\n' "$1" >&2; return 1 ;;
+  esac
+  gh repo view "$1" --json nameWithOwner --jq '.nameWithOwner'
+}
+
+NMP_UPSTREAM_CANDIDATES=""
+for NMP_REMOTE in $(git remote); do
+  NMP_REMOTE_IS_UPSTREAM=true
+  NMP_REMOTE_HAS_FETCH_URL=false
+  while IFS= read -r NMP_URL; do
+    NMP_REMOTE_HAS_FETCH_URL=true
+    NMP_URL_REPO="$(nmp_repo_for_url "$NMP_URL")" || {
+      NMP_REMOTE_IS_UPSTREAM=false
+      break
+    }
+    if [ "$NMP_URL_REPO" != "$NMP_REPO" ]; then
+      NMP_REMOTE_IS_UPSTREAM=false
+      break
+    fi
+  done < <(git remote get-url --all "$NMP_REMOTE")
+
+  if "$NMP_REMOTE_HAS_FETCH_URL" && "$NMP_REMOTE_IS_UPSTREAM"; then
+    NMP_UPSTREAM_CANDIDATES="${NMP_UPSTREAM_CANDIDATES}${NMP_UPSTREAM_CANDIDATES:+$'\n'}${NMP_REMOTE}"
+  fi
+done
+
+NMP_UPSTREAM_COUNT="$(printf '%s\n' "$NMP_UPSTREAM_CANDIDATES" | sed '/^$/d' | wc -l | tr -d ' ')"
+if printf '%s\n' "$NMP_UPSTREAM_CANDIDATES" | grep -qx upstream; then
+  NMP_UPSTREAM_REMOTE=upstream
+elif printf '%s\n' "$NMP_UPSTREAM_CANDIDATES" | grep -qx origin; then
+  NMP_UPSTREAM_REMOTE=origin
+elif [ "$NMP_UPSTREAM_COUNT" -eq 1 ]; then
+  NMP_UPSTREAM_REMOTE="$NMP_UPSTREAM_CANDIDATES"
+else
+  printf 'Could not select one encrypted remote for %s; found %s candidates\n' "$NMP_REPO" "$NMP_UPSTREAM_COUNT" >&2
+  exit 1
+fi
 ```
 
-Require an active host-authenticated account and `nameWithOwner` equal to `NVIDIA-NeMo/nemo-platform`. If `gh` fails only because a sandbox blocks host or network access, retry the same command with narrowly scoped host/network approval. If authentication or authorization still fails outside the sandbox, report the command and error and stop.
+Require an active host-authenticated account, `nameWithOwner` equal to `NVIDIA-NeMo/nemo-platform`, and a configured remote whose fetch URLs all resolve to that repository over encrypted HTTPS or SSH. Prefer a matching `upstream`, then a matching `origin`, then a sole matching remote. A contributor fork may remain `origin`; use a separate canonical remote such as `upstream` for the trusted base. If no canonical remote exists or unnamed candidates remain ambiguous, stop and ask the user to configure or select one rather than adding or rewriting remotes implicitly. Keep `NMP_REPO`, `NMP_UPSTREAM_REMOTE`, and `nmp_repo_for_url` available for later sections.
+
+If `gh` fails only because a sandbox blocks host or network access, retry the same command with narrowly scoped host/network approval. If authentication or authorization still fails outside the sandbox, report the command and error and stop.
 
 Resolve and refresh the default branch instead of assuming a stale local `main`:
 
 ```bash
 NMP_BASE_BRANCH="$(gh repo view "$NMP_REPO" --json defaultBranchRef --jq '.defaultBranchRef.name')"
-git fetch --prune origin "$NMP_BASE_BRANCH"
-NMP_BASE_REF="origin/$NMP_BASE_BRANCH"
+git fetch --prune "$NMP_UPSTREAM_REMOTE" "$NMP_BASE_BRANCH"
+NMP_BASE_REF="$NMP_UPSTREAM_REMOTE/$NMP_BASE_BRANCH"
 git show -s --format='%H %cs %s' "$NMP_BASE_REF"
 ```
 
-Treat authentication or access errors from `git fetch` as hard stops.
+Never derive `NMP_BASE_REF` from a fork merely because that fork is named `origin`. Treat authentication or access errors from `git fetch` as hard stops.
 
 ## 2. Verify the branch and worktree
 
@@ -147,7 +189,7 @@ Run this gate after any commit, amend, rebase, cherry-pick, conflict resolution,
 
 ```bash
 bash -euo pipefail <<'BASH'
-: "${NMP_BASE_REF:?set NMP_BASE_REF to the refreshed origin default branch}"
+: "${NMP_BASE_REF:?set NMP_BASE_REF to the refreshed canonical upstream default branch}"
 NMP_DCO_FAILED=0
 NMP_COMMIT_COUNT=0
 
@@ -214,21 +256,55 @@ Immediately before pushing, rerun the DCO audit, confirm the branch and remote, 
 
 ```bash
 NMP_BRANCH="$(git branch --show-current)"
-git remote get-url origin
+NMP_PUSH_REMOTE="$(git config --get "branch.$NMP_BRANCH.pushRemote" || true)"
+if [ -z "$NMP_PUSH_REMOTE" ]; then
+  NMP_PUSH_REMOTE="$(git config --get remote.pushDefault || true)"
+fi
+if [ -z "$NMP_PUSH_REMOTE" ]; then
+  NMP_PUSH_REMOTE="$(git config --get "branch.$NMP_BRANCH.remote" || true)"
+fi
+if [ -z "$NMP_PUSH_REMOTE" ] || [ "$NMP_PUSH_REMOTE" = "." ]; then
+  NMP_PUSH_REMOTE=origin
+fi
+
+NMP_PUSH_REPO=""
+NMP_PUSH_URL=""
+while IFS= read -r NMP_URL; do
+  NMP_URL_REPO="$(nmp_repo_for_url "$NMP_URL")" || exit 1
+  if [ -z "$NMP_PUSH_REPO" ]; then
+    NMP_PUSH_REPO="$NMP_URL_REPO"
+    NMP_PUSH_URL="$NMP_URL"
+  elif [ "$NMP_URL_REPO" != "$NMP_PUSH_REPO" ]; then
+    printf 'Push URLs for %s resolve to different repositories\n' "$NMP_PUSH_REMOTE" >&2
+    exit 1
+  fi
+done < <(git remote get-url --push --all "$NMP_PUSH_REMOTE")
+
+if [ -z "$NMP_PUSH_REPO" ]; then
+  printf 'Remote %s has no push URL\n' "$NMP_PUSH_REMOTE" >&2
+  exit 1
+fi
+NMP_PUSH_PARENT="$(gh api "repos/$NMP_PUSH_REPO" --jq '.parent.full_name // ""')"
+if [ "$NMP_PUSH_REPO" != "$NMP_REPO" ] && [ "$NMP_PUSH_PARENT" != "$NMP_REPO" ]; then
+  printf 'Push repository %s is neither %s nor its fork\n' "$NMP_PUSH_REPO" "$NMP_REPO" >&2
+  exit 1
+fi
+NMP_HEAD_OWNER="${NMP_PUSH_REPO%%/*}"
+
 git log --oneline "$NMP_BASE_REF..HEAD"
-git push --set-upstream origin "HEAD:refs/heads/$NMP_BRANCH"
+git push --set-upstream "$NMP_PUSH_REMOTE" "HEAD:refs/heads/$NMP_BRANCH"
 ```
 
-Use a normal push first. On a non-fast-forward rejection, fetch the exact remote branch and inspect both histories. Stop if the remote contains unexpected work.
+Validate every configured push URL for the selected push remote. Permit the canonical repository or a GitHub fork whose parent is `NMP_REPO`; reject plaintext transports, unrelated repositories, and mixed push targets. Use a normal push first. On a non-fast-forward rejection, fetch the exact branch from the validated push URL and inspect both histories. Stop if the remote contains unexpected work.
 
 Only after the user approves rewriting a published branch, pin the lease to the fetched remote SHA:
 
 ```bash
-git fetch origin "$NMP_BRANCH"
-NMP_EXPECTED_REMOTE_SHA="$(git rev-parse "origin/$NMP_BRANCH")"
+git fetch "$NMP_PUSH_URL" "refs/heads/$NMP_BRANCH:refs/remotes/nmp-push/$NMP_BRANCH"
+NMP_EXPECTED_REMOTE_SHA="$(git rev-parse "refs/remotes/nmp-push/$NMP_BRANCH")"
 git push \
   --force-with-lease="refs/heads/$NMP_BRANCH:$NMP_EXPECTED_REMOTE_SHA" \
-  origin "HEAD:refs/heads/$NMP_BRANCH"
+  "$NMP_PUSH_REMOTE" "HEAD:refs/heads/$NMP_BRANCH"
 ```
 
 Never bypass branch protection or required checks. Stop on any access error.
@@ -238,7 +314,7 @@ Never bypass branch protection or required checks. Stop on any access error.
 Check for an existing open PR first:
 
 ```bash
-gh pr list --repo "$NMP_REPO" --head "$NMP_BRANCH" --state open --json number,title,url,isDraft
+gh pr list --repo "$NMP_REPO" --head "$NMP_HEAD_OWNER:$NMP_BRANCH" --state open --json number,title,url,isDraft
 ```
 
 Rerun the DCO audit immediately before creation. Use explicit metadata; do not use `--fill` because it bypasses trusted-template completion.
@@ -248,7 +324,7 @@ Create a draft when work, validation, or a required decision remains:
 ```bash
 gh pr create --repo "$NMP_REPO" \
   --base "$NMP_BASE_BRANCH" \
-  --head "$NMP_BRANCH" \
+  --head "$NMP_HEAD_OWNER:$NMP_BRANCH" \
   --title "<validated title>" \
   --body-file "$NMP_PR_BODY" \
   --draft
