@@ -47,13 +47,18 @@ class FakeContainer:
         data_dir: Path | None = None,
         status: str = "running",
         host_port: int = 55123,
+        user: str = "default",
+        password: str = "",
     ) -> None:
         self.name = name
         self.status = status
         self.labels = labels or {}
         self.ports = {CLICKHOUSE_HTTP_PORT_KEY: [{"HostIp": "127.0.0.1", "HostPort": str(host_port)}]}
         self.attrs = {
-            "Config": {"Image": image},
+            "Config": {
+                "Image": image,
+                "Env": [f"CLICKHOUSE_USER={user}", f"CLICKHOUSE_PASSWORD={password}"],
+            },
             "Mounts": (
                 [{"Source": str(data_dir), "Destination": CLICKHOUSE_DATA_PATH}] if data_dir is not None else []
             ),
@@ -97,16 +102,27 @@ class FakeContainers:
         name = str(kwargs["name"])
         image = str(kwargs["image"])
         labels_value = kwargs["labels"]
+        environment_value = kwargs["environment"]
         volumes_value = kwargs["volumes"]
         assert isinstance(labels_value, dict)
+        assert isinstance(environment_value, dict)
         assert isinstance(volumes_value, dict)
         labels = {str(key): str(value) for key, value in labels_value.items()}
+        environment = cast(dict[str, object], environment_value)
         volumes = {str(key): value for key, value in volumes_value.items()}
         data_dir = Path(next(iter(volumes)))
         ports = cast(dict[str, tuple[str, int | None]], kwargs["ports"])
         http_binding = ports[CLICKHOUSE_HTTP_PORT_KEY]
         host_port = http_binding[1] if http_binding[1] is not None else 55123
-        container = FakeContainer(name=name, image=image, labels=labels, data_dir=data_dir, host_port=host_port)
+        container = FakeContainer(
+            name=name,
+            image=image,
+            labels=labels,
+            data_dir=data_dir,
+            host_port=host_port,
+            user=str(environment["CLICKHOUSE_USER"]),
+            password=str(environment["CLICKHOUSE_PASSWORD"]),
+        )
         self._containers[name] = container
         return container
 
@@ -206,7 +222,7 @@ def test_provision_reuses_matching_container(
     container = FakeContainer(
         name=name,
         image=image,
-        labels=_expected_labels(settings, data_dir, data_instance_id),
+        labels=_expected_labels(data_dir, data_instance_id),
         data_dir=data_dir,
         host_port=55234,
     )
@@ -231,7 +247,7 @@ def test_provision_restarts_stopped_matching_container(
     container = FakeContainer(
         name=name,
         image=image,
-        labels=_expected_labels(settings, data_dir, data_instance_id),
+        labels=_expected_labels(data_dir, data_instance_id),
         data_dir=data_dir,
         status="exited",
     )
@@ -338,6 +354,7 @@ def test_prepare_operator_data_dir_does_not_change_permissions(
     data_instance_id = _prepare_data_dir(tmp_path / "operator-clickhouse", manage_permissions=False)
 
     assert data_instance_id
+    assert (tmp_path / "operator-clickhouse" / ".nmp-clickhouse-identity").stat().st_mode & 0o777 == 0o600
     chmod.assert_not_called()
 
 
@@ -369,17 +386,12 @@ def test_changed_credentials_report_actionable_remediation(
     name = _managed_container_name(data_dir)
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
     data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
-    old_settings = ClickHouseSettings(
-        url=settings.url,
-        user=settings.user,
-        password="old-password",
-        database=settings.database,
-    )
     container = FakeContainer(
         name=name,
         image=image,
-        labels=_expected_labels(old_settings, data_dir, data_instance_id),
+        labels=_expected_labels(data_dir, data_instance_id),
         data_dir=data_dir,
+        password="old-password",
     )
     client = FakeDockerClient({name: container})
     _patch_provisioning(monkeypatch, client, tmp_path)
@@ -403,7 +415,7 @@ def test_recreated_data_directory_replaces_stale_container(
     container = FakeContainer(
         name=name,
         image=image,
-        labels=_expected_labels(settings, data_dir, original_data_instance_id),
+        labels=_expected_labels(data_dir, original_data_instance_id),
         data_dir=data_dir,
     )
     (data_dir / ".nmp-clickhouse-identity").unlink()
@@ -429,7 +441,7 @@ def test_remove_local_clickhouse_validates_and_removes_owned_container(
     container = FakeContainer(
         name=name,
         image=f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
-        labels=_expected_labels(settings, data_dir, data_instance_id),
+        labels=_expected_labels(data_dir, data_instance_id),
         data_dir=data_dir,
     )
     client = FakeDockerClient({name: container})

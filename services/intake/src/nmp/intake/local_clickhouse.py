@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
-import json
 import logging
 import os
 import sys
@@ -45,7 +44,6 @@ _MANAGED_BY_LABEL = "nmp.nvidia.com/managed-by"
 _COMPONENT_LABEL = "nmp.nvidia.com/component"
 _DATA_DIR_LABEL = "nmp.nvidia.com/data-directory-sha256"
 _DATA_INSTANCE_LABEL = "nmp.nvidia.com/data-instance-id"
-_CREDENTIALS_LABEL = "nmp.nvidia.com/credentials-sha256"
 _MANAGED_BY_VALUE = "nemo-platform"
 _COMPONENT_VALUE = "intake-clickhouse"
 _DATA_IDENTITY_FILE = ".nmp-clickhouse-identity"
@@ -248,7 +246,7 @@ def _create_container(
             else {CLICKHOUSE_HTTP_PORT_KEY: ("127.0.0.1", None)}
         ),
         "volumes": {str(data_dir): {"bind": CLICKHOUSE_DATA_PATH, "mode": "rw"}},
-        "labels": _expected_labels(settings, data_dir, data_instance_id),
+        "labels": _expected_labels(data_dir, data_instance_id),
         "restart_policy": {"Name": "unless-stopped"},
     }
     try:
@@ -305,8 +303,11 @@ def _validate_container(
                 f"Container {expected_name} belongs to an earlier incarnation of data directory {data_dir}. "
                 "The stale container can be replaced without deleting data from the current directory."
             )
-        expected_credentials = _credentials_identity(settings)
-        if labels.get(_CREDENTIALS_LABEL) != expected_credentials:
+        environment = _container_environment(attrs)
+        if (
+            environment.get("CLICKHOUSE_USER") != settings.user
+            or environment.get("CLICKHOUSE_PASSWORD") != settings.password
+        ):
             raise LocalClickHouseProvisioningError(
                 f"ClickHouse credentials changed for container {expected_name}. Remove the container to re-provision "
                 "it with NMP_INTAKE_CLICKHOUSE_USER and NMP_INTAKE_CLICKHOUSE_PASSWORD, or restore the previous values."
@@ -363,26 +364,18 @@ def _managed_container_name(data_dir: Path) -> str:
     return f"nmp-intake-clickhouse-{_data_dir_identity(data_dir)[:12]}"
 
 
-def _credentials_identity(settings: ClickHouseSettings) -> str:
-    identity = json.dumps(
-        {"user": settings.user, "password": settings.password},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(identity.encode()).hexdigest()
+def _container_environment(attrs: dict[str, Any]) -> dict[str, str]:
+    container_config = cast(dict[str, Any], attrs.get("Config") or {})
+    entries = cast(list[str], container_config.get("Env") or [])
+    return {key: value for entry in entries if "=" in entry for key, value in [entry.split("=", 1)]}
 
 
-def _expected_labels(
-    settings: ClickHouseSettings,
-    data_dir: Path,
-    data_instance_id: str,
-) -> dict[str, str]:
+def _expected_labels(data_dir: Path, data_instance_id: str) -> dict[str, str]:
     return {
         _MANAGED_BY_LABEL: _MANAGED_BY_VALUE,
         _COMPONENT_LABEL: _COMPONENT_VALUE,
         _DATA_DIR_LABEL: _data_dir_identity(data_dir),
         _DATA_INSTANCE_LABEL: data_instance_id,
-        _CREDENTIALS_LABEL: _credentials_identity(settings),
     }
 
 
@@ -396,7 +389,7 @@ def _prepare_data_dir(data_dir: Path, *, manage_permissions: bool) -> str:
 
     identity_path = data_dir / _DATA_IDENTITY_FILE
     try:
-        file_descriptor = os.open(identity_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        file_descriptor = os.open(identity_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError:
         pass
     else:
