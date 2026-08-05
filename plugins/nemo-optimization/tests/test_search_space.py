@@ -41,9 +41,7 @@ def test_float_range_suggest() -> None:
 
 
 def test_grid_values_from_explicit_values() -> None:
-    spec = SearchSpaceSpec.from_mapping(
-        "top_p", {"path": "models.default.top_p", "values": [0.7, 0.85, 1.0]}
-    )
+    spec = SearchSpaceSpec.from_mapping("top_p", {"path": "models.default.top_p", "values": [0.7, 0.85, 1.0]})
     assert spec.to_grid_values() == [0.7, 0.85, 1.0]
 
 
@@ -62,9 +60,7 @@ def test_grid_values_from_float_range_includes_high() -> None:
 
 
 def test_grid_requires_step_for_range() -> None:
-    spec = SearchSpaceSpec.from_mapping(
-        "temperature", {"path": "models.default.temperature", "low": 0.0, "high": 0.8}
-    )
+    spec = SearchSpaceSpec.from_mapping("temperature", {"path": "models.default.temperature", "low": 0.0, "high": 0.8})
     with pytest.raises(SearchSpaceError, match="requires 'step'"):
         spec.to_grid_values()
 
@@ -87,6 +83,19 @@ def test_parse_search_space_rejects_unknown_type() -> None:
                     "lr": {"type": "model", "path": "training.lr", "values": [1e-4]},
                 }
             }
+        )
+
+
+def test_range_bounds_must_be_numeric() -> None:
+    with pytest.raises(SearchSpaceError, match="must be numbers"):
+        SearchSpaceSpec.from_mapping(
+            "temperature",
+            {"type": "fabric", "path": "models.default.temperature", "low": "0.1", "high": "0.9"},
+        )
+    with pytest.raises(SearchSpaceError, match="must be numbers"):
+        SearchSpaceSpec.from_mapping(
+            "temperature",
+            {"type": "fabric", "path": "models.default.temperature", "low": True, "high": False},
         )
 
 

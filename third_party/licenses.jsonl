@@ -41,7 +41,9 @@
 {"name": "cloudpickle", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "colorama", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "colorlog", "license": "MIT", "compatible": true}
+{"name": "contourpy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "cryptography", "license": "APACHE-2.0", "compatible": true}
+{"name": "cycler", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "cyclopts", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer-config", "license": "APACHE-2.0", "compatible": true}
@@ -77,6 +79,7 @@
 {"name": "filelock", "license": "UNLICENSE", "compatible": true}
 {"name": "filetype", "license": "MIT", "compatible": true}
 {"name": "flatbuffers", "license": "APACHE-2.0", "compatible": true}
+{"name": "fonttools", "license": "MIT", "compatible": true}
 {"name": "frozenlist", "license": "APACHE-2.0", "compatible": true}
 {"name": "fsspec", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "gitdb", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -123,6 +126,7 @@
 {"name": "jsonschema-path", "license": "APACHE-2.0", "compatible": true}
 {"name": "jsonschema-specifications", "license": "MIT", "compatible": true}
 {"name": "keyring", "license": "MIT", "compatible": true}
+{"name": "kiwisolver", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "kubernetes", "license": "APACHE-2.0", "compatible": true}
 {"name": "langchain", "license": "MIT", "compatible": true}
 {"name": "langchain-anthropic", "license": "MIT", "compatible": true}
@@ -157,6 +161,7 @@
 {"name": "marko", "license": "MIT", "compatible": true}
 {"name": "markupsafe", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "marshmallow", "license": "MIT", "compatible": true}
+{"name": "matplotlib", "license": "PSF-2.0", "compatible": true}
 {"name": "mcp", "license": "MIT", "compatible": true}
 {"name": "mdurl", "license": "MIT", "compatible": true}
 {"name": "mlflow-skinny", "license": "APACHE-2.0", "compatible": true}
@@ -186,7 +191,6 @@
 {"name": "numpy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "nvidia-ml-py", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "nvidia-nat-atif", "license": "APACHE-2.0", "compatible": true}
-{"name": "nvidia-nat-config-optimizer", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-core", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-eval", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-langchain", "license": "APACHE-2.0", "compatible": true}
@@ -261,6 +265,7 @@
 {"name": "pyleak", "license": "APACHE-2.0", "compatible": true}
 {"name": "pymilvus", "license": "APACHE-2.0", "compatible": true}
 {"name": "pyopenssl", "license": "APACHE-2.0", "compatible": true}
+{"name": "pyparsing", "license": "MIT", "compatible": true}
 {"name": "pyperclip", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-dateutil", "license": "APACHE-2.0", "compatible": true}
 {"name": "python-dotenv", "license": "BSD-3-CLAUSE", "compatible": true}

@@ -41,10 +41,14 @@ class OptunaBackend:
     ) -> dict[str, Any]:
         del sdk
         output_dir = ctx.storage.persistent / "results" / RESULT_NAME
+        if "optimizer" not in payload:
+            raise StudyDriverError("payload must include an 'optimizer' section.")
         try:
             config = parse_numeric_study_config(payload["optimizer"])
-        except (StudyDriverError, KeyError) as exc:
-            raise StudyDriverError(str(exc)) from exc
+        except StudyDriverError:
+            raise
+        except KeyError as exc:
+            raise StudyDriverError(f"payload optimizer section is missing required key: {exc}") from exc
 
         metric_names = tuple(metric.name for metric in config.metrics)
         experiment_id = resolve_experiment_id(payload, generate_id=generate_optimize_id)

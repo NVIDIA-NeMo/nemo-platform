@@ -483,9 +483,7 @@ async def test_fabric_runtime_bad_seed_fails_only_that_task(tmp_path: Path, monk
 
 
 @pytest.mark.asyncio
-async def test_fabric_runtime_invokes_task_hook_lifecycle(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_fabric_runtime_invokes_task_hook_lifecycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     events: list[str] = []
 
     class _Hook:

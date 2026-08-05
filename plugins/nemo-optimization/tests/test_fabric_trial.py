@@ -10,11 +10,15 @@ from typing import Any
 import pytest
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
-from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.metrics.tunable_rag_evaluator import TunableRagEvaluatorMetric
-from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_TRACE, CandidateEvidence, EvidenceDescriptor
+from nemo_evaluator_sdk.values.evidence import (
+    EVIDENCE_FORMAT_ATIF,
+    EVIDENCE_TRACE,
+    CandidateEvidence,
+    EvidenceDescriptor,
+)
 from nemo_optimization.backends.optuna.fabric_trial import (
     FabricTrialEvaluator,
     build_agent_eval_tasks,

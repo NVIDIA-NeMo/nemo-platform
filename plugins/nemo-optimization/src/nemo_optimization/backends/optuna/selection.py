@@ -36,8 +36,7 @@ def pick_trial(
     normalized_mode = mode.lower()
     if normalized_mode not in _SUPPORTED_MODES:
         raise ValueError(
-            f"Unknown mode {mode!r}. Choose from {sorted(_SUPPORTED_MODES)} "
-            "(hypervolume is intentionally unsupported)."
+            f"Unknown mode {mode!r}. Choose from {sorted(_SUPPORTED_MODES)} (hypervolume is intentionally unsupported)."
         )
 
     if normalized_mode == "harmonic":

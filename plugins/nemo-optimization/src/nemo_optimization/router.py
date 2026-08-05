@@ -49,8 +49,7 @@ class OptimizeRouter:
         backend = backends.get(backend_name)
         if backend is None:
             raise OptimizeRouterError(
-                f"Optimization backend {backend_name!r} is not registered. "
-                f"Available backends: {sorted(backends)}"
+                f"Optimization backend {backend_name!r} is not registered. Available backends: {sorted(backends)}"
             )
         return backend.run_study(payload, ctx=ctx, sdk=sdk)
 

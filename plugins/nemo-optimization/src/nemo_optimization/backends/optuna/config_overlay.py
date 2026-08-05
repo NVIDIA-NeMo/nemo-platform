@@ -12,7 +12,6 @@ import copy
 from collections.abc import Mapping
 from typing import Any
 
-
 _OPTIMIZER_ONLY_TOP_LEVEL_KEYS = frozenset({"optimizer", "optimizable_params"})
 
 
@@ -26,8 +25,7 @@ def set_by_dotted_path(config: dict[str, Any], dotted_path: str, value: Any) -> 
             cursor[key] = {}
         elif not isinstance(existing, dict):
             raise KeyError(
-                f"Cannot set {dotted_path!r}: segment {key!r} is not a mapping "
-                f"(got {type(existing).__name__})."
+                f"Cannot set {dotted_path!r}: segment {key!r} is not a mapping (got {type(existing).__name__})."
             )
         cursor = cursor[key]
     cursor[keys[-1]] = value

@@ -45,8 +45,6 @@ def resolve_agent_config(
     agent_dict = sdk.agents.get(name=name, workspace=ws)
     agent_config = agent_dict["config"] if isinstance(agent_dict, dict) else getattr(agent_dict, "config", {})
     if not isinstance(agent_config, dict) or not agent_config:
-        raise RuntimeError(
-            f"Agent '{ws}/{name}' has an empty or invalid stored config; cannot optimize it."
-        )
+        raise RuntimeError(f"Agent '{ws}/{name}' has an empty or invalid stored config; cannot optimize it.")
     logger.info("Resolved agent %r to platform Fabric agent %s/%s", agent, ws, name)
     return agent_config

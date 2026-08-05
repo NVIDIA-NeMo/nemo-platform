@@ -13,7 +13,6 @@ import pytest
 import yaml
 from nemo_optimization.backends.optuna.early_stop import maybe_stop_if_target_met
 from nemo_optimization.backends.optuna.study_driver import (
-    NumericStudyConfig,
     SyntheticTrialEvaluator,
     average_metric_vectors,
     create_sampler,
@@ -201,3 +200,15 @@ def test_sanitize_config_for_artifact_redacts_secrets() -> None:
     assert sanitized["models"]["default"]["base_url"] == "http://example/v1"
     # Unexpanded env refs are left intact.
     assert sanitized["models"]["default"]["api_key_env"] == "NVIDIA_API_KEY"
+
+
+def test_optuna_backend_missing_optimizer_message() -> None:
+    from unittest.mock import MagicMock
+
+    from nemo_optimization.backends.optuna.backend import OptunaBackend
+    from nemo_optimization.backends.optuna.study_driver import StudyDriverError
+
+    ctx = MagicMock()
+    ctx.storage.persistent = MagicMock()
+    with pytest.raises(StudyDriverError, match="must include an 'optimizer' section"):
+        OptunaBackend().run_study({"schema_version": "fabric.agent/v1alpha1"}, ctx=ctx)

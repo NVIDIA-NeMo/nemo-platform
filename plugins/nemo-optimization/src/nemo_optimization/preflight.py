@@ -71,6 +71,5 @@ def preflight_validate_llm_models(
     if missing:
         details = ", ".join(f"{name!r} (llms.{key}.model_name)" for name, key in missing)
         raise ValueError(
-            f"The following LLM model(s) are not registered as VirtualModels in workspace "
-            f"{workspace!r}: {details}."
+            f"The following LLM model(s) are not registered as VirtualModels in workspace {workspace!r}: {details}."
         )

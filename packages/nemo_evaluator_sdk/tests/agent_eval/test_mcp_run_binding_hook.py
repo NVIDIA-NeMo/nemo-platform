@@ -343,7 +343,7 @@ def test_mcp_run_binding_cleanup_continues_after_individual_failures(tmp_path: P
 def test_mcp_run_binding_path_based_ref(tmp_path: Path) -> None:
     pkg = tmp_path / "agent_pkg"
     pkg.mkdir()
-    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    # Implicit namespace package (no __init__.py); agent_src puts tmp_path on sys.path.
     (pkg / "audit.py").write_text(
         """
 from pathlib import Path

@@ -146,10 +146,7 @@ def resolve_n_trials(config: NumericStudyConfig) -> int:
 def average_metric_vectors(rep_scores: Sequence[Mapping[str, float]], metric_names: Sequence[str]) -> list[float]:
     if not rep_scores:
         raise StudyDriverError("Cannot average scores from zero repetitions.")
-    return [
-        sum(rep[name] for rep in rep_scores) / len(rep_scores)
-        for name in metric_names
-    ]
+    return [sum(rep[name] for rep in rep_scores) / len(rep_scores) for name in metric_names]
 
 
 def scores_to_objective_values(scores: Mapping[str, float], metric_names: Sequence[str]) -> list[float]:
@@ -208,9 +205,7 @@ def run_numeric_study(
         for rep_index, rep_score in enumerate(rep_scores):
             missing = [name for name in metric_names if name not in rep_score]
             if missing:
-                raise StudyDriverError(
-                    f"Trial {trial.number} rep {rep_index} missing metric scores: {missing}"
-                )
+                raise StudyDriverError(f"Trial {trial.number} rep {rep_index} missing metric scores: {missing}")
 
         trial.set_user_attr(
             "rep_scores",

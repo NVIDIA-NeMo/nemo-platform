@@ -130,15 +130,34 @@ def _trial_values(trials: Sequence[optuna.trial.FrozenTrial], n_metrics: int) ->
     return values
 
 
-def _plot_2d(plt: Any, values: list[list[float]], pareto_indexes: list[int], metric_names: Sequence[str], directions: Sequence[StudyDirection], path: Path) -> None:
+def _plot_2d(
+    plt: Any,
+    values: list[list[float]],
+    pareto_indexes: list[int],
+    metric_names: Sequence[str],
+    directions: Sequence[StudyDirection],
+    path: Path,
+) -> None:
     fig, ax = plt.subplots(figsize=(10, 8))
     xs = [value[0] for value in values]
     ys = [value[1] for value in values]
-    ax.scatter(xs, ys, alpha=0.6, s=50, c="lightblue", edgecolors="navy", linewidths=0.5, label=f"All Trials (n={len(values)})")
+    ax.scatter(
+        xs, ys, alpha=0.6, s=50, c="lightblue", edgecolors="navy", linewidths=0.5, label=f"All Trials (n={len(values)})"
+    )
     if pareto_indexes:
         px = [values[index][0] for index in pareto_indexes if index < len(values)]
         py = [values[index][1] for index in pareto_indexes if index < len(values)]
-        ax.scatter(px, py, alpha=0.9, s=100, c="red", edgecolors="darkred", linewidths=1.5, marker="*", label=f"Pareto Optimal (n={len(px)})")
+        ax.scatter(
+            px,
+            py,
+            alpha=0.9,
+            s=100,
+            c="red",
+            edgecolors="darkred",
+            linewidths=1.5,
+            marker="*",
+            label=f"Pareto Optimal (n={len(px)})",
+        )
     ax.set_xlabel(f"{metric_names[0]} {'↑' if directions[0] == StudyDirection.MAXIMIZE else '↓'}")
     ax.set_ylabel(f"{metric_names[1]} {'↑' if directions[1] == StudyDirection.MAXIMIZE else '↓'}")
     ax.set_title("Parameter Optimization: Pareto Front")
@@ -149,7 +168,14 @@ def _plot_2d(plt: Any, values: list[list[float]], pareto_indexes: list[int], met
     plt.close(fig)
 
 
-def _plot_parallel(plt: Any, values: list[list[float]], pareto_indexes: list[int], metric_names: Sequence[str], directions: Sequence[StudyDirection], path: Path) -> None:
+def _plot_parallel(
+    plt: Any,
+    values: list[list[float]],
+    pareto_indexes: list[int],
+    metric_names: Sequence[str],
+    directions: Sequence[StudyDirection],
+    path: Path,
+) -> None:
     fig, ax = plt.subplots(figsize=(12, 8))
     normalized = _normalized_columns(values, directions)
     x_positions = list(range(len(metric_names)))
@@ -159,7 +185,9 @@ def _plot_parallel(plt: Any, values: list[list[float]], pareto_indexes: list[int
         linewidth = 3 if index in pareto_indexes else 1
         ax.plot(x_positions, row, color=color, alpha=alpha, linewidth=linewidth)
     ax.set_xticks(x_positions)
-    ax.set_xticklabels([f"{name}\n({direction.name.lower()})" for name, direction in zip(metric_names, directions, strict=True)])
+    ax.set_xticklabels(
+        [f"{name}\n({direction.name.lower()})" for name, direction in zip(metric_names, directions, strict=True)]
+    )
     ax.set_ylabel("Normalized Performance (Higher Is Better)")
     ax.set_title("Parameter Optimization: Parallel Coordinates")
     ax.set_ylim(-0.05, 1.05)
@@ -169,7 +197,9 @@ def _plot_parallel(plt: Any, values: list[list[float]], pareto_indexes: list[int
     plt.close(fig)
 
 
-def _plot_pairwise(plt: Any, values: list[list[float]], pareto_indexes: list[int], metric_names: Sequence[str], path: Path) -> None:
+def _plot_pairwise(
+    plt: Any, values: list[list[float]], pareto_indexes: list[int], metric_names: Sequence[str], path: Path
+) -> None:
     n_metrics = len(metric_names)
     fig, axes = plt.subplots(n_metrics, n_metrics, figsize=(4 * n_metrics, 4 * n_metrics))
     if n_metrics == 1:

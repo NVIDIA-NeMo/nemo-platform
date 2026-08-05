@@ -227,7 +227,6 @@ nemo-agents-plugin = [
   "nemo-agents-example-calculator",
   "nvidia-nat-core>=1.8.0,<1.9",
   "nvidia-nat-langchain>=1.8.0,<1.9",
-  "nvidia-nat-config-optimizer>=1.8.0,<1.9",
   "langchain-aws==1.1.0",
   "boto3>=1.40.46,<1.40.62",
   "botocore>=1.40.46,<1.40.62",

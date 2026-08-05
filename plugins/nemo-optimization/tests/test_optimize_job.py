@@ -15,7 +15,6 @@ from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.run_dependencies import LocalRunError
 
-
 FABRIC_AGENT = {
     "schema_version": "fabric.agent/v1alpha1",
     "metadata": {"name": "hermes-optimize-demo"},
@@ -63,7 +62,9 @@ def test_run_dispatches_inline_fabric_config(tmp_path: Path, ctx: JobContext) ->
         )
     )
 
-    with patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}) as dispatch:
+    with patch(
+        "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
+    ) as dispatch:
         result = OptimizeJob().run(
             {"optimize_config": str(optimize_yaml), "workspace": "default"},
             ctx=ctx,
@@ -88,7 +89,9 @@ def test_run_resolves_platform_agent_before_dispatch(tmp_path: Path, ctx: JobCon
     class _StubSDK:
         agents = _StubAgents()
 
-    with patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}) as dispatch:
+    with patch(
+        "nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}
+    ) as dispatch:
         OptimizeJob().run(
             {
                 "optimize_config": str(optimize_yaml),

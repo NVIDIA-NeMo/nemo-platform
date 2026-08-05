@@ -72,15 +72,12 @@ class SearchSpaceSpec:
         if param_type not in SUPPORTED_PARAM_TYPES:
             supported = ", ".join(sorted(SUPPORTED_PARAM_TYPES))
             raise SearchSpaceError(
-                f"Search space entry {name!r} has unsupported type {param_type!r}; "
-                f"supported types: {supported}."
+                f"Search space entry {name!r} has unsupported type {param_type!r}; supported types: {supported}."
             )
 
         path = spec.get("path")
         if path is None or not str(path).strip():
-            raise SearchSpaceError(
-                f"Search space entry {name!r} requires 'path' (Fabric overlay dotted path)."
-            )
+            raise SearchSpaceError(f"Search space entry {name!r} requires 'path' (Fabric overlay dotted path).")
         path = str(path).strip()
 
         values = spec.get("values")
@@ -98,9 +95,14 @@ class SearchSpaceSpec:
         if (low is None) != (high is None):
             raise SearchSpaceError("Range search spaces require both 'low' and 'high'.")
         if low is None or high is None:
-            raise SearchSpaceError(
-                "Search space entry must define either 'values' or both 'low' and 'high'."
-            )
+            raise SearchSpaceError("Search space entry must define either 'values' or both 'low' and 'high'.")
+        if (
+            isinstance(low, bool)
+            or isinstance(high, bool)
+            or not isinstance(low, (int, float))
+            or not isinstance(high, (int, float))
+        ):
+            raise SearchSpaceError(f"'low' and 'high' must be numbers; got low={low!r}, high={high!r}.")
         if low >= high:
             raise SearchSpaceError(f"'low' must be less than 'high'; got low={low}, high={high}.")
 
@@ -115,9 +117,7 @@ class SearchSpaceSpec:
 
     def suggest(self, trial: _TrialLike, name: str) -> Any:
         if self.is_prompt:
-            raise SearchSpaceError(
-                "Prompt search-space entries are not supported by the Optuna backend."
-            )
+            raise SearchSpaceError("Prompt search-space entries are not supported by the Optuna backend.")
         if self.values is not None:
             return trial.suggest_categorical(name, list(self.values))
         if isinstance(self.low, int) and isinstance(self.high, int):
@@ -139,9 +139,7 @@ class SearchSpaceSpec:
         if self.low is None or self.high is None:
             raise SearchSpaceError("Grid search requires 'values' or both 'low' and 'high'.")
         if self.step is None:
-            raise SearchSpaceError(
-                f"Grid search with range (low={self.low}, high={self.high}) requires 'step'."
-            )
+            raise SearchSpaceError(f"Grid search with range (low={self.low}, high={self.high}) requires 'step'.")
 
         step_float = float(self.step)
         if step_float <= 0:
@@ -173,9 +171,7 @@ def parse_search_space(optimizer: Mapping[str, Any]) -> dict[str, SearchSpaceSpe
     if raw is None:
         raw = optimizer.get("optimizable_params")
     if not isinstance(raw, Mapping):
-        raise SearchSpaceError(
-            "optimizer.search_space must be a mapping of param names to typed specs."
-        )
+        raise SearchSpaceError("optimizer.search_space must be a mapping of param names to typed specs.")
 
     space: dict[str, SearchSpaceSpec] = {}
     for name, spec in raw.items():
@@ -185,9 +181,7 @@ def parse_search_space(optimizer: Mapping[str, Any]) -> dict[str, SearchSpaceSpe
             raise SearchSpaceError(f"Search space entry {name!r} must be a mapping.")
         parsed = SearchSpaceSpec.from_mapping(name, spec)
         if parsed.is_prompt:
-            raise SearchSpaceError(
-                f"Search space entry {name!r} is prompt-only; enable optimizer.prompt for GA."
-            )
+            raise SearchSpaceError(f"Search space entry {name!r} is prompt-only; enable optimizer.prompt for GA.")
         space[name] = parsed
     if not space:
         raise SearchSpaceError("optimizer.search_space must declare at least one dimension.")
