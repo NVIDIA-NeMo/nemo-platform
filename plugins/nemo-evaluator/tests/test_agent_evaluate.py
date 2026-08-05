@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -31,7 +32,7 @@ from nemo_evaluator.jobs.agent_spec import (
     Target,
 )
 from nemo_evaluator.metric_refs import MetricRef
-from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator.tasks.agent_evaluate import main as agent_eval_task_main
 from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
@@ -64,6 +65,10 @@ def _inline_metric() -> MetricInline:
         CloudpickleMetricBundlePackager(),
     )
     return MetricInline.model_validate(bundle.model_dump(mode="json"))
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
 
 
 def _task_spec() -> AgentEvalTaskSpec:
@@ -434,6 +439,38 @@ def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec) -> None:
     container = cast(Any, step.executor).container
     assert container.entrypoint == ["python", "-m"]
     assert container.command == ["nemo_evaluator.tasks.agent_evaluate"]
+
+
+async def test_checked_fabric_spec_transforms_and_compiles() -> None:
+    path = _repo_root() / "skills/nemo-evaluator-plugin/assets/specs/fabric_agent_eval.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    input_spec = AgentEvalInputSpec.model_validate(payload)
+
+    spec = await AgentEvalJob.to_spec(
+        input_spec,
+        workspace="default",
+        entity_client=None,
+        async_sdk=None,
+        is_local=False,
+    )
+
+    assert isinstance(spec, AgentEvalSpec)
+    assert isinstance(spec.tasks, list)
+    bundle = MetricBundle.model_validate(spec.tasks[0].metrics[0].model_dump(mode="json"))
+    assert bundle.payload.kind == "inline"
+
+    compiled = await AgentEvalJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=None,
+        job_name=None,
+        async_sdk=None,
+    )
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    _assert_agent_eval_step_entrypoint(job_spec)
+    config = cast(dict[str, Any], job_spec.steps[0].config)
+    assert config["target"]["kind"] == "fabric"
+    assert config["tasks"][0]["metrics"][0]["payload"]["kind"] == "inline"
 
 
 @pytest.mark.parametrize(
