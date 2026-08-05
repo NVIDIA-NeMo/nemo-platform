@@ -1,6 +1,6 @@
 config_format: nemo-agents-spec-v1
 name: calculator-agent-with-mcp
-description: Calculator agent executed with Codex and a calculator MCP server
+description: Calculator agent executed with DeepAgents and a calculator MCP server
 
 instructions:
   system:
@@ -9,14 +9,13 @@ instructions:
       calculator MCP tool for every arithmetic or numeric comparison request
       and base your answer on its result.
 
-default_harness: codex
+default_harness: deepagents
 
 harnesses:
-  codex:
-    kind: codex
+  deepagents:
+    kind: deepagents
     settings:
-      sandbox: read-only
-      reasoning_effort: high
+      deepagents: {}
 
 models:
   default:
@@ -45,13 +44,6 @@ telemetry:
   provider: relay
   output_dir: ./artifacts/relay
   project: calculator-agent-with-mcp
-  atif:
-    enabled: true
-    filename_template: trajectory-{session_id}.atif.json
-    storage:
-      - type: http
-        endpoint: http://localhost:8080/apis/intake/v2/workspaces/default/ingest/atif
-        timeout_millis: 3000
   atof:
     enabled: true
     filename: events.atof.jsonl

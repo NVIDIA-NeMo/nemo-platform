@@ -1,6 +1,6 @@
 config_format: nemo-agents-spec-v1
 name: calculator-agent
-description: Calculator agent executed with Codex
+description: Calculator agent executed with DeepAgents
 
 instructions:
   system:
@@ -8,14 +8,13 @@ instructions:
       You are a concise calculator agent. Solve arithmetic and numeric
       comparison requests yourself and return only the answer.
 
-default_harness: codex
+default_harness: deepagents
 
 harnesses:
-  codex:
-    kind: codex
+  deepagents:
+    kind: deepagents
     settings:
-      sandbox: read-only
-      reasoning_effort: high
+      deepagents: {}
 
 models:
   default:
