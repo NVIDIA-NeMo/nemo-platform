@@ -277,6 +277,33 @@ def load_candidate(path: Path) -> Candidate:
     return candidate
 
 
+def load_winner(run_dir: Path) -> Candidate:
+    """The winning Candidate of a finished run, read from its stored record.
+
+    Here so consumers stop rebuilding the run layout themselves. ``run.json`` names the
+    winner by **candidate id**, not by directory: the key is spelled ``winner_agent`` for
+    compatibility, but treating it as a label is what broke this consumer when identity
+    stopped being the directory name. The winner's location comes from its own artifact
+    reference, which is the only thing that stays true if candidates ever move off local
+    disk.
+
+    Args:
+        run_dir: The run's directory — the one holding ``run.json`` and ``candidates/``.
+
+    Raises:
+        FileNotFoundError: if the run or the record it names is missing.
+        ValueError: if the run completed without selecting a winner.
+    """
+    document = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    winner_id = document.get("winner_agent")
+    if not isinstance(winner_id, str) or not winner_id:
+        raise ValueError(f"Run at {run_dir} completed without a selected winner")
+    record = run_dir / "candidates" / f"{winner_id}.json"
+    if not record.is_file():
+        raise FileNotFoundError(f"Run at {run_dir} names winner {winner_id!r}, but {record} does not exist")
+    return load_candidate(record)
+
+
 def _load_entity(cls: type[_ModelT], path: Path) -> _ModelT:
     """Deserialize *path* as JSON into *cls*, restoring the private ``_id`` field."""
     data = json.loads(path.read_text())

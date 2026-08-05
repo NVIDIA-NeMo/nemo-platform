@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal, Self
 
 import yaml
+from harbor.models.task.id import GitTaskId, LocalTaskId, PackageTaskId
 from harbor.registry.client.package import PackageDatasetClient
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import (
@@ -27,7 +28,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import load_candidate
+from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import load_winner
 from nemo_experimentalist_plugin.resolve import resolve_dataset
 from pydantic import BaseModel, Field, model_validator
 
@@ -153,6 +154,24 @@ def load_suite(path: Path) -> SuiteSpec:
 def load_benchmark_config(path: Path) -> BenchmarkConfig:
     """Load and validate a benchmark configuration."""
     return BenchmarkConfig.model_validate(_load_yaml(path))
+
+
+def _canonical_task_id(task: GitTaskId | LocalTaskId | PackageTaskId) -> str:
+    """The suite-facing id of one Harbor task.
+
+    Harbor's task ids are a union, and only ``PackageTaskId`` carries a ``name``. The
+    others do have a ``get_name()``, but it means something different — ``hello-world``
+    for a git or local task versus ``org/hello-world`` for a package one — so there is no
+    accessor that yields the same string across the union. Benchmark suites are pinned to
+    a published package, so anything else is a suite that was authored wrong, and saying
+    so beats silently substituting a value.
+    """
+    if not isinstance(task, PackageTaskId):
+        raise RuntimeError(
+            f"Benchmark suites address tasks by package name, but this dataset yielded a "
+            f"{type(task).__name__}. Point the suite at a published package dataset."
+        )
+    return task.name
 
 
 def validate_canonical_suite(
@@ -396,11 +415,14 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
 
     package_client = PackageDatasetClient()
     metadata = await package_client.get_dataset_metadata(suite.dataset.requested_reference)
-    # Harbor's task ids are a union of source-specific types; every variant names the
-    # task the same way, but only some spell it ``name``.
-    canonical_task_ids = {str(getattr(task, "name", task)) for task in metadata.task_ids}
+    canonical_task_ids = {_canonical_task_id(task) for task in metadata.task_ids}
+    if metadata.version is None:
+        raise RuntimeError(
+            f"Dataset {suite.dataset.requested_reference} resolved to no version; a suite pins an "
+            f"immutable revision, and there is nothing to check {suite.dataset.resolved_ref} against"
+        )
     canonical_task_ids = validate_canonical_suite(
-        suite, canonical_task_ids=canonical_task_ids, resolved_ref=metadata.version or ""
+        suite, canonical_task_ids=canonical_task_ids, resolved_ref=metadata.version
     )
     # Resolved up front: the optimizer only needs these after the baseline evaluation,
     # which is hours of image builds to discover a typo'd skill name.
@@ -464,14 +486,7 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
         config=benchmark_config.optimizer,
         framework_skills_dirs=framework_skills_dirs,
     )
-    run_document = json.loads((experimentalist_dir / "eval-and-optimize" / "run.json").read_text(encoding="utf-8"))
-    winner_id = run_document.get("winner_agent")
-    if not isinstance(winner_id, str) or not winner_id:
-        raise RuntimeError("Experimentalist completed without a selected winner")
-    # ``winner_agent`` is a candidate id, not a directory name — the winner's location
-    # comes from its own artifact reference.
-    winner_record = experimentalist_dir / "eval-and-optimize" / "candidates" / f"{winner_id}.json"
-    winner_candidate = load_candidate(winner_record)
+    winner_candidate = load_winner(experimentalist_dir / "eval-and-optimize")
     winner_label = winner_candidate.label
     winner_dir = local_path_from_uri(winner_candidate.artifact.uri, context="Winner artifact")
     winner = await _evaluate_heldout(
