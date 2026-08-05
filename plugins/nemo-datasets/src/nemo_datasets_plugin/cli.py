@@ -36,6 +36,14 @@ class DatasetsCLI(NemoCLI):
                 "but scales memory with the dataset rather than the file count.",
                 min=0,
             ),
+            column_role: list[str] = typer.Option(
+                None,
+                "--column-role",
+                help="Assert a column's role as NAME=ROLE (repeatable), e.g. --column-role q=prompt. "
+                "Takes precedence over name detection, but the dtype must still support the role; a "
+                "rejected hint is reported in the profile's evidence.",
+                metavar="NAME=ROLE",
+            ),
         ) -> None:
             """Profile a local dataset directory and print its DatasetProfile."""
             # Imported here, not at module scope: the platform calls get_cli() for every plugin at
@@ -46,15 +54,21 @@ class DatasetsCLI(NemoCLI):
 
             if output not in {"json", "yaml"}:
                 raise typer.BadParameter("output must be 'json' or 'yaml'")
+            column_roles: dict[str, str] = {}
+            for pair in column_role or []:
+                name, separator, role = pair.partition("=")
+                if not separator or not name or not role:
+                    raise typer.BadParameter(f"--column-role expects NAME=ROLE, got {pair!r}")
+                column_roles[name] = role
             try:
                 source = LocalFileSource(path)
             except NotADirectoryError as exc:
                 raise typer.BadParameter(str(exc)) from exc
 
             if rows_per_file is None:
-                result = run_profile(source)
+                result = run_profile(source, column_roles=column_roles)
             else:
-                result = run_profile(source, row_cap=rows_per_file or None)
+                result = run_profile(source, row_cap=rows_per_file or None, column_roles=column_roles)
             if output == "yaml":
                 import yaml
 

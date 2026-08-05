@@ -50,7 +50,8 @@ class Evidence(BaseModel):
     kind: str = Field(
         description=(
             "column_name | column_dtype | content_probe | split_name | file_name | card_metadata | "
-            "error — the last for when a detector could not run at all, so an absent finding is "
+            "user_hint | error — `user_hint` for a caller-supplied column role the data could not "
+            "support, and `error` for when a detector could not run at all, so an absent finding is "
             "distinguishable from a finding of absence."
         ),
     )
@@ -83,7 +84,25 @@ class PartitionClassification(BaseModel):
     """
 
     modality: str = Field(default="text", description="text | image_text | audio_text | ...")
-    dataset_type: str = Field(description="Dataset-type vocabulary (prompt_completion, preference_pair, ...).")
+    dataset_type: str = Field(
+        description=(
+            "Dataset-type vocabulary (prompt_completion, preference_pair, ...). A SUMMARY, not the "
+            "basis for a decision — it is the most specific single structure the roles satisfy, and a "
+            "dataset routinely satisfies several. The `semantic_role` markers are what a consumer "
+            "should match on; `candidates` lists everything this one is a projection of."
+        ),
+    )
+    candidates: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Every dataset type the assigned roles satisfy, most specific first, so "
+            "`candidates[0] == dataset_type`. prompt + completion + score + label is genuinely both "
+            "scored_response and unpaired_preference; reporting only the first made rule order an "
+            "invisible tie-break and hid that the data supports more than one use. Deliberately not a "
+            'capability list ("supports DPO") — trainer requirements shift and differ per framework, '
+            "so that mapping belongs in the consumer, computed from the roles."
+        ),
+    )
     format: str | None = Field(default=None, description="standard | conversational | mixed")
     prompt_form: str | None = Field(default=None, description="explicit | implicit | n/a")
     verifiability: Verifiability | None = Field(
@@ -185,6 +204,16 @@ class FeatureSchema(BaseModel):
             "was detected. The only detected attribute in the structure layer — its evidence lands in "
             "PartitionClassification.evidence. Named `semantic_role`, not `role`, so it never collides with a "
             "message struct's `role` key."
+        ),
+    )
+    semantic_role_source: str | None = Field(
+        default=None,
+        description=(
+            "Where `semantic_role` came from: detected | declared. A declared role was supplied by the "
+            "caller and only accepted because the dtype could carry it; a detected one was inferred from "
+            "the column name. Kept as a field rather than left to evidence prose because the distinction "
+            "is per-column and actionable — a UI renders a declared role as confirmed and a detected one "
+            "as a suggestion to correct."
         ),
     )
     fixed_length: int | None = Field(

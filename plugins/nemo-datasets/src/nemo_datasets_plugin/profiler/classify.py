@@ -109,37 +109,71 @@ def _is_label_column(feature: FeatureSchema, stats: dict[str, ColumnStats]) -> b
     return _is_numeric(feature.dtype) and _is_binary(stats.get(feature.name))
 
 
-def _role_for(feature: FeatureSchema, stats: dict[str, ColumnStats]) -> str | None:
-    name = feature.name.lower()
-    dtype = feature.dtype
-    if name in _SCORE_ALIASES and _is_numeric(dtype):
-        return "score"
-    if name == "label":
-        return "label" if _is_label_column(feature, stats) else None
+def _dtype_allows(feature: FeatureSchema, role: str, stats: dict[str, ColumnStats]) -> bool:
+    """Whether this column's dtype can carry ``role`` at all.
 
+    Applied to detected *and* declared roles alike. A hint says which column, not what the data is:
+    without this, one typo (``{"score": "prompt"}`` on an int column) would silently produce a
+    nonsense classification and the profile would become a place to store mistakes.
+    """
+    dtype = feature.dtype
+    if role == "score" or role == "rank":
+        return _is_numeric(dtype)
+    if role == "label":
+        return _is_label_column(feature, stats)
+    if role == "messages":
+        return dtype == "messages"
+    if role in {"prompt", "completion", "chosen", "rejected", "context", "system"}:
+        return dtype in _TEXT_DTYPES
+    if role == "ground_truth":
+        return dtype in _GROUND_TRUTH_DTYPES
+    if role in {"stepwise_completions", "stepwise_labels"}:
+        return dtype == "list"
+    return True  # id / provenance / meta / tools / image carry no dtype constraint
+
+
+def _role_for(feature: FeatureSchema, stats: dict[str, ColumnStats]) -> str | None:
+    """The role this column's *name* implies, if the dtype does not contradict it."""
+    name = feature.name.lower()
+    if name in _SCORE_ALIASES and _is_numeric(feature.dtype):
+        return "score"
     role = _ALIAS_ROLES.get(name)
     if role is None:
         return None
-    # dtype gates: reject an alias whose dtype contradicts the role.
-    if role == "messages" and dtype != "messages":
-        return None
-    if role in {"prompt", "completion", "chosen", "rejected", "context", "system"}:
-        if dtype not in _TEXT_DTYPES:
-            return None
-    if role == "ground_truth" and dtype not in _GROUND_TRUTH_DTYPES:
-        return None
-    if role == "rank" and not _is_numeric(dtype):
-        return None
-    if role in {"stepwise_completions", "stepwise_labels"} and dtype != "list":
-        return None
-    return role
+    return role if _dtype_allows(feature, role, stats) else None
 
 
-def _assign_roles(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -> None:
+def _assign_roles(
+    features: list[FeatureSchema], stats: dict[str, ColumnStats], column_roles: dict[str, str]
+) -> list[Evidence]:
+    """Stack roles onto ``features`` in place; return evidence for any hint the data could not support.
+
+    A declared role wins over the name-alias table — the caller knows their schema and the table is
+    ~35 English names — but it still has to pass the dtype gate, and a rejected hint is reported
+    rather than dropped. Silence is what made the alias table's misses so expensive in the first place.
+    """
+    rejected: list[Evidence] = []
     for feature in features:
+        declared = column_roles.get(feature.name)
+        if declared is not None:
+            if _dtype_allows(feature, declared, stats):
+                feature.semantic_role = declared
+                feature.semantic_role_source = "declared"
+                continue
+            rejected.append(
+                Evidence(
+                    kind="user_hint",
+                    detail=(
+                        f"hint '{feature.name} -> {declared}' rejected: a {feature.dtype} column "
+                        f"cannot carry that role; falling back to detection"
+                    ),
+                )
+            )
         role = _role_for(feature, stats)
         if role is not None:
             feature.semantic_role = role
+            feature.semantic_role_source = "detected"
+    return rejected
 
 
 def _detect_modality(features: list[FeatureSchema]) -> str:
@@ -178,37 +212,49 @@ def _messages_stats(features: list[FeatureSchema], stats: dict[str, ColumnStats]
     return None
 
 
-def _detect_type(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -> str:
+def _detect_types(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -> list[str]:
+    """Every dataset type the assigned roles satisfy, most specific first.
+
+    The chain is ordered by specificity, so the head is the best single answer and the tail is
+    structures the same columns *also* satisfy. Returning only the head made rule order an invisible
+    tie-break: prompt + completion + score + label is genuinely both scored_response and
+    unpaired_preference, and which one a consumer saw depended on line numbers.
+    """
     roles = {feature.semantic_role for feature in features if feature.semantic_role}
+    targets = roles & {"completion", "chosen", "rejected", "stepwise_completions"}
+    candidates: list[str] = []
 
     def has(*required: str) -> bool:
         return all(role in roles for role in required)
 
     if has("prompt", "stepwise_completions", "stepwise_labels"):
-        return "stepwise_supervision"
+        candidates.append("stepwise_supervision")
     if has("chosen", "rejected"):
-        return "preference_pair"
+        candidates.append("preference_pair")
     if has("prompt", "completion", "score"):
-        return "scored_response"
+        candidates.append("scored_response")
     if has("prompt", "completion", "label"):
-        return "unpaired_preference"
+        candidates.append("unpaired_preference")
     # `rank` is only a dataset type alongside something to rank. On its own it short-circuited every
     # more specific structure above, so a stray numeric column named `rank` — or a ranked variant of
     # a preference set — was enough to mislabel the dataset.
-    if has("rank") and roles & {"completion", "chosen", "rejected", "stepwise_completions"}:
-        return "ranked_responses"
+    if has("rank") and targets:
+        candidates.append("ranked_responses")
     if has("prompt", "completion"):
-        return "prompt_completion"
+        candidates.append("prompt_completion")
     if "messages" in roles:
         message_stats = _messages_stats(features, stats)
         if message_stats is not None and message_stats.ends_with_assistant_rate < 0.5:
-            return "prompt_only"  # a chat that ends on a user turn has no training target
-        return "messages"
-    if "prompt" in roles:
-        return "prompt_only"
+            candidates.append("prompt_only")  # a chat that ends on a user turn has no training target
+        else:
+            candidates.append("messages")
+    # A prompt with nothing to predict. Guarded on `targets` because with candidates collected rather
+    # than returned early, a prompt+completion set would otherwise claim prompt_only as well.
+    if "prompt" in roles and not targets and "prompt_only" not in candidates:
+        candidates.append("prompt_only")
     if len(features) == 1 and features[0].dtype == "string" and features[0].semantic_role is None:
-        return "text"
-    return "unknown"
+        candidates.append("text")
+    return candidates or ["unknown"]
 
 
 # --- interpreting the content probes --------------------------------------------------------------
@@ -318,6 +364,7 @@ def classify(
     rows: list[dict] | None = None,
     *,
     probes: dict[str, ColumnProbes] | None = None,
+    column_roles: dict[str, str] | None = None,
 ) -> PartitionClassification:
     """Assign roles onto ``features`` in place and return the partition's classification.
 
@@ -325,16 +372,20 @@ def classify(
     a pure function of ``(features, rows)``, so a caller that has not already computed them can pass
     ``rows`` alone and get them derived here; the pipeline passes them in to avoid the second pass.
     Role/axis/type inference needs neither — only the schema and stats.
+
+    ``column_roles`` maps a column name to a role the caller is asserting, taking precedence over
+    the name-alias table but still subject to the dtype gates. It exists because that table is ~35
+    English names with no way to say "my `q` column is the prompt", and its misses are silent.
     """
     rows = rows or []
     probes = derive_probes(features, rows) if probes is None else probes
-    _assign_roles(features, stats)
+    evidence = _assign_roles(features, stats, column_roles or {})
     roles = {feature.semantic_role for feature in features if feature.semantic_role}
-    dataset_type = _detect_type(features, stats)
+    candidates = _detect_types(features, stats)
+    dataset_type = candidates[0]
     fmt = _detect_format(features)
     prompt_form = _detect_prompt_form(roles) if dataset_type != "unknown" else None
 
-    evidence: list[Evidence] = []
     role_columns = [f"{feature.name} -> {feature.semantic_role}" for feature in features if feature.semantic_role]
     if role_columns:
         evidence.append(Evidence(kind="column_name", detail=f"columns matched roles: {', '.join(role_columns)}"))
@@ -348,6 +399,7 @@ def classify(
     return PartitionClassification(
         modality=_detect_modality(features),
         dataset_type=dataset_type,
+        candidates=candidates,
         format=fmt,
         prompt_form=prompt_form,
         verifiability=_detect_verifiability(features, probes),
