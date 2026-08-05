@@ -53,7 +53,7 @@ def experiment_name(gname: str, label: str, split: str) -> str:
 
 
 def pseudo_source_link(gname: str, label: str) -> str:
-    """Fallback HTTP URL, stable per candidate across its splits (OQ-4)."""
+    """Fallback HTTP URL, stable per candidate across its splits."""
     return f"https://nemo.local/optimizations/{gname}/candidate/{label}"
 
 

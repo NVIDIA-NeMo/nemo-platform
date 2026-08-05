@@ -2,7 +2,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Run the Tau3 Airline agent and upload only its execution traces to Intake."""
+"""Example setup helper: run Tau3 Airline and upload its traces to Intake.
+
+This script supplies trace data for the walkthrough; Experimentalist does not require
+agent repositories to include it.
+"""
 
 import argparse
 import asyncio
