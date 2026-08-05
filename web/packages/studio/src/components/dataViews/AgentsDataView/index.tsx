@@ -285,7 +285,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         ...(canTestModels
           ? [
               {
-                children: 'Compare Models',
+                children: 'Test models',
                 onSelect: () => {
                   const target = getModelCompareRoute(workspace);
                   const model = row.models[0];
