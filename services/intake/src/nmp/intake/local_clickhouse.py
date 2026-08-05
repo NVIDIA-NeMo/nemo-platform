@@ -15,6 +15,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final, cast
+from uuid import UUID, uuid4
 
 import clickhouse_connect
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
@@ -46,6 +47,7 @@ _DATA_INSTANCE_LABEL = "nmp.nvidia.com/data-instance-id"
 _MANAGED_BY_VALUE = "nemo-platform"
 _COMPONENT_VALUE = "intake-clickhouse"
 _DATA_IDENTITY_FILE = ".nmp-clickhouse-identity"
+_DATA_INSTANCE_FILE_PREFIX = f"{_DATA_IDENTITY_FILE}-"
 _READINESS_TIMEOUT_SECONDS = 60.0
 _READINESS_POLL_SECONDS = 0.5
 _DOCKER_UNAVAILABLE_GUIDANCE = (
@@ -409,21 +411,38 @@ def _prepare_data_dir(data_dir: Path, *, manage_permissions: bool) -> str:
         tmp_dir.chmod(0o755)
 
     identity_path = data_dir / _DATA_IDENTITY_FILE
-    try:
-        file_descriptor = os.open(identity_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        pass
-    else:
+    if not identity_path.exists():
+        data_instance_id = uuid4().hex
+        instance_path = data_dir / f"{_DATA_INSTANCE_FILE_PREFIX}{data_instance_id}"
+        file_descriptor = os.open(instance_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(file_descriptor)
+        try:
+            os.link(instance_path, identity_path)
+        except FileExistsError:
+            # Another provisioner won the atomic link race. Its record is the
+            # identity; this unmatched candidate is harmless and ignored.
+            pass
+        else:
+            return data_instance_id
 
-    # The Linux image changes ownership of the bind-mounted directory to its
-    # ClickHouse user. Derive identity from stable metadata so the host can
-    # reuse the owner-only marker without weakening its permissions.
     identity_stat = identity_path.stat()
-    identity_material = (
-        f"{identity_stat.st_dev}:{identity_stat.st_ino}:{identity_stat.st_mtime_ns}:{identity_stat.st_size}"
+    matching_instance_ids: list[str] = []
+    for instance_path in data_dir.glob(f"{_DATA_INSTANCE_FILE_PREFIX}*"):
+        try:
+            instance_id = UUID(instance_path.name.removeprefix(_DATA_INSTANCE_FILE_PREFIX)).hex
+            instance_stat = instance_path.stat()
+        except (FileNotFoundError, ValueError):
+            continue
+        if os.path.samestat(identity_stat, instance_stat):
+            matching_instance_ids.append(instance_id)
+
+    if len(matching_instance_ids) == 1:
+        return matching_instance_ids[0]
+
+    raise LocalClickHouseProvisioningError(
+        f"ClickHouse data identity marker {identity_path} has no unique instance record. "
+        "Preserve any data you need and remove the marker before re-provisioning."
     )
-    return hashlib.sha256(identity_material.encode()).hexdigest()
 
 
 def _ensure_clickhouse_tmp_dir(container: Container) -> None:

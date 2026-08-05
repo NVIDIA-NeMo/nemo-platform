@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -445,9 +446,26 @@ def test_recreated_data_directory_replaces_stale_container(
         labels=_expected_labels(data_dir, original_data_instance_id),
         data_dir=data_dir,
     )
-    (data_dir / ".nmp-clickhouse-identity").unlink()
+    original_identity_stat = (data_dir / ".nmp-clickhouse-identity").stat()
+    for identity_path in data_dir.glob(".nmp-clickhouse-identity*"):
+        identity_path.unlink()
     new_data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
     assert new_data_instance_id != original_data_instance_id
+
+    real_stat = Path.stat
+
+    def stat_with_reused_identity_metadata(
+        path: Path,
+        *,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        if path.name.startswith(".nmp-clickhouse-identity"):
+            return original_identity_stat
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", stat_with_reused_identity_metadata)
+    assert _prepare_data_dir(data_dir, manage_permissions=True) == new_data_instance_id
+
     client = FakeDockerClient({name: container})
     _patch_provisioning(monkeypatch, client, tmp_path)
 
