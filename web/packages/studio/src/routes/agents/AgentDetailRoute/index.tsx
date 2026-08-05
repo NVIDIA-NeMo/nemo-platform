@@ -31,7 +31,7 @@ import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRou
 import { getAgentMonitorRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { Activity, ClipboardCheck, Dot, Rocket } from 'lucide-react';
 import { type FC, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 const TAB_SEARCH_PARAM = 'tab';
 const DETAIL_TABS = ['deployments', 'logs', 'chat', 'evaluations', 'details'] as const;

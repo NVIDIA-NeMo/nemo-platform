@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from nmp.common.auth.client import AuthClient
 from nmp.common.auth.dependencies import get_auth_client
 from nmp.common.auth.jwt import TokenClaims, UnsignedJWTRejectedError
-from nmp.common.auth.middleware import HEALTH_ENDPOINTS, PUBLIC_GET_PATHS, AuthorizationMiddleware
+from nmp.common.auth.middleware import BYPASS_PREFIXES, HEALTH_ENDPOINTS, PUBLIC_GET_PATHS, AuthorizationMiddleware
 from nmp.common.auth.models import Principal
 from nmp.common.auth.token_resolver import ResolvedBearerToken
 from nmp.common.config import AuthConfig, Configuration
@@ -159,6 +159,62 @@ class TestHealthEndpointsBypass:
 
         assert response.status_code == 200
         mock_authorize.assert_not_called()
+
+
+class TestStudioPluginBypass:
+    """Studio plugin manifest and bundles are public — the SPA fetches the manifest
+    anonymously and loads bundles via dynamic import(), which cannot send Authorization."""
+
+    def test_plugin_paths_in_bypass_lists(self):
+        assert "/apis/plugins" in PUBLIC_GET_PATHS
+        assert "/plugin-ui/" in BYPASS_PREFIXES
+
+    def test_plugins_manifest_get_bypasses_auth(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.get("/apis/plugins")
+        async def list_plugins():
+            return []
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+
+        client = TestClient(app)
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=False)
+            response = client.get("/apis/plugins")
+
+        assert response.status_code == 200
+        mock_authorize.assert_not_called()
+
+    def test_plugin_bundle_get_bypasses_auth(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.get("/plugin-ui/{plugin_name}/{filename}")
+        async def serve_bundle(plugin_name: str, filename: str):
+            return {"plugin": plugin_name, "filename": filename}
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+
+        client = TestClient(app)
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=False)
+            response = client.get("/plugin-ui/example/index.js")
+
+        assert response.status_code == 200
+        mock_authorize.assert_not_called()
+
+    def test_other_paths_still_require_auth(self, auth_config_enabled):
+        """The plugin bypasses must not open up other routes."""
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=False)
+            response = client.get("/test")
+
+        assert response.status_code == 401
 
 
 class TestBearerTokenAuth:

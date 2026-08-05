@@ -26,7 +26,7 @@ from nemo_anonymizer_plugin.config import get_config
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.function_context import FunctionContext
-from nemo_platform_plugin.functions.frames import Done, Error, Heartbeat
+from nemo_platform_plugin.functions.frames import Done, Error, FrameModel, Heartbeat
 from pydantic import BaseModel, Field
 
 LogLevel = Literal["debug", "info", "warning", "error"]
@@ -39,20 +39,20 @@ class PreviewMessageDeliveryError(Exception): ...
 PreviewSpec: TypeAlias = PreviewRequest
 
 
-class LogFrame(BaseModel):
+class LogFrame(FrameModel):
     kind: Literal["log"] = "log"
     level: LogLevel
     message: str
 
 
-class PreviewDatasetFrame(BaseModel):
+class PreviewDatasetFrame(FrameModel):
     """Final user-visible dataframe produced by the preview run."""
 
     kind: Literal["preview_dataset"] = "preview_dataset"
     records: list[dict[str, Any]]
 
 
-class TraceDatasetFrame(BaseModel):
+class TraceDatasetFrame(FrameModel):
     """Internal trace dataframe — useful for debugging detection/replacement."""
 
     kind: Literal["trace_dataset"] = "trace_dataset"
@@ -60,7 +60,7 @@ class TraceDatasetFrame(BaseModel):
     original_text_column: str | None = None
 
 
-class FailedRecordsFrame(BaseModel):
+class FailedRecordsFrame(FrameModel):
     """Records that failed during the pipeline, with reasons."""
 
     kind: Literal["failed_records"] = "failed_records"
@@ -77,6 +77,7 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
     name: ClassVar[str] = "preview"
     description: ClassVar[str] = "Streaming preview of an Anonymizer config."
     spec_schema: ClassVar[type[BaseModel]] = PreviewSpec
+    frame_schema: ClassVar[Any] = PreviewFrame
 
     async def run(
         self,

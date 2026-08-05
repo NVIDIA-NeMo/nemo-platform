@@ -6,7 +6,7 @@ import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath
 import { getStudioInternalLinkTarget } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLinkTarget';
 import { ArrowRight } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface ClaudeCodeStudioLinkProps {
   children?: ReactNode;

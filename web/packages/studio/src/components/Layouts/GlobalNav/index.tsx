@@ -13,7 +13,7 @@ import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { useSidebarState } from '@studio/util/hooks/useSidebarState';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { lazy, Suspense, type FC, type ReactNode } from 'react';
-import { Link, matchPath, useLocation } from 'react-router-dom';
+import { Link, matchPath, useLocation } from 'react-router';
 
 const WelcomeTour = lazy(() =>
   import('@studio/components/WelcomeTour').then((m) => ({ default: m.WelcomeTour }))
@@ -111,11 +111,11 @@ export const GlobalNav: FC<Props> = ({ sideNav }) => {
   const isDashboardRoute =
     matchPath({ path: ROUTES.workspace.dashboard, end: true }, location.pathname) !== null;
   const isClaudeCodeChatRoute =
-    matchPath({ path: ROUTES.workspace.claudeCodeChat, end: true }, location.pathname) !== null;
+    matchPath({ path: ROUTES.workspace.copilotChat, end: true }, location.pathname) !== null;
 
   return (
     <GlobalNavContent
-      key={isClaudeCodeChatRoute ? 'code-agent' : 'default'}
+      key={isClaudeCodeChatRoute ? 'copilot' : 'default'}
       sideNav={sideNav}
       isDashboardRoute={isDashboardRoute}
       isClaudeCodeChatRoute={isClaudeCodeChatRoute}

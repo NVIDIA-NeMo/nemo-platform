@@ -11,7 +11,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getNewEvaluationMetricRoute } from '@studio/routes/utils';
 import { FC, Suspense, useEffect, useMemo } from 'react';
-import { matchPath, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { matchPath, Outlet, useLocation, useNavigate } from 'react-router';
 
 export const EvaluationLayout: FC = () => {
   const workspace = useWorkspaceFromPath();

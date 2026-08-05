@@ -42,6 +42,8 @@ export const ROUTE_PARAMS = {
   insightId: 'insightId',
   evaluationName: 'evaluationName',
   guardrailConfigName: 'guardrailConfigName',
+  guardrailChecksSubTab: 'guardrailChecksSubTab',
+  pluginName: 'pluginName',
 } as const;
 
 // Just an alias to make the routes more readable
@@ -120,11 +122,12 @@ export const ROUTES = {
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,
     guardrailConfig: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/config`,
     guardrailChecks: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/checks`,
+    guardrailChecksSubTab: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/checks/:${P.guardrailChecksSubTab}`,
     settings: `/workspaces/:${P.workspace}/settings`,
     /** Workspace members and role-based access (Entities role bindings) */
     members: `/workspaces/:${P.workspace}/members`,
     agentsList: `/workspaces/:${P.workspace}/agents`,
-    claudeCodeChat: `/workspaces/:${P.workspace}/dashboard/code-agent`,
+    copilotChat: `/workspaces/:${P.workspace}/dashboard/copilot`,
     agentDetail: `/workspaces/:${P.workspace}/agents/:${P.agentName}`,
     agentDeploymentsList: `/workspaces/:${P.workspace}/agent-deployments`,
     agentDeploymentDetail: `/workspaces/:${P.workspace}/agent-deployments/:${P.agentDeploymentName}`,
@@ -134,6 +137,8 @@ export const ROUTES = {
     agentEvaluationDetail: `/workspaces/:${P.workspace}/agents/evaluations/:${P.agentEvalJobName}`,
     modelCompare: `/workspaces/:${P.workspace}/playground`,
     agentMonitor: `/workspaces/:${P.workspace}/agents/monitor`,
+    /** Plugin-owned page; the plugin's internal router owns sub-paths via a `/*` suffix. */
+    plugin: `/workspaces/:${P.workspace}/plugin/:${P.pluginName}`,
   },
   models: {
     index: '/models',

@@ -6,14 +6,18 @@ import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
 import { GuardrailChecksTab } from '@studio/routes/guardrails/GuardrailChecksTab';
+import {
+  GUARDRAIL_CHECKS_DEFAULT_SUB_TAB,
+  GuardrailChecksSubTab,
+} from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailConfigTab } from '@studio/routes/guardrails/GuardrailConfigTab';
 import { GuardrailDetailRoute } from '@studio/routes/guardrails/GuardrailDetailRoute';
-import { getGuardrailChecksRoute } from '@studio/routes/utils';
+import { getGuardrailChecksRoute, getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router';
 
 const WORKSPACE = 'default';
 
@@ -23,6 +27,11 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+const LocationProbe = () => {
+  const location = useLocation();
+  return <div data-testid="checks-location">{location.pathname}</div>;
+};
+
 const routes = [
   {
     path: ROUTES.workspace.guardrailDetail,
@@ -30,7 +39,19 @@ const routes = [
     children: [
       { index: true, element: <Navigate to="config" replace /> },
       { path: ROUTES.workspace.guardrailConfig, element: <GuardrailConfigTab /> },
-      { path: ROUTES.workspace.guardrailChecks, element: <GuardrailChecksTab /> },
+      {
+        path: ROUTES.workspace.guardrailChecks,
+        element: <Navigate to={GUARDRAIL_CHECKS_DEFAULT_SUB_TAB} replace />,
+      },
+      {
+        path: ROUTES.workspace.guardrailChecksSubTab,
+        element: (
+          <>
+            <GuardrailChecksTab />
+            <LocationProbe />
+          </>
+        ),
+      },
     ],
   },
   {
@@ -39,11 +60,8 @@ const routes = [
   },
 ];
 
-const renderChecks = (name: string) =>
-  renderRoute(undefined, {
-    history: getGuardrailChecksRoute(WORKSPACE, name),
-    routes,
-  });
+const renderChecks = (name: string, history = getGuardrailChecksRoute(WORKSPACE, name)) =>
+  renderRoute(undefined, { history, routes });
 
 describe('GuardrailChecksTab', () => {
   it('renders the test cases editor when the config and checks both load', async () => {
@@ -55,6 +73,15 @@ describe('GuardrailChecksTab', () => {
     expect(screen.getByText('Test 1')).toBeInTheDocument();
     expect(screen.getByText('Test 2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Run 2 Tests/ })).toBeInTheDocument();
+  });
+
+  it('redirects the bare checks URL onto the default sub-tab', async () => {
+    renderChecks('pii-filter');
+
+    await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+    expect(screen.getByTestId('checks-location')).toHaveTextContent(
+      getGuardrailChecksSubTabRoute(WORKSPACE, 'pii-filter', GuardrailChecksSubTab.Tests)
+    );
   });
 
   it('shows the summary and the results table on the Test Results sub-tab', async () => {
@@ -69,6 +96,25 @@ describe('GuardrailChecksTab', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /My SSN is 123-45-6789/ })).toHaveTextContent('Guarded');
     expect(screen.getByRole('row', { name: /Hello there/ })).toHaveTextContent('Not run');
+    expect(screen.getByTestId('checks-location')).toHaveTextContent(
+      getGuardrailChecksSubTabRoute(WORKSPACE, 'pii-filter', GuardrailChecksSubTab.Results)
+    );
+  });
+
+  it('restores the Test Results sub-tab when loaded straight from its URL', async () => {
+    renderChecks(
+      'pii-filter',
+      getGuardrailChecksSubTabRoute(WORKSPACE, 'pii-filter', GuardrailChecksSubTab.Results)
+    );
+
+    expect(
+      await screen.findByText('Result Summary', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Test Results' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    expect(screen.queryByText('Add Another Test')).not.toBeInTheDocument();
   });
 
   it('shows an error state when the checks cannot be loaded', async () => {

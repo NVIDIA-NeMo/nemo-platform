@@ -143,7 +143,7 @@ def summarize_run(
     total = len(task_ids)
     return {
         "run_id": result.run_id,
-        "benchmark": result.benchmark,
+        "labels": result.metadata.labels,
         "total_tasks": total,
         "passed_tasks": passed,
         "pass_rate": (passed / total) if total else 0.0,

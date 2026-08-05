@@ -4,7 +4,7 @@
 import { QuickActionsMenuDefault } from '@studio/components/QuickActionsMenu/QuickActionsMenuDefault';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter as Router } from 'react-router-dom';
+import { MemoryRouter as Router } from 'react-router';
 
 describe('QuickActionsMenu', () => {
   it('should selectively render menu items in default menu', async () => {

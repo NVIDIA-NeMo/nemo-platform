@@ -28,7 +28,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import (
     SemanticView,
     ViewSignal,
 )
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.agent_inference import AgentInferenceContext, AgentInvocationResult, AgentInvocationStatus
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import (
@@ -266,6 +266,9 @@ class _TaskRunner:
     def __init__(self) -> None:
         self.config: AgentEvalRunConfig | None = None
 
+    def runner_info(self) -> RunnerInfo:
+        return RunnerInfo(name="test_runner", kind="runner")
+
     async def run_tasks(
         self,
         tasks: Sequence[AgentEvalTask],
@@ -307,7 +310,7 @@ async def test_scores_imported_trials_with_metric_and_persists_bundle(tmp_path: 
     assert result.dashboard_path == tmp_path / "report.html"
     assert (tmp_path / "run.json").exists()
     assert (tmp_path / "scores.jsonl").exists()
-    assert "run_id" not in json.loads((tmp_path / "benchmark.json").read_text(encoding="utf-8"))
+    assert "run_id" not in json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
 
     score_payload = json.loads((tmp_path / "scores.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert score_payload["id"] == f"{result.run_id}:task-1:trial-1:constant_metric"
@@ -318,7 +321,7 @@ async def test_scores_imported_trials_with_metric_and_persists_bundle(tmp_path: 
     run_payload = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
     assert run_payload == {
         "artifacts": {
-            "benchmark": "benchmark.json",
+            "metadata": "metadata.json",
             "scores": "scores.jsonl",
             "summary": "summary.json",
             "tasks": "tasks.jsonl",

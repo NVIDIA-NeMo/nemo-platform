@@ -35,7 +35,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export interface FilesetCreateModalProps {
   open: boolean;

@@ -29,7 +29,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef } from 'react';
 import { type SubmitHandler, useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const CloneAgentModal: FC<CloneAgentModalProps> = ({
   open,

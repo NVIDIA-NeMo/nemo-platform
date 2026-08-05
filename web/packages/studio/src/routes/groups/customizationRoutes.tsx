@@ -5,7 +5,7 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { ROUTES } from '@studio/constants/routes';
 import { gateCustomizationRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 
 const NewCustomizationRoute = lazy(() =>
   import('@studio/routes/NewCustomizationRoute/index').then((module) => ({

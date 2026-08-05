@@ -17,6 +17,7 @@ from nmp.core.jobs.controllers.reconciler import JobReconciler
 from nmp.core.jobs.controllers.scheduler import JobScheduler
 
 stop_signal = threading.Event()
+logger = logging.getLogger(__name__)
 
 
 def handle_sighup(signum, frame):
@@ -25,7 +26,6 @@ def handle_sighup(signum, frame):
 
 def run(parent_stop_signal: threading.Event | None = None):
     # Create logger after configuration is set up
-    logger = logging.getLogger(__name__)
     logger.info("Starting jobs controller")
 
     # Use provided stop signal or create our own
@@ -42,6 +42,8 @@ def run(parent_stop_signal: threading.Event | None = None):
     nmp_sdk = get_platform_sdk(as_service="jobs", internal=True)
     logger.debug("Platform SDK initialized successfully.")
 
+    # from_config also prunes the shared ``profiles`` list so advertised executors
+    # match backends that actually registered (e.g. Docker skipped when unavailable).
     backend_registry = BackendRegistry.from_config(nmp_sdk=nmp_sdk, profiles=profiles)
     logger.info("Executor backends registry initialized successfully.")
 

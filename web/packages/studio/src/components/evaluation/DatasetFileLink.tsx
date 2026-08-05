@@ -4,7 +4,7 @@
 import { truncateText } from '@nemo/common/src/utils/formatters';
 import { ExternalLink } from 'lucide-react';
 import { FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 export interface DatasetFileLinkProps {
   /** Display label for the link */

@@ -8,7 +8,7 @@ import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeC
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { generatePath, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { generatePath, MemoryRouter, Route, Routes } from 'react-router';
 
 const mocks = vi.hoisted(() => ({
   chat: {
@@ -62,7 +62,7 @@ vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout', () => ({
 }));
 
 const WORKSPACE = 'default';
-const CHAT_PATH = generatePath(ROUTES.workspace.claudeCodeChat, { workspace: WORKSPACE });
+const CHAT_PATH = generatePath(ROUTES.workspace.copilotChat, { workspace: WORKSPACE });
 
 const renderClaudeCodeChatRoute = (options?: {
   search?: string;
@@ -73,7 +73,7 @@ const renderClaudeCodeChatRoute = (options?: {
       initialEntries={[{ pathname: CHAT_PATH, search: options?.search, state: options?.state }]}
     >
       <Routes>
-        <Route path={ROUTES.workspace.claudeCodeChat} element={<ClaudeCodeChatRoute />} />
+        <Route path={ROUTES.workspace.copilotChat} element={<ClaudeCodeChatRoute />} />
       </Routes>
     </MemoryRouter>
   );

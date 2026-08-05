@@ -134,7 +134,7 @@ async def evaluate(
             output_dir=resolved_output_dir,
             parallelism=1,
             write_dashboard=write_dashboard,
-            benchmark={"name": "codex-docker-evidence-sanity"},
+            labels={"scenario": "codex-docker-evidence-sanity"},
         ),
     )
 

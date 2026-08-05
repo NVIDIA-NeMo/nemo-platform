@@ -32,7 +32,7 @@ _SDK_INSTALL_HINT = (
 )
 
 _SDK_LOGIN_HINT = (
-    "Run `uv run nmp auth login --base-url https://nmp.dev.aire.nvidia.com`, "
+    "Run `uv run nmp auth login --base-url https://platform.example.com`, "
     "or pass --intake-base-url and --intake-api-key."
 )
 

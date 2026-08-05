@@ -22,7 +22,7 @@ from pathlib import Path
 import yaml
 from nemo_evaluator_sdk.agent_eval.runtimes.environment import AgentEnvironmentProvider, EnvRunSpec
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
 
 from .platform_runtime import (
     DEFAULT_LOCAL_NMP_BASE_URL,
@@ -188,6 +188,26 @@ class NatAutRuntime:
             raise ValueError("NatAutRuntime requires aut_agent_name")
         self.config = config
         self.environment = environment or PlatformDockerEnvironmentProvider()
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runtime and the settings that shape its results (the AgentTaskRunner contract).
+
+        Enumerates fields rather than dumping ``AutConfig``: it also carries ``nvidia_api_key``,
+        ``inference_nvidia_api_key`` and ``anthropic_api_key``, and this is persisted with the run.
+        """
+        return RunnerInfo(
+            name="example_nat_aut",
+            kind="runner",
+            config={
+                "aut_agent_name": self.config.aut_agent_name,
+                "aut_agent_config": str(self.config.aut_agent_config) if self.config.aut_agent_config else None,
+                "aut_seed_providers": self.config.aut_seed_providers,
+                "aut_health_wait_seconds": self.config.aut_health_wait_seconds,
+                "agent_model": self.config.agent_model,
+                "nmp_base_url": self.config.nmp_base_url,
+                "timeout_sec": self.config.timeout_sec,
+            },
+        )
 
     async def run_tasks(
         self,

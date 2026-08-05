@@ -46,7 +46,7 @@ import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, FlaskConical, ScrollText } from 'lucide-react';
 import { type FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 const TERMINAL_STATUSES = new Set([
   'completed',

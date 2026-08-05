@@ -14,13 +14,13 @@ import { ClaudeCodeStudioLink } from '@studio/routes/agents/ClaudeCodeChatRoute/
 import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
 import type { ClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
 import { type FC, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const MESSAGE_CONTENT_PROPS = { markdownLinkComponent: ClaudeCodeStudioLink };
 
 const EMPTY_STATE = {
-  slotHeading: 'Start a NeMo Agent session',
-  slotSubheading: 'Ask NeMo Agent to work in this workspace.',
+  slotHeading: 'Start a NeMo Copilot session',
+  slotSubheading: 'Ask NeMo Copilot to work in this workspace.',
 };
 
 const CHAT_VIEWPORT_SCROLLBAR_CLASS = [
@@ -79,7 +79,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
             {
               id: 'continue-chat',
               label: 'Continue in chat',
-              description: 'Keep working with NeMo Agent in this conversation.',
+              description: 'Keep working with NeMo Copilot in this conversation.',
             },
           ]
         : [],
@@ -163,7 +163,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
             ref: chatViewportRef,
           },
         }}
-        placeholder="Ask NeMo Agent to work in this workspace"
+        placeholder="Ask NeMo Copilot to work in this workspace"
         minInputRows={3}
         onReset={handleChatReset}
         showRunningIndicator={!studioNavigationRequest && !decisionRequest && !inputRequest}
@@ -176,7 +176,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
               request={{
                 id: studioNavigationRequest.id,
                 title: 'Studio UI available',
-                description: `${studioNavigationRequest.suggestion.description} Open it now or continue with NeMo Agent.`,
+                description: `${studioNavigationRequest.suggestion.description} Open it now or continue with NeMo Copilot.`,
               }}
               choices={studioNavigationChoices}
               defaultChoiceId="open-ui"

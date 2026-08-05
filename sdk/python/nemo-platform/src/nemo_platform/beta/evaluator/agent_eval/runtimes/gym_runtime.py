@@ -61,7 +61,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_platform.beta.evaluator.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
 from pydantic import BaseModel, ConfigDict, Field
@@ -80,6 +80,34 @@ NG_ROLLOUT_INDEX = "_ng_rollout_index"
 _RUNTIME_KEYS = frozenset({NG_TASK_INDEX, NG_ROLLOUT_INDEX})
 #: Lines of subprocess output retained in memory for inclusion in a failure message.
 _LOG_TAIL_LINES = 40
+
+
+#: Substrings that mark a Hydra override key as carrying a credential. Matched case-insensitively
+#: against the key half of ``+key=value``.
+_SECRET_KEY_MARKERS = ("api_key", "apikey", "token", "secret", "password", "passwd", "credential")
+#: Stand-in written in place of a redacted override value.
+_REDACTED = "<redacted>"
+
+
+def _redact_env_overrides(overrides: Sequence[str]) -> list[str]:
+    """Redact credential-looking values from Hydra overrides before they are recorded as provenance.
+
+    ``env_overrides`` is a free-form escape hatch forwarded verbatim to ``gym env start``, so nothing
+    stops a caller passing ``+model.api_key=sk-...``. ``RunnerInfo.config`` is persisted into the run
+    bundle, so a value that looks like a credential must not be written there.
+
+    The *key* is always kept — knowing that a run overrode ``model.api_key`` is useful provenance;
+    knowing the value is a leak. Overrides that don't parse as ``key=value`` are kept verbatim: they
+    carry no value to leak.
+    """
+    redacted: list[str] = []
+    for override in overrides:
+        key, sep, _ = override.partition("=")
+        if sep and any(marker in key.casefold() for marker in _SECRET_KEY_MARKERS):
+            redacted.append(f"{key}={_REDACTED}")
+        else:
+            redacted.append(override)
+    return redacted
 
 
 def _canonical_row_hash(row: Mapping[str, Any]) -> str:
@@ -331,6 +359,30 @@ class GymAgentTaskRunner:
 
     def __init__(self, *, config: GymRuntimeConfig) -> None:
         self._config = config
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runner and the Gym settings that shape its results.
+
+        Credentials normally live in the Gym checkout's gitignored ``env.yaml`` and never reach this
+        object — but ``env_overrides`` is a free-form escape hatch, so its values are redacted by key
+        (see :func:`_redact_env_overrides`) rather than trusted.
+        """
+        cfg = self._config
+        return RunnerInfo(
+            name="gym",
+            kind="runner",
+            config={
+                "resources_server": cfg.resources_server,
+                "agent": cfg.agent,
+                "agent_config": cfg.agent_config,
+                "model_type": cfg.model_type,
+                "num_repeats": cfg.num_repeats,
+                "concurrency": cfg.concurrency,
+                "bind_resources_server": cfg.bind_resources_server,
+                "env_overrides": _redact_env_overrides(cfg.env_overrides),
+                "reward_key": cfg.reward_key,
+            },
+        )
 
     async def run_tasks(
         self,

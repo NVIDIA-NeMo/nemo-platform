@@ -3,7 +3,7 @@
 """Platform usage-telemetry event models.
 
 Field names and aliases follow the shared NeMo telemetry schema
-(aire/microservices/nemo-telemetry, schemas/anonymous_events.json, v1.9).
+(aire/microservices/nemo-telemetry, schemas/anonymous_events.json, v1.10).
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ class PlatformTelemetryEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     _event_name: ClassVar[str] = "undefined"
-    _schema_version: ClassVar[str] = "1.9"
+    _schema_version: ClassVar[str] = "1.10"
 
     nemo_source: str = Field(default="platform", serialization_alias="nemoSource")
     task_status: TaskStatusEnum = Field(serialization_alias="taskStatus")

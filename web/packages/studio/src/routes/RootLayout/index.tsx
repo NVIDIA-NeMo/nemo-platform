@@ -8,7 +8,7 @@ import { BreadcrumbsProvider } from '@studio/providers/breadcrumbs/BreadcrumbsPr
 import { WorkersProvider } from '@studio/providers/workers/WorkersProvider';
 import { WorkspaceProvider } from '@studio/providers/workspace';
 import { Suspense, lazy } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 
 const ReactQueryDevtools = isLocalDevelopmentEnv
   ? lazy(() =>

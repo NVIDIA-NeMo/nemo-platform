@@ -35,7 +35,6 @@
     "react-dom": "catalog:",
     "react-oidc-context": "catalog:",
     "react-router": "catalog:",
-    "react-router-dom": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
