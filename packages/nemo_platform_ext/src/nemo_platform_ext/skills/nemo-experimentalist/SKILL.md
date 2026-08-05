@@ -47,6 +47,36 @@ with each run so another operator can reproduce it. If the agent or its spec
 does not exist yet, use `nemo-explore` to design it and `nemo-spec` to create
 the spec before returning here.
 
+## Configure the environment
+
+The Experimentalist needs a running NeMo Platform, an LLM endpoint for its
+optimizer agents, and a model for each tier. For the NVIDIA Inference Gateway,
+set the Platform URL, inference key, and model tiers:
+
+```bash
+export NMP_BASE_URL=http://localhost:8080
+export INFERENCE_API_KEY=<gateway-api-key>
+export NEMO_EXPERIMENTALIST_MODELS_SMART=<model-name>
+export NEMO_EXPERIMENTALIST_MODELS_MID=<model-name>
+export NEMO_EXPERIMENTALIST_MODELS_FAST=<model-name>
+```
+
+The CLI uses the NVIDIA Inference Gateway by default and reuses
+`INFERENCE_API_KEY` as the Experimentalist key. For another OpenAI-compatible
+endpoint, set these instead of `INFERENCE_API_KEY`:
+
+```bash
+export NEMO_EXPERIMENTALIST_API_BASE=https://llm.example.com/v1
+export NEMO_EXPERIMENTALIST_API_KEY=<endpoint-api-key>
+```
+
+Keep these values in your shell environment or an ignored environment file,
+never in `optimizer.yaml`, the run configuration, or Git. Configure any
+credentials required by the agent under test according to its own setup. To
+publish a winning Git candidate, authenticate the relevant CLI in the same
+execution environment: `gh auth login` for GitHub or `glab auth login` for
+GitLab.
+
 ## Pre-flight
 
 Run the built-in checks first:
@@ -159,6 +189,29 @@ evaluator:
 eval_author:
   max_traces: 3
 ```
+
+### Create a low-cost smoke dataset
+
+When the full dataset is expensive, create small **copied** train and
+validation subsets for the smoke run. Select a few representative task
+directories from each original split—for example, different task types or
+known failure modes—and copy each complete Harbor task directory, including
+its `task.toml` and verifier files:
+
+```bash
+mkdir -p smoke/train smoke/validation
+for task in task-a task-b task-c; do
+  cp -R "full/train/$task" smoke/train/
+done
+for task in task-d task-e; do
+  cp -R "full/validation/$task" smoke/validation/
+done
+```
+
+Point the smoke command at `smoke/train` and `smoke/validation`. Record the
+selected task IDs with the smoke configuration. Do not edit or replace the
+canonical splits, and do not use a smoke subset to decide whether a candidate
+is an improvement; run that decision against the full validation split.
 
 For a real run, begin with the default values, raise only the settings that
 match the available evaluation budget, and preserve the same validation split
