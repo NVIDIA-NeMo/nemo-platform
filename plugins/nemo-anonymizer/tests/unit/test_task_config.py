@@ -51,6 +51,7 @@ def test_preview_num_records_advertises_the_default_maximum() -> None:
 
     assert schema["minimum"] == 1
     assert schema["maximum"] == DEFAULT_MAX_PREVIEW_NUM_RECORDS
+    assert schema["default"] == DEFAULT_MAX_PREVIEW_NUM_RECORDS
 
 
 def test_preview_num_records_leaves_the_ceiling_to_the_configured_max() -> None:
