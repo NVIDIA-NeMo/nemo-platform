@@ -45,7 +45,6 @@ top_level:
   intake:
     panel: Functional plugins
     help: Intake operations.
-    hidden: true
   jobs:
     panel: Core plugins
     help: Manage jobs.

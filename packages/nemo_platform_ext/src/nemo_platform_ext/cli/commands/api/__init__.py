@@ -53,7 +53,7 @@ API_TOP_LEVEL_ENTRIES = (
         help="Intake operations.",
         panel="Functional plugins",
         kind="group",
-        hidden=True,
+        hidden=False,
     ),
     TopLevelEntry(
         import_path=f"{__package__}.jobs:app",
