@@ -35,6 +35,8 @@ def _docker_is_available() -> bool:
 
 
 @pytest.mark.integration
+# Serialize with evaluator integration tests that own the legacy fixed-port container.
+@pytest.mark.xdist_group("nmp_intake_clickhouse")
 def test_data_directory_owned_container_uses_dynamic_loopback_port_and_is_reused(
     tmp_path: Path,
 ) -> None:
