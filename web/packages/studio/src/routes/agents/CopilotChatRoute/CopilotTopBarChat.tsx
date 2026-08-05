@@ -194,8 +194,6 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
           aria-label={isOpen ? CLOSE_LABEL : OPEN_LABEL}
           className="relative"
           title={isOpen ? CLOSE_LABEL : OPEN_LABEL}
-          // Not onPointerEnter: PopoverTrigger spreads `...props` after its own,
-          // so passing one here replaces it and breaks the pop-out.
           onMouseEnter={preloadChatThread}
           onPointerDown={handleTriggerPointerDown}
           onClick={handleTriggerClick}
