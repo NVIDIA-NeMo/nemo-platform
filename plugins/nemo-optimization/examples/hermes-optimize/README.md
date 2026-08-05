@@ -141,7 +141,7 @@ export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
 export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
 ```
 
-#### CLI
+#### Bound MCP CLI
 
 ```bash
 cd /path/to/nemo-platform
@@ -158,7 +158,7 @@ uv run --no-sync --package nemo-agents-plugin nemo agents optimize run \
   --workspace default
 ```
 
-#### Python SDK
+#### Bound MCP Python SDK
 
 ```python
 import os
