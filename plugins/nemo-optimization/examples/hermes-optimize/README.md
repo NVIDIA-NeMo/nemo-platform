@@ -4,19 +4,23 @@ Fabric-backed numeric HPO demos for `nemo agents optimize`.
 
 | File | Purpose |
 |------|---------|
-| `phishing.optimize.fabric-chatonly.yaml` | **Proven clean CLI run** — chat-only Hermes, no MCP |
+| `phishing.optimize.fabric-chatonly.yaml` | **Proven clean run** — chat-only Hermes, no MCP |
 | `phishing.optimize.fabric-mcp.e2e.yaml` | Path-first MCP via platform `mcp_run_binding` (extended HPO) |
 | `analyzer.inference-api.yaml` | Analyzer LLM settings for keys that work on inference-api |
 | `package.yaml` / `agent.yaml` / `optimize.yaml` | Generic templates (`REPLACE_ME` models) |
+
+Paired CLI and Python SDK recipes below. The same flows are also documented under
+`docs/agents/optimization.mdx` (Optimize Agents) with CLI / Skill / SDK tabs.
 
 ## Prerequisites
 
 From the `nemo-platform` repo root:
 
-1. Python env with agents + Fabric extras, e.g.:
+1. **Sync agents + Fabric-related workspace packages** (pulls `nemo-agents-plugin`,
+   `nemo-optimization-plugin`, and locked Fabric adapters):
 
    ```bash
-   uv sync --package nemo-evaluator-sdk --extra fabric
+   uv sync --package nemo-agents-plugin
    ```
 
 2. **`hermes-agent` harness (required for live Hermes runs)**  
@@ -37,10 +41,23 @@ From the `nemo-platform` repo root:
 
 3. **Fabric Hermes MCP (FABRIC-167)** — Hermes 0.18+ needs `discover_mcp_tools()` after
    the adapter writes `config.yaml`, and capability planning must preserve
-   `mcp.servers.*.env`. Install a Fabric **0.2.0+** build that includes that fix
-   (e.g. `just wheels` in NeMo-Fabric, then `uv pip install --find-links … --force-reinstall
-   --no-deps`). Plain `uv run` re-syncs the lock and **downgrades** Fabric to 0.1.0 —
-   after installing local wheels, always use `uv run --no-sync …`.
+   `mcp.servers.*.env`. Install a Fabric **0.2.0+** build that includes that fix, then
+   always use `uv run --no-sync` so the lock does not downgrade Fabric to 0.1.0:
+
+   ```bash
+   # Build wheels in a NeMo-Fabric checkout (produces dist/*.whl):
+   #   cd /path/to/NeMo-Fabric && just wheels
+   export NEMO_FABRIC_DIST="${NEMO_FABRIC_DIST:-$HOME/work/NeMo-Fabric/dist}"
+
+   uv pip install --python .venv/bin/python \
+     --find-links "$NEMO_FABRIC_DIST" \
+     --force-reinstall --no-deps \
+     "nemo-fabric==0.2.0" \
+     "nemo-fabric-adapters-hermes==0.2.0"
+   ```
+
+   Adjust the version pins to match the wheels in `$NEMO_FABRIC_DIST`
+   (`ls "$NEMO_FABRIC_DIST"/nemo_fabric*.whl`).
 
 4. `NVIDIA_API_KEY` in the environment. For `https://inference-api.nvidia.com/v1`,
    list models your key can call (`GET /v1/models`) and use the **full id**
@@ -48,10 +65,12 @@ From the `nemo-platform` repo root:
    `tool_calls` (e.g. `nvidia/meta/llama-3.1-70b-instruct`). `gpt-oss-20b` on this
    endpoint often puts the call in reasoning text instead.
 
-## Clean chat-only run
-
 `--optimize-config` must be an **absolute** path. Dataset / `base_dir` paths in the
 YAML are relative to the process CWD — run from the repo root.
+
+## Clean chat-only run
+
+### CLI
 
 ```bash
 cd /path/to/nemo-platform
@@ -59,6 +78,39 @@ cd /path/to/nemo-platform
 uv run --no-sync --package nemo-agents-plugin nemo agents optimize run \
   --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-chatonly.yaml" \
   --workspace default
+```
+
+### Python SDK
+
+```python
+import os
+from pathlib import Path
+
+from nemo_optimization.jobs.optimize import OptimizeJob
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.scheduler import NemoJobScheduler
+
+WORKSPACE = "default"
+repo = Path("/path/to/nemo-platform").resolve()
+optimize_config = (
+    repo / "plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-chatonly.yaml"
+).resolve()
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace=WORKSPACE,
+)
+
+result = NemoJobScheduler().run_local(
+    OptimizeJob,
+    {
+        "optimize_config": str(optimize_config),
+        "workspace": WORKSPACE,
+    },
+    workspace=WORKSPACE,
+    sdk=client,
+)
+print(result)
 ```
 
 Expected: Optuna study completes (`n_trials: 2`), `status: completed`.
@@ -80,6 +132,17 @@ For per-task private MCP bindings + audit (phishing-style), use the platform hoo
 - `mcp.servers.<name>.env` — credentials for the MCP process
 - `bindings[]` — lifecycle only (binding ref, executable, config_paths, optional handoff)
 
+One-time agent checkout setup (separate venv):
+
+```bash
+export PHISHING_AGENT_ROOT="${PHISHING_AGENT_ROOT:-$HOME/work/email-phishing-analyzer-harnesses}"
+cd "$PHISHING_AGENT_ROOT" && uv sync
+export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
+export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
+```
+
+#### CLI
+
 ```bash
 cd /path/to/nemo-platform
 
@@ -87,15 +150,49 @@ export PHISHING_AGENT_ROOT="${PHISHING_AGENT_ROOT:-$HOME/work/email-phishing-ana
 export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
 export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
 
-# Agent checkout needs its own venv with the MCP console script (once):
-#   cd "$PHISHING_AGENT_ROOT" && uv sync
-
 test -d "$PHISHING_AGENT_SRC" || { echo "missing PHISHING_AGENT_SRC=$PHISHING_AGENT_SRC"; exit 1; }
 test -x "$PHISHING_MCP_BIN" || { echo "missing PHISHING_MCP_BIN=$PHISHING_MCP_BIN (uv sync in agent checkout)"; exit 1; }
 
 uv run --no-sync --package nemo-agents-plugin nemo agents optimize run \
   --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-mcp.e2e.yaml" \
   --workspace default
+```
+
+#### Python SDK
+
+```python
+import os
+from pathlib import Path
+
+from nemo_optimization.jobs.optimize import OptimizeJob
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.scheduler import NemoJobScheduler
+
+WORKSPACE = "default"
+repo = Path("/path/to/nemo-platform").resolve()
+agent_root = Path(os.environ.get("PHISHING_AGENT_ROOT", Path.home() / "work/email-phishing-analyzer-harnesses"))
+os.environ.setdefault("PHISHING_AGENT_SRC", str(agent_root / "src"))
+os.environ.setdefault("PHISHING_MCP_BIN", str(agent_root / ".venv/bin/email-phishing-analyzer-mcp"))
+
+optimize_config = (
+    repo / "plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-mcp.e2e.yaml"
+).resolve()
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace=WORKSPACE,
+)
+
+result = NemoJobScheduler().run_local(
+    OptimizeJob,
+    {
+        "optimize_config": str(optimize_config),
+        "workspace": WORKSPACE,
+    },
+    workspace=WORKSPACE,
+    sdk=client,
+)
+print(result)
 ```
 
 Expected: Optuna study completes (`n_trials: 4`), `status: completed`, best score `1.0`.
@@ -111,3 +208,5 @@ base URL (401s for many keys that work on inference-api).
 - Local Hermes runtimes write under `./artifacts/` in this directory (safe to delete).
 - Dataset emails for MCP should be single-line: the analyzer binding requires an exact
   match on the tool `text` argument, and models often collapse newlines.
+- Judge / agent endpoints in these examples may use local or LAN HTTP (e.g. IGW on
+  `10.0.0.51:8080`); that is expected for local platform runs.

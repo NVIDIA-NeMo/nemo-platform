@@ -273,17 +273,22 @@ optimization through `agents.optimize` (implementation in
 `nemo-optimization`). Input must be a Fabric-native agent package
 (`schema_version: fabric.agent/v1alpha1`). The golden-path harness is
 Hermes (`nvidia.fabric.hermes`); see
-`plugins/nemo-optimization/examples/hermes-optimize/`.
+`plugins/nemo-optimization/examples/hermes-optimize/` (install steps,
+Fabric 0.2.0+ wheels, and `--no-sync` notes live in that README).
 
-For the Hermes optimize example:
+`--optimize-config` must be an **absolute** path. Run from the
+`nemo-platform` repo root so dataset / `base_dir` paths resolve.
+
+### Chat-only Hermes (no MCP)
 
 <Tabs>
 
 <Tab title="CLI">
 
 ```bash
-nemo agents optimize run \
-  --optimize-config plugins/nemo-optimization/examples/hermes-optimize/package.yaml
+uv run --no-sync --package nemo-agents-plugin nemo agents optimize run \
+  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-chatonly.yaml" \
+  --workspace default
 ```
 
 </Tab>
@@ -321,7 +326,7 @@ from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 WORKSPACE = "default"
 optimize_config = Path(
-    "plugins/nemo-optimization/examples/hermes-optimize/package.yaml"
+    "plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-chatonly.yaml"
 ).resolve()
 
 client = NeMoPlatform(
@@ -344,6 +349,76 @@ print(result)
 </Tab>
 
 </Tabs>
+
+### Bound MCP Hermes (path-first)
+
+Point `PHISHING_AGENT_SRC` / `PHISHING_MCP_BIN` at an
+`email-phishing-analyzer-harnesses` checkout (its own `.venv` after
+`uv sync`). Do **not** pip-install that agent into the platform venv.
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+export PHISHING_AGENT_ROOT="${PHISHING_AGENT_ROOT:-$HOME/work/email-phishing-analyzer-harnesses}"
+export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
+export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
+
+uv run --no-sync --package nemo-agents-plugin nemo agents optimize run \
+  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-mcp.e2e.yaml" \
+  --workspace default
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+import os
+from pathlib import Path
+
+from nemo_optimization.jobs.optimize import OptimizeJob
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.scheduler import NemoJobScheduler
+
+WORKSPACE = "default"
+agent_root = Path(
+    os.environ.get(
+        "PHISHING_AGENT_ROOT",
+        Path.home() / "work/email-phishing-analyzer-harnesses",
+    )
+)
+os.environ.setdefault("PHISHING_AGENT_SRC", str(agent_root / "src"))
+os.environ.setdefault(
+    "PHISHING_MCP_BIN",
+    str(agent_root / ".venv/bin/email-phishing-analyzer-mcp"),
+)
+
+optimize_config = Path(
+    "plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-mcp.e2e.yaml"
+).resolve()
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace=WORKSPACE,
+)
+
+result = NemoJobScheduler().run_local(
+    OptimizeJob,
+    {
+        "optimize_config": str(optimize_config),
+        "workspace": WORKSPACE,
+    },
+    workspace=WORKSPACE,
+    sdk=client,
+)
+print(result)
+```
+
+</Tab>
+
+</Tabs>
+
 When `--agent` is a platform-managed agent name, the job fetches the stored
 Fabric agent config, overlays the optimization settings, runs Inference Gateway
 model preflight, and dispatches to the Tune backend. Raw HTTP endpoint mode is

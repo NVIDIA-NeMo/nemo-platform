@@ -7,7 +7,6 @@ dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
     "nemo-evaluator-sdk",
-    "nmp-customization-common",
     "matplotlib>=3.8.0",
     "numpy>=1.26.0",
     "optuna>=4.0.0",
@@ -33,7 +32,6 @@ packages = ["src/nemo_optimization"]
 nemo-platform-plugin = { workspace = true }
 nemo-platform = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
-nmp-customization-common = { workspace = true }
 
 [dependency-groups]
 dev = [
