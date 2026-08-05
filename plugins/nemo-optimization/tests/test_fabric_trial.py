@@ -11,6 +11,7 @@ import pytest
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus
+from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.metrics.tunable_rag_evaluator import TunableRagEvaluatorMetric
 from nemo_evaluator_sdk.values.evidence import (
@@ -21,6 +22,7 @@ from nemo_evaluator_sdk.values.evidence import (
 )
 from nemo_optimization.backends.optuna.fabric_trial import (
     FabricTrialEvaluator,
+    _model_from_fabric,
     build_agent_eval_tasks,
     reduce_agent_eval_scores,
 )
@@ -80,6 +82,46 @@ def test_build_agent_eval_tasks_from_json_dataset(tmp_path: Path) -> None:
     assert tasks[0].inputs == {"instruction": "q?"}
     assert tasks[0].reference == {"answer": "a"}
     assert isinstance(tasks[0].metrics[0], TunableRagEvaluatorMetric)
+    assert tasks[0].metrics[0].model.format == ModelFormat.OPEN_AI
+
+
+def test_model_from_fabric_maps_providers_to_model_format() -> None:
+    payload = {
+        "models": {
+            "openai_judge": {
+                "provider": "openai",
+                "model": "gpt",
+                "base_url": "http://judge/v1",
+            },
+            "nim_judge": {
+                "provider": "nim",
+                "model": "nim-model",
+                "url": "http://nim/v1",
+            },
+            "nvidia_judge": {
+                "provider": "nvidia",
+                "model": "nv-model",
+                "base_url": "http://nv/v1",
+            },
+        }
+    }
+    assert _model_from_fabric(payload, "openai_judge").format == ModelFormat.OPEN_AI
+    assert _model_from_fabric(payload, "nim_judge").format == ModelFormat.NVIDIA_NIM
+    assert _model_from_fabric(payload, "nvidia_judge").format == ModelFormat.OPEN_AI
+
+
+def test_model_from_fabric_rejects_unknown_provider() -> None:
+    payload = {
+        "models": {
+            "judge": {
+                "provider": "anthropic",
+                "model": "claude",
+                "base_url": "http://judge/v1",
+            }
+        }
+    }
+    with pytest.raises(StudyDriverError, match="unsupported provider 'anthropic'"):
+        _model_from_fabric(payload, "judge")
 
 
 def test_build_agent_eval_tasks_accepts_body_label(tmp_path: Path) -> None:

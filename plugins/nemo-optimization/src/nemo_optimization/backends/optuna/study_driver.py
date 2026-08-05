@@ -70,7 +70,7 @@ class MetricSpec:
 @dataclass(frozen=True)
 class NumericStudyConfig:
     n_trials: int
-    sampler: str | None
+    sampler: str
     reps_per_param_set: int
     target: float | None
     multi_objective_mode: str
@@ -115,9 +115,19 @@ def parse_numeric_study_config(optimizer: Mapping[str, Any]) -> NumericStudyConf
         )
 
     sampler = numeric.get("sampler")
-    sampler_name = None if sampler in (None, "bayesian") else str(sampler).lower()
-    if sampler_name not in (None, "grid"):
-        raise StudyDriverError(f"Unsupported optimizer.numeric.sampler: {sampler!r}")
+    # "bayesian" / "tpe" / omitted → Optuna TPE (Bayesian optimization). Keep the
+    # canonical name so configs and study metadata are not silently rewritten to None.
+    if sampler is None:
+        sampler_name = "bayesian"
+    else:
+        sampler_name = str(sampler).lower()
+        if sampler_name in {"bayesian", "tpe"}:
+            sampler_name = "bayesian"
+        elif sampler_name != "grid":
+            raise StudyDriverError(
+                f"Unsupported optimizer.numeric.sampler: {sampler!r}. "
+                "Supported values: 'bayesian' (TPE), 'tpe', 'grid'."
+            )
 
     return NumericStudyConfig(
         n_trials=int(numeric.get("n_trials", 20)),
@@ -130,12 +140,11 @@ def parse_numeric_study_config(optimizer: Mapping[str, Any]) -> NumericStudyConf
     )
 
 
-def create_sampler(config: NumericStudyConfig, *, seed: int | None = None) -> optuna.samplers.BaseSampler | None:
+def create_sampler(config: NumericStudyConfig, *, seed: int | None = None) -> optuna.samplers.BaseSampler:
     if config.sampler == "grid":
         grid = {name: spec.to_grid_values() for name, spec in config.search_space.items()}
         return GridSampler(grid, seed=seed)
-    if seed is None:
-        return None
+    # bayesian / default: TPE for single-objective, NSGA-II for multi-objective.
     if len(config.metrics) > 1:
         return optuna.samplers.NSGAIISampler(seed=seed)
     return optuna.samplers.TPESampler(seed=seed)

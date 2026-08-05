@@ -28,6 +28,7 @@ from nemo_platform.beta.evaluator.resolver_protocols import ModelResolver, Secre
 from nemo_platform.beta.evaluator.values.common import SecretRef, SupportedJobTypes
 from nemo_platform.beta.evaluator.values.metrics import TunableRagEvaluator
 from nemo_platform.beta.evaluator.values.models import Model, ModelRef
+from nemo_platform.beta.evaluator.values.params import RunConfig, RunConfigOnline
 from openai import AsyncOpenAI
 from pydantic import PrivateAttr
 
@@ -44,6 +45,8 @@ class TunableRagEvaluatorMetric(HooksBase, TunableRagEvaluator):
     _api_key: str | None = None
     _client: AsyncOpenAI | None = PrivateAttr(default=None)
     _inference_fn: InferenceFn | None = None
+    # Populated from RunConfigOnline.max_retries via apply_evaluation_job_params.
+    _max_retries: int = PrivateAttr(default=3)
     job_type: Literal[SupportedJobTypes.ONLINE, SupportedJobTypes.OFFLINE] = SupportedJobTypes.ONLINE
 
     @property
@@ -63,6 +66,12 @@ class TunableRagEvaluatorMetric(HooksBase, TunableRagEvaluator):
     @property
     def inference_fn(self) -> InferenceFn:
         return self._inference_fn or inference.make_inference_request
+
+    def apply_evaluation_job_params(self, params: RunConfig) -> None:
+        """Apply online job params; ``max_retries`` lives on ``RunConfigOnline``, not InferenceParams."""
+        self.job_type = SupportedJobTypes.ONLINE if isinstance(params, RunConfigOnline) else SupportedJobTypes.OFFLINE
+        if isinstance(params, RunConfigOnline):
+            self._max_retries = params.max_retries
 
     def model_refs(self) -> dict[str, ModelRef]:
         return collect_model_refs(self)
@@ -103,9 +112,7 @@ class TunableRagEvaluatorMetric(HooksBase, TunableRagEvaluator):
     async def compute_scores(self, input: MetricInput) -> MetricResult:
         question, answer_description, generated_answer = _extract_eval_fields(input)
         request = self._build_request(question, answer_description, generated_answer)
-        max_retries = 3
-        if self.inference is not None and self.inference.max_retries is not None:
-            max_retries = self.inference.max_retries
+        max_retries = self._max_retries
 
         try:
             response = await self.inference_fn(self._require_model(), request, max_retries, client=self.client)

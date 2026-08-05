@@ -18,6 +18,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.fabric.hook_loading import FabricTas
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
+from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.metrics.tunable_rag_evaluator import TunableRagEvaluatorMetric
 from nemo_evaluator_sdk.values.common import SecretRef
@@ -262,7 +263,17 @@ def _model_from_fabric(payload: Mapping[str, Any], model_name: str) -> Model:
         raise StudyDriverError(f"Judge model {model_name!r} not found under payload.models.")
 
     provider = str(raw.get("provider") or "openai").lower()
-    model_format = "openai" if provider in {"openai", "nvidia"} else provider
+    if provider in {"openai", "nvidia"}:
+        model_format = ModelFormat.OPEN_AI
+    elif provider in {"nim", "nvidia_nim"}:
+        model_format = ModelFormat.NVIDIA_NIM
+    elif provider == "llama_stack":
+        model_format = ModelFormat.LLAMA_STACK
+    else:
+        raise StudyDriverError(
+            f"Judge model {model_name!r} has unsupported provider {provider!r}. "
+            "Expected one of: openai, nvidia, nim, llama_stack."
+        )
     model_id = str(raw.get("model") or raw.get("model_name") or model_name)
     url = str(raw.get("url") or raw.get("base_url") or "")
     if not url:

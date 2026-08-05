@@ -84,6 +84,44 @@ async def test_default_scoring_emits_weighted_average_and_subscores() -> None:
 
 
 @pytest.mark.asyncio
+async def test_max_retries_comes_from_run_config_online() -> None:
+    from nemo_evaluator_sdk.values.params import RunConfig, RunConfigOnline
+
+    metric = TunableRagEvaluatorMetric(model=_make_model(), default_scoring=True)
+    captured: dict[str, Any] = {}
+
+    async def fake_inference(model, request, max_retries, client=None):  # noqa: ANN001
+        captured["max_retries"] = max_retries
+        return _judge_response(
+            {
+                "coverage_score": 1.0,
+                "correctness_score": 1.0,
+                "relevance_score": 1.0,
+                "reasoning": "ok",
+            }
+        )
+
+    metric._inference_fn = fake_inference  # noqa: SLF001
+    metric.apply_evaluation_job_params(RunConfigOnline(max_retries=7))
+
+    await compute_scores(
+        metric,
+        {"inputs": {"question": "q"}, "reference": {"answer": "a"}},
+        {"output_text": "a"},
+    )
+    assert captured["max_retries"] == 7
+
+    # Offline RunConfig has no max_retries; keep the last online value.
+    metric.apply_evaluation_job_params(RunConfig())
+    await compute_scores(
+        metric,
+        {"inputs": {"question": "q"}, "reference": {"answer": "a"}},
+        {"output_text": "a"},
+    )
+    assert captured["max_retries"] == 7
+
+
+@pytest.mark.asyncio
 async def test_custom_scoring_emits_average_score_only() -> None:
     metric = TunableRagEvaluatorMetric(
         model=_make_model(),

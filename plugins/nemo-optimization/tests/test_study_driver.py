@@ -20,7 +20,7 @@ from nemo_optimization.backends.optuna.study_driver import (
     resolve_n_trials,
     run_numeric_study,
 )
-from optuna.samplers import GridSampler
+from optuna.samplers import GridSampler, NSGAIISampler, TPESampler
 from optuna.study import StudyDirection
 
 
@@ -62,6 +62,32 @@ def test_parse_numeric_study_config() -> None:
     assert config.reps_per_param_set == 2
     assert len(config.search_space) == 2
     assert config.metrics[0].direction == StudyDirection.MAXIMIZE
+    assert config.sampler == "bayesian"
+    assert isinstance(create_sampler(config), TPESampler)
+
+
+@pytest.mark.parametrize("sampler_name", ["bayesian", "tpe", None])
+def test_bayesian_sampler_aliases_to_explicit_tpe(sampler_name: str | None) -> None:
+    optimizer = _payload()["optimizer"]
+    optimizer = {**optimizer, "numeric": {**optimizer["numeric"], "sampler": sampler_name}}
+    config = parse_numeric_study_config(optimizer)
+    assert config.sampler == "bayesian"
+    assert isinstance(create_sampler(config, seed=0), TPESampler)
+
+
+def test_bayesian_multi_objective_uses_nsgaii() -> None:
+    optimizer = _payload()["optimizer"]
+    optimizer = {
+        **optimizer,
+        "numeric": {**optimizer["numeric"], "sampler": "bayesian"},
+        "eval_metrics": {
+            "coverage": {"direction": "maximize", "weight": 0.5},
+            "latency": {"direction": "minimize", "weight": 0.5},
+        },
+    }
+    config = parse_numeric_study_config(optimizer)
+    assert config.sampler == "bayesian"
+    assert isinstance(create_sampler(config, seed=0), NSGAIISampler)
 
 
 def test_grid_sampler_trial_count() -> None:
