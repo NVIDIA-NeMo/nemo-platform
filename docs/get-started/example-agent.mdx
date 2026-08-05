@@ -128,26 +128,51 @@ git -C "$EXAMPLE_AGENT_REPO" checkout -b main
 git -C "$EXAMPLE_AGENT_REPO" add .
 git -C "$EXAMPLE_AGENT_REPO" commit -m "Add the tau3 NOOA example agent"
 git -C "$EXAMPLE_AGENT_REPO" push -u origin main
-export AGENT_REPO_URL="$(git -C "$EXAMPLE_AGENT_REPO" remote get-url origin)"
+export AGENT_REPO_URL="$(gh repo view "$GITHUB_OWNER/tau3-nooa-agent" --json url --jq .url)"
 ```
 
-Run the Experimentalist against the Git repository. The `@main` suffix selects
-the source ref to optimize. It clones that baseline, pushes a validated winner
-to a new branch, and opens a draft PR or MR against `main`. To use a different
-target branch, set `storage.pr_base_branch` in the configuration.
+Run the Experimentalist against the Git repository inside a Docker Sandbox. The
+`@main` suffix selects the source ref to optimize. It clones that baseline,
+pushes a validated winner to a new branch, and opens a draft PR or MR against
+`main`. To use a different target branch, set `storage.pr_base_branch` in the
+configuration. Authenticate GitHub inside the sandbox so it can clone and push
+the private repository.
 
 ```bash
-uv run --frozen nemo agents experimentalist run \
+repo="$(git rev-parse --show-toplevel)"
+sbx create --clone --name nemo-experimentalist-git shell "$repo"
+gh auth token | sbx exec -i --workdir "$repo" nemo-experimentalist-git \
+  gh auth login --with-token
+sbx exec --workdir "$repo" nemo-experimentalist-git gh auth setup-git
+sbx exec --workdir "$repo" nemo-experimentalist-git \
+  git clone "$AGENT_REPO_URL" /tmp/tau3-nooa-agent
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env INFERENCE_API_KEY \
+  --env INFERENCE_API_BASE \
+  --env OPENAI_API_KEY \
+  --env OPENAI_BASE_URL \
+  --env NEMO_EXPERIMENTALIST_API_KEY \
+  --env NEMO_EXPERIMENTALIST_API_BASE \
+  --env NEMO_EXPERIMENTALIST_MODELS_SMART \
+  --env NEMO_EXPERIMENTALIST_MODELS_MID \
+  --env NEMO_EXPERIMENTALIST_MODELS_FAST \
+  --env TAU2_USER_MODEL \
+  --env TAU2_NL_ASSERTIONS_MODEL \
+  --env AUT_MODEL_NAME \
+  nemo-experimentalist-git \
+  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
+  nemo agents experimentalist run \
   --no-insight \
   --agent "${AGENT_REPO_URL}@main" \
-  --agent-spec "$EXAMPLE_AGENT_REPO/AGENT-SPEC.md" \
-  --train-dataset plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
-  --validation-dataset plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
+  --agent-spec /tmp/tau3-nooa-agent/AGENT-SPEC.md \
+  --train-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
+  --validation-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
   --workspace canonical-tau3-airline \
   --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
-  --config "$EXAMPLE_AGENT_REPO/experimentalist-smoke.yaml" \
+  --config /tmp/tau3-nooa-agent/experimentalist-smoke.yaml \
   --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
-  --base-url "$NMP_BASE_URL"
+  --base-url http://host.docker.internal:8080
 ```
 
 This setup enables `storage.archive_candidates`, which pushes every generated
@@ -161,7 +186,7 @@ GitLab is supported too: use a GitLab repository URL and authenticate with
 changed winning candidate.
 
 The trace records include the Experimentalist evaluation ID and Tau3 task ID.
-After the run completes, inspect
+After the run completes, inspect the sandbox's
 `plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist/eval-and-optimize/run.json`
 for the selected winner and compare the `agent-0` and `agent-1` directories to
 review the code change that was evaluated.
@@ -191,7 +216,7 @@ sbx exec --workdir "$repo" \
   --env TAU2_NL_ASSERTIONS_MODEL \
   --env AUT_MODEL_NAME \
   nemo-experimentalist \
-  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
+  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
   nemo agents experimentalist run \
   --no-insight \
   --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
