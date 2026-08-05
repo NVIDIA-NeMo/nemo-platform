@@ -291,6 +291,9 @@ def test_provision_adopts_legacy_container(
 
     assert url == "http://127.0.0.1:8123"
     assert client.containers.run_calls == []
+    assert remove_local_clickhouse(data_dir=data_dir) is True
+    assert legacy.stopped is True
+    assert legacy.removed is True
 
 
 def test_provision_does_not_adopt_legacy_container_without_expected_data_mount(

@@ -180,7 +180,12 @@ def remove_local_clickhouse(*, data_dir: Path | None = None) -> bool:
         if not containers:
             return False
         for container_name, container in containers:
-            _validate_cleanup_target(container, expected_name=container_name, data_dir=resolved_data_dir)
+            _validate_cleanup_target(
+                container,
+                expected_name=container_name,
+                data_dir=resolved_data_dir,
+                allow_unlabeled_legacy=container_name == LEGACY_CONTAINER_NAME,
+            )
         for container_name, container in containers:
             _remove_container(container)
             logger.info("Removed managed local ClickHouse container %s", container_name)
@@ -329,23 +334,31 @@ def _validate_container(
         )
 
 
-def _validate_cleanup_target(container: Container, *, expected_name: str, data_dir: Path) -> None:
+def _validate_cleanup_target(
+    container: Container,
+    *,
+    expected_name: str,
+    data_dir: Path,
+    allow_unlabeled_legacy: bool = False,
+) -> None:
     container.reload()
+    attrs = cast(dict[str, Any], container.attrs or {})
+    if _mounted_clickhouse_data_dir(attrs) != data_dir:
+        raise LocalClickHouseProvisioningError(
+            f"Refusing to remove container {expected_name}: it does not mount {data_dir}"
+        )
+
     labels = container.labels or {}
     expected_labels = {
         _MANAGED_BY_LABEL: _MANAGED_BY_VALUE,
         _COMPONENT_LABEL: _COMPONENT_VALUE,
         _DATA_DIR_LABEL: _data_dir_identity(data_dir),
     }
+    if allow_unlabeled_legacy and not any(label in labels for label in expected_labels):
+        return
     if any(labels.get(key) != value for key, value in expected_labels.items()):
         raise LocalClickHouseProvisioningError(
             f"Refusing to remove container {expected_name}: it is not owned by Intake for {data_dir}"
-        )
-
-    attrs = cast(dict[str, Any], container.attrs or {})
-    if _mounted_clickhouse_data_dir(attrs) != data_dir:
-        raise LocalClickHouseProvisioningError(
-            f"Refusing to remove container {expected_name}: it does not mount {data_dir}"
         )
 
 
