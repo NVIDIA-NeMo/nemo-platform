@@ -3,9 +3,8 @@
 
 """Eval Author plugin CLI — ``nemo agents eval-author ...`` subcommands.
 
-The same class is registered under both ``nemo.cli.agents`` and ``nemo.cli``, so every
-verb is reachable as ``nemo agents eval-author <verb>`` (canonical) and as ``nemo
-eval-author <verb>`` (retained for backward compatibility).
+Registered under ``nemo.cli.agents`` and mounted by ``AgentsCLI`` as
+``nemo agents eval-author <verb>``.
 
 Scaffolding. Every verb is registered under its final name so the command tree is
 discoverable and the child tickets have a landing spot, and each body exits non-zero
@@ -28,8 +27,7 @@ from nemo_platform_plugin.cli import NemoCLI
 def _not_implemented(ctx: typer.Context, ticket: str) -> NoReturn:
     """Fail loudly, so a placeholder verb can never be mistaken for a successful run.
 
-    The message quotes ``ctx.command_path`` rather than a hardcoded path, so it names
-    whichever of the two mount points the caller actually used.
+    The message quotes ``ctx.command_path`` rather than a hardcoded path.
     """
     typer.echo(f"`{ctx.command_path}` is not implemented yet ({ticket}).", err=True)
     raise typer.Exit(code=1)

@@ -1,13 +1,27 @@
 # NeMo Agent Config
 
-This directory contains Platform-owned `nemo-agents-spec-v1` configs for
-Fabric-backed NeMo Agents. Run the commands below from the repository root.
+## Prerequisites
 
-Fabric, Relay, Claude, Codex, and DeepAgents dependencies are installed with
-the `nemo-agents` plugin. Hermes is intentionally split out because the Hermes
+This directory contains Platform-managed `nemo-agents-spec-v1` configs for
+NeMo Agents. Run the commands below from the repository root.
+
+The plugin installs Fabric, Relay Python bindings, and supported harness
+adapters. The Relay CLI is separate. Hermes is intentionally split out because the Hermes
 Agent runtime dependencies conflict with the Platform environment.
 
-Shared Fabric capabilities live at the top level:
+Set the credentials required by the selected model provider. The examples use
+`NVIDIA_API_KEY`. Install and authenticate the selected harness CLI when
+required; for example, run `codex login` for Codex or complete the Claude CLI
+login flow.
+
+For Claude or Codex, install and verify the Relay CLI:
+
+```bash
+script/dev-install-fabric.sh
+nemo-relay --version
+```
+
+Shared agent capabilities live at the top level:
 
 ```yaml
 instructions:
@@ -43,24 +57,36 @@ make bootstrap-python
 source .venv/bin/activate
 
 export NVIDIA_API_KEY="<your NVIDIA API key>"
+export NMP_BASE_URL=http://localhost:8080
 
-nemo setup --auto --start-services --install-skills --no-deploy-agent
+if curl -fsS --connect-timeout 2 --max-time 5 \
+  "$NMP_BASE_URL/health/ready" >/dev/null; then
+  echo "Using the running NeMo Platform instance at $NMP_BASE_URL"
+else
+  nemo setup --auto --start-services --install-skills --no-deploy-agent
+fi
+
+curl -fsS --connect-timeout 2 --max-time 5 \
+  "$NMP_BASE_URL/health/ready" >/dev/null || {
+  echo "NeMo Platform is not ready at $NMP_BASE_URL"
+  exit 1
+}
 
 # If setup does not create a usable NVIDIA inference provider, follow
 # Step 2 in plugins/nemo-agents/README.md before deploying.
 
 nemo agents create \
-  --name fabric-agent \
+  --name platform-agent \
   --agent-config plugins/nemo-agents/examples/nemo-agent-config/agent.yaml
 
 nemo agents deploy \
-  --agent fabric-agent \
-  --name fabric-agent-deployment \
+  --agent platform-agent \
+  --name platform-agent-deployment \
   --mode subprocess
 
 nemo agents invoke \
-  --agent-deployment fabric-agent-deployment \
-  --input "Reply with exactly: platform fabric works"
+  --agent-deployment platform-agent-deployment \
+  --input "Reply with exactly: platform agent works"
 ```
 
 Use a unique `--name` / deployment name for each harness, or delete the previous
@@ -126,7 +152,8 @@ the deployment name you pass to `nemo agents deploy`.
 Confirm Relay emitted both ATIF and ATOF files:
 
 ```bash
-find ~/.local/share/nemo/agents/system/default/fabric-agent-deployment-fabric/artifacts \
+find ~/.local/share/nemo/agents/system/default \
+  -path "*platform-agent-deployment*/artifacts/*" \
   \( -name "*atif*" -o -name "*atof*" \) \
   -exec ls -lh {} \;
 ```
@@ -159,3 +186,9 @@ pnpm --filter nemo-studio-ui start --host 127.0.0.1
 ```
 
 Then open `http://localhost:5173/studio/workspaces/default/intake/traces`.
+
+## Next Steps
+
+- [Package the calculator agent as a container image](../../README.md#packaging-agents-as-container-images).
+- [Deploy an agent](../../../../docs/agents/deploy-agents.mdx).
+- [Review the agent configuration contract](../../../../docs/agents/index.mdx#agent-definition).

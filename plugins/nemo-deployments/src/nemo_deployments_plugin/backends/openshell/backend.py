@@ -58,7 +58,8 @@ from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, DeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import DeploymentStatus, Endpoint
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
 if TYPE_CHECKING:
@@ -70,7 +71,7 @@ logger = logging.getLogger(__name__)
 
 _OPENSHELL_INSTALL_HINT = (
     "The 'openshell' package is required for OpenShellDeploymentBackend. "
-    "Install it with: uv sync --package nemo-deployments-plugin --extra openshell"
+    'Install it with: uv pip install "openshell>=0.0.92" "grpcio>=1.78.0" "protobuf>=6.31.1"'
 )
 
 _SERVE_LOG = "/tmp/nemo-serve.log"
@@ -154,7 +155,7 @@ class OpenShellDeploymentBackend(DeploymentBackend):
     def init(self) -> None:
         _ensure_openshell()
         self._executor_config = OpenShellExecutorConfig.model_validate(self._config)
-        self._entities = NemoEntitiesClient(AsyncEntitiesResource(self._sdk))
+        self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         # Build the policy once (fail fast on a bad path/shape). The gateway default
         # policy would not permit the agent's own exec paths, so we always apply one.
         self._policy = self._build_executor_policy()

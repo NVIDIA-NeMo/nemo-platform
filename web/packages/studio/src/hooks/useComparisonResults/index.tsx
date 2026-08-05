@@ -6,7 +6,7 @@ import {
   useAggregatedEvaluationResults,
   useAggregatedEvaluations,
 } from '@studio/api/evaluation/details/useAggregatedEvaluations';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 export const useComparisonResults = () => {
   const { id = '', workspace = '' } = useParams();

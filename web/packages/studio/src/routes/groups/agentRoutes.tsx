@@ -13,7 +13,7 @@ import {
 } from '@studio/routes/utils';
 import { Activity, FlaskConical, HatGlasses } from 'lucide-react';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 
 const AgentsListRoute =
   AGENTS_ENABLED &&

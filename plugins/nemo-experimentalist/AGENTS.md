@@ -15,18 +15,15 @@ Inherited from the NeMo Platform monorepo that now hosts this plugin:
 
 ### 2026-07-31: Command group nested under `nemo agents`
 
-The canonical path is `nemo agents experimentalist <verb>`. `ExperimentalistCLI` is
+The only path is `nemo agents experimentalist <verb>`. `ExperimentalistCLI` is
 registered under the `nemo.cli.agents` entry-point group, which the `nemo-agents`
-plugin's `AgentsCLI` discovers and mounts.
+plugin's `AgentsCLI` discovers and mounts. There is no top-level
+`nemo experimentalist` alias.
 
-The `nemo.cli` registration stays, so `nemo experimentalist <verb>` keeps working. Both
-groups point at the same class, so a new verb is written once and appears under both —
-do not add a second implementation for the legacy path. Docs, help text, and error
-messages should name the `nemo agents` form; prefer `ctx.command_path` over a hardcoded
-path when a message quotes the command back to the user.
-
-The analyst and Eval Author moved in the same change: `nemo agents analyst run` (was
-`nemo insights analyze`) and `nemo agents eval-author <verb>`.
+Analyst and Eval Author follow the same rule: `nemo agents analyst run` (was
+`nemo insights analyze`) and `nemo agents eval-author <verb>`. Prefer
+`ctx.command_path` over a hardcoded path when a message quotes the command back
+to the user.
 
 ### 2026-07-28: Eval Author extracted to its own plugin, heading for standalone
 
@@ -71,10 +68,11 @@ breaking rename with no compatibility aliases:
 
 - distribution `nemo-optimizer-plugin` → `nemo-experimentalist-plugin`, source
   path `src/nemo_optimizer_plugin` → `src/nemo_experimentalist_plugin`
-- `OptimizerCLI` → `ExperimentalistCLI`, and both the `nemo.cli` and
+- `OptimizerCLI` → `ExperimentalistCLI`, and the `nemo.cli.agents` and
   `nemo.skills` entry-point keys are now `experimentalist`, so the command is
-  `nemo experimentalist ...`
-- the `experiment` verb is now `run`: `nemo experimentalist run`
+  `nemo agents experimentalist ...` (historically also briefly exposed as a
+  top-level `nemo experimentalist` alias; that alias is gone)
+- the `experiment` verb is now `run`: `nemo agents experimentalist run`
 - `OPTIMIZER_API_BASE`, `OPTIMIZER_API_KEY`, `OPTIMIZER_{SMART,MID,FAST}_MODEL_NAME`,
   `OPTIMIZER_MODEL`, `NEMO_OPTIMIZER_E2E`, and `NEMO_OPTIMIZER_RUNTIME_CACHE` are
   now `NEMO_EXPERIMENTALIST_*`
@@ -84,9 +82,10 @@ breaking rename with no compatibility aliases:
 Two names deliberately did **not** change. `optimizer.yaml` and the
 `.nemo-optimizer/` state directory are a shared contract with
 `nemo-insights-plugin`: `PROFILE_FILENAME` and `discover_profile()` live in
-`nemo_insights_plugin.contracts.profile`, and `nemo agents analyst run` writes
-`<profile-dir>/.nemo-optimizer/insights.yaml`, which this plugin reads as the
-default insight. Rename them only in lockstep with a Platform change to that
+`nemo_insights_plugin.contracts.profile`, and `nemo agents analyst run` can
+mirror the Platform rows it wrote into `<profile-dir>/.nemo-optimizer/insights.yaml`
+via `--insights-file-output`, which this plugin reads as the default insight when
+the file exists. Rename them only in lockstep with a Platform change to that
 contract. `EvolutionaryOptimizer` and `EvolutionaryOptimizerConfig` also keep
 their names — they describe the optimization algorithm, not the product.
 

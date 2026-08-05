@@ -1,15 +1,14 @@
 ---
 title: "Experiments"
-description: "Compare evaluation runs on one leaderboard with NeMo Experiments — cost, latency, token, and evaluator rollups computed at read time from NeMo Intake telemetry."
+description: "Compare evaluation runs on a NeMo Experiments leaderboard with cost, latency, token, and evaluator rollups computed from NeMo Intake telemetry."
 ---
 
 <a id="evaluator-experiments"></a>
 
 NeMo Experiments is the comparison layer for agent optimization tasks, such as evaluating the impact
-of changes to a harness, infrastructure, tools, or agent code. It gives you one place to visualize and
-compare evaluation results from the runner of your choice — Harbor, the NeMo Optimizer, NeMo
-Evaluator, or your own — ranked on the metrics that matter, such as cost, latency, and evaluator
-scores.
+of changes to a harness, infrastructure, tools, or agent code. It provides one place to visualize and
+compare evaluation results from Harbor, the NeMo Optimizer, NeMo Evaluator, or your own runner. You
+can rank these results by cost, latency, evaluator scores, and other metrics.
 
 Those metrics are derived from [NeMo Intake](/documentation/agents/observe-agents) observability data,
 the same traces and evaluator results your runs already produce, so any runner that lands telemetry in
@@ -30,10 +29,11 @@ decide what to promote.
 - The platform entity store (Postgres).
 - A reachable ClickHouse database.
 - A producer that creates Evaluations and sends their telemetry: the NeMo Optimizer, a benchmark or
-  evaluation framework such as Harbor, or a direct API integration.
-- (Recommended) [NeMo Studio](/documentation/studio) for the full UI — trace comparison views, a
-  customizable leaderboard, and Pareto charts. Everything is also available through the API, but
-  Studio is where the experience really lives. The Experiments UI is gated by the
+  evaluation framework such as Harbor, or a direct application programming interface (API)
+  integration.
+- Recommended: [NeMo Studio](/documentation/studio) for the complete web user interface (UI),
+  including trace comparison views, a customizable leaderboard, and Pareto charts. The API provides
+  the same data. The Experiments UI is gated by the
   `VITE_FF_EXPERIMENT` feature flag, which is off by default.
 
 ## How It Works
@@ -45,9 +45,9 @@ rolls up cost, latency, tokens, and per-evaluator scores from the underlying tel
 and returns them as ranked rows. Rollups are computed at read time, so a leaderboard always reflects
 current telemetry, with no denormalized score table to maintain.
 
-You group runs however makes sense — an insight to investigate, a model bake-off, a benchmark
-leaderboard, or the top runs promoted from several groups — and a single run can belong to more than
-one group. Sorting, filtering, and pinning within a group surface the runs that matter.
+You can group runs by an insight to investigate, a model comparison, a benchmark leaderboard, or
+promoted runs from several groups. A single run can belong to more than one group. Sorting,
+filtering, and pinning within a group surface the relevant runs.
 
 ### When to Use It
 
@@ -62,7 +62,7 @@ Use Experiments when you need to:
 - **Standardize comparison across a team**: everyone reads the same metrics, in the same place, with
   the same vocabulary.
 
-Experiments are most useful once real evaluation telemetry exists. A new group can start empty and
+Experiments are most useful after real evaluation telemetry exists. A new group can start empty and
 fill in as runs land.
 
 ### Core Concepts and Data Model
@@ -74,7 +74,7 @@ Experiments sit on top of Intake's telemetry hierarchy (span → trace → sessi
   a `pareto` (default X/Y metrics for the Pareto view).
 - An **Evaluation** is one run and one leaderboard row. It records producer-supplied fields
   (`dataset_name`, `dataset_version`, `source_link`, `metadata`, `description`, `status`,
-  `root_cause`), the `experiment_ids` it belongs to (at least one — an Evaluation can live in more
+  `root_cause`), the `experiment_ids` it belongs to (at least one; an Evaluation can live in more
   than one Experiment), and an optional `parent_evaluation_id` linking a variant back to the run it
   was derived from.
 - A **Session** is one test-case execution within an Evaluation, a single ingested run made of spans.
@@ -84,7 +84,7 @@ At read time, each Evaluation is enriched with rollups derived from its sessions
 
 | Rollup | Meaning |
 |--------|---------|
-| `test_case_count` | Number of distinct test cases (distinct non-empty `test_case_id` values). Sessions with no `test_case_id` don't count toward it or the rollups. |
+| `test_case_count` | Number of distinct test cases (distinct non-empty `test_case_id` values). Sessions with no `test_case_id` do not count toward it or the rollups. |
 | `cost_usd` | Cost aggregate across the Evaluation's sessions. |
 | `latency_ms` | Latency aggregate across the Evaluation's sessions. |
 | `tokens` | Average total tokens (input + output) per test case. |
@@ -93,16 +93,17 @@ At read time, each Evaluation is enriched with rollups derived from its sessions
 
 Metric aggregates expose these statistics: `sum`, `mean`, `median`, `p90`, `p95`, `p99`, `count`. A
 **metric path** is therefore `test_case_count`, `cost_usd.<stat>`, `latency_ms.<stat>`,
-`tokens.<stat>`, or `evaluators.<name>.<stat>` — the same grammar used for sorting and filtering below.
+`tokens.<stat>`, or `evaluators.<name>.<stat>`. Sorting and filtering use the same grammar.
 
 Two things about evaluator rollups specifically:
 
-- **Response shape.** `evaluators.<name>.<stat>` is the sort/filter *query* grammar. In the Evaluation
-  JSON the same scores come back under `aggregate_scores` — a map keyed by evaluator name, each value
-  carrying the stats above — alongside an `evaluator_names` list. There is no `evaluators` field in
+- **Response shape.** `evaluators.<name>.<stat>` is the sort/filter *query* grammar. The Evaluation
+  JSON response returns the same scores under `aggregate_scores`, a map keyed by evaluator name.
+  Each value contains the statistics above, and an `evaluator_names` list appears alongside it.
+  There is no `evaluators` field in
   the response; `evaluators.<name>.<stat>` (query) reads `aggregate_scores[<name>].<stat>` (response).
 - **Missing-value semantics.** Evaluator rollups are test-case-weighted: each stat is computed over
-  `test_case_count`, the full set of test cases, with a test case that didn't report a given evaluator
+  `test_case_count`, the full set of test cases, with a test case that did not report a given evaluator
   counted as `0` rather than dropped.
 
 Two Experiment-level behaviors are worth knowing:
@@ -110,7 +111,7 @@ Two Experiment-level behaviors are worth knowing:
 - **Default sort.** An Experiment stores a `default_sort` (a sort-param string such as
   `-evaluators.solved.mean`) so its leaderboard opens ordered by the metric the team cares about. It
   defaults to `-created_at` (newest first).
-- **Pinning.** Any Evaluation can be pinned to the top of its Experiment — for example, the current
+- **Pinning.** Any Evaluation can be pinned to the top of its Experiment, such as the current
   baseline. Pins are workspace-shared: everyone with access sees the same pinned set, regardless of
   the active sort.
 
@@ -122,10 +123,17 @@ Experiments are part of the `intake` service, so any running NeMo Platform alrea
 at whatever you have, whether a deployed platform or a local one from `nemo setup` or
 `nemo quickstart up`:
 
-```shell
+```bash
 export NMP_BASE_URL=http://127.0.0.1:8080
 export WORKSPACE=default
+export NMP_STUDIO_URL="$NMP_BASE_URL/studio"
+export NMP_ACCESS_TOKEN="$(nemo auth token)"
 ```
+
+Set `NMP_STUDIO_URL` explicitly if Studio uses a different origin or path.
+The examples use bearer-token authentication and stop on HTTP errors. For a local development
+deployment with authentication disabled, omit the `Authorization` header and the
+`NMP_ACCESS_TOKEN` command.
 
 ClickHouse must be reachable either way, since the leaderboard rollups are computed from it at read
 time.
@@ -136,35 +144,41 @@ If you are bringing the pieces up yourself from a repository checkout, start the
 
 1. **ClickHouse** (required for the rollups):
 
-   ```shell
+   ```bash
    services/intake/scripts/spans/run_clickhouse.sh
    ```
 
 1. **Backend services**: `intake` plus its `auth` and `entities` dependencies. `--port` defaults to
-   `8080`; drop `uv run` if you installed the `nemo` CLI:
+   `8080`; omit `uv run` if you installed the `nemo` command-line interface (CLI):
 
-   ```shell
+   ```bash
    uv run nemo services run --services auth,entities,intake --host 127.0.0.1 --port 8080
    ```
 
 1. **Studio** (optional, for the leaderboard and drill-down UI). From the `web/` workspace, with the
    Experiments feature flag on and intake enabled for trace drill-down:
 
-   ```shell
+   ```bash
    VITE_FF_EXPERIMENT=true VITE_FF_INTAKE_ENABLED=true VITE_PLATFORM_BASE_URL=http://127.0.0.1:8080 \
      pnpm --filter nemo-studio-ui start -- --host 127.0.0.1
    ```
 
 </Accordion>
 
-Confirm the Experiments read path is reachable:
+Confirm that the entity read path and ClickHouse rollups are reachable:
 
-```shell
-curl -i "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments?page=1&page_size=1"
+```bash
+curl --fail-with-body -i \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments?sort=-created_at&page=1&page_size=1"
+curl --fail-with-body -i \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations?sort=-cost_usd.mean&page=1&page_size=1"
 ```
 
-A `200` with a (possibly empty) list is healthy. A `503` means the service is running but cannot reach
-ClickHouse; reads that need metric rollups will fail until it recovers.
+The first request checks the entity store and can return `200` while ClickHouse is unavailable. The
+second request explicitly sorts by a rollup metric. A `200` response from both requests is healthy.
+A `503` response from the second request means that Intake cannot compute ClickHouse rollups.
 
 ### First Workflow
 
@@ -172,19 +186,22 @@ Create an Experiment, add an Evaluation, send it telemetry, then see it in Studi
 
 **1. Create the Experiment** (the leaderboard container):
 
-```shell
-curl -X POST "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments" \
+```bash
+curl --fail-with-body -X POST \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
         "name": "reranker-prompt-iteration",
-        "description": "Iterating on the support-bench RAG agent'\''s reranker and system prompt."
+        "description": "Iterating on the support-bench retrieval-augmented generation agent'\''s reranker and system prompt."
       }'
 ```
 
 Capture its `id` for the next step:
 
-```shell
-export EXPERIMENT_ID=$(curl -sf \
+```bash
+export EXPERIMENT_ID=$(curl --fail-with-body --silent \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-prompt-iteration" \
   | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
 echo "experiment id: $EXPERIMENT_ID"
@@ -193,8 +210,10 @@ echo "experiment id: $EXPERIMENT_ID"
 **2. Add an Evaluation** to it. `experiment_ids` is a list, so an Evaluation belongs to one or more
 existing Experiments:
 
-```shell
-curl -X POST "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations" \
+```bash
+curl --fail-with-body -X POST \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
         "name": "reranker-add-cross-encoder",
@@ -205,20 +224,22 @@ curl -X POST "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations" \
       }'
 ```
 
-An Evaluation is a durable record on its own; its leaderboard metrics appear once evaluation telemetry
-for it lands in Intake.
+An Evaluation is a durable record. Its leaderboard metrics appear after its evaluation telemetry
+lands in Intake.
 
-**3. Send it telemetry.** Send the run's telemetry to Intake just as you would for any agent run,
+**3. Send it telemetry.** Send the run's telemetry to Intake in the same way as other agent runs,
 whether it comes from the optimizer, a benchmark framework like Harbor, or your own code. Tag each
 session with the Evaluation's identity:
 
-- For ATIF and chat-completions, add a **top-level** `evaluation_context` object to the ingest payload
+- For Agent Trajectory Interchange Format (ATIF) and chat-completions, add a **top-level**
+  `evaluation_context` object to the ingest payload
   carrying `evaluation_id` (the Evaluation's **name**) and `test_case_id`.
-- For OTLP, set the `nemo.experiment.id` and `nemo.test_case.id` root-span attributes.
+- For OpenTelemetry Protocol (OTLP), set the `nemo.experiment.id` and `nemo.test_case.id` root-span
+  attributes.
 
 The per-evaluator scores on the leaderboard come from **evaluator results** captured on those
 sessions, either automatically from ATIF verifier rewards or explicitly through the evaluator-results
-endpoint. See
+endpoint. Refer to
 [Capture Evaluator Results](/documentation/agents/observe-agents#capture-evaluator-results) for both
 paths, and [Observe Agents](/documentation/agents/observe-agents) for the ingestion paths themselves.
 The `nemo-experiments-upload` skill walks this through end to end.
@@ -226,9 +247,9 @@ The `nemo-experiments-upload` skill walks this through end to end.
 <Warning>
 
 **`test_case_id` is required for a populated leaderboard.** A session tagged with only `evaluation_id`
-still ingests and appears in the Evaluation's session list, but it doesn't count toward
-`test_case_count` or any rollup — so the row reads as all zeros, with tokens, model, and agent blank
-too. Always send `test_case_id` alongside `evaluation_id`.
+still ingests and appears in the Evaluation's session list, but it does not count toward
+`test_case_count` or any rollup. The row therefore reads as all zeros, with tokens, model, and agent
+blank too. Always send `test_case_id` alongside `evaluation_id`.
 
 </Warning>
 
@@ -236,14 +257,16 @@ too. Always send `test_case_id` alongside `evaluation_id`.
 
 List the Experiment's Evaluations and confirm the new row is present:
 
-```shell
-curl -g "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations?filter[experiment_id]=$EXPERIMENT_ID&page=1&page_size=20"
+```bash
+curl -g --fail-with-body \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations?filter[experiment_id]=$EXPERIMENT_ID&page=1&page_size=20"
 ```
 
-Then open Studio and navigate to `/workspaces/default/experiment`, then open
+Then open `$NMP_STUDIO_URL/workspaces/$WORKSPACE/experiment`, then open
 **reranker-prompt-iteration**.
 
-**What good looks like:** the Experiment opens in Studio, your Evaluation appears as a row, and once
+A successful result opens the Experiment in Studio and shows your Evaluation as a row. After
 its sessions are ingested the row shows non-zero `test_case_count`, cost, latency, tokens, and
 evaluator scores. Sorting by a metric reorders the table, and opening the Evaluation lists its
 individual test cases.
@@ -255,8 +278,10 @@ individual test cases.
 This is the everyday operation: an Experiment already exists and you want to record another run in it.
 Create the Evaluation with the Experiment's `id` in `experiment_ids`:
 
-```shell
-curl -X POST "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations" \
+```bash
+curl --fail-with-body -X POST \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
         "name": "reranker-bge-large",
@@ -270,13 +295,15 @@ curl -X POST "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations" \
 To **move or re-scope** an existing Evaluation's membership, `PATCH` its `experiment_ids`, which must
 stay non-empty:
 
-```shell
-curl -X PATCH "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-bge-large" \
+```bash
+curl --fail-with-body -X PATCH \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-bge-large" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "experiment_ids": ["'"$EXPERIMENT_ID"'", "'"$OTHER_EXPERIMENT_ID"'"] }'
 ```
 
-An Evaluation can belong to several Experiments at once, which is useful when the same run should
+An Evaluation can belong to several Experiments simultaneously, which is useful when the same run should
 appear on both a per-project board and a cross-project benchmark.
 
 ### Update an Evaluation
@@ -284,21 +311,25 @@ appear on both a per-project board and a cross-project benchmark.
 Use `PATCH` for partial updates: only the fields you send change. `name`, `dataset_name`, and
 `dataset_version` are immutable:
 
-```shell
-curl -X PATCH "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-bge-large" \
+```bash
+curl --fail-with-body -X PATCH \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-bge-large" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "status": "winner", "root_cause": "Best groundedness at acceptable cost." }'
 ```
 
-`PUT` does a full replace of the mutable fields — omitted fields reset — so prefer `PATCH` for one-off
+`PUT` does a full replacement of the mutable fields. Omitted fields reset, so prefer `PATCH` for individual
 edits.
 
 ### Rank an Experiment by the Metric That Matters
 
 List an Experiment's Evaluations sorted by a metric. Prefix the field with `-` for descending:
 
-```shell
-curl -g "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations?filter[experiment_id]=$EXPERIMENT_ID&sort=-evaluators.solved.mean&page=1&page_size=20"
+```bash
+curl -g --fail-with-body \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations?filter[experiment_id]=$EXPERIMENT_ID&sort=-evaluators.solved.mean&page=1&page_size=20"
 ```
 
 You can sort by an entity column (`name`, `created_at`) or any rollup metric (`test_case_count`,
@@ -308,16 +339,18 @@ way.
 
 ### Filter to the Evaluations You Care About
 
-Filter by a metric range to narrow the leaderboard — for example, only Evaluations whose average cost
+Filter by a metric range to narrow the leaderboard. For example, select only Evaluations whose average cost
 is under $0.50:
 
-```shell
-curl -g "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations?filter[experiment_id]=$EXPERIMENT_ID&filter[cost_usd.mean][\$lte]=0.5"
+```bash
+curl -g --fail-with-body \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations?filter[experiment_id]=$EXPERIMENT_ID&filter[cost_usd.mean][\$lte]=0.5"
 ```
 
 Metric filters use the same grammar as sort, such as `filter[test_case_count][\$gte]=5` or
 `filter[evaluators.groundedness.mean][\$gte]=0.8`. You can also filter by
-`filter[metadata.<key>]=<value>`, `filter[status]=…`, `filter[is_pinned]=true`, and
+`filter[metadata.<key>]=<value>`, `filter[status]=<value>`, `filter[is_pinned]=true`, and
 `created_at`/`updated_at` ranges. In Studio, use the column filters on cost, latency, test-case count,
 and evaluator columns.
 
@@ -325,8 +358,10 @@ and evaluator columns.
 
 Store the ordering the team should see first so no one has to re-sort each visit:
 
-```shell
-curl -X PUT "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-prompt-iteration" \
+```bash
+curl --fail-with-body -X PUT \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-prompt-iteration" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "name": "reranker-prompt-iteration", "default_sort": "-evaluators.solved.mean" }'
 ```
@@ -337,14 +372,18 @@ In Studio, set it from the Experiment's Edit dialog.
 
 Keep the current baseline, or any reference run, at the top of the Experiment for everyone:
 
-```shell
-curl -X POST   "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-main-baseline/pin"
+```bash
+curl --fail-with-body -X POST \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-main-baseline/pin"
 
 # Unpin:
-curl -X DELETE "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-main-baseline/pin"
+curl --fail-with-body -X DELETE \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-main-baseline/pin"
 ```
 
-Pinned Evaluations float to the top of the leaderboard regardless of the active sort. List just the
+Pinned Evaluations float to the top of the leaderboard regardless of the active sort. List only the
 pinned set with `filter[is_pinned]=true`.
 
 ### Drill into an Evaluation's Test Cases
@@ -352,8 +391,10 @@ pinned set with `filter[is_pinned]=true`.
 Open one Evaluation's sessions to see per-test-case behavior: status, latency, cost, and evaluator
 scores:
 
-```shell
-curl "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-add-cross-encoder/sessions?page=1&page_size=20"
+```bash
+curl --fail-with-body \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-add-cross-encoder/sessions?page=1&page_size=20"
 ```
 
 Use this to move from "this candidate scores lower" to "these specific cases regressed." In Studio,
@@ -361,13 +402,15 @@ open the Evaluation row to reach its sessions, then follow a session into its tr
 
 ### Configure the Pareto View
 
-Each Experiment stores a `pareto` config: the default X/Y metrics for its Pareto (trade-off) chart in
+Each Experiment stores a `pareto` configuration: the default X/Y metrics for its Pareto chart in
 Studio, defaulting to cost vs. latency. The axes are `x_metric` and `y_metric`, and each takes a base
-metric id — `cost_usd`, `latency_ms`, or `evaluators.<name>`, with no `.<stat>` suffix. Set it on
+metric ID: `cost_usd`, `latency_ms`, or `evaluators.<name>`, with no `.<stat>` suffix. Set it on
 create or update:
 
-```shell
-curl -X PUT "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-prompt-iteration" \
+```bash
+curl --fail-with-body -X PUT \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-prompt-iteration" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "name": "reranker-prompt-iteration",
         "pareto": { "x_metric": "cost_usd", "y_metric": "evaluators.solved" } }'
@@ -375,23 +418,36 @@ curl -X PUT "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/rera
 
 ### Delete an Experiment or Evaluation
 
-Deleting an Experiment soft-deletes it and cascades to its Evaluations; deleting an Evaluation
-soft-deletes just that row. Soft-deleted records are hidden from list and get operations unless
-explicitly requested with `filter[is_deleted]=true`:
+Deleting an Experiment soft-deletes it. An Evaluation that belongs only to that Experiment is also
+soft-deleted. A shared Evaluation remains active, and the deleted Experiment is removed from its
+`experiment_ids` membership. Deleting an Evaluation directly soft-deletes only that Evaluation.
 
-```shell
-curl -X DELETE "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-bge-large"
-curl -X DELETE "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-prompt-iteration"
+```bash
+curl --fail-with-body -X DELETE \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-bge-large"
+curl --fail-with-body -X DELETE \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-prompt-iteration"
+```
+
+Soft deletion renames the stored record. A `GET` request that uses the original name does not return
+the deleted record. To audit deleted records, use `filter[is_deleted]=true` on a list operation:
+
+```bash
+curl -g --fail-with-body \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations?filter[is_deleted]=true&page=1&page_size=20"
 ```
 
 ### Where Evaluations Come From
 
-You usually don't create Evaluations by hand. Common producers:
+You typically do not create Evaluations manually. Common producers include:
 
 - **Optimizer**: records each run as an Experiment and its candidates as Evaluations, so results land
-  automatically. See [Optimize Agents](/documentation/agents/optimize-agents).
+  automatically. Refer to [Optimize Agents](/documentation/agents/optimize-agents).
 - **Evaluation framework**: a framework like Harbor sends complete trajectories through Intake's ATIF
-  ingest, and each run becomes an Evaluation with its final metrics as evaluator results. See
+  ingest, and each run becomes an Evaluation with its final metrics as evaluator results. Refer to
   [Observe Agents](/documentation/agents/observe-agents).
 - **Direct API**: create the Experiment and Evaluations, then ingest their sessions, for a custom
   evaluation pipeline.
@@ -432,20 +488,23 @@ regulated data unless your deployment's policy permits it.
 ### Retention and Storage
 
 Experiment and Evaluation metadata lives in the platform entity store and persists until you delete
-it; it does not expire on the telemetry TTL. Rollups are derived from ClickHouse at read time, so
-leaderboard metrics reflect whatever telemetry is still retained: span and trace-index data expire
-after 90 days, while evaluator results are retained without that span TTL. An Experiment older than
-the span window keeps its records and evaluator-based scores, but cost, latency, and run-count rollups
-reflect only the retained telemetry window.
+it. This metadata does not expire with telemetry. Span and trace-index records in ClickHouse expire
+after 90 days. Evaluator-result rows do not use that 90-day time-to-live (TTL) setting.
+
+All leaderboard rollups depend on the retained trace index. Evaluator score rollups join the retained
+trace index to evaluator-result rows at read time. After a trace-index entry expires, its evaluator
+scores no longer appear on the leaderboard even if the evaluator-result rows remain. Cost, latency,
+token, test-case count, and evaluator score rollups therefore reflect the retained 90-day trace
+window.
 
 ### Troubleshooting
 
 | Symptom | Cause and fix |
 |---------|---------------|
-| **Rows show zero metrics** | Three causes: no sessions have been ingested for that Evaluation yet; the sessions were ingested without `test_case_id`, so they don't count toward `test_case_count` or the rollups; or ClickHouse is unreachable. Confirm ingestion in Intake, that sessions carry `test_case_id`, and that the read path returns `200` rather than `503`. |
-| **A metric sort or filter returns `503`** | Rollups can't be computed because ClickHouse is down. Retry once the read path is healthy, or fall back to an entity-column sort. |
+| **Rows show zero metrics** | Three causes: no sessions have been ingested for that Evaluation yet; the sessions were ingested without `test_case_id`, so they do not count toward `test_case_count` or the rollups; or ClickHouse is unreachable. Confirm ingestion in Intake, confirm that sessions carry `test_case_id`, and run the explicit metric-sort health check. |
+| **A metric sort or filter returns `503`** | Rollups cannot be computed because ClickHouse is down. Retry after the read path is healthy, or use an entity-column sort. |
 | **A list returns `413`** | The Experiment selected more than 1,000 Evaluations for an in-memory sort. Add filters to narrow the set. |
-| **An Evaluation isn't in the Experiment** | Confirm you created it with the correct Experiment `id` in `experiment_ids` and are querying the right workspace (`filter[experiment_id]=<experiment-id>`). |
+| **An Evaluation is not in the Experiment** | Confirm that you created it with the correct Experiment `id` in `experiment_ids` and that you are querying the correct workspace (`filter[experiment_id]=<experiment-id>`). |
 | **`422` on create Evaluation** | An Evaluation must belong to at least one Experiment: provide `experiment_ids`. Required fields are `name`, `experiment_ids`, and `dataset_name`; `metadata` values must be strings. |
 
 ## Related Topics

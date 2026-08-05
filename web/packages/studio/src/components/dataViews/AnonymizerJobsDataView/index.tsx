@@ -32,7 +32,7 @@ import { getAnonymizerJobRoute, getNewAnonymizerRoute } from '@studio/routes/uti
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { Trash, VenetianMask } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 type AnonymizerJobWithId = AnonymizerJob & { id: string };
 

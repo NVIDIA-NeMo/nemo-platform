@@ -187,7 +187,7 @@ def generate_sandbox_policy(*, filesystem: SandboxFilesystem, egress: PlatformEg
 
 _OPENSHELL_INSTALL_HINT = (
     "The 'openshell' package is required to build OpenShell sandbox policies. "
-    "Install it with: uv sync --package nemo-deployments-plugin --extra openshell"
+    'Install it with: uv pip install "openshell>=0.0.92" "grpcio>=1.78.0" "protobuf>=6.31.1"'
 )
 
 

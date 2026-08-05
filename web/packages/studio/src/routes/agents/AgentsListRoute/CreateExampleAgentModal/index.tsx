@@ -36,7 +36,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { type SubmitHandler, useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
   open,
@@ -147,6 +147,9 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
           name: buildSampleAgentName(example.namePrefix),
           description: example.description,
           config,
+          // Omitted for NAT samples (API defaults to nat-workflow-v1); set for
+          // Fabric samples so the API validates the config as nemo-agents-spec-v1.
+          ...(example.configFormat ? { config_format: example.configFormat } : {}),
         },
       });
     } catch {

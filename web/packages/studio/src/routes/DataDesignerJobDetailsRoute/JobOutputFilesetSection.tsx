@@ -27,7 +27,7 @@ import {
   type FC,
   type ReactNode,
 } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 type FileRow = FilesetFileOutput & { id: string };
 
@@ -122,21 +122,17 @@ export const JobOutputFilesetSection: FC = () => {
     setPreviewFile(fileRowToSystemFile(row));
   }, []);
 
+  const filesetId = `${filesetWorkspace}/${filesetName}`;
+
   const handleDatasetClickFromPreview = useCallback(() => {
-    navigate(getFilesetDetailsRoute(filesetWorkspace, encodeURIComponent(filesetName)));
-  }, [navigate, filesetWorkspace, filesetName]);
+    navigate(getFilesetDetailsRoute(filesetWorkspace, filesetId));
+  }, [navigate, filesetWorkspace, filesetId]);
 
   const handleFolderClickFromPreview = useCallback(
     (folderPath: string) => {
-      navigate(
-        getFilesetDetailsRoute(
-          filesetWorkspace,
-          encodeURIComponent(filesetName),
-          encodeURIComponent(folderPath)
-        )
-      );
+      navigate(getFilesetDetailsRoute(filesetWorkspace, filesetId, folderPath));
     },
-    [navigate, filesetWorkspace, filesetName]
+    [navigate, filesetWorkspace, filesetId]
   );
 
   const handleFileDeleteSuccess = useCallback(() => {
@@ -226,12 +222,7 @@ export const JobOutputFilesetSection: FC = () => {
               label="Fileset"
               value={
                 <Anchor>
-                  <Link
-                    to={getFilesetDetailsRoute(
-                      filesetWorkspace,
-                      encodeURIComponent(filesetWorkspace + '/' + filesetName)
-                    )}
-                  >
+                  <Link to={getFilesetDetailsRoute(filesetWorkspace, filesetId)}>
                     {filesetName}
                   </Link>
                 </Anchor>

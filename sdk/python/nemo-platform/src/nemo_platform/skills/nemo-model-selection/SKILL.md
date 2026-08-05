@@ -25,7 +25,7 @@ allowed-tools: [Read, Bash]
 Recommend a model for a new agent from NIM or another provider configured on
 the running Platform. Explain the capability fit first and benchmark evidence
 second. Return the model choice in a form suitable for `AGENT-SPEC.md` and the
-Platform-owned `agent.yaml`. Preserve NAT model configuration only when the
+Platform-managed `agent.yaml`. Preserve NAT model configuration only when the
 user is explicitly maintaining a legacy NAT workflow.
 
 ## Pre-flight

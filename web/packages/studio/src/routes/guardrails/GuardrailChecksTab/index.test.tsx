@@ -17,7 +17,7 @@ import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router';
 
 const WORKSPACE = 'default';
 
@@ -77,6 +77,15 @@ describe('GuardrailChecksTab', () => {
 
   it('redirects the bare checks URL onto the default sub-tab', async () => {
     renderChecks('pii-filter');
+
+    await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+    expect(screen.getByTestId('checks-location')).toHaveTextContent(
+      getGuardrailChecksSubTabRoute(WORKSPACE, 'pii-filter', GuardrailChecksSubTab.Tests)
+    );
+  });
+
+  it('redirects an unknown sub-tab segment onto the default sub-tab', async () => {
+    renderChecks('pii-filter', `${getGuardrailChecksRoute(WORKSPACE, 'pii-filter')}/not-a-sub-tab`);
 
     await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
     expect(screen.getByTestId('checks-location')).toHaveTextContent(

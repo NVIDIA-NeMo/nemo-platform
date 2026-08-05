@@ -54,7 +54,7 @@ import {
   useWatch,
   type UseFormReturn,
 } from 'react-hook-form';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 
 interface MetricRunFileValidationState {
   dataset: string | null;

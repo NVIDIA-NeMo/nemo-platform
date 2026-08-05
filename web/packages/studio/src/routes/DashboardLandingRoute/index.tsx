@@ -6,10 +6,10 @@ import { Button, Flex, Text, TextArea, Tooltip } from '@nvidia/foundations-react
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { writeStoredActiveSessionId } from '@studio/routes/agents/ClaudeCodeChatRoute/activeSessionStorage';
-import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
-import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { getClaudeCodeChatRoute } from '@studio/routes/utils';
+import { writeStoredActiveSessionId } from '@studio/routes/agents/CopilotChatRoute/activeSessionStorage';
+import { CopilotLayout } from '@studio/routes/agents/CopilotChatRoute/CopilotLayout';
+import type { CopilotChatRouteState } from '@studio/routes/agents/CopilotChatRoute/types';
+import { getCopilotChatRoute } from '@studio/routes/utils';
 import { Send, Terminal } from 'lucide-react';
 import {
   type ChangeEvent,
@@ -19,7 +19,7 @@ import {
   useCallback,
   useState,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const LandingComposer = ({
   input,
@@ -57,10 +57,10 @@ const LandingComposer = ({
       data-tour="dashboard-get-started"
     >
       <TextArea
-        aria-label="Message NeMo Agent"
+        aria-label="Message NeMo Copilot"
         value={input}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}
-        placeholder="Message NeMo Agent"
+        placeholder="Message NeMo Copilot"
         rows={3}
         resizeable="auto"
         className="max-h-56 w-full border-0 bg-transparent shadow-none focus-within:outline-none focus-within:ring-0 [&:has(:focus-visible)]:outline-none [&:has(:focus-visible)]:ring-0"
@@ -75,7 +75,7 @@ const LandingComposer = ({
       <Flex className="flex items-center justify-between gap-3 px-1 pt-2">
         <Flex className="flex items-center gap-2 text-secondary">
           <Terminal size={16} />
-          <Text kind="body/regular/sm">NeMo Agent</Text>
+          <Text kind="body/regular/sm">NeMo Copilot</Text>
         </Flex>
         <Tooltip slotContent="Send">
           <Button
@@ -105,14 +105,14 @@ export const DashboardLandingRoute: FC = () => {
   const handleSubmit = useCallback(
     (prompt: string) => {
       writeStoredActiveSessionId(workspace, null);
-      const state: ClaudeCodeChatRouteState = { initialPrompt: prompt };
-      navigate(getClaudeCodeChatRoute(workspace), { state });
+      const state: CopilotChatRouteState = { initialPrompt: prompt };
+      navigate(getCopilotChatRoute(workspace), { state });
     },
     [navigate, workspace]
   );
 
   return (
-    <ClaudeCodeLayout hideArtifacts>
+    <CopilotLayout hideArtifacts>
       <AccessibleTitle title="Dashboard">
         <GradientBackground className="h-full w-full">
           <main className="relative flex h-full w-full items-center justify-center px-4 py-10 text-primary">
@@ -128,6 +128,6 @@ export const DashboardLandingRoute: FC = () => {
           </main>
         </GradientBackground>
       </AccessibleTitle>
-    </ClaudeCodeLayout>
+    </CopilotLayout>
   );
 };

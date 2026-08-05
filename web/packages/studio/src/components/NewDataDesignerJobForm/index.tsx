@@ -29,7 +29,7 @@ import {
 import { type FC, useCallback, useEffect, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { useAuth } from 'react-oidc-context';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { z } from 'zod';
 
 export type { DataDesignerModelOption };

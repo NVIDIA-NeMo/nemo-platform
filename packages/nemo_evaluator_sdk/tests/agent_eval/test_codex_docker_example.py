@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 
@@ -24,6 +24,9 @@ _spec.loader.exec_module(codex_docker)
 class _FakeCodexRuntime:
     def __init__(self, workspace: Path) -> None:
         self._workspace = workspace
+
+    def runner_info(self) -> RunnerInfo:
+        return RunnerInfo(name="fake_codex", kind="runner")
 
     async def run_tasks(
         self,

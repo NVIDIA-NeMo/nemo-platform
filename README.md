@@ -41,6 +41,8 @@ nemo setup
 
 `nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and deploys a sample agent (see more below).
 
+Review [Telemetry and Privacy](docs/telemetry-and-privacy.mdx) for the omnibus disclosure covering anonymous telemetry, bundled library telemetry, third-party endpoint notes, and opt-out controls.
+
 See **[SETUP.md](SETUP.md)** for the full source setup playbook (local data dir, DB reset, manual service start, troubleshooting).
 
 Verify:
@@ -176,6 +178,7 @@ The demo agent uses `${NEMO_DEFAULT_MODEL}` for both execution and the judge LLM
 
 Full documentation: [NeMo Platform docs](https://docs.nvidia.com/nemo-platform)
 
+- [Telemetry and privacy](https://docs.nvidia.com/nemo-platform/documentation/telemetry-and-privacy): anonymous telemetry, data collection, and opt-out controls.
 - [Setup](https://docs.nvidia.com/nemo-platform/documentation/get-started): installation, providers, SDK.
 - [CLI reference](https://docs.nvidia.com/nemo-platform/documentation/reference/cli-reference): all commands.
 - [API reference](https://docs.nvidia.com/nemo-platform/documentation/reference/api-reference): REST endpoints.

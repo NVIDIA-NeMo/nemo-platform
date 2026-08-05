@@ -42,6 +42,7 @@ async def run_analyst(
     base_url: str | None,
     client: AsyncNeMoPlatform,
     insights_output: str | Path | None = None,
+    local_only: bool = False,
     verbose: bool = False,
     since: datetime | None = None,
     evaluation_id: str | None = None,
@@ -57,7 +58,11 @@ async def run_analyst(
         workspace: Platform workspace.
         base_url: Platform base URL. ``None`` uses the active platform context.
         client: Platform client to use. This function closes it before returning.
-        insights_output: Optional local YAML output path for Insight writes.
+        insights_output: Optional local YAML path. Receives a mirror of the
+            insights the platform stored, or the only copy under *local_only*.
+        local_only: Skip the platform and persist insights to *insights_output*
+            alone. Reserved for the insights testbed — no CLI flag sets it.
+            Requires *insights_output*.
         verbose: Whether to stream model/tool events to stderr.
         since: Optional incremental lower bound enforced on trace/span reads.
         evaluation_id: Optional run scope; AND-pinned onto every span read.
@@ -68,6 +73,7 @@ async def run_analyst(
         backend = make_analyst_backend(
             client=client,
             insights_output=insights_output_path,
+            local_only=local_only,
         )
         deps = AnalystDeps(
             agent=agent,
