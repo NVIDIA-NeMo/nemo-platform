@@ -8,7 +8,7 @@ import type { DataDesignerGeneratedState } from '@studio/routes/DataDesignerJobB
 import { getDataDesignerJobBuildRoute } from '@studio/routes/utils';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen } from '@testing-library/react';
-import { RouterProvider, createMemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 
 const BUILD_ROUTE = ROUTES.workspace.dataDesignerJobBuild;
 const BUILD_PATH = getDataDesignerJobBuildRoute('default');

@@ -69,6 +69,9 @@ from nemo_platform_plugin.entities.base import (
     EntityTypeLike as EntityTypeLike,
 )
 from nemo_platform_plugin.entities.base import (
+    EntityUpdateClientProtocol as EntityUpdateClientProtocol,
+)
+from nemo_platform_plugin.entities.base import (
     EntityValidationError as EntityValidationError,
 )
 from nemo_platform_plugin.entities.base import (

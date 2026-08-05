@@ -6,7 +6,7 @@ import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { gateOptimizerRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 
 const OptimizerRoute =
   OPTIMIZER_ENABLED &&

@@ -46,7 +46,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type FC } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 const SORT_OPTIONS = [
   { value: 'name', children: 'Alphabetical (A-Z)' },
@@ -128,7 +128,8 @@ export const WorkspaceBaseModelsRoute: FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [selectedModel, setSelectedModel] = useState<ModelEntity | null>(null);
 
-  const modelNameFromPath = decodeURIComponent(modelNameParam ?? '');
+  // `useParams()` already returns decoded values; route helpers handle encoding.
+  const modelNameFromPath = modelNameParam ?? '';
 
   const nameSearch = dataViewState.apiFilter.searchText;
   const allColumnFilters = dataViewState.apiFilter.filter;

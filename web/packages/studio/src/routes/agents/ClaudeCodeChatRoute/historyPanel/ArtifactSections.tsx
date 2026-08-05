@@ -16,7 +16,7 @@ import type {
 import { getJobProgressDetailRoute } from '@studio/routes/agents/ClaudeCodeChatRoute/utils/jobProgress';
 import { ArrowRight, File, Wrench } from 'lucide-react';
 import { type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 export const ToolCallSummary = ({ toolCalls }: { toolCalls: string[] }) => {
   if (!toolCalls.length) return null;

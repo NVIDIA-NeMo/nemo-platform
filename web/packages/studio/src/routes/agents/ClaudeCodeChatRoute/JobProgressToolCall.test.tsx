@@ -7,7 +7,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { JOB_PROGRESS_JOB_TYPE } from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
 import { JobProgressToolCall } from '@studio/routes/agents/ClaudeCodeChatRoute/JobProgressToolCall';
 import type { ClaudeCodeToolArgs } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
-import { getClaudeCodeChatRoute } from '@studio/routes/utils';
+import { getCopilotChatRoute } from '@studio/routes/utils';
 import { renderRoute, screen } from '@studio/tests/util/render';
 
 vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => ({
@@ -34,10 +34,10 @@ const createJob = (overrides: Partial<PlatformJobResponse> = {}): PlatformJobRes
 
 const renderToolCall = (args: ClaudeCodeToolArgs) =>
   renderRoute(<JobProgressToolCall args={args} />, {
-    history: getClaudeCodeChatRoute(workspace),
+    history: getCopilotChatRoute(workspace),
     routes: [
       {
-        path: ROUTES.workspace.claudeCodeChat,
+        path: ROUTES.workspace.copilotChat,
         element: <JobProgressToolCall args={args} />,
       },
     ],

@@ -18,9 +18,6 @@ dependencies = [
     "tomlkit>=0.13.3",
 ]
 
-[project.entry-points."nemo.cli"]
-experimentalist = "nemo_experimentalist_plugin.cli:ExperimentalistCLI"
-
 [project.entry-points."nemo.cli.agents"]
 experimentalist = "nemo_experimentalist_plugin.cli:ExperimentalistCLI"
 

@@ -55,6 +55,9 @@ from nemo_platform_plugin.entities import (
     EntityNotFoundError as NemoEntityNotFoundError,
 )
 from nemo_platform_plugin.entities import (
+    EntityUpdateClientProtocol as NemoEntityUpdateClientProtocol,
+)
+from nemo_platform_plugin.entities import (
     EntityValidationError as NemoEntityValidationError,
 )
 from nemo_platform_plugin.entities import (
@@ -65,6 +68,7 @@ __all__ = [
     "NemoEntitiesClient",
     "NemoEntitiesClientProtocol",
     "NemoAnyEntityDeleteClientProtocol",
+    "NemoEntityUpdateClientProtocol",
     "NemoAnyEntityGetterProtocol",
     "NemoEntityDeleteClientProtocol",
     "NemoEntityGetterProtocol",

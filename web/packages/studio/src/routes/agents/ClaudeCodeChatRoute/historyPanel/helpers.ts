@@ -181,7 +181,7 @@ export const getHistorySessionTitle = (session: ClaudeCodeHistorySession): strin
   getSmartPromptHistoryTitle(session.first_prompt) ??
   getArtifactHistoryTitle(session.chat_artifacts) ??
   getPromptHistoryTitle(session.first_prompt) ??
-  'NeMo Agent session';
+  'NeMo Copilot session';
 
 export const getSelectedArtifactModel = (artifacts: ClaudeCodeChatArtifacts): string | undefined =>
   artifacts.model_source === 'selection' || artifacts.model_source === 'spec'

@@ -7,7 +7,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AxiosError } from 'axios';
 import { act } from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 // Mock data
 const mockWorkspace = 'test-project';
@@ -18,7 +18,7 @@ const mockNavigate = vi.fn();
 const mockUseBreadcrumbs = vi.fn();
 const mockMutate = vi.fn();
 
-vi.mock('react-router-dom', async (importOriginal) => {
+vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...(actual as object),

@@ -9,7 +9,7 @@ import { mockUseNavigate, mockUseParams } from '@studio/tests/util/mockUseParams
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 // Hoisted mocks for hooks the modal calls.
 const { mockMutate, mockUseRemoteRepoMetadata } = vi.hoisted(() => ({

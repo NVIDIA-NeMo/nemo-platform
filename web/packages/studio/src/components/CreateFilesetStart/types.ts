@@ -89,10 +89,10 @@ export interface StartOptionDetailProps {
   onSelectTemplate: (templateId: string) => void;
 }
 
+/** What the user confirmed via the Continue footer, carrying that option's payload. */
+export type StartSelection = { optionId: 'scratch' } | { optionId: 'template'; templateId: string };
+
 export interface CreateFilesetStartProps {
-  /**
-   * Fired when the user confirms a selected start option via the Continue footer. For
-   * the "template" option, the chosen template id is passed as the second argument.
-   */
-  onContinue: (optionId: StartOptionId, templateId?: string) => void;
+  /** Fired when the user confirms a selected start option via the Continue footer. */
+  onContinue: (selection: StartSelection) => void;
 }

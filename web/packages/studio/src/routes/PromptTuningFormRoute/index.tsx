@@ -56,8 +56,7 @@ import { formatWhitespaceHyphens } from '@studio/util/forms/transforms';
 import { ExternalLink, Sliders } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { FormProvider, useForm, useWatch } from 'react-hook-form';
-import { useLocation, useNavigate, useParams } from 'react-router';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 
 export const PromptTuningFormRoute = () => {
   const workspace = useWorkspaceFromPath();

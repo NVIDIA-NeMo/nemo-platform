@@ -11,7 +11,7 @@ import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 
 const makeCheck = ({
   id,

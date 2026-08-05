@@ -3,6 +3,7 @@
 
 import logging
 
+from nemo_platform_plugin.config import validate_docker_available
 from nmp.common.config import Runtime
 from nmp.core.jobs.app.profiles import ExecutionProfileT
 from nmp.core.jobs.controllers.backends.docker import DockerJobExecutionProfile, DockerJobExecutionProfileConfig
@@ -19,6 +20,8 @@ from nmp.core.jobs.controllers.backends.subprocess import (
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+_RUNTIME_NONE_UNSUPPORTED_BACKENDS = frozenset({"kubernetes_job", "volcano_job"})
 
 
 class DefaultExecutionProfileConfig(BaseModel):
@@ -126,22 +129,59 @@ def get_default_executor_profiles_for_runtime(
 def merge_executor_profiles(
     custom_executors: list[ExecutionProfileT],
     default_executors: list[ExecutionProfileT],
+    *,
+    runtime: Runtime | None = None,
 ) -> list[ExecutionProfileT]:
     """
     Merge custom executor profiles with default profiles, giving precedence to custom profiles.
 
     If a custom profile has the same provider and profile as a default profile, the custom profile will override the default.
     If the custom profile matching a default profile has custom config values, those should override the default config values.
+    When runtime is NONE, Kubernetes- and Volcano-backed custom profiles are skipped. Docker profiles (default or custom)
+    are skipped whenever Docker is unavailable, independent of Runtime, so explicit Docker executors can still run in
+    compose/test harnesses with a mounted socket.
     """
 
     merged_executors: dict[tuple[str, str], ExecutionProfileT] = {}
+    docker_available: bool | None = None
+
+    def _docker_is_available() -> bool:
+        nonlocal docker_available
+        if docker_available is None:
+            docker_available = validate_docker_available()
+        return docker_available
 
     # Add default profiles first
     for executor in default_executors:
+        if executor.backend == "docker" and not _docker_is_available():
+            logger.warning(
+                "Skipping executor profile %s/%s using backend '%s' because Docker is unavailable.",
+                executor.provider,
+                executor.profile,
+                executor.backend,
+            )
+            continue
         merged_executors[(executor.provider, executor.profile)] = executor
 
     # Override with custom profiles
     for custom_executor in custom_executors:
+        if runtime == Runtime.NONE and custom_executor.backend in _RUNTIME_NONE_UNSUPPORTED_BACKENDS:
+            logger.warning(
+                "Skipping executor profile %s/%s using backend '%s' because platform runtime is NONE.",
+                custom_executor.provider,
+                custom_executor.profile,
+                custom_executor.backend,
+            )
+            continue
+        if custom_executor.backend == "docker" and not _docker_is_available():
+            logger.warning(
+                "Skipping executor profile %s/%s using backend '%s' because Docker is unavailable.",
+                custom_executor.provider,
+                custom_executor.profile,
+                custom_executor.backend,
+            )
+            continue
+
         key = (custom_executor.provider, custom_executor.profile)
 
         # If the custom executor matches a default, update the default config with custom values

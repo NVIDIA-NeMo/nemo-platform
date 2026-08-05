@@ -7,7 +7,7 @@ import { getErrorMessage } from '@studio/api/common/utils';
 import { logger } from '@studio/util/logger';
 import { FileX } from 'lucide-react';
 import { ComponentProps, FC, ReactNode, useEffect } from 'react';
-import { useRouteError, isRouteErrorResponse } from 'react-router-dom';
+import { useRouteError, isRouteErrorResponse } from 'react-router';
 
 const DEFAULT_ERROR_MESSAGE =
   'An unexpected error occurred.\nPlease contact your Administrator for support.';

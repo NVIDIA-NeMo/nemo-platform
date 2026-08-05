@@ -14,15 +14,15 @@ import type {
   ClaudeCodeAssistantHistoryPart,
   ClaudeCodeSessionHistory,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { getClaudeCodeChatRoute } from '@studio/routes/utils';
+import { getCopilotChatRoute } from '@studio/routes/utils';
 
 export const CLAUDE_CODE_SESSION_SEARCH_PARAM = 'session';
 
-export const getClaudeCodeChatRouteForSession = (workspace: string, sessionId: string): string => {
+export const getCopilotChatRouteForSession = (workspace: string, sessionId: string): string => {
   const searchParams = new URLSearchParams({
     [CLAUDE_CODE_SESSION_SEARCH_PARAM]: sessionId,
   });
-  return `${getClaudeCodeChatRoute(workspace)}?${searchParams.toString()}`;
+  return `${getCopilotChatRoute(workspace)}?${searchParams.toString()}`;
 };
 
 export const getSelectedClaudeCodeSessionId = (search: string): string | undefined => {

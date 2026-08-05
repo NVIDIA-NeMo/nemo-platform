@@ -15,26 +15,18 @@ import {
   filesCreateFilesetBodyNameRegExp,
 } from '@nemo/sdk/generated/platform/zod/files';
 import { modelsCreateProviderBodyNameRegExp } from '@nemo/sdk/generated/platform/zod/model-providers';
-import {
-  secretsCreateSecretBodyNameMax,
-  secretsCreateSecretBodyNameRegExp,
-} from '@nemo/sdk/generated/platform/zod/secrets';
 
 describe('generated schema agreement', () => {
   it.each([
     ['entity', entitiesCreateEntityBodyNameRegExp],
     ['fileset', filesCreateFilesetBodyNameRegExp],
-    ['secret', secretsCreateSecretBodyNameRegExp],
     ['model provider', modelsCreateProviderBodyNameRegExp],
   ])('%s create schema uses the same name pattern', (_name, pattern) => {
     expect(pattern.source).toBe(ENTITY_NAME_REGEXP.source);
   });
 
-  it.each([
-    ['fileset', filesCreateFilesetBodyNameMax],
-    ['secret', secretsCreateSecretBodyNameMax],
-  ])('%s create schema agrees on the max length', (_name, max) => {
-    expect(max).toBe(ENTITY_NAME_MAX_LENGTH);
+  it('fileset create schema agrees on the max length', () => {
+    expect(filesCreateFilesetBodyNameMax).toBe(ENTITY_NAME_MAX_LENGTH);
   });
 });
 

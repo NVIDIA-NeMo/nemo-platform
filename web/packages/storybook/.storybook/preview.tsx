@@ -6,7 +6,7 @@ import type { RequestHandler } from 'msw';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupWorker } from 'msw/browser';
 import { useEffect, useState } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import '../../studio/src/index.css';
 
 const worker = setupWorker();

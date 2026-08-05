@@ -40,8 +40,10 @@ export function StudioDataViewToolbar<DataType = unknown>({
 }: StudioDataViewToolbarProps<DataType>) {
   const { table } = useInnerDataViewContext();
   const hasFilterableColumns = table.getAllLeafColumns().some((col) => col.getCanFilter());
+  const hasSelectedRows = table.getSelectedRowModel().flatRows.length > 0;
+  const hostsBulkActions = Boolean(renderBulkActions) && hasSelectedRows;
 
-  if (!searchField && !hasFilterableColumns) return null;
+  if (!searchField && !hasFilterableColumns && !hostsBulkActions) return null;
 
   return (
     <>

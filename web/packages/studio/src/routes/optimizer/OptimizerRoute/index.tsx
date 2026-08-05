@@ -21,7 +21,7 @@ import { getOptimizerInsightRoute, getOptimizerRoute } from '@studio/routes/util
 import { keepPreviousData } from '@tanstack/react-query';
 import { Lightbulb } from 'lucide-react';
 import { type ComponentProps, type FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const OptimizerRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

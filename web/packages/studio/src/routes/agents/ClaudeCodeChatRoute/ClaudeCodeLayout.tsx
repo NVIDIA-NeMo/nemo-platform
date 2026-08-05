@@ -5,10 +5,10 @@ import { Flex } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { ClaudeCodeHistoryPanel } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeHistoryPanel';
 import type { ClaudeCodeChatArtifacts } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { getClaudeCodeChatRouteForSession } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
+import { getCopilotChatRouteForSession } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getWorkspaceDashboardRoute } from '@studio/routes/utils';
 import { type FC, type ReactNode, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface ClaudeCodeLayoutProps {
   activeSessionId?: string;
@@ -37,7 +37,7 @@ export const ClaudeCodeLayout: FC<ClaudeCodeLayoutProps> = ({
     (sessionId: string) => {
       // Navigating to the session URL drives the shared runtime to load it
       // (which also persists it as the active session via onSessionIdChange).
-      navigate(getClaudeCodeChatRouteForSession(workspace, sessionId));
+      navigate(getCopilotChatRouteForSession(workspace, sessionId));
     },
     [navigate, workspace]
   );

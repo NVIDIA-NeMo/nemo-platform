@@ -27,7 +27,9 @@ class _FakeEntityClient:
     def add(self, entity: EntityBase) -> None:
         self.entities[(entity.__entity_type__, entity.workspace, entity.name)] = entity
 
-    async def get(self, entity_type: type[_EntityT], *, workspace: str, name: str) -> _EntityT:
+    async def get(
+        self, entity_type: type[_EntityT], *, workspace: str, name: str, parent: str | None = None
+    ) -> _EntityT:
         key = (entity_type.__entity_type__, workspace, name)
         if key not in self.entities:
             raise NemoEntityNotFoundError(f"{workspace}/{name} not found")

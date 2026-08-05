@@ -8,6 +8,7 @@ import {
   getEvaluationMetricRunRoute,
   getEvaluationMetricsRunRoute,
   getEvaluationSessionDetailRoute,
+  getFilesetDetailsRoute,
   getIntakeSessionRoute,
   getIntakeSessionTraceRoute,
   getPromptTuningFormRoute,
@@ -16,7 +17,7 @@ import {
 } from '@studio/routes/utils';
 
 describe('Evaluation route helpers', () => {
-  const workspace = 'test-namespace/test-project';
+  const workspace = 'test-workspace';
 
   describe('getEvaluationMetricDetailsRoute', () => {
     it('should generate correct evaluation metric details URL', () => {
@@ -24,14 +25,14 @@ describe('Evaluation route helpers', () => {
 
       const result = getEvaluationMetricDetailsRoute(workspace, jobId);
 
-      expect(result).toBe('/workspaces/test-namespace/test-project/evaluation/metrics/job-123');
+      expect(result).toBe('/workspaces/test-workspace/evaluation/metrics/job-123');
     });
   });
 
   describe('getEvaluationMetricsRunRoute', () => {
     it('appends an encoded model query param when a model is provided', () => {
       expect(getEvaluationMetricsRunRoute(workspace, { model: 'test-namespace/model-a' })).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/metrics/run?model=test-namespace%2Fmodel-a'
+        '/workspaces/test-workspace/evaluation/metrics/run?model=test-namespace%2Fmodel-a'
       );
     });
   });
@@ -43,7 +44,7 @@ describe('Evaluation route helpers', () => {
           model: 'test-namespace/model-a',
         })
       ).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/metrics/toxicity/run?model=test-namespace%2Fmodel-a'
+        '/workspaces/test-workspace/evaluation/metrics/toxicity/run?model=test-namespace%2Fmodel-a'
       );
     });
   });
@@ -51,7 +52,7 @@ describe('Evaluation route helpers', () => {
   describe('getEvaluationBenchmarkListRoute', () => {
     it('should generate the benchmarks list URL', () => {
       expect(getEvaluationBenchmarkListRoute(workspace)).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/benchmarks'
+        '/workspaces/test-workspace/evaluation/benchmarks'
       );
     });
   });
@@ -59,24 +60,24 @@ describe('Evaluation route helpers', () => {
   describe('getEvaluationBenchmarkDetailsRoute', () => {
     it('should generate a benchmark details URL', () => {
       expect(getEvaluationBenchmarkDetailsRoute(workspace, 'my-benchmark')).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/benchmarks/my-benchmark'
+        '/workspaces/test-workspace/evaluation/benchmarks/my-benchmark'
       );
     });
   });
 });
 
 describe('getWorkspaceInferenceProvidersRoute', () => {
-  const workspace = 'test-namespace/test-project';
+  const workspace = 'test-workspace';
 
   it('returns base inference providers path when no options are given', () => {
     expect(getWorkspaceInferenceProvidersRoute(workspace)).toBe(
-      '/workspaces/test-namespace/test-project/inference-providers'
+      '/workspaces/test-workspace/inference-providers'
     );
   });
 
   it('appends create=true and preset query params when a preset is provided', () => {
     expect(getWorkspaceInferenceProvidersRoute(workspace, { preset: 'build' })).toBe(
-      '/workspaces/test-namespace/test-project/inference-providers?create=true&preset=build'
+      '/workspaces/test-workspace/inference-providers?create=true&preset=build'
     );
   });
 });
@@ -178,6 +179,30 @@ describe('intake session detail routes', () => {
       )
     ).toBe(
       '/workspaces/my-workspace/experiment/experiment-group/evaluation/sessions/session%20%2F%201'
+    );
+  });
+});
+
+describe('getFilesetDetailsRoute', () => {
+  // Callers must pass raw values: the helper encodes the path param via generatePath and
+  // the folder query param via URLSearchParams. Pre-encoding would double-encode, so a
+  // fileset named `a/b` would arrive at useParams() as `a%2Fb` instead of `a/b`.
+  it.each([
+    ['default/my-fileset', 'default%2Fmy-fileset'],
+    ['default/100% coverage', 'default%2F100%25%20coverage'],
+    ['default/tag#1', 'default%2Ftag%231'],
+    ['default/with spaces', 'default%2Fwith%20spaces'],
+  ])('encodes %j exactly once', (filesetId, encoded) => {
+    expect(getFilesetDetailsRoute('my-workspace', filesetId)).toBe(
+      `/workspaces/my-workspace/filesets/${encoded}`
+    );
+    // The route param round-trips back to the original name.
+    expect(decodeURIComponent(encoded)).toBe(filesetId);
+  });
+
+  it('encodes the folder query param without double-encoding', () => {
+    expect(getFilesetDetailsRoute('my-workspace', 'default/set', 'nested/folder 1')).toBe(
+      '/workspaces/my-workspace/filesets/default%2Fset?filesetFolder=nested%2Ffolder+1'
     );
   });
 });

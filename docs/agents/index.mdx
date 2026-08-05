@@ -4,13 +4,158 @@ description: ""
 ---
 <a id="agents"></a>
 
-An agent on NeMo Platform is a workflow that calls tools, talks to models
-through the local platform, and runs as a managed service you can deploy,
-invoke, evaluate, and optimize as a unit. Agents are defined as NeMo Agent
-Toolkit (NAT) workflows and are managed through the `nemo agents` command
-group.
+An agent on NeMo Platform calls tools, accesses models through shared Platform
+infrastructure, and runs as a service you can register, deploy, and
+invoke. New agents use the Platform-managed `nemo-agents-spec-v1` `agent.yaml`
+contract. Legacy NVIDIA NeMo Agent Toolkit (NAT) workflow configurations remain
+supported, including NAT-specific evaluation and optimization commands. Both
+formats are managed through the `nemo agents` command group.
 
-## About NeMo Agent Toolkit
+## How It Works
+
+A platform-managed agent consists of three components:
+
+1. **The agent entity.** `nemo agents create` stores the agent YAML as an entity in the workspace. The same configuration can be redeployed without re-registering it.
+1. **The deployment controller.** `nemo agents deploy` passes the stored config to the Agents service controller. By default it launches a FastAPI server, assigns a port, watches its health, and tears it down on `nemo agents undeploy`. With `--mode docker` or `--mode k8s` it instead runs the agent as a durable container through the deployments plugin — see [Deploy Agents](/documentation/agents/deploy-agents).
+1. **The Agents gateway.** The gateway resolves the agent to its current running deployment and proxies client requests to it, including streaming responses. From a client's perspective, the agent is an OpenAI-compatible endpoint owned by NeMo Platform.
+
+Model traffic from inside the agent process routes back through the Inference Gateway, which resolves model entity names to upstream providers and supplies their credentials. This is why agent configs do not carry `base_url` or `api_key` values — the deployment injects the gateway URL automatically, and the gateway looks up the rest.
+
+A virtual model is a platform-managed wrapper around one or more backend
+models. An agent can point at a virtual model entity while the virtual model
+handles routing, format translation, and [guardrails](/documentation/guardrail-models)
+behind the scenes — no changes to the agent's YAML required.
+
+### Applying Changes Through Candidate Agents
+
+The Agents v2 API has no in-place patch for a stored agent config. When the
+optimize or secure workflows propose a change — a model swap, a routing
+split, a guardrailed virtual model — they apply it by creating a sibling
+agent with the new config, deploying it, and running an evaluation against
+it. The original agent stays untouched until you decide to promote the
+candidate.
+
+The sibling-candidate pattern is the recommended way to apply changes: you
+always have a baseline to compare against, and you can roll back by
+undeploying the candidate.
+
+## Agent Lifecycle
+
+Agents are managed end-to-end through the `nemo agents` command group:
+
+| Stage | Command | What it does |
+|-------|---------|--------------|
+| Register | `nemo agents create --name <name> --agent-config <path>` | Store the agent configuration as an `agent` entity in a workspace. |
+| Deploy | `nemo agents deploy --agent <name>` | Start a running service from the stored config. |
+| Wait | `nemo agents deployments wait --agent <name>` | Block until the deployment is `running` or `failed`. |
+| Invoke | `nemo agents invoke --agent <name> --input "..."` or `nemo agents invoke --agent-config <path> --input "..."` | Send a single request through the Agents gateway or run a local config directly. |
+| Tear down | `nemo agents undeploy --agent <name>` then `nemo agents delete <name>` | Stop the running service and remove the agent entity. |
+
+To run an `agent.yaml` directly without registering it on the platform, pass `--agent-config <path>` to `nemo agents invoke` or `nemo agents run`.
+
+Legacy NAT-only commands:
+
+| Stage | Command | What it does |
+|-------|---------|--------------|
+| Evaluate | `nemo agents evaluate run --eval-config <path> --agent <name>` | Run a NAT evaluation against the deployed agent. |
+| Optimize | `nemo agents optimize run --optimize-config <path> --agent <name>` | Run NAT parameter or prompt tuning trials against the agent's stored config. |
+
+## Agent Definition
+
+### Platform-managed agents
+
+#### About NeMo Fabric
+NeMo Fabric gives users one configurable, observable way to run applications across multiple agent harnesses. 
+It standardizes configuration, lifecycle management, and results without requiring a separate integration for every harness.
+To learn more about Fabric, see
+[NeMo Fabric](https://docs.nvidia.com/nemo/fabric/about-nemo-fabric/overview/).
+
+NeMo Platform uses Fabric as the runtime wrapper around your agent so the
+platform can deploy it and route its model traffic
+through shared infrastructure.
+
+
+An agent's behavior is described by the platform-managed `agent.yaml`:
+
+| Section | Purpose | Example |
+|---------|---------|---------|
+| `config_format` | Selects the versioned Platform agent contract. Use `nemo-agents-spec-v1`. | `nemo-agents-spec-v1` |
+| `name` | Provides the agent name used in runtime metadata. | `calculator-agent` |
+| `description` | Summarizes the agent's purpose for users and image metadata. | `Calculator agent executed with Codex` |
+| `instructions` | Defines shared instructions for every harness. `instructions.system.content` contains the system prompt. | `system.content: You are a concise calculator agent.` |
+| `default_harness` | Selects the entry under `harnesses` that runs by default. | `codex` |
+| `harnesses` | Declares the supported harness adapters and their harness-specific model or runtime settings. | `codex.kind: codex`, `codex.settings.sandbox: read-only` |
+| `models` | Declares shared named model bindings. A harness uses `models.default` unless it defines its own model. | `default.provider: nvidia`, `default.model: nvidia-nemotron-3-nano-30b-a3b` |
+| `skills` | Lists skill directories, relative to `agent.yaml`, that are made available to the harness. | `paths: [./skills/math]` |
+| `mcp` | Configures shared MCP servers that expose tools and resources to the harness. | `servers.github.transport: streamable-http`, `servers.github.url: ${GITHUB_MCP_URL}` |
+| `tools` | Defines shared tool policy, such as tool names that the harness must block. | `blocked: [shell, browser]` |
+| `environment` | Configures the agent's runtime workspace, artifacts directory, provider, and provider-specific settings. | `workspace: ./workspace`, `artifacts: ./artifacts` |
+| `telemetry` | Configures telemetry collection and output, including Relay, ATIF, and ATOF settings. | `provider: relay`, `atif.enabled: true`, `atof.enabled: true` |
+
+The calculator agent uses Codex as its harness and the Platform Inference
+Gateway for model access. It answers arithmetic and numeric comparison
+requests and records ATIF and ATOF telemetry with NeMo Relay:
+
+```yaml
+config_format: nemo-agents-spec-v1
+name: calculator-agent
+description: Calculator agent executed with Codex
+
+instructions:
+  system:
+    content: |
+      You are a concise calculator agent. Solve arithmetic and numeric
+      comparison requests yourself and return only the answer.
+
+default_harness: codex
+
+harnesses:
+  codex:
+    kind: codex
+    settings:
+      sandbox: read-only
+      reasoning_effort: high
+
+models:
+  default:
+    provider: nvidia
+    model: nvidia-nemotron-3-nano-30b-a3b
+    api_key_env: NVIDIA_API_KEY
+
+skills:
+  paths: []
+
+mcp:
+  servers: {}
+
+tools:
+  blocked: []
+
+environment:
+  workspace: ./workspace
+  artifacts: ./artifacts
+
+telemetry:
+  enabled: true
+  provider: relay
+  output_dir: ./artifacts/relay
+  project: calculator-agent
+  atif:
+    enabled: true
+    filename_template: trajectory-{session_id}.atif.json
+    storage:
+      - type: http
+        endpoint: http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif
+        timeout_millis: 3000
+  atof:
+    enabled: true
+    filename: events.atof.jsonl
+    mode: append
+```
+
+### NVIDIA Agent Toolkit (NAT) workflows (Legacy)
+
+#### About NeMo Agent Toolkit
 
 NVIDIA NeMo Agent Toolkit is a flexible, lightweight, and unifying library
 that allows you to easily connect existing enterprise agents to data sources
@@ -21,12 +166,11 @@ platform can deploy it, evaluate it, optimize it, and route its model traffic
 through shared infrastructure. For the toolkit itself, see the
 [NeMo Agent Toolkit documentation](https://docs.nvidia.com/nemo/agent-toolkit/latest/).
 
-## Agent Definition
 
 An agent's behavior is described by a NAT workflow YAML with three top-level sections:
 
-| Section | Purpose | Examples |
-|---------|---------|----------|
+| Section | Purpose | Example |
+|---------|---------|---------|
 | `functions` | Tools the agent can call | `wiki_search`, `current_datetime`, custom MCP tools |
 | `llms` | Model bindings the workflow can reference | OpenAI-compatible endpoints, NIM endpoints |
 | `workflow` | The agent type and its wiring | `react_agent`, `tool_calling_agent`, custom NAT workflows |
@@ -63,50 +207,6 @@ config targets a deployed agent:
 - **Model names use the Inference Gateway entity form**, with slashes and dots converted to hyphens (`nvidia/nemotron-3-nano-30b-a3b` becomes `nvidia-nemotron-3-nano-30b-a3b`). The Inference Gateway resolves the entity to the upstream provider that owns it.
 - **Leave `base_url` and `api_key` unset on `openai` and `nim` LLMs.** NeMo Platform injects an Inference Gateway URL when it deploys the agent, and the gateway retrieves upstream credentials from the secrets service. Setting `base_url` explicitly bypasses both.
 
-## Agent Lifecycle
-
-Agents are managed end-to-end through the `nemo agents` command group:
-
-| Stage | Command | What it does |
-|-------|---------|--------------|
-| Register | `nemo agents create --name <name> --agent-config <path>` | Store the workflow YAML as an `agent` entity in a workspace. |
-| Deploy | `nemo agents deploy --agent <name>` | Start a running service from the stored config. |
-| Wait | `nemo agents deployments wait --agent <name>` | Block until the deployment is `running` or `failed`. |
-| Invoke | `nemo agents invoke --agent <name> --input "..."` or `nemo agents invoke --agent-config <path> --input "..."` | Send a single request through the Agents gateway or run a local config directly. |
-| Evaluate | `nemo agents evaluate run --eval-config <path> --agent <name>` | Run a NAT evaluation against the deployed agent. |
-| Optimize | `nemo agents optimize run --optimize-config <path> --agent <name>` | Run NAT parameter or prompt tuning trials against the agent's stored config. |
-| Tear down | `nemo agents undeploy --agent <name>` then `nemo agents delete <name>` | Stop the running service and remove the agent entity. |
-
-To run a workflow YAML directly without registering it on the platform, pass `--agent-config <path>` to `nemo agents invoke` or `nemo agents run`.
-
-## How It Works
-
-A platform-managed agent consists of three components:
-
-1. **The agent entity.** `nemo agents create` stores the workflow YAML as an entity in the workspace. The same configuration can be redeployed, evaluated, or optimized without re-registering it.
-1. **The deployment controller.** `nemo agents deploy` passes the stored config to the Agents service controller. By default it launches a `nat start fastapi` process, assigns a port, watches its health, and tears it down on `nemo agents undeploy`. With `--mode docker` or `--mode k8s` it instead runs the agent as a durable container through the deployments plugin — see [Deploy Agents](/documentation/agents/deploy-agents).
-1. **The Agents gateway.** The gateway resolves the agent to its current running deployment and proxies client requests to it, including streaming responses. From a client's perspective, the agent is an OpenAI-compatible endpoint owned by NeMo Platform.
-
-Model traffic from inside the agent process routes back through the Inference Gateway, which resolves model entity names to upstream providers and supplies their credentials. This is why agent configs do not carry `base_url` or `api_key` values — the deployment injects the gateway URL automatically, and the gateway looks up the rest.
-
-A virtual model is a platform-managed wrapper around one or more backend
-models. An agent can point at a virtual model entity while the virtual model
-handles routing, format translation, and [guardrails](/documentation/guardrail-models)
-behind the scenes — no changes to the agent's workflow YAML required.
-
-### Applying Changes Through Candidate Agents
-
-The Agents v2 API has no in-place patch for a stored agent config. When the
-optimize or secure workflows propose a change — a model swap, a routing
-split, a guardrailed virtual model — they apply it by creating a sibling
-agent with the new config, deploying it, and running an evaluation against
-it. The original agent stays untouched until you decide to promote the
-candidate.
-
-The sibling-candidate pattern is the recommended way to apply changes: you
-always have a baseline to compare against, and you can roll back by
-undeploying the candidate.
-
 ## Common Tasks
 
 - [Deploy Agents](/documentation/agents/deploy-agents): run an agent as a local subprocess or as a
@@ -114,7 +214,7 @@ undeploying the candidate.
 - [Observe Agents](/documentation/agents/observe-agents): ingest and query agent telemetry with NeMo
   Intake, then review traces, feedback, and evaluator results.
 - [Optimize Agents](/documentation/agents/optimize-agents): analyze deployed agents for model routing,
-  skill, prompt, and new-model opportunities.
+  skill, prompt, and new-model opportunities. (Applies to NAT workflows)
 - [Secure Agents](/documentation/agents/secure-agents): check guardrail coverage and scan recent
   telemetry for sensitive data.
 - [Plugins and Skills](/documentation/agents/plugins-and-skills): understand how agent, middleware, and

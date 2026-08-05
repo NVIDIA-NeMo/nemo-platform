@@ -6,7 +6,7 @@ import {
   AGENTS_ENABLED,
   ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
-  CODING_AGENT_STUDIO_ENABLED,
+  COPILOT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
   DASHBOARD_ENABLED,
   DATA_DESIGNER_ENABLED,
@@ -23,6 +23,7 @@ import {
   MEMBERS_ENABLED,
   MODEL_COMPARE_ENABLED,
   OPTIMIZER_ENABLED,
+  PLUGINS_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
   SECRETS_ENABLED,
   SETTINGS_ENABLED,
@@ -30,6 +31,7 @@ import {
 import { ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { FilesetDetailTab } from '@studio/routes/FilesetDetailRoute/constants';
+import type { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { generatePath, RouteObject } from 'react-router';
 
 const gateRoutes = (enabled: boolean, routes: RouteObject | RouteObject[]) => {
@@ -44,7 +46,7 @@ export const gateCustomizationRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(CUSTOMIZER_ENABLED, routes);
 
 export const gateDashboardRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED, routes);
+  gateRoutes(DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED, routes);
 
 export const gateDatasetsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATASETS_ENABLED, routes);
@@ -94,8 +96,11 @@ export const gateMembersRoutes = (routes: RouteObject | RouteObject[]) =>
 export const agentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(AGENTS_ENABLED, routes);
 
-export const gateCodingAgentStudioRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(CODING_AGENT_STUDIO_ENABLED, routes);
+export const gatePluginRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(PLUGINS_ENABLED, routes);
+
+export const gateCopilotStudioRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(COPILOT_STUDIO_ENABLED, routes);
 
 export const gateDeploymentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DEPLOYMENTS_ENABLED, routes);
@@ -133,8 +138,7 @@ export const getWorkspaceIndexRoute = (workspace: string) => {
 };
 
 export const getWorkspaceDetailsDefaultRoute = (workspace: string) => {
-  if (DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED)
-    return getWorkspaceDashboardRoute(workspace);
+  if (DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED) return getWorkspaceDashboardRoute(workspace);
   if (AGENTS_ENABLED) return getAgentsListRoute(workspace);
   if (BASE_MODELS_ENABLED) return getWorkspaceBaseModelsRoute(workspace);
   if (JOBS_ENABLED) return getWorkspaceJobsRoute(workspace);
@@ -164,7 +168,7 @@ export const getWorkspaceBaseModelsRoute = (
   if (options?.model) {
     path = generatePath(ROUTES.workspace.baseModelsModel, {
       workspace,
-      modelName: encodeURIComponent(options.model),
+      modelName: options.model,
     });
     if (options?.tab) {
       searchParams.set('tab', options.tab);
@@ -231,7 +235,7 @@ export const getWorkspaceDeploymentDetailsRoute = (
 ) => {
   return generatePath(ROUTES.workspace.deploymentsDeployment, {
     workspace,
-    deploymentName: encodeURIComponent(deploymentName),
+    deploymentName: deploymentName,
     deploymentPanelView: panelView,
   });
 };
@@ -317,7 +321,7 @@ export const getExperimentRoute = (workspace: string) => {
 export const getExperimentDetailRoute = (workspace: string, experimentName: string) => {
   return generatePath(ROUTES.workspace.experimentDetail, {
     workspace,
-    experimentName: encodeURIComponent(experimentName),
+    experimentName: experimentName,
   });
 };
 
@@ -328,8 +332,8 @@ export const getEvaluationDetailRoute = (
 ) => {
   return generatePath(ROUTES.workspace.evaluationDetail, {
     workspace,
-    experimentName: encodeURIComponent(experimentName),
-    evaluationName: encodeURIComponent(evaluationName),
+    experimentName: experimentName,
+    evaluationName: evaluationName,
   });
 };
 
@@ -341,9 +345,9 @@ export const getEvaluationSessionDetailRoute = (
 ): string => {
   return generatePath(ROUTES.workspace.evaluationSessionDetail, {
     workspace,
-    experimentName: encodeURIComponent(experimentName),
-    evaluationName: encodeURIComponent(evaluationName),
-    sessionId: encodeURIComponent(sessionId),
+    experimentName: experimentName,
+    evaluationName: evaluationName,
+    sessionId: sessionId,
   });
 };
 
@@ -423,6 +427,18 @@ export const getGuardrailChecksRoute = (workspace: string, guardrailConfigName: 
   });
 };
 
+export const getGuardrailChecksSubTabRoute = (
+  workspace: string,
+  guardrailConfigName: string,
+  subTab: GuardrailChecksSubTab
+): ReturnType<typeof generatePath> => {
+  return generatePath(ROUTES.workspace.guardrailChecksSubTab, {
+    workspace,
+    guardrailConfigName,
+    guardrailChecksSubTab: subTab,
+  });
+};
+
 export const getWorkspaceSettingsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.settings, { workspace });
 };
@@ -475,8 +491,8 @@ export const getFilesetDetailRoute = (
 export const getFilesetFileRoute = (workspace: string, fileset: string, filePath: string) => {
   return generatePath(ROUTES.workspace.filesetFile, {
     workspace,
-    filesetId: encodeURIComponent(fileset),
-    filePathEncoded: encodeURIComponent(filePath),
+    filesetId: fileset,
+    filePathEncoded: filePath,
   });
 };
 
@@ -495,7 +511,7 @@ export const getIntakeSpansRoute = (workspace: string) => {
 export const getIntakeSessionRoute = (workspace: string, sessionId: string) => {
   return generatePath(ROUTES.workspace.intakeSession, {
     workspace,
-    sessionId: encodeURIComponent(sessionId),
+    sessionId: sessionId,
   });
 };
 
@@ -580,8 +596,8 @@ export const getAgentsListRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.agentsList, { workspace });
 };
 
-export const getClaudeCodeChatRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.claudeCodeChat, { workspace });
+export const getCopilotChatRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.copilotChat, { workspace });
 };
 
 export const getAgentDetailRoute = (workspace: string, agentName: string) => {

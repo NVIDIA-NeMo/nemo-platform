@@ -3,7 +3,7 @@
 
 import { Anchor, Badge, Button, Card, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { FC, ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface DashboardCardProps {
   icon: ReactNode;

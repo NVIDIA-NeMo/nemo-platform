@@ -80,12 +80,14 @@ HEALTH_ENDPOINTS = {
 # GET requests to these paths bypass authentication (e.g. / -> /studio redirect).
 PUBLIC_GET_PATHS = {
     "/",
+    "/apis/plugins",  # Studio plugin manifest — fetched by the SPA before login completes
 }
 
 # Path prefixes that bypass authorization
 BYPASS_PREFIXES = (
     "/apis/auth/authenticate/",  # Envoy ext_authz path_prefix callout includes the original protected path
     "/studio",  # Studio UI static files — the SPA handles its own OIDC login
+    "/plugin-ui/",  # Studio plugin bundles — loaded via dynamic import(), cannot send Authorization
 )
 
 

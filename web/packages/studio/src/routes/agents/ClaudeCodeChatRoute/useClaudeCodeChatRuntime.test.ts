@@ -93,7 +93,7 @@ describe('useClaudeCodeChatRuntime', () => {
     vi.restoreAllMocks();
   });
 
-  it('exposes the latest streamed coding-agent model without promoting it to selected model', async () => {
+  it('exposes the latest streamed copilot model without promoting it to selected model', async () => {
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');
     mocks.streamClaudeCodeMessage.mockImplementation(
       async ({
@@ -119,9 +119,7 @@ describe('useClaudeCodeChatRuntime', () => {
       await result.current.submitPrompt('List files');
     });
 
-    await waitFor(() =>
-      expect(result.current.artifacts.coding_agent_model).toBe('claude-sonnet-4-6')
-    );
+    await waitFor(() => expect(result.current.artifacts.copilot_model).toBe('claude-sonnet-4-6'));
     expect(result.current.artifacts.model).toBeUndefined();
     expect(result.current.artifacts.model_source).toBeUndefined();
   });
@@ -154,7 +152,7 @@ describe('useClaudeCodeChatRuntime', () => {
         useClaudeCodeChatRuntime({
           initialArtifacts: model
             ? {
-                coding_agent_model: model,
+                copilot_model: model,
                 selections: [],
                 files: [],
                 links: [],
@@ -170,17 +168,15 @@ describe('useClaudeCodeChatRuntime', () => {
 
     rerender({ model: 'claude-sonnet-4-6' });
 
-    await waitFor(() =>
-      expect(result.current.artifacts.coding_agent_model).toBe('claude-sonnet-4-6')
-    );
+    await waitFor(() => expect(result.current.artifacts.copilot_model).toBe('claude-sonnet-4-6'));
     expect(result.current.artifacts.model).toBeUndefined();
 
     rerender({ model: undefined });
 
-    await waitFor(() => expect(result.current.artifacts.coding_agent_model).toBeUndefined());
+    await waitFor(() => expect(result.current.artifacts.copilot_model).toBeUndefined());
   });
 
-  it('pauses for a matching Studio UI suggestion before creating a NeMo Agent session', async () => {
+  it('pauses for a matching Studio UI suggestion before creating a NeMo Copilot session', async () => {
     let submitPromise!: Promise<void>;
     mockFeatureFlags({ guardrailsEnabled: true });
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');

@@ -47,7 +47,7 @@ import {
 import { type FC, useCallback, useMemo, useState } from 'react';
 import { FormProvider } from 'react-hook-form';
 import { useAuth } from 'react-oidc-context';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 
 /**
  * Edges are derived from entered values: Jinja2 `{{ column_name }}` references (and

@@ -10,7 +10,7 @@ import { MetricRunSidePanel } from '@studio/components/sidePanels/MetricRunSideP
 import { datasets } from '@studio/mocks/datasets';
 import { mixedModelEntitysPage } from '@studio/mocks/entity-store/models';
 import { http, HttpResponse } from 'msw';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router';
 
 const WORKSPACE = 'default';
 
