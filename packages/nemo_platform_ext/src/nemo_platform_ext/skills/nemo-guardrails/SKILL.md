@@ -8,6 +8,11 @@ description: >
   MiddlewareCalls. Use when the task involves guardrail configurations, content
   safety, input/output rails, or `nemo guardrail` / `nemo inference virtual-models` CLI
   commands for guardrailing inference.
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
+  - provider_registered
+  - guardrails_plugin_available
 user-invocable: true
 allowed-tools: Bash, Read, Grep
 ---

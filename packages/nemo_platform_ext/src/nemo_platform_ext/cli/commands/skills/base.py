@@ -3,10 +3,19 @@
 
 """Base types and protocol for agent skill installers."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
+
+INSTALLED_SKILL_PREFIX = "nemo-"
+
+
+def installed_skill_name(skill_name: str) -> str:
+    """Return the skill name exposed to downstream coding agents."""
+    if skill_name.startswith(INSTALLED_SKILL_PREFIX):
+        return skill_name
+    return f"{INSTALLED_SKILL_PREFIX}{skill_name}"
 
 
 @dataclass
@@ -16,6 +25,7 @@ class Skill:
     version: str
     content: str
     raw: str
+    preconditions: list[str] = field(default_factory=list)
     source_dir: Path | None = None
     # Entry-point name under ``nemo.skills`` (e.g. ``"agents"``, ``"platform"``).
     # Useful for programmatic filtering; the human-friendly label is built from

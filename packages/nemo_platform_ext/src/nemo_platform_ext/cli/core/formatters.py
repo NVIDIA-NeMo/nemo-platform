@@ -12,7 +12,7 @@ import re
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import click
 import yaml
@@ -598,7 +598,7 @@ def format_output(
     *,
     is_list: bool = False,
     output_format: str | None = None,
-    output_columns: str | list[Column] | None = None,
+    output_columns: Literal["all"] | str | list[Column] | None = None,
     indent: int = 2,
     no_truncate: bool | None = None,
     timestamp_format: str | None = None,
@@ -662,6 +662,7 @@ def format_output(
 
     # Determine truncate setting (inverse of no_truncate)
     truncate = not no_truncate
+    timestamp_format = timestamp_format or "iso"
 
     # The "use --no-truncate to see full values" hint only makes sense when
     # the table actually clips with "..."; in wrap mode nothing is hidden.
@@ -692,9 +693,9 @@ def format_output(
         output = format_yaml(data, syntax_highlight=True, background=False)
         print(output)
     elif output_format == "table":
-        assert isinstance(output_columns, list)
         # Table format. When wrapping is on and --no-truncate is set, drop the
         # per-column cap so wrapping uses the full terminal width.
+        assert isinstance(output_columns, list)
         effective_wrap_max_width = None if (wrap and not truncate) else wrap_max_width
         output = format_table(
             data,
@@ -706,15 +707,15 @@ def format_output(
         )
         print(output)
     elif output_format == "markdown":
-        assert isinstance(output_columns, list)
         # Markdown table format
+        assert isinstance(output_columns, list)
         output = format_markdown_table(
             data, columns=output_columns, truncate=truncate, timestamp_format=timestamp_format
         )
         print(output)
     elif output_format == "csv":
-        assert isinstance(output_columns, list)
         # CSV format
+        assert isinstance(output_columns, list)
         output = format_csv(data, columns=output_columns, truncate=truncate, timestamp_format=timestamp_format)
         print(output, end="")  # CSV already includes newlines
     elif output_format == "raw":

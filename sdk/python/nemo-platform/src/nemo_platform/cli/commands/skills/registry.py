@@ -107,12 +107,20 @@ def _load_skill(entry: Path, source_plugin: str | None = None, source_dist: str 
         raise ValueError(f"Invalid frontmatter in {skill_file}: {e}") from e
     if not isinstance(metadata, dict):
         raise ValueError(f"Invalid frontmatter in {skill_file}: expected a mapping, got {type(metadata).__name__}")
+    preconditions = metadata.get("preconditions", [])
+    if preconditions is None:
+        preconditions = []
+    if isinstance(preconditions, str):
+        preconditions = [preconditions]
+    if not isinstance(preconditions, list) or not all(isinstance(item, str) for item in preconditions):
+        raise ValueError(f"Invalid frontmatter in {skill_file}: preconditions must be a list of strings")
     return Skill(
         name=metadata.get("name", entry.name),
         description=metadata.get("description", ""),
         version=str(metadata.get("version", "0.1")),
         content=body,
         raw=raw,
+        preconditions=preconditions,
         source_dir=entry,
         source_plugin=source_plugin,
         source_dist=source_dist,

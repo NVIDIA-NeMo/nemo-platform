@@ -22,6 +22,8 @@ not-for:
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
   - running downstream workflow or state-changing platform commands (each downstream skill owns its own commands)
   - loading multiple downstream skills in one turn
+preconditions:
+  - nemo_cli_available
 compatibility: nemo-platform >= 0.1.0; selection plus a host scan on macOS or Linux; works without an installed CLI (selector can pick setup, which then tells the user how to run the CLI install).
 maturity: active
 license: Apache-2.0

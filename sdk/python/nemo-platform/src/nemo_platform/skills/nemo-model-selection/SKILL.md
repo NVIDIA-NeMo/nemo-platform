@@ -13,6 +13,9 @@ not-for:
   - nemo-explore (use first to capture the agent's job, audience, and tools)
   - nemo-spec (use to persist the design once model is chosen)
   - nemo-build-agent (use to scaffold the YAML once the spec is signed off)
+preconditions:
+  - nemo_setup_complete
+  - provider_registered
 compatibility: nemo-platform >= 0.1.0; read-only; loads references/benchmark_cache.json if present; works offline; safe under any sandbox.
 maturity: active
 license: Apache-2.0

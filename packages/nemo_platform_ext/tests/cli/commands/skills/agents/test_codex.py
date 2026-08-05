@@ -11,13 +11,18 @@ from nemo_platform_ext.cli.commands.skills.agents.codex import CodexInstaller
 from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
 
 
-def _make_skill(name: str = "test-skill", source_dir: Path | None = None) -> Skill:
+def _make_skill(
+    name: str = "test-skill",
+    source_dir: Path | None = None,
+    preconditions: list[str] | None = None,
+) -> Skill:
     return Skill(
         name=name,
         description=f"A {name} skill",
         version="0.1",
         content=f"# {name}\nSome content.",
         raw=f"---\nname: {name}\ndescription: A {name} skill\nversion: '0.1'\n---\n\n# {name}\nSome content.",
+        preconditions=preconditions or [],
         source_dir=source_dir,
     )
 
@@ -40,6 +45,12 @@ def test_project_install_path(tmp_path: Path):
     assert path == tmp_path / ".agents" / "skills" / "nemo-inference" / "SKILL.md"
 
 
+def test_project_install_path_keeps_existing_nemo_prefix(tmp_path: Path):
+    installer = CodexInstaller()
+    path = installer.get_install_path(Scope.PROJECT, tmp_path, "nemo-files")
+    assert path == tmp_path / ".agents" / "skills" / "nemo-files" / "SKILL.md"
+
+
 def test_user_install_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     installer = CodexInstaller()
@@ -55,6 +66,20 @@ def test_format_content_adds_frontmatter():
     assert "name: nemo-inference" in content
     assert "description: A inference skill" in content
     assert "# inference" in content
+
+
+def test_format_content_keeps_existing_nemo_prefix_and_preconditions():
+    installer = CodexInstaller()
+    skill = _make_skill("nemo-files", preconditions=["nemo_setup_complete", "platform_running"])
+    content = installer.format_content(skill)
+    front_matter, _, _ = content.partition("\n---\n")
+    front_matter = front_matter.removeprefix("---\n")
+    parsed = yaml.safe_load(front_matter)
+    assert parsed == {
+        "name": "nemo-files",
+        "description": "A nemo-files skill",
+        "preconditions": ["nemo_setup_complete", "platform_running"],
+    }
 
 
 def test_format_content_escapes_yaml_special_chars():

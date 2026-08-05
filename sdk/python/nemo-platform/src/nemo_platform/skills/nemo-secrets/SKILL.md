@@ -4,6 +4,9 @@ description: >
   NeMo secrets CLI reference for creating, listing, and managing secrets.
   Use when the task involves creating API key secrets, managing credentials,
   or `nemo secrets` CLI commands.
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
 user-invocable: true
 allowed-tools: Bash, Read, Grep
 ---
