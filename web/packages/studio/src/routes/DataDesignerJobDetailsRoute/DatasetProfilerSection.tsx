@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { LogViewer } from '@nemo/common/src/components/LogViewer';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
-import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import {
   Card,
   Flex,
@@ -40,13 +38,6 @@ export const DatasetProfilerSection: FC = () => {
     { enabled: isTerminal }
   );
 
-  const { data: logs, isLoading: isLogsLoading } = useJobLogs({
-    workspace,
-    name: jobName,
-    jobStatus: job?.status,
-    enabled: isTerminal,
-  });
-
   const CardWrapper: FC<{ children: React.ReactNode }> = ({ children }) => (
     <Card className="w-full h-full">{children}</Card>
   );
@@ -55,7 +46,10 @@ export const DatasetProfilerSection: FC = () => {
     return (
       <CardWrapper>
         <Flex className="self-center justify-self-center" gap="2">
-          <Empty title="The dataset profile will appear here once the job completes." />
+          <Empty
+            title="The dataset profile will appear here once the job completes."
+            description="Check the Logs tab to follow the job while it runs."
+          />
         </Flex>
       </CardWrapper>
     );
@@ -74,7 +68,7 @@ export const DatasetProfilerSection: FC = () => {
   if (isError || !hasAnalysis) {
     return (
       <CardWrapper>
-        <Stack gap="density-2xl" className="overflow-hidden">
+        <Stack align="center" justify="center" gap="density-2xl" className="h-full overflow-hidden">
           <Empty
             title={
               isError
@@ -86,11 +80,6 @@ export const DatasetProfilerSection: FC = () => {
                 ? 'The profiler analysis could not be loaded for this job. Review the job logs below for details.'
                 : 'Review the job logs below for details.'
             }
-          />
-          <LogViewer
-            logs={logs}
-            isLoading={isLogsLoading}
-            downloadFilename={`data-designer-${jobName}-logs.txt`}
           />
         </Stack>
       </CardWrapper>
