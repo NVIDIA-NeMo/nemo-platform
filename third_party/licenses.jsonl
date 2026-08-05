@@ -31,7 +31,7 @@
 {"name": "cachetools", "license": "MIT", "compatible": true}
 {"name": "caio", "license": "APACHE-2.0", "compatible": true}
 {"name": "certifi", "license": "LGPL", "compatible": true}
-{"name": "cffi", "license": "MIT", "compatible": true}
+{"name": "cffi", "license": "MIT-0", "compatible": true}
 {"name": "chardet", "license": "LGPL-2.1-OR-LATER", "compatible": true}
 {"name": "charset-normalizer", "license": "MIT", "compatible": true}
 {"name": "circuitbreaker", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -42,6 +42,7 @@
 {"name": "colorama", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "colorlog", "license": "MIT", "compatible": true}
 {"name": "contourpy", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "crc32c", "license": "LGPL-2.1-OR-LATER", "compatible": true}
 {"name": "cryptography", "license": "APACHE-2.0", "compatible": true}
 {"name": "cycler", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "cyclopts", "license": "APACHE-2.0", "compatible": true}
@@ -54,6 +55,7 @@
 {"name": "deepagents", "license": "MIT", "compatible": true}
 {"name": "defusedxml", "license": "PSF-2.0", "compatible": true}
 {"name": "deprecation", "license": "APACHE-2.0", "compatible": true}
+{"name": "detect-installer", "license": "0BSD", "compatible": true}
 {"name": "diff-cover", "license": "APACHE-2.0", "compatible": true}
 {"name": "dill", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "dirhash", "license": "MIT", "compatible": true}
@@ -61,7 +63,6 @@
 {"name": "dnspython", "license": "ISC", "compatible": true}
 {"name": "docker", "license": "APACHE-2.0", "compatible": true}
 {"name": "docstring-parser", "license": "MIT", "compatible": true}
-{"name": "docutils", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "duckdb", "license": "MIT", "compatible": true}
 {"name": "durationpy", "license": "MIT", "compatible": true}
 {"name": "email-validator", "license": "UNLICENSE", "compatible": true}
@@ -75,6 +76,7 @@
 {"name": "fastar", "license": "MIT", "compatible": true}
 {"name": "fastembed", "license": "APACHE-2.0", "compatible": true}
 {"name": "fastmcp", "license": "APACHE-2.0", "compatible": true}
+{"name": "fastmcp-slim", "license": "APACHE-2.0", "compatible": true}
 {"name": "fastuuid", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "filelock", "license": "UNLICENSE", "compatible": true}
 {"name": "filetype", "license": "MIT", "compatible": true}
@@ -167,17 +169,11 @@
 {"name": "mlflow-skinny", "license": "APACHE-2.0", "compatible": true}
 {"name": "mmh3", "license": "MIT", "compatible": true}
 {"name": "more-itertools", "license": "MIT", "compatible": true}
-{"name": "mpmath", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "multidict", "license": "APACHE-2.0", "compatible": true}
 {"name": "multiprocess", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "mypy-extensions", "license": "MIT", "compatible": true}
 {"name": "nemo-anonymizer", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-fabric", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric-adapters-claude", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric-adapters-codex", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric-adapters-common", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric-adapters-deepagents", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric-adapters-hermes", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-fabric-runtime", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-relay", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-safe-synthesizer", "license": "APACHE-2.0", "compatible": true}
@@ -259,6 +255,9 @@
 {"name": "pydantic", "license": "MIT", "compatible": true}
 {"name": "pydantic-core", "license": "MIT", "compatible": true}
 {"name": "pydantic-extra-types", "license": "MIT", "compatible": true}
+{"name": "pydantic-graph", "license": "MIT", "compatible": true}
+{"name": "pydantic-monty", "license": "MIT", "compatible": true}
+{"name": "pydantic-monty-runtime", "license": "MIT", "compatible": true}
 {"name": "pydantic-settings", "license": "MIT", "compatible": true}
 {"name": "pygments", "license": "BSD-2-CLAUSE", "compatible": true}
 {"name": "pyjwt", "license": "MIT", "compatible": true}
@@ -319,7 +318,6 @@
 {"name": "supabase", "license": "MIT", "compatible": true}
 {"name": "supabase-auth", "license": "MIT", "compatible": true}
 {"name": "supabase-functions", "license": "MIT", "compatible": true}
-{"name": "sympy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "tabulate", "license": "MIT", "compatible": true}
 {"name": "tblib", "license": "BSD-2-CLAUSE", "compatible": true}
 {"name": "tenacity", "license": "APACHE-2.0", "compatible": true}

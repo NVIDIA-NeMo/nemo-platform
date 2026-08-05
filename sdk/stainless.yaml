@@ -254,7 +254,7 @@ resources:
       filesets:
         models:
           fileset_filter: FilesetFilter
-          reviewme_files_filesets_fileset_metadata: FilesetMetadata
+          fileset_metadata: FilesetMetadata
         methods:
           create: post /apis/files/v2/workspaces/{workspace}/filesets
           list: get /apis/files/v2/workspaces/{workspace}/filesets
@@ -342,11 +342,11 @@ resources:
       regex_detection_options: RegexDetectionOptions
       remote_hf_classifier_config: RemoteHFClassifierConfig
       retrieval_rails: RetrievalRails
-      reviewme_guardrail_patronus_evaluate_config: PatronusEvaluateConfig
-      reviewme_guardrail_patronus_rail_config: PatronusRailConfig
-      reviewme_guardrail_rails: Rails
-      reviewme_guardrail_rails_config: RailsConfig
-      reviewme_guardrail_rails_config_data: RailsConfigData
+      patronus_evaluate_config: PatronusEvaluateConfig
+      patronus_rail_config: PatronusRailConfig
+      rails: Rails
+      rails_config: RailsConfig
+      rails_config_data: RailsConfigData
       sensitive_data_detection: SensitiveDataDetection
       sensitive_data_detection_options: SensitiveDataDetectionOptions
       single_call_config: SingleCallConfig
@@ -550,11 +550,11 @@ resources:
       platform_job_secret_environment_variable_ref: PlatformJobSecretEnvironmentVariableRef
       platform_job_sort_field: PlatformJobSortField
       platform_jobs_list_filter: PlatformJobsListFilter
-      reviewme_jobs_cpu_execution_provider: CPUExecutionProvider
-      reviewme_jobs_distributed_gpu_execution_provider: DistributedGPUExecutionProvider
-      reviewme_jobs_gpu_execution_provider: GPUExecutionProvider
-      reviewme_jobs_platform_job_spec: PlatformJobSpec
-      reviewme_jobs_platform_job_step_spec: PlatformJobStepSpec
+      cpu_execution_provider: CPUExecutionProvider
+      distributed_gpu_execution_provider: DistributedGPUExecutionProvider
+      gpu_execution_provider: GPUExecutionProvider
+      platform_job_spec: PlatformJobSpec
+      platform_job_step_spec: PlatformJobStepSpec
       step_lifecycle: StepLifecycle
       subprocess_execution_provider: SubprocessExecutionProvider
       subprocess_job_execution_profile: SubprocessJobExecutionProfile
