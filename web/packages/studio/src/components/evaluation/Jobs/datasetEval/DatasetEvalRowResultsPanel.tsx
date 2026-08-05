@@ -45,7 +45,7 @@ const inputText = (row: DatasetEvalRow): string => {
 
 const scoreCells = (row: DatasetEvalRow): { label: string; value: number | string | undefined }[] =>
   Object.entries(row.metrics ?? {}).flatMap(([metricType, outputs]) =>
-    (outputs ?? []).map((output) => ({
+    (Array.isArray(outputs) ? outputs : []).map((output) => ({
       label: output?.name ? `${metricType}.${output.name}` : metricType,
       value: output?.value,
     }))
