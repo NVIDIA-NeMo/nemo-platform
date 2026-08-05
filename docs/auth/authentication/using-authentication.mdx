@@ -129,7 +129,17 @@ groups present when the key is created. By default, new keys use the platform's
 configured default expiry, which is 30 days unless the administrator changes it.
 Pass `--expires-in <seconds>` to request a specific finite lifetime. Pass
 `--expires-in none` only for deployments where the administrator has explicitly
-allowed unlimited keys. Revocation and rotation are not implemented.
+allowed unlimited keys.
+
+List keys with optional pagination:
+
+```bash
+nemo auth access-keys list
+nemo auth access-keys list --page 2 --page-size 100
+```
+
+The list includes each key's status, description, issuer, audiences, creation
+time, and expiration time. Revocation and rotation are not implemented.
 
 ### Token Inspection
 

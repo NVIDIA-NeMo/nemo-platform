@@ -31,6 +31,8 @@ from .signing_keys import RSASigningKey, RSASigningKeyCache
 
 ACCESS_KEY_TOKEN_TYPE = "access_key"
 ACCESS_KEY_JWKS_PATH = "/apis/auth/jwks"
+ACCESS_KEY_METADATA_VERSION = 2
+LEGACY_ACCESS_KEY_METADATA_VERSION = 1
 
 
 def platform_token_issuer(config: AuthConfig) -> str:
@@ -61,7 +63,10 @@ class _AccessKeyTokenPayload:
     claims: dict[str, Any]
     jti: str
     name: str | None
+    description: str | None
     principal: str
+    issuer: str
+    audiences: list[str]
     created_at: datetime
     expires_at: datetime | None
 
@@ -82,6 +87,24 @@ def _groups_from_claim(groups_claim: Any) -> list[str]:
     if isinstance(groups_claim, list):
         return [group for group in groups_claim if isinstance(group, str)]
     return []
+
+
+def is_access_key_token_candidate(token: str) -> bool:
+    """Return True when an untrusted token claims to be a Scoped Access Key."""
+    try:
+        unverified = jwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_nbf": False,
+                "verify_aud": False,
+            },
+        )
+    except jwt.DecodeError:
+        return False
+    return unverified.get("nmp_token_type") == ACCESS_KEY_TOKEN_TYPE
 
 
 def _access_key_signing_key(config: AuthConfig) -> RSASigningKey:
@@ -181,6 +204,7 @@ class AccessKeyIssuerService(AccessKeyIssuer):
             self._config,
             principal=self._principal,
             name=request.name,
+            description=request.description,
             expires_in_seconds=expires_in_seconds,
             now=self._now(),
         )
@@ -192,11 +216,13 @@ class AccessKeyIssuerService(AccessKeyIssuer):
             self._config,
             principal=self._principal,
             name=request.name,
+            description=request.description,
             expires_in_seconds=expires_in_seconds,
             now=self._now(),
         )
 
-    def list(self) -> AccessKeyListResponse:
+    def list(self, *, page: int = 1, page_size: int = 100) -> AccessKeyListResponse:
+        _ = page, page_size
         self._ensure_enabled()
         raise AccessKeyOperationNotImplementedError("Scoped Access Key listing is not implemented.")
 
@@ -210,6 +236,7 @@ def _create_access_key_token(
     *,
     principal: Principal,
     name: str | None = None,
+    description: str | None = None,
     expires_in_seconds: int | None = None,
     now: int,
 ) -> AccessKeyCreateResponse:
@@ -217,6 +244,7 @@ def _create_access_key_token(
         config,
         principal=principal,
         name=name,
+        description=description,
         expires_in_seconds=expires_in_seconds,
         now=now,
     )
@@ -228,6 +256,7 @@ async def _create_access_key_token_async(
     *,
     principal: Principal,
     name: str | None = None,
+    description: str | None = None,
     expires_in_seconds: int | None = None,
     now: int,
 ) -> AccessKeyCreateResponse:
@@ -235,6 +264,7 @@ async def _create_access_key_token_async(
         config,
         principal=principal,
         name=name,
+        description=description,
         expires_in_seconds=expires_in_seconds,
         now=now,
     )
@@ -247,6 +277,7 @@ def _build_access_key_token_payload(
     *,
     principal: Principal,
     name: str | None,
+    description: str | None,
     expires_in_seconds: int | None,
     now: int,
 ) -> _AccessKeyTokenPayload:
@@ -257,11 +288,13 @@ def _build_access_key_token_payload(
 
     issued_at = now
     jti = f"ak_{uuid.uuid4().hex}"
-    access_key_metadata: dict[str, Any] = {"version": 1}
+    access_key_metadata: dict[str, Any] = {"version": ACCESS_KEY_METADATA_VERSION}
     if name is not None:
         access_key_metadata["name"] = name
+    issuer = access_key_issuer(config)
+    audiences = [config.access_keys.audience]
     claims: dict[str, Any] = {
-        "iss": access_key_issuer(config),
+        "iss": issuer,
         "aud": config.access_keys.audience,
         "sub": principal.id,
         "iat": issued_at,
@@ -286,7 +319,10 @@ def _build_access_key_token_payload(
         claims=claims,
         jti=jti,
         name=name,
+        description=description,
         principal=principal.id,
+        issuer=issuer,
+        audiences=audiences,
         created_at=datetime.fromtimestamp(issued_at, tz=UTC),
         expires_at=expires_at,
     )
@@ -305,9 +341,13 @@ def _access_key_response_from_payload(
     return AccessKeyCreateResponse(
         jti=payload.jti,
         name=payload.name,
+        description=payload.description,
         token=token,
         token_type="Bearer",
         principal=payload.principal,
+        status="ACTIVE",
+        issuer=payload.issuer,
+        audiences=payload.audiences,
         created_at=payload.created_at,
         expires_at=payload.expires_at,
     )

@@ -60,6 +60,17 @@ def test_format_api_error_fallback_to_str():
     assert _format_api_error(error) == "String representation of error"
 
 
+def test_format_api_error_ignores_non_string_message():
+    class APIErrorLike:
+        body = None
+        message = 404
+
+        def __str__(self) -> str:
+            return "String representation of error"
+
+    assert _format_api_error(APIErrorLike()) == "String representation of error"
+
+
 @pytest.mark.parametrize(
     "error_class,status_code,expected_prefix,expected_hint",
     [

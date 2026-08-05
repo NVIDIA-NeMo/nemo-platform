@@ -14,7 +14,12 @@ import yaml
 from nemo_platform_ext.auth.helpers import decode_jwt_claims, generate_unsigned_jwt
 from nemo_platform_ext.cli.app import app
 from nemo_platform_plugin.auth.access_keys.issuer import AccessKeyFeatureDisabledError
-from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateRequest, AccessKeyCreateResponse
+from nemo_platform_plugin.auth.access_keys.types import (
+    AccessKeyCreateRequest,
+    AccessKeyCreateResponse,
+    AccessKeyListResponse,
+    AccessKeyMetadataResponse,
+)
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from typer.testing import CliRunner
 
@@ -66,7 +71,10 @@ def _decode_jwt_noop(token: str) -> dict:
     return {}
 
 
-def _created_access_key(name: str | None = None) -> AccessKeyCreateResponse:
+def _created_access_key(
+    name: str | None = None,
+    description: str | None = None,
+) -> AccessKeyCreateResponse:
     return AccessKeyCreateResponse(
         jti="ak_example",
         name=name,
@@ -75,6 +83,10 @@ def _created_access_key(name: str | None = None) -> AccessKeyCreateResponse:
         principal="alice@example.com",
         created_at=datetime(2026, 7, 28, 12, 0, tzinfo=UTC),
         expires_at=None,
+        description=description,
+        status="ACTIVE",
+        issuer="https://platform.example.com/apis/auth",
+        audiences=["nemo-platform-access-key"],
     )
 
 
@@ -368,21 +380,40 @@ def test_auth_access_keys_create_prints_token(monkeypatch: pytest.MonkeyPatch):
     assert "expires_in_seconds" not in body.model_fields_set
 
 
-def test_auth_access_keys_create_sends_optional_name_and_expiration(monkeypatch: pytest.MonkeyPatch):
+def test_auth_access_keys_create_sends_optional_metadata_and_expiration(monkeypatch: pytest.MonkeyPatch):
     fake_platform_client = MagicMock()
     fake_access_keys_client = MagicMock()
-    fake_access_keys_client.create_access_key.return_value.data.return_value = _created_access_key("short-lived")
+    fake_access_keys_client.create_access_key.return_value.data.return_value = _created_access_key(
+        "short-lived", "CI automation"
+    )
     monkeypatch.setattr("nemo_platform_ext.cli.core.context.CLIContext.get_client", lambda self: fake_platform_client)
     monkeypatch.setattr(
         "nemo_platform_ext.cli.commands.auth.client_from_platform",
         lambda platform, client_cls: fake_access_keys_client,
     )
 
-    result = runner.invoke(app, ["auth", "access-keys", "create", "--name", "short-lived", "--expires-in", "3600"])
+    result = runner.invoke(
+        app,
+        [
+            "auth",
+            "access-keys",
+            "create",
+            "--name",
+            "short-lived",
+            "--description",
+            "CI automation",
+            "--expires-in",
+            "3600",
+        ],
+    )
 
     assert_exit_code(result, 0)
     fake_access_keys_client.create_access_key.assert_called_once_with(
-        body=AccessKeyCreateRequest(name="short-lived", expires_in_seconds=3600),
+        body=AccessKeyCreateRequest(
+            name="short-lived",
+            description="CI automation",
+            expires_in_seconds=3600,
+        ),
     )
 
 
@@ -439,26 +470,103 @@ def test_auth_access_keys_create_reports_disabled_feature(monkeypatch: pytest.Mo
     assert "Scoped Access Keys are not enabled" in result.output
 
 
-def test_auth_access_keys_help_hides_unimplemented_lifecycle_commands() -> None:
+def test_auth_access_keys_list_outputs_owned_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.list_access_keys.return_value.data.return_value = AccessKeyListResponse(
+        data=[
+            AccessKeyMetadataResponse(
+                jti="ak_example",
+                name="ci-build",
+                principal="alice@example.com",
+                created_at=datetime(2026, 7, 28, 12, 0, tzinfo=UTC),
+                description="CI automation",
+                status="ACTIVE",
+                issuer="https://platform.example.com/apis/auth",
+                audiences=["nemo-platform-access-key"],
+            )
+        ]
+    )
+    monkeypatch.setattr("nemo_platform_ext.cli.core.context.CLIContext.get_client", lambda self: MagicMock())
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["--output-format", "json", "auth", "access-keys", "list"])
+
+    assert_exit_code(result, 0)
+    assert '"jti": "ak_example"' in result.output
+    assert '"name": "ci-build"' in result.output
+    assert '"description": "CI automation"' in result.output
+    assert '"status": "ACTIVE"' in result.output
+    fake_access_keys_client.list_access_keys.assert_called_once_with(query_params={"page": 1, "page_size": 100})
+
+
+def test_auth_access_keys_list_table_includes_key_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.list_access_keys.return_value.data.return_value = AccessKeyListResponse(
+        data=[
+            AccessKeyMetadataResponse(
+                jti="ak_example",
+                name="ci-build",
+                principal="alice@example.com",
+                created_at=datetime(2026, 7, 28, 12, 0, tzinfo=UTC),
+                description="CI automation",
+                status="ACTIVE",
+                issuer="https://platform.example.com/apis/auth",
+                audiences=["nemo-platform-access-key"],
+            )
+        ]
+    )
+    monkeypatch.setattr("nemo_platform_ext.cli.core.context.CLIContext.get_client", lambda self: MagicMock())
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "list"])
+
+    assert_exit_code(result, 0)
+    assert "ak_example" in result.output
+    assert "ci-build" in result.output
+    assert "CI automation" in result.output
+    assert "ACTIVE" in result.output
+    fake_access_keys_client.list_access_keys.assert_called_once_with(query_params={"page": 1, "page_size": 100})
+
+
+def test_auth_access_keys_list_points_to_next_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.list_access_keys.return_value.data.return_value = AccessKeyListResponse(
+        data=[],
+        has_more=True,
+    )
+    monkeypatch.setattr("nemo_platform_ext.cli.core.context.CLIContext.get_client", lambda _self: MagicMock())
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.client_from_platform",
+        lambda _platform, _client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(
+        app,
+        ["--output-format", "json", "auth", "access-keys", "list", "--page", "3", "--page-size", "25"],
+    )
+
+    assert_exit_code(result, 0)
+    assert result.stdout.strip() == "[]"
+    assert "use --page 4" in result.stderr
+    fake_access_keys_client.list_access_keys.assert_called_once_with(query_params={"page": 3, "page_size": 25})
+
+
+def test_auth_access_keys_help_exposes_lifecycle_commands() -> None:
     result = runner.invoke(app, ["auth", "access-keys", "--help"])
 
     assert_exit_code(result, 0)
     assert "create" in result.output
-    assert "list" not in result.output
-    assert "revoke" not in result.output
+    assert "list" in result.output
 
     create_help = runner.invoke(app, ["auth", "access-keys", "create", "--help"])
     assert_exit_code(create_help, 0)
     assert "Use 'none' to request no expiration" in " ".join(create_help.output.split())
-
-    list_result = runner.invoke(app, ["auth", "access-keys", "list"])
-    revoke_result = runner.invoke(app, ["auth", "access-keys", "revoke", "ak_example"])
-
-    assert list_result.exit_code != 0
-    assert revoke_result.exit_code != 0
-    assert "No such command" in list_result.output
-    assert "No such command" in revoke_result.output
-
 
 def test_auth_tokens_group_is_not_exposed() -> None:
     result = runner.invoke(app, ["auth", "tokens", "create"])

@@ -30,3 +30,18 @@ class RoleBindingEntity(EntityBase):
     granted_by: str
     granted_at: datetime
     revoked_at: Optional[datetime] = None
+
+
+class AccessKeyEntity(EntityBase):
+    """Persistent lifecycle record for a Scoped Access Key."""
+
+    __entity_type__ = "access_key"
+
+    key_name: str | None = None
+    description: str | None = None
+    principal: str
+    issuer: str
+    audiences: list[str]
+    issued_at: datetime
+    expires_at: datetime | None = None
+    revoked_at: datetime | None = None

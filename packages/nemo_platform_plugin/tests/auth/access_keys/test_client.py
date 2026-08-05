@@ -12,7 +12,10 @@ from nemo_platform_plugin.auth.access_keys.issuer import (
     AccessKeyFeatureDisabledError,
     AccessKeyOperationNotImplementedError,
 )
-from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateRequest, AccessKeyCreateResponse
+from nemo_platform_plugin.auth.access_keys.types import (
+    AccessKeyCreateRequest,
+    AccessKeyCreateResponse,
+)
 from nemo_platform_plugin.client.errors import NemoHTTPError
 
 
@@ -35,6 +38,10 @@ def test_access_key_issuer_client_delegates_create_to_client() -> None:
         principal="alice@example.com",
         created_at=datetime(2026, 7, 28, 12, 0, tzinfo=UTC),
         expires_at=None,
+        description=None,
+        status="ACTIVE",
+        issuer="https://platform.example.com/apis/auth",
+        audiences=["nemo-platform-access-key"],
     )
     client = _AccessKeysClientStub()
     client.create_access_key.return_value.data.return_value = created
@@ -46,14 +53,13 @@ def test_access_key_issuer_client_delegates_create_to_client() -> None:
     client.create_access_key.assert_called_once_with(body=AccessKeyCreateRequest())
 
 
-def test_access_key_issuer_client_revokes_by_jti() -> None:
+def test_access_key_issuer_client_lists_requested_page() -> None:
     client = _AccessKeysClientStub()
-    client.revoke_access_key.return_value.data.return_value = None
-
     issuer = AccessKeyIssuerClient(client.as_client())
-    issuer.revoke("ak_example")
 
-    client.revoke_access_key.assert_called_once_with(jti="ak_example")
+    issuer.list(page=3, page_size=25)
+
+    client.list_access_keys.assert_called_once_with(query_params={"page": 3, "page_size": 25})
 
 
 def test_access_key_issuer_client_translates_http_501_to_domain_error() -> None:

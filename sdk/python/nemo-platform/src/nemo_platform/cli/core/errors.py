@@ -18,7 +18,6 @@ if typing.TYPE_CHECKING:
 
 REMOTE_ERROR_EXIT_CODE = 3
 
-
 class MissingRequiredFieldsError(Exception):
     """Raised when required fields are missing from CLI input."""
 
@@ -61,7 +60,7 @@ def _build_list_cmd(ctx: click.Context | None, prog: str) -> str | None:
     return " ".join([prog, *parts, "list"])
 
 
-def _format_api_error(error: APIError) -> str:
+def _format_api_error(error: object) -> str:
     """Extract a clean error message from an API error."""
     if hasattr(error, "body") and error.body is not None:
         if isinstance(error.body, dict):
@@ -72,13 +71,17 @@ def _format_api_error(error: APIError) -> str:
             message = body.get("message")
             if message:
                 return str(message)
-    if hasattr(error, "message") and error.message:
-        return error.message
+    message = getattr(error, "message", None)
+    if isinstance(message, str) and message:
+        return message
     return str(error)
 
 
-def _format_api_request(error: APIError) -> str | None:
+def _format_api_request(error: object) -> str | None:
     request = getattr(error, "request", None)
+    if request is None:
+        response = getattr(error, "http_response", None)
+        request = getattr(response, "request", None)
     method = getattr(request, "method", None)
     url = getattr(request, "url", None)
     if not isinstance(method, str) or not isinstance(url, (str, httpx.URL)):
@@ -86,8 +89,11 @@ def _format_api_request(error: APIError) -> str | None:
     return f"{method} {url}"
 
 
-def _format_api_target(error: APIError) -> str | None:
+def _format_api_target(error: object) -> str | None:
     request = getattr(error, "request", None)
+    if request is None:
+        response = getattr(error, "http_response", None)
+        request = getattr(response, "request", None)
     url = getattr(request, "url", None)
     if isinstance(url, str):
         try:
@@ -105,7 +111,7 @@ def _format_api_target(error: APIError) -> str | None:
     return f"route {path}"
 
 
-def _print_api_request_context(console, error: APIError) -> None:
+def _print_api_request_context(console, error: object) -> None:
     request = _format_api_request(error)
     if request:
         console.print(f"[bold]Request:[/] {request}")
@@ -171,6 +177,30 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
         PermissionDeniedError,
         RateLimitError,
     )
+    from nemo_platform_plugin.client.errors import (
+        AuthenticationError as PluginAuthenticationError,
+    )
+    from nemo_platform_plugin.client.errors import (
+        BadRequestError as PluginBadRequestError,
+    )
+    from nemo_platform_plugin.client.errors import (
+        ConflictError as PluginConflictError,
+    )
+    from nemo_platform_plugin.client.errors import (
+        InternalServerError as PluginInternalServerError,
+    )
+    from nemo_platform_plugin.client.errors import (
+        NemoHTTPError,
+    )
+    from nemo_platform_plugin.client.errors import (
+        NotFoundError as PluginNotFoundError,
+    )
+    from nemo_platform_plugin.client.errors import (
+        PermissionDeniedError as PluginPermissionDeniedError,
+    )
+    from nemo_platform_plugin.client.errors import (
+        RateLimitError as PluginRateLimitError,
+    )
 
     prog = "nemo"
 
@@ -235,40 +265,40 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
     if isinstance(error, typer.Exit):
         # Re-raise typer.Exit with its original exit code (don't treat Exit(0) as error)
         raise error
-    if isinstance(error, AuthenticationError):
+    if isinstance(error, (AuthenticationError, PluginAuthenticationError)):
         console.print(f"[bold red]Authentication error:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print(
             "[yellow]Hint:[/] Run [cyan]'nemo auth login'[/] or set the token manually "
             "with [cyan]nemo config set --access-token <token>[/], or use [cyan]NMP_ACCESS_TOKEN[/]."
         )
         raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
-    elif isinstance(error, PermissionDeniedError):
+    elif isinstance(error, (PermissionDeniedError, PluginPermissionDeniedError)):
         console.print(f"[bold red]Permission denied:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print(
             "[yellow]Hint:[/] Your current credentials do not have access to perform this operation. "
             "Contact your administrator to request access."
         )
         raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
-    elif isinstance(error, NotFoundError):
+    elif isinstance(error, (NotFoundError, PluginNotFoundError)):
         console.print(f"[bold red]Not found:[/] ({error.status_code}) {_format_api_error(error)}")
         _print_api_request_context(console, error)
         console.print(f"[yellow]Hint:[/] {_format_not_found_hint(ctx, prog)}")
         raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
-    elif isinstance(error, BadRequestError):
+    elif isinstance(error, (BadRequestError, PluginBadRequestError)):
         console.print(f"[bold red]Bad request:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print("[yellow]Hint:[/] Check your input values. Run with [cyan]--help[/] to see required options.")
         raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
-    elif isinstance(error, ConflictError):
+    elif isinstance(error, (ConflictError, PluginConflictError)):
         console.print(f"[bold red]Conflict:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print(
             "[yellow]Hint:[/] A resource with this name already exists. Try a different name or delete the existing one."
         )
         raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
-    elif isinstance(error, RateLimitError):
+    elif isinstance(error, (RateLimitError, PluginRateLimitError)):
         console.print(f"[bold red]Rate limit exceeded:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print("[yellow]Hint:[/] Too many requests. Wait a moment and try again.")
         raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
-    elif isinstance(error, InternalServerError):
+    elif isinstance(error, (InternalServerError, PluginInternalServerError)):
         formatted = _format_api_error(error)
         console.print(f"[bold red]Server error:[/] ({error.status_code}) {formatted}")
         list_cmd = _build_list_cmd(ctx, prog) if ("404" in formatted or "not found" in formatted.lower()) else None
@@ -289,7 +319,12 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
             "[yellow]Hint:[/] Check your network connection and verify that [cyan]base-url[/] you configured is correct."
         )
         raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
-    elif isinstance(error, APIStatusError):
+    elif isinstance(error, APITimeoutError):
+        console.print(f"[bold red]Timeout error:[/] {_format_api_error(error)}")
+        _print_api_request_context(console, error)
+        console.print("[yellow]Hint:[/] The request timed out. The server may be busy - try again later.")
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
+    elif isinstance(error, (APIStatusError, NemoHTTPError)):
         console.print(f"[bold red]API error:[/] ({error.status_code}) {_format_api_error(error)}")
         _print_api_request_context(console, error)
         raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)

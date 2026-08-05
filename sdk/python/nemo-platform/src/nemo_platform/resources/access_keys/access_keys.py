@@ -30,7 +30,7 @@ from ..._response import (
     async_to_streamed_response_wrapper,
 )
 from ..._base_client import make_request_options
-from ...types.access_keys import access_key_create_params
+from ...types.access_keys import access_key_create_params, access_key_list_params
 from ...types.access_keys.access_key_list_response import AccessKeyListResponse
 from ...types.access_keys.access_key_create_response import AccessKeyCreateResponse
 
@@ -107,6 +107,8 @@ class AccessKeysResource(SyncAPIResource):
     def list(
         self,
         *,
+        page: int | Omit = omit,
+        page_size: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -114,11 +116,32 @@ class AccessKeysResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AccessKeyListResponse:
-        """List Access Keys"""
+        """
+        List Access Keys
+
+        Args:
+          page: Page number to retrieve.
+
+          page_size: Number of keys to retrieve per page.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
         return self._get(
             "/apis/auth/v2/access-keys",
             options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                extra_headers=extra_headers,
+                extra_query=extra_query,
+                extra_body=extra_body,
+                timeout=timeout,
+                query=maybe_transform(
+                    {"page": page, "page_size": page_size}, access_key_list_params.AccessKeyListParams
+                ),
             ),
             cast_to=AccessKeyListResponse,
         )
@@ -227,6 +250,8 @@ class AsyncAccessKeysResource(AsyncAPIResource):
     async def list(
         self,
         *,
+        page: int | Omit = omit,
+        page_size: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -234,11 +259,32 @@ class AsyncAccessKeysResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AccessKeyListResponse:
-        """List Access Keys"""
+        """
+        List Access Keys
+
+        Args:
+          page: Page number to retrieve.
+
+          page_size: Number of keys to retrieve per page.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
         return await self._get(
             "/apis/auth/v2/access-keys",
             options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                extra_headers=extra_headers,
+                extra_query=extra_query,
+                extra_body=extra_body,
+                timeout=timeout,
+                query=await async_maybe_transform(
+                    {"page": page, "page_size": page_size}, access_key_list_params.AccessKeyListParams
+                ),
             ),
             cast_to=AccessKeyListResponse,
         )

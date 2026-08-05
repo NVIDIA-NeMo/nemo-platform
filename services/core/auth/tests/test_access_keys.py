@@ -1,19 +1,50 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_platform_plugin.auth.access_keys.issuer import AccessKeyOperationNotImplementedError
+from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateResponse
 from nmp.common.auth.client import AuthClient
 from nmp.common.auth.dependencies import auth_client_context
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig
 from nmp.common.config.base import AccessKeyConfig, TokenSigningConfig
 from nmp.core.auth.api.v2.access_keys.endpoints import get_access_key_issuer, router
+from nmp.core.auth.app.access_keys import get_access_key_registry
 
+
+class InMemoryAccessKeyRegistry:
+    def __init__(self):
+        self.keys = {}
+
+    async def add(self, key):
+        self.keys[key.jti] = key
+
+    def _status(self, key):
+        if key.expires_at is not None and key.expires_at <= datetime.now(tz=UTC):
+            return "EXPIRED"
+        return key.status
+
+    async def list_for_principal(self, principal, *, page, page_size):
+        from nemo_platform_plugin.auth.access_keys.types import AccessKeyListResponse, AccessKeyMetadataResponse
+
+        owned = [(jti, key) for jti, key in self.keys.items() if key.principal == principal]
+        start = (page - 1) * page_size
+        selected = owned[start : start + page_size]
+        return AccessKeyListResponse(
+            data=[
+                AccessKeyMetadataResponse.model_validate(
+                    key.model_dump(exclude={"token", "token_type"}) | {"status": self._status(key)}
+                )
+                for jti, key in selected
+            ],
+            has_more=start + page_size < len(owned),
+        )
 
 @pytest.fixture
 def client(tmp_path):
@@ -44,6 +75,8 @@ def client(tmp_path):
 
     app = FastAPI()
     app.include_router(router)
+    registry = InMemoryAccessKeyRegistry()
+    app.dependency_overrides[get_access_key_registry] = lambda: registry
 
     token = auth_client_context.set(
         AuthClient(
@@ -61,6 +94,7 @@ def disabled_client():
     config = AuthConfig(enabled=True, access_keys=AccessKeyConfig())
     app = FastAPI()
     app.include_router(router)
+    app.dependency_overrides[get_access_key_registry] = lambda: InMemoryAccessKeyRegistry()
     token = auth_client_context.set(
         AuthClient(
             principal=Principal(id="alice@example.com", email="alice@example.com", groups=["team-ml"]),
@@ -73,16 +107,48 @@ def disabled_client():
 
 
 def test_create_access_key_returns_token_for_current_principal(client):
-    response = client.post("/v2/access-keys", json={"name": "gtc-intake", "expires_in_seconds": 3600})
+    response = client.post(
+        "/v2/access-keys",
+        json={
+            "name": "gtc-intake",
+            "description": "GTC intake automation",
+            "expires_in_seconds": 3600,
+        },
+    )
 
     assert response.status_code == 200
     body = response.json()
     assert body["jti"].startswith("ak_")
     assert body["name"] == "gtc-intake"
+    assert body["description"] == "GTC intake automation"
     assert body["token_type"] == "Bearer"
     assert body["principal"] == "alice@example.com"
     assert body["expires_at"] is not None
     assert body["token"].count(".") == 2
+
+
+@pytest.mark.asyncio
+async def test_in_memory_access_key_registry_reports_expired_status() -> None:
+    registry = InMemoryAccessKeyRegistry()
+    await registry.add(
+        AccessKeyCreateResponse(
+            jti="ak_expired",
+            name="expired-key",
+            token="signed.jwt.token",
+            token_type="Bearer",
+            principal="alice@example.com",
+            created_at=datetime.now(tz=UTC) - timedelta(hours=2),
+            expires_at=datetime.now(tz=UTC) - timedelta(hours=1),
+            description=None,
+            status="ACTIVE",
+            issuer="http://testserver/apis/auth",
+            audiences=["nemo-platform-access-key"],
+        )
+    )
+
+    result = await registry.list_for_principal("alice@example.com", page=1, page_size=100)
+
+    assert result.data[0].status == "EXPIRED"
 
 
 def test_create_access_key_allows_unnamed_tokens(client):
@@ -189,8 +255,31 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
     assert create_responses["501"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccessKeyNotImplementedErrorResponse"
     }
+    request_schema = openapi["components"]["schemas"]["AccessKeyCreateRequest"]
+    assert request_schema["properties"]["name"]["nullable"] is True
+    assert request_schema["properties"]["description"]["nullable"] is True
+    assert request_schema["properties"]["expires_in_seconds"]["nullable"] is True
+    metadata_schema = openapi["components"]["schemas"]["AccessKeyMetadataResponse"]
+    assert metadata_schema["properties"]["name"]["nullable"] is True
+    assert metadata_schema["properties"]["description"]["nullable"] is True
+    assert metadata_schema["properties"]["audiences"]["uniqueItems"] is True
+    assert metadata_schema["properties"]["expires_at"]["nullable"] is True
+    create_response_schema = openapi["components"]["schemas"]["AccessKeyCreateResponse"]
+    assert create_response_schema["properties"]["audiences"]["uniqueItems"] is True
+    list_schema = openapi["components"]["schemas"]["AccessKeyListResponse"]
+    assert list_schema["properties"]["has_more"]["default"] is False
 
-    list_responses = openapi["paths"]["/v2/access-keys"]["get"]["responses"]
+    list_operation = openapi["paths"]["/v2/access-keys"]["get"]
+    list_parameters = {parameter["name"]: parameter for parameter in list_operation["parameters"]}
+    assert list_parameters["page"]["schema"] == {"type": "integer", "minimum": 1, "default": 1, "title": "Page"}
+    assert list_parameters["page_size"]["schema"] == {
+        "type": "integer",
+        "maximum": 100,
+        "minimum": 1,
+        "default": 100,
+        "title": "Page Size",
+    }
+    list_responses = list_operation["responses"]
     assert list_responses["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccessKeyListResponse"
     }
@@ -215,15 +304,41 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
     }
 
 
-def test_list_access_keys_is_explicitly_not_implemented(client):
+def test_list_access_keys_returns_current_principals_persisted_keys(client):
+    created = client.post(
+        "/v2/access-keys",
+        json={"name": "gtc-intake", "description": "GTC intake automation"},
+    ).json()
+
     response = client.get("/v2/access-keys")
 
-    assert response.status_code == 501
-    assert response.json()["detail"] == "Scoped Access Key listing is not implemented."
+    assert response.status_code == 200
+    assert response.json()["data"] == [
+        {
+            "jti": created["jti"],
+            "name": "gtc-intake",
+            "principal": "alice@example.com",
+            "created_at": created["created_at"],
+            "expires_at": created["expires_at"],
+            "description": "GTC intake automation",
+            "status": "ACTIVE",
+            "issuer": "http://testserver/apis/auth",
+            "audiences": ["nemo-platform-access-key"],
+        }
+    ]
+    assert response.json()["has_more"] is False
 
 
-def test_revoke_access_key_is_explicitly_not_implemented(client):
-    response = client.delete("/v2/access-keys/ak_example")
+def test_list_access_keys_supports_pagination(client):
+    first = client.post("/v2/access-keys", json={"name": "first"}).json()
+    second = client.post("/v2/access-keys", json={"name": "second"}).json()
 
-    assert response.status_code == 501
-    assert response.json()["detail"] == "Scoped Access Key revocation for ak_example is not implemented."
+    first_page = client.get("/v2/access-keys", params={"page": 1, "page_size": 1})
+    second_page = client.get("/v2/access-keys", params={"page": 2, "page_size": 1})
+
+    assert first_page.status_code == 200
+    assert [key["jti"] for key in first_page.json()["data"]] == [first["jti"]]
+    assert first_page.json()["has_more"] is True
+    assert second_page.status_code == 200
+    assert [key["jti"] for key in second_page.json()["data"]] == [second["jti"]]
+    assert second_page.json()["has_more"] is False

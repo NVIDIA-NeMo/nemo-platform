@@ -275,19 +275,30 @@ def test_access_key_issuer_service_stamps_current_principal(tmp_path):
     principal = Principal(id="alice@example.com", email="alice@example.com", groups=["team-ml"])
     issuer = AccessKeyIssuerService(config=config, principal=principal, now=lambda: 1785280000)
 
-    created = issuer.create(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=600))
+    created = issuer.create(
+        AccessKeyCreateRequest(
+            name="gtc-intake",
+            description="GTC intake automation",
+            expires_in_seconds=600,
+        )
+    )
     unverified = jwt.decode(created.token, options={"verify_signature": False})
 
     assert created.jti.startswith("ak_")
     assert created.name == "gtc-intake"
+    assert created.description == "GTC intake automation"
     assert created.principal == "alice@example.com"
     assert created.expires_at == datetime.fromtimestamp(1785280600, tz=UTC)
     assert unverified["jti"] == created.jti
     assert unverified["sub"] == "alice@example.com"
     assert unverified["email"] == "alice@example.com"
     assert unverified["groups"] == "team-ml"
+    assert unverified["aud"] == "nemo-platform-access-key"
     assert unverified["nmp_token_type"] == ACCESS_KEY_TOKEN_TYPE
-    assert unverified["nmp_access_key"] == {"version": 1, "name": "gtc-intake"}
+    assert unverified["nmp_access_key"] == {
+        "version": 2,
+        "name": "gtc-intake",
+    }
     assert unverified["exp"] == 1785280600
 
 
@@ -316,7 +327,7 @@ def test_access_key_issuer_service_allows_unnamed_tokens(tmp_path):
     assert created.jti.startswith("ak_")
     assert created.name is None
     assert unverified["jti"] == created.jti
-    assert unverified["nmp_access_key"] == {"version": 1}
+    assert unverified["nmp_access_key"] == {"version": 2}
     assert unverified["exp"] == 1785280600
 
 

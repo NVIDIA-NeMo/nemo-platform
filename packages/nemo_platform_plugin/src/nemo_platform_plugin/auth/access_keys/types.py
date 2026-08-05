@@ -4,9 +4,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
+
+AccessKeyStatus = Literal["ACTIVE", "EXPIRED", "REVOKED"]
+
+
+class AccessKeyListQueryParams(TypedDict, total=False):
+    """Pagination parameters for Scoped Access Key listing."""
+
+    page: int
+    page_size: int
 
 
 class AccessKeyCreateRequest(BaseModel):
@@ -16,11 +25,19 @@ class AccessKeyCreateRequest(BaseModel):
         default=None,
         min_length=1,
         max_length=128,
+        json_schema_extra={"nullable": True},
         description="Optional human-readable Scoped Access Key label. The token jti remains the stable identifier.",
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=1024,
+        json_schema_extra={"nullable": True},
+        description="Optional human-readable description of the Scoped Access Key.",
     )
     expires_in_seconds: int | None = Field(
         default=None,
         ge=1,
+        json_schema_extra={"nullable": True},
         description=(
             "Scoped Access Key lifetime in seconds. Omit to use "
             "auth.access_keys.default_expires_in_seconds. Send explicit null to request "
@@ -34,10 +51,25 @@ class AccessKeyMetadataResponse(BaseModel):
     """Metadata for a Scoped Access Key."""
 
     jti: str = Field(description="Stable JWT ID for this Scoped Access Key.")
-    name: str | None = Field(default=None, description="Optional human-readable Scoped Access Key label.")
+    name: str | None = Field(
+        default=None,
+        json_schema_extra={"nullable": True},
+        description="Optional human-readable Scoped Access Key label.",
+    )
+    description: str | None = Field(
+        default=None,
+        json_schema_extra={"nullable": True},
+        description="Human-readable description of the Scoped Access Key.",
+    )
     principal: str = Field(description="Principal ID stamped into the token.")
+    status: AccessKeyStatus
+    issuer: str = Field(description="Issuer stamped into the Scoped Access Key JWT.")
+    audiences: list[str] = Field(
+        description="Audiences accepted for the Scoped Access Key JWT.",
+        json_schema_extra={"uniqueItems": True},
+    )
     created_at: datetime
-    expires_at: datetime | None = None
+    expires_at: datetime | None = Field(default=None, json_schema_extra={"nullable": True})
 
 
 class AccessKeyCreateResponse(AccessKeyMetadataResponse):
@@ -51,6 +83,10 @@ class AccessKeyListResponse(BaseModel):
     """List response for Scoped Access Key metadata."""
 
     data: list[AccessKeyMetadataResponse]
+    has_more: bool = Field(
+        default=False,
+        description="True when another page of keys is available.",
+    )
 
 
 class AccessKeyAuthenticateResponse(BaseModel):

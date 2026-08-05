@@ -172,6 +172,24 @@ paths:
       - Scoped Access Keys
       summary: List Access Keys
       operationId: list_access_keys_apis_auth_v2_access_keys_get
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 100
+          title: Page Size
       responses:
         '200':
           description: Successful Response
@@ -8000,6 +8018,11 @@ components:
             $ref: '#/components/schemas/AccessKeyMetadataResponse'
           type: array
           title: Data
+        has_more:
+          type: boolean
+          title: Has More
+          description: True when another page of keys is available.
+          default: false
       type: object
       required:
       - data

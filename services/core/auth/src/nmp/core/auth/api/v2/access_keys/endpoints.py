@@ -5,15 +5,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from nemo_platform_plugin.auth.access_keys.issuer import (
     AccessKeyFeatureDisabledError,
-    AccessKeyIssuer,
     AccessKeyOperationNotImplementedError,
 )
 from nmp.common.auth import AuthClient, get_auth_client
-from nmp.common.auth.access_keys import AccessKeyIssuerService
 from nmp.common.config import get_auth_config
+from nmp.core.auth.app.access_keys import (
+    AccessKeyRegistry,
+    PersistentAccessKeyIssuer,
+    get_access_key_registry,
+)
 
 from . import schemas
 
@@ -41,8 +44,11 @@ _ACCESS_KEY_LIFECYCLE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-def get_access_key_issuer(auth_client: AuthClient = Depends(get_auth_client)) -> AccessKeyIssuerService:
-    return AccessKeyIssuerService(config=get_auth_config(), principal=auth_client.principal)
+def get_access_key_issuer(
+    auth_client: AuthClient = Depends(get_auth_client),
+    registry: AccessKeyRegistry = Depends(get_access_key_registry),
+) -> PersistentAccessKeyIssuer:
+    return PersistentAccessKeyIssuer(get_auth_config(), auth_client.principal, registry)
 
 
 def _not_implemented(exc: AccessKeyOperationNotImplementedError) -> HTTPException:
@@ -60,7 +66,7 @@ def _disabled(exc: AccessKeyFeatureDisabledError) -> HTTPException:
 )
 async def create_access_key(
     request: schemas.AccessKeyCreateRequest,
-    issuer: AccessKeyIssuerService = Depends(get_access_key_issuer),
+    issuer: PersistentAccessKeyIssuer = Depends(get_access_key_issuer),
 ) -> schemas.AccessKeyCreateResponse:
     try:
         return await issuer.create_async(request)
@@ -77,9 +83,13 @@ async def create_access_key(
     response_model=schemas.AccessKeyListResponse,
     responses=_ACCESS_KEY_LIFECYCLE_ERROR_RESPONSES,
 )
-async def list_access_keys(issuer: AccessKeyIssuer = Depends(get_access_key_issuer)) -> schemas.AccessKeyListResponse:
+async def list_access_keys(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=100),
+    issuer: PersistentAccessKeyIssuer = Depends(get_access_key_issuer),
+) -> schemas.AccessKeyListResponse:
     try:
-        return issuer.list()
+        return await issuer.list_async(page=page, page_size=page_size)
     except AccessKeyFeatureDisabledError as exc:
         raise _disabled(exc) from exc
     except AccessKeyOperationNotImplementedError as exc:
@@ -87,7 +97,7 @@ async def list_access_keys(issuer: AccessKeyIssuer = Depends(get_access_key_issu
 
 
 @router.delete("/v2/access-keys/{jti}", responses=_ACCESS_KEY_LIFECYCLE_ERROR_RESPONSES)
-async def revoke_access_key(jti: str, issuer: AccessKeyIssuer = Depends(get_access_key_issuer)) -> None:
+async def revoke_access_key(jti: str, issuer: PersistentAccessKeyIssuer = Depends(get_access_key_issuer)) -> None:
     try:
         issuer.revoke(jti)
     except AccessKeyFeatureDisabledError as exc:

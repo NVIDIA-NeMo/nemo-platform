@@ -46,9 +46,9 @@ class AccessKeyIssuerClient(AccessKeyIssuer):
             _raise_domain_error_from_http(exc)
             raise
 
-    def list(self) -> AccessKeyListResponse:
+    def list(self, *, page: int = 1, page_size: int = 100) -> AccessKeyListResponse:
         try:
-            return self._client.list_access_keys().data()
+            return self._client.list_access_keys(query_params={"page": page, "page_size": page_size}).data()
         except NemoHTTPError as exc:
             _raise_domain_error_from_http(exc)
             raise

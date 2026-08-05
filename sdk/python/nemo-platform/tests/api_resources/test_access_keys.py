@@ -77,6 +77,12 @@ class TestAccessKeys:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
+    def test_method_list_with_all_params(self, client: NeMoPlatform) -> None:
+        access_key = client.access_keys.list(page=2, page_size=25)
+        assert_matches_type(AccessKeyListResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
     def test_raw_response_list(self, client: NeMoPlatform) -> None:
         response = client.access_keys.with_raw_response.list()
 
@@ -186,6 +192,12 @@ class TestAsyncAccessKeys:
     @parametrize
     async def test_method_list(self, async_client: AsyncNeMoPlatform) -> None:
         access_key = await async_client.access_keys.list()
+        assert_matches_type(AccessKeyListResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_list_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
+        access_key = await async_client.access_keys.list(page=2, page_size=25)
         assert_matches_type(AccessKeyListResponse, access_key, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
