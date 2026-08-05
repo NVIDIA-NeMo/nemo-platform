@@ -117,7 +117,14 @@ const resolveSynthetic = (entity: AnonymizerEntity, lookups: SyntheticLookups): 
   );
 };
 
-/** Searches forward for each synthetic value; replaying offsets drifts when lengths change. */
+/** Text between entities is untouched, so the gap since the last match predicts this one. */
+const locate = (text: string, needle: string, expected: number, searchFrom: number): number => {
+  if (!needle) return -1;
+  if (expected >= searchFrom && text.startsWith(needle, expected)) return expected;
+  return text.indexOf(needle, searchFrom);
+};
+
+/** Aligns each span through the unchanged gap, then falls back to a forward search. */
 export const buildReplacedEntities = (
   originalEntities: readonly AnonymizerEntity[],
   replacements: readonly EntityReplacement[],
@@ -133,11 +140,12 @@ export const buildReplacedEntities = (
     const { start, end, label } = entity;
     if (start < originalCursor || end <= start || end > originalText.length) continue;
 
+    const expected = searchFrom + (start - originalCursor);
     const originalSpan = originalText.slice(start, end);
     let synthetic = resolveSynthetic(entity, lookups);
-    let position = synthetic ? replacedText.indexOf(synthetic, searchFrom) : -1;
+    let position = locate(replacedText, synthetic, expected, searchFrom);
     if (position < 0 && synthetic !== originalSpan) {
-      position = replacedText.indexOf(originalSpan, searchFrom);
+      position = locate(replacedText, originalSpan, expected, searchFrom);
       if (position >= 0) synthetic = originalSpan;
     }
 

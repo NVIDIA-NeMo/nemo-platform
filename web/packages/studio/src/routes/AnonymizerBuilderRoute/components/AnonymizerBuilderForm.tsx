@@ -96,16 +96,21 @@ export const AnonymizerBuilderForm: FC = () => {
   const getPreviewRequest = useCallback(
     () =>
       new Promise<PreviewRequest | undefined>((resolve) => {
-        void form.handleSubmit(
-          (values) => {
-            setSubmitError(undefined);
-            resolve(buildAnonymizerPreviewRequest(values, defaultEntityLabels?.data ?? []));
-          },
-          (errors) => {
-            showValidationErrors(errors);
+        form
+          .handleSubmit(
+            (values) => {
+              setSubmitError(undefined);
+              resolve(buildAnonymizerPreviewRequest(values, defaultEntityLabels?.data ?? []));
+            },
+            (errors) => {
+              showValidationErrors(errors);
+              resolve(undefined);
+            }
+          )()
+          .catch(() => {
+            setSubmitError(INCOMPLETE_FORM_MESSAGE);
             resolve(undefined);
-          }
-        )();
+          });
       }),
     [form, defaultEntityLabels, showValidationErrors]
   );

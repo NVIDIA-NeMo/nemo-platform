@@ -54,6 +54,7 @@ export const useAnonymizerPreview = ({
   const [hasRun, setHasRun] = useState(false);
   const [wasStopped, setWasStopped] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const runIdRef = useRef(0);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -64,25 +65,21 @@ export const useAnonymizerPreview = ({
   }, []);
 
   const runPreview = useCallback(async () => {
-    const request = await getRequest();
-    if (!request) return;
-
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-
-    setResult(EMPTY_RESULT);
-    setLogs([]);
-    setError(undefined);
-    setHasRun(true);
-    setWasStopped(false);
-    setIsPreviewing(true);
+    const runId = ++runIdRef.current;
+    const isCurrent = (): boolean => runIdRef.current === runId;
 
     const onFrame = (frame: PreviewFrame) => {
+      if (!isCurrent()) return;
       switch (frame.kind) {
         case 'log':
           // One frame per read is too far apart for React to batch; keeps Stop responsive.
-          startTransition(() => setLogs((prev) => [...prev, frame.message]));
+          startTransition(() => {
+            if (!isCurrent()) return;
+            setLogs((prev) => [...prev, frame.message]);
+          });
           break;
         case 'trace_dataset':
           setResult((prev) => ({
@@ -103,9 +100,23 @@ export const useAnonymizerPreview = ({
     };
 
     try {
+      const request = await getRequest();
+      if (!isCurrent()) return;
+      if (!request) {
+        abortRef.current = null;
+        return;
+      }
+
+      setResult(EMPTY_RESULT);
+      setLogs([]);
+      setError(undefined);
+      setHasRun(true);
+      setWasStopped(false);
+      setIsPreviewing(true);
+
       await streamAnonymizerPreview(workspace, request, accessToken, controller.signal, onFrame);
     } catch (err) {
-      if (isAbortError(err)) return;
+      if (isAbortError(err) || !isCurrent()) return;
       setError((err instanceof Error && err.message) || 'The preview run failed.');
     } finally {
       if (abortRef.current === controller) {

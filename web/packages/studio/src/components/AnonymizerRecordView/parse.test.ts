@@ -122,6 +122,16 @@ describe('buildReplacedEntities', () => {
     ]);
   });
 
+  it('skips an identical literal that the replacement did not produce', () => {
+    const source = 'Teddy met Bobby';
+    const output = 'Teddy met Teddy';
+    const bobby = [{ value: 'Bobby', label: 'first_name', start: 10, end: 15 }];
+
+    expect(buildReplacedEntities(bobby, replacements, source, output)).toEqual([
+      { value: 'Teddy', label: 'first_name', start: 10, end: 15 },
+    ]);
+  });
+
   it('matches case-insensitively when the map key differs in case', () => {
     const mixedCase = [{ original: 'bobby', label: 'first_name', synthetic: 'Teddy' }];
     expect(buildReplacedEntities([entities[0]], mixedCase, ORIGINAL, REPLACED)).toEqual([
