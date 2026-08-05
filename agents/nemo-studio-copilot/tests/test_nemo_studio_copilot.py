@@ -187,6 +187,7 @@ class TestNemoApiTool:
     def test_sdk_prefers_agent_base_url_override(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://platform-gateway:8080")
         monkeypatch.setenv("NEMO_BASE_URL", "http://127.0.0.1:8090")
+        monkeypatch.delenv("NMP_WORKSPACE", raising=False)
 
         with (
             patch("nemo_studio_copilot.register._client", None),
