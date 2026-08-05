@@ -73,15 +73,18 @@ def _resolve_harbor_output_dir(path: Path) -> tuple[Path, Path]:
         run_dir = candidate.parent.parent if candidate.parent.name == "results" else candidate
     else:
         jobs_dir = candidate / "results"
-        job_dirs = [
-            child
-            for child in jobs_dir.iterdir()
-            if child.is_dir() and any(trial.is_dir() and (trial / "result.json").is_file() for trial in child.iterdir())
-        ] if jobs_dir.is_dir() else []
+        job_dirs = (
+            [
+                child
+                for child in jobs_dir.iterdir()
+                if child.is_dir()
+                and any(trial.is_dir() and (trial / "result.json").is_file() for trial in child.iterdir())
+            ]
+            if jobs_dir.is_dir()
+            else []
+        )
         if len(job_dirs) != 1:
-            raise ValueError(
-                f"{candidate} is not a Harbor output directory with exactly one job under results/"
-            )
+            raise ValueError(f"{candidate} is not a Harbor output directory with exactly one job under results/")
         job_dir = job_dirs[0]
         run_dir = candidate
 
