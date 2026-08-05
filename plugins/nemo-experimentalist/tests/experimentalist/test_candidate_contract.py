@@ -316,7 +316,7 @@ async def test_a_cancelled_build_unwinds_the_round_rather_than_being_dropped(tmp
     import asyncio
 
     from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-    from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
     class _CancellingBuilder:
         accepts = frozenset({"code-change"})
@@ -324,7 +324,7 @@ async def test_a_cancelled_build_unwinds_the_round_rather_than_being_dropped(tmp
         async def build(self, ctx: object, proposal: Proposal, *, generation: int) -> None:
             raise asyncio.CancelledError
 
-    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer = object.__new__(EvolutionaryStrategy)
     optimizer.working_dir = tmp_path
     optimizer._framework_skills_dirs = []
     optimizer._models = None

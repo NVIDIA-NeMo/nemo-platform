@@ -14,11 +14,11 @@ import json
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.experimentalist.components.terminator import (
     TerminationDecision,
     Terminator,
 )
+from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 
@@ -141,26 +141,14 @@ async def test_assess_convergence_no_prior_analysis_does_not_stop() -> None:
     assert decision == TerminationDecision(stop=False)
 
 
-async def test_assess_convergence_disabled_does_not_stop() -> None:
-    term = _terminator()
-    config = EvolutionaryOptimizerConfig(disable_convergence_check=True)
-    # A tree that WOULD converge — proves the disable flag short-circuits first.
-    tree = _tree(
-        _FakeNode("a0", 0, {"score": 0.9}),
-        _FakeNode("a1", 1, {"score": 0.5}),
-        _FakeNode("a2", 2, {"score": 0.6}),
-    )
-    decision = await term.assess_convergence(
-        evolution_tree=tree,
-        prior_analysis="some analysis",
-        config=config,
-    )
-    assert decision == TerminationDecision(stop=False)
+async def test_no_terminator_selected_means_the_round_budget_is_the_only_rule() -> None:
+    """Turning a step off is the degenerate case of choosing a different implementation.
 
-
-# ---------------------------------------------------------------------------
-# _has_converged deterministic paths
-# ---------------------------------------------------------------------------
+    There is no disable flag to short-circuit: a run that should stop only on max_rounds
+    selects no terminator, and the loop never resolves one.
+    """
+    assert EvolutionaryOptimizerConfig(terminator=None).terminator is None
+    assert EvolutionaryOptimizerConfig().terminator == "convergence"
 
 
 async def test_has_converged_false_when_too_few_rounds() -> None:

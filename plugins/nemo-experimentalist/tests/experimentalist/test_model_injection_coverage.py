@@ -15,7 +15,7 @@ import ast
 import pathlib
 
 COMPONENTS = {"Coder", "AgentAnalyzer", "Proposer", "Terminator", "GoalTreeGenerator", "GroupLeafScorer"}
-SOURCES = ("components/loop.py", "components/analyzer.py")
+SOURCES = ("strategies/evolutionary.py", "components/analyzer.py")
 
 
 def test_no_component_construction_omits_the_runs_model_tiers() -> None:

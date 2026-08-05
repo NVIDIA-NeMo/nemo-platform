@@ -26,9 +26,9 @@ from nemo_experimentalist_plugin.experimentalist.components.insight_promotion im
     write_insight_comparison_section,
     write_insight_promotion_section,
 )
-from nemo_experimentalist_plugin.experimentalist.components.loop import AnalysisSkill, EvolutionaryOptimizer
 from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree
 from nemo_experimentalist_plugin.experimentalist.runner import _render_summary as render_summary
+from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import AnalysisSkill, EvolutionaryStrategy
 
 _SUITE_IDENTITY = f"sha256:{'a' * 64}"
 _SUITE_PATH = Path("/experiment/eval-and-optimize/eval_author/insight-1/insight-suite")
@@ -97,7 +97,7 @@ def _insight_dataset(tasks: list[Task]) -> Dataset:
 
 def test_round_analysis_contract_requires_separate_insight_suite_dimensions() -> None:
     skill_prompt = " ".join((AnalysisSkill.__doc__ or "").split())
-    merge_prompt = " ".join((EvolutionaryOptimizer.merge_analysis.__doc__ or "").split())
+    merge_prompt = " ".join((EvolutionaryStrategy.merge_analysis.__doc__ or "").split())
 
     assert "Insight Suite Reward" in skill_prompt
     assert "candidate.rewards" in skill_prompt
@@ -111,7 +111,7 @@ def test_round_analysis_contract_requires_separate_insight_suite_dimensions() ->
 
 
 def test_final_report_contract_requires_baseline_winner_insight_comparison() -> None:
-    report_prompt = " ".join((EvolutionaryOptimizer.write_final_report.__doc__ or "").split())
+    report_prompt = " ".join((EvolutionaryStrategy.write_final_report.__doc__ or "").split())
 
     assert "Insight Suite Metrics table" in report_prompt
     assert "baseline, winner, and signed delta columns" in report_prompt
@@ -521,18 +521,18 @@ async def test_finalize_returns_the_winner_when_its_label_is_not_its_id() -> Non
     assert baseline.id != baseline.label  # a real run's ids are UUIDs
     tree = EvolutionTree.from_candidates([baseline, loser])
 
-    optimizer = object.__new__(EvolutionaryOptimizer)
-    original = EvolutionaryOptimizer.write_final_report
+    optimizer = object.__new__(EvolutionaryStrategy)
+    original = EvolutionaryStrategy.write_final_report
     reports: list[str] = []
 
-    async def _record_report(self: EvolutionaryOptimizer, best_agent_id: str) -> None:
+    async def _record_report(self: EvolutionaryStrategy, best_agent_id: str) -> None:
         reports.append(best_agent_id)
 
-    type.__setattr__(EvolutionaryOptimizer, "write_final_report", _record_report)
+    type.__setattr__(EvolutionaryStrategy, "write_final_report", _record_report)
     try:
         winner = await optimizer._finalize(evolution_tree=tree, selector=_selector())
     finally:
-        type.__setattr__(EvolutionaryOptimizer, "write_final_report", original)
+        type.__setattr__(EvolutionaryStrategy, "write_final_report", original)
 
     assert winner is baseline
     assert tree.nodes[baseline.id].is_best

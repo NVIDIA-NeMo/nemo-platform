@@ -238,13 +238,13 @@ async def test_a_round_zero_resume_records_no_baseline_reward_and_does_not_raise
     and failed the run on restart.
     """
     from doubles import FakeBackend, make_context
-    from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
     baseline = await _import_baseline(ctx)
     await ctx.record_reward(baseline, channel="validation", result=RewardRecord(metrics={"reward": 0.4}))
 
-    await EvolutionaryOptimizer._record_baseline_validation(ctx=ctx, baseline=baseline, results={})
+    await EvolutionaryStrategy._record_baseline_validation(ctx=ctx, baseline=baseline, results={})
 
     (stored,) = await ctx.candidates()
     assert stored.rewards["validation"].metrics == {"reward": 0.4}, "the earlier measurement must survive"

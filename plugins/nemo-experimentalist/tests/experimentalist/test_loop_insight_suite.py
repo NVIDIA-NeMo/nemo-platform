@@ -20,10 +20,10 @@ from nemo_experimentalist_plugin.entities import (
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorConfig
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborEvaluatorConfig
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
+from nemo_experimentalist_plugin.experimentalist.strategies import evolutionary as loop_module
+from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
 
 class _StopAfterOneRound(Exception):
@@ -99,7 +99,7 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
     insight_evaluations: list[tuple[Dataset, list[Candidate]]] = []
 
     async def evaluate_insight_candidates(
-        self: EvolutionaryOptimizer,
+        self: EvolutionaryStrategy,
         *,
         ctx: object,
         dataset: Dataset,
@@ -109,7 +109,7 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
         return {candidate.label: insight_results[candidate.label] for candidate in candidates}
 
     async def evaluate_validation_candidates(
-        self: EvolutionaryOptimizer,
+        self: EvolutionaryStrategy,
         *,
         candidates: list[Candidate],
         **kwargs: object,
@@ -125,36 +125,51 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
 
     evolution_tree = SimpleNamespace(survivors=lambda round_num: [baseline], add=lambda candidate: None)
 
-    class StopAfterOneRoundTerminator:
+    # Registered rather than attached, because the loop resolves its terminator by name.
+    # Swapping one out is what a config change buys, so the test does it that way too.
+    from nemo_experimentalist_plugin.experimentalist.registry import Component
+    from nemo_experimentalist_plugin.experimentalist.roles import Terminator
+
+    class StopAfterOneRoundTerminator(Terminator):
+        name = "stop-after-one-round-for-test"
         calls = 0
 
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
         async def run(self, **kwargs: object) -> SimpleNamespace:
-            self.calls += 1
-            if self.calls > 1:
+            type(self).calls += 1
+            if type(self).calls > 1:
                 raise _StopAfterOneRound
             return SimpleNamespace(stop=False, reason="continue")
 
-    monkeypatch.setattr(loop_module.EvolutionTree, "from_candidates", lambda candidates: evolution_tree)
-    monkeypatch.setattr(EvolutionaryOptimizer, "_detect_last_round", lambda self: None)
-    monkeypatch.setattr(EvolutionaryOptimizer, "_create_baseline_agent", AsyncMock(return_value=baseline))
     monkeypatch.setattr(
-        EvolutionaryOptimizer,
+        Component,
+        "_registry",
+        {**Component._registry, ("terminator", "stop-after-one-round-for-test"): StopAfterOneRoundTerminator},
+    )
+
+    monkeypatch.setattr(loop_module.EvolutionTree, "from_candidates", lambda candidates: evolution_tree)
+    monkeypatch.setattr(EvolutionaryStrategy, "_detect_last_round", lambda self: None)
+    monkeypatch.setattr(EvolutionaryStrategy, "_create_baseline_agent", AsyncMock(return_value=baseline))
+    monkeypatch.setattr(
+        EvolutionaryStrategy,
         "_build_candidates",
         AsyncMock(return_value=[new_candidate]),
     )
     monkeypatch.setattr(
-        EvolutionaryOptimizer,
+        EvolutionaryStrategy,
         "_evaluate_validation_candidates",
         evaluate_validation_candidates,
     )
     monkeypatch.setattr(
-        EvolutionaryOptimizer,
+        EvolutionaryStrategy,
         "_evaluate_insight_candidates",
         evaluate_insight_candidates,
     )
-    monkeypatch.setattr(EvolutionaryOptimizer, "_generate_initial_goal_tree", AsyncMock())
+    monkeypatch.setattr(EvolutionaryStrategy, "_generate_initial_goal_tree", AsyncMock())
     monkeypatch.setattr(
-        EvolutionaryOptimizer,
+        EvolutionaryStrategy,
         "_evaluate_train_candidates",
         AsyncMock(
             return_value={
@@ -162,15 +177,15 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
             }
         ),
     )
-    monkeypatch.setattr(EvolutionaryOptimizer, "_analyze_round", AsyncMock(return_value="round analysis"))
-    monkeypatch.setattr(EvolutionaryOptimizer, "_update_goal_tree", AsyncMock())
-    monkeypatch.setattr(EvolutionaryOptimizer, "_propose_improvements", AsyncMock(return_value=[object()]))
+    monkeypatch.setattr(EvolutionaryStrategy, "_analyze_round", AsyncMock(return_value="round analysis"))
+    monkeypatch.setattr(EvolutionaryStrategy, "_update_goal_tree", AsyncMock())
+    monkeypatch.setattr(EvolutionaryStrategy, "_propose_improvements", AsyncMock(return_value=[object()]))
 
-    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer = object.__new__(EvolutionaryStrategy)
     optimizer.working_dir = tmp_path
-    optimizer.config = EvolutionaryOptimizerConfig(disable_trajectory_scoring=True)
+    optimizer.config = EvolutionaryOptimizerConfig(trajectory_scorer=None, terminator="stop-after-one-round-for-test")
+    optimizer._models = None
     optimizer.shell = SimpleNamespace(close=AsyncMock())
-    optimizer.terminator = StopAfterOneRoundTerminator()
     backend = FakeBackend()
     ctx = make_context(
         root=tmp_path,
@@ -236,8 +251,8 @@ async def test_insight_evaluation_skips_cached_candidates_and_empty_suites(
     )
     result = _insight_result("agent-1", 1.0)
     evaluate_agent = AsyncMock(return_value=(pending, result))
-    monkeypatch.setattr(EvolutionaryOptimizer, "_evaluate_agent", evaluate_agent)
-    optimizer = object.__new__(EvolutionaryOptimizer)
+    monkeypatch.setattr(EvolutionaryStrategy, "_evaluate_agent", evaluate_agent)
+    optimizer = object.__new__(EvolutionaryStrategy)
 
     ctx = make_context(root=tmp_path)
     evaluated = await optimizer._evaluate_insight_candidates(
@@ -285,8 +300,8 @@ async def test_insight_evaluation_reuses_only_matching_suite_identity(
     )
     result = _insight_result("agent-0", 0.5)
     evaluate_agent = AsyncMock(return_value=(cached, result))
-    monkeypatch.setattr(EvolutionaryOptimizer, "_evaluate_agent", evaluate_agent)
-    optimizer = object.__new__(EvolutionaryOptimizer)
+    monkeypatch.setattr(EvolutionaryStrategy, "_evaluate_agent", evaluate_agent)
+    optimizer = object.__new__(EvolutionaryStrategy)
 
     matching = Dataset(
         id="insight-suite",
@@ -361,7 +376,7 @@ async def test_cached_insight_metric_keys_are_order_independent(
             "insight_metric_keys": ["uses_required_tool", "reward"],
         },
     )
-    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer = object.__new__(EvolutionaryStrategy)
     monkeypatch.setattr(
         optimizer,
         "_evaluate_insight_candidates",
@@ -450,7 +465,7 @@ async def test_rollback_clears_evaluator_scratch_for_the_rolled_back_candidate(t
             ),
         )
 
-    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer = object.__new__(EvolutionaryStrategy)
     optimizer.working_dir = tmp_path
     await optimizer._roll_back_to(ctx=ctx, from_round=1)
 
@@ -477,7 +492,7 @@ async def test_rollback_revives_a_survivor_whose_killing_round_was_itself_rolled
         ),
     )
 
-    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer = object.__new__(EvolutionaryStrategy)
     optimizer.working_dir = tmp_path
     await optimizer._roll_back_to(ctx=ctx, from_round=2)
 
@@ -510,7 +525,7 @@ async def test_rollback_hides_the_record_so_nothing_downstream_sees_it(tmp_path:
             ),
         )
 
-    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer = object.__new__(EvolutionaryStrategy)
     optimizer.working_dir = tmp_path
     await optimizer._roll_back_to(ctx=ctx, from_round=1)
 
@@ -527,7 +542,7 @@ async def test_an_interrupted_round_zero_does_not_mint_a_second_baseline(monkeyp
     runner resumes and the loop re-enters its fresh-start branch.
     """
     ctx = make_context(root=tmp_path, backend=FakeBackend())
-    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer = object.__new__(EvolutionaryStrategy)
     optimizer.working_dir = tmp_path
     created = 0
 
@@ -536,7 +551,7 @@ async def test_an_interrupted_round_zero_does_not_mint_a_second_baseline(monkeyp
         created += 1
         return await _import_baseline(ctx)
 
-    monkeypatch.setattr(EvolutionaryOptimizer, "_create_baseline_agent", _commit_baseline)
+    monkeypatch.setattr(EvolutionaryStrategy, "_create_baseline_agent", _commit_baseline)
     config = EvolutionaryOptimizerConfig()
 
     await optimizer._ensure_baseline(ctx=ctx, config=config)

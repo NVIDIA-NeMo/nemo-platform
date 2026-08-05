@@ -126,7 +126,7 @@ def test_importing_components_resolves_no_model() -> None:
     """
     probe = (
         "from nemo_experimentalist_plugin.experimentalist.components import model_config\n"
-        "import nemo_experimentalist_plugin.experimentalist.components.loop\n"
+        "import nemo_experimentalist_plugin.experimentalist.strategies.evolutionary\n"
         "import nemo_experimentalist_plugin.experimentalist.components.coder\n"
         "import nemo_eval_author_plugin.eval_author.agent\n"
         "info = model_config._client.cache_info()\n"

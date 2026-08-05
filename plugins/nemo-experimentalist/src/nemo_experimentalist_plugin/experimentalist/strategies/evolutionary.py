@@ -3,7 +3,7 @@
 
 """Evolutionary optimization loop — ported from AAD ``optimizer/optimize_agent.py``.
 
-The public entry point is :class:`EvolutionaryOptimizer`.
+The public entry point is :class:`EvolutionaryStrategy`.
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ from nemo_experimentalist_plugin.entities import (
     RewardRecord,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import (
     GoalTree,
@@ -52,15 +51,11 @@ from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
     OptimizationType,
 )
-from nemo_experimentalist_plugin.experimentalist.components.proposer import Proposer
-from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
 from nemo_experimentalist_plugin.experimentalist.components.tools import (
     GuardedShellTools,
     WorkspaceTool,
 )
-from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import (
-    GroupLeafScorer,
-)
+from nemo_experimentalist_plugin.experimentalist.components.util import load_framework_skills
 from nemo_experimentalist_plugin.experimentalist.registry import get_component, resolve
 from nemo_experimentalist_plugin.experimentalist.roles import Builder, Selector, Strategy
 from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
@@ -73,8 +68,6 @@ from nooa.config.summarizer_config import TokenBudgetConfig
 from nooa.skill import Skill
 from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match
-
-from .util import load_framework_skills
 
 logger = logging.getLogger(__name__)
 
@@ -296,12 +289,12 @@ class AnalysisSkill(Skill):
     """
 
 
-class EvolutionaryOptimizer(Agent, Strategy):
+class EvolutionaryStrategy(Agent, Strategy):
     """The Experimentalist's deterministic Pareto optimization loop.
 
     Orchestrates the baseline → [convergence-check → select → train-eval →
     analyze → propose → implement → record → validation-eval] cycle across
-    rounds, mirroring the AAD ``EvolutionaryOptimizer``.
+    rounds, mirroring the AAD ``EvolutionaryStrategy``.
     """
 
     #: Resolvable as ``strategy: evolutionary``. Ours registers exactly like a third
@@ -328,7 +321,7 @@ class EvolutionaryOptimizer(Agent, Strategy):
         self._config = self.config
         self._workspace_path = self.working_dir
         self._framework_skills_dirs: list[Path] = framework_skills_dirs or []
-        self.terminator = Terminator(models=tiers)
+
         self.shell = GuardedShellTools(cwd=self.working_dir)
         self.workspace = WorkspaceTool(workspace=self.working_dir)
         self.context["file_match"] = doc(Match)
@@ -419,7 +412,7 @@ class EvolutionaryOptimizer(Agent, Strategy):
         # ---- Initial goal tree (idempotent) ------------------------------
         await self._generate_initial_goal_tree(
             dataset=train_eval_dataset,
-            disable_trajectory_scoring=config.disable_trajectory_scoring,
+            disable_trajectory_scoring=config.trajectory_scorer is None,
             config=config,
             agent_spec_path=agent_spec_path,
         )
@@ -433,15 +426,18 @@ class EvolutionaryOptimizer(Agent, Strategy):
                 if round_num > 0
                 else None
             )
-            decision = await self.terminator.run(
-                round_num=round_num,
-                evolution_tree=evolution_tree,
-                prior_analysis=prior_analysis,
-                config=config,
-            )
-            if decision.stop:
-                logger.info(f"phase=terminate reason={decision.reason}")
-                break
+            # No terminator selected means the round budget is the only stopping rule.
+            if config.terminator is not None:
+                terminator = get_component("terminator", config.terminator, models=self._models)
+                decision = await terminator.run(
+                    round_num=round_num,
+                    evolution_tree=evolution_tree,
+                    prior_analysis=prior_analysis,
+                    config=config,
+                )
+                if decision.stop:
+                    logger.info(f"phase=terminate reason={decision.reason}")
+                    break
 
             survivors = (
                 await self._selector(config).survivors([c.slim() for c in candidates], k=config.max_survivors)
@@ -537,7 +533,7 @@ class EvolutionaryOptimizer(Agent, Strategy):
                         channel="validation",
                         result=validation_candidate_results[candidate.label],
                     )
-            if not config.disable_trajectory_scoring:
+            if config.trajectory_scorer is not None:
                 trajectory_results = await self._reward_trajectories(
                     ctx=ctx,
                     dataset=validation_eval_dataset,
@@ -1051,12 +1047,18 @@ class EvolutionaryOptimizer(Agent, Strategy):
         analysis_path = analysis_dir / f"round-{round_num}.md"
         if analysis_path.exists():
             return analysis_path.read_text()
+        if config.analyzer is None:
+            # Diagnosis-blind: a strategy that does not reason about failures skips this
+            # and the train evaluation that feeds it.
+            return ""
 
         per_agent = await asyncio.gather(
             *[
-                AgentAnalyzer(
+                get_component(
+                    "root-cause-analyzer",
+                    config.analyzer,
                     workspace=self.working_dir,
-                    config=config.analyzer,
+                    config=config.analyzer_config,
                     framework_skills_dirs=self._framework_skills_dirs,
                     models=self._models,
                 ).run(
@@ -1118,9 +1120,11 @@ class EvolutionaryOptimizer(Agent, Strategy):
         config: EvolutionaryOptimizerConfig,
     ) -> list[Proposal]:
         """Run Proposer; return up to ``config.max_candidates`` build requests."""
-        proposer = Proposer(
+        proposer = get_component(
+            "proposer",
+            config.proposer,
             workspace=self.working_dir,
-            config=config.proposer,
+            config=config.proposer_config,
             framework_skills_dirs=self._framework_skills_dirs,
             models=self._models,
         )
@@ -1288,6 +1292,8 @@ class EvolutionaryOptimizer(Agent, Strategy):
         if not traces_by_task:
             logger.info("[TRAJ] No complete trace groups found, skipping")
             return {}
+        if config.trajectory_scorer is None:
+            return {}
 
         scores_by_node_trial_agent: dict[str, dict[str, dict[str, dict[str, Any]]]] = defaultdict(
             lambda: defaultdict(dict)
@@ -1295,8 +1301,13 @@ class EvolutionaryOptimizer(Agent, Strategy):
         keys = [(node.id, task_id) for node in nodes for task_id in traces_by_task]
         logger.info(f"[TRAJ] Starting {len(keys)} GRA scoring tasks...")
 
-        scorer = GroupLeafScorer(
-            workspace=self.working_dir, client=ctx.platform_client, nmp_workspace=ctx.workspace, models=self._models
+        scorer = get_component(
+            "trajectory-scorer",
+            config.trajectory_scorer,
+            workspace=self.working_dir,
+            client=ctx.platform_client,
+            nmp_workspace=ctx.workspace,
+            models=self._models,
         )
         scoring_results = await asyncio.gather(
             *[scorer.run(node, traces_by_task[task_id], dataset) for node in nodes for task_id in traces_by_task]

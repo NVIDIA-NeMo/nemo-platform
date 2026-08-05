@@ -85,6 +85,22 @@ class EvolutionaryOptimizerConfig(BaseModel):
             "with no code change."
         ),
     )
+    # Every step the strategy delegates to is named here, so swapping one is configuration.
+    # A null means "no such step": turning a step off is the degenerate case of choosing a
+    # different implementation, which is why there are no disable_* booleans.
+    analyzer: str | None = Field(
+        default="agent-trace",
+        description="Registered 'root-cause-analyzer'. Null skips diagnosis and the train eval feeding it.",
+    )
+    proposer: str = Field(default="code-change", description="Registered 'proposer' emitting each round's Proposals.")
+    terminator: str | None = Field(
+        default="convergence",
+        description="Registered 'terminator'. Null stops only on max_rounds.",
+    )
+    trajectory_scorer: str | None = Field(
+        default="goal-tree",
+        description="Registered 'trajectory-scorer'. Null skips step scoring and the goal tree it needs.",
+    )
     selector: str = Field(
         default="pareto-llm-diversity",
         description="Registered 'selector' component choosing survivors and the winner.",
@@ -113,17 +129,12 @@ class EvolutionaryOptimizerConfig(BaseModel):
     model_catalog_path: Path | None = Field(
         default=None, description="Model catalog overriding the packaged assets/models.yaml."
     )
-    disable_trajectory_scoring: bool = Field(
-        default=False, description="Skip goal-tree trajectory scoring and the goal tree it needs."
-    )
-    disable_convergence_check: bool = Field(
-        default=False, description="Stop only on max_rounds, never on the terminator's convergence judgement."
-    )
+
     source: AgentSourceConfig = Field(default_factory=AgentSourceConfig)
     storage: CandidateStorageConfig = Field(default_factory=CandidateStorageConfig)
     goal_config: GoalTreeConfig = Field(default_factory=GoalTreeConfig)
     coder: CoderConfig = Field(default_factory=CoderConfig)
-    analyzer: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
-    proposer: ProposerConfig = Field(default_factory=ProposerConfig)
+    analyzer_config: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
+    proposer_config: ProposerConfig = Field(default_factory=ProposerConfig)
     evaluator: dict[str, Any] = Field(default_factory=dict)
     eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)

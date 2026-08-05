@@ -177,9 +177,9 @@ def test_agent_class_docstrings_stay_prompt_shaped() -> None:
     belong in comments above the class.
     """
     from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
-    from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
-    for agent in (Coder, EvolutionaryOptimizer):
+    for agent in (Coder, EvolutionaryStrategy):
         prompt = agent.__doc__ or ""
         assert prompt.strip(), f"{agent.__name__} has no system prompt"
         assert ":class:" not in prompt, (

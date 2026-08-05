@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 import yaml
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.profile import load_profile
 from nemo_experimentalist_plugin.resolve import (
     ResolveError,
@@ -815,7 +815,7 @@ def test_config_unknown_top_level_key_is_tolerated(tmp_path: Path) -> None:
         {"storage": {"publish_winer": True}},
         {"source": {"clone_dept": 1}},
         {"coder": {"max_fix_atempts": 1}},
-        {"analyzer": {"rationalizer": {"max_summary_token": 100}}},
+        {"analyzer_config": {"rationalizer": {"max_summary_token": 100}}},
         {"goal_config": {"max_dept": 2}},
     ],
     ids=["storage", "source", "coder", "deep-analyzer", "goal-config"],
@@ -942,6 +942,6 @@ def test_component_configs_are_the_component_owned_classes() -> None:
 
     cfg = EvolutionaryOptimizerConfig()
     assert type(cfg.coder) is CoderConfig
-    assert type(cfg.analyzer) is AnalyzerConfig
-    assert type(cfg.proposer) is ProposerConfig
+    assert type(cfg.analyzer_config) is AnalyzerConfig
+    assert type(cfg.proposer_config) is ProposerConfig
     assert type(cfg.goal_config) is GoalTreeConfig

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Literal, get_args
 
 from nemo_experimentalist_plugin.entities import Proposal
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
     OptimizationType,
@@ -107,8 +108,10 @@ class ProposerConfig(BaseModel):
     )
 
 
-class Proposer(Agent):
+class Proposer(Agent, roles.Proposer):
     """Propose the next round's isolated optimization candidates."""
+
+    name = "code-change"
 
     def __init__(
         self,

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import Dataset, TrialResult
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
@@ -30,8 +31,10 @@ class GroupLeafScore(BaseModel):
     )
 
 
-class GroupLeafScorer(Agent):
+class GroupLeafScorer(Agent, roles.TrajectoryScorer):
     """Score a group of agent traces against a goal-tree leaf node."""
+
+    name = "goal-tree"
 
     def __init__(
         self,

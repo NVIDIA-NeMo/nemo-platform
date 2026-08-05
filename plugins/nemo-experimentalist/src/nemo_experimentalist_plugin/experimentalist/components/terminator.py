@@ -17,6 +17,7 @@ from typing import Any
 # Imported from `resolve` rather than `.loop`, which merely re-exports it: `loop` imports
 # this module, so going through it would be circular.
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree, pareto_front
 from nemo_experimentalist_plugin.skills import skills_dir
 from nooa import Agent, CodeActStrategy, TextSkill, hidden, strategy
@@ -41,8 +42,10 @@ class TerminationDecision(BaseModel):
     reason: str = ""
 
 
-class Terminator(Agent):
+class Terminator(Agent, roles.Terminator):
     """Decides when the evolutionary optimization loop should stop."""
+
+    name = "convergence"
 
     def __init__(self, *, models: ModelTiers | None = None, **kwargs: Any) -> None:
         tiers = models or ModelTiers()
@@ -96,7 +99,10 @@ class Terminator(Agent):
 
         Mirrors the original top-of-loop gating: returns ``stop=False`` immediately
         when there is no prior analysis to reason about or when the convergence
-        check is disabled. Otherwise consults :meth:`_has_converged`.
+        there is no prior round to compare against. Otherwise consults :meth:`_has_converged`.
+
+        Selecting no terminator at all is how a run stops only on its round budget; by
+        the time this is called, one was chosen.
 
         Args:
             evolution_tree: Live tree of scored candidates across rounds.
@@ -106,7 +112,7 @@ class Terminator(Agent):
         Returns:
             A :class:`TerminationDecision`.
         """
-        if prior_analysis is None or config.disable_convergence_check:
+        if prior_analysis is None:
             return TerminationDecision(stop=False)
         converged = await self._has_converged(
             evolution_tree=evolution_tree,

@@ -47,6 +47,41 @@ class Strategy(Component):
         raise NotImplementedError
 
 
+class Proposer(Component):
+    """Turn scored candidates into Proposals for the next round."""
+
+    role: ClassVar[str] = "proposer"
+
+    #: Proposal kinds this Proposer emits. Every one must be covered by a configured
+    #: Builder, or the round would build nothing.
+    produces: ClassVar[frozenset[str]] = frozenset()
+
+
+class Analyzer(Component):
+    """Diagnose why candidates fail, as input to proposing.
+
+    Optional: a strategy that does not reason about failures — numeric search — selects
+    none and skips the train evaluation that feeds it.
+    """
+
+    role: ClassVar[str] = "root-cause-analyzer"
+
+
+class Terminator(Component):
+    """Decide whether to stop before the round budget is spent."""
+
+    role: ClassVar[str] = "terminator"
+
+
+class TrajectoryScorer(Component):
+    """Score the steps a candidate took, not just its outcome.
+
+    A second measurement of the same run, landing in its own reward channel.
+    """
+
+    role: ClassVar[str] = "trajectory-scorer"
+
+
 class Selector(Component):
     """Decide which candidates breed, and which one wins.
 

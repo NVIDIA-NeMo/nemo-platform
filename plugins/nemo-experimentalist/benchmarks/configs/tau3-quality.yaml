@@ -17,8 +17,8 @@ optimizer:
   max_trajectory_tasks: 8
   max_train_batch_tasks: 16
   train_batch_seed: 20260727
-  disable_trajectory_scoring: false
-  disable_convergence_check: false
+  trajectory_scorer: goal-tree
+  terminator: convergence
   evaluator:
     n_attempts: 2
     # Keep at 3 or lower: each task requests 8192 MB and parallel image builds

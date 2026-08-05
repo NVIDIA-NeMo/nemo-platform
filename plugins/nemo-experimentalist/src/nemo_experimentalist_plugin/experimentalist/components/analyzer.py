@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Literal, Sequence
 
 from nemo_experimentalist_plugin.entities import Dataset, EvaluationResult, Task, TrialResult
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (  # noqa: F401
     Diagnostic,
     TraceAnalyzer,
@@ -214,8 +215,10 @@ class AgentAnalysis(BaseModel):
         return "\n\n".join(sections)
 
 
-class AgentAnalyzer(Agent):
+class AgentAnalyzer(Agent, roles.Analyzer):
     """Analyze an agent's trace and failure patterns for a single optimization round."""
+
+    name = "agent-trace"
 
     def __init__(
         self,

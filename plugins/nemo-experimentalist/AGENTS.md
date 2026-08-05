@@ -85,8 +85,16 @@ Two names deliberately did **not** change. `optimizer.yaml` and the
 `nemo_insights_plugin.contracts.profile`, and `nemo agents analyst run` writes
 `<profile-dir>/.nemo-optimizer/insights.yaml`, which this plugin reads as the
 default insight. Rename them only in lockstep with a Platform change to that
-contract. `EvolutionaryOptimizer` and `EvolutionaryOptimizerConfig` also keep
-their names — they describe the optimization algorithm, not the product.
+contract.
+
+`EvolutionaryOptimizer` is now `EvolutionaryStrategy`, in
+`experimentalist/strategies/evolutionary.py`, and is resolved by name like any other
+component (`strategy: evolutionary`). Role names describe the role and class names the
+implementation, so a class filling the `strategy` role says so. `EvolutionaryOptimizerConfig`
+keeps its name: it configures the algorithm, not the role.
+
+Run `nemo agents experimentalist components` to see everything this install can resolve,
+including components registered by a separately installed package.
 
 At the time of this rename the command group was top-level (`nemo
 experimentalist`), because the platform's `nemo.cli` entry-point group was flat
