@@ -98,7 +98,7 @@ export interface SubmitSelections {
   workspace: string;
   /** Agent (bare name) to evaluate; used to build the generic target. */
   agent: string;
-  /** Eval-config fileset name, stored under spec.benchmark.eval_config_fileset for display. */
+  /** Eval-config fileset name, stored under spec.labels.eval_config_fileset for display. */
   filesetName?: string;
 }
 
@@ -171,7 +171,7 @@ export const buildAgentEvalRequestBody = (
     target: buildAgentTarget(selections.workspace, selections.agent),
     max_concurrent_tasks: spec.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
     ...(selections.filesetName
-      ? { benchmark: { eval_config_fileset: selections.filesetName } }
+      ? { labels: { eval_config_fileset: selections.filesetName } }
       : {}),
   },
 });

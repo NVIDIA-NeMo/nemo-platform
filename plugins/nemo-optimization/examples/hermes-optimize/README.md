@@ -240,12 +240,11 @@ nemo agents optimize run \
 **Success:** job finishes with `status: completed`, `n_trials: 4`, and a best
 score near `1.0` when the model follows the “call the analyzer once” prompt.
 
-**Flakiness:** Hermes + `llama-3.1-70b-instruct` sometimes returns an empty
-message on a single dataset row. That sample is scored as failed and **skipped**
-when reducing the Optuna objective (the trial still completes from the remaining
-rows). The Optuna trial only fails if **every** sample fails. Check
-`plugins/nemo-optimization/examples/hermes-optimize/artifacts/.fabric/hermes/runtimes/*/logs/`
-(`errors.log`, `agent.log`, `mcp-stderr.log`) if many rows fail.
+**Flakiness:** Hermes + 70B models often return an empty final message after a
+successful analyzer tool call, or re-call the tool (breaking the phishing
+agent’s exactly-once audit). The optimize path recovers the audited analyzer
+JSON in those cases so samples still score. If every sample still fails, check
+`plugins/nemo-optimization/examples/hermes-optimize/artifacts/.fabric/hermes/runtimes/*/logs/`.
 
 Python equivalent:
 
@@ -299,7 +298,7 @@ print(
 | `delete` hangs / `Aborted!` | Pass `-y` (`nemo agents delete NAME -y`) |
 | Create `409 Conflict` / stale models | Delete with `-y`, then create again; optimize always uses the **stored** agent config |
 | Optional `--agent ...` rejected for `http://` / `file://` | Pass a workspace agent name (e.g. `hermes-optimize-chatonly`), or omit `--agent` and use `--optimize-config` only |
-| MCP: many samples `trial_status: failed` / `no completed trials` | Inspect `artifacts/.fabric/hermes/runtimes/*/logs/`; empty Hermes responses skip that row — Optuna fails only if all rows fail |
+| MCP: many samples `trial_status: failed` / `no completed trials` | Inspect `artifacts/.fabric/hermes/runtimes/*/logs/`; empty finals / multi-call should recover via MCP audit — if not, confirm `max_turns` ≥ 4 and `nemo-evaluator-sdk` has the binding-recovery fix |
 | Judge / best scores look like `4.5` not `~1.0` | `tunable_rag_evaluator` with `default_scoring` can sum component scores; compare trials relative to each other |
 
 Trajectory capture (`capture_trajectory`) is off in these YAMLs so you do not
