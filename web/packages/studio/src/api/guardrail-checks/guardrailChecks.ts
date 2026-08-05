@@ -173,10 +173,7 @@ export async function deleteGuardrailCheck(
  * NeMo Guardrails configs mark the primary generation model with `type: 'main'`;
  * we fall back to the first model that declares a `model` reference.
  */
-export function resolveConfigModel(
-  config: RailsConfig | undefined,
-  configLabel: string
-): string {
+export function resolveConfigModel(config: RailsConfig | undefined, configLabel: string): string {
   const models = config?.models ?? [];
   const main = models.find((m) => m.type === 'main' && m.model);
   const chosen = main ?? models.find((m) => m.model);

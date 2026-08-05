@@ -78,9 +78,7 @@ describe('BehaviorSection', () => {
   it('renders nothing when content capture is disabled and no other content exists', () => {
     render(
       <TestProviders>
-        <BehaviorSection
-          data={{ tracing: { enable_content_capture: false } } as RailsConfig}
-        />
+        <BehaviorSection data={{ tracing: { enable_content_capture: false } } as RailsConfig} />
       </TestProviders>
     );
     expect(screen.queryByText('Behavior & operations')).not.toBeInTheDocument();

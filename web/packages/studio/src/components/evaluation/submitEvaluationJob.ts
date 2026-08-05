@@ -170,9 +170,7 @@ export const buildAgentEvalRequestBody = (
     tasks: spec.tasks,
     target: buildAgentTarget(selections.workspace, selections.agent),
     max_concurrent_tasks: spec.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
-    ...(selections.filesetName
-      ? { labels: { eval_config_fileset: selections.filesetName } }
-      : {}),
+    ...(selections.filesetName ? { labels: { eval_config_fileset: selections.filesetName } } : {}),
   },
 });
 

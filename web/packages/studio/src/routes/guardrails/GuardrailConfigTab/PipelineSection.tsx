@@ -170,10 +170,7 @@ const FlowRow: FC<{ flow: string; isFirst: boolean }> = ({ flow, isFirst }) => {
   );
 };
 
-const StageCard: FC<{ stage: StageDescriptor; rails: Rails | undefined }> = ({
-  stage,
-  rails,
-}) => {
+const StageCard: FC<{ stage: StageDescriptor; rails: Rails | undefined }> = ({ stage, rails }) => {
   const flows = stageFlows(rails, stage.key);
   const extras = stageExtras(rails, stage.key);
   const parallel = isParallel(rails, stage.key);
