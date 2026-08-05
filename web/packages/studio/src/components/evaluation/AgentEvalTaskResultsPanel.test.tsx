@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AgentEvalTaskDetail } from '@studio/api/evaluation/agent-evaluations';
-import { AgentEvalTaskResultsPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/AgentEvalTaskResultsPanel';
+import { AgentEvalTaskResultsPanel } from '@studio/components/evaluation/AgentEvalTaskResultsPanel';
 import { fireEvent, render, screen } from '@studio/tests/util/render';
 
 const task: AgentEvalTaskDetail = {
@@ -29,7 +29,8 @@ describe('AgentEvalTaskResultsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Task Results \(1\)/ }));
 
-    expect(await screen.findByText('llm-judge.accuracy: 1.000')).toBeInTheDocument();
+    expect(await screen.findByText('llm-judge.accuracy')).toBeInTheDocument();
+    expect(screen.getByText('1.000')).toBeInTheDocument();
 
     const expandButtons = screen.getAllByLabelText('Expand cell');
     fireEvent.click(expandButtons[expandButtons.length - 1]);
