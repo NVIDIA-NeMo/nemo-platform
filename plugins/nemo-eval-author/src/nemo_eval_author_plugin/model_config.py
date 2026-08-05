@@ -8,14 +8,15 @@ become a standalone plugin, so its credential handling duplicates Experimentalis
 than sharing it. See the plugin README for the wider split, and
 ``tests/test_plugin_boundary.py`` for the check that holds this module independent.
 
-``AUTHOR_*`` is the real contract. The ``EXPERIMENTALIST_*`` fallback and
+``AUTHOR_*`` is the real contract. The ``NEMO_EXPERIMENTALIST_*`` fallback and
 :func:`bridge_author_env_to_experimentalist` are both transitional, and exist only while
 Eval Author still reuses Experimentalist agents.
 
-TODO(eval-author-standalone): drop the ``EXPERIMENTALIST_*`` fallback and the bridge once
+TODO(eval-author-standalone): drop the ``NEMO_EXPERIMENTALIST_*`` fallback and the bridge once
 this plugin imports nothing from ``nemo_experimentalist_plugin``. Concretely: delete
 ``_BRIDGED_ENV_PAIRS`` and :func:`bridge_author_env_to_experimentalist`, delete
-``_env_bridge.py`` and its import in ``eval_author/agent.py``, and narrow every ``_env`` /
+the ``bridge_author_env_to_experimentalist`` call in ``eval_author/agent.py``, and
+narrow every ``_env`` /
 ``_env_or_default`` call here to its ``AUTHOR_*`` name. That is a breaking change for
 anyone running insight mode from an Experimentalist-only profile ``.env``, so it needs a
 release note. ``rg 'eval-author-standalone'`` finds the other sites.
@@ -26,6 +27,7 @@ import logging
 import os
 from urllib.parse import urlsplit
 
+from nemo_platform_plugin.config import Configuration
 from nooa.unifiedllm import CompletionClient
 
 logger = logging.getLogger(__name__)
@@ -41,11 +43,11 @@ _FAST_MODEL_DEFAULT = "openai/openai/openai/gpt-5-mini"
 # helper rather than a client Eval Author owns, which is why the mid tier appears here
 # despite Eval Author having no mid-tier client of its own.
 _BRIDGED_ENV_PAIRS = (
-    ("AUTHOR_API_BASE", "EXPERIMENTALIST_API_BASE"),
-    ("AUTHOR_API_KEY", "EXPERIMENTALIST_API_KEY"),
-    ("AUTHOR_SMART_MODEL_NAME", "EXPERIMENTALIST_SMART_MODEL_NAME"),
-    ("AUTHOR_MID_MODEL_NAME", "EXPERIMENTALIST_MID_MODEL_NAME"),
-    ("AUTHOR_FAST_MODEL_NAME", "EXPERIMENTALIST_FAST_MODEL_NAME"),
+    ("AUTHOR_API_BASE", "NEMO_EXPERIMENTALIST_API_BASE"),
+    ("AUTHOR_API_KEY", "NEMO_EXPERIMENTALIST_API_KEY"),
+    ("AUTHOR_SMART_MODEL_NAME", "NEMO_EXPERIMENTALIST_MODELS_SMART"),
+    ("AUTHOR_MID_MODEL_NAME", "NEMO_EXPERIMENTALIST_MODELS_MID"),
+    ("AUTHOR_FAST_MODEL_NAME", "NEMO_EXPERIMENTALIST_MODELS_FAST"),
 )
 
 
@@ -64,9 +66,9 @@ def _env_or_default(*names: str, default: str) -> str:
 
 
 def _api_base() -> str:
-    base = _env("AUTHOR_API_BASE", "EXPERIMENTALIST_API_BASE")
+    base = _env("AUTHOR_API_BASE", "NEMO_EXPERIMENTALIST_API_BASE")
     if not base:
-        raise ValueError("AUTHOR_API_BASE (or EXPERIMENTALIST_API_BASE) must be set")
+        raise ValueError("AUTHOR_API_BASE (or NEMO_EXPERIMENTALIST_API_BASE) must be set")
     return base
 
 
@@ -88,7 +90,7 @@ def _api_key() -> str:
 
     Preference order:
     1. ``AUTHOR_API_KEY``
-    2. ``EXPERIMENTALIST_API_KEY``
+    2. ``NEMO_EXPERIMENTALIST_API_KEY``
     3. ``INFERENCE_API_KEY``, but only when the resolved base is the HTTPS NVIDIA
        Inference Gateway, matching how the Experimentalist CLI forwards that key.
 
@@ -99,7 +101,7 @@ def _api_key() -> str:
         ValueError: if no key is available for the resolved base.
 
     """
-    key = _env("AUTHOR_API_KEY", "EXPERIMENTALIST_API_KEY")
+    key = _env("AUTHOR_API_KEY", "NEMO_EXPERIMENTALIST_API_KEY")
     if key:
         return key
     if _is_gateway_base(_api_base()):
@@ -107,7 +109,7 @@ def _api_key() -> str:
         if inference:
             return inference
     raise ValueError(
-        "AUTHOR_API_KEY (or EXPERIMENTALIST_API_KEY) must be set; "
+        "AUTHOR_API_KEY (or NEMO_EXPERIMENTALIST_API_KEY) must be set; "
         "when using the NVIDIA Inference Gateway, INFERENCE_API_KEY is also accepted"
     )
 
@@ -153,7 +155,7 @@ def get_smart_model() -> CompletionClient:
     """
     name = _env_or_default(
         "AUTHOR_SMART_MODEL_NAME",
-        "EXPERIMENTALIST_SMART_MODEL_NAME",
+        "NEMO_EXPERIMENTALIST_MODELS_SMART",
         default=_SMART_MODEL_DEFAULT,
     )
     return _completion_client(name, _api_base(), _api_key())
@@ -172,23 +174,28 @@ def get_fast_model() -> CompletionClient:
     """
     name = _env_or_default(
         "AUTHOR_FAST_MODEL_NAME",
-        "EXPERIMENTALIST_FAST_MODEL_NAME",
+        "NEMO_EXPERIMENTALIST_MODELS_FAST",
         default=_FAST_MODEL_DEFAULT,
     )
     return _completion_client(name, _api_base(), _api_key())
 
 
 def bridge_author_env_to_experimentalist() -> list[str]:
-    """Copy ``AUTHOR_*`` into unset ``EXPERIMENTALIST_*`` slots.
+    """Copy ``AUTHOR_*`` into unset ``NEMO_EXPERIMENTALIST_*`` slots.
 
     Eval Author owns ``AUTHOR_*`` for its own clients, but the Experimentalist helpers it
-    reuses (``TraceAnalyzer`` and the summarizers it pulls in) bind their LLM in the class
-    body from ``EXPERIMENTALIST_*``. Bridging lets a standalone ``AUTHOR_*``-only run
-    supply those helpers without the caller duplicating credentials. Values already present
-    in ``EXPERIMENTALIST_*`` always win, so insight-mode runs are left alone.
+    reuses (``TraceAnalyzer`` and the summarizers it pulls in) resolve their LLM from
+    Experimentalist's own settings. Bridging lets a standalone ``AUTHOR_*``-only run supply
+    those helpers without the caller duplicating credentials. Values already present in
+    ``NEMO_EXPERIMENTALIST_*`` always win, so insight-mode runs are left alone.
+
+    Experimentalist reads those names through a cached settings object, so a write here is
+    only visible if the cache has not been populated yet. Clearing it keeps the bridge
+    order-independent -- the alternative is a silent no-op whenever Eval Author is
+    constructed after the first model lookup.
 
     Returns:
-        list[str]: the ``EXPERIMENTALIST_*`` names this call populated, in declaration
+        list[str]: the ``NEMO_EXPERIMENTALIST_*`` names this call populated, in declaration
             order. Empty once everything is in place, which makes repeat calls no-ops.
 
     """
@@ -199,5 +206,6 @@ def bridge_author_env_to_experimentalist() -> list[str]:
             os.environ[dst] = value
             applied.append(dst)
     if applied:
+        Configuration.clear_cache()
         logger.info("Bridged Eval Author credentials into %s", ", ".join(applied))
     return applied

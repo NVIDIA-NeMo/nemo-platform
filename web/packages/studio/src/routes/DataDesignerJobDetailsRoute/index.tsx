@@ -29,7 +29,7 @@ import { getDataDesignerJobListRoute } from '@studio/routes/utils';
 import { formatDateTime } from '@studio/util/date';
 import { ArrowLeft, Split } from 'lucide-react';
 import { useState, type FC } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 export const DataDesignerJobDetailsRoute: FC = () => {
   const {

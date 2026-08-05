@@ -11,7 +11,7 @@ import { renderWithRouter, screen } from '@studio/tests/util/render';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { FormProvider, useForm } from 'react-hook-form';
-import { generatePath } from 'react-router-dom';
+import { generatePath } from 'react-router';
 
 const queryClient = new QueryClient();
 

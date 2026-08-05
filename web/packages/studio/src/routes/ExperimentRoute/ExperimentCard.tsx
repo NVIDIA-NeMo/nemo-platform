@@ -7,7 +7,7 @@ import { Metric } from '@studio/routes/ExperimentRoute/Metric';
 import { UpdatedAt } from '@studio/routes/ExperimentRoute/UpdatedAt';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { type FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface ExperimentCardProps {
   group: ExperimentResponse;

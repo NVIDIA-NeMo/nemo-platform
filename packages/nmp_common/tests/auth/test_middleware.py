@@ -8,12 +8,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from nmp.common.auth.client import AuthClient
+from nmp.common.auth.dependencies import get_auth_client
 from nmp.common.auth.jwt import TokenClaims, UnsignedJWTRejectedError
-from nmp.common.auth.middleware import HEALTH_ENDPOINTS, PUBLIC_GET_PATHS, AuthorizationMiddleware
+from nmp.common.auth.middleware import BYPASS_PREFIXES, HEALTH_ENDPOINTS, PUBLIC_GET_PATHS, AuthorizationMiddleware
 from nmp.common.auth.models import Principal
+from nmp.common.auth.token_resolver import ResolvedBearerToken
 from nmp.common.config import AuthConfig, Configuration
 from nmp.common.config.base import OIDCConfig
 
@@ -159,6 +161,62 @@ class TestHealthEndpointsBypass:
         mock_authorize.assert_not_called()
 
 
+class TestStudioPluginBypass:
+    """Studio plugin manifest and bundles are public — the SPA fetches the manifest
+    anonymously and loads bundles via dynamic import(), which cannot send Authorization."""
+
+    def test_plugin_paths_in_bypass_lists(self):
+        assert "/apis/plugins" in PUBLIC_GET_PATHS
+        assert "/plugin-ui/" in BYPASS_PREFIXES
+
+    def test_plugins_manifest_get_bypasses_auth(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.get("/apis/plugins")
+        async def list_plugins():
+            return []
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+
+        client = TestClient(app)
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=False)
+            response = client.get("/apis/plugins")
+
+        assert response.status_code == 200
+        mock_authorize.assert_not_called()
+
+    def test_plugin_bundle_get_bypasses_auth(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.get("/plugin-ui/{plugin_name}/{filename}")
+        async def serve_bundle(plugin_name: str, filename: str):
+            return {"plugin": plugin_name, "filename": filename}
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+
+        client = TestClient(app)
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=False)
+            response = client.get("/plugin-ui/example/index.js")
+
+        assert response.status_code == 200
+        mock_authorize.assert_not_called()
+
+    def test_other_paths_still_require_auth(self, auth_config_enabled):
+        """The plugin bypasses must not open up other routes."""
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=False)
+            response = client.get("/test")
+
+        assert response.status_code == 401
+
+
 class TestBearerTokenAuth:
     """Tests for Bearer token authentication in middleware."""
 
@@ -228,6 +286,26 @@ class TestBearerTokenAuth:
 
             assert response.status_code == 401
             assert "Invalid or expired token" in response.json()["detail"]
+
+    @pytest.mark.parametrize(
+        "auth_header",
+        [
+            "Bearer",
+            "Bearer ",
+            "Bearer token extra",
+        ],
+    )
+    def test_malformed_bearer_token_returns_401(self, auth_config_enabled, auth_header):
+        """Malformed Bearer headers fail auth instead of falling through as anonymous requests."""
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            response = client.get("/test", headers={"Authorization": auth_header})
+
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Invalid bearer token"
+        mock_authorize.assert_not_called()
 
     def test_bearer_token_expired_unsigned_jwt_returns_401(self):
         """Expired unsigned JWTs are rejected when allow_unsigned_jwt is true."""
@@ -380,6 +458,193 @@ class TestBearerTokenAuth:
                 )
 
                 assert response.status_code == 403
+
+    def test_bearer_token_scoped_access_key_accepted_without_oidc(self, auth_config_oidc_disabled):
+        config = auth_config_oidc_disabled.model_copy(
+            update={"access_keys": auth_config_oidc_disabled.access_keys.model_copy(update={"enabled": True})}
+        )
+        app = create_test_app(config)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        valid_claims = TokenClaims(
+            subject="alice@example.com",
+            email="alice@example.com",
+            groups=["team-ml"],
+            scopes=[],
+            raw_claims={"nmp_token_type": "access_key"},
+        )
+
+        with patch("nmp.common.auth.access_keys.validate_access_key_token") as mock_validate:
+            mock_validate.return_value = valid_claims
+            with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+                mock_authorize.return_value = MagicMock(allowed=True)
+
+                response = client.get("/test", headers={"Authorization": "Bearer scoped-access-key"})
+
+        assert response.status_code == 200
+        mock_authorize.assert_called_once()
+
+    def test_bearer_token_scoped_access_key_invalid_falls_back_to_oidc(self, auth_config_enabled):
+        config = auth_config_enabled.model_copy(
+            update={"access_keys": auth_config_enabled.access_keys.model_copy(update={"enabled": True})}
+        )
+        app = create_test_app(config)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        oidc_claims = TokenClaims(
+            subject="bob@example.com",
+            email="bob@example.com",
+            groups=[],
+            scopes=[],
+            raw_claims={},
+        )
+
+        with patch("nmp.common.auth.access_keys.validate_access_key_token") as mock_access_key_validate:
+            mock_access_key_validate.return_value = None
+            with patch("nmp.common.auth.jwt.JWTValidator.validate_token") as mock_oidc_validate:
+                mock_oidc_validate.return_value = oidc_claims
+                with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+                    mock_authorize.return_value = MagicMock(allowed=True)
+
+                    response = client.get("/test", headers={"Authorization": "Bearer oidc-token"})
+
+        assert response.status_code == 200
+        mock_access_key_validate.assert_called_once()
+        mock_oidc_validate.assert_called_once()
+
+    def test_scoped_access_key_middleware_mapping_is_skipped_when_access_keys_are_disabled(
+        self,
+        auth_config_oidc_disabled,
+    ):
+        app = create_test_app(auth_config_oidc_disabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("nmp.common.auth.access_keys.validate_access_key_token") as mock_validate:
+            response = client.get("/test", headers={"Authorization": "Bearer scoped-access-key"})
+
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Bearer token authentication not configured"
+        mock_validate.assert_not_called()
+
+    def test_bearer_token_request_uses_shared_resolver(self, auth_config_enabled):
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+        claims = TokenClaims(
+            subject="alice@example.com",
+            email="alice@example.com",
+            groups=["team-ml"],
+            scopes=["models:read"],
+            raw_claims={},
+        )
+        resolved = ResolvedBearerToken(claims=claims, token_kind="oidc_access_token")
+
+        with patch(
+            "nmp.common.auth.middleware.resolve_bearer_token",
+            new=AsyncMock(return_value=resolved),
+        ) as resolver:
+            with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+                mock_authorize.return_value = MagicMock(allowed=True)
+                response = client.get("/test", headers={"Authorization": "Bearer oidc-token"})
+
+        assert response.status_code == 200
+        resolver.assert_awaited_once()
+        mock_authorize.assert_called_once()
+
+    def test_bearer_token_sets_auth_client_context_for_service_handler(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.get("/whoami")
+        async def whoami(auth_client: AuthClient = Depends(get_auth_client)):
+            principal = auth_client.principal
+            return {
+                "principal": principal.id,
+                "email": principal.email,
+                "groups": principal.groups,
+            }
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+        client = TestClient(app, raise_server_exceptions=False)
+        claims = TokenClaims(
+            subject="alice@example.com",
+            email="alice@example.com",
+            groups=["team-ml", "team-ai"],
+            scopes=["models:read"],
+            raw_claims={},
+        )
+        resolved = ResolvedBearerToken(claims=claims, token_kind="access_key")
+
+        with patch(
+            "nmp.common.auth.middleware.resolve_bearer_token",
+            new=AsyncMock(return_value=resolved),
+        ) as resolver:
+            with patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize:
+                mock_authorize.return_value = MagicMock(allowed=True)
+                response = client.get("/whoami", headers={"Authorization": "Bearer scoped-access-key"})
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "principal": "alice@example.com",
+            "email": "alice@example.com",
+            "groups": ["team-ml", "team-ai"],
+        }
+        resolver.assert_awaited_once()
+        mock_authorize.assert_called_once()
+        assert mock_authorize.call_args.kwargs["scopes"] == ["models:read"]
+
+    def test_auth_jwks_path_bypasses_auth(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.get("/apis/auth/jwks")
+        async def jwks():
+            return {"keys": []}
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            response = client.get("/apis/auth/jwks")
+
+        assert response.status_code == 200
+        mock_authorize.assert_not_called()
+
+    def test_access_key_specific_jwks_path_is_not_a_health_bypass(self):
+        assert "/apis/auth/v2/access-keys/jwks" not in HEALTH_ENDPOINTS
+
+    def test_authenticate_path_bypasses_auth(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.post("/apis/auth/authenticate")
+        async def authenticate():
+            return {"ok": True}
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            response = client.post("/apis/auth/authenticate")
+
+        assert response.status_code == 200
+        mock_authorize.assert_not_called()
+
+    def test_authenticate_prefixed_callout_path_bypasses_auth(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.delete("/apis/auth/authenticate/apis/entities/v2/workspaces/default")
+        async def authenticate_prefixed():
+            return {"ok": True}
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            response = client.delete("/apis/auth/authenticate/apis/entities/v2/workspaces/default")
+
+        assert response.status_code == 200
+        mock_authorize.assert_not_called()
 
 
 class TestPrincipalHeadersAuth:

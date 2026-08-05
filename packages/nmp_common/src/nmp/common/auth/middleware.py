@@ -15,10 +15,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
+from .bearer import MalformedBearerTokenError, parse_bearer_authorization_header
 from .client import AuthClient
 from .dependencies import auth_client_context
 from .exceptions import InvalidPrincipalHeader, InvalidScopeFormatError
 from .models import Principal
+from .token_resolver import ResolvedBearerToken, resolve_bearer_token
 
 logger = logging.getLogger(__name__)
 
@@ -70,18 +72,22 @@ HEALTH_ENDPOINTS = {
     "/health/ready",
     "/metrics",
     "/apis/auth/discovery",  # Discovery endpoint for CLI/SDK
-    "/apis/auth/jwks",  # Workload identity exchange signing keys
+    "/apis/auth/authenticate",  # Bearer-token validation callout
+    "/apis/auth/jwks",  # NeMo-minted bearer-token signing keys
     "/apis/auth/token",  # Workload identity token exchange validates the subject token itself
 }
 
 # GET requests to these paths bypass authentication (e.g. / -> /studio redirect).
 PUBLIC_GET_PATHS = {
     "/",
+    "/apis/plugins",  # Studio plugin manifest — fetched by the SPA before login completes
 }
 
 # Path prefixes that bypass authorization
 BYPASS_PREFIXES = (
+    "/apis/auth/authenticate/",  # Envoy ext_authz path_prefix callout includes the original protected path
     "/studio",  # Studio UI static files — the SPA handles its own OIDC login
+    "/plugin-ui/",  # Studio plugin bundles — loaded via dynamic import(), cannot send Authorization
 )
 
 
@@ -197,6 +203,96 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         finally:
             auth_client_context.reset(context_token)
 
+    async def _call_pdp(
+        self,
+        auth_client: AuthClient,
+        request: Request,
+        scopes: list[str] | None,
+        *,
+        anonymous_denial_is_401: bool,
+    ) -> Response | None:
+        """Call PDP and return an error response, or None when authorized."""
+        try:
+            result = await auth_client.authorize_request(
+                method=request.method,
+                path=request.url.path,
+                scopes=scopes,
+                http_client=auth_client.http_client,
+            )
+        except httpx.ConnectError as e:
+            logger.error(
+                "Cannot connect to PDP at %s: %s (service: %s)%s",
+                self.config.auth_url,
+                _describe_pdp_failure(e),
+                self.service_name or "unknown",
+                _embedded_pdp_base_url_hint(self.config),
+            )
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Authorization service unavailable"},
+            )
+        except httpx.TimeoutException as e:
+            logger.error(
+                "PDP timeout at %s: %s (service: %s)",
+                self.config.auth_url,
+                _describe_pdp_failure(e),
+                self.service_name or "unknown",
+            )
+            return JSONResponse(
+                status_code=504,
+                content={"detail": "Authorization service timeout"},
+            )
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "PDP error response from %s: HTTP %s (service: %s) body=%r",
+                self.config.auth_url,
+                e.response.status_code,
+                self.service_name or "unknown",
+                (e.response.text or "")[:500],
+            )
+            return JSONResponse(
+                status_code=502,
+                content={"detail": "Authorization service error"},
+            )
+        except InvalidScopeFormatError as e:
+            logger.warning(
+                "Invalid OAuth scope format (service: %s): %s",
+                self.service_name or "unknown",
+                str(e),
+            )
+            return JSONResponse(
+                status_code=400,
+                content={"detail": str(e)},
+            )
+        except Exception as e:
+            logger.exception(
+                "Unexpected error during authorization (service: %s): %s",
+                self.service_name or "unknown",
+                _describe_pdp_failure(e),
+            )
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal authorization error"},
+            )
+
+        if result.allowed:
+            return None
+
+        principal_id = auth_client.principal.id
+        status_code = 401 if anonymous_denial_is_401 and not principal_id else 403
+        logger.warning(
+            "Authorization denied for %s %s (principal: %s, service: %s, reason: %s)",
+            request.method,
+            request.url.path,
+            principal_id or "anonymous",
+            self.service_name or "unknown",
+            result.reason,
+        )
+        return JSONResponse(
+            status_code=status_code,
+            content={"detail": "Unauthorized" if status_code == 401 else "Forbidden"},
+        )
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Main entry point - routes requests through the appropriate authorization flow.
 
@@ -258,15 +354,12 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             return await self._handle_auth_disabled_request(request, call_next)
 
         # Try to extract principal from Authorization: Bearer header (native OIDC or unsigned JWT)
-        auth_header = headers_dict.get("authorization", "")
-        if auth_header.lower().startswith("bearer "):
-            if self.config.oidc.enabled or self.config.allow_unsigned_jwt:
-                return await self._handle_bearer_token_request(request, call_next, auth_header)
-            logger.warning("Bearer token provided but OIDC is not configured")
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Bearer token authentication not configured"},
-            )
+        try:
+            bearer_token = parse_bearer_authorization_header(headers_dict.get("authorization"))
+        except MalformedBearerTokenError:
+            return JSONResponse(status_code=401, content={"detail": "Invalid bearer token"})
+        if bearer_token is not None:
+            return await self._handle_bearer_token_request(request, call_next, bearer_token)
 
         # Perform authorization check with auth endpoint (allows PDP to decide for anonymous access)
         return await self._handle_auth_check(request, call_next)
@@ -289,12 +382,13 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         Returns:
             Response from downstream handlers, or 401 if not a valid service principal
         """
-        auth_header = headers_dict.get("authorization", "")
-        if auth_header.lower().startswith("bearer "):
-            token = auth_header[7:]
-            if token.startswith("service:"):
-                headers_dict["x-nmp-principal-id"] = token
-                return await self._handle_principal_headers_request(request, call_next, headers_dict)
+        try:
+            bearer_token = parse_bearer_authorization_header(headers_dict.get("authorization"))
+        except MalformedBearerTokenError:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        if bearer_token is not None and bearer_token.startswith("service:"):
+            headers_dict["x-nmp-principal-id"] = bearer_token
+            return await self._handle_principal_headers_request(request, call_next, headers_dict)
 
         return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
@@ -363,55 +457,42 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         # flow synthesizes these from its Bearer service token without mutating request.headers.
         return await self._handle_auth_check(request, call_next, headers_dict)
 
-    async def _handle_bearer_token_request(self, request: Request, call_next: Callable, auth_header: str) -> Response:
-        """Handle requests with Authorization: Bearer tokens.
-
-        Validates the JWT token directly against the configured OIDC issuer,
-        extracts principal info, and proceeds with authorization.
-
-        Args:
-            request: The incoming HTTP request
-            call_next: The next middleware/handler in the chain
-            auth_header: The Authorization header value
-
-        Returns:
-            The response from downstream handlers or an error response
-        """
+    async def _handle_bearer_token_request(self, request: Request, call_next: Callable, token: str) -> Response:
+        """Handle requests with Authorization: Bearer tokens through the shared resolver."""
         jwt_validator = self._get_jwt_validator()
-
-        if jwt_validator is None:
-            logger.warning("Bearer token provided but OIDC is not configured")
+        if jwt_validator is None and not self.config.access_keys.enabled:
+            logger.warning("Bearer token provided but bearer token authentication is not configured")
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Bearer token authentication not configured"},
             )
 
-        # Extract token from header
-        token = auth_header[7:]  # Remove "Bearer " prefix
-
-        # Validate token
         from .jwt import UnsignedJWTRejectedError
 
         try:
-            claims = await jwt_validator.validate_token(token)
+            resolved = await resolve_bearer_token(self.config, token, jwt_validator=jwt_validator)
         except UnsignedJWTRejectedError as exc:
             return JSONResponse(
                 status_code=401,
                 content={"detail": str(exc)},
             )
 
-        if claims is None:
+        if resolved is None:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid or expired token"},
             )
 
-        # Create Principal from token claims
-        principal = Principal(
-            id=claims.subject,
-            email=claims.email,
-            groups=claims.groups,
-        )
+        return await self._handle_resolved_bearer_token(request, call_next, resolved)
+
+    async def _handle_resolved_bearer_token(
+        self,
+        request: Request,
+        call_next: Callable,
+        resolved: ResolvedBearerToken,
+    ) -> Response:
+        """Authorize a request after a bearer token has produced trusted claims."""
+        principal = resolved.principal
 
         # Update the observability context with principal info for logging
         self._update_auth_context(principal)
@@ -439,76 +520,15 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         )
 
         # Extract scopes from token claims
-        scopes = claims.scopes if claims.scopes else None
+        scopes = resolved.scopes if resolved.scopes else None
 
-        try:
-            result = await auth_client.authorize_request(
-                method=request.method,
-                path=request.url.path,
-                scopes=scopes,
-                http_client=auth_client.http_client,
-            )
-        except httpx.ConnectError as e:
-            logger.error(
-                "Cannot connect to PDP at %s: %s (service: %s)%s",
-                self.config.auth_url,
-                _describe_pdp_failure(e),
-                self.service_name or "unknown",
-                _embedded_pdp_base_url_hint(self.config),
-            )
-            return JSONResponse(
-                status_code=503,
-                content={"detail": "Authorization service unavailable"},
-            )
-        except httpx.TimeoutException as e:
-            logger.error(
-                "PDP timeout at %s: %s (service: %s)",
-                self.config.auth_url,
-                _describe_pdp_failure(e),
-                self.service_name or "unknown",
-            )
-            return JSONResponse(
-                status_code=504,
-                content={"detail": "Authorization service timeout"},
-            )
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                "PDP error response from %s: HTTP %s (service: %s) body=%r",
-                self.config.auth_url,
-                e.response.status_code,
-                self.service_name or "unknown",
-                (e.response.text or "")[:500],
-            )
-            return JSONResponse(
-                status_code=502,
-                content={"detail": "Authorization service error"},
-            )
-        except InvalidScopeFormatError as e:
-            logger.warning(
-                "Invalid OAuth scope format (service: %s): %s",
-                self.service_name or "unknown",
-                str(e),
-            )
-            return JSONResponse(
-                status_code=400,
-                content={"detail": str(e)},
-            )
-        except Exception as e:
-            logger.exception(
-                "Unexpected error during authorization (service: %s): %s",
-                self.service_name or "unknown",
-                _describe_pdp_failure(e),
-            )
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "Internal authorization error"},
-            )
-
-        if not result.allowed:
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Forbidden"},
-            )
+        if error_response := await self._call_pdp(
+            auth_client,
+            request,
+            scopes,
+            anonymous_denial_is_401=False,
+        ):
+            return error_response
 
         return await self._call_next_with_auth_client(request, call_next, auth_client)
 
@@ -600,84 +620,13 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
         # Perform authorization check - only catch errors from the PDP call itself.
         # Errors from downstream handlers (call_next) should propagate normally.
-        try:
-            result = await auth_client.authorize_request(
-                method=request.method,
-                path=request.url.path,
-                scopes=scopes,
-                http_client=auth_client.http_client,
-            )
-        except httpx.ConnectError as e:
-            logger.error(
-                "Cannot connect to PDP at %s: %s (service: %s)%s",
-                self.config.auth_url,
-                _describe_pdp_failure(e),
-                self.service_name or "unknown",
-                _embedded_pdp_base_url_hint(self.config),
-            )
-            return JSONResponse(
-                status_code=503,
-                content={"detail": "Authorization service unavailable"},
-            )
-        except httpx.TimeoutException as e:
-            logger.error(
-                "PDP timeout at %s: %s (service: %s)",
-                self.config.auth_url,
-                _describe_pdp_failure(e),
-                self.service_name or "unknown",
-            )
-            return JSONResponse(
-                status_code=504,
-                content={"detail": "Authorization service timeout"},
-            )
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                "PDP error response from %s: HTTP %s (service: %s) body=%r",
-                self.config.auth_url,
-                e.response.status_code,
-                self.service_name or "unknown",
-                (e.response.text or "")[:500],
-            )
-            return JSONResponse(
-                status_code=502,
-                content={"detail": "Authorization service error"},
-            )
-        except InvalidScopeFormatError as e:
-            logger.warning(
-                "Invalid OAuth scope format (service: %s): %s",
-                self.service_name or "unknown",
-                str(e),
-            )
-            return JSONResponse(
-                status_code=400,
-                content={"detail": str(e)},
-            )
-        except Exception as e:
-            logger.exception(
-                "Unexpected error during authorization (service: %s): %s",
-                self.service_name or "unknown",
-                _describe_pdp_failure(e),
-            )
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "Internal authorization error"},
-            )
-
-        # Check authorization result
-        if not result.allowed:
-            status_code = 401 if not principal.id else 403
-            logger.warning(
-                "Authorization denied for %s %s (principal: %s, service: %s, reason: %s)",
-                request.method,
-                request.url.path,
-                principal.id or "anonymous",
-                self.service_name or "unknown",
-                result.reason,
-            )
-            return JSONResponse(
-                status_code=status_code,
-                content={"detail": "Unauthorized" if status_code == 401 else "Forbidden"},
-            )
+        if error_response := await self._call_pdp(
+            auth_client,
+            request,
+            scopes,
+            anonymous_denial_is_401=True,
+        ):
+            return error_response
 
         # Authorization successful - set up context for downstream handlers.
         # This is outside the try/except so endpoint errors propagate normally

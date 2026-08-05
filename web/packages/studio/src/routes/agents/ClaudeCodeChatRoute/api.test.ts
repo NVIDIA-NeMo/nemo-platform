@@ -206,7 +206,7 @@ describe('Claude Code API helpers', () => {
 
     expect(onPermissionRequest).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'NeMo Agent permission request was malformed' })
+      expect.objectContaining({ message: 'NeMo Copilot permission request was malformed' })
     );
   });
 
@@ -243,7 +243,7 @@ describe('Claude Code API helpers', () => {
 
     expect(onPermissionRequest).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'NeMo Agent permission request was malformed' })
+      expect.objectContaining({ message: 'NeMo Copilot permission request was malformed' })
     );
   });
 
@@ -541,7 +541,7 @@ describe('Claude Code API helpers', () => {
       session_id: 'session-1',
       chat_artifacts: {
         agent: undefined,
-        coding_agent_model: undefined,
+        copilot_model: undefined,
         files: [],
         links: [],
         jobs: [{ name: 'studio-job-1' }],

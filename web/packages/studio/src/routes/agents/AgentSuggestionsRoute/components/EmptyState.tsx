@@ -6,7 +6,7 @@ import { Button } from '@nvidia/foundations-react-core';
 import { getAgentsListRoute } from '@studio/routes/utils';
 import { Lightbulb } from 'lucide-react';
 import { type FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 export const EmptyState: FC = () => (
   <ErrorMessage

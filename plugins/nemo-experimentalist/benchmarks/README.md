@@ -117,7 +117,7 @@ Required credentials:
 export INFERENCE_API_KEY=...
 ```
 
-`EXPERIMENTALIST_API_KEY` may be provided instead. The runner maps either credential
+`NEMO_EXPERIMENTALIST_API_KEY` may be provided instead. The runner maps either credential
 to both the AUT and optimizer, using
 `https://inference-api.nvidia.com/v1` unless an API base is explicitly set.
 

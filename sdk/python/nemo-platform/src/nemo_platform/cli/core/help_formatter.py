@@ -14,10 +14,12 @@ Clean help output with uv-inspired style:
 from __future__ import annotations
 
 import shutil
+import sys
+import time
 from contextvars import ContextVar
 from functools import wraps
 from io import StringIO
-from typing import Any, Callable, ParamSpec, Sequence, TypeVar
+from typing import Any, Callable, Mapping, ParamSpec, Sequence, TypeVar
 
 import click
 from click import Command
@@ -39,6 +41,8 @@ def _strip_required_suffix(help_text: str) -> tuple[str, bool]:
 class NmpErrorHandlingMixin:
     """Mixin that provides custom error handling for Click commands."""
 
+    _nmp_emit_command_invoked = False
+
     def main(
         self,
         args: list[str] | None = None,
@@ -47,36 +51,90 @@ class NmpErrorHandlingMixin:
         standalone_mode: bool = True,
         **extra: Any,
     ) -> Any:
-        """Override main to use custom error handling."""
-        from nemo_platform.cli.core.errors import handle_exception
+        """Override main to use custom error handling and emit one telemetry event.
 
+        This is the single path every command type flows through (hand-registered,
+        OpenAPI-generated, plugin entry points), and Click only calls ``main()`` on the
+        root command object, so this is the natural choke point for a per-invocation
+        ``command_invoked`` event. The outcome->status mapping and the emit both live in
+        a ``finally`` so telemetry fires even when a command fails, and the emit body is
+        best-effort (never raises) so a telemetry bug can never change a command's exit
+        code or output.
+        """
+        from nemo_platform.cli.core.errors import handle_exception
+        from nemo_platform.cli.telemetry import runtime
+        from nemo_platform.cli.telemetry.events import TaskStatusEnum
+
+        # Only the root group drives telemetry. Nested groups never have main()
+        # called during dispatch, but this guard keeps the single-emit contract explicit.
+        is_telemetry_root = bool(getattr(self, "_nmp_emit_command_invoked", False))
+        help_requested = False
+        if is_telemetry_root:
+            runtime.reset()
+            # Reading help (e.g. ``nemo docs --help``) is not usage, so it must not emit
+            # a command_invoked event. Detect a help request from the resolved args; the
+            # help option names are the same ones every command registers via
+            # ``_context_settings_with_help``.
+            resolved_args = args if args is not None else sys.argv[1:]
+            help_requested = any(arg in HELP_OPTION_NAMES for arg in resolved_args)
+
+        start = time.monotonic()
+        status: TaskStatusEnum | None = None
         try:
-            result = super().main(  # type: ignore[misc]
-                args=args,
-                prog_name=prog_name,
-                complete_var=complete_var,
-                standalone_mode=False,
-                **extra,
-            )
-            # When standalone_mode=False, Click returns the exit code instead of raising
-            # SystemExit. We need to convert non-zero exit codes back to SystemExit
-            # when the original caller expected standalone_mode=True behavior.
-            if standalone_mode and isinstance(result, int) and result != 0:
-                raise SystemExit(result)
-            return result
-        except click.UsageError as e:
-            if standalone_mode:
-                handle_exception(e, e.ctx)
+            try:
+                result = super().main(  # type: ignore[misc]  # ty: ignore[unresolved-attribute]
+                    args=args,
+                    prog_name=prog_name,
+                    complete_var=complete_var,
+                    standalone_mode=False,
+                    **extra,
+                )
+                # When standalone_mode=False, Click returns the exit code instead of
+                # raising. A non-zero code is an error regardless of how the outer caller
+                # ultimately surfaces it.
+                status = TaskStatusEnum.ERROR if isinstance(result, int) and result != 0 else TaskStatusEnum.COMPLETED
+                # Convert non-zero exit codes back to SystemExit when the original caller
+                # expected standalone_mode=True behavior.
+                if standalone_mode and isinstance(result, int) and result != 0:
+                    raise SystemExit(result)
+                return result
+            except click.UsageError as e:
+                status = TaskStatusEnum.ERROR
+                if standalone_mode:
+                    handle_exception(e, e.ctx)
+                raise
+            except click.exceptions.Exit as e:
+                status = TaskStatusEnum.COMPLETED if e.exit_code == 0 else TaskStatusEnum.ERROR
+                if standalone_mode:
+                    raise SystemExit(e.exit_code)
+                raise
+            except click.Abort:
+                status = TaskStatusEnum.CANCELED
+                if standalone_mode:
+                    click.echo("Aborted!", err=True)
+                    raise SystemExit(1)
+                raise
+            except click.ClickException as e:
+                status = TaskStatusEnum.ERROR
+                if standalone_mode:
+                    handle_exception(e, getattr(e, "ctx", None))
+                raise
+        except SystemExit as e:
+            if status is None:
+                code = e.code
+                status = TaskStatusEnum.COMPLETED if code in (0, None) else TaskStatusEnum.ERROR
             raise
-        except click.exceptions.Exit as e:
-            if standalone_mode:
-                raise SystemExit(e.exit_code)
+        except KeyboardInterrupt:
+            if status is None:
+                status = TaskStatusEnum.CANCELED
             raise
-        except click.Abort:
-            if standalone_mode:
-                click.echo("Aborted!", err=True)
-                raise SystemExit(1)
+        except BaseException:
+            if status is None:
+                status = TaskStatusEnum.ERROR
             raise
+        finally:
+            if is_telemetry_root and not help_requested:
+                runtime.emit_command_invoked(status or TaskStatusEnum.COMPLETED, time.monotonic() - start)
 
 
 def _get_terminal_width() -> int:
@@ -85,7 +143,7 @@ def _get_terminal_width() -> int:
     return min(width - 2, 120)
 
 
-def _context_settings_with_help(context_settings: dict | None) -> dict:
+def _context_settings_with_help(context_settings: Mapping[str, Any] | None) -> dict[str, Any]:
     """Return context_settings with help_option_names defaulting to --help/-h."""
     settings = dict(context_settings or {})
     settings.setdefault("help_option_names", list(HELP_OPTION_NAMES))
@@ -271,7 +329,7 @@ class NmpOption(TyperOption):
 
         # Add value placeholder if needed
         if not self.is_flag and not self.count:
-            metavar = self.metavar or self.name.upper()
+            metavar = self.metavar or (self.name or "").upper()
             placeholder = click.style(f"<{metavar}>", fg="yellow")
             opts_str = f"{opts_str} {placeholder}"
 
@@ -290,8 +348,9 @@ class NmpOption(TyperOption):
                 has_real_default = True
 
         # Possible values (choices) and default - combine if both present
-        if hasattr(self.type, "choices") and self.type.choices:
-            choices = ", ".join(str(c) for c in self.type.choices)
+        type_choices = getattr(self.type, "choices", None)
+        if type_choices:
+            choices = ", ".join(str(c) for c in type_choices)
 
             # Check if we also have a default to combine
             if has_real_default:
@@ -519,11 +578,19 @@ class NmpGroup(NmpErrorHandlingMixin, TyperGroup):
 
         return f"Active context: {display_context.context_name} (workspace: {display_context.workspace})"
 
-    def command(self, *args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Command] | Command:  # pyright: ignore [reportIncompatibleMethodOverride]
+    def command(self, *args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Command] | Command:  # pyright: ignore [reportIncompatibleMethodOverride]  # ty: ignore[invalid-method-override]
         """Override command decorator to use NmpCommand."""
         if "cls" not in kwargs:
             kwargs["cls"] = NmpCommand
         return super().command(*args, **kwargs)
+
+    def resolve_command(self, ctx: click.Context, args: list[str]) -> tuple[str | None, Command | None, list[str]]:
+        """Record the resolved subcommand name for telemetry, then resolve as usual."""
+        cmd_name, cmd, remaining = super().resolve_command(ctx, args)
+        from nemo_platform.cli.telemetry import runtime
+
+        runtime.note_subcommand(cmd_name)
+        return cmd_name, cmd, remaining
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Command | None:
         """Override to patch command classes to use NeMo Platform formatting."""

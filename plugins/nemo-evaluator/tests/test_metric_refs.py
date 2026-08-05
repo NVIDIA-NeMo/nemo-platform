@@ -60,7 +60,9 @@ class _FakeEntityClient:
     def __init__(self) -> None:
         self.entities: dict[tuple[str, str], MetricBundleEntity] = {}
 
-    async def get(self, entity_type: type[MetricBundleEntity], *, workspace: str, name: str) -> MetricBundleEntity:
+    async def get(
+        self, entity_type: type[MetricBundleEntity], *, workspace: str, name: str, parent: str | None = None
+    ) -> MetricBundleEntity:
         try:
             return self.entities[(workspace, name)]
         except KeyError:

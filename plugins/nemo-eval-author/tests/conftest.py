@@ -22,8 +22,8 @@ import pytest
 # unmocked call fails to connect rather than sending the key over plaintext.
 os.environ.setdefault("AUTHOR_API_BASE", "https://placeholder.invalid")
 os.environ.setdefault("AUTHOR_API_KEY", "placeholder-for-import")
-os.environ.setdefault("EXPERIMENTALIST_API_BASE", "https://placeholder.invalid")
-os.environ.setdefault("EXPERIMENTALIST_API_KEY", "placeholder-for-import")
+os.environ.setdefault("NEMO_EXPERIMENTALIST_API_BASE", "https://placeholder.invalid")
+os.environ.setdefault("NEMO_EXPERIMENTALIST_API_KEY", "placeholder-for-import")
 
 litellm.drop_params = True
 

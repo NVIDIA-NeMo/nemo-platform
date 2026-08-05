@@ -93,6 +93,7 @@ class RunnerBackend(ABC):
         config: dict[str, Any],
         port: int,
         *,
+        agent: str = "",
         image: str | None = None,
         deployment_mode: DeploymentMode = "subprocess",
         created_by: str | None = None,

@@ -13,8 +13,7 @@ import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { MemoryRouter } from 'react-router';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router';
 
 // Mock child components to isolate testing
 vi.mock('@studio/routes/FilesetListRoute/ActionMenu', () => ({
@@ -61,8 +60,10 @@ vi.mock('@studio/routes/utils', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@studio/routes/utils')>();
   return {
     ...actual,
+    // Mirrors the real helper: callers pass raw values and the helper encodes
+    // path params (generatePath does this in production).
     getFilesetDetailsRoute: (project: string, datasetName: string) =>
-      `/projects/${project}/filesets/${datasetName}`,
+      `/projects/${project}/filesets/${encodeURIComponent(datasetName)}`,
     getNewFilesetRoute: (project: string) => `/projects/${project}/filesets/new`,
   };
 });

@@ -16,13 +16,13 @@ from pydantic import BaseModel, Field
 
 
 class MissingBackendDependencyError(RuntimeError):
-    """A backend's optional dependency (its packaging extra) is not installed.
+    """A backend cannot initialize because a required capability is unavailable.
 
-    Backends whose substrate SDK ships as an optional extra (e.g. ``openshell``)
-    raise this when that SDK is absent, so the executor registry can skip the
-    executor with a warning instead of failing the whole deployments service at
-    startup. Subclasses ``RuntimeError`` so existing ``except RuntimeError`` paths
-    keep working.
+    Raised when an optional packaging extra is missing (e.g. ``openshell``) or when
+    a runtime substrate is unreachable (e.g. Docker daemon/socket). The executor
+    registry catches this, skips that executor with a warning, and continues
+    starting the deployments service. Subclasses ``RuntimeError`` so existing
+    ``except RuntimeError`` paths keep working.
     """
 
 

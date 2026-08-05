@@ -5,7 +5,7 @@ import { PageHeader, Stack, TabsList, TabsRoot, TabsTrigger } from '@nvidia/foun
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getSafeSynthesizerJobRoute, getSafeSynthesizerJobReportRoute } from '@studio/routes/utils';
 import { FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface SafeSynthesizerNavigationProps {
   selected: 'summary' | 'report';

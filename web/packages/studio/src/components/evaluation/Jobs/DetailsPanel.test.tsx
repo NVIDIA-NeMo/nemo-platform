@@ -9,7 +9,7 @@ import { metricEvaluationJob1 } from '@studio/mocks/evaluation/v1/evaluations';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { renderRoute } from '@studio/tests/util/render';
 import { screen } from '@testing-library/react';
-import { generatePath } from 'react-router-dom';
+import { generatePath } from 'react-router';
 
 describe('DetailsPanel', () => {
   beforeEach(() => {

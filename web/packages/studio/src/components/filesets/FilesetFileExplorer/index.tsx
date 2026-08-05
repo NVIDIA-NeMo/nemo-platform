@@ -196,7 +196,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
       datasetName={datasetName}
       disabled={!isReadWriteDataset}
     >
-      {(openFileDialog) => (
+      {() => (
         <>
           {isLoading ? (
             <Flex className="h-full w-full" justify="center" align="center">
@@ -275,7 +275,6 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                 isUploading={isUploading}
                 stagedUploadFiles={stagedUploadFiles}
                 filesList={filesList}
-                openFileDialog={openFileDialog}
                 handleConfirmUpload={handleConfirmUpload}
               />
             </>

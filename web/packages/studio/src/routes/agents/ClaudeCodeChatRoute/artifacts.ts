@@ -43,7 +43,7 @@ const SPEC_HEADINGS = new Set([
 const STUDIO_LINK_PATH_TEMPLATES: Record<string, string> = {
   workspace: '/workspaces/{workspace}',
   dashboard: '/workspaces/{workspace}/dashboard',
-  code_agent: '/workspaces/{workspace}/dashboard/code-agent',
+  copilot: '/workspaces/{workspace}/dashboard/copilot',
   agents: '/workspaces/{workspace}/agents',
   agent: '/workspaces/{workspace}/agents/{name}',
   agent_chat: '/workspaces/{workspace}/agents/{name}?tab=chat-playground',
@@ -242,7 +242,7 @@ const cloneArtifacts = (artifacts: ClaudeCodeChatArtifacts): ClaudeCodeChatArtif
   agent: artifacts.agent,
   model: artifacts.model,
   model_source: artifacts.model_source,
-  coding_agent_model: artifacts.coding_agent_model,
+  copilot_model: artifacts.copilot_model,
   workspace: artifacts.workspace,
   selections: [...artifacts.selections],
   files: [...artifacts.files],
@@ -281,8 +281,8 @@ const inferSelectionLabel = (question: string, header?: string): string => {
   return label.length > 40 ? label.slice(0, 40) : label;
 };
 
-const setCodingAgentModel = (artifacts: ClaudeCodeChatArtifacts, model: string) => {
-  artifacts.coding_agent_model = model;
+const setCopilotModel = (artifacts: ClaudeCodeChatArtifacts, model: string) => {
+  artifacts.copilot_model = model;
 };
 
 const setSpecModel = (artifacts: ClaudeCodeChatArtifacts, model: string) => {
@@ -477,7 +477,7 @@ export const updateClaudeCodeChatArtifactsFromEvent = (
   const next = cloneArtifacts(current);
   const message = isRecord(event.message) ? event.message : undefined;
   const model = getString(message?.model);
-  if (model) setCodingAgentModel(next, model);
+  if (model) setCopilotModel(next, model);
 
   const content = message?.content;
   if (!Array.isArray(content)) return next;

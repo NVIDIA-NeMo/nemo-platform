@@ -5,6 +5,12 @@
 
 from nmp.common.config import AuthConfig
 
+from .access_keys import (
+    ACCESS_KEY_JWKS_PATH,
+    ACCESS_KEY_TOKEN_TYPE,
+    AccessKeyIssuerService,
+    validate_access_key_token,
+)
 from .client import AuthClient, AuthorizationResult
 from .dependencies import (
     auth_as_service,
@@ -32,6 +38,9 @@ __all__ = [
     "InvalidScopeFormatError",
     "AuthorizationMiddleware",
     "AuthorizationResult",
+    "ACCESS_KEY_JWKS_PATH",
+    "ACCESS_KEY_TOKEN_TYPE",
+    "AccessKeyIssuerService",
     "NMP_PRINCIPAL_ENVVAR",
     "Principal",
     "auth_as_service",
@@ -41,4 +50,5 @@ __all__ = [
     "compute_accessible_workspaces",
     "get_auth_client",
     "get_principal_auth_headers",
+    "validate_access_key_token",
 ]

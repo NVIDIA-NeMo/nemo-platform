@@ -4,7 +4,7 @@
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getAgentsListRoute } from '@studio/routes/utils';
 import { type FC } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router';
 
 /**
  * Agent deployments are now shown on the combined Agents page.

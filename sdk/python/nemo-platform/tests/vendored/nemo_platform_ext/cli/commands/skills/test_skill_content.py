@@ -89,6 +89,19 @@ class TestLoadPlatformSkills:
             assert skill.source_dir.is_dir()
             assert (skill.source_dir / "SKILL.md").exists()
 
+    def test_build_agent_templates_are_packaged(self):
+        skill = load_skills()["nemo-build-agent"]
+        assert skill.source_dir is not None
+
+        templates_dir = skill.source_dir / "references" / "templates"
+        assert (templates_dir / "agent.yml").is_file()
+        assert (templates_dir / "eval-job.json").is_file()
+
+    def test_model_selection_benchmark_cache_is_packaged(self):
+        skill = load_skills()["nemo-model-selection"]
+        assert skill.source_dir is not None
+        assert (skill.source_dir / "references" / "benchmark_cache.json").is_file()
+
     def test_returns_new_dict_each_call(self):
         """Verify callers can't corrupt the cached data."""
         skills1 = load_skills()

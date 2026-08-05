@@ -51,7 +51,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     resolve_skill_mode,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.agent_eval.workspace_seeds import SEED_FILES_INPUT_KEY, seed_workspace
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_ATIF,
@@ -159,6 +159,43 @@ class FabricAgentRuntime:
         (``rt.with_skill(a).with_skill(b)`` injects both).
         """
         return self.with_skills([skill])
+
+    def _adapter_id(self) -> str:
+        """Harness adapter selected by the Fabric config (empty when unset)."""
+        harness = self._config.get("harness") if isinstance(self._config, Mapping) else None
+        adapter_id = harness.get("adapter_id") if isinstance(harness, Mapping) else None
+        return str(adapter_id) if adapter_id is not None else ""
+
+    def _effective_model(self) -> str | None:
+        """The model a run will actually use, mirroring :meth:`_compose_config`'s precedence.
+
+        ``_compose_config`` only overwrites the config's default model when ``self._model`` is set, so
+        a model supplied purely through ``config`` is what runs. Reporting ``self._model`` alone would
+        record ``None`` for those runs, giving two runs with *different* models identical provenance —
+        the one thing this metadata exists to prevent.
+        """
+        if self._model:
+            return self._model
+        models = self._config.get("models") if isinstance(self._config, Mapping) else None
+        default = models.get("default") if isinstance(models, Mapping) else None
+        model = default.get("model") if isinstance(default, Mapping) else getattr(default, "model", None)
+        return str(model) if model is not None else None
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runner and the Fabric settings that shape its results."""
+        return RunnerInfo(
+            name=self._runtime_name,
+            kind="runner",
+            config={
+                "model": self._effective_model(),
+                "timeout_s": self._timeout_s,
+                "adapter_id": self._adapter_id(),
+                "skills": [skill.name for skill in self._skill_set.skills],
+                # Off means no relay/ATIF exporter, so the run captures no trajectory evidence — a
+                # metric that scores trajectories sees something different.
+                "capture_trajectory": self._capture_trajectory,
+            },
+        )
 
     async def run_tasks(
         self,

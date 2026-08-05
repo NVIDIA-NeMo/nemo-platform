@@ -200,7 +200,7 @@ def test_build_run_reporter_emits_header_and_is_reusable() -> None:
 
 
 def test_deps_accepts_a_reporter() -> None:
-    from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+    from nemo_experimentalist_plugin.entities import DatasetRef
     from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 
     reporter = RunReporter(sink=io.StringIO())

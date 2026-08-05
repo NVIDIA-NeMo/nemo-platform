@@ -100,7 +100,7 @@ async def run_profbench_mode(
     target: AgentEvalTarget | None = None
     trials: list[AgentEvalTrial] | None = None
     params: RunConfigOnlineModel | None = None
-    benchmark_meta = dict(benchmark.metadata)
+    benchmark_labels = {key: str(value) for key, value in benchmark.metadata.items()}
     if mode is ProfBenchMode.LIVE_CANDIDATE:
         target, params, score_source, effective_codex_runtime = _live_candidate_target(
             agent=agent,
@@ -110,11 +110,11 @@ async def run_profbench_mode(
         )
         if effective_codex_runtime is not None:
             print(f"Codex runtime: {effective_codex_runtime}")
-        benchmark_meta["score_source"] = score_source
+        benchmark_labels["score_source"] = score_source
     else:
         trials = benchmark.trials
         if mode is ProfBenchMode.LIVE_JUDGE:
-            benchmark_meta["score_source"] = "live_judge"
+            benchmark_labels["score_source"] = "live_judge"
 
     result = await AgentEvaluator().run(
         tasks=benchmark.tasks,
@@ -124,7 +124,7 @@ async def run_profbench_mode(
             output_dir=output_dir,
             run_id=f"{run_instance_id}-{mode.value}",
             params=params,
-            benchmark=benchmark_meta,
+            labels=benchmark_labels,
             write_dashboard=False,
         ),
     )

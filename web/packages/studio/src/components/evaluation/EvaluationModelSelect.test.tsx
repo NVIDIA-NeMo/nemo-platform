@@ -9,7 +9,7 @@ import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render as rawRender, screen } from '@testing-library/react';
 import { FC, PropsWithChildren } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 
 describe('EvaluationModelSelect', () => {
   beforeEach(() => {

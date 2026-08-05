@@ -86,12 +86,14 @@ _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
 class _TracePageRef:
     source_format: str
     trace_id: str
+    started_at_us: int
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> _TracePageRef:
         return cls(
             source_format=str(row["source_format"]),
             trace_id=str(row["id"]),
+            started_at_us=int(row["started_at_us"]),
         )
 
     @property
@@ -258,7 +260,8 @@ def _trace_page_sql(*, trace_index_sql: str, sort: str) -> str:
 
     return f"""
         SELECT
-            {_trace_select_columns(include_aggregates=False)}
+            {_trace_select_columns(include_aggregates=False)},
+            toUnixTimestamp64Micro(traces.started_at) AS started_at_us
         FROM ({trace_index_sql}) AS traces
         ORDER BY {_order_by(sort, table_alias="traces")}
         LIMIT %(limit)s OFFSET %(offset)s
@@ -297,6 +300,10 @@ def _page_trace_roots_sql(*, trace_index_table: str, mode: TraceMode) -> tuple[s
         FROM {trace_index_table} AS trace_roots FINAL
         WHERE trace_roots.workspace = %(workspace)s
             AND trace_roots.is_deleted = 0
+            -- The time range engages the primary key before FINAL; the flat trace ID
+            -- engages its bloom index, while the tuple preserves source-format identity.
+            AND trace_roots.root_started_at >= fromUnixTimestamp64Micro(%(page_started_at_min_us)s)
+            AND trace_roots.root_started_at <= fromUnixTimestamp64Micro(%(page_started_at_max_us)s)
             AND trace_roots.trace_id IN %(page_trace_ids)s
             AND (
                 trace_roots.source_format,
@@ -434,9 +441,12 @@ def _unique_string_attribute_aggregate(source_alias: str, *, parameter: str, ali
 
 
 def _trace_page_parameters(refs: Sequence[_TracePageRef]) -> dict[str, object]:
+    started_at_us = [ref.started_at_us for ref in refs]
     return {
         "page_trace_ids": [ref.trace_id for ref in refs],
         "page_trace_keys": [ref.trace_key for ref in refs],
+        "page_started_at_min_us": min(started_at_us),
+        "page_started_at_max_us": max(started_at_us),
     }
 
 
@@ -444,9 +454,9 @@ def _reconcile_hydrated_page(
     page_refs: Sequence[_TracePageRef],
     hydrated_rows: Sequence[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[_TracePageRef]]:
-    rows_by_ref = {_TracePageRef.from_row(row): row for row in hydrated_rows}
-    rows = [rows_by_ref[ref] for ref in page_refs if ref in rows_by_ref]
-    dropped_refs = [ref for ref in page_refs if ref not in rows_by_ref]
+    rows_by_key = {(str(row["source_format"]), str(row["id"])): row for row in hydrated_rows}
+    rows = [rows_by_key[ref.trace_key] for ref in page_refs if ref.trace_key in rows_by_key]
+    dropped_refs = [ref for ref in page_refs if ref.trace_key not in rows_by_key]
     return rows, dropped_refs
 
 

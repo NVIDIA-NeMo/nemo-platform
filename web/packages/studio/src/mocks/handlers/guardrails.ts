@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
+import {
+  GUARDRAIL_CHECKS_ENTITY_TYPE,
+  type GuardrailCheckEntity,
+} from '@studio/api/guardrail-checks/types';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { http, HttpResponse } from 'msw';
 
@@ -51,7 +55,64 @@ export const mockGuardrailConfigs: GuardrailConfig[] = [
   },
 ];
 
+/** Guardrail checks are entity-store children of a config; these hang off `cfg-1` (pii-filter). */
+export const mockGuardrailChecks: GuardrailCheckEntity[] = [
+  {
+    entity_type: GUARDRAIL_CHECKS_ENTITY_TYPE,
+    id: 'chk-1',
+    parent: 'cfg-1',
+    db_version: 1,
+    name: 'leaks-ssn',
+    workspace: 'default',
+    created_at: '2026-04-12T11:00:00.000Z',
+    created_by: 'user@example.com',
+    updated_at: '2026-04-12T11:00:00.000Z',
+    updated_by: 'user@example.com',
+    data: {
+      messages: [{ role: 'user', content: 'My SSN is 123-45-6789' }],
+      runs: [
+        {
+          run_at: '2026-04-12T11:05:00.000Z',
+          status: 'blocked',
+          rails_status: { 'check pii': { status: 'blocked' } },
+          config_version: 1,
+        },
+      ],
+    },
+  },
+  {
+    entity_type: GUARDRAIL_CHECKS_ENTITY_TYPE,
+    id: 'chk-2',
+    parent: 'cfg-1',
+    db_version: 1,
+    name: 'benign-greeting',
+    workspace: 'default',
+    created_at: '2026-04-12T11:00:00.000Z',
+    created_by: 'user@example.com',
+    updated_at: '2026-04-12T11:00:00.000Z',
+    updated_by: 'user@example.com',
+    data: {
+      messages: [{ role: 'user', content: 'Hello there' }],
+      runs: [],
+    },
+  },
+];
+
 export const guardrailsHandlers = [
+  http.get(
+    `${PLATFORM_BASE_URL}/apis/entities/v2/workspaces/:workspace/entities/${GUARDRAIL_CHECKS_ENTITY_TYPE}`,
+    () =>
+      HttpResponse.json({
+        data: mockGuardrailChecks,
+        pagination: {
+          page: 1,
+          page_size: 1000,
+          current_page_size: mockGuardrailChecks.length,
+          total_pages: 1,
+          total_results: mockGuardrailChecks.length,
+        },
+      })
+  ),
   http.get(`${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs`, () =>
     HttpResponse.json({
       data: mockGuardrailConfigs,

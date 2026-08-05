@@ -33,7 +33,7 @@ import { keepPreviousData } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Columns3 } from 'lucide-react';
 import { type ComponentProps, type FC, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 type SessionRow = EvaluationSessionResponse & { _rowId: string };
 

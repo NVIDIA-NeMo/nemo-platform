@@ -32,7 +32,7 @@ import { logger } from '@studio/util/logger';
 import { FolderOpen, Info } from 'lucide-react';
 import { type FC, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { z } from 'zod';
 
 const PARENT_FOLDER_VALUE = '..';
@@ -186,11 +186,9 @@ export const AddToFolderModal: FC<AddToFolderModalProps> = ({
     const parentFolder = getParentFolder(currentFolder);
     const datasetFullName = `${workspace}/${datasetName}`;
     navigate(
-      getFilesetDetailsRoute(
-        routeWorkspace,
-        encodeURIComponent(datasetFullName),
-        parentFolder ? encodeURIComponent(parentFolder) : undefined
-      )
+      // Pass raw values: generatePath encodes path params and URLSearchParams
+      // encodes the folder query param.
+      getFilesetDetailsRoute(routeWorkspace, datasetFullName, parentFolder ?? undefined)
     );
   };
 

@@ -5,7 +5,7 @@ import { useStickToBottom } from '@nemo/common/src/hooks/useStickToBottom';
 import { Banner, Button, CodeSnippet, Flex, Stack } from '@nvidia/foundations-react-core';
 import { formatPreviewLogsForDisplay } from '@studio/components/NewDataDesignerJobForm/previewApi';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { FC } from 'react';
+import { type FC, memo } from 'react';
 
 export interface BuilderDetailsPanelProps {
   validationErrors: string[];
@@ -14,13 +14,13 @@ export interface BuilderDetailsPanelProps {
   isOpen: boolean;
   onToggle: () => void;
 }
-export const BuilderDetailsPanel: FC<BuilderDetailsPanelProps> = ({
+export const BuilderDetailsPanel: FC<BuilderDetailsPanelProps> = memo(function BuilderDetailsPanel({
   validationErrors,
   submitError,
   previewLogs,
   isOpen,
   onToggle,
-}) => {
+}) {
   const { ref: logsScrollRef } = useStickToBottom<HTMLDivElement>({
     enabled: isOpen && !!previewLogs,
   });
@@ -80,4 +80,4 @@ export const BuilderDetailsPanel: FC<BuilderDetailsPanelProps> = ({
       )}
     </div>
   );
-};
+});

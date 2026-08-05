@@ -9,7 +9,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import type { DataDesignerGeneratedState } from '@studio/routes/DataDesignerJobBuildRoute/aiSeed';
 import { getDataDesignerJobBuildRoute, getDataDesignerJobListRoute } from '@studio/routes/utils';
 import type { FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const NewDataDesignerJobRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

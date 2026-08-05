@@ -27,6 +27,15 @@ vi.mock('@nvidia/foundations-react-core', async (importOriginal) => {
   return kuiFoundationsReactMock(importOriginal);
 });
 
+vi.mock('react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router')>();
+  return {
+    ...actual,
+    useParams: vi.fn(actual.useParams),
+    useNavigate: vi.fn(actual.useNavigate),
+  };
+});
+
 /**
  * Fail tests on unexpected console.error/warn output.
  * Known, non-actionable messages are explicitly silenced below.

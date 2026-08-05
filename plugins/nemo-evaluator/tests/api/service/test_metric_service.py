@@ -65,7 +65,9 @@ class _FakeEntityClient:
         self.delete_error: Exception | None = None
         self.list_filter_operations: list[FilterOperation | None] = []
 
-    async def get(self, entity_type: type[MetricBundleEntity], *, workspace: str, name: str) -> MetricBundleEntity:
+    async def get(
+        self, entity_type: type[MetricBundleEntity], *, workspace: str, name: str, parent: str | None = None
+    ) -> MetricBundleEntity:
         key = (workspace, name)
         if key not in self.entities:
             raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
@@ -88,6 +90,7 @@ class _FakeEntityClient:
         name: str,
         *,
         workspace: str,
+        parent: str | None = None,
         expected_db_version: int | None = None,
     ) -> None:
         if self.delete_error is not None:

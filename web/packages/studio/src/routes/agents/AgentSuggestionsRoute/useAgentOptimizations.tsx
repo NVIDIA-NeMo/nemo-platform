@@ -29,7 +29,7 @@ import {
 import { getAgentsListRoute } from '@studio/routes/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 type MultiState = Record<string, true>;
 interface SuggestionFilter {

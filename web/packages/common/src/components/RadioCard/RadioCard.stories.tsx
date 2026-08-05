@@ -10,7 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 import { RadioCard } from '@nemo/common/src/components/RadioCard/index';
-import { RadioGroupRoot, Stack } from '@nvidia/foundations-react-core';
+import { Flex, RadioGroupRoot, Stack } from '@nvidia/foundations-react-core';
 import type { Meta, StoryObj } from '@storybook/react';
 import { Boxes } from 'lucide-react';
 import { useState } from 'react';
@@ -103,6 +103,36 @@ export const LabelSideLeft: Story = {
             labelSide="left"
           />
         </Stack>
+      </RadioGroupRoot>
+    );
+  },
+};
+
+export const HiddenIndicator: Story = {
+  render: function HiddenIndicatorStory() {
+    const [value, setValue] = useState<string>('dataset');
+    return (
+      <RadioGroupRoot
+        name="radio-card-hidden-indicator"
+        orientation="horizontal"
+        className="w-full"
+        value={value}
+        onValueChange={setValue}
+      >
+        <Flex gap="density-xl" className="w-full *:flex-1">
+          <RadioCard
+            value="dataset"
+            label="Dataset-driven"
+            description="Score a fixed dataset of prompts and expected answers."
+            showIndicator={false}
+          />
+          <RadioCard
+            value="task"
+            label="Task-driven"
+            description="Score the agent against per-task metrics."
+            showIndicator={false}
+          />
+        </Flex>
       </RadioGroupRoot>
     );
   },

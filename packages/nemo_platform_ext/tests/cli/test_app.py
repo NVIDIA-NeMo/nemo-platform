@@ -265,11 +265,12 @@ def test_root_help_excludes_hidden_commands_and_context_option():
 
     assert result.exit_code == 0
     assert "--context" not in result.stdout
-    for hidden_command in ("auth", "config", "quickstart", "cluster-info", "adapters", "projects"):
+    assert "\n  auth" in result.stdout
+    for hidden_command in ("config", "quickstart", "cluster-info", "adapters", "projects"):
         assert f"\n  {hidden_command}" not in result.stdout
 
 
-def test_hidden_command_and_context_option_remain_invokable():
+def test_auth_command_and_hidden_context_option_remain_invokable():
     runner = CliRunner()
     qs_config = QuickstartConfig(auth_enabled=False)
 

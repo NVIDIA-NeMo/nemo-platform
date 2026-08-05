@@ -17,6 +17,23 @@ workflow:
   tool_names: [email_phishing_analyzer]
 `;
 
+const FABRIC_AGENT_YAML = `config_format: nemo-agents-spec-v1
+name: email-phishing-fabric
+default_harness: deepagents
+harnesses:
+  deepagents:
+    kind: deepagents
+models:
+  default:
+    provider: openai
+    model: \${NEMO_DEFAULT_MODEL}
+mcp:
+  servers:
+    email-phishing-analyzer:
+      transport: stdio
+      url: /workspace/.venv/bin/email-phishing-analyzer-mcp
+`;
+
 const mockFetchText = (body: string, ok = true) =>
   vi.spyOn(globalThis, 'fetch').mockResolvedValue({
     ok,
@@ -53,6 +70,36 @@ describe('loadSampleAgentConfig', () => {
     mockFetchText('llms:\n  llm: some-string\n');
     await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
       /missing llms\.llm/
+    );
+  });
+
+  it('injects the model into models.default for a Fabric config', async () => {
+    mockFetchText(FABRIC_AGENT_YAML);
+    const config = (await loadSampleAgentConfig('sample-agents/x/agent.yml', 'my-model')) as {
+      config_format: string;
+      default_harness: string;
+      models: { default: { model: string; provider: string } };
+      mcp: { servers: Record<string, { transport: string }> };
+    };
+    expect(config.models.default.model).toBe('my-model');
+    // The rest of the Fabric config is preserved and llms.llm is never required.
+    expect(config.config_format).toBe('nemo-agents-spec-v1');
+    expect(config.default_harness).toBe('deepagents');
+    expect(config.models.default.provider).toBe('openai');
+    expect(config.mcp.servers['email-phishing-analyzer'].transport).toBe('stdio');
+  });
+
+  it('throws when a Fabric config is missing models.default', async () => {
+    mockFetchText('config_format: nemo-agents-spec-v1\ndefault_harness: deepagents\n');
+    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
+      /missing models\.default/
+    );
+  });
+
+  it('throws on an unsupported config_format instead of falling back to NAT', async () => {
+    mockFetchText('config_format: nemo-agents-spec-v2\nworkflow:\n  _type: react_agent\n');
+    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
+      /unsupported config_format: nemo-agents-spec-v2/
     );
   });
 

@@ -29,7 +29,7 @@ describe('Claude Code tool parts', () => {
           '',
           STUDIO_MESSAGE_SUMMARY_START,
           'worked_for: unknown',
-          'summary: Updated Studio so completed coding-agent messages collapse to a short summary.',
+          'summary: Updated Studio so completed copilot messages collapse to a short summary.',
           'details_label: worked for unknown',
           STUDIO_MESSAGE_SUMMARY_END,
         ].join('\n'),
@@ -53,7 +53,7 @@ describe('Claude Code tool parts', () => {
       },
       {
         type: 'text',
-        text: 'Updated Studio so completed coding-agent messages collapse to a short summary.',
+        text: 'Updated Studio so completed copilot messages collapse to a short summary.',
       },
     ]);
   });

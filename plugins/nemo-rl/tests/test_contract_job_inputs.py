@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 import pytest
-from nemo_rl_plugin.schema import RlJobInput
+from nemo_rl_plugin.schema import OutputRequest, RlJobInput
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -34,3 +34,9 @@ def test_contract_job_input_validates(fixture_name: str) -> None:
     assert spec.integrations.mlflow is not None
     assert spec.integrations.mlflow.tracking_uri == "http://mlflow:5000"
     assert spec.integrations.mlflow.name == "run-001"
+
+
+def test_output_name_cannot_exceed_response_limit() -> None:
+    assert len(OutputRequest(name="x" * 255).name or "") == 255
+    with pytest.raises(ValueError):
+        OutputRequest(name="x" * 256)

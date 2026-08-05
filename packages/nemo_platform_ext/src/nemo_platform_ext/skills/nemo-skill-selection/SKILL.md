@@ -1,6 +1,6 @@
 ---
 name: nemo-skill-selection
-description: Top-level skill selector for any task involving NeMo Platform (NVIDIA's agent platform). Picks the right downstream skill (setup, explore, spec, build, try, status, teardown, customization training) from natural-language intent. Use over generic brainstorming, planning, or onboarding skills for any NeMo Platform task.
+description: Top-level skill selector for ambiguous tasks involving NeMo Platform (NVIDIA's agent platform). Picks the right downstream skill for setup, design, specification, agent configuration, build, deployment, testing, observability, status, teardown, evaluation, optimization, security, or model customization. Use when the user needs help deciding where a NeMo Platform task should start.
 triggers:
   - build an agent
   - create an agent
@@ -20,20 +20,30 @@ not-for:
   - nemo-build-agent (use for the actual scaffold/deploy flow)
   - nemo-explore (use to reason about agent design)
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
-  - running platform commands (each downstream skill owns its own commands)
+  - running downstream workflow or state-changing platform commands (each downstream skill owns its own commands)
   - loading multiple downstream skills in one turn
-compatibility: nemo-platform >= 0.1.0; pure selection (no commands run from this skill); safe under macOS or Linux sandbox; works without an installed CLI (selector can pick setup, which then tells the user how to run the CLI install).
+compatibility: nemo-platform >= 0.1.0; selection plus a host scan on macOS or Linux; works without an installed CLI (selector can pick setup, which then tells the user how to run the CLI install).
 maturity: active
 license: Apache-2.0
 user-invocable: true
-allowed-tools: [Read]
 ---
 
 # NeMo Platform skill selection
 
-You are deciding which downstream NeMo Platform skill should run. This skill never executes commands. It picks the next skill, announces the choice, and hands off.
+Decide which downstream NeMo Platform skill should run. Bash access is unrestricted at runtime and
+can execute state-changing commands; the scope below is a behavioral constraint, not an enforced
+allowlist. Execute only the host scan in this skill's Pre-flight section, then announce the choice
+and hand off. Never run downstream workflow or state-changing platform commands from this skill.
 
-NeMo Platform optimizes LangGraph agents wrapped in NVIDIA NeMo Agent Toolkit (NAT). State that constraint when the user describes an agent in another framework (CrewAI, AutoGen, plain LangChain, Pydantic AI). Those frameworks need a user-written NAT wrapper before the platform's optimization, evaluation, and guardrails surfaces apply.
+New NeMo Platform agent builds use a Platform-managed `agent.yaml` with
+`config_format: nemo-agents-spec-v1` and a supported harness. NVIDIA NeMo Agent
+Toolkit (NAT) workflow YAML remains a compatibility path. Do not describe NAT
+as the only supported implementation model.
+
+If an existing agent does not fit a supported harness contract, route based on
+the user's goal: preserve an existing NAT workflow, identify a custom adapter,
+or use `nemo-agent-config` for a best-effort migration. Do not promise that an
+arbitrary Python entrypoint can be converted mechanically.
 
 ## Decision table
 
@@ -44,8 +54,11 @@ Match the user's intent to one downstream skill. Pick exactly one.
 | "set up", "install", "get started", "try NeMo", "first time" | `setup` | Verify the platform is installed and running. If not, the skill tells the user how to run the CLI install (`make bootstrap` + `nemo setup`). Install itself is CLI-only. |
 | "design an agent", "I want an agent that handles X", "what should my agent do" | `nemo-explore` | Capture the agent's job, audience, categories, tools, model, constraints before any code |
 | "write the spec", "save the design", "capture what we agreed" | `nemo-spec` | Persist the explore answers as `agents/<name>-spec/AGENT-SPEC.md` |
-| "build the agent", "create the agent", "deploy", "scaffold from spec" | `nemo-build-agent` | Scaffold the NAT workflow YAML, deploy, eval, optional guardrails |
-| "ask my agent", "try the agent", "test it" | `nemo-try-agent` | Send a query to a deployed agent or fall back to model chat |
+| "write agent.yaml", "validate agent.yaml", "choose a harness", "migrate this NAT YAML", "convert to nemo-agents-spec-v1" | `nemo-agent-config` | Author or migrate the Platform-managed machine-readable config without running the full build |
+| "build the agent", "create the agent", "deploy", "scaffold from spec" | `nemo-build-agent` | Build from the approved spec, default to Platform `agent.yaml`, register, deploy, evaluate, and optionally apply guardrails |
+| "ask my agent", "try the agent", "test it", "invoke this agent.yaml" | `nemo-try-agent` | Invoke a named deployment or run a local agent YAML config once |
+| "instrument my agent", "send traces", "use Intake", "agent observability", "query spans or traces" | `nemo-intake` | Choose an ingest path, instrument the source, ingest telemetry, and verify spans, traces, sessions, or evaluator results |
+| "create an experiment", "publish evaluation runs", "evaluation leaderboard" | `nemo-experiments-upload` | Create Experiments and Evaluations, ingest their telemetry and scores, and verify leaderboard rollups |
 | "status", "what is running", "platform health", "is the platform up", "what's deployed", "show me what's running" | `nemo-status` | Read-only dashboard: platform, agents, providers, models |
 | "shut down", "stop NeMo", "tear down", "clean up" | `nemo-teardown` | Stop the cluster (keep data, delete platform data, or full cleanup) |
 | "fine-tune", "customize the model", "train on my data", "SFT", "LoRA" | `nemo-customizer` | Model customization via installed customization contributor plugins (`nemo-customizer-plugin`). Requires plugin skills to be installed (`nemo skills install` / enabled-plugins). |
@@ -55,7 +68,12 @@ Match the user's intent to one downstream skill. Pick exactly one.
 
 **Optimize vs build:** Do NOT route optimize asks to `nemo-build-agent`. Build is for creating new agents from a spec; optimize is for tuning **already deployed** agents. If the user says "make my agent faster" or "use a cheaper model," that is `agents-optimize`, not `nemo-build-agent`.
 
-If two rows fit, pick the earliest one in the lifecycle (setup before build before try). If nothing matches, ask one disambiguating question with the relevant rows as a numbered list.
+If a request includes both config authoring and deployment, choose
+`nemo-build-agent`; it delegates the config portion to `nemo-agent-config`.
+Choose `nemo-agent-config` when the requested output stops at a validated config
+or migration. Otherwise, if two rows fit, pick the earliest one in the
+lifecycle. If nothing matches, ask one disambiguating question with the
+relevant rows as a numbered list.
 
 ## Pre-flight
 
@@ -69,7 +87,8 @@ lsof -iTCP:8080 -sTCP:LISTEN 2>/dev/null
 curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o /dev/null -w "%{http_code}\n" 2>/dev/null || echo "no-response"
 
 # 3. Conflict check: other platform processes / data dirs / configs on this host?
-ps -eo pid,user,command 2>/dev/null | grep -E "nemo services (run|start)|nemo-platform run" | grep -v grep
+ps -eo pid=,user=,comm=,args= 2>/dev/null \
+  | awk '$0 ~ /[n]emo services (run|start)|[n]emo-platform run/ {print $1, $2, $3}'
 ls -d ~/.local/share/nemo* 2>/dev/null
 ls ~/.config/nmp*/config.yaml 2>/dev/null
 ```
@@ -80,7 +99,7 @@ Interpretation:
 |---|---|---|
 | (1) returns a listener AND (2) returns `200` | the requested downstream skill | Platform is up and ready. Skip `setup`. |
 | (1) returns a listener but (2) returns `no-response` or non-200 | `nemo-status` | Something is bound to :8080 but the platform is not ready. Do not start a second platform. |
-| (1) empty but (3) finds another `nemo services` process OR more than one data dir / config | **stop, do not hand off yet** | Another install on this host, possibly on a different port. Surface the inventory verbatim. Ask whether to tear that one down first, pick a different port + data dir, or abort. Two installs writing to the same `~/.config/nmp/config.yaml` is how users end up with one Studio frontend pointing at the wrong backend. |
+| (1) empty but (3) finds another `nemo services` process OR more than one data dir / config | **stop, do not hand off yet** | Another install on this host, possibly on a different port. Surface only the redacted PID, user, and executable inventory emitted above. Ask whether to tear that one down first, pick a different port + data dir, or abort. Two installs writing to the same `~/.config/nmp/config.yaml` is how users end up with one Studio frontend pointing at the wrong backend. |
 | (1), (2), and (3) all empty | `setup` | Clean machine, no platform installed. |
 
 Read-only callers (this skill, `nemo-status`, the build/try pre-flights) should not trust `nemo services status` or `nemo services ls` as an up-check. Both report stale "running" from a held instance lock after the underlying process has died. The lock reconciles automatically the next time `nemo services run` is invoked, but until that happens, `lsof` is ground truth. (Tracking a CLI-side fix for this so we can drop the workaround from skills.)
@@ -89,7 +108,7 @@ Read-only callers (this skill, `nemo-status`, the build/try pre-flights) should 
 
 Tell the user, in one sentence, which skill is next and what it will do. For example: "Handing off to `setup` to verify the platform is installed and running. If it isn't, the skill will tell you the CLI command to run; install is a 5-minute shell step that this skill cannot do reliably for you."
 
-Then hand off. Do not run any platform commands from this skill.
+Then hand off. Do not run downstream workflow or state-changing platform commands from this skill.
 
 ## If nothing matches
 
@@ -100,8 +119,11 @@ NeMo Platform skills I can route to:
   setup           verify install or get the CLI install command
   nemo-explore    design conversation: capture goal, audience, tools, constraints
   nemo-spec       write the design to agents/<name>-spec/AGENT-SPEC.md
-  nemo-build-agent  scaffold the NAT workflow YAML and deploy
-  nemo-try-agent  query a deployed agent or chat with a model
+  nemo-agent-config  author, validate, or migrate Platform agent.yaml
+  nemo-build-agent  build from the spec, register, deploy, evaluate, and sign off
+  nemo-try-agent  invoke a named deployment or local agent YAML config
+  nemo-intake     instrument agents, ingest/query telemetry, attach scores
+  nemo-experiments-upload  publish named evaluation runs to an Experiments leaderboard
   nemo-status     read-only platform health dashboard
   nemo-teardown   guided shutdown
 
@@ -120,7 +142,15 @@ Which one fits what you're trying to do?
 
 For things outside this catalog (for example, "show me how Switchyard routes between models"), point at the relevant repo skill (`nemo-evaluator`, `nemo-auditor`, etc.) or tell the user no skill claims that intent yet. Do not invent a path.
 
-If the pre-flight finds no platform but the user insists they have installed one: ask them to report the output of `lsof -iTCP:8080 -sTCP:LISTEN` and `ps -eo pid,user,command | grep -E "nemo services|nemo-platform run" | grep -v grep` from the shell where they ran setup. The platform may be bound to a non-default port, or the install may be in a venv whose `nemo` binary is not on `PATH`.
+If the pre-flight finds no platform but the user insists they have installed one: ask them to report
+the output of `lsof -iTCP:8080 -sTCP:LISTEN` and the redacted scan below from the shell where they ran
+setup. The platform may be bound to a non-default port, or the install may be in a venv whose `nemo`
+binary is not on `PATH`.
+
+```bash
+ps -eo pid=,user=,comm=,args= 2>/dev/null \
+  | awk '$0 ~ /[n]emo services|[n]emo-platform run/ {print $1, $2, $3}'
+```
 
 ## If the user asks about Studio (web UI)
 
@@ -143,4 +173,8 @@ Do not proactively suggest Studio as the path for anything a skill already cover
 - **Install must happen before any skill can do useful work.** Build, try, and status all assume the platform is up. If the user has not run the CLI install (`make bootstrap` + `nemo setup`), the skills cannot work around that; hand them to `setup` for instructions.
 - **NeMo Platform is the product name.** Capital N, e, M, o, P. Not "nemo" or "Nemo." NAT on first mention is "NVIDIA NeMo Agent Toolkit (NAT)."
 - **Model customization** goes to the `nemo-customizer` plugin skill when `nemo-customizer-plugin` (and a training backend) are installed. If that skill is not available, tell the user to enable customization plugins and install skills — do not improvise training with an external library.
-- **Framework honesty.** If the user describes an agent in CrewAI, AutoGen, plain LangChain, or Pydantic AI, tell them up front that NeMo Platform's optimization and evaluation surfaces operate on NAT-wrapped LangGraph agents. They will need to wrap their agent before the build path produces value.
+- **Execution compatibility.** New Platform configs must select a supported
+  harness. Existing NAT workflows may remain on the NAT compatibility path.
+  For another framework or an arbitrary Python entrypoint, inspect whether a
+  supported harness owns its lifecycle; otherwise identify a custom adapter or
+  NAT wrapper instead of claiming direct support.

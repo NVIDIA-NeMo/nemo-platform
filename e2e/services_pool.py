@@ -38,6 +38,9 @@ _AUTH_READY_TIMEOUT = 60
 _E2E_ADMIN_EMAIL = "admin@example.com"
 _E2E_REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_E2E_PLATFORM_CONFIG = _E2E_REPO_ROOT / "packages/nmp_platform/config/local.yaml"
+# Layered on the default config so pooled platforms that are not testing
+# deployments orphan cleanup cannot delete peer platforms' docker containers.
+_DEFAULT_E2E_DISABLE_DEPLOYMENTS_ORPHAN_CLEANUP = _E2E_REPO_ROOT / "e2e/configs/disable-deployments-orphan-cleanup.yaml"
 _E2E_COMPOSE_LIFECYCLE_ENV = "NMP_E2E_COMPOSE_LIFECYCLE"
 
 
@@ -406,7 +409,10 @@ def _services_log_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def _resolve_e2e_config_layers_from_node(node: Node) -> list[str | dict[str, Any]]:
     marker = node.get_closest_marker("e2e_config")
     if marker is None or not marker.args:
-        return [str(_DEFAULT_E2E_PLATFORM_CONFIG)]
+        return [
+            str(_DEFAULT_E2E_PLATFORM_CONFIG),
+            str(_DEFAULT_E2E_DISABLE_DEPLOYMENTS_ORPHAN_CLEANUP),
+        ]
     layers: list[str | dict[str, Any]] = []
     for layer in marker.args:
         if isinstance(layer, (str, dict)):

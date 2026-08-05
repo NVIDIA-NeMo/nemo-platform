@@ -6,7 +6,7 @@ import { WorkspaceGuard } from '@studio/routes/RootLayout/WorkspaceGuard';
 import { MockWorkspaceProvider } from '@studio/tests/mocks/MockWorkspaceProvider';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 vi.mock('@studio/providers/auth/useAuthTokenStatus', () => ({
   useAuthTokenStatus: vi.fn(),
