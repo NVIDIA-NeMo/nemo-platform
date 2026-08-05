@@ -358,20 +358,27 @@ class FilesetFileSystem(AsyncFileSystem):
 
         import httpx
 
+        # Carry the sync client's timeout onto the new transport. Left unset,
+        # httpx applies its 5s default to every phase, which a multi-GB upload
+        # blows through waiting for the server to commit the body to storage.
+        timeout = client._timeout if client._timeout is not None else client._http.timeout
+
         asgi_app = getattr(client._http, "asgi_app", None)
         http_client = (
             httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=asgi_app),
                 base_url=client.base_url,
                 headers=dict(client._default_headers) if client._default_headers else None,
+                timeout=timeout,
             )
             if asgi_app is not None
             else httpx.AsyncClient(
                 base_url=client.base_url,
                 headers=dict(client._default_headers) if client._default_headers else None,
+                timeout=timeout,
             )
         )
-        return AsyncFilesClient(
+        async_client = AsyncFilesClient(
             base_url=client.base_url,
             workspace=client.workspace,
             auth=client._auth,
@@ -380,6 +387,9 @@ class FilesetFileSystem(AsyncFileSystem):
             http_client=http_client,
             url_resolver=client._url_resolver,
         )
+        if client._timeout is not None:
+            async_client = async_client.with_options(timeout=client._timeout)
+        return async_client
 
     @property
     def _workspace(self) -> str | None:

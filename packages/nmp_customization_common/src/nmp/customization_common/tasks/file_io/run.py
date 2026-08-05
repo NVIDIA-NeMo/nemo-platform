@@ -30,17 +30,19 @@ from nemo_platform import (
     NeMoPlatform,
     NotFoundError,
 )
-from nemo_platform.types.files.fileset_file import FilesetFile
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import (
     ConflictError,
+    NemoTransportError,
+    RateLimitError,
 )
 from nemo_platform_plugin.client.errors import (
     InternalServerError as ClientInternalServerError,
 )
 from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.files.client import FilesClient
-from nemo_platform_plugin.files.types import CreateFilesetRequest, UpdateFilesetRequest
+from nemo_platform_plugin.files.metadata import FilesetMetadata
+from nemo_platform_plugin.files.types import CreateFilesetRequest, FilesetFileOutput, UpdateFilesetRequest
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.sdk_factory import get_task_sdk
 from nmp.customization_common.schemas.file_io import (
@@ -90,6 +92,14 @@ TRANSIENT_FILESYSTEM_EXCEPTIONS = (
     httpx.ReadTimeout,
     httpx.RemoteProtocolError,
     httpx.ReadError,
+    # Uploads stream a one-shot body, so once it is on the wire the typed client
+    # can no longer retry them itself — this is the layer that rebuilds the
+    # request from the source file, so it has to catch what the client raises.
+    # These wrap transport failures, 5xx responses (raise_for_status maps every
+    # 5xx to InternalServerError) and 429 respectively, and are not httpx types.
+    NemoTransportError,
+    ClientInternalServerError,
+    RateLimitError,
 )
 
 
@@ -109,8 +119,8 @@ class FileIORunner:
         self.job_ctx = job_ctx
         self.service_source = service_source
 
-    def list_fileset_files(self, fileset: FileSetRef) -> list[FilesetFile]:
-        """List files in a FileSet. Returns a list of ``FilesetFile`` objects."""
+    def list_fileset_files(self, fileset: FileSetRef) -> list[FilesetFileOutput]:
+        """List files in a FileSet. Returns a list of ``FilesetFileOutput`` objects."""
         try:
             with sdk_error_handler(FileDownloadError, f"list files in fileset {fileset}", passthrough=(NotFoundError,)):
                 response = self.sdk.with_options(timeout=LIST_FILES_TIMEOUT).files.list(
@@ -305,7 +315,7 @@ class FileIORunner:
                     files.update_fileset(
                         workspace=workspace,
                         name=fileset.name,
-                        body=UpdateFilesetRequest(metadata=metadata),
+                        body=UpdateFilesetRequest(metadata=FilesetMetadata.model_validate(metadata)),
                     )
                     logger.info(f"Patched existing FileSet metadata: {workspace}/{fileset.name}")
                 except Exception as e:

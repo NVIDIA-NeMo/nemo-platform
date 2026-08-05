@@ -21,9 +21,10 @@ import copy
 import email.utils
 import inspect
 import json
+import logging
 import os
 import time
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from datetime import timezone
 from functools import cache
@@ -67,6 +68,8 @@ from nemo_platform_plugin.client.types import (
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 60.0
 
@@ -144,25 +147,52 @@ def _retry_after(response: httpx.Response) -> float | None:
     return delay if 0 < delay <= 60 else None
 
 
+# Transport failures httpx raises before it starts reading the request body: the
+# connection has to exist before any body byte can be written. A one-shot body is
+# therefore still untouched when one of these surfaces, so the request can be sent
+# again as-is. Everything else — a read/write timeout, a dropped connection, a
+# protocol error — can land mid-body, where a replay would send a truncated body
+# under the original ``Content-Length``.
+_PRE_BODY_TRANSPORT_ERRORS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+    httpx.ProxyError,
+    httpx.UnsupportedProtocol,
+)
+
+
 def _should_retry(
     response: httpx.Response | None,
     exc: httpx.TransportError | None,
     attempt: int,
     policy: RetryPolicy,
+    *,
+    replayable: bool = True,
 ) -> float | None:
     """Decide whether to retry and return the backoff duration, or None to stop.
 
     Shared decision logic used by both sync and async retry paths.
     Returns the sleep duration if a retry should happen, or ``None`` if
     the response should be returned / the exception re-raised.
+
+    ``replayable`` is False for a one-shot body (see :func:`_is_replayable`). Such
+    a request may only be sent again when nothing has been read from the body yet
+    — see :data:`_PRE_BODY_TRANSPORT_ERRORS`.
     """
     if attempt >= policy.max_retries:
         return None
 
     backoff = policy.backoff_base * (2**attempt)
     if exc is not None:
+        if not replayable and not isinstance(exc, _PRE_BODY_TRANSPORT_ERRORS):
+            return None
         return backoff
     if response is None:
+        return None
+    if not replayable:
+        # A response means the body has already gone out on the wire, so for a
+        # one-shot body there is nothing left to send again.
         return None
 
     if policy.respect_retry_decision_headers:
@@ -182,6 +212,43 @@ def _should_retry(
 
     if policy.respect_retry_after_headers:
         return _retry_after(response) or backoff
+    return backoff
+
+
+def _is_replayable(content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None) -> bool:
+    """Whether a request body can be handed to httpx more than once.
+
+    ``bytes``, ``str``, no body at all, and in-memory sequences replay fine —
+    httpx re-reads them from the start on every attempt.
+
+    A generator, file object or other one-shot iterable does not: httpx drains it
+    on the first attempt, so a replay sends a short body while the original
+    ``Content-Length`` still stands on the request, and h11 aborts with ``Too
+    little data for declared Content-Length`` — masking whatever actually failed
+    the first time. Such a body may only be re-sent while it is still untouched;
+    once it has been read, the retry has to happen a level up, where the caller
+    can build a fresh iterator over the source.
+    """
+    return content is None or isinstance(content, (bytes, bytearray, memoryview, str, list, tuple))
+
+
+def _should_retry_request(
+    request: PreparedRequest,
+    response: httpx.Response | None,
+    exc: httpx.TransportError | None,
+    attempt: int,
+    policy: RetryPolicy,
+) -> float | None:
+    """:func:`_should_retry` for a prepared request, logging one-shot-body declines."""
+    replayable = _is_replayable(request.content)
+    backoff = _should_retry(response, exc, attempt, policy, replayable=replayable)
+    if backoff is None and not replayable and attempt < policy.max_retries:
+        logger.info(
+            "Not retrying %s %s: the request body is a one-shot stream that has already been read, "
+            "so it cannot be sent again. Retry at a level that can rebuild it.",
+            request.method,
+            request.path_template,
+        )
     return backoff
 
 
@@ -519,13 +586,13 @@ class NemoClient(BaseNemoClient):
                     kwargs["timeout"] = self._timeout
                 raw = self._http.request(request.method, url, **kwargs)
             except httpx.TransportError as exc:
-                backoff = _should_retry(None, exc, attempt, retry) if retry else None
+                backoff = _should_retry_request(request, None, exc, attempt, retry) if retry else None
                 if backoff is not None:
                     time.sleep(backoff)
                     continue
                 raise NemoTransportError(exc) from exc
             if retry:
-                backoff = _should_retry(raw, None, attempt, retry)
+                backoff = _should_retry_request(request, raw, None, attempt, retry)
                 if backoff is not None:
                     last_response = raw
                     time.sleep(backoff)
@@ -552,7 +619,7 @@ class NemoClient(BaseNemoClient):
                 if self._timeout is not None:
                     kwargs["timeout"] = self._timeout
                 with self._http.stream(request.method, url, **kwargs) as raw:
-                    backoff = _should_retry(raw, None, attempt, retry) if retry else None
+                    backoff = _should_retry_request(request, raw, None, attempt, retry) if retry else None
                     if backoff is not None:
                         time.sleep(backoff)
                         continue
@@ -562,7 +629,7 @@ class NemoClient(BaseNemoClient):
             except httpx.TransportError as exc:
                 if yielded:
                     raise NemoTransportError(exc) from exc
-                backoff = _should_retry(None, exc, attempt, retry) if retry else None
+                backoff = _should_retry_request(request, None, exc, attempt, retry) if retry else None
                 if backoff is not None:
                     time.sleep(backoff)
                     continue
@@ -759,13 +826,13 @@ class AsyncNemoClient(BaseNemoClient):
                     kwargs["timeout"] = self._timeout
                 raw = await self._http.request(request.method, url, **kwargs)
             except httpx.TransportError as exc:
-                backoff = _should_retry(None, exc, attempt, retry) if retry else None
+                backoff = _should_retry_request(request, None, exc, attempt, retry) if retry else None
                 if backoff is not None:
                     await asyncio.sleep(backoff)
                     continue
                 raise NemoTransportError(exc) from exc
             if retry:
-                backoff = _should_retry(raw, None, attempt, retry)
+                backoff = _should_retry_request(request, raw, None, attempt, retry)
                 if backoff is not None:
                     last_response = raw
                     await asyncio.sleep(backoff)
@@ -792,7 +859,7 @@ class AsyncNemoClient(BaseNemoClient):
                 if self._timeout is not None:
                     kwargs["timeout"] = self._timeout
                 async with self._http.stream(request.method, url, **kwargs) as raw:
-                    backoff = _should_retry(raw, None, attempt, retry) if retry else None
+                    backoff = _should_retry_request(request, raw, None, attempt, retry) if retry else None
                     if backoff is not None:
                         await asyncio.sleep(backoff)
                         continue
@@ -802,7 +869,7 @@ class AsyncNemoClient(BaseNemoClient):
             except httpx.TransportError as exc:
                 if yielded:
                     raise NemoTransportError(exc) from exc
-                backoff = _should_retry(None, exc, attempt, retry) if retry else None
+                backoff = _should_retry_request(request, None, exc, attempt, retry) if retry else None
                 if backoff is not None:
                     await asyncio.sleep(backoff)
                     continue

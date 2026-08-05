@@ -197,3 +197,83 @@ class TestDownloadFileset:
         assert stats.files_downloaded == 0
         assert stats.total_bytes == 0
         sdk.files.download.assert_not_called()
+
+
+@pytest.fixture
+def no_retry_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skip tenacity's exponential backoff so retry tests don't sleep for seconds.
+
+    ``tenacity.nap.sleep`` resolves ``time.sleep`` per call, so patching it here
+    takes effect even though the retry policy was bound at decoration time.
+    """
+    monkeypatch.setattr("tenacity.nap.time.sleep", lambda _seconds: None)
+
+
+class TestUploadRetry:
+    """The task layer owns upload retries.
+
+    The typed client cannot retry a streaming upload — the body is a one-shot
+    iterator, and replaying it under the original Content-Length makes h11 abort
+    the request. So the client raises through, and this layer, which rebuilds the
+    request from the source file on every attempt, is where the retry belongs.
+    """
+
+    def test_retries_transport_error_wrapped_by_the_client(self, tmp_path: Path, no_retry_backoff) -> None:
+        import httpx
+        from nemo_platform_plugin.client.errors import NemoTransportError
+        from nmp.customization_common.schemas.file_io import FileSetRef
+
+        src = _make_dir(tmp_path)
+        sdk = _make_sdk()
+        sdk.files.upload.side_effect = [NemoTransportError(httpx.ReadTimeout("timed out")), None]
+        runner = _make_runner(sdk)
+
+        runner.upload_fileset(FileSetRef(workspace="default", name="models"), src.resolve())
+
+        assert sdk.files.upload.call_count == 2
+
+    def test_retries_server_error_wrapped_by_the_client(self, tmp_path: Path, no_retry_backoff) -> None:
+        import httpx
+        from nemo_platform_plugin.client.errors import InternalServerError
+        from nmp.customization_common.schemas.file_io import FileSetRef
+
+        src = _make_dir(tmp_path)
+        sdk = _make_sdk()
+        response = httpx.Response(503, request=httpx.Request("PUT", "http://test/upload"), json={"detail": "down"})
+        sdk.files.upload.side_effect = [InternalServerError(response), None]
+        runner = _make_runner(sdk)
+
+        runner.upload_fileset(FileSetRef(workspace="default", name="models"), src.resolve())
+
+        assert sdk.files.upload.call_count == 2
+
+    def test_retries_rate_limit_wrapped_by_the_client(self, tmp_path: Path, no_retry_backoff) -> None:
+        """429 is in the client's retryable statuses, but it cannot act on it here."""
+        import httpx
+        from nemo_platform_plugin.client.errors import RateLimitError
+        from nmp.customization_common.schemas.file_io import FileSetRef
+
+        src = _make_dir(tmp_path)
+        sdk = _make_sdk()
+        response = httpx.Response(429, request=httpx.Request("PUT", "http://test/upload"), json={"detail": "slow down"})
+        sdk.files.upload.side_effect = [RateLimitError(response), None]
+        runner = _make_runner(sdk)
+
+        runner.upload_fileset(FileSetRef(workspace="default", name="models"), src.resolve())
+
+        assert sdk.files.upload.call_count == 2
+
+    def test_gives_up_as_a_file_upload_error(self, tmp_path: Path, no_retry_backoff) -> None:
+        import httpx
+        from nemo_platform_plugin.client.errors import NemoTransportError
+        from nmp.customization_common.schemas.file_io import FileSetRef, FileUploadError
+
+        src = _make_dir(tmp_path)
+        sdk = _make_sdk()
+        sdk.files.upload.side_effect = NemoTransportError(httpx.ReadTimeout("timed out"))
+        runner = _make_runner(sdk)
+
+        with pytest.raises(FileUploadError):
+            runner.upload_fileset(FileSetRef(workspace="default", name="models"), src.resolve())
+
+        assert sdk.files.upload.call_count == 3
