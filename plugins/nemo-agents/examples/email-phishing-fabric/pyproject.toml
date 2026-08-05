@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nemo-agents-example-email-phishing-fabric"
+version = "0.1.0"
+description = "Fabric (nemo-agents-spec-v1) email-phishing example: a deepagents orchestrator that delegates classification to a phishing subagent and calls a deterministic extract_iocs MCP tool."
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "mcp>=1.2.0",
+]
+
+# Console script installed into the deploy venv by `uv pip install .`; the
+# agent.yaml references it by this name as a stdio MCP server.
+[project.scripts]
+email-phishing-iocs-mcp = "email_phishing_fabric.mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/email_phishing_fabric"]

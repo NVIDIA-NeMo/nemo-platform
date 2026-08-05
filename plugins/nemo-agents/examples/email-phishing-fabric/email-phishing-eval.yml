@@ -1,0 +1,54 @@
+# email-phishing-eval.yml
+#
+# Evaluation config for the Fabric email-phishing agent.
+#
+#   nemo agents evaluate run \
+#       --eval-config plugins/nemo-agents/examples/email-phishing-fabric/email-phishing-eval.yml \
+#       --agent email-phishing-fabric
+#
+# The judge LLM scores each generated verdict against the expected label in
+# smaller_test.csv (column ``label`` = "phishing" | "benign").
+#
+# question_key is ``email`` — the assembled RFC-822-ish message (From/Subject/
+# body), NOT the bare ``body``. Including the ``From:`` sender is deliberate: the
+# sender domain is a top phishing signal and feeds the extract_iocs tool. See
+# data/build_dataset.py.
+
+llms:
+  judge_llm:
+    _type: openai
+    # base_url and api_key are injected automatically by the platform
+    # (routes through the Inference Gateway). For local runs, override via
+    # --base-url or NEMO_BASE_URL.
+    model_name: ${NEMO_DEFAULT_MODEL}
+    temperature: 0.0
+    max_tokens: 1024
+
+eval:
+  general:
+    max_concurrency: 1
+    output_dir: eval/email-phishing-fabric
+    dataset:
+      _type: csv
+      file_path: data/smaller_test.csv
+      id_key: subject
+      structure:
+        question_key: email
+        answer_key: label
+  evaluators:
+    accuracy:
+      _type: tunable_rag_evaluator
+      llm_name: judge_llm
+      default_scoring: true
+      default_score_weights:
+        coverage: 0.5
+        correctness: 0.3
+        relevance: 0.2
+      judge_llm_prompt: >
+        You are an evaluator scoring an email phishing classifier. The expected
+        answer is the ground-truth label ("phishing" or "benign"). Score whether
+        the generated answer reaches the same verdict as the expected label.
+        Rules:
+        - Score is a float between 0.0 and 1.0.
+        - 1.0 means the generated verdict matches the expected label.
+        - Provide a 1-2 sentence reasoning.
