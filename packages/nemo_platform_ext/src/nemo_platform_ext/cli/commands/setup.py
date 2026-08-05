@@ -28,6 +28,7 @@ import typer
 import yaml as _yaml
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.config import validate_docker_available
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 from nmp.common.config import nmp_user_data_dir
@@ -894,17 +895,23 @@ def _wait_for_platform(
     timeout: int = _SERVICE_STARTUP_TIMEOUT_SECONDS,
     poll_interval: float = _SERVICE_STARTUP_POLL_INTERVAL,
     log_path: Path | None = None,
+    proc: subprocess.Popen | None = None,
 ) -> bool:
     """Poll until the platform health endpoint responds. Returns True on success.
 
     When *log_path* is provided, the spinner shows the last service that
     finished loading so users see that progress is being made during a
     slow cold start.
+
+    When *proc* is provided, return False immediately if the service process
+    exits before the platform becomes ready (avoid waiting the full timeout).
     """
     start = time.monotonic()
     deadline = start + timeout
     with console.status("[bold cyan]Waiting for platform...") as status:
         while time.monotonic() < deadline:
+            if proc is not None and proc.poll() is not None:
+                return False
             elapsed = int(time.monotonic() - start)
             svc = _last_startup_service(log_path)
             hint = f" — loaded {svc}" if svc else ""
@@ -912,6 +919,39 @@ def _wait_for_platform(
             if _check_platform_reachable(base_url, timeout=1.0):
                 return True
             _pause(poll_interval)
+    return False
+
+
+_DOCKER_FAILURE_LOG_MARKERS = (
+    "Docker daemon is unavailable",
+    "Docker is unavailable",
+    "docker.from_env",
+    "Error while fetching server API version",
+)
+
+
+def _services_log_suggests_docker_failure(log_path: Path | None) -> bool:
+    """Return True when services.log contains known Docker skip / daemon errors."""
+    if log_path is None or not log_path.is_file():
+        return False
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(marker in text for marker in _DOCKER_FAILURE_LOG_MARKERS)
+
+
+def _should_hint_docker_unavailable(*, exit_code: int | None, log_path: Path | None) -> bool:
+    """Decide whether to print a Docker-missing hint after a failed startup wait.
+
+    Prefer log evidence. Otherwise only hint when the process exited early and
+    a Docker ping confirms the daemon is unavailable — not on a pure readiness
+    timeout while the process is still alive.
+    """
+    if _services_log_suggests_docker_failure(log_path):
+        return True
+    if exit_code is not None and not validate_docker_available():
+        return True
     return False
 
 
@@ -1024,7 +1064,7 @@ def _maybe_start_services(
 
     log = log_path_for(compute_scope(port=_resolve_services_port(base_url)))
 
-    if not _wait_for_platform(base_url, timeout=timeout, log_path=log):
+    if not _wait_for_platform(base_url, timeout=timeout, log_path=log, proc=proc):
         exit_code = proc.poll()
         if exit_code is not None:
             console.print(f"{CROSS} Service process exited early (exit code {exit_code})")
@@ -1032,6 +1072,11 @@ def _maybe_start_services(
             proc.terminate()
             console.print(f"{CROSS} Platform did not become ready within {timeout}s")
         console.print(f"  Check {log} for details.")
+        if _should_hint_docker_unavailable(exit_code=exit_code, log_path=log):
+            console.print(
+                "  Docker does not appear to be available. "
+                "Install and start Docker, or configure non-Docker executors, then retry."
+            )
         raise typer.Exit(1)
 
     console.print(f"{CHECK} Platform running at {base_url} (pid {proc.pid})\n")

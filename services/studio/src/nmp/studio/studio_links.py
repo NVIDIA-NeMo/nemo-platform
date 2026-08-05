@@ -314,6 +314,12 @@ STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
         aliases=("experiment_run",),
         required_args=("name", "experiment_name"),
     ),
+    "plugin": StudioLinkDestination(
+        "Plugin {name}",
+        "/workspaces/{workspace}/plugin/{name}",
+        aliases=("plugin_page", "plugin_ui"),
+        requires_name=True,
+    ),
 }
 
 _STUDIO_LINK_DESTINATION_ALIASES = {

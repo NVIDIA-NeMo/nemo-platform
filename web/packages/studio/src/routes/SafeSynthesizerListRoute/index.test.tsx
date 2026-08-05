@@ -6,7 +6,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen } from '@testing-library/react';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 
 // Mock the DataView component with a minimal implementation
 vi.mock('@studio/components/dataViews/SafeSynthesizerJobsDataView', () => ({

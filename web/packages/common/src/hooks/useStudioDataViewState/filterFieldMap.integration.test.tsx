@@ -7,7 +7,7 @@ import { useCustomReactTable } from '@nemo/common/src/components/DataView/intern
 import { useMakeColumns } from '@nemo/common/src/components/DataView/internal/hooks/useMakeColumns';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 /**
  * Integration tests for the end-to-end range-filter path used by server-side (manual) data views:

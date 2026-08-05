@@ -13,7 +13,7 @@ import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { useSidebarState } from '@studio/util/hooks/useSidebarState';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { lazy, Suspense, type FC, type ReactNode } from 'react';
-import { Link, matchPath, useLocation } from 'react-router-dom';
+import { Link, matchPath, useLocation } from 'react-router';
 
 const WelcomeTour = lazy(() =>
   import('@studio/components/WelcomeTour').then((m) => ({ default: m.WelcomeTour }))

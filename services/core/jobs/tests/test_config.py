@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 import pathlib
 from unittest.mock import MagicMock, patch
 
@@ -30,6 +31,7 @@ from nmp.core.jobs.controllers.backends.kubernetes import (
     KubernetesJobExecutionProfile,
     KubernetesJobExecutionProfileConfig,
     KubernetesJobStorageConfig,
+    VolcanoJobExecutionProfile,
     VolcanoJobExecutionProfileConfig,
 )
 from nmp.core.jobs.controllers.backends.registry import BackendKey, BackendRegistry, backend_registry
@@ -387,6 +389,184 @@ def test_backend_registry_resolves_subprocess_default(mock_nmp_client):
     assert registry.get_backend(provider="subprocess", profile="default") is not None
 
 
+def test_backend_registry_skips_docker_when_unavailable(mock_nmp_client, caplog):
+    class DummyBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            self.nmp_sdk = nmp_sdk
+            self.execution_profile_config = execution_profile_config
+            self.profile_name = profile_name
+
+    class ExplodingDockerBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            raise AssertionError("docker backend should not be constructed when unavailable")
+
+    profiles = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    caplog.set_level(logging.WARNING)
+    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
+        registry = BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=profiles,
+            backends={
+                BackendKey("cpu", "docker"): ExplodingDockerBackend,
+                BackendKey("subprocess", "subprocess"): DummyBackend,
+            },
+        )
+
+    assert registry.get_backend(provider="subprocess", profile="default") is not None
+    with pytest.raises(KeyError):
+        registry.get_backend(provider="cpu", profile="default")
+    assert "Skipping job executor profile cpu/default" in caplog.text
+
+
+def test_backend_registry_registered_profile_keys_match_constructed_backends(mock_nmp_client):
+    class DummyBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            self.nmp_sdk = nmp_sdk
+            self.execution_profile_config = execution_profile_config
+            self.profile_name = profile_name
+
+    profiles = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
+        registry = BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=profiles,
+            backends={
+                BackendKey("cpu", "docker"): DummyBackend,
+                BackendKey("subprocess", "subprocess"): DummyBackend,
+            },
+        )
+
+    assert registry.registered_profile_keys() == frozenset({("subprocess", "default")})
+
+
+def test_backend_registry_skips_docker_init_connection_errors(mock_nmp_client, caplog):
+    from docker.errors import DockerException
+
+    class DummyBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            self.nmp_sdk = nmp_sdk
+
+    class FailingDockerBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            raise DockerException("Error while fetching server API version")
+
+    profiles = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    caplog.set_level(logging.WARNING)
+    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=True):
+        registry = BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=profiles,
+            backends={
+                BackendKey("cpu", "docker"): FailingDockerBackend,
+                BackendKey("subprocess", "subprocess"): DummyBackend,
+            },
+        )
+
+    assert registry.registered_profile_keys() == frozenset({("subprocess", "default")})
+    assert "Docker backend initialization failed" in caplog.text
+
+
+def test_backend_registry_propagates_non_connection_errors_for_docker(mock_nmp_client):
+    class BrokenConfigDockerBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            raise ValueError("bad executor config")
+
+    profiles = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+    ]
+
+    with (
+        patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=True),
+        pytest.raises(ValueError, match="bad executor config"),
+    ):
+        BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=profiles,
+            backends={BackendKey("cpu", "docker"): BrokenConfigDockerBackend},
+        )
+
+
+def test_from_config_prunes_skipped_docker_from_mutable_profiles(mock_nmp_client, caplog):
+    class DummyBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            self.nmp_sdk = nmp_sdk
+
+    advertised = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    caplog.set_level(logging.WARNING)
+    with patch("nmp.core.jobs.controllers.backends.registry.validate_docker_available", return_value=False):
+        registry = BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=advertised,
+            backends={
+                BackendKey("cpu", "docker"): DummyBackend,
+                BackendKey("subprocess", "subprocess"): DummyBackend,
+            },
+        )
+
+    assert registry.registered_profile_keys() == frozenset({("subprocess", "default")})
+    assert [(p.provider, p.profile, p.backend) for p in advertised] == [
+        ("subprocess", "default", "subprocess"),
+    ]
+    assert "Removed 1 execution profile" in caplog.text
+
+
 def test_subprocess_execution_profile_defaults_provider_to_subprocess():
     profile = SubprocessJobExecutionProfile(profile="default")
 
@@ -424,6 +604,97 @@ def test_merge_executor_profiles_can_override_default_volcano_with_kubernetes_jo
     assert profile.backend == "kubernetes_job"
     assert type(profile.config) is KubernetesJobExecutionProfileConfig
     assert profile.config.namespace == "authentik"
+
+
+def test_merge_executor_profiles_skips_container_backends_for_none_runtime(caplog):
+    defaults = get_default_executor_profiles_for_runtime(Runtime.NONE, DefaultExecutionProfileConfig())
+    custom = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="custom-docker",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        KubernetesJobExecutionProfile(
+            provider="gpu",
+            profile="custom-k8s",
+            backend="kubernetes_job",
+            config=KubernetesJobExecutionProfileConfig(),
+        ),
+        VolcanoJobExecutionProfile(
+            provider="gpu_distributed",
+            profile="custom-volcano",
+            backend="volcano_job",
+            config=VolcanoJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="custom-subprocess",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    caplog.set_level(logging.WARNING)
+    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=False) as validate:
+        merged = merge_executor_profiles(custom, defaults, runtime=Runtime.NONE)
+
+    assert [(p.provider, p.profile, p.backend) for p in merged] == [
+        ("subprocess", "default", "subprocess"),
+        ("subprocess", "custom-subprocess", "subprocess"),
+    ]
+    validate.assert_called_once()
+    assert "Skipping executor profile cpu/custom-docker" in caplog.text
+    assert "Skipping executor profile gpu/custom-k8s" in caplog.text
+    assert "Skipping executor profile gpu_distributed/custom-volcano" in caplog.text
+
+
+def test_merge_executor_profiles_skips_docker_when_unavailable_under_docker_runtime(caplog):
+    defaults = get_default_executor_profiles_for_runtime(Runtime.DOCKER, DefaultExecutionProfileConfig())
+    custom = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="auditor",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="custom-subprocess",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(),
+        ),
+    ]
+
+    caplog.set_level(logging.WARNING)
+    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=False) as validate:
+        merged = merge_executor_profiles(custom, defaults, runtime=Runtime.DOCKER)
+
+    assert [(p.provider, p.profile, p.backend) for p in merged] == [
+        ("subprocess", "default", "subprocess"),
+        ("subprocess", "custom-subprocess", "subprocess"),
+    ]
+    validate.assert_called_once()
+    assert "because Docker is unavailable" in caplog.text
+
+
+def test_merge_executor_profiles_keeps_docker_executor_for_none_runtime_when_docker_is_available():
+    defaults = get_default_executor_profiles_for_runtime(Runtime.NONE, DefaultExecutionProfileConfig())
+    custom = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="workload",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        )
+    ]
+
+    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=True) as validate:
+        merged = merge_executor_profiles(custom, defaults, runtime=Runtime.NONE)
+
+    assert [(p.provider, p.profile, p.backend) for p in merged] == [
+        ("subprocess", "default", "subprocess"),
+        ("cpu", "workload", "docker"),
+    ]
+    validate.assert_called_once()
 
 
 def test_backend_registry_supports_gpu_distributed_kubernetes_job_override():
@@ -561,6 +832,39 @@ def test_merge_executor_profiles_replaces_default_with_subprocess_profile():
     assert type(merged[0].config) is SubprocessJobExecutionProfileConfig
     assert merged[0].config.working_directory == "/tmp/custom-subprocess-jobs"
     assert merged[0].config.ttl_seconds_active == 123
+
+
+def test_merge_executor_profiles_keeps_subprocess_override_for_none_runtime(caplog):
+    caplog.set_level(logging.WARNING)
+    default_executors = get_default_executor_profiles_for_runtime(Runtime.NONE, DefaultExecutionProfileConfig())
+    custom_executors = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+        KubernetesJobExecutionProfile(
+            provider="gpu",
+            profile="default",
+            backend="kubernetes_job",
+            config=KubernetesJobExecutionProfileConfig(namespace="custom-namespace"),
+        ),
+        SubprocessJobExecutionProfile(
+            profile="default",
+            backend="subprocess",
+            config=SubprocessJobExecutionProfileConfig(working_directory="/tmp/custom-subprocess-jobs"),
+        ),
+    ]
+
+    with patch("nmp.core.jobs.controllers.backends.config.validate_docker_available", return_value=False):
+        merged = merge_executor_profiles(custom_executors, default_executors, runtime=Runtime.NONE)
+
+    assert [(p.provider, p.profile, p.backend) for p in merged] == [("subprocess", "default", "subprocess")]
+    assert type(merged[0].config) is SubprocessJobExecutionProfileConfig
+    assert merged[0].config.working_directory == "/tmp/custom-subprocess-jobs"
+    assert "Skipping executor profile cpu/default using backend 'docker'" in caplog.text
+    assert "Skipping executor profile gpu/default using backend 'kubernetes_job'" in caplog.text
 
 
 def test_subprocess_execution_provider_requires_command():

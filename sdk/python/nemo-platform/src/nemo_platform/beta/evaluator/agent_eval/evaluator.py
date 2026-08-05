@@ -12,6 +12,8 @@ import uuid
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from logging import getLogger
 from pathlib import Path
 from typing import Any, cast, overload
@@ -21,7 +23,7 @@ import httpx
 import nemo_platform.beta.evaluator.inference as inference
 from nemo_platform.beta.evaluator.agent_eval.dashboard import write_dashboard
 from nemo_platform.beta.evaluator.agent_eval.persistence import persist_run
-from nemo_platform.beta.evaluator.agent_eval.results import AgentEvalResult, AgentEvalSummary
+from nemo_platform.beta.evaluator.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_platform.beta.evaluator.agent_eval.scores import (
     AgentEvalDiagnostic,
     AgentEvalDiagnosticSeverity,
@@ -35,6 +37,7 @@ from nemo_platform.beta.evaluator.agent_eval.trials import (
     AgentEvalTrialStatus,
     AgentOutput,
     AgentTaskRunner,
+    RunnerInfo,
 )
 from nemo_platform.beta.evaluator.agent_inference import (
     AgentInferenceContext,
@@ -155,6 +158,7 @@ class AgentEvaluator:
 
         run_id = resolved_config.run_id or _new_run_id()
         runtime_config = resolved_config.model_copy(update={"run_id": run_id})
+        started_at = datetime.now(UTC)
 
         # Branch on which seam was supplied so the type checker can narrow ``target`` to a
         # concrete ``AgentEvalTarget`` without a cast.
@@ -172,14 +176,22 @@ class AgentEvaluator:
             config=runtime_config,
             run_id=run_id,
         )
-        benchmark = {**_benchmark_metadata(task_list), **runtime_config.benchmark}
+        finished_at = datetime.now(UTC)
+        metadata = RunMetadata(
+            labels=dict(runtime_config.labels),
+            target=_describe_target(target, runtime_config.params),
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_sec=(finished_at - started_at).total_seconds(),
+            sdk_version=_sdk_version(),
+        )
         result = AgentEvalResult(
             run_id=run_id,
             tasks=task_list,
             trials=trial_list,
             scores=scores,
             summary=AgentEvalSummary.from_scores(scores, tasks=task_list),
-            benchmark=benchmark,
+            metadata=metadata,
         )
 
         if runtime_config.output_dir is not None:
@@ -686,11 +698,38 @@ def _is_completions_endpoint(url: str) -> bool:
     return path.endswith("/completions") and not path.endswith("/chat/completions")
 
 
-def _benchmark_metadata(tasks: list[AgentEvalTask]) -> dict[str, Any]:
-    benchmarks = sorted({str(task.metadata.get("benchmark")) for task in tasks if task.metadata.get("benchmark")})
-    if not benchmarks:
-        return {}
-    return {"benchmark": benchmarks[0] if len(benchmarks) == 1 else benchmarks}
+def _sdk_version() -> str | None:
+    try:
+        return package_version("nemo-evaluator-sdk")
+    except PackageNotFoundError:  # pragma: no cover - only when running from an uninstalled tree
+        return None
+
+
+def _describe_target(
+    target: AgentEvalTarget | None,
+    params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
+) -> RunnerInfo:
+    """Identify what produced the trials, for the run's provenance.
+
+    Runners identify themselves via the required :meth:`AgentTaskRunner.runner_info`; trials supplied
+    directly have no runner.
+
+    Models and agents are described by name *and* the settings they were invoked with — the endpoint
+    ``url``, plus the whole ``params`` object (temperature, max_tokens, reasoning effort, system prompt,
+    retries, ...). A name alone is not an identity: the same model name served from two different URLs,
+    or at two different temperatures, would otherwise record identical provenance. ``params`` is dumped
+    whole rather than cherry-picked, because a filtered subset is what bites you later when the omitted
+    field turns out to be the one that mattered. It carries no credentials — ``Model.api_key_secret`` is
+    a reference on the model, and ``default_headers`` is excluded from serialization.
+    """
+    if target is None:
+        return RunnerInfo(name="imported", kind="imported")
+    if isinstance(target, (Model, AgentBase)):
+        config: dict[str, Any] = {"url": getattr(target, "url", None)}
+        if params is not None:
+            config["params"] = params.model_dump(mode="json", exclude_none=True)
+        return RunnerInfo(name=target.name, kind="model" if isinstance(target, Model) else "agent", config=config)
+    return target.runner_info()
 
 
 def _persist_with_optional_dashboard(

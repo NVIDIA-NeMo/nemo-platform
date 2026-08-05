@@ -6,7 +6,7 @@ import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { gateCopilotStudioRoutes, gateDashboardRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 
 const DashboardLandingRoute = lazy(() =>
   import('@studio/routes/DashboardLandingRoute').then((module) => ({

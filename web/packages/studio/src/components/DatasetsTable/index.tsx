@@ -22,7 +22,7 @@ import { DatasetBulkDeleteModal } from '@studio/routes/FilesetListRoute/DatasetB
 import { getNewFilesetRoute } from '@studio/routes/utils';
 import { X, Database, Trash } from 'lucide-react';
 import { type FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 export type { DatasetsTableProps } from '@studio/components/DatasetsTable/types';
 

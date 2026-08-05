@@ -176,11 +176,13 @@ def rewrite_config_base_urls(nat_config: dict[str, Any], gateway_url: str) -> di
 
 
 def rewrite_fabric_config_base_urls(agent_config: dict[str, Any], gateway_url: str) -> dict[str, Any]:
-    """Return a copy of *agent_config* with Fabric model IGW base_urls rebased onto *gateway_url*.
+    """Return a copy of *agent_config* with Platform URLs rebased onto *gateway_url*.
 
     Rewrites ``models.*.base_url`` and harness ``model.base_url`` when the URL
     points at the Inference Gateway. Legacy ``settings.base_url`` values are
-    also supported. Third-party base URLs are left unchanged.
+    also supported. Loopback ATIF HTTP storage endpoints are rewritten so they
+    remain reachable from container deployments. Third-party URLs are left
+    unchanged.
     """
     reachable = urlsplit(gateway_url.rstrip("/"))
     reachable_origin = f"{reachable.scheme}://{reachable.netloc}"
@@ -212,6 +214,21 @@ def rewrite_fabric_config_base_urls(agent_config: dict[str, Any], gateway_url: s
             continue
         parts = urlsplit(current)
         settings["base_url"] = f"{reachable_origin}{parts.path}"
+
+    telemetry = config.get("telemetry")
+    atif = telemetry.get("atif") if isinstance(telemetry, dict) else None
+    storage_configs = atif.get("storage", []) if isinstance(atif, dict) else []
+    for storage_config in storage_configs:
+        if not isinstance(storage_config, dict) or storage_config.get("type") != "http":
+            continue
+        endpoint = storage_config.get("endpoint")
+        if not isinstance(endpoint, str):
+            continue
+        parts = urlsplit(endpoint)
+        if parts.hostname not in LOOPBACK_ADDRESSES:
+            continue
+        scheme = "https" if "https" in (parts.scheme, reachable.scheme) else reachable.scheme
+        storage_config["endpoint"] = parts._replace(scheme=scheme, netloc=reachable.netloc).geturl()
     return config
 
 

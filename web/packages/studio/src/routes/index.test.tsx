@@ -3,9 +3,15 @@
 
 import { flagDefinitions } from '@studio/constants/featureFlags/featureFlags';
 import { ROUTE_PARAMS, ROUTES } from '@studio/constants/routes';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 
-/** Placeholder workspace segment matching React Router param patterns in ROUTES. */
+/**
+ * Placeholder workspace segment matching React Router param patterns in ROUTES.
+ *
+ * Route helpers build paths with `generatePath`, which percent-encodes param values
+ * (react-router v7), so feeding it this placeholder yields `%3Aworkspace`. Call sites
+ * decode the result to recover the raw `:workspace` pattern for comparison.
+ */
 const WORKSPACE_ROUTE_PLACEHOLDER = `:${ROUTE_PARAMS.workspace}`;
 
 const isWorkspaceScopedPath = (path: string) =>
@@ -112,7 +118,9 @@ describe('Routes', () => {
     }, 30_000);
 
     it('every workspace route except the default route is behind a feature flag', () => {
-      const defaultRoute = getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER);
+      const defaultRoute = decodeURIComponent(
+        getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER)
+      );
       // Intentionally always-on (ungated) workspace routes. Keep this list tiny —
       // new features should be flag-gated, not added here.
       const alwaysOnWorkspaceRoutes = new Set<string>([ROUTES.workspace.virtualModels]);
@@ -141,7 +149,10 @@ describe('Routes', () => {
         expect(findIfRouteExists(routes, route)).toBe(false);
       });
       expect(
-        findIfRouteExists(routes, getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
+        findIfRouteExists(
+          routes,
+          decodeURIComponent(getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
+        )
       ).toBe(true);
     });
 
@@ -155,7 +166,10 @@ describe('Routes', () => {
         expect(findIfRouteExists(routes, route)).toBe(false);
       });
       expect(
-        findIfRouteExists(routes, getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
+        findIfRouteExists(
+          routes,
+          decodeURIComponent(getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
+        )
       ).toBe(true);
     });
 
@@ -168,7 +182,10 @@ describe('Routes', () => {
         expect(findIfRouteExists(routes, route)).toBe(false);
       });
       expect(
-        findIfRouteExists(routes, getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
+        findIfRouteExists(
+          routes,
+          decodeURIComponent(getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
+        )
       ).toBe(true);
     });
 
@@ -187,7 +204,10 @@ describe('Routes', () => {
         expect(findIfRouteExists(routes, route)).toBe(false);
       });
       expect(
-        findIfRouteExists(routes, getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
+        findIfRouteExists(
+          routes,
+          decodeURIComponent(getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
+        )
       ).toBe(true);
     });
 

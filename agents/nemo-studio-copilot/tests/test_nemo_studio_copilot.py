@@ -904,7 +904,10 @@ class TestNemoStudioCopilotWrapper:
 
         value = NemoStudioCopilotWrapperFunction.convert_chat_request(request)
 
-        assert NemoStudioCopilotWrapperFunction._invocation_config(value) == TRUSTED_CONFIG
+        # ``callbacks`` may also carry the NAT profiler handler; assert the
+        # session config specifically rather than the whole dict.
+        config = NemoStudioCopilotWrapperFunction._invocation_config(value)
+        assert config["configurable"] == TRUSTED_CONFIG["configurable"]
 
     @pytest.mark.asyncio
     async def test_wrapper_passes_trusted_session_config_to_graph(self):
@@ -922,7 +925,8 @@ class TestNemoStudioCopilotWrapper:
         result = await wrapper._ainvoke(value)
 
         assert result.value == "done"
-        assert graph.configs == [TRUSTED_CONFIG]
+        assert len(graph.configs) == 1
+        assert graph.configs[0]["configurable"] == TRUSTED_CONFIG["configurable"]
 
     @pytest.mark.parametrize(
         "message",

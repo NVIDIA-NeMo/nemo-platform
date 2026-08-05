@@ -33,7 +33,7 @@ import { iconColorClass } from '@studio/routes/constants';
 import { keepPreviousData } from '@tanstack/react-query';
 import { ChartBar, Cog, LayoutList, ListChecks, Sliders, Sparkles } from 'lucide-react';
 import { ComponentProps, type ReactNode, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const SOURCE_DISPLAY: Record<string, { label: string; icon: ReactNode }> = {
   [JOB_SOURCE.CUSTOMIZATION]: {

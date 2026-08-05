@@ -12,7 +12,7 @@ import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationMo
 import { useRecentWorkspaces } from '@studio/components/WorkspaceDropdown/useRecentWorkspaces';
 import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface DeleteWorkspaceModalProps {
   workspace: string;

@@ -8,7 +8,7 @@ import type { ClaudeCodeChatArtifacts } from '@studio/routes/agents/ClaudeCodeCh
 import { getCopilotChatRouteForSession } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getWorkspaceDashboardRoute } from '@studio/routes/utils';
 import { type FC, type ReactNode, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface ClaudeCodeLayoutProps {
   activeSessionId?: string;

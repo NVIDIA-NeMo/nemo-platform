@@ -3,12 +3,17 @@
 
 """Unit tests for the StudioService."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nmp.studio.config import StudioConfig
+from nmp.studio.plugins import PluginManifestResponse
 from nmp.studio.service import StudioService
 
 
@@ -229,13 +234,14 @@ class TestTelemetryProxy:
 class TestStaticFilesPath:
     """Tests for static_files_path configuration."""
 
-    def test_default_static_files_path(self, monkeypatch: pytest.MonkeyPatch):
+    def test_default_static_files_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """Test that the default path is the packaged static dir."""
         import nmp.studio
 
         expected = Path(nmp.studio.__file__).parent / "static"
         service = StudioService()
         monkeypatch.setattr(service, "_source_static_files_path", lambda: None)
+        monkeypatch.setattr(service, "_container_static_files_path", lambda: tmp_path / "absent")
         path = service._get_static_files_path()
         assert path == expected
 
@@ -296,15 +302,59 @@ class TestStaticFilesPath:
         service = StudioService()
         monkeypatch.chdir(source_root)
         monkeypatch.setattr(service, "_packaged_static_files_path", lambda: packaged_static)
+        monkeypatch.setattr(service, "_container_static_files_path", lambda: tmp_path / "absent")
 
         path = service._get_static_files_path()
         assert path == studio_dir / "dist"
+
+    def test_container_bundle_used_when_packaged_static_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Test that the container image bundle is used when nothing is configured or packaged."""
+        container_static = tmp_path / "static" / "studio"
+        container_static.mkdir(parents=True)
+        (container_static / "index.html").write_text("<html></html>")
+
+        service = StudioService()
+        monkeypatch.setattr(service, "_packaged_static_files_path", lambda: tmp_path / "package-static")
+        monkeypatch.setattr(service, "_container_static_files_path", lambda: container_static)
+
+        assert service._get_static_files_path() == container_static
+
+    def test_configured_path_wins_over_container_bundle(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Test that an operator's configured path is never shadowed by the container bundle."""
+        container_static = tmp_path / "static" / "studio"
+        container_static.mkdir(parents=True)
+        (container_static / "index.html").write_text("<html></html>")
+        configured = tmp_path / "operator-static"
+        configured.mkdir()
+        (configured / "index.html").write_text("<html></html>")
+
+        service = StudioService().with_config(StudioConfig(static_files_path=configured))
+        monkeypatch.setattr(service, "_container_static_files_path", lambda: container_static)
+
+        assert service._get_static_files_path() == configured
+
+    def test_default_container_static_files_path(self):
+        """Test that the container fallback matches where the images place the bundle."""
+        assert StudioService()._container_static_files_path() == Path("/static/studio")
+
+    def test_env_static_files_path_shadows_the_config_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """ServiceConfig is environment-first, so images must not bake NMP_STUDIO_STATIC_FILES_PATH."""
+        from nmp.common.config import Configuration
+
+        monkeypatch.setenv("NMP_STUDIO_STATIC_FILES_PATH", str(tmp_path / "from-env"))
+
+        config = Configuration.global_settings_to_service_config(
+            {"studio": {"static_files_path": str(tmp_path / "from-yaml")}}, StudioConfig
+        )
+
+        assert config.static_files_path == tmp_path / "from-env"
 
     def test_missing_static_files_route_explains_recovery(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """Test that missing Studio assets return recovery instructions instead of a bare 404."""
         missing_static = tmp_path / "missing-static"
         service = StudioService()
         monkeypatch.setattr(service, "_get_static_files_path", lambda: missing_static)
+        monkeypatch.setattr(service, "_source_static_files_path", lambda: tmp_path / "web-dist")
         app = FastAPI()
 
         service.configure_app(app)
@@ -327,6 +377,7 @@ class TestStaticFilesPath:
         missing_static = tmp_path / "missing-static"
         service = StudioService()
         monkeypatch.setattr(service, "_get_static_files_path", lambda: missing_static)
+        monkeypatch.setattr(service, "_source_static_files_path", lambda: tmp_path / "web-dist")
         app = FastAPI()
 
         service.configure_app(app)
@@ -340,12 +391,35 @@ class TestStaticFilesPath:
         assert "make bootstrap-studio" in response.text
         assert "nemo services restart" in response.text
 
+    def test_missing_static_files_route_omits_build_tips_outside_a_checkout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Test that packaged installs get a docs pointer instead of repo build steps."""
+        missing_static = tmp_path / "missing-static"
+        service = StudioService()
+        monkeypatch.setattr(service, "_get_static_files_path", lambda: missing_static)
+        monkeypatch.setattr(service, "_source_static_files_path", lambda: None)
+        app = FastAPI()
+
+        service.configure_app(app)
+
+        client = TestClient(app)
+        response = client.get("/studio/")
+
+        assert response.status_code == 503
+        assert "https://docs.nvidia.com/nemo-platform" in response.text
+        assert "make bootstrap-studio" not in response.text
+        assert "nvm" not in response.text
+        assert "NMP_STUDIO_STATIC_FILES_PATH" not in response.text
+        assert str(missing_static) in response.text
+
     def test_static_dir_without_index_route_explains_recovery(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """Test that an incomplete Studio build also returns recovery instructions."""
         incomplete_static = tmp_path / "static"
         incomplete_static.mkdir()
         service = StudioService()
         monkeypatch.setattr(service, "_get_static_files_path", lambda: incomplete_static)
+        monkeypatch.setattr(service, "_source_static_files_path", lambda: tmp_path / "web-dist")
         app = FastAPI()
 
         service.configure_app(app)
@@ -512,3 +586,125 @@ class TestStudioConfigEnvReplacements:
 
         result = config._resolve_config_path("nonexistent.path")
         assert result is None
+
+
+class TestConfigureAppPluginRouter:
+    """Tests that configure_app wires plugin static files and /apis/plugins."""
+
+    def test_plugins_endpoint_is_registered(self):
+        manifests = [PluginManifestResponse(name="ex", bundle_url="/plugin-ui/ex/index.js")]
+        with patch("nmp.studio.service.discover_plugins", return_value=manifests):
+            service = StudioService()
+            app = FastAPI()
+            service.configure_app(app)
+
+        client = TestClient(app)
+        response = client.get("/apis/plugins")
+        assert response.status_code == 200
+        data = response.json()
+        assert data[0]["name"] == "ex"
+
+    def test_bundle_assets_served_for_each_plugin(self, tmp_path: Path):
+        bundle = tmp_path / "index.js"
+        bundle.write_text("export function mount(){}")
+        (tmp_path / "index.js.map").write_text("{}")
+        (tmp_path / "styles.css").write_text("body{}")
+        manifests = [PluginManifestResponse(name="ex", bundle_url="/plugin-ui/ex/index.js", bundle_dir=tmp_path)]
+
+        with patch("nmp.studio.service.discover_plugins", return_value=manifests):
+            service = StudioService()
+            app = FastAPI()
+            service.configure_app(app)
+
+        client = TestClient(app)
+        response = client.get("/plugin-ui/ex/index.js")
+        assert response.status_code == 200
+        assert response.text == "export function mount(){}"
+        assert response.headers["content-type"].startswith("text/javascript")
+        assert client.get("/plugin-ui/ex/index.js.map").status_code == 200
+        assert client.get("/plugin-ui/ex/styles.css").status_code == 200
+
+    def test_bundle_assets_allowlist_blocks_non_bundle_files(self, tmp_path: Path):
+        """Only direct .js/.js.map/.css children of the bundle dir are reachable."""
+        (tmp_path / "index.js").write_text("// bundle")
+        (tmp_path / "secrets.py").write_text("TOKEN = 'x'")
+        (tmp_path / "config.yaml").write_text("key: value")
+        subdir = tmp_path / "sub"
+        subdir.mkdir()
+        (subdir / "nested.js").write_text("// nested")
+        manifests = [PluginManifestResponse(name="ex", bundle_url="/plugin-ui/ex/index.js", bundle_dir=tmp_path)]
+
+        with patch("nmp.studio.service.discover_plugins", return_value=manifests):
+            service = StudioService()
+            app = FastAPI()
+            service.configure_app(app)
+
+        client = TestClient(app)
+        assert client.get("/plugin-ui/ex/secrets.py").status_code == 404
+        assert client.get("/plugin-ui/ex/config.yaml").status_code == 404
+        assert client.get("/plugin-ui/ex/sub/nested.js").status_code == 404
+        assert client.get("/plugin-ui/ex/missing.js").status_code == 404
+        assert client.get("/plugin-ui/unknown/index.js").status_code == 404
+
+    def test_bundle_asset_symlink_escape_blocked(self, tmp_path: Path):
+        """A .js symlink inside the bundle dir must not serve a file outside it."""
+        bundle = tmp_path / "bundle"
+        bundle.mkdir()
+        (bundle / "index.js").write_text("// ok")
+        secret = tmp_path / "outside.js"
+        secret.write_text("SECRET")
+        (bundle / "leak.js").symlink_to(secret)
+        manifests = [PluginManifestResponse(name="ex", bundle_url="/plugin-ui/ex/index.js", bundle_dir=bundle)]
+
+        with patch("nmp.studio.service.discover_plugins", return_value=manifests):
+            service = StudioService()
+            app = FastAPI()
+            service.configure_app(app)
+
+        client = TestClient(app)
+        assert client.get("/plugin-ui/ex/index.js").status_code == 200
+        assert client.get("/plugin-ui/ex/leak.js").status_code == 404
+
+
+class TestBuildCSPHeader:
+    """_build_csp_header wires configured STUDIO_UI_* endpoints into CSP directives."""
+
+    @staticmethod
+    def _directive(csp: str, name: str) -> str:
+        for part in csp.split(";"):
+            part = part.strip()
+            if part.startswith(f"{name} "):
+                return part[len(name) + 1 :]
+        raise AssertionError(f"directive {name!r} not found in {csp!r}")
+
+    def _csp_for(self, replacements: dict[str, str]) -> str:
+        service = StudioService()
+        with patch.object(service, "_get_config", return_value=SimpleNamespace(env_replacements=replacements)):
+            return service._build_csp_header()
+
+    def test_empty_replacements_is_same_origin(self):
+        csp = self._csp_for({})
+        assert self._directive(csp, "connect-src") == "'self'"
+        assert self._directive(csp, "script-src") == "'self'"
+        assert self._directive(csp, "frame-src") == "'none'"
+
+    def test_issuer_reaches_connect_and_frame_src(self):
+        csp = self._csp_for({"STUDIO_UI_VITE_AUTH_AUTHORITY": "https://issuer.example.com/realms/nmp"})
+        assert self._directive(csp, "connect-src") == "'self' https://issuer.example.com"
+        assert self._directive(csp, "frame-src") == "'self' https://issuer.example.com"
+
+    def test_platform_base_url_reaches_connect_and_script_src(self):
+        csp = self._csp_for({"STUDIO_UI_VITE_PLATFORM_BASE_URL": "https://api.example.com"})
+        assert self._directive(csp, "connect-src") == "'self' https://api.example.com"
+        assert self._directive(csp, "script-src") == "'self' https://api.example.com"
+
+    def test_microservice_urls_reach_connect_src_only(self):
+        csp = self._csp_for(
+            {
+                "STUDIO_UI_VITE_DATA_STORE_MICROSERVICE_URL": "https://ds.example.com",
+                "STUDIO_UI_VITE_NIM_PROXY_MICROSERVICE_URL": "https://nim.example.com",
+            }
+        )
+        assert self._directive(csp, "connect-src") == "'self' https://ds.example.com https://nim.example.com"
+        assert self._directive(csp, "script-src") == "'self'"
+        assert self._directive(csp, "frame-src") == "'none'"

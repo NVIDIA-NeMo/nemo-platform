@@ -70,7 +70,6 @@ def test_persist_run_writes_bundle_relative_refs_that_survive_a_move(tmp_path: P
         trials=[_trial_with_workspace(str(workspace))],  # absolute ref under the bundle
         scores=[],
         summary=AgentEvalSummary.from_scores([], tasks=[]),
-        benchmark={},
     )
     persist_run(result, bundle)
 
@@ -113,7 +112,6 @@ def test_persist_and_read_keep_external_evidence_refs_absolute(tmp_path: Path) -
         trials=[_trial_with_workspace(external_ref)],
         scores=[],
         summary=AgentEvalSummary.from_scores([], tasks=[]),
-        benchmark={},
     )
     persist_run(result, bundle)
 

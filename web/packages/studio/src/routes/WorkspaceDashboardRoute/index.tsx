@@ -26,7 +26,7 @@ import { DashboardCard } from '@studio/routes/WorkspaceDashboardRoute/DashboardC
 import { ResourcesSection } from '@studio/routes/WorkspaceDashboardRoute/ResourcesSection';
 import { Boxes } from 'lucide-react';
 import type { FC } from 'react';
-import { generatePath } from 'react-router-dom';
+import { generatePath } from 'react-router';
 
 export const WorkspaceDashboardRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

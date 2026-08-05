@@ -15,7 +15,7 @@ import { makeIntakeTraceColumns } from '@studio/components/IntakeLists/intakeTra
 import { getIntakeSessionTraceRoute } from '@studio/routes/utils';
 import { Columns3, TriangleAlert } from 'lucide-react';
 import { type FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export interface InsightTracesTableProps {
   workspace: string;

@@ -171,7 +171,7 @@ class AgentEvalJob(NemoJob):
             trials=submit_spec.trials,
             max_concurrent_tasks=submit_spec.max_concurrent_tasks,
             fail_fast=submit_spec.fail_fast,
-            benchmark=submit_spec.benchmark,
+            labels=submit_spec.labels,
         )
 
     @classmethod
@@ -314,7 +314,7 @@ class AgentEvalJob(NemoJob):
             params=params,
             prompt_template=prompt_template,
             parallelism=spec.max_concurrent_tasks,
-            benchmark=spec.benchmark,
+            labels=spec.labels,
             fail_fast=spec.fail_fast,
             write_dashboard=False,
         )

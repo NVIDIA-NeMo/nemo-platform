@@ -19,7 +19,7 @@ import {
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { type FC, Suspense } from 'react';
-import { Link, Outlet, matchPath, useLocation } from 'react-router-dom';
+import { Link, Outlet, matchPath, useLocation } from 'react-router';
 
 export const GuardrailDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
