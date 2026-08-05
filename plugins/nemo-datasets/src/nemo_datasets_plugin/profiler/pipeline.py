@@ -91,17 +91,14 @@ def profile(
     files_read = 0
     all_scanned = True
 
-    for partition_name, partition_entries in group_partitions(data_entries):
-        format_groups = _split_by_format(partition_entries)
-        for file_format, format_entries in format_groups:
-            # A directory that holds more than one format yields one partition per format; qualify
-            # the name so the partitions stay distinct. A single-format directory keeps its bare name.
-            name = f"{partition_name}:{file_format}" if len(format_groups) > 1 else partition_name
-            outcome = _profile_partition(source, name, file_format, format_entries, row_cap)
-            partitions.append(outcome.partition)
-            rows_scanned += outcome.rows_scanned
-            files_read += outcome.files_read
-            all_scanned = all_scanned and outcome.scanned_all
+    groups = group_partitions(data_entries)
+    for source_dir, partition_entries in groups:
+        name = _partition_label(source_dir, len(groups))
+        outcome = _profile_partition(source, name, source_dir, partition_entries, row_cap)
+        partitions.append(outcome.partition)
+        rows_scanned += outcome.rows_scanned
+        files_read += outcome.files_read
+        all_scanned = all_scanned and outcome.scanned_all
 
     # Data we could not read is data we did not scan, so unsupported files defeat exhaustiveness just
     # as an unreadable file does.
@@ -132,18 +129,16 @@ def profile(
     )
 
 
-def _split_by_format(entries: list[FileEntry]) -> list[tuple[str, list[FileEntry]]]:
-    """Sub-group a directory's files by format so each profiled partition is format-homogeneous.
+def _partition_label(source_dir: str | None, group_count: int) -> str:
+    """The display label for a partition. Cosmetic only — ``source_dir`` carries the identity.
 
-    ``group_partitions`` groups by directory only, but one directory can hold more than one format
-    (a stray ``.jsonl`` beside ``.parquet`` shards). Left mixed, a partition would derive its schema
-    from whichever format was read first and then measure rows from both. Sorted for deterministic
-    partition order; ``entries`` are pre-filtered ``data_entries`` so every format is registered.
+    A lone group labels as "default" whatever directory it came from, so the common
+    everything-under-``data/`` layout does not surface a meaningless container name. With several
+    groups each takes its directory name, and root-level files take "default".
     """
-    by_format: dict[str, list[FileEntry]] = {}
-    for entry in entries:
-        by_format.setdefault(_format_of(entry.path), []).append(entry)
-    return sorted(by_format.items())
+    if group_count == 1 or source_dir is None:
+        return "default"
+    return source_dir
 
 
 def _unify_schemas(schemas: list[pa.Schema]) -> pa.Schema | None:
@@ -214,9 +209,15 @@ class _PartitionOutcome:
 
 
 def _profile_partition(
-    source: FileSource, name: str, file_format: str, entries: list[FileEntry], row_cap: int | None
+    source: FileSource, name: str, source_dir: str | None, entries: list[FileEntry], row_cap: int | None
 ) -> _PartitionOutcome:
-    """Profile one format-homogeneous partition.
+    """Profile one partition — the files of one source directory, whatever formats they are in.
+
+    The reader is resolved per file rather than per partition. Format is a property of a file, and
+    a directory holding two of them is a stray file, not a second dataset; splitting the partition
+    to keep one scalar ``file_format`` true is what made partition names unstable. Mixed formats
+    instead flow through to ``_measure``, which infers the schema from rows when not every file
+    declared one.
 
     An unreadable file (or a format with no registered reader) is isolated: it keeps its FileRecord,
     records *why* on ``FileRecord.error``, contributes no rows, and flips ``scanned_all`` off — it
@@ -235,6 +236,7 @@ def _profile_partition(
         split_counts_known = True  # every file's exact total row count is known (footer or full scan)
         split_scanned = True  # every row of every file was actually parsed
         for entry in split.entries:
+            file_format = _format_of(entry.path)
             error: str | None = None
             try:
                 result = get_reader(file_format).read(source, entry, row_cap=row_cap)
@@ -267,6 +269,7 @@ def _profile_partition(
                     path=entry.path,
                     size_bytes=entry.size_bytes,
                     checksum=entry.checksum,
+                    file_format=file_format,
                     num_rows=num_rows,
                     error=error,
                 )
@@ -291,7 +294,10 @@ def _profile_partition(
     )
     partition = PartitionProfile(
         name=name,
-        file_format=file_format,
+        source_dir=source_dir,
+        # Summarized from the records rather than assumed: the partition no longer picks a format,
+        # it reports the ones its files turned out to be in.
+        file_formats=sorted({file.file_format for split in split_profiles for file in split.files if file.file_format}),
         splits=split_profiles,
         features=features,
         stats=stats,

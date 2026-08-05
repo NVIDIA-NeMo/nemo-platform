@@ -29,20 +29,25 @@ def _top_dir(path: str) -> str | None:
     return parts[0]
 
 
-def group_partitions(entries: list[FileEntry]) -> list[tuple[str, list[FileEntry]]]:
-    """Group files into (name, files) partitions by top-level directory.
+def group_partitions(entries: list[FileEntry]) -> list[tuple[str | None, list[FileEntry]]]:
+    """Group files into (source_dir, files) partitions by top-level directory.
 
-    A single top-level group — every file at the root, or all under one container like ``data/`` —
-    is one "default" partition. Multiple top-level directories (e.g. ``main/`` and ``socratic/``)
-    each become their own partition, named after the directory; root-level files fall under
-    "default".
+    Returns the *directory*, not a label — ``None`` for files at the fileset root. The label is the
+    caller's to derive, because the two are not the same thing: a lone group under ``data/`` labels
+    as "default" while its identity stays ``"data"``, and root-level files are a different partition
+    from a directory literally named ``default`` even though both label the same way. Collapsing
+    those into one string is what let a partition collide with another, and what let an unrelated
+    file rename one out of existence.
+
+    Files whose top-level directory is a split name (``train/``, ``test/``) group under ``None``
+    alongside root-level files: those are one dataset's splits, not separate partitions.
     """
     by_dir: dict[str | None, list[FileEntry]] = {}
     for entry in entries:
         by_dir.setdefault(_top_dir(entry.path), []).append(entry)
 
     if len(by_dir) == 1:
-        return [("default", list(entries))]
+        # A single group is one partition holding everything, whatever its directory happened to be.
+        return [(next(iter(by_dir)), list(entries))]
 
-    ordered = sorted(by_dir.items(), key=lambda item: (item[0] is None, item[0] or ""))
-    return [("default" if directory is None else directory, files) for directory, files in ordered]
+    return sorted(by_dir.items(), key=lambda item: (item[0] is None, item[0] or ""))
