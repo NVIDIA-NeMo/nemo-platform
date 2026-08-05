@@ -50,9 +50,9 @@ partitions:
          files: [{path: test-00000-of-00001.parquet, size_bytes: 411552,
                   checksum: sha256:02af..., num_rows: 200, file_format: parquet, read_strategy: head}]}
     features:
-      - {name: prompt, dtype: messages, semantic_role: prompt,
+      - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
-      - {name: completion, dtype: messages, semantic_role: completion,
+      - {name: completion, dtype: messages, semantic_role: completion, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
     stats:
       prompt:     {messages: {turns: {p50: 1, p95: 1, p99: 1, max: 1}, content_chars: {p50: 180, p95: 620, p99: 1100, max: 4800},
@@ -62,6 +62,7 @@ partitions:
     classification:
       modality: text
       dataset_type: prompt_completion
+      candidates: [prompt_completion]
       format: conversational
       prompt_form: explicit
       verifiability:
@@ -93,11 +94,11 @@ partitions:
          files: [{path: test-00000-of-00001.parquet, size_bytes: 1198422,
                   checksum: sha256:5c1d..., num_rows: 2354, file_format: parquet, read_strategy: head}]}
     features:
-      - {name: prompt, dtype: messages, semantic_role: prompt,
+      - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
-      - {name: chosen, dtype: messages, semantic_role: chosen,
+      - {name: chosen, dtype: messages, semantic_role: chosen, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
-      - {name: rejected, dtype: messages, semantic_role: rejected,
+      - {name: rejected, dtype: messages, semantic_role: rejected, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
     stats:
       prompt:   {messages: {turns: {p50: 3, p95: 8, p99: 9, max: 9}, content_chars: {p50: 640, p95: 3200, p99: 5400, max: 9800},
@@ -109,6 +110,7 @@ partitions:
     classification:
       modality: text
       dataset_type: preference_pair
+      candidates: [preference_pair]
       format: conversational
       prompt_form: explicit
       evidence:
@@ -136,13 +138,13 @@ partitions:
          files: [{path: validation-00000-of-00001.parquet, size_bytes: 2311008,
                   checksum: sha256:8bd2..., num_rows: 1038, file_format: parquet, read_strategy: head}]}
     features:
-      - {name: prompt,      dtype: string, semantic_role: prompt}
-      - {name: response,    dtype: string, semantic_role: completion}
-      - {name: helpfulness, dtype: int64,  semantic_role: score}
-      - {name: correctness, dtype: int64,  semantic_role: score}
-      - {name: coherence,   dtype: int64,  semantic_role: score}
-      - {name: complexity,  dtype: int64,  semantic_role: score}
-      - {name: verbosity,   dtype: int64,  semantic_role: score}
+      - {name: prompt,      dtype: string, semantic_role: prompt, semantic_role_source: detected}
+      - {name: response,    dtype: string, semantic_role: completion, semantic_role_source: detected}
+      - {name: helpfulness, dtype: int64,  semantic_role: score, semantic_role_source: detected}
+      - {name: correctness, dtype: int64,  semantic_role: score, semantic_role_source: detected}
+      - {name: coherence,   dtype: int64,  semantic_role: score, semantic_role_source: detected}
+      - {name: complexity,  dtype: int64,  semantic_role: score, semantic_role_source: detected}
+      - {name: verbosity,   dtype: int64,  semantic_role: score, semantic_role_source: detected}
     stats:
       prompt:   {text: {chars: {p50: 320, p95: 2200, p99: 5600, max: 12000}},
                  quality: {whitespace_ratio: 0.16, non_ascii_ratio: 0.004, repetition_score: 0.02}}
@@ -156,6 +158,7 @@ partitions:
     classification:
       modality: text
       dataset_type: scored_response
+      candidates: [scored_response, prompt_completion]
       format: standard
       prompt_form: explicit
       evidence:
@@ -216,6 +219,7 @@ def _build_profile() -> DatasetProfile:
                 },
                 classification=PartitionClassification(
                     dataset_type="prompt_completion",
+                    candidates=["prompt_completion"],
                     format="standard",
                     prompt_form="explicit",
                     verifiability=Verifiability(
@@ -275,6 +279,10 @@ def test_helpsteer2_flat_schema_and_no_verifiability():
     profile = DatasetProfile.model_validate(yaml.safe_load(HELPSTEER2))
     part = profile.partitions[0]
     assert part.classification.dataset_type == "scored_response"
+    # A scored prompt/completion set is also a plain prompt_completion set. `dataset_type` is the
+    # most specific reading; `candidates` is what the same columns otherwise support.
+    assert part.classification.candidates == ["scored_response", "prompt_completion"]
+    assert part.classification.candidates[0] == part.classification.dataset_type
     assert part.classification.format == "standard"
     # Absence of a verifiability object *is* the "not verifiable" claim.
     assert part.classification.verifiability is None

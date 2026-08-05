@@ -67,12 +67,17 @@ def profile(
     *,
     created_at: datetime | None = None,
     row_cap: int | None = DEFAULT_ROW_CAP,
+    column_roles: dict[str, str] | None = None,
 ) -> DatasetProfile:
     """Profile the dataset behind ``source`` into a ``DatasetProfile``.
 
     ``row_cap`` bounds how many rows are read from each file; ``None`` reads every row, which is
     exact but scales memory with the dataset rather than the file count. Files smaller than the cap
     are still read to the end, so a capped profile of a small dataset stays exhaustive.
+
+    ``column_roles`` maps a column name to a role the caller is asserting, for datasets whose column
+    names the role table does not recognize. Hints take precedence over name detection but still have
+    to pass the dtype gates, and a rejected one is reported as evidence rather than dropped.
 
     ``created_at`` is injectable so a profile can be made reproducible byte-for-byte in tests; it
     defaults to the current UTC time.
@@ -105,7 +110,7 @@ def profile(
     groups = group_partitions(data_entries)
     for source_dir, partition_entries in groups:
         name = _partition_label(source_dir, len(groups))
-        outcome = _profile_partition(source, name, source_dir, partition_entries, row_cap)
+        outcome = _profile_partition(source, name, source_dir, partition_entries, row_cap, column_roles or {})
         partitions.append(outcome.partition)
         rows_scanned += outcome.rows_scanned
         files_read += outcome.files_read
@@ -185,6 +190,7 @@ def _measure(
     arrow_schemas: list[pa.Schema],
     *,
     all_declared: bool,
+    column_roles: dict[str, str],
 ) -> tuple[list[FeatureSchema], dict[str, ColumnStats], PartitionClassification]:
     """Derive schema, stats and classification, degrading to structure-only if any of it fails.
 
@@ -208,7 +214,7 @@ def _measure(
         # Probes are measured over every column, independent of the roles classify is about to
         # assign, so a content signal survives a column name the alias table does not know.
         probes = derive_probes(features, partition_rows)
-        classification = classify(features, stats, partition_rows, probes=probes)
+        classification = classify(features, stats, partition_rows, probes=probes, column_roles=column_roles)
         # Last, because the roles classification assigns are what decide whether a column's values
         # may be quoted at all — cardinality only bounds how many.
         quote_enumerations(features, stats, partition_rows)
@@ -229,7 +235,12 @@ class _PartitionOutcome:
 
 
 def _profile_partition(
-    source: FileSource, name: str, source_dir: str | None, entries: list[FileEntry], row_cap: int | None
+    source: FileSource,
+    name: str,
+    source_dir: str | None,
+    entries: list[FileEntry],
+    row_cap: int | None,
+    column_roles: dict[str, str],
 ) -> _PartitionOutcome:
     """Profile one partition — the files of one source directory, whatever formats they are in.
 
@@ -313,7 +324,9 @@ def _profile_partition(
                 num_examples=split_examples if split_counts_known else None,
             )
         )
-    features, stats, classification = _measure(partition_rows, arrow_schemas, all_declared=all_declared)
+    features, stats, classification = _measure(
+        partition_rows, arrow_schemas, all_declared=all_declared, column_roles=column_roles
+    )
     partition = PartitionProfile(
         name=name,
         source_dir=source_dir,

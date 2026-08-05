@@ -531,11 +531,11 @@ def test_measure_infers_from_rows_when_some_files_declared_no_schema():
     declared = pa.schema([pa.field("prompt", pa.string())])
     rows = [{"prompt": "a"}, {"prompt": "b", "extra": "only in the schemaless file"}]
 
-    features, stats, _ = _measure(rows, [declared], all_declared=False)
+    features, stats, _ = _measure(rows, [declared], all_declared=False, column_roles={})
     assert [f.name for f in features] == ["prompt", "extra"]  # the sole witness survives
     assert set(stats) <= {f.name for f in features}
 
-    features, _, _ = _measure(rows, [declared], all_declared=True)
+    features, _, _ = _measure(rows, [declared], all_declared=True, column_roles={})
     assert [f.name for f in features] == ["prompt"]  # declared schema trusted when it covers everything
 
 

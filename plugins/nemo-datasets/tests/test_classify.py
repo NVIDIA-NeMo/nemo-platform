@@ -18,6 +18,11 @@ def _f(name, dtype):
     return FeatureSchema(name=name, dtype=dtype)
 
 
+def _binary_column():
+    """A column observed to hold two distinct values -- what makes an int/bool a real label."""
+    return ColumnStats(categorical=CategoricalStats(distinct_count=2))
+
+
 def _messages_column(ends_with_assistant_rate):
     q = Quantiles(p50=1, p95=1, p99=1, max=1)
     return ColumnStats(
@@ -295,3 +300,82 @@ def test_precomputed_probes_and_derived_probes_agree():
     passed_in = classify(features, {}, rows, probes=derive_probes(features, rows))
     assert derived.verifiability.coverage == passed_in.verifiability.coverage
     assert derived.verifiability.evidence[0].detail == passed_in.verifiability.evidence[0].detail
+
+
+# --- candidates ------------------------------------------------------------------------------------
+
+
+def test_candidates_list_every_structure_the_roles_satisfy():
+    # prompt + completion + score + label is genuinely both scored_response and unpaired_preference.
+    # Reporting only the first made rule order an invisible tie-break.
+    features = [_f("prompt", "string"), _f("completion", "string"), _f("score", "float64"), _f("label", "bool")]
+    result = classify(features, {"label": _binary_column()})
+
+    assert result.candidates == ["scored_response", "unpaired_preference", "prompt_completion"]
+    assert result.dataset_type == result.candidates[0]  # the summary is the head, never more
+
+
+def test_candidates_collapse_to_one_when_the_structure_is_unambiguous():
+    result = classify([_f("prompt", "string"), _f("completion", "string")], {})
+    assert result.candidates == ["prompt_completion"]
+
+
+def test_unknown_is_still_reported_as_a_candidate():
+    result = classify([_f("foo", "int64"), _f("bar", "int64")], {})
+    assert result.dataset_type == "unknown"
+    assert result.candidates == ["unknown"]
+
+
+def test_prompt_only_is_not_claimed_alongside_a_training_target():
+    # Collecting candidates rather than returning early risks a prompt+completion set also claiming
+    # prompt_only, which asserts the opposite of what the data holds.
+    result = classify([_f("prompt", "string"), _f("completion", "string")], {})
+    assert "prompt_only" not in result.candidates
+
+
+# --- declared roles (hints) ------------------------------------------------------------------------
+
+
+def test_a_hint_names_a_column_the_alias_table_does_not_know():
+    features = [_f("q", "string"), _f("a", "string")]
+    result = classify(features, {}, column_roles={"q": "prompt", "a": "completion"})
+
+    assert [(f.semantic_role, f.semantic_role_source) for f in features] == [
+        ("prompt", "declared"),
+        ("completion", "declared"),
+    ]
+    assert result.dataset_type == "prompt_completion"
+
+
+def test_a_hint_takes_precedence_over_the_name_alias():
+    # The caller knows their schema; the table is ~35 English names.
+    features = [_f("prompt", "string")]
+    classify(features, {}, column_roles={"prompt": "context"})
+    assert features[0].semantic_role == "context"
+    assert features[0].semantic_role_source == "declared"
+
+
+def test_a_hint_the_dtype_cannot_support_is_rejected_loudly():
+    # A hint says which column, not what the data is. Accepting it unconditionally would let one
+    # typo produce a nonsense classification, and silence is what made the table's misses costly.
+    features = [_f("n", "int64")]
+    result = classify(features, {}, column_roles={"n": "prompt"})
+
+    assert features[0].semantic_role is None
+    rejections = [e for e in result.evidence if e.kind == "user_hint"]
+    assert len(rejections) == 1
+    assert "n -> prompt" in rejections[0].detail and "int64" in rejections[0].detail
+
+
+def test_a_rejected_hint_falls_back_to_detection():
+    # `answer` is a known alias; a bad hint on it must not cost the role the table would have found.
+    features = [_f("answer", "string")]
+    classify(features, {}, column_roles={"answer": "messages"})  # messages needs the messages dtype
+    assert features[0].semantic_role == "completion"
+    assert features[0].semantic_role_source == "detected"
+
+
+def test_detected_roles_are_marked_as_detected():
+    features = [_f("prompt", "string")]
+    classify(features, {})
+    assert features[0].semantic_role_source == "detected"

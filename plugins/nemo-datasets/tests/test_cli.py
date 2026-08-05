@@ -57,3 +57,23 @@ def test_profile_command_rejects_non_directory(tmp_path):
     target.write_text("x")
     result = runner.invoke(_mounted(), ["datasets", "profile", str(target)])
     assert result.exit_code != 0
+
+
+def test_profile_command_accepts_column_role_hints(tmp_path):
+    # The hint mechanism needs a caller on this branch; reading them from fileset metadata is the
+    # platform half and lands with the Files integration.
+    pq.write_table(pa.Table.from_pylist([{"q": "why?", "a": "because"}]), tmp_path / "train.parquet")
+    result = runner.invoke(
+        _mounted(), ["datasets", "profile", str(tmp_path), "--column-role", "q=prompt", "--column-role", "a=completion"]
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    partition = payload["partitions"][0]
+    assert partition["classification"]["dataset_type"] == "prompt_completion"
+    assert [f["semantic_role_source"] for f in partition["features"]] == ["declared", "declared"]
+
+
+def test_profile_command_rejects_a_malformed_column_role(tmp_path):
+    result = runner.invoke(_mounted(), ["datasets", "profile", str(tmp_path), "--column-role", "no-equals-sign"])
+    assert result.exit_code != 0
