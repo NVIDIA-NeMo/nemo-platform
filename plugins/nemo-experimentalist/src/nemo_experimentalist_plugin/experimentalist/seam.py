@@ -184,3 +184,7 @@ class StrategyContext(BuilderContext, Protocol):
     def note(self, message: str) -> None:
         """Narrate, for a human watching. Touches no entity and never raises."""
         ...
+
+    def component(self, role: str, name: str, **kwargs: object) -> object:
+        """Resolve a component by name, so a strategy need not import the registry."""
+        ...

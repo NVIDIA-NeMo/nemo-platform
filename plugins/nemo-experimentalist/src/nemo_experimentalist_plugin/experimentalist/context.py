@@ -45,6 +45,7 @@ from nemo_experimentalist_plugin.experimentalist.components.model_config import 
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
+from nemo_experimentalist_plugin.experimentalist.registry import get_component
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, reward_scalar
 from nemo_experimentalist_plugin.experimentalist.seam import Fork
 from nemo_platform import AsyncNeMoPlatform
@@ -460,6 +461,19 @@ class ExperimentContext:
         await self._backend.update_run(workspace=self.workspace, run=self._run)
         if self._reporter is not None:
             self._reporter.progress(phase=note or unit, completed=completed, total=total, unit=unit)
+
+    def component(self, role: str, name: str, **kwargs: Any) -> Any:
+        """Resolve a component by name, so a strategy need not import the registry.
+
+        The run's model tiers are supplied unless the caller overrides them, which is the
+        one thing every component needs and the one a strategy should not have to know to
+        pass. Everything else is the caller's business: a component's constructor belongs
+        to whoever resolves it.
+
+        Raises:
+            LookupError: if nothing is registered under that name.
+        """
+        return get_component(role, name, **{"models": self.models, **kwargs})
 
     def note(self, message: str) -> None:
         """Say what is happening, for a human watching the run.

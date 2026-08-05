@@ -19,7 +19,13 @@ from typing import Any, ClassVar
 import pytest
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import Candidate, Proposal
-from nemo_experimentalist_plugin.experimentalist.registry import Component, get_component, registered, resolve
+from nemo_experimentalist_plugin.experimentalist.registry import (
+    Component,
+    get_component,
+    load_plugins,
+    registered,
+    resolve,
+)
 from nemo_experimentalist_plugin.experimentalist.roles import (
     Analyzer,
     Builder,
@@ -48,11 +54,16 @@ ROLES = {
 def isolated_registry() -> Iterator[None]:
     """Register stand-ins without leaking them into other tests.
 
-    Restores the mapping's *contents* rather than swapping the object: entry-point
-    discovery writes into whichever dict is bound at the time, and it only runs once per
-    process, so a test that replaced the object would send the real components into a copy
-    that is then thrown away — leaving every later lookup empty.
+    Two hazards, both of which have bitten:
+
+    Restore the mapping's *contents*, never the object. Entry-point discovery writes into
+    whichever dict is bound at the time and runs once per process, so replacing the object
+    sends the real components into a copy that is then discarded.
+
+    And discover *before* snapshotting. Taking the snapshot first captures an empty
+    registry, and the teardown then restores that emptiness over the real components.
     """
+    load_plugins()
     before = dict(Component._registry)
     yield
     Component._registry.clear()
@@ -157,3 +168,22 @@ def test_the_installed_defaults_are_discoverable_without_importing_them() -> Non
     checks their package against."""
     for role in ROLES:
         assert registered(role), f"no component registered for {role}"
+
+
+def test_an_installed_out_of_tree_package_is_discovered() -> None:
+    """The developer journey of §1, checked rather than described.
+
+    `examples/acme-strategies` is a separate package with its own pyproject and one entry
+    point. When it is installed, its strategy resolves by name here with no change to this
+    repository — which is the only evidence that both discovery levels work for someone
+    who is not us.
+
+    Skipped when it is not installed, so the suite does not require it; CI installs it.
+    """
+    pytest.importorskip("acme_strategies", reason="out-of-tree example package is not installed")
+
+    resolved = resolve("strategy", "random-search")
+
+    assert resolved.__module__.startswith("acme_strategies"), "resolved to something in this repo"
+    assert issubclass(resolved, Strategy)
+    assert "random-search" in registered("strategy")
