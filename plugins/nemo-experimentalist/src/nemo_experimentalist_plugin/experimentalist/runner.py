@@ -29,7 +29,6 @@ from nemo_experimentalist_plugin.entities import (
     ExperimentRun,
 )
 from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import (
     DatasetFactory,
     EvaluatorFactory,
@@ -87,7 +86,6 @@ class ExperimentRunner:
         train_dataset: Dataset reference the strategy develops against.
         validation_dataset: Dataset reference the winner is selected on.
         task_template: Evaluator-specific task template; required with an Insight.
-        evaluator_type: Which evaluation implementation to build.
         reporter: Optional human narration sink.
     """
 
@@ -105,7 +103,6 @@ class ExperimentRunner:
         train_dataset: DatasetRef,
         validation_dataset: DatasetRef,
         task_template: DatasetRef | None = None,
-        evaluator_type: EvaluatorType = "harbor",
         reporter: RunReporter | None = None,
     ) -> None:
         if agent is None and insight is None:
@@ -123,7 +120,6 @@ class ExperimentRunner:
         self._train_dataset = train_dataset
         self._validation_dataset = validation_dataset
         self._task_template = task_template
-        self._evaluator_type: EvaluatorType = evaluator_type
         self._reporter = reporter
         self._eo = self._root / "eval-and-optimize"
 
@@ -137,7 +133,7 @@ class ExperimentRunner:
         # record can say what they were rather than what was declared.
         models = ModelTiers()
         evaluator = EvaluatorFactory().build_evaluator(
-            self._evaluator_type, self._config.evaluator, experiment_dir=self._root
+            self._config.evaluation, self._config.evaluator, experiment_dir=self._root
         )
         inputs = await self._prepare_inputs()
         run, resuming = await self._open_run(inputs, models)
@@ -211,8 +207,8 @@ class ExperimentRunner:
             )
 
         datasets: dict[str, Dataset] = {
-            "train": dataset_factory.build_dataset(self._evaluator_type, train_ref),
-            "validation": dataset_factory.build_dataset(self._evaluator_type, validation_ref),
+            "train": dataset_factory.build_dataset(self._config.evaluation, train_ref),
+            "validation": dataset_factory.build_dataset(self._config.evaluation, validation_ref),
         }
 
         agent_ref = self._agent if self._agent is not None else (insight.agent if insight is not None else None)
@@ -246,7 +242,7 @@ class ExperimentRunner:
             ).run(
                 insight=insight,
                 agent_path=agent_dir,
-                task_template=dataset_factory.build_task_template(self._evaluator_type, template_ref),
+                task_template=dataset_factory.build_task_template(self._config.evaluation, template_ref),
                 train_dataset=datasets["train"],
                 validation_dataset=datasets["validation"],
                 client=self._backend.client,

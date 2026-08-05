@@ -47,6 +47,17 @@ class Strategy(Component):
         raise NotImplementedError
 
 
+class Evaluation(Component):
+    """Measure a candidate's artifact and return an EvaluationResult.
+
+    Named for the role rather than the implementation: it is platform vocabulary
+    (`EvaluationResult`, `persist_evaluation`, NeMo Evaluator), and it measures the
+    *outcome*, where a trajectory-scorer measures the process of the same run.
+    """
+
+    role: ClassVar[str] = "evaluation"
+
+
 class Proposer(Component):
     """Turn scored candidates into Proposals for the next round."""
 

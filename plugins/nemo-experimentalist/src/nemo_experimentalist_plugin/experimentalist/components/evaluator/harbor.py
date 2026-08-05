@@ -47,6 +47,7 @@ from nemo_experimentalist_plugin.entities import (
     run_dependency_command,
     subset_dataset_id,
 )
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
     Evaluator,
     EvaluatorConfig,
@@ -1239,8 +1240,10 @@ class HarborDataset(Dataset):
         )
 
 
-class HarborEvaluator(Evaluator):
+class HarborEvaluator(Evaluator, roles.Evaluation):
     """Run Harbor evaluations and return parsed reward payloads."""
+
+    name = "harbor"
 
     evaluator_type: EvaluatorType = "harbor"
 

@@ -92,6 +92,10 @@ class EvolutionaryOptimizerConfig(BaseModel):
         default="agent-trace",
         description="Registered 'root-cause-analyzer'. Null skips diagnosis and the train eval feeding it.",
     )
+    evaluation: str = Field(
+        default="harbor",
+        description="Registered 'evaluation' component measuring a candidate's outcome.",
+    )
     proposer: str = Field(default="code-change", description="Registered 'proposer' emitting each round's Proposals.")
     terminator: str | None = Field(
         default="convergence",

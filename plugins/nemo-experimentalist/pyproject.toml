@@ -39,6 +39,7 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 "terminator.convergence" = "nemo_experimentalist_plugin.experimentalist.components.terminator"
 "root-cause-analyzer.agent-trace" = "nemo_experimentalist_plugin.experimentalist.components.analyzer"
 "trajectory-scorer.goal-tree" = "nemo_experimentalist_plugin.experimentalist.components.trace_scorer"
+"evaluation.harbor" = "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor"
 
 [build-system]
 requires = ["hatchling"]

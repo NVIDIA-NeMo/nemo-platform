@@ -23,6 +23,7 @@ from nemo_experimentalist_plugin.experimentalist.registry import Component, get_
 from nemo_experimentalist_plugin.experimentalist.roles import (
     Analyzer,
     Builder,
+    Evaluation,
     Proposer,
     Selector,
     Strategy,
@@ -34,6 +35,7 @@ from nemo_experimentalist_plugin.experimentalist.roles import (
 ROLES = {
     "strategy": "strategy",
     "builder": "builder",
+    "evaluation": "evaluation",
     "proposer": "proposer",
     "selector": "selector",
     "terminator": "terminator",
@@ -84,6 +86,9 @@ def test_every_role_can_be_swapped_for_one_this_repo_does_not_know(isolated_regi
         name = "acme-overlay"
         accepts: ClassVar[frozenset[str]] = frozenset({"parameters"})
 
+    class SwappedEvaluation(Swapped, Evaluation):
+        name = "acme-scorer"
+
     class SwappedProposer(Swapped, Proposer):
         name = "acme-hpo"
         produces: ClassVar[frozenset[str]] = frozenset({"parameters"})
@@ -103,6 +108,7 @@ def test_every_role_can_be_swapped_for_one_this_repo_does_not_know(isolated_regi
     config = EvolutionaryOptimizerConfig(
         strategy="acme-bandit",
         builder="acme-overlay",
+        evaluation="acme-scorer",
         proposer="acme-hpo",
         selector="acme-crowding",
         terminator="acme-budget",

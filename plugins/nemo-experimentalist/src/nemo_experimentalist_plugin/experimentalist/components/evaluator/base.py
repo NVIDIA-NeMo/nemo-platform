@@ -8,7 +8,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import TypeAlias
 
 from nemo_experimentalist_plugin.entities import (
     Dataset,
@@ -17,7 +17,9 @@ from nemo_experimentalist_plugin.entities import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-EvaluatorType: TypeAlias = Literal["harbor"]
+#: Name of a registered `evaluation` component. A plain string rather than a Literal:
+#: the set is open, and a package can add to it without editing this module.
+EvaluatorType: TypeAlias = str
 
 
 class EvaluatorConfig(BaseModel):
