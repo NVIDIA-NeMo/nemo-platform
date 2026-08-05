@@ -74,33 +74,124 @@ just to make a candidate win.
 
 ## Inputs
 
-Flags override values in `optimizer.yaml`; unresolved values use the command
-defaults. With no `--profile`, the CLI discovers `optimizer.yaml` by walking up
+Choose either a reusable `optimizer.yaml` profile or pass the required inputs
+directly as CLI flags. A profile is optional; when used, flags override its
+values. With no `--profile`, the CLI discovers `optimizer.yaml` by walking up
 from the current directory.
 
 | Input | Purpose | Required |
 | --- | --- | --- |
 | `--profile` | The `optimizer.yaml` profile containing the agent, datasets, workspace, and optional config. | No; discovered when present. |
-| `--insight` / `--insight-id` | The problem to improve. `--insight-id` selects an entry in a local multi-Insight file. | Insight-driven mode. |
+| `--insight` / `--insight-id` | The problem to improve. `--insight` accepts a local Insight file or a platform Insight ID; `--insight-id` selects an entry in a local multi-Insight file. | Insight-driven mode. |
 | `--no-insight` | Disables profile Insight discovery for an explicit evaluation run. | Explicit mode. |
 | `--agent` | Local agent directory or Git URL. A Git URL enables candidate branch and PR/MR publication. | Explicit mode; optional when an Insight supplies the agent. |
 | `--agent-spec` | Markdown description of the agent. | Optional; use the profile or conventional `AGENT-SPEC.md` when available. |
 | `--train-dataset` / `--validation-dataset` | Separate local Harbor datasets or registry references used to measure improvement. | Yes, unless the profile supplies both. |
-| `--task-template` | Evaluator task template. | Required in Insight-driven mode unless the profile supplies it. |
-| `--config` | YAML or JSON run settings, including rounds, candidates, and publication options. | No; profile or defaults apply. |
+| `--task-template` | A directory containing one Harbor task template (`task.toml`, with placeholder values). In Insight-driven mode, Eval Author copies and fills it for representative failing traces to create the targeted evaluation suite. | Required in Insight-driven mode unless the profile supplies it. |
+| `--config` | YAML or JSON **mapping** that validates as the Experimentalist run configuration: top-level run limits plus optional `source`, `storage`, `goal_config`, `coder`, `analyzer`, `proposer`, `evaluator`, and `eval_author` sections. It does not configure model endpoints or model tiers. | No; profile or defaults apply. |
 | `--workspace` / `--base-url` | NeMo workspace and platform URL. | Workspace defaults to the profile or `default`; base URL uses `NMP_BASE_URL` or localhost. |
-| `--experiment-dir` | Directory for the `eval-and-optimize` artifacts. | No; the CLI creates a timestamped default. |
+| `--experiment-dir` | Parent directory for all run outputs: the resolved source agent, generated candidates, per-trial results, analysis, `run.json` state, and `OPTIMIZATION.md` summary. | No; the CLI creates a timestamped default. |
 | `--framework-skills` | Additional framework-skill directories for the optimization agents. | No; may be repeated. |
+
+An `optimizer.yaml` profile must identify the agent and its source, one task
+template, and independent train and validation datasets. It can also set the
+workspace, agent specification, run configuration, and framework skills. The
+Analyst and Experimentalist share this profile, allowing the latter to use the
+default Insight created by the former.
+
+## Explore configuration
+
+Start with
+`plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-smoke.yaml`
+for a deliberately small run. The top-level options control rounds and
+candidate counts; `source` controls checkout behavior; `storage` controls
+candidate branches and PR/MR publication; `evaluator` controls trial
+execution; and `eval_author` controls Insight-driven evaluation authoring. See
+the [example-agent walkthrough](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/get-started/example-agent.mdx)
+for a complete worked optimizer configuration and run.
+
+To inspect the complete schema—including nested options and their defaults—run:
+
+```bash
+uv run --package nemo-experimentalist-plugin python -c \
+  'import json; from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig; print(json.dumps(EvolutionaryOptimizerConfig.model_json_schema(), indent=2))'
+```
+
+Keep model endpoint and model-tier settings out of this file; configure those
+as Experimentalist deployment settings instead.
+
+### Tune the Evolutionary Optimizer
+
+Use a smoke configuration to prove that source checkout, Harbor, credentials,
+and artifact collection work together. It is intentionally too small to judge
+whether an agent is better. For a real run, give the optimizer enough
+candidates and train tasks to learn, then rely on the separate validation split
+to select the winner.
+
+| Setting | Smoke run | Real run starting point | Effect |
+| --- | --- | --- | --- |
+| `max_rounds` | `1` | `10`–`15` | Maximum optimization rounds. |
+| `max_candidates` / `max_survivors` | `1` / `1` | `3` / `3` | Exploration per round and candidates retained as parents. |
+| `max_train_batch_tasks` | Small fixed batch, e.g. `4` | `null` for all train tasks, or a representative fixed batch | Cost and signal available while proposing changes. |
+| `max_trajectory_tasks` | `2` | `8` | Tasks used for trajectory/goal-tree scoring. |
+| `disable_trajectory_scoring` / `disable_convergence_check` | `true` / `true` | Omit them (both default to `false`) | Skips costly diagnostic work for smoke runs; restores quality and early stopping for real runs. |
+| `coder.max_fix_attempts` | `1` | `2` (default) | Maximum repair iterations when a candidate fails its integration check. |
+| `evaluator.n_attempts` | `1` | `1`; increase only when task results are noisy | Repeats each evaluation trial. |
+| `eval_author.max_traces` | `3` | `10` | Representative Insight traces deeply analyzed in Insight-driven mode. |
+
+A small explicit smoke configuration looks like this:
+
+```yaml
+max_rounds: 1
+min_rounds_before_stopping: 1
+max_survivors: 1
+max_candidates: 1
+max_trajectory_tasks: 2
+max_train_batch_tasks: 4
+disable_trajectory_scoring: true
+disable_convergence_check: true
+storage:
+  publish_winner: false
+coder:
+  max_fix_attempts: 1
+evaluator:
+  n_attempts: 1
+eval_author:
+  max_traces: 3
+```
+
+For a real run, begin with the default values, raise only the settings that
+match the available evaluation budget, and preserve the same validation split
+throughout. Use `storage.archive_candidates: true` only when you need every
+candidate branch for review; it increases remote repository noise.
 
 ## Run from an Insight
 
-With an `optimizer.yaml` profile:
+Pass the inputs explicitly when running a one-off optimization:
+
+```bash
+nemo agents experimentalist run \
+  --insight <platform-id-or-local-file> \
+  --agent path-or-git-url \
+  --task-template path/to/harbor-task-template \
+  --train-dataset path-or-harbor-ref \
+  --validation-dataset path-or-harbor-ref \
+  --workspace <workspace> \
+  --config path/to/experimentalist.yaml
+```
+
+`--agent` is optional when the Insight already identifies the agent source.
+
+For a reusable setup, the equivalent information can live in an
+`optimizer.yaml` profile. When the profile is complete and the Analyst has
+created a default Insight for the agent, this shorter command is enough:
 
 ```bash
 nemo agents experimentalist run --profile path/to/optimizer.yaml
 ```
 
-Pass `--insight <id-or-local-file>` to override the profile's default Insight.
+Pass `--insight <platform-id-or-local-file>` to override the profile's default
+Insight.
 
 ## Run from explicit datasets
 
@@ -114,13 +205,8 @@ nemo agents experimentalist run \
   --workspace <workspace> \
   --config path/to/experimentalist.yaml
 ```
-
 For a Git source, append a ref such as
-`git@github.com:owner/repository.git@main`. Enable
-`storage.publish_winner` in the configuration to open a draft PR or MR for a
-changed winner. Set `storage.archive_candidates: true` to also push every
-generated candidate branch.
-
+`git@github.com:owner/repository.git@main`.
 For a local source, candidates remain in the experiment artifacts and no PR or
 MR can be opened.
 
