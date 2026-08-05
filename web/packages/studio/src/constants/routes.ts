@@ -117,6 +117,7 @@ export const ROUTES = {
     anonymizerJob: `/workspaces/:${P.workspace}/anonymizer/:${P.anonymizerJobName}`,
     secrets: `/workspaces/:${P.workspace}/secrets`,
     guardrails: `/workspaces/:${P.workspace}/guardrails`,
+    guardrailNew: `/workspaces/:${P.workspace}/guardrails/new`,
     optimizer: `/workspaces/:${P.workspace}/optimizer`,
     optimizerInsight: `/workspaces/:${P.workspace}/optimizer/:${P.insightId}`,
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,

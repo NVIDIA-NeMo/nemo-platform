@@ -143,6 +143,28 @@ export const guardrailsHandlers = [
       return HttpResponse.json(config);
     }
   ),
+  http.post(
+    `${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs`,
+    async ({ params, request }) => {
+      const body = (await request.json()) as { name: string; description?: string };
+      const config: GuardrailConfig = {
+        id: `cfg-${Date.now()}`,
+        entity_id: `cfg-${Date.now()}`,
+        parent: `ws-${params.workspace}`,
+        db_version: 1,
+        name: body.name,
+        workspace: params.workspace as string,
+        description: body.description,
+        created_at: new Date().toISOString(),
+        created_by: 'user@example.com',
+        updated_at: new Date().toISOString(),
+        updated_by: 'user@example.com',
+        data: undefined,
+      };
+      mockGuardrailConfigs.push(config);
+      return HttpResponse.json(config, { status: 201 });
+    }
+  ),
   http.delete(
     `${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs/:name`,
     () => new HttpResponse(null, { status: 200 })

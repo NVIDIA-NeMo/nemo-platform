@@ -398,6 +398,10 @@ export const getGuardrailsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.guardrails, { workspace });
 };
 
+export const getGuardrailNewRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.guardrailNew, { workspace });
+};
+
 export const getOptimizerRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.optimizer, { workspace });
 };

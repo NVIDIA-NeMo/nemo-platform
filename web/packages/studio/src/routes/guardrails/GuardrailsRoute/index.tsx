@@ -15,16 +15,20 @@ import {
   useGuardrailsDeleteConfig,
 } from '@nemo/sdk/generated/platform/api';
 import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
-import { PageHeader, Stack } from '@nvidia/foundations-react-core';
+import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { GuardrailsDataView } from '@studio/components/dataViews/GuardrailsDataView';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { getGuardrailDetailRoute, getGuardrailsRoute } from '@studio/routes/utils';
+import {
+  getGuardrailDetailRoute,
+  getGuardrailNewRoute,
+  getGuardrailsRoute,
+} from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Outlet, useNavigate } from 'react-router';
 
 export const GuardrailsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -60,6 +64,11 @@ export const GuardrailsRoute: FC = () => {
           className="p-0"
           slotHeading="Guardrail Configs"
           slotDescription="Manage NeMo Guardrails configurations for your workspace."
+          slotActions={
+            <Button color="brand" onClick={() => navigate(getGuardrailNewRoute(workspace))}>
+              Create Guardrail
+            </Button>
+          }
         />
         <GuardrailsDataView
           workspace={workspace}
@@ -86,6 +95,8 @@ export const GuardrailsRoute: FC = () => {
           onClose={() => setConfigToDelete(null)}
         />
       ) : null}
+
+      <Outlet />
     </AccessibleTitle>
   );
 };
