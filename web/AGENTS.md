@@ -89,8 +89,15 @@ If a package defines these scripts, CI will pick them up automatically. No addit
 ### Imports and Exports
 
 - Use named exports over default exports
-- Group imports: external libraries, internal modules, relative imports
 - Use absolute imports via tsconfig path mapping (never relative)
+- **Never hand-sort imports — run `eslint --fix` and leave the result alone.**
+  `import/order` runs as an _error_ (`eslint.config.js`) with
+  `groups: [['builtin', 'external'], 'internal', ['parent', 'sibling', 'index']]`
+  and `alphabetize: { order: 'asc' }`. The `@nemo` / `@nvidia` / `@studio` aliases
+  resolve as **external**, so they share a single alphabetized group with `react`,
+  `lucide-react` and friends — which sorts `react` near the end. That reads
+  backwards if you expect "third-party first, ours second", but it is the rule's
+  output, and reordering fails CI's `--max-warnings 0`.
 
 ### React Patterns
 
