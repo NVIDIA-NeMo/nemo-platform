@@ -265,6 +265,14 @@ class FileRecord(BaseModel):
             "to catch files added, removed, renamed or resized, but not a same-size in-place edit."
         ),
     )
+    file_format: str | None = Field(
+        default=None,
+        description=(
+            "The format this file was read as (jsonl | parquet). A property of the file, not of the "
+            "partition holding it — which is why a partition may hold more than one. None only on a "
+            "profile written before formats were recorded per file."
+        ),
+    )
     num_rows: int | None = Field(
         default=None,
         description="Exact only (parquet footer / exhaustive scan), else None.",
@@ -322,19 +330,41 @@ class SplitProfile(BaseModel):
 
 
 class PartitionProfile(BaseModel):
-    """A file-group sharing one row schema, one top-level directory, and one split-name variant
-    (roughly an HF config); named after the directory / variant, else "default".
+    """A file-group sharing one row schema and one source directory (roughly an HF config).
 
     File membership and row counts live on ``splits`` — every file lands in exactly one split, so
     partition-level files / num_examples would be derivable duplication.
+
+    ``source_dir`` is the identity and ``name`` is a label. They were a single string until the
+    consequences showed: root-level files and a directory literally named ``default`` collided under
+    one label, and dropping an unrelated file into a directory renamed that partition out of
+    existence — not changed, *gone*, so a stored reference resolved to nothing.
     """
 
-    name: str = "default"
-    file_format: str = Field(
+    name: str = Field(
+        default="default",
         description=(
-            "jsonl | parquet are read today; csv | arrow are reserved vocabulary the profiler cannot "
-            "read yet — files in those formats are reported as unsupported rather than profiled, so "
-            "this value never appears without a real partition behind it."
+            "Display label, NOT a key. Derived from the layout, not guaranteed unique, and free to "
+            "change when the layout does. Reference a partition by `source_dir` — or, once card "
+            "front-matter is parsed, by its declared config name."
+        ),
+    )
+    source_dir: str | None = Field(
+        default=None,
+        description=(
+            "Top-level directory whose files make up this partition; None when they sit at the "
+            "fileset root. The partition's identity: None and a directory named 'default' are "
+            'different partitions even though both label as "default".'
+        ),
+    )
+    file_formats: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The distinct formats among this partition's files, sorted — normally exactly one. "
+            "Format is a property of a file (see `FileRecord.file_format`), never a partition "
+            "dimension: a stray .jsonl beside .parquet shards is noise, not a second dataset, so it "
+            "stays in this partition and shows up here. jsonl | parquet are read today; csv | arrow "
+            "are reserved vocabulary the profiler cannot read yet and reports as unsupported."
         ),
     )
     splits: list[SplitProfile] = Field(description="card-declared > path-detected > single 'default' split.")
@@ -357,6 +387,20 @@ class PartitionProfile(BaseModel):
         unknown = set(self.stats) - {feature.name for feature in self.features}
         if unknown:
             raise ValueError(f"stats keys must name top-level features; unknown columns: {sorted(unknown)}")
+        return self
+
+    @model_validator(mode="after")
+    def _file_formats_cover_the_records(self) -> PartitionProfile:
+        """Every format recorded on a file must appear in the partition's summary.
+
+        A subset check rather than equality, so the two cannot drift in the direction that matters:
+        a summary omitting a format that demonstrably exists is wrong, while a profile written
+        before formats were recorded per file has nothing on its records and nothing to check.
+        """
+        recorded = {file.file_format for split in self.splits for file in split.files if file.file_format}
+        missing = recorded - set(self.file_formats)
+        if missing:
+            raise ValueError(f"file_formats omits formats present on this partition's files: {sorted(missing)}")
         return self
 
 

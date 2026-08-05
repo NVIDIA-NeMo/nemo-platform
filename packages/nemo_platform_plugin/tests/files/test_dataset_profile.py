@@ -40,14 +40,15 @@ sampling: {exhaustive: false, strategy: stratified_probes, rows_scanned: 2112,
            files_scanned: 33, per_file_row_cap: 64}
 partitions:
   - name: default
-    file_format: parquet
+    source_dir: null
+    file_formats: [parquet]
     splits:
       - {name: train, canonical: train, num_examples: 3200861,
          files: [{path: train-00000-of-00032.parquet, size_bytes: 193777041,
-                  checksum: sha256:9c1e..., num_rows: 100027}]}
+                  checksum: sha256:9c1e..., num_rows: 100027, file_format: parquet}]}
       - {name: test, canonical: test, num_examples: 200,
          files: [{path: test-00000-of-00001.parquet, size_bytes: 411552,
-                  checksum: sha256:02af..., num_rows: 200}]}
+                  checksum: sha256:02af..., num_rows: 200, file_format: parquet}]}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -81,14 +82,15 @@ sampling: {exhaustive: false, strategy: stratified_probes, rows_scanned: 1024,
            rows_total: 46189, files_scanned: 2, per_file_row_cap: 512}
 partitions:
   - name: default
-    file_format: parquet
+    source_dir: null
+    file_formats: [parquet]
     splits:
       - {name: train, canonical: train, num_examples: 43835,
          files: [{path: train-00000-of-00001.parquet, size_bytes: 22105331,
-                  checksum: sha256:77b0..., num_rows: 43835}]}
+                  checksum: sha256:77b0..., num_rows: 43835, file_format: parquet}]}
       - {name: test, canonical: test, num_examples: 2354,
          files: [{path: test-00000-of-00001.parquet, size_bytes: 1198422,
-                  checksum: sha256:5c1d..., num_rows: 2354}]}
+                  checksum: sha256:5c1d..., num_rows: 2354, file_format: parquet}]}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -122,14 +124,15 @@ sampling: {exhaustive: false, strategy: stratified_probes, rows_scanned: 1024,
            rows_total: 21362, files_scanned: 2, per_file_row_cap: 512}
 partitions:
   - name: default
-    file_format: parquet
+    source_dir: null
+    file_formats: [parquet]
     splits:
       - {name: train, canonical: train, num_examples: 20324,
          files: [{path: train-00000-of-00001.parquet, size_bytes: 44201991,
-                  checksum: sha256:e410..., num_rows: 20324}]}
+                  checksum: sha256:e410..., num_rows: 20324, file_format: parquet}]}
       - {name: validation, canonical: validation, num_examples: 1038,
          files: [{path: validation-00000-of-00001.parquet, size_bytes: 2311008,
-                  checksum: sha256:8bd2..., num_rows: 1038}]}
+                  checksum: sha256:8bd2..., num_rows: 1038, file_format: parquet}]}
     features:
       - {name: prompt,      dtype: string, semantic_role: prompt}
       - {name: response,    dtype: string, semantic_role: completion}
@@ -182,14 +185,21 @@ def _build_profile() -> DatasetProfile:
         ),
         partitions=[
             PartitionProfile(
-                file_format="parquet",
+                source_dir=None,
+                file_formats=["parquet"],
                 splits=[
                     SplitProfile(
                         name="train",
                         canonical="train",
                         num_examples=2048,
                         files=[
-                            FileRecord(path="train-00000.parquet", size_bytes=123, checksum="sha256:ab", num_rows=2048)
+                            FileRecord(
+                                path="train-00000.parquet",
+                                size_bytes=123,
+                                checksum="sha256:ab",
+                                file_format="parquet",
+                                num_rows=2048,
+                            )
                         ],
                     )
                 ],
@@ -336,6 +346,26 @@ def test_unknown_fields_are_ignored_for_forward_compat():
     doc["partitions"][0]["classification"]["future_axis"] = "value"
     profile = DatasetProfile.model_validate(doc)
     assert profile.partitions[0].classification.dataset_type == "scored_response"
+
+
+def test_file_formats_must_not_omit_a_format_its_files_carry():
+    # The partition summary is derived from the records, so the two can drift. A summary claiming
+    # one format while a file says otherwise would report the partition as homogeneous when it is
+    # not -- the very assumption that made format a partition dimension and cost names their
+    # stability. Subset, not equality, so a profile written before per-file formats still loads.
+    doc = yaml.safe_load(HELPSTEER2)
+    doc["partitions"][0]["splits"][0]["files"][0]["file_format"] = "jsonl"
+    with pytest.raises(ValueError, match="file_formats omits"):
+        DatasetProfile.model_validate(doc)
+
+
+def test_a_partition_written_before_per_file_formats_still_loads():
+    doc = yaml.safe_load(HELPSTEER2)
+    for split in doc["partitions"][0]["splits"]:
+        for file in split["files"]:
+            del file["file_format"]
+    profile = DatasetProfile.model_validate(doc)
+    assert profile.partitions[0].splits[0].files[0].file_format is None
 
 
 def test_a_profile_written_before_the_digest_was_dropped_still_loads():

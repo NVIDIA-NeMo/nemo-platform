@@ -68,24 +68,26 @@ def test_resolve_splits_falls_back_to_single_default():
 
 def test_group_partitions_single_default_for_root_files():
     assert group_partitions(_entries("train.parquet", "test.parquet")) == [
-        ("default", _entries("train.parquet", "test.parquet"))
+        (None, _entries("train.parquet", "test.parquet"))
     ]
 
 
 def test_group_partitions_collapses_single_container_dir():
+    # One container directory is still one partition, but its identity stays the directory. Losing
+    # "data" here is what let a partition's identity move when the surrounding layout changed.
     parts = group_partitions(_entries("data/train.parquet", "data/test.parquet"))
-    assert [name for name, _ in parts] == ["default"]
+    assert [source_dir for source_dir, _ in parts] == ["data"]
 
 
 def test_group_partitions_splits_multiple_top_dirs():
     parts = group_partitions(_entries("main/train.parquet", "socratic/train.parquet"))
-    assert [name for name, _ in parts] == ["main", "socratic"]
+    assert [source_dir for source_dir, _ in parts] == ["main", "socratic"]
 
 
 def test_group_partitions_does_not_treat_split_dirs_as_partitions():
     # train/ and test/ are one dataset's splits, not two datasets.
     parts = group_partitions(_entries("train/data.parquet", "test/data.parquet"))
-    assert [name for name, _ in parts] == ["default"]
+    assert [source_dir for source_dir, _ in parts] == [None]
 
 
 def test_resolve_splits_reads_the_split_directory():
@@ -115,7 +117,7 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
     assert len(result.partitions) == 1
     partition = result.partitions[0]
     assert partition.name == "default"
-    assert partition.file_format == "parquet"
+    assert partition.file_formats == ["parquet"]
 
     splits = {s.name: s for s in partition.splits}
     assert set(splits) == {"train", "validation"}
@@ -146,7 +148,7 @@ def test_profile_jsonl_dataset_counts_rows_exactly(tmp_path):
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
     partition = result.partitions[0]
-    assert partition.file_format == "jsonl"
+    assert partition.file_formats == ["jsonl"]
     assert partition.splits[0].name == "train"
     assert partition.splits[0].num_examples == 3
     assert result.sampling.rows_scanned == 3
@@ -159,7 +161,8 @@ def test_profile_multiple_directories_become_partitions(tmp_path):
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
     assert [p.name for p in result.partitions] == ["main", "socratic"]
-    assert all(p.file_format == "parquet" for p in result.partitions)
+    assert all(p.file_formats == ["parquet"] for p in result.partitions)
+    assert [p.source_dir for p in result.partitions] == ["main", "socratic"]
 
 
 def test_profile_top_level_split_dirs_become_one_partition(tmp_path):
@@ -192,24 +195,49 @@ def test_profile_nested_split_dirs_keep_splits_apart(tmp_path):
     assert splits["test"].num_examples == 1
 
 
-def test_profile_splits_mixed_formats_into_separate_partitions(tmp_path):
-    # A directory holding two formats must not profile as one partition: features/stats would be
-    # derived from one format's schema but measured over rows from both. Each format becomes its own
-    # format-homogeneous partition, name-qualified so the two stay distinct.
+def test_profile_keeps_a_mixed_format_directory_as_one_partition(tmp_path):
+    # A stray .jsonl beside .parquet shards is noise, not a second dataset. Splitting the partition
+    # to keep a scalar `file_format` true invented structure that is not in the data *and* renamed
+    # the real partition (default -> default:parquet). Format is a per-file fact instead.
     _write_parquet(tmp_path / "data" / "train-00000-of-00001.parquet", [{"prompt": "a"}])
     (tmp_path / "data" / "extra.jsonl").write_text('{"question": "b"}\n{"question": "c"}\n')
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
-    by_format = {p.file_format: p for p in result.partitions}
-    assert set(by_format) == {"parquet", "jsonl"}
-    assert by_format["parquet"].name == "default:parquet"
-    assert by_format["jsonl"].name == "default:jsonl"
-    # Each partition's schema reflects only its own files.
-    assert [f.name for f in by_format["parquet"].features] == ["prompt"]
-    assert [f.name for f in by_format["jsonl"].features] == ["question"]
+    assert len(result.partitions) == 1
+    partition = result.partitions[0]
+    assert partition.name == "default"
+    assert partition.source_dir == "data"
+    assert partition.file_formats == ["jsonl", "parquet"]
+    assert {f.path.rsplit("/", 1)[-1]: f.file_format for s in partition.splits for f in s.files} == {
+        "train-00000-of-00001.parquet": "parquet",
+        "extra.jsonl": "jsonl",
+    }
+    # Both formats' columns reach features. Trusting the declared parquet schema would have erased
+    # `question`, which only the schemaless file witnesses -- the defect the split worked around.
+    assert sorted(f.name for f in partition.features) == ["prompt", "question"]
     assert result.sampling.rows_scanned == 3  # 1 parquet + 2 jsonl, each counted once
     assert result.sampling.exhaustive is True
+
+
+def test_root_files_and_a_directory_named_default_stay_distinct():
+    # Both label as "default"; only source_dir tells them apart. Flattening the two into one string
+    # produced two partitions with the same name and no way to reference either.
+    parts = group_partitions(_entries("root.parquet", "default/inner.parquet"))
+    assert [source_dir for source_dir, _ in parts] == ["default", None]
+
+
+def test_an_unrelated_file_does_not_rename_a_partition(tmp_path):
+    # Dropping a stray .jsonl into main/ used to turn partition "main" into "main:parquet" -- not
+    # renamed, *gone*, so a stored reference resolved to nothing.
+    _write_parquet(tmp_path / "main" / "train.parquet", [{"q": "a"}])
+    _write_parquet(tmp_path / "socratic" / "train.parquet", [{"q": "b"}])
+    before = [(p.name, p.source_dir) for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions]
+
+    (tmp_path / "main" / "notes.jsonl").write_text('{"note": "someone dropped this here"}\n')
+    after = [(p.name, p.source_dir) for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions]
+
+    assert before == after == [("main", "main"), ("socratic", "socratic")]
 
 
 def test_profile_unions_columns_across_shards(tmp_path):
@@ -439,12 +467,14 @@ def test_profile_survives_a_hostile_directory(tmp_path):
     assert records["train-00001-of-00002.parquet"].error is not None  # corrupt file, named and explained
     assert records["extra.jsonl"].error is not None  # partial parse, named and explained
 
-    # The readable parquet rows still produced a real classification.
-    parquet_partition = next(p for p in result.partitions if p.file_format == "parquet")
-    assert parquet_partition.classification.dataset_type == "prompt_completion"
+    # One partition, not one per format: the stray .jsonl is noise, not a second dataset.
+    assert len(result.partitions) == 1
+    partition = result.partitions[0]
+    assert partition.file_formats == ["jsonl", "parquet"]
+    # The readable parquet rows still produced a real classification...
+    assert partition.classification.dataset_type == "prompt_completion"
     # ...and the odd jsonl rows were measured rather than aborting the run.
-    jsonl_partition = next(p for p in result.partitions if p.file_format == "jsonl")
-    assert jsonl_partition.stats["messages"].messages.roles_seen == ["1", "user"]
+    assert partition.stats["messages"].messages.roles_seen == ["1", "user"]
 
     # The whole thing still round-trips as a stored profile.
     assert DatasetProfile.model_validate_json(result.model_dump_json()) == result
