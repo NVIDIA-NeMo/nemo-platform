@@ -19,7 +19,7 @@ import pytest
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
-from nmp.common.entities.client import EntityNotFoundError
+from nmp.common.entities.client import EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
 from nmp.studio import copilot, copilot_artifacts, copilot_skills, studio_links
 from nmp.studio.config import StudioConfig
@@ -2335,6 +2335,70 @@ async def test_stream_copilot_flushes_tool_events_before_final_response(monkeypa
     assert first_tool < final
     assert second_tool < final
     assert [message.content for message in conversation.messages] == ["hello", "final answer"]
+
+
+@pytest.mark.asyncio
+async def test_stream_copilot_retries_conflicted_conversation_update(monkeypatch: pytest.MonkeyPatch):
+    session_id = str(uuid.uuid4())
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+    )
+    concurrent_conversation = conversation.model_copy(deep=True)
+    concurrent_conversation.messages.extend(
+        [
+            CopilotMessage(role="user", content="remote question"),
+            CopilotMessage(role="assistant", content="remote answer"),
+        ]
+    )
+
+    class ConflictingEntityStore(FakeEntityStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.update_calls = 0
+
+        async def update(self, entity: CopilotConversation) -> CopilotConversation:
+            self.update_calls += 1
+            if self.update_calls == 1:
+                self.entities[(concurrent_conversation.workspace, concurrent_conversation.name)] = (
+                    concurrent_conversation
+                )
+                raise EntityConflictError("conversation was updated by another replica")
+            return await super().update(entity)
+
+    entity_store = ConflictingEntityStore()
+    await entity_store.create(conversation)
+
+    async def fake_invoke(agent_url, headers, messages, studio_session_id):
+        return "local answer", "model-x"
+
+    monkeypatch.setattr(copilot, "_invoke_copilot", fake_invoke)
+
+    frames = [
+        frame
+        async for frame in copilot._stream_copilot(
+            session_id,
+            "local question",
+            "https://agent.test/x",
+            {},
+            "sys prompt",
+            conversation,
+            entity_store,
+        )
+    ]
+
+    assert "event: done" in "".join(frames)
+    assert entity_store.update_calls == 2
+    persisted = entity_store.entities[("default", conversation.name)]
+    assert [message.content for message in persisted.messages] == [
+        "remote question",
+        "remote answer",
+        "local question",
+        "local answer",
+    ]
+    assert persisted.chat_artifacts.copilot_model == "model-x"
 
 
 def test_copilot_request_payload_keeps_session_outside_model_messages():

@@ -157,6 +157,21 @@ def _recent_conversation_messages(conversation: list[CopilotMessage]) -> list[Co
     return conversation[-max_messages:]
 
 
+def _append_conversation_turn(
+    conversation: CopilotConversation,
+    user_message: str,
+    assistant_message: str,
+    model: str,
+) -> None:
+    conversation.messages.extend(
+        [
+            CopilotMessage(role="user", content=user_message),
+            CopilotMessage(role="assistant", content=assistant_message),
+        ]
+    )
+    record_copilot_model(conversation.chat_artifacts, model)
+
+
 @dataclass
 class HistorySummary:
     """Aggregated metadata from a Claude session history file."""
@@ -1689,14 +1704,18 @@ async def _stream_copilot(
                 yield rendered
 
         assistant_text, model = await invocation
-        conversation.messages.extend(
-            [
-                CopilotMessage(role="user", content=message),
-                CopilotMessage(role="assistant", content=assistant_text),
-            ]
-        )
-        record_copilot_model(conversation.chat_artifacts, model)
-        await entity_store.update(conversation)
+        _append_conversation_turn(conversation, message, assistant_text, model)
+        try:
+            await entity_store.update(conversation)
+        except EntityConflictError:
+            logger.info("Reloading conflicted NeMo Copilot session %s before retrying", session_id)
+            latest_conversation = await entity_store.get(
+                CopilotConversation,
+                conversation.name,
+                workspace=conversation.workspace,
+            )
+            _append_conversation_turn(latest_conversation, message, assistant_text, model)
+            await entity_store.update(latest_conversation)
         yield _sse(
             json.dumps(
                 {
