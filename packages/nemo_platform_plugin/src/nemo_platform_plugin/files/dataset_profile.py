@@ -30,7 +30,9 @@ from datetime import datetime
 from pydantic import BaseModel, Field, model_validator
 
 # Semver of THIS contract. Gates consumer compatibility: new detectors or vocabulary values are a
-# minor bump; a change to the fields below is a major bump.
+# minor bump; a change to the fields below is a major bump. Still 1.0 because nothing consumes it
+# yet — the fields have moved a great deal, but pre-release churn is not a break for anyone, and the
+# first number that means something is the one shipped alongside the first consumer.
 PROFILE_SCHEMA_VERSION = "1.0"
 
 
@@ -273,6 +275,16 @@ class FileRecord(BaseModel):
             "profile written before formats were recorded per file."
         ),
     )
+    read_strategy: str | None = Field(
+        default=None,
+        description=(
+            "How this file's rows were sampled: full | head. The *policy* applied, not the outcome — "
+            "a head-capped read of a file smaller than the cap still says head, and whether it ended "
+            "up complete is `num_rows` versus what was scanned. Per file because it follows format, "
+            "which is also per file: a parquet shard can be sampled by row group where a jsonl file "
+            "in the same partition can only be read from the top."
+        ),
+    )
     num_rows: int | None = Field(
         default=None,
         description="Exact only (parquet footer / exhaustive scan), else None.",
@@ -322,9 +334,10 @@ class SplitProfile(BaseModel):
     num_examples: int | None = Field(
         default=None,
         description=(
-            "Rows in this split, counting every file in `files` whether or not it was scanned. Exact when "
-            "read from parquet footers or an exhaustive scan, otherwise extrapolated from the rows sampled — "
-            "check `SamplingInfo.exhaustive` before treating it as a fact. None when nothing usable was found."
+            "Rows in this split, counting every file in `files` whether or not its rows were read. Always "
+            "exact — summed from parquet footers or from files read to their end — and None the moment any "
+            "one file's count is unknown. Never an estimate, so it carries no accuracy caveat: a capped run "
+            "still reports the true total whenever the footers knew it."
         ),
     )
 
@@ -378,6 +391,16 @@ class PartitionProfile(BaseModel):
             "omitted); keys are a subset of the top-level `features` names."
         ),
     )
+    stats_complete: bool = Field(
+        description=(
+            "True => `features`, `stats` and `classification` were computed over every row of every "
+            "file in THIS partition: proven facts, not estimates. Only then can a consumer assert "
+            "enum / required in a bridged JSON Schema, or read a verifiability coverage of 1.0 as "
+            "literal. Scoped to the partition because that is where it is decided — a corrupt shard "
+            "in one partition says nothing about the measurements in another, and a fileset-wide "
+            "flag quietly downgraded every partition to the worst one."
+        ),
+    )
     classification: PartitionClassification
 
     @model_validator(mode="after")
@@ -408,36 +431,42 @@ class PartitionProfile(BaseModel):
 
 
 class SamplingInfo(BaseModel):
-    """How much of the data the profile is based on.
+    """How much of the data the profile is based on — coverage, stated as numbers.
 
-    Consumers read ``exhaustive`` to decide whether stats are proven facts or estimates (e.g. only an
-    exhaustive profile can assert enum / required in a bridged JSON Schema, or that verifiability
-    coverage is truly 1.0).
+    Deliberately carries no ``exhaustive`` flag. That bit was answering two questions at once: "are
+    these measurements facts or estimates?", which is a property of a *partition* and now lives on
+    ``PartitionProfile.stats_complete``, and "did I see all the data?", which is this block's job and
+    needs numerators and denominators rather than a boolean. It also folded together causes that
+    call for different people to act — a row cap is the caller's choice, a corrupt shard is the data
+    owner's problem, and a missing reader is ours.
+
+    The dataset-wide question is still one expression away, and now says which half failed::
+
+        all(p.stats_complete for p in profile.partitions) and not profile.unreadable_files
     """
 
-    exhaustive: bool = Field(description="True => every row of every file was parsed.")
-    strategy: str = Field(
-        description=(
-            "full | stratified_probes | random. Kept explicit alongside `exhaustive` because, with an open "
-            "strategy vocabulary, consumers can't derive exhaustiveness from the strategy name alone."
-        ),
-    )
     rows_scanned: int = Field(description="Total rows actually parsed across all files.")
-    rows_total: int | None = Field(
+    rows_present: int | None = Field(
         default=None,
         description=(
-            "How many rows the whole fileset holds, scanned or not — the denominator `rows_scanned` is a "
-            "fraction of, so a consumer can judge how representative the stats are. Populated only when the "
-            "count is exact and cheap (summed parquet footers, or an exhaustive scan); None means unknown, "
-            "never zero and never an estimate."
+            "How many rows the fileset holds, scanned or not — the denominator `rows_scanned` is a "
+            "fraction of. Populated whenever every file's count is *known*, regardless of how much was "
+            "read: a row-capped run over parquet still knows its totals from the footers, and that is "
+            "exactly when the ratio carries information. None means at least one file's count is "
+            "unknown — never zero, never an estimate."
         ),
     )
-    files_scanned: int = Field(
+    files_read: int = Field(
+        description="Files actually opened and read from (a count; the files themselves are `SplitProfile.files`)."
+    )
+    files_present: int = Field(
         description=(
-            "How many files were opened and read from (a count, not a list — the files themselves are "
-            "`SplitProfile.files`). Every file should be probed, since head-sampling a subset hides columns "
-            "that appear only in later shards; expect this to equal the fileset's file count, and be lower "
-            "only when scale forces file-level sampling."
+            "Data files the fileset holds, whether or not this run could read them — the denominator "
+            "`files_read` is a fraction of. Includes files in formats with no reader, since those are "
+            "data that went unprofiled (they are listed in `DatasetProfile.unreadable_files`). A README "
+            "is not data and is counted nowhere. Every readable file should be opened, since "
+            "head-sampling a *subset of files* hides columns that appear only in later shards, so expect "
+            "these two to match until scale forces file-level sampling."
         ),
     )
     per_file_row_cap: int | None = Field(default=None, description="Cap that bounded per-file reads, if any.")
@@ -468,6 +497,17 @@ class DatasetProfile(BaseModel):
     sampling: SamplingInfo = Field(description="How much data the profile is based on.")
     partitions: list[PartitionProfile] = Field(
         description="Single partition in the common homogeneous case; there is no fileset-level rollup.",
+    )
+    unreadable_files: list[FileRecord] = Field(
+        default_factory=list,
+        description=(
+            "Files that plainly hold dataset records but that no partition could take, because the "
+            "profiler has no reader for their format; each carries the reason on `error`. Reporting "
+            "them is what keeps a directory of .csv shards from profiling as an exhaustively scanned "
+            "*empty* dataset, indistinguishable from one that really is empty. A file whose format is "
+            "known but whose read failed keeps its FileRecord inside its split instead — it was "
+            "grouped and attempted, these never were."
+        ),
     )
 
 

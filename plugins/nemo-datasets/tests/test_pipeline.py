@@ -133,14 +133,15 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
     assert partition.stats["prompt"].text is not None
     assert partition.classification.dataset_type == "prompt_only"  # a lone prompt column, no target
 
-    # strategy is the policy, exhaustive is the outcome: a capped run over files that all fit under
-    # the cap is still a full scan, which is why the contract keeps the two fields independent.
-    assert result.sampling.strategy == "head_per_file"
-    assert result.sampling.exhaustive is True
+    # read_strategy is the policy, stats_complete is the outcome: a capped run over files that all
+    # fit under the cap is still a complete scan, which is why the two live apart -- and now at the
+    # levels where each is decided, per file and per partition.
+    assert {f.read_strategy for s in partition.splits for f in s.files} == {"head"}
+    assert partition.stats_complete is True
     assert result.sampling.per_file_row_cap == 1000
     assert result.sampling.rows_scanned == 3
-    assert result.sampling.rows_total == 3
-    assert result.sampling.files_scanned == 2
+    assert result.sampling.rows_present == 3
+    assert result.sampling.files_read == result.sampling.files_present == 2
 
 
 def test_profile_jsonl_dataset_counts_rows_exactly(tmp_path):
@@ -217,7 +218,7 @@ def test_profile_keeps_a_mixed_format_directory_as_one_partition(tmp_path):
     # `question`, which only the schemaless file witnesses -- the defect the split worked around.
     assert sorted(f.name for f in partition.features) == ["prompt", "question"]
     assert result.sampling.rows_scanned == 3  # 1 parquet + 2 jsonl, each counted once
-    assert result.sampling.exhaustive is True
+    assert partition.stats_complete is True
 
 
 def test_root_files_and_a_directory_named_default_stay_distinct():
@@ -297,9 +298,10 @@ def test_profile_isolates_unreadable_files(tmp_path):
     assert splits["test"].num_examples is None  # unreadable -> count unknown, not a crash
     assert splits["test"].files[0].num_rows is None
     assert splits["test"].files[0].error is not None  # ...and the profile says why
-    assert result.sampling.exhaustive is False  # a file could not be fully parsed
-    assert result.sampling.rows_total is None
-    assert result.sampling.files_scanned == 1  # one file was actually read; the other never opened
+    assert result.partitions[0].stats_complete is False  # a file could not be fully parsed
+    assert result.sampling.rows_present is None
+    assert result.sampling.files_read == 1  # one file was actually read; the other never opened
+    assert result.sampling.files_present == 2  # ...out of two that were there to read
 
 
 def test_profile_row_cap_bounds_reads_and_says_so(tmp_path):
@@ -309,8 +311,10 @@ def test_profile_row_cap_bounds_reads_and_says_so(tmp_path):
 
     assert result.sampling.rows_scanned == 4
     assert result.sampling.per_file_row_cap == 4
-    assert result.sampling.exhaustive is False  # 4 of 10 rows is not a full scan
-    assert result.sampling.rows_total is None
+    assert result.partitions[0].stats_complete is False  # 4 of 10 rows is not a full scan
+    # The footer knows the total even though the cap stopped the read. Gating this on completeness
+    # nulled it exactly when it carried information: "4 of 10" is a ratio, "4 of unknown" is not.
+    assert result.sampling.rows_present == 10
     assert result.partitions[0].splits[0].num_examples == 10  # the footer count survives sampling
 
 
@@ -319,10 +323,10 @@ def test_profile_uncapped_read_is_a_full_scan(tmp_path):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_cap=None)
 
-    assert result.sampling.strategy == "full"
+    assert {f.read_strategy for s in result.partitions[0].splits for f in s.files} == {"full"}
     assert result.sampling.per_file_row_cap is None
-    assert result.sampling.exhaustive is True
-    assert result.sampling.rows_scanned == 10
+    assert result.partitions[0].stats_complete is True
+    assert result.sampling.rows_scanned == result.sampling.rows_present == 10
 
 
 def test_profile_cap_larger_than_a_jsonl_file_keeps_it_exhaustive(tmp_path):
@@ -333,8 +337,8 @@ def test_profile_cap_larger_than_a_jsonl_file_keeps_it_exhaustive(tmp_path):
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_cap=1000)
 
     assert result.partitions[0].splits[0].num_examples == 2
-    assert result.sampling.exhaustive is True
-    assert result.sampling.rows_total == 2
+    assert result.partitions[0].stats_complete is True
+    assert result.sampling.rows_present == 2
 
 
 def test_profile_reports_unsupported_data_files(tmp_path):
@@ -346,9 +350,12 @@ def test_profile_reports_unsupported_data_files(tmp_path):
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
     assert result.partitions == []
-    assert result.sampling.exhaustive is False  # we scanned nothing, and admit it
-    assert result.sampling.rows_total is None  # not 0: "empty" would be a lie
-    assert result.profiler_info["unsupported_files"] == ["test.arrow", "train.csv"]
+    assert result.sampling.rows_present is None  # not 0: "empty" would be a lie
+    assert result.sampling.files_read == 0
+    assert result.sampling.files_present == 2  # both are data; neither could be read
+    # Typed records now, each saying why -- not bare paths tucked into a free-form dict.
+    assert [f.path for f in result.unreadable_files] == ["test.arrow", "train.csv"]
+    assert all("no reader" in f.error for f in result.unreadable_files)
 
 
 def test_profile_ignores_non_data_files_without_penalty(tmp_path):
@@ -359,8 +366,9 @@ def test_profile_ignores_non_data_files_without_penalty(tmp_path):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
-    assert result.sampling.exhaustive is True
-    assert "unsupported_files" not in result.profiler_info
+    assert result.partitions[0].stats_complete is True
+    assert result.unreadable_files == []
+    assert result.sampling.files_present == 1  # the README and LICENSE are not data, counted nowhere
 
 
 def test_profile_records_a_partial_jsonl_read(tmp_path):
@@ -373,7 +381,7 @@ def test_profile_records_a_partial_jsonl_read(tmp_path):
     record = result.partitions[0].splits[0].files[0]
     assert record.num_rows == 2  # the readable rows survived
     assert record.error is not None and "line 2" in record.error
-    assert result.sampling.exhaustive is False  # a line was lost, so this is not a full scan
+    assert result.partitions[0].stats_complete is False  # a line was lost, so not a full scan
 
 
 def test_profile_classifies_roles_type_and_verifiability(tmp_path):
@@ -436,7 +444,7 @@ def test_profile_tolerates_non_object_jsonl_lines(tmp_path):
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
     assert result.partitions[0].splits[0].num_examples == 2  # objects counted, stray array dropped
-    assert result.sampling.exhaustive is True
+    assert result.partitions[0].stats_complete is True
 
 
 def test_profile_survives_a_hostile_directory(tmp_path):
@@ -459,9 +467,9 @@ def test_profile_survives_a_hostile_directory(tmp_path):
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)  # must not raise
 
     # Nothing here is exhaustive, and the profile says so rather than looking clean.
-    assert result.sampling.exhaustive is False
-    assert result.sampling.rows_total is None
-    assert result.profiler_info["unsupported_files"] == ["leftovers.csv"]
+    assert result.partitions[0].stats_complete is False
+    assert result.sampling.rows_present is None
+    assert [f.path for f in result.unreadable_files] == ["leftovers.csv"]
 
     records = {f.path: f for p in result.partitions for s in p.splits for f in s.files}
     assert records["train-00001-of-00002.parquet"].error is not None  # corrupt file, named and explained
@@ -512,7 +520,7 @@ def test_profile_isolates_detected_format_with_no_reader(tmp_path, monkeypatch):
 
     records = {f.path: f for p in result.partitions for s in p.splits for f in s.files}
     assert records["extra.xyz"].num_rows is None  # kept, but unreadable
-    assert result.sampling.exhaustive is False
+    assert result.partitions[0].stats_complete is False
 
 
 def test_measure_infers_from_rows_when_some_files_declared_no_schema():
@@ -529,3 +537,36 @@ def test_measure_infers_from_rows_when_some_files_declared_no_schema():
 
     features, _, _ = _measure(rows, [declared], exhaustive=True, all_declared=True)
     assert [f.name for f in features] == ["prompt"]  # declared schema trusted when it covers everything
+
+
+def test_stats_completeness_is_per_partition(tmp_path):
+    # A corrupt shard in one partition says nothing about the measurements in another, but a
+    # fileset-wide flag downgraded every partition to the worst one. It was never even the value
+    # that gated quoting a proven enumeration -- that was decided per partition and never stored.
+    rows = [{"tag": t} for t in ("a", "b", "a")]
+    _write_parquet(tmp_path / "main" / "train.parquet", rows)
+    _write_parquet(tmp_path / "socratic" / "train.parquet", rows)
+    (tmp_path / "socratic" / "broken.parquet").write_bytes(b"not a parquet file")
+
+    partitions = {p.name: p for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions}
+
+    assert partitions["main"].stats_complete is True
+    assert partitions["socratic"].stats_complete is False
+    # ...and it is the bit that decides whether a proven enumeration may be quoted.
+    assert partitions["main"].stats["tag"].categorical.values == ["a", "b"]
+    assert partitions["socratic"].stats["tag"].categorical.values is None
+
+
+def test_dataset_wide_completeness_is_one_expression(tmp_path):
+    # SamplingInfo no longer carries `exhaustive`; the contract documents this derivation in its
+    # place. It has to keep working, or dropping the flag cost consumers something -- and it now
+    # says *which* half failed, which the single bit could not.
+    _write_parquet(tmp_path / "train.parquet", [{"a": 1}])
+    clean = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+    assert all(p.stats_complete for p in clean.partitions) and not clean.unreadable_files
+
+    (tmp_path / "extra.csv").write_text("a,b\n1,2\n")
+    with_csv = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+    assert all(p.stats_complete for p in with_csv.partitions)  # the parquet rows are still complete
+    assert with_csv.unreadable_files  # but there is data here that went unprofiled
+    assert with_csv.sampling.files_read == 1 and with_csv.sampling.files_present == 2
