@@ -241,11 +241,9 @@ def configured_subprocess_translation_profiles() -> set[str]:
 # Execution Profiles Endpoint
 @router.get("/v2/execution-profiles")
 async def get_execution_profiles() -> list[ExecutionProfileT]:
-    """Get all currently configured execution profiles.
-
-    Returns 503 until the jobs controller has constructed its backend registry
-    and pruned this list to match registered backends (AIRCORE-971).
-    """
+    """Get all currently configured execution profiles."""
+    # 503 until BackendRegistry.from_config marks profiles ready so clients do
+    # not see pre-prune docker profiles (AIRCORE-971).
     if not are_execution_profiles_ready():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
