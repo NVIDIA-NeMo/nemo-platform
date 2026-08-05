@@ -13,30 +13,39 @@ import pytest
 from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer
 
 
-def _improvement(ancestor: str) -> Improvement:
+def _improvement(ancestor: str, optimization_type: str = "add_method") -> Improvement:
     return Improvement(
         ancestor=ancestor,
         optimization="add a retrieval step",
         root_cause="the agent never retrieves",
-        optimization_type="add_method",
+        optimization_type=optimization_type,
         task_ids=["task-1"],
     )
 
 
-def test_an_ancestor_that_is_not_a_survivor_id_is_rejected() -> None:
-    with pytest.raises(ValueError, match="unknown ancestor"):
-        Proposer._validate_improvements(
-            improvements=[_improvement("agent-2")],
-            max_candidates=3,
-            allowed_types={"add_method"},
-            known_ancestors={"id-agent-2"},
-        )
+def test_an_ancestor_that_is_not_a_survivor_id_is_dropped_not_fatal() -> None:
+    """A label where an id belongs is one bad proposal, not a reason to end the run.
+
+    This check runs after the CodeAct loop, so raising buys no retry — it unwinds through
+    the strategy and fails a run that may have spent hours. The survivors carry both `id`
+    and `label`, so "agent-2" is exactly what a model returns.
+    """
+    usable = Proposer._usable_improvements(
+        [_improvement("agent-2"), _improvement("id-agent-2", optimization_type="add_tool")],
+        known_ancestors={"id-agent-2"},
+    )
+
+    assert [improvement.ancestor for improvement in usable] == ["id-agent-2"]
 
 
 def test_a_real_survivor_id_passes() -> None:
-    Proposer._validate_improvements(
-        improvements=[_improvement("id-agent-2")],
-        max_candidates=3,
-        allowed_types={"add_method"},
-        known_ancestors={"id-agent-2"},
-    )
+    usable = Proposer._usable_improvements([_improvement("id-agent-2")], known_ancestors={"id-agent-2"})
+
+    assert len(usable) == 1
+    Proposer._validate_improvements(improvements=usable, max_candidates=3, allowed_types={"add_method"})
+
+
+def test_a_batch_where_every_ancestor_is_unknown_still_fails_loudly() -> None:
+    """Dropping them all would leave the round silently proposing nothing."""
+    with pytest.raises(ValueError, match="unknown ancestor on every one"):
+        Proposer._usable_improvements([_improvement("agent-2")], known_ancestors={"id-agent-2"})

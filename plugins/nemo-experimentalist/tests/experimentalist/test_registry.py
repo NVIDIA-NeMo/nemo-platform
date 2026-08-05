@@ -187,3 +187,67 @@ def test_agent_class_docstrings_stay_prompt_shaped() -> None:
         )
         for leaked in ("ctx.evaluate", "commit_candidate", "BuilderContext", "ExperimentContext"):
             assert leaked not in prompt, f"{agent.__name__}'s system prompt leaks host vocabulary: {leaked}"
+
+
+def test_subclassing_a_registered_component_is_allowed() -> None:
+    """Extending the built-in Coder is the most obvious way to customise a builder.
+
+    `name` must come from the subclass alone. Inheriting it made `class MyCoder(Coder)`
+    look like a second claim on "coder" and raise at class-definition time — and because
+    `load_plugins` swallows entry-point import errors, the author's whole package would
+    have been recorded as a load failure with every component in it unresolvable.
+    """
+    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+
+    class UnnamedSubclass(Coder):  # must not raise
+        pass
+
+    assert ("builder", "coder") not in {
+        (role, name) for (role, name), cls in Component._registry.items() if cls is UnnamedSubclass
+    }
+    assert resolve("builder", "coder") is Coder, "the subclass must not have taken over the name"
+
+    try:
+
+        class NamedSubclass(Coder):
+            name = "coder-plus"
+
+        assert resolve("builder", "coder-plus") is NamedSubclass
+        assert NamedSubclass.role == "builder", "role is inherited; only name is not"
+    finally:
+        Component._registry.pop(("builder", "coder-plus"), None)
+
+
+def test_repeated_metadata_lookups_do_not_re_read_the_whole_store(tmp_path) -> None:
+    """The prompts call `get_metadata` once per agent, in a loop.
+
+    Each record carries its full trial list including traces, so re-globbing and
+    re-parsing the store per lookup made one report pass quadratic in the population.
+    """
+    from doubles import make_candidate
+    from nemo_experimentalist_plugin.experimentalist.components.tools import WorkspaceTool
+
+    candidates_root = tmp_path / "eval-and-optimize" / "candidates"
+    candidates_root.mkdir(parents=True)
+    for index in range(5):
+        candidate = make_candidate(label=f"agent-{index}", candidate_id=f"id-{index}")
+        (candidates_root / f"id-{index}.json").write_text(candidate.model_dump_json())
+
+    from nemo_experimentalist_plugin.experimentalist import experimentalist_backend as backend_module
+
+    loads = 0
+    real_load = backend_module.load_candidate
+
+    def _counting_load(path):
+        nonlocal loads
+        loads += 1
+        return real_load(path)
+
+    tool = WorkspaceTool(workspace=tmp_path)
+    import unittest.mock
+
+    with unittest.mock.patch.object(backend_module, "load_candidate", _counting_load):
+        for index in range(5):
+            tool.get_metadata(f"agent-{index}")
+
+    assert loads == 5, f"one pass over the store, not one per lookup; got {loads} reads for 5 lookups"

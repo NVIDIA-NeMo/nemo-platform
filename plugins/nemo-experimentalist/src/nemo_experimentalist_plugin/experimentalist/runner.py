@@ -157,14 +157,17 @@ class ExperimentRunner:
         if resuming:
             await self._seed_narration_baseline(ctx)
 
+        # Finalizing is inside the handler, not after it. It resolves the winner's
+        # artifact, copies it out and persists the result — any of which can fail — and
+        # if it did, the run entity stayed `running` forever with no result written,
+        # while the work had actually finished.
         try:
             winner = await self._strategy.run(ctx)
+            return await self._finalize(ctx, run, inputs, winner)
         except Exception:
             run.status = "failed"
             await self._backend.update_run(workspace=self._workspace, run=run)
             raise
-
-        return await self._finalize(ctx, run, inputs, winner)
 
     # -- Prepare -------------------------------------------------------------
 
@@ -238,7 +241,9 @@ class ExperimentRunner:
             # fail to import when the Eval Author package is absent.
             from nemo_eval_author_plugin.eval_author.agent import EvalAuthor  # noqa: PLC0415
 
-            authored = await EvalAuthor(experiment_dir=self._root, config=self._config.eval_author).run(
+            authored = await EvalAuthor(
+                experiment_dir=self._root, config=self._config.eval_author, reporter=self._reporter
+            ).run(
                 insight=insight,
                 agent_path=agent_dir,
                 task_template=dataset_factory.build_task_template(self._evaluator_type, template_ref),
@@ -269,6 +274,13 @@ class ExperimentRunner:
         expensive failure.
         """
         existing = self._load_run()
+        if existing is None and await self._has_candidate_records():
+            raise ValueError(
+                f"{self._eo / 'run.json'} is missing or unreadable, but {self._eo / 'candidates'} still "
+                "holds candidate records. Starting fresh would mint a new run id, and every candidate "
+                "already built here would become invisible to it — hours of work still on disk and "
+                "unreachable. Restore run.json, or move the directory aside to start over."
+            )
         if existing is not None:
             if not self._strategy.supports_resume:
                 raise ValueError(
@@ -313,6 +325,15 @@ class ExperimentRunner:
             return
         if baseline is not None and baseline.rewards["validation"].metrics:
             self._reporter.seed_baseline(reward_scalar(baseline.rewards["validation"].metrics))
+
+    async def _has_candidate_records(self) -> bool:
+        """Whether this directory already holds committed candidates.
+
+        Read off the filesystem rather than through the backend: the backend lists by
+        run id, and the run id is exactly what is unavailable when this is asked.
+        """
+        candidates_dir = self._eo / "candidates"
+        return candidates_dir.is_dir() and any(candidates_dir.glob("*.json"))
 
     def _load_run(self) -> ExperimentRun | None:
         """Read this directory's ``run.json``, or None when it is absent or unreadable."""

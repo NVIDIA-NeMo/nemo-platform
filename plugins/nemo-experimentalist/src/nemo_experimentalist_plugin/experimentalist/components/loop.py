@@ -404,10 +404,8 @@ class EvolutionaryOptimizer(Agent, Strategy):
                 ctx=ctx,
                 candidates=candidates,
             )
-            await ctx.record_reward(
-                candidates[0],
-                channel="validation",
-                result=validation_candidate_results[candidates[0].label],
+            await self._record_baseline_validation(
+                ctx=ctx, baseline=candidates[0], results=validation_candidate_results
             )
 
         if insight_eval_dataset is not None:
@@ -752,6 +750,22 @@ class EvolutionaryOptimizer(Agent, Strategy):
                     continue
                 if n > from_round:
                     f.unlink()
+
+    @staticmethod
+    async def _record_baseline_validation(
+        *, ctx: StrategyContext, baseline: Candidate, results: dict[str, EvaluationResult]
+    ) -> None:
+        """Record the baseline's validation reward, if this round actually measured one.
+
+        Absent whenever the baseline was already scored before the crash that sent us
+        here: `_ensure_baseline` keeps the existing baseline rather than minting a second,
+        and `_evaluate_validation_candidates` only returns candidates it actually ran. A
+        round-0 resume therefore has nothing to record, and indexing the map raised
+        KeyError — failing the run on restart, which is exactly when it must not.
+        """
+        measured = results.get(baseline.label)
+        if measured is not None:
+            await ctx.record_reward(baseline, channel="validation", result=measured)
 
     async def _ensure_baseline(self, *, ctx: StrategyContext, config: EvolutionaryOptimizerConfig) -> None:
         """Create the baseline candidate unless this run already has one.

@@ -310,3 +310,64 @@ async def test_importing_the_baseline_twice_returns_the_same_candidate(tmp_path:
 
     assert second.id == first.id
     assert len(await ctx.candidates()) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_build_unwinds_the_round_rather_than_being_dropped(tmp_path: Path) -> None:
+    """Cancellation is not a build failure, and the difference is invisible to `Exception`.
+
+    `asyncio.gather(..., return_exceptions=True)` hands back `CancelledError` as a *value*.
+    It derives from `BaseException`, so a filter written as `isinstance(outcome, Exception)`
+    lets a cancelled build through: the round carries on with a partial population and
+    ranks candidates that were never built. This covered `_build_candidates` before the
+    Builder refactor moved it; without it the guard can be dropped and nothing fails.
+    """
+    import asyncio
+
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+    from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
+
+    class _CancellingBuilder:
+        accepts = frozenset({"code-change"})
+
+        async def build(self, ctx: object, proposal: Proposal, *, generation: int) -> None:
+            raise asyncio.CancelledError
+
+    optimizer = object.__new__(EvolutionaryOptimizer)
+    optimizer.working_dir = tmp_path
+    optimizer._framework_skills_dirs = []
+    optimizer._models = None
+    optimizer._new_builder = lambda **_: _CancellingBuilder()  # type: ignore[method-assign]
+
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    config = EvolutionaryOptimizerConfig()
+
+    with pytest.raises(asyncio.CancelledError):
+        await optimizer._build_candidates(
+            ctx=ctx,
+            dataset=ctx.datasets["validation"],
+            proposals=[_proposal(ancestor=None)],
+            generation=1,
+            config=config,
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_nested_architecture_doc_is_the_agents_own_and_survives(tmp_path: Path) -> None:
+    """Only the one beside the agent is ours to strip.
+
+    `architecture.md` is generated *about* the agent and sits at its root, and the fork
+    leaves it out so its absence tells the Proposer it has no model of this candidate.
+    An agent whose own source ships `docs/architecture.md` is a different file entirely —
+    stripping it at every depth silently deletes the user's documentation from every
+    candidate, and from the winner copied back over their workspace.
+    """
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    (ctx.agent_dir / "architecture.md").write_text("# generated about the agent\n")
+    (ctx.agent_dir / "docs").mkdir()
+    (ctx.agent_dir / "docs" / "architecture.md").write_text("# the agent's own docs\n")
+
+    imported = ctx.candidate_dir(await ctx.import_baseline("baseline"))
+
+    assert not (imported / "architecture.md").exists(), "the generated one is ours to leave out"
+    assert (imported / "docs" / "architecture.md").read_text() == "# the agent's own docs\n"

@@ -103,6 +103,7 @@ class WorkspaceTool:
         self._agents_root = self._eval_root / "agents"
         self._analysis_root = self._eval_root / "analysis"
         self._candidates_root = self._eval_root / "candidates"
+        self._candidates_cache: tuple[tuple[tuple[str, int], ...], list[Candidate]] | None = None
 
     # ── Navigation ────────────────────────────────────────────────────────────
 
@@ -202,13 +203,25 @@ class WorkspaceTool:
         raise FileNotFoundError(f"No candidate with label {agent_id!r} in {self._candidates_root}")
 
     def _candidates(self) -> list[Candidate]:
-        """Every candidate record this run has stored so far."""
+        """Every candidate record this run has stored so far.
+
+        Memoized on the set of record paths and their mtimes, because the prompts call
+        `get_metadata` once per agent in a loop and each record carries its full trial
+        list including traces — re-reading the store per lookup made a report pass
+        quadratic in the number of candidates.
+        """
         # Function-local import: experimentalist_backend imports this module.
         from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import load_candidate
 
         if not self._candidates_root.is_dir():
             return []
-        return [load_candidate(path) for path in sorted(self._candidates_root.glob("*.json"))]
+        paths = sorted(self._candidates_root.glob("*.json"))
+        stamp = tuple((str(path), path.stat().st_mtime_ns) for path in paths)
+        if self._candidates_cache is not None and self._candidates_cache[0] == stamp:
+            return self._candidates_cache[1]
+        loaded = [load_candidate(path) for path in paths]
+        self._candidates_cache = (stamp, loaded)
+        return loaded
 
     # ── Private helpers ───────────────────────────────────────────────────────
 

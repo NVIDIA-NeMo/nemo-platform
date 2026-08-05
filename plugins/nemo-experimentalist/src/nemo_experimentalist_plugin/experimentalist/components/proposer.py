@@ -1,6 +1,7 @@
+import logging
+
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-
 from pathlib import Path
 from typing import Any, Literal, get_args
 
@@ -21,6 +22,8 @@ from .cards import Optimize
 from .model_config import ModelTiers
 from .tools import WorkspaceTool
 from .util import load_framework_skills
+
+logger = logging.getLogger(__name__)
 
 #: What this Proposer produces and the built-in Coder accepts. An opaque
 #: discriminator, not a global enumeration — it only has to match a Builder.
@@ -203,13 +206,40 @@ class Proposer(Agent):
             phase=phase,
             max_candidates=max_candidates,
         )
+        usable = self._usable_improvements(improvements, known_ancestors={s.id for s in proposal_survivors})
         self._validate_improvements(
-            improvements=improvements,
+            improvements=usable,
             max_candidates=max_candidates,
             allowed_types=set(available_types) or all_types,
-            known_ancestors={s.id for s in proposal_survivors},
         )
-        return [improvement.as_proposal() for improvement in improvements]
+        return [improvement.as_proposal() for improvement in usable]
+
+    @staticmethod
+    def _usable_improvements(improvements: list[Improvement], *, known_ancestors: set[str]) -> list[Improvement]:
+        """Keep the improvements that branch from a real survivor, dropping the rest.
+
+        Dropped rather than fatal. ``ancestor`` is a candidate id, not the display handle
+        it used to be, and survivors carry both — so a plausible-looking "agent-2" is
+        exactly what a model returns. This runs *after* the CodeAct loop, so raising here
+        buys no retry: it unwinds through the strategy and kills a run that has already
+        spent hours over one bad string. Same policy as ``_build_candidates`` — one bad
+        proposal is not a bad run.
+        """
+        usable = [improvement for improvement in improvements if improvement.ancestor in known_ancestors]
+        for rejected in improvements:
+            if rejected.ancestor not in known_ancestors:
+                logger.warning(
+                    "Dropping a proposal with unknown ancestor %r (it must be a survivor id, one of %s): %s",
+                    rejected.ancestor,
+                    sorted(known_ancestors),
+                    rejected.optimization,
+                )
+        if improvements and not usable:
+            raise ValueError(
+                f"Proposer named an unknown ancestor on every one of its {len(improvements)} improvements; "
+                f"survivor ids are {sorted(known_ancestors)}"
+            )
+        return usable
 
     @staticmethod
     def _validate_improvements(
@@ -217,7 +247,6 @@ class Proposer(Agent):
         improvements: list[Improvement],
         max_candidates: int,
         allowed_types: set[str],
-        known_ancestors: set[str],
     ) -> None:
         if not improvements:
             raise ValueError("Proposer returned no improvements")
@@ -226,15 +255,6 @@ class Proposer(Agent):
         seen_types: set[str] = set()
         seen_descriptions: set[str] = set()
         for improvement in improvements:
-            # ``ancestor`` is a candidate id, not the display handle it used to be, and
-            # the survivors carry both — so a plausible-looking "agent-2" is exactly what
-            # a model returns. Rejecting it here costs one Proposer retry; letting it
-            # through costs the run.
-            if improvement.ancestor not in known_ancestors:
-                raise ValueError(
-                    f"Proposer returned unknown ancestor {improvement.ancestor!r}; "
-                    f"it must be the id of a survivor: {sorted(known_ancestors)}"
-                )
             optimization_type = improvement.optimization_type
             if optimization_type not in allowed_types:
                 raise ValueError(

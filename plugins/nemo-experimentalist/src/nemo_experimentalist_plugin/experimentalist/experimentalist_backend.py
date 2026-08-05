@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import subprocess
 import uuid
@@ -277,6 +278,17 @@ def load_candidate(path: Path) -> Candidate:
     return candidate
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    """Write *text* to *path* so a reader never sees a partial file.
+
+    ``os.replace`` is atomic within a filesystem, so a crash leaves either the previous
+    contents or the new ones — never a truncated file.
+    """
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(text, encoding="utf-8")
+    os.replace(temporary, path)
+
+
 def load_winner(run_dir: Path) -> Candidate:
     """The winning Candidate of a finished run, read from its stored record.
 
@@ -493,7 +505,16 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         if src is None or self._agent_checkout is None:
             return None
         checkout, branch = self._agent_checkout, self._candidate_branch(candidate)
-        title = self.storage.pr_title or f"Experimentalist: candidate {candidate.label} ({candidate.description})"
+        # A PR title is one line. `description` is the Proposer's graph-level prose — often
+        # several sentences, sometimes with newlines — which forges truncate or reject, and
+        # which `_compose_pr_body` already puts in the body. The optimization type is the
+        # short handle that used to be on the Candidate; it now lives in the payload the
+        # Proposer and Builder own.
+        payload = candidate.generated_from.payload if candidate.generated_from is not None else {}
+        kind = payload.get("optimization_type")
+        title = self.storage.pr_title or (
+            f"Experimentalist: candidate {candidate.label} ({kind if isinstance(kind, str) and kind else 'improvement'})"
+        )
         body = self.storage.pr_body or await self._compose_pr_body(workspace=workspace, candidate=candidate)
         code_dir = self._candidate_code_dir(candidate)
         url = await asyncio.to_thread(
@@ -552,7 +573,11 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         return run
 
     async def update_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
-        (self._eo / "run.json").write_text(run.model_dump_json(indent=2))
+        # Written through a temp file and renamed, because this is rewritten on every
+        # progress report and it is the only record of which run owns the candidates on
+        # disk. A plain write_text truncates first, so killing the process mid-round left
+        # a half-written file that resume could not parse.
+        _atomic_write(self._eo / "run.json", run.model_dump_json(indent=2))
         await self._project_best_effort(workspace, lambda m: m.update_group(run))
         return run
 

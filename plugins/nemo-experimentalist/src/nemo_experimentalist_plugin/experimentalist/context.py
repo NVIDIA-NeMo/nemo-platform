@@ -21,7 +21,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import shutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -70,15 +70,28 @@ _EVALUATOR_SCRATCH_GLOBS = ("*traces*", "*eval-and-optimize_*")
 _GENERATED_DOCS = frozenset({"architecture.md"})
 
 
-def _ignore_forked(directory: str, contents: list[str]) -> set[str]:
-    """Names a forked candidate must not inherit from the directory it came from."""
-    del directory
-    skip = _RUN_LAYOUT | _HYGIENE | _GENERATED_DOCS
-    return {
-        name
-        for name in contents
-        if name in skip or any(fnmatch.fnmatch(name, pattern) for pattern in _EVALUATOR_SCRATCH_GLOBS)
-    }
+def _ignore_forked(source_root: Path) -> Callable[[str, list[str]], set[str]]:
+    """What a forked candidate must not inherit from the directory it came from.
+
+    Returns a callable bound to *source_root* because one of the three owners applies at
+    the top level only: ``architecture.md`` is generated *about* the agent and sits beside
+    it, so an agent whose own source contains ``docs/architecture.md`` must keep it. The
+    others — run layout, hygiene, evaluator scratch — are stripped at every depth, which
+    is what the paths this replaces did.
+    """
+    root = source_root.resolve()
+
+    def _ignore(directory: str, contents: list[str]) -> set[str]:
+        skip = _RUN_LAYOUT | _HYGIENE
+        if Path(directory).resolve() == root:
+            skip = skip | _GENERATED_DOCS
+        return {
+            name
+            for name in contents
+            if name in skip or any(fnmatch.fnmatch(name, pattern) for pattern in _EVALUATOR_SCRATCH_GLOBS)
+        }
+
+    return _ignore
 
 
 class ExperimentContext:
@@ -209,7 +222,7 @@ class ExperimentContext:
             return existing
         destination = self._candidate_root / BASELINE_LABEL
         if not destination.exists():
-            shutil.copytree(self.agent_dir, destination, ignore=_ignore_forked)
+            shutil.copytree(self.agent_dir, destination, ignore=_ignore_forked(self.agent_dir))
         return await self._create(
             artifact=destination,
             proposal=None,
@@ -236,7 +249,8 @@ class ExperimentContext:
         # the right outcome — skipping the copy would hand the Builder a Fork whose
         # workdir is a file.
         destination = self._reserve()
-        shutil.copytree(upstream or self.agent_dir, destination, ignore=_ignore_forked)
+        source = upstream or self.agent_dir
+        shutil.copytree(source, destination, ignore=_ignore_forked(source))
         return Fork(workdir=destination, upstream=upstream)
 
     async def commit_candidate(self, *, proposal: Proposal, artifact: Path, generation: int = 0) -> Candidate:
