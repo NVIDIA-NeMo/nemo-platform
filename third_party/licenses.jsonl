@@ -257,7 +257,6 @@
 {"name": "pydantic-extra-types", "license": "MIT", "compatible": true}
 {"name": "pydantic-graph", "license": "MIT", "compatible": true}
 {"name": "pydantic-monty", "license": "MIT", "compatible": true}
-{"name": "pydantic-monty-runtime", "license": "MIT", "compatible": true}
 {"name": "pydantic-settings", "license": "MIT", "compatible": true}
 {"name": "pygments", "license": "BSD-2-CLAUSE", "compatible": true}
 {"name": "pyjwt", "license": "MIT", "compatible": true}

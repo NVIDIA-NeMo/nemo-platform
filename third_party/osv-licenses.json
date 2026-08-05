@@ -2628,17 +2628,7 @@
         {
           "package": {
             "name": "pydantic-monty",
-            "version": "0.0.19",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "pydantic-monty-runtime",
-            "version": "0.0.19",
+            "version": "0.0.18",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3948,7 +3938,7 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 158
+      "count": 157
     },
     {
       "name": "Apache-2.0",
