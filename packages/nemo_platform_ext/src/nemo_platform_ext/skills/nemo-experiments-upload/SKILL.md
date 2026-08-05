@@ -27,7 +27,10 @@ allowed-tools: [Bash, Read, Write]
 
 Get evaluation runs into the platform end-to-end: **create an Experiment → create an Evaluation → log traces + scores to an ingest endpoint → see the rollups.** The API calls the parent (the leaderboard) an **Experiment** and each row an **Evaluation**; the whole feature is called **Experiments**.
 
-Everything below uses `${NMP_BASE_URL}` (default `http://localhost:8080`) and a `${WORKSPACE}` (default `default`). Point `NMP_BASE_URL` at the local or remote platform. All routes are under `/apis/intake/v2/workspaces/${WORKSPACE}`.
+Everything below uses `${NMP_BASE_URL}` (default `http://localhost:8080`) and a `${WORKSPACE}`
+(default `default`). Point `NMP_BASE_URL` at the local platform or a remote HTTPS origin. Reject
+non-loopback `http://` targets, and never send authentication across an HTTP redirect. All routes
+are under `/apis/intake/v2/workspaces/${WORKSPACE}`.
 
 ## Pre-flight
 
@@ -38,6 +41,10 @@ unreachable and stop; route to `setup`/`nemo-status` only for a local platform.
 set -euo pipefail
 : "${NMP_BASE_URL:=http://localhost:8080}"
 : "${WORKSPACE:=default}"
+case "${NMP_BASE_URL}" in
+  https://*|http://localhost|http://localhost:*|http://127.0.0.1|http://127.0.0.1:*) ;;
+  *) echo "remote NMP_BASE_URL must use https://" >&2; exit 1 ;;
+esac
 if curl -sf "${NMP_BASE_URL}/health/ready" >/dev/null; then
   echo "platform ready"
 else
@@ -102,7 +109,9 @@ curl -sf -X POST \
 Pick the ingest endpoint that matches your producer. **Read `../nemo-intake/references/ingest-formats.md` for the full schema and a copy-pasteable example for each.** How you attach evaluation identity depends on the endpoint:
 
 - **ATIF and chat-completions** (JSON body) — add an `evaluation_context = {evaluation_id: "<the Evaluation name>", test_case_id: "<task id>"}` object to the payload.
-- **OTLP** — there is no body field; set identity as **root-span resource attributes** `nemo.experiment.id` (the Evaluation **name**) and `nemo.test_case.id`. Spans missing these still ingest but won't associate to an Evaluation.
+- **OTLP** — there is no body field; set `nemo.experiment.id` (the Evaluation **name**) and
+  `nemo.test_case.id` (the task ID) as **attributes on the root span**. Spans missing these still
+  ingest but won't associate to an Evaluation.
 
 | Producer | Endpoint | Read |
 |---|---|---|

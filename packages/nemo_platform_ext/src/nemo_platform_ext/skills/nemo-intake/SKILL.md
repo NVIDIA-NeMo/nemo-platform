@@ -18,6 +18,11 @@ Set the target to the local or remote NeMo Platform origin:
 ```bash
 export NMP_BASE_URL=http://127.0.0.1:8080
 export WORKSPACE=default
+
+case "${NMP_BASE_URL}" in
+  https://*|http://localhost|http://localhost:*|http://127.0.0.1|http://127.0.0.1:*) ;;
+  *) echo "remote NMP_BASE_URL must use https://" >&2; exit 1 ;;
+esac
 ```
 
 Require:
@@ -28,9 +33,10 @@ Require:
   telemetry producer.
 - One supported telemetry source. NeMo Studio is optional.
 
-For a remote deployment, set `NMP_BASE_URL` to that deployment and skip local startup. Use the
-deployment's authentication mechanism. For a local source checkout, follow `SETUP.md`, then start
-ClickHouse before the backend:
+For a remote deployment, set `NMP_BASE_URL` to its HTTPS origin and skip local startup. Use the
+deployment's authentication mechanism. Do not send authentication across an HTTP redirect: validate
+the final HTTPS origin and do not add `curl -L` to authenticated requests. For a local source
+checkout, follow `SETUP.md`, then start ClickHouse before the backend:
 
 ```bash
 services/intake/scripts/spans/run_clickhouse.sh

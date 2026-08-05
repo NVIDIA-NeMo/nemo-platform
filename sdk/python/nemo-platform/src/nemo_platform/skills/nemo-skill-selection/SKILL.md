@@ -20,18 +20,20 @@ not-for:
   - nemo-build-agent (use for the actual scaffold/deploy flow)
   - nemo-explore (use to reason about agent design)
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
-  - running platform commands (each downstream skill owns its own commands)
+  - running downstream workflow or state-changing platform commands (each downstream skill owns its own commands)
   - loading multiple downstream skills in one turn
-compatibility: nemo-platform >= 0.1.0; pure selection (no commands run from this skill); safe under macOS or Linux sandbox; works without an installed CLI (selector can pick setup, which then tells the user how to run the CLI install).
+compatibility: nemo-platform >= 0.1.0; selection plus a read-only host scan; safe under macOS or Linux sandbox; works without an installed CLI (selector can pick setup, which then tells the user how to run the CLI install).
 maturity: active
 license: Apache-2.0
 user-invocable: true
-allowed-tools: [Read]
+allowed-tools: [Bash, Read]
 ---
 
 # NeMo Platform skill selection
 
-You are deciding which downstream NeMo Platform skill should run. This skill never executes commands. It picks the next skill, announces the choice, and hands off.
+Decide which downstream NeMo Platform skill should run. Execute only the read-only host scan in this
+skill's Pre-flight section, then announce the choice and hand off. Never run downstream workflow or
+state-changing platform commands from this skill.
 
 New NeMo Platform agent builds use a Platform-managed `agent.yaml` with
 `config_format: nemo-agents-spec-v1` and a supported harness. NVIDIA NeMo Agent
@@ -105,7 +107,7 @@ Read-only callers (this skill, `nemo-status`, the build/try pre-flights) should 
 
 Tell the user, in one sentence, which skill is next and what it will do. For example: "Handing off to `setup` to verify the platform is installed and running. If it isn't, the skill will tell you the CLI command to run; install is a 5-minute shell step that this skill cannot do reliably for you."
 
-Then hand off. Do not run any platform commands from this skill.
+Then hand off. Do not run downstream workflow or state-changing platform commands from this skill.
 
 ## If nothing matches
 
