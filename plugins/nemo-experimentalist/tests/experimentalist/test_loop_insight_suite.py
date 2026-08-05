@@ -143,11 +143,10 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
                 raise _StopAfterOneRound
             return SimpleNamespace(stop=False, reason="continue")
 
-    monkeypatch.setattr(
-        Component,
-        "_registry",
-        {**Component._registry, ("terminator", "stop-after-one-round-for-test"): StopAfterOneRoundTerminator},
-    )
+    # Added to the live mapping, not a copy of it: discovery writes into whichever dict is
+    # bound when it runs, and it runs once per process.
+    Component._registry[("terminator", "stop-after-one-round-for-test")] = StopAfterOneRoundTerminator
+    monkeypatch.setattr(Component, "_registry", Component._registry, raising=False)
 
     monkeypatch.setattr(loop_module.EvolutionTree, "from_candidates", lambda candidates: evolution_tree)
     monkeypatch.setattr(EvolutionaryStrategy, "_detect_last_round", lambda self: None)
