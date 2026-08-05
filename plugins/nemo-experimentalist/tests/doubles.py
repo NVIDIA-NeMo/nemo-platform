@@ -192,15 +192,14 @@ def make_candidate(
     a plausible directory URI and derives the projections the same way the context does.
     """
     text = description if description is not None else ("baseline" if ancestor is None else f"change in {label}")
-    proposal = (
-        None
-        if ancestor is None
-        else Proposal(
-            ancestor=ancestor,
-            description=text,
-            kind="code-change",
-            payload={"optimization_type": optimization_type} if optimization_type else {},
-        )
+    # Every candidate has an origin, including the baseline: its Proposal asks for the
+    # agent under test to be imported unchanged, and `ancestor is None` is what makes it
+    # the baseline.
+    proposal = Proposal(
+        ancestor=ancestor,
+        description=text,
+        kind="code-change" if ancestor is not None else "import",
+        payload={"optimization_type": optimization_type} if optimization_type else {},
     )
     candidate = Candidate(
         name=label,

@@ -65,6 +65,13 @@ def _insight_result(label: str, score: float) -> EvaluationResult:
     )
 
 
+async def _import_baseline(ctx, description: str = "baseline") -> Candidate:
+    """Build the baseline the way a strategy does: an import Proposal through its Builder."""
+    from nemo_experimentalist_plugin.experimentalist.components.importer import Importer, import_proposal
+
+    return await Importer().build(ctx, import_proposal(description))
+
+
 @pytest.mark.asyncio
 async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_metrics(
     monkeypatch: pytest.MonkeyPatch,
@@ -527,7 +534,7 @@ async def test_an_interrupted_round_zero_does_not_mint_a_second_baseline(monkeyp
     async def _commit_baseline(self, *, ctx, config):
         nonlocal created
         created += 1
-        return await ctx.import_baseline("baseline")
+        return await _import_baseline(ctx)
 
     monkeypatch.setattr(EvolutionaryOptimizer, "_create_baseline_agent", _commit_baseline)
     config = EvolutionaryOptimizerConfig()

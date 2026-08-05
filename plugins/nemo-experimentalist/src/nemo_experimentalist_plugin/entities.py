@@ -550,11 +550,11 @@ class Candidate(NemoEntity, entity_type="candidate"):
             "generation; a strategy with no such notion leaves it 0."
         ),
     )
-    generated_from: Proposal | None = Field(
-        default=None,
+    generated_from: Proposal = Field(
         description=(
             "Immutable snapshot of the Proposal this candidate was built from, so a Proposer "
-            "can read the history of what worked. None for the baseline or an imported candidate."
+            "can read the history of what worked. Every candidate has one, including the "
+            "baseline, whose Proposal asks for the agent under test to be imported unchanged."
         ),
     )
     description: str = Field(
@@ -607,8 +607,6 @@ class Candidate(NemoEntity, entity_type="candidate"):
         this candidate's origin have drifted.
         """
         origin = self.generated_from
-        if origin is None:
-            return self
         if self.ancestor != origin.ancestor:
             raise ValueError(f"Candidate ancestor {self.ancestor!r} disagrees with its Proposal's {origin.ancestor!r}")
         if self.description != origin.description:

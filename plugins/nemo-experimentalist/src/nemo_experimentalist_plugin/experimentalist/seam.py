@@ -139,10 +139,6 @@ class StrategyContext(BuilderContext, Protocol):
         """Where *candidate*'s artifact lives, raising if the record outlived it."""
         ...
 
-    async def import_baseline(self, description: str) -> Candidate:
-        """Commit the agent under test, as-is, as the run's baseline."""
-        ...
-
     async def update_candidate(self, candidate: Candidate, **fields: object) -> Candidate:
         """Persist changes to a Candidate that already exists."""
         ...

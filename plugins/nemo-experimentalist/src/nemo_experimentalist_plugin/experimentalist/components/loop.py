@@ -39,6 +39,7 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
     ensure_heldout_hidden,
     restore_heldout_splits,
 )
+from nemo_experimentalist_plugin.experimentalist.components.importer import IMPORT, import_proposal
 from nemo_experimentalist_plugin.experimentalist.components.insight_promotion import (
     candidate_metric_keys,
     candidate_suite_identity,
@@ -788,13 +789,15 @@ class EvolutionaryOptimizer(Agent, Strategy):
         ctx: StrategyContext,
         config: EvolutionaryOptimizerConfig,
     ) -> Candidate:
-        """Import the agent under test as the run's baseline candidate.
+        """Build the run's baseline: the agent under test, committed unchanged.
 
-        Not a fork and not a build: the baseline is the agent as it arrived, so nothing
-        proposed it and the context has a separate verb for it. The architecture doc is
-        generated afterwards, into the artifact the Candidate already addresses.
+        An ordinary build of an ordinary Proposal — it is the baseline only because
+        nothing precedes it. The architecture doc is generated afterwards, into the
+        artifact the Candidate already addresses.
         """
-        baseline = await ctx.import_baseline("baseline: the agent under test, unchanged")
+        proposal = import_proposal("baseline: the agent under test, unchanged")
+        builder = cast("type[Builder]", resolve("builder", IMPORT))()
+        baseline = await builder.build(ctx, proposal, generation=0)
         await self._generate_architecture_doc(agent_dir=ctx.candidate_dir(baseline), config=config)
         return baseline
 

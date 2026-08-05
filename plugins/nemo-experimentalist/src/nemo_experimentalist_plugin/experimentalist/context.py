@@ -55,9 +55,6 @@ logger = logging.getLogger(__name__)
 #: It is also the channel a selector ranks on by default.
 PRIMARY_SPLIT = "validation"
 
-#: Display handle of the candidate that is the agent under test, unchanged.
-BASELINE_LABEL = "agent-0"
-
 #: What a fork must not carry from its source, composed from the owners that actually
 #: contribute names: this run's own layout, generic developer hygiene, the evaluator's
 #: scratch, and the strategy's generated documentation. Hardcoding one flat list is how
@@ -206,36 +203,6 @@ class ExperimentContext:
             )
         return path if path.is_dir() else path.parent
 
-    async def import_baseline(self, description: str) -> Candidate:
-        """Seed the run with the agent under test, as-is, and commit it as the baseline.
-
-        Not a fork and not a build: nothing proposed it, so it has no Proposal, and it is
-        the one Candidate whose ``generated_from`` is None. Keeping it a separate verb is
-        what lets :meth:`fork` and :meth:`commit_candidate` drop their "unless this is the
-        baseline" branches — and it is deliberately absent from
-        :class:`~nemo_experimentalist_plugin.experimentalist.seam.BuilderContext`, because
-        a Builder never creates a baseline.
-        """
-        existing = next((c for c in await self.candidates() if c.is_baseline), None)
-        if existing is not None:
-            # Idempotent because the invariant above has to hold for a strategy the host
-            # did not write. A resumed run re-enters this, and a second record addressing
-            # the same directory would be re-evaluated, offered to the Proposer, and
-            # published — while discarding either one deletes the artifact the other
-            # still points at. Guarding it strategy-side leaves every other strategy
-            # exposed, so it is guarded here.
-            logger.info("[RESUME] this run already has a baseline; returning it rather than minting a second")
-            return existing
-        destination = self._candidate_root / BASELINE_LABEL
-        if not destination.exists():
-            shutil.copytree(self.agent_dir, destination, ignore=_ignore_forked(self.agent_dir))
-        return await self._create(
-            artifact=destination,
-            proposal=None,
-            description=description,
-            generation=0,
-        )
-
     async def fork(self, proposal: Proposal) -> Fork:
         """Reserve a working copy for *proposal*, seeded from what it branches off.
 
@@ -278,14 +245,11 @@ class ExperimentContext:
             generation=generation,
         )
 
-    async def _create(
-        self, *, artifact: Path, proposal: Proposal | None, description: str, generation: int
-    ) -> Candidate:
+    async def _create(self, *, artifact: Path, proposal: Proposal, description: str, generation: int) -> Candidate:
         """Validate a finished artifact and persist the Candidate addressing it.
 
-        The one place a Candidate comes into existence, shared by :meth:`fork`-and-build
-        and by :meth:`import_baseline`. Private so that neither of those invariants can be
-        bypassed by a caller assembling a Candidate itself.
+        Private, so a caller cannot assemble a Candidate and persist it around the
+        validation that makes ``artifact`` safe to require.
         """
         if not artifact.exists():
             raise ValueError(f"Candidate artifact does not exist: {artifact}")
@@ -300,7 +264,7 @@ class ExperimentContext:
             label=handle,
             workspace=self.workspace,
             run_id=self.run_id,
-            ancestor=proposal.ancestor if proposal is not None else None,
+            ancestor=proposal.ancestor,
             generation=generation,
             generated_from=proposal,
             description=description,
@@ -320,8 +284,8 @@ class ExperimentContext:
 
         Every fork gets a fresh directory, including one built from the agent under test
         rather than from a parent: a run may hold many of those, and sharing a directory
-        would have them overwrite each other while still reporting separate rewards. Only
-        :meth:`import_baseline` uses the fixed handle.
+        would have them overwrite each other while still reporting separate rewards. The
+        baseline lands on ``agent-0`` simply by being the first.
         """
         root = self._candidate_root
         root.mkdir(parents=True, exist_ok=True)
@@ -353,7 +317,7 @@ class ExperimentContext:
         if not candidate.id:
             raise ValueError(
                 f"Candidate {candidate.label!r} has no store id; a Candidate is created by "
-                "commit_candidate or import_baseline, never by updating one into existence"
+                "commit_candidate, never by updating one into existence"
             )
         for key, value in fields.items():
             setattr(candidate, key, value)

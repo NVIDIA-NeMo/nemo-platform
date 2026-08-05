@@ -34,6 +34,7 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 [project.entry-points."nemo.experimentalist.components"]
 "strategy.evolutionary" = "nemo_experimentalist_plugin.experimentalist.components.loop"
 "builder.coder" = "nemo_experimentalist_plugin.experimentalist.components.coder"
+"builder.import" = "nemo_experimentalist_plugin.experimentalist.components.importer"
 
 [build-system]
 requires = ["hatchling"]

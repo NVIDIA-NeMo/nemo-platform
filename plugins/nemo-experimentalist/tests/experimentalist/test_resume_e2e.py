@@ -52,7 +52,7 @@ class ScriptedStrategy:
 
         baseline = next((c for c in self.population_at_start if c.is_baseline), None)
         if baseline is None:
-            baseline = await ctx.import_baseline("baseline: the agent under test, unchanged")
+            baseline = await _import_baseline(ctx)
         if self.fail_after == "baseline":
             raise RuntimeError("interrupted right after committing the baseline")
 
@@ -114,6 +114,13 @@ class _Tiers:
 
     def describe(self) -> dict[str, object]:
         return {"api_base": "http://fake", "models": {"smart": "fake/smart"}}
+
+
+async def _import_baseline(ctx, description: str = "baseline") -> Candidate:
+    """Build the baseline the way a strategy does: an import Proposal through its Builder."""
+    from nemo_experimentalist_plugin.experimentalist.components.importer import Importer, import_proposal
+
+    return await Importer().build(ctx, import_proposal(description))
 
 
 @pytest.mark.asyncio
@@ -234,7 +241,7 @@ async def test_a_round_zero_resume_records_no_baseline_reward_and_does_not_raise
     from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
     await ctx.record_reward(baseline, channel="validation", result=RewardRecord(metrics={"reward": 0.4}))
 
     await EvolutionaryOptimizer._record_baseline_validation(ctx=ctx, baseline=baseline, results={})

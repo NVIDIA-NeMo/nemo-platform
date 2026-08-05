@@ -28,16 +28,23 @@ def _proposal(ancestor: str | None = "agent-0") -> Proposal:
     )
 
 
+async def _import_baseline(ctx, description: str = "baseline") -> Candidate:
+    """Build the baseline the way a strategy does: an import Proposal through its Builder."""
+    from nemo_experimentalist_plugin.experimentalist.components.importer import Importer, import_proposal
+
+    return await Importer().build(ctx, import_proposal(description))
+
+
 @pytest.mark.asyncio
 async def test_importing_the_baseline_copies_the_agent_under_test(tmp_path: Path) -> None:
     ctx = make_context(root=tmp_path)
     (ctx.agent_dir / "main.py").write_text("print('hello')\n")
 
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
 
-    assert baseline.label == "agent-0"
+    assert baseline.label == "agent-0", "the first fork takes the first free handle; nothing names it"
     assert baseline.is_baseline
-    assert baseline.generated_from is None
+    assert baseline.generated_from.kind == "import"
     assert (ctx.candidate_dir(baseline) / "main.py").read_text() == "print('hello')\n"
 
 
@@ -49,7 +56,7 @@ async def test_a_baseline_import_carries_no_owners_scaffolding(tmp_path: Path) -
     for name in ("__pycache__", ".venv", "dataset", "eval-and-optimize", "my-traces"):
         (ctx.agent_dir / name).mkdir()
 
-    imported = ctx.candidate_dir(await ctx.import_baseline("baseline"))
+    imported = ctx.candidate_dir(await _import_baseline(ctx))
 
     assert (imported / "main.py").exists()
     for name in ("__pycache__", ".venv", "dataset", "eval-and-optimize", "my-traces"):
@@ -60,7 +67,7 @@ async def test_a_baseline_import_carries_no_owners_scaffolding(tmp_path: Path) -
 async def test_forking_a_proposal_branches_from_its_ancestors_artifact(tmp_path: Path) -> None:
     """The ancestor is resolved through its stored artifact, not by treating its id as a path."""
     ctx = make_context(root=tmp_path, backend=FakeBackend())
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
     (ctx.candidate_dir(baseline) / "main.py").write_text("ancestor code\n")
 
     fork = await ctx.fork(_proposal(ancestor=baseline.id))
@@ -78,7 +85,7 @@ async def test_a_fork_reports_the_upstream_it_was_taken_from(tmp_path: Path) -> 
     the only place it can be read.
     """
     ctx = make_context(root=tmp_path, backend=FakeBackend())
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
 
     from_parent = await ctx.fork(_proposal(ancestor=baseline.id))
     from_scratch = await ctx.fork(_proposal(ancestor=None))
@@ -90,7 +97,7 @@ async def test_a_fork_reports_the_upstream_it_was_taken_from(tmp_path: Path) -> 
 @pytest.mark.asyncio
 async def test_committing_derives_lineage_and_description_from_the_proposal(tmp_path: Path) -> None:
     ctx = make_context(root=tmp_path)
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
     # The ancestor is the baseline's durable id, which is not its display handle.
     proposal = _proposal(ancestor=baseline.id)
     fork = await ctx.fork(proposal)
@@ -138,12 +145,8 @@ async def test_a_candidate_cannot_be_updated_into_existence(tmp_path: Path) -> N
     ctx = make_context(root=tmp_path)
     # Assembled by hand rather than committed, so it has no store id — exactly the shape
     # a component could otherwise smuggle into the store.
-    never_committed = Candidate(
-        label="agent-7",
-        run_id="run-1",
-        description="never built",
-        artifact=ResourceRef(uri="file:///tmp/agent-7"),
-    )
+    never_committed = make_candidate(label="agent-7", ancestor=None)
+    never_committed._id = ""  # assembled by hand rather than committed, so it has no store id
 
     with pytest.raises(ValueError, match="never by updating one into existence"):
         await ctx.update_candidate(never_committed, killed_generation=3)
@@ -159,7 +162,7 @@ async def test_updating_a_committed_candidate_persists_the_change(tmp_path: Path
     from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
 
     ctx = make_context(root=tmp_path, backend=LocalExperimentalistBackend(path=tmp_path))
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
 
     await ctx.update_candidate(baseline, killed_generation=2)
 
@@ -193,7 +196,7 @@ async def test_candidates_are_listed_from_the_store_not_from_a_directory_walk(tm
 
     backend = LocalExperimentalistBackend(path=tmp_path)
     ctx = make_context(root=tmp_path, backend=backend)
-    committed = await ctx.import_baseline("baseline")
+    committed = await _import_baseline(ctx)
 
     listed = await ctx.candidates()
 
@@ -213,7 +216,7 @@ async def test_a_fork_does_not_inherit_the_ancestors_architecture_doc(tmp_path: 
     from ``Fork.upstream`` afterwards, to edit in place against the finished source.
     """
     ctx = make_context(root=tmp_path, backend=FakeBackend())
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
     ancestor_dir = ctx.candidate_dir(baseline)
     (ancestor_dir / "main.py").write_text("print('ancestor')\n")
     (ancestor_dir / "architecture.md").write_text("# describes agent-0\n")
@@ -233,7 +236,7 @@ async def test_a_record_whose_artifact_is_gone_is_refused_not_guessed(tmp_path: 
     every other candidate's code with it.
     """
     ctx = make_context(root=tmp_path)
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
     shutil.rmtree(ctx.candidate_dir(baseline))
 
     with pytest.raises(ValueError, match="has no artifact at"):
@@ -248,7 +251,7 @@ async def test_a_discarded_candidate_is_hidden_but_kept(tmp_path: Path) -> None:
     still claims, and leaves a wrong rollback recoverable.
     """
     ctx = make_context(root=tmp_path, backend=FakeBackend())
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
     artifact = ctx.candidate_dir(baseline)
 
     await ctx.discard_candidate(baseline)
@@ -268,7 +271,7 @@ async def test_every_ancestorless_proposal_gets_its_own_directory(tmp_path: Path
     overwrite each other and the baseline while still reporting distinct rewards.
     """
     ctx = make_context(root=tmp_path)
-    baseline_dir = ctx.candidate_dir(await ctx.import_baseline("baseline"))
+    baseline_dir = ctx.candidate_dir(await _import_baseline(ctx))
 
     first = await ctx.fork(_proposal(ancestor=None))
     second = await ctx.fork(_proposal(ancestor=None))
@@ -290,7 +293,7 @@ async def test_concurrent_forks_never_share_a_directory(tmp_path: Path) -> None:
     import asyncio
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
     proposals = [_proposal(ancestor=baseline.id) for _ in range(8)]
 
     forks = await asyncio.gather(*(ctx.fork(p) for p in proposals))
@@ -298,24 +301,6 @@ async def test_concurrent_forks_never_share_a_directory(tmp_path: Path) -> None:
     workdirs = [fork.workdir for fork in forks]
     assert len(set(workdirs)) == len(workdirs), f"reservations collided: {sorted(p.name for p in workdirs)}"
     assert ctx.candidate_dir(baseline) not in workdirs
-
-
-@pytest.mark.asyncio
-async def test_importing_the_baseline_twice_returns_the_same_candidate(tmp_path: Path) -> None:
-    """A resumed run re-enters this, and the invariant is the host's to keep.
-
-    A second record addressing the same directory would be re-evaluated, offered to the
-    Proposer and published — and discarding either one deletes the artifact the other
-    still points at. Guarding it only inside our own strategy leaves every other strategy
-    exposed, which is precisely the strategy this milestone exists to enable.
-    """
-    ctx = make_context(root=tmp_path, backend=FakeBackend())
-
-    first = await ctx.import_baseline("baseline")
-    second = await ctx.import_baseline("baseline")
-
-    assert second.id == first.id
-    assert len(await ctx.candidates()) == 1
 
 
 @pytest.mark.asyncio
@@ -373,7 +358,7 @@ async def test_a_nested_architecture_doc_is_the_agents_own_and_survives(tmp_path
     (ctx.agent_dir / "docs").mkdir()
     (ctx.agent_dir / "docs" / "architecture.md").write_text("# the agent's own docs\n")
 
-    imported = ctx.candidate_dir(await ctx.import_baseline("baseline"))
+    imported = ctx.candidate_dir(await _import_baseline(ctx))
 
     assert not (imported / "architecture.md").exists(), "the generated one is ours to leave out"
     assert (imported / "docs" / "architecture.md").read_text() == "# the agent's own docs\n"
@@ -390,7 +375,7 @@ async def test_the_store_itself_hides_discarded_candidates(tmp_path: Path) -> No
     from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
 
     ctx = make_context(root=tmp_path, backend=LocalExperimentalistBackend(path=tmp_path))
-    baseline = await ctx.import_baseline("baseline")
+    baseline = await _import_baseline(ctx)
     await ctx.discard_candidate(baseline)
 
     assert await ctx.candidates() == []
