@@ -187,6 +187,34 @@ describe('useDescribeWithAi', () => {
     });
   });
 
+  it('drops the previous draft as soon as a regeneration starts', async () => {
+    mutateAsync.mockResolvedValueOnce(toolCallResponse({ job_request: JOB_REQUEST }));
+    const { result, onValidConfig } = setUp();
+    await act(() => result.current.generate());
+    await waitFor(() => expect(result.current.validation?.status).toBe('valid'));
+
+    // Second run held open: the caller must not still hold the first request while it is pending.
+    let settleSecondRun: (response: unknown) => void = () => {};
+    mutateAsync.mockReturnValueOnce(
+      new Promise((resolve) => {
+        settleSecondRun = resolve;
+      })
+    );
+    let generation: Promise<void>;
+    act(() => {
+      generation = result.current.generate();
+    });
+
+    await waitFor(() => expect(result.current.pendingAction).toBe('generate'));
+    expect(onValidConfig).toHaveBeenLastCalledWith(null);
+
+    await act(async () => {
+      settleSecondRun(toolCallResponse({ job_request: JOB_REQUEST }));
+      await generation;
+    });
+    expect(onValidConfig).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'qa-pairs' }));
+  });
+
   it('clears a previously valid draft when a regeneration fails outright', async () => {
     mutateAsync.mockResolvedValueOnce(toolCallResponse({ job_request: JOB_REQUEST }));
     const { result, onValidConfig } = setUp();
