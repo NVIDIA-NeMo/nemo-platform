@@ -352,7 +352,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     async def fake_run_analyst(
-        *, agent, agent_spec, workspace, base_url, client, insights_output, verbose, since, evaluation_id
+        *, agent, agent_spec, workspace, base_url, client, insights_output, local_only, verbose, since, evaluation_id
     ):
         seen.update(
             agent=agent,
@@ -360,6 +360,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
             workspace=workspace,
             base_url=base_url,
             evaluation_id=evaluation_id,
+            local_only=local_only,
         )
         return "REPORT-OK"
 
@@ -385,6 +386,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     assert seen["workspace"] == "tau2-airline"  # the stable REALISTIC workspace, never the oracle one
     assert seen["evaluation_id"] == "tau2-airline-20260626-000000-abcd"  # run-scoped
     assert seen["base_url"] == "http://localhost:8080"
+    assert seen["local_only"] is True  # benchmark runs capture to file and never write to the platform
 
 
 async def test_benchmark_analyze_without_record_raises(tmp_path):

@@ -23,7 +23,7 @@ import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { getIntakeSessionRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { CircleAlert } from 'lucide-react';
 import { type FC, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 
 export type SessionDetailRouteContext =
   | { readonly kind: 'intake' }

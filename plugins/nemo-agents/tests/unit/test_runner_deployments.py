@@ -143,13 +143,29 @@ def test_rewrite_fabric_config_base_urls_rebases_igw_host() -> None:
                 }
             },
         },
+        "telemetry": {
+            "atif": {
+                "storage": [
+                    {
+                        "type": "http",
+                        "endpoint": "http://localhost:8080/apis/intake/v2/workspaces/default/ingest/atif",
+                    },
+                    {"type": "http", "endpoint": "https://telemetry.example.com/atif"},
+                ]
+            }
+        },
     }
     result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
     expected = "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
     assert result["models"]["default"]["base_url"] == expected
     assert result["harnesses"]["main"]["model"]["base_url"] == expected
     assert result["harnesses"]["legacy"]["model"]["settings"]["base_url"] == expected
+    assert result["telemetry"]["atif"]["storage"][0]["endpoint"] == (
+        "http://nmp-api:8080/apis/intake/v2/workspaces/default/ingest/atif"
+    )
+    assert result["telemetry"]["atif"]["storage"][1]["endpoint"] == "https://telemetry.example.com/atif"
     assert "localhost" in config["models"]["default"]["base_url"]
+    assert "localhost" in config["telemetry"]["atif"]["storage"][0]["endpoint"]
 
 
 def test_rewrite_fabric_config_base_urls_leaves_third_party_base_url() -> None:
@@ -164,6 +180,30 @@ def test_rewrite_fabric_config_base_urls_leaves_third_party_base_url() -> None:
     }
     result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
     assert result["models"]["default"]["base_url"] == "https://api.openai.com/v1"
+
+
+def test_rewrite_fabric_config_base_urls_preserves_https_atif_endpoint() -> None:
+    config = {
+        "telemetry": {
+            "atif": {
+                "storage": [
+                    {
+                        "type": "http",
+                        "endpoint": "https://localhost:8080/apis/intake/v2/workspaces/default/ingest/atif",
+                        "header_env": {"Authorization": "ATIF_AUTHORIZATION"},
+                    }
+                ]
+            }
+        }
+    }
+
+    result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
+
+    assert result["telemetry"]["atif"]["storage"][0] == {
+        "type": "http",
+        "endpoint": "https://nmp-api:8080/apis/intake/v2/workspaces/default/ingest/atif",
+        "header_env": {"Authorization": "ATIF_AUTHORIZATION"},
+    }
 
 
 def test_executor_for_mode_prefers_mode_specific() -> None:

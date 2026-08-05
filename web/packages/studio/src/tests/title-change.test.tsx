@@ -40,6 +40,7 @@ const pathParams = {
   [RP.insightId]: 'test-insight',
   [RP.guardrailConfigName]: 'test-guardrail-config',
   [RP.guardrailChecksSubTab]: GuardrailChecksSubTab.Tests,
+  [RP.pluginName]: '',
 };
 
 describe('AccessibleTitleE2E', () => {

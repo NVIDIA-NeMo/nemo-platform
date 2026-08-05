@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ROUTES } from '@studio/constants/routes';
-import { getClaudeCodeActiveSessionStorageKey } from '@studio/routes/agents/ClaudeCodeChatRoute/activeSessionStorage';
+import { getCopilotActiveSessionStorageKey } from '@studio/routes/agents/CopilotChatRoute/activeSessionStorage';
 import { DashboardLandingRoute } from '@studio/routes/DashboardLandingRoute';
 import { mockFeatureFlags } from '@studio/tests/util/mockFeatureFlags';
 import { TestProviders } from '@studio/tests/util/TestProviders';
@@ -10,13 +10,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, generatePath, RouterProvider, useLocation } from 'react-router';
 
-vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', async (importOriginal) => {
+vi.mock('@studio/routes/agents/CopilotChatRoute/api', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('@studio/routes/agents/ClaudeCodeChatRoute/api')>();
+    await importOriginal<typeof import('@studio/routes/agents/CopilotChatRoute/api')>();
 
   return {
     ...actual,
-    listClaudeCodeHistorySessions: vi.fn(async () => []),
+    listCopilotHistorySessions: vi.fn(async () => []),
   };
 });
 
@@ -39,7 +39,7 @@ const renderRoute = () => {
   const router = createMemoryRouter(
     [
       { path: ROUTES.workspace.dashboard, element: <DashboardLandingRoute /> },
-      { path: ROUTES.workspace.claudeCodeChat, element: <ChatRouteProbe /> },
+      { path: ROUTES.workspace.copilotChat, element: <ChatRouteProbe /> },
     ],
     {
       initialEntries: [route],
@@ -73,7 +73,7 @@ describe('DashboardLandingRoute', () => {
     renderRoute();
 
     expect(await screen.findByText('What would you like to do?')).toBeInTheDocument();
-    const composer = screen.getByRole('textbox', { name: 'Message NeMo Agent' });
+    const composer = screen.getByRole('textbox', { name: 'Message NeMo Copilot' });
     expect(composer).toBeInTheDocument();
     expect(screen.getByTestId('dashboard-landing-composer')).toHaveClass('rounded-lg');
     expect(screen.getByTestId('dashboard-landing-composer')).not.toHaveClass('rounded-2xl');
@@ -92,7 +92,7 @@ describe('DashboardLandingRoute', () => {
     const user = userEvent.setup();
     renderRoute();
 
-    const composer = await screen.findByRole('textbox', { name: 'Message NeMo Agent' });
+    const composer = await screen.findByRole('textbox', { name: 'Message NeMo Copilot' });
     const sendButton = screen.getByRole('button', { name: 'Send message' });
 
     expect(sendButton).toBeDisabled();
@@ -104,33 +104,33 @@ describe('DashboardLandingRoute', () => {
     });
   });
 
-  it('navigates to the NeMo Agent chat with the submitted prompt', async () => {
+  it('navigates to the NeMo Copilot chat with the submitted prompt', async () => {
     const user = userEvent.setup();
     renderRoute();
 
     await user.type(
-      await screen.findByRole('textbox', { name: 'Message NeMo Agent' }),
+      await screen.findByRole('textbox', { name: 'Message NeMo Copilot' }),
       'Check repo'
     );
     await user.click(screen.getByRole('button', { name: 'Send message' }));
 
     expect(await screen.findByTestId(CHAT_ROUTE_TEST_ID)).toHaveTextContent(
-      `${generatePath(ROUTES.workspace.claudeCodeChat, { workspace })}|Check repo`
+      `${generatePath(ROUTES.workspace.copilotChat, { workspace })}|Check repo`
     );
   });
 
-  it('clears the active Code Agent session before starting from the landing composer', async () => {
+  it('clears the active NeMo Copilot session before starting from the landing composer', async () => {
     const user = userEvent.setup();
-    localStorage.setItem(getClaudeCodeActiveSessionStorageKey(workspace), 'session-existing');
+    localStorage.setItem(getCopilotActiveSessionStorageKey(workspace), 'session-existing');
     renderRoute();
 
     await user.type(
-      await screen.findByRole('textbox', { name: 'Message NeMo Agent' }),
+      await screen.findByRole('textbox', { name: 'Message NeMo Copilot' }),
       'Check repo'
     );
     await user.click(screen.getByRole('button', { name: 'Send message' }));
 
-    expect(localStorage.getItem(getClaudeCodeActiveSessionStorageKey(workspace))).toBeNull();
+    expect(localStorage.getItem(getCopilotActiveSessionStorageKey(workspace))).toBeNull();
   });
 
   it('submits the landing composer when Enter is pressed', async () => {
@@ -138,13 +138,13 @@ describe('DashboardLandingRoute', () => {
     renderRoute();
 
     await user.type(
-      await screen.findByRole('textbox', { name: 'Message NeMo Agent' }),
+      await screen.findByRole('textbox', { name: 'Message NeMo Copilot' }),
       'Check repo'
     );
     await user.keyboard('{Enter}');
 
     expect(await screen.findByTestId(CHAT_ROUTE_TEST_ID)).toHaveTextContent(
-      `${generatePath(ROUTES.workspace.claudeCodeChat, { workspace })}|Check repo`
+      `${generatePath(ROUTES.workspace.copilotChat, { workspace })}|Check repo`
     );
   });
 
@@ -152,7 +152,7 @@ describe('DashboardLandingRoute', () => {
     const user = userEvent.setup();
     renderRoute();
 
-    const composer = await screen.findByRole('textbox', { name: 'Message NeMo Agent' });
+    const composer = await screen.findByRole('textbox', { name: 'Message NeMo Copilot' });
 
     await user.type(composer, 'Line one');
     await user.keyboard('{Shift>}{Enter}{/Shift}');

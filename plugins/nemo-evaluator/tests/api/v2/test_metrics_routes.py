@@ -78,7 +78,9 @@ class _FakeEntityClient:
         self.bump_version_on_next_delete = False
         self.delete_expected_db_versions: list[int | None] = []
 
-    async def get(self, entity_type: type[MetricBundleEntity], *, workspace: str, name: str) -> MetricBundleEntity:
+    async def get(
+        self, entity_type: type[MetricBundleEntity], *, workspace: str, name: str, parent: str | None = None
+    ) -> MetricBundleEntity:
         key = (workspace, name)
         if key not in self.entities:
             raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
@@ -103,6 +105,7 @@ class _FakeEntityClient:
         name: str,
         *,
         workspace: str,
+        parent: str | None = None,
         expected_db_version: int | None = None,
     ) -> None:
         key = (workspace, name)

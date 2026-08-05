@@ -12,7 +12,7 @@ import {
 } from '@studio/util/customizationBackend';
 import { jobToFormFields } from '@studio/util/forms/customization';
 import { useMemo } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router';
 
 const isCloneFromJobState = (value: unknown): value is { cloneFromJob: CustomizationJob } => {
   if (typeof value !== 'object' || value === null) return false;

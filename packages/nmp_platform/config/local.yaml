@@ -183,3 +183,5 @@ files:
 studio:
   static_files_path: web/packages/studio/dist
   sandbox_enabled: true
+  feature_flags:
+    copilot_studio_enabled: true

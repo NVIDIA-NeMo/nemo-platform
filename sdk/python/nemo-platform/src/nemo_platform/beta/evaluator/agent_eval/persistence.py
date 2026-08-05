@@ -20,7 +20,7 @@ def persist_run(result: AgentEvalResult, output_dir: str | Path) -> AgentEvalRes
     path = Path(output_dir)
     path.mkdir(parents=True, exist_ok=True)
 
-    _write_json(path / "benchmark.json", result.benchmark)
+    _write_json(path / "metadata.json", result.metadata)
     _write_jsonl(path / "tasks.jsonl", result.tasks)
     _write_trials(path / "trials.jsonl", result.trials, base=path)
     _write_jsonl(path / "scores.jsonl", result.scores)
@@ -37,7 +37,7 @@ def _run_manifest(result: AgentEvalResult) -> dict[str, Any]:
         "output_dir": str(result.output_dir) if result.output_dir is not None else None,
         "dashboard_path": str(result.dashboard_path) if result.dashboard_path is not None else None,
         "artifacts": {
-            "benchmark": "benchmark.json",
+            "metadata": "metadata.json",
             "tasks": "tasks.jsonl",
             "trials": "trials.jsonl",
             "scores": "scores.jsonl",

@@ -29,7 +29,7 @@ import { renameFile } from '@studio/util/files';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { FC, useState } from 'react';
 import { Controller, SubmitHandler, useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface DatasetCreateModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   dataset?: FilesetOutput;
@@ -75,14 +75,7 @@ export const DatasetCreateModal: FC<DatasetCreateModalProps> = ({
     onSuccess: (dataset: FilesetOutput) => {
       reset();
       onDatasetCreated?.(dataset);
-      navigate(
-        getFilesetDetailsRoute(
-          workspace,
-          getEntityReference(dataset, { encode: true }),
-          undefined,
-          true
-        )
-      );
+      navigate(getFilesetDetailsRoute(workspace, getEntityReference(dataset), undefined, true));
     },
   });
 

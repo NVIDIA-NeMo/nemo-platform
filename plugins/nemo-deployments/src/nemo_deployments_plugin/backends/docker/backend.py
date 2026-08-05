@@ -14,6 +14,7 @@ from nemo_deployments_plugin.backends.base import (
     BackendStatusUpdate,
     DeploymentBackend,
     LogResult,
+    MissingBackendDependencyError,
     VolumeStatusUpdate,
 )
 from nemo_deployments_plugin.backends.docker import volumes as volume_ops
@@ -65,6 +66,7 @@ from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
+from requests.exceptions import Timeout as RequestsTimeout
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
 
 if TYPE_CHECKING:
@@ -97,10 +99,12 @@ class DockerDeploymentBackend(DeploymentBackend):
 
     def init(self) -> None:
         try:
+            from docker.errors import DockerException
+
             import docker
             from docker import errors as docker_errors
         except ImportError as exc:
-            raise RuntimeError(
+            raise MissingBackendDependencyError(
                 "docker package is required for DockerDeploymentBackend. "
                 "Install with: uv sync --package nemo-deployments-plugin --extra docker"
             ) from exc
@@ -110,7 +114,12 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._executor_config = DockerExecutorConfig.model_validate(self._config)
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         self._gpu_pool = get_shared_gpu_pool()
-        self._client = self._create_client()
+        try:
+            self._client = self._create_client()
+        except (DockerException, RequestsConnectionError, RequestsTimeout, OSError) as exc:
+            raise MissingBackendDependencyError(
+                f"Docker daemon is unavailable ({exc}). Docker-backed deployments will be disabled."
+            ) from exc
 
     def _create_client(self) -> docker.DockerClient:
         kwargs: dict[str, Any] = {"timeout": self._executor_config.docker_timeout}
@@ -118,6 +127,7 @@ class DockerDeploymentBackend(DeploymentBackend):
             kwargs["base_url"] = self._executor_config.docker_host
         client = self._docker.from_env(**kwargs)
         client.api.timeout = self._executor_config.docker_timeout
+        client.ping()
         return client
 
     def shutdown(self) -> None:

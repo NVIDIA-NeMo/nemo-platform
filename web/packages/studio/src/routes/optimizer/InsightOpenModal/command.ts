@@ -4,7 +4,7 @@
 const shellQuote = (value: string): string => value.replace(/'/g, "'\\''");
 
 export const buildOptimizerExperimentCommand = (insightId: string, workspace: string): string =>
-  `nemo optimizer experiment \\\n` +
+  `nemo agents experimentalist run \\\n` +
   `  --insight '${shellQuote(insightId)}' \\\n` +
   `  --train-dataset "<train-dataset-path>" \\\n` +
   `  --validation-dataset "<validation-dataset-path>" \\\n` +

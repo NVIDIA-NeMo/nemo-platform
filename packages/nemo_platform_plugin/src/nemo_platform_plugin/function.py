@@ -191,6 +191,15 @@ class NemoFunction(_NamedPlugin, Generic[SpecT]):
     send_headers_before_first_frame: ClassVar[bool] = False
 
     # ------------------------------------------------------------------ #
+    # Frame schema (streaming functions only)                            #
+    # ------------------------------------------------------------------ #
+
+    # The frame type a streaming function yields, usually a ``kind``-discriminated
+    # union. Without it the route documents an empty schema and generated clients
+    # hand back ``unknown``, so every consumer re-declares the frames.
+    frame_schema: ClassVar[Any] = None
+
+    # ------------------------------------------------------------------ #
     # Lifecycle                                                          #
     # ------------------------------------------------------------------ #
 

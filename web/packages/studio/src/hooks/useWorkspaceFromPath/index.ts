@@ -3,7 +3,7 @@
 
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 /**
  * Returns the workspace

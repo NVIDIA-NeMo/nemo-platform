@@ -6,7 +6,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { PlugZap, Server } from 'lucide-react';
 import { type FC } from 'react';
-import { generatePath, useNavigate } from 'react-router-dom';
+import { generatePath, useNavigate } from 'react-router';
 
 interface ChatEmptyStateProps {
   /** When false, paints the headline as "No models available" and surfaces the

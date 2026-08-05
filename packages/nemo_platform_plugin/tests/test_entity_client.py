@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
 from nemo_platform_plugin.client.errors import BadRequestError, NotFoundError
-from nemo_platform_plugin.entities import EntityClient, EntityStoreError
+from nemo_platform_plugin.entities import EntityBase, EntityClient, EntityStoreError
+from nemo_platform_plugin.entities.types import Entity
 
 
 class ExperimentGroup:
@@ -115,3 +117,69 @@ async def test_count_by_rejects_non_direct_field() -> None:
 
     with pytest.raises(ValueError, match="direct entity data field"):
         await client.count_by(ExperimentGroup, "data.insight_id")
+
+
+class _Child(EntityBase):
+    """A child entity — addressed within its parent, not by name alone."""
+
+    __entity_type__ = "child_probe"
+
+    note: str = ""
+
+
+def _stored_child(parent: str) -> Mock:
+    """A server response for a child entity, as ``get``/``update`` receive it."""
+    entity = Entity(
+        entity_type="child_probe",
+        id="child-1",
+        workspace="default",
+        parent=parent,
+        name="child-1",
+        data={"note": "before"},
+        db_version=1,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    resp = Mock()
+    resp.data = Mock(return_value=entity)
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_parent_survives_the_get_update_round_trip() -> None:
+    """``update`` takes no ``parent`` argument — it reads it off the entity.
+
+    That only holds because ``get`` puts it there. If either half breaks, an update to a child
+    entity silently addresses a root entity of the same name instead, so this pins both halves
+    together rather than mocking one and asserting the other.
+    """
+    mock_api = Mock()
+    mock_api.get_entity_by_name = AsyncMock(return_value=_stored_child("parent-1"))
+    mock_api.update_entity_by_name = AsyncMock(return_value=_stored_child("parent-1"))
+    client = EntityClient(mock_api)
+
+    fetched = await client.get(_Child, "child-1", workspace="default", parent="parent-1")
+    get_call = mock_api.get_entity_by_name.await_args
+    assert get_call is not None
+    assert get_call.kwargs["query_params"] == {"parent": "parent-1"}
+    assert fetched.parent == "parent-1"
+
+    fetched.note = "after"
+    await client.update(fetched)
+
+    update_call = mock_api.update_entity_by_name.await_args
+    assert update_call is not None
+    assert update_call.kwargs["query_params"] == {"parent": "parent-1"}
+
+
+@pytest.mark.asyncio
+async def test_delete_forwards_parent() -> None:
+    mock_api = Mock()
+    mock_api.delete_entity_by_name = AsyncMock(return_value=Mock())
+    client = EntityClient(mock_api)
+
+    await client.delete(_Child, "child-1", workspace="default", parent="parent-1")
+
+    call = mock_api.delete_entity_by_name.await_args
+    assert call is not None
+    assert call.kwargs["query_params"] == {"parent": "parent-1"}

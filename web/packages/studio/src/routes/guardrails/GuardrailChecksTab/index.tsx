@@ -7,18 +7,26 @@ import { useGuardrailChecksForConfig } from '@studio/api/guardrail-checks/hooks'
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import {
+  GUARDRAIL_CHECKS_DEFAULT_SUB_TAB,
+  isGuardrailChecksSubTab,
+} from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailTestCasesEditor } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCasesEditor';
+import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import type { FC } from 'react';
+import { Navigate, useParams } from 'react-router';
 
 export const GuardrailChecksTab: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { guardrailConfigName } = useRequiredPathParams([ROUTE_PARAMS.guardrailConfigName]);
+  const subTab = useParams()[ROUTE_PARAMS.guardrailChecksSubTab];
+  const isValidSubTab = isGuardrailChecksSubTab(subTab);
 
   const { data: config, isPending: isConfigPending } = useGuardrailsGetGuardrailConfig(
     workspace,
     guardrailConfigName,
-    { query: { enabled: Boolean(workspace && guardrailConfigName) } }
+    { query: { enabled: isValidSubTab && Boolean(workspace && guardrailConfigName) } }
   );
 
   const {
@@ -29,8 +37,24 @@ export const GuardrailChecksTab: FC = () => {
     workspace,
     config?.id ?? '',
     { page_size: 1000 },
-    { enabled: Boolean(config?.id) }
+    { enabled: isValidSubTab && Boolean(config?.id) }
   );
+
+  // Must stay above the loading gate: both queries are disabled for a hand-typed sub-tab,
+  // and a disabled query reports `isPending`, so falling through would park the redirect
+  // behind a "Loading checks..." spinner that never resolves.
+  if (!isValidSubTab) {
+    return (
+      <Navigate
+        replace
+        to={getGuardrailChecksSubTabRoute(
+          workspace,
+          guardrailConfigName,
+          GUARDRAIL_CHECKS_DEFAULT_SUB_TAB
+        )}
+      />
+    );
+  }
 
   if (isConfigPending || isChecksPending) {
     return <Loading description="Loading checks..." />;
@@ -56,6 +80,12 @@ export const GuardrailChecksTab: FC = () => {
   }
 
   return (
-    <GuardrailTestCasesEditor workspace={workspace} configId={config.id} checks={checksPage.data} />
+    <GuardrailTestCasesEditor
+      workspace={workspace}
+      configId={config.id}
+      configData={config.data}
+      checks={checksPage.data}
+      subTab={subTab}
+    />
   );
 };

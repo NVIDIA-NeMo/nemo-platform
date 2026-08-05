@@ -40,7 +40,7 @@ import { getTextWithCount } from '@studio/util/strings';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash } from 'lucide-react';
 import { ComponentProps, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 type AgentEvalJobRow = AgentEvaluateJob & { id: string };
 

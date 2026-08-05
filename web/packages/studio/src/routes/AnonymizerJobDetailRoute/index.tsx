@@ -23,7 +23,7 @@ import { getWorkspaceAnonymizerRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { isJobTerminated } from '@studio/util/safeSynthesizer';
 import type { FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const AnonymizerJobDetailRoute: FC | null = ANONYMIZER_ENABLED
   ? () => {

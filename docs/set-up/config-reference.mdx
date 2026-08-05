@@ -914,7 +914,7 @@ Configuration for the Studio service.
 
 ```yaml wordWrap
 studio:
-  # Path to the directory containing the built static UI assets. When unset, defaults to the `static/` directory bundled alongside the `nmp.studio` package (populated by the wheel build).
+  # Path to the directory containing the built static UI assets. When unset, Studio looks for the `static/` directory bundled alongside the `nmp.studio` package (populated by the wheel build), then `/static/studio` (where NeMo Platform container images place the bundle), then `web/packages/studio/dist` in a source checkout.
   static_files_path:
   # Base URL of the platform. This is used by the Studio UI to make API calls. | default: ''
   platform_base_url: ''

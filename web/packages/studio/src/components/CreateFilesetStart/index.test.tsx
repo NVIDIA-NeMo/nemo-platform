@@ -2,87 +2,108 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CreateFilesetStart } from '@studio/components/CreateFilesetStart';
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 
+const renderStart = () => {
+  const onContinue = vi.fn();
+  render(<CreateFilesetStart workspace="default" onContinue={onContinue} />);
+  return { onContinue };
+};
+
 describe('CreateFilesetStart', () => {
-  it('renders all four start options', () => {
-    render(<CreateFilesetStart onContinue={vi.fn()} />);
+  it('renders all start options', () => {
+    renderStart();
 
     expect(screen.getByText('Describe with AI')).toBeInTheDocument();
     expect(screen.getByText('Start from a template')).toBeInTheDocument();
     expect(screen.getByText('Build from scratch')).toBeInTheDocument();
   });
 
-  it('shows no Continue footer until a selectable option is chosen', () => {
-    render(<CreateFilesetStart onContinue={vi.fn()} />);
+  it('shows no Continue footer until an option is chosen', () => {
+    renderStart();
 
     expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
-  });
-
-  it('does not select disabled options (they are no-ops)', async () => {
-    const user = userEvent.setup();
-    const onContinue = vi.fn();
-    render(<CreateFilesetStart onContinue={onContinue} />);
-
-    await user.click(screen.getByText('Describe with AI'));
-
-    expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
-    expect(onContinue).not.toHaveBeenCalled();
   });
 
   it('selecting Build from scratch reveals Continue and invokes onContinue with "scratch"', async () => {
     const user = userEvent.setup();
-    const onContinue = vi.fn();
-    render(<CreateFilesetStart onContinue={onContinue} />);
+    const { onContinue } = renderStart();
 
     await user.click(screen.getByText('Build from scratch'));
 
     const continueButton = screen.getByRole('button', { name: /continue/i });
-    expect(continueButton).toBeInTheDocument();
+    expect(continueButton).toBeEnabled();
 
     await user.click(continueButton);
     expect(onContinue).toHaveBeenCalledTimes(1);
-    expect(onContinue).toHaveBeenCalledWith('scratch');
+    expect(onContinue).toHaveBeenCalledWith({ optionId: 'scratch' });
   });
 
-  it('reveals template cards but no Continue until a template is chosen', async () => {
+  it('reveals template cards but keeps Continue disabled until a template is chosen', async () => {
     const user = userEvent.setup();
-    render(<CreateFilesetStart onContinue={vi.fn()} />);
+    renderStart();
 
     await user.click(screen.getByText('Start from a template'));
 
     expect(screen.getByText('Instruction fine-tuning (SFT)')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+    expect(screen.getByText('Pick a recipe to continue.')).toBeInTheDocument();
   });
 
-  it('choosing a template reveals Continue and invokes onContinue with the template id', async () => {
+  it('choosing a template enables Continue and invokes onContinue with the template id', async () => {
     const user = userEvent.setup();
-    const onContinue = vi.fn();
-    render(<CreateFilesetStart onContinue={onContinue} />);
+    const { onContinue } = renderStart();
 
     await user.click(screen.getByText('Start from a template'));
     await user.click(screen.getByText('Instruction fine-tuning (SFT)'));
 
-    const continueButton = screen.getByRole('button', { name: /continue/i });
-    await user.click(continueButton);
+    await user.click(screen.getByRole('button', { name: /continue/i }));
 
     expect(onContinue).toHaveBeenCalledTimes(1);
-    expect(onContinue).toHaveBeenCalledWith('template', 'sft-instruction');
+    expect(onContinue).toHaveBeenCalledWith({
+      optionId: 'template',
+      templateId: 'sft-instruction',
+    });
   });
 
   it('switching options clears a prior template selection', async () => {
     const user = userEvent.setup();
-    render(<CreateFilesetStart onContinue={vi.fn()} />);
+    renderStart();
 
     await user.click(screen.getByText('Start from a template'));
     await user.click(screen.getByText('Instruction fine-tuning (SFT)'));
-    expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue/i })).toBeEnabled();
 
     await user.click(screen.getByText('Build from scratch'));
     await user.click(screen.getByText('Start from a template'));
 
-    // Template selection was reset when the option changed, so Continue is gone again.
-    expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
+    // Template selection was reset when the option changed, so Continue is blocked again.
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+  });
+
+  it('selecting Describe with AI keeps Continue disabled until a config is generated', async () => {
+    const user = userEvent.setup();
+    renderStart();
+
+    await user.click(screen.getByText('Describe with AI'));
+
+    expect(
+      screen.getByRole('textbox', { name: /what do you want to generate/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+    expect(screen.getByText('Generate a valid config to continue.')).toBeInTheDocument();
+  });
+
+  it('blocks an empty generate with field errors instead of calling the model', async () => {
+    const user = userEvent.setup();
+    renderStart();
+
+    await user.click(screen.getByText('Describe with AI'));
+    await user.click(screen.getByRole('button', { name: /generate/i }));
+
+    expect(await screen.findByText('Choose a model to draft the config.')).toBeInTheDocument();
+    expect(screen.getByText('Describe the fileset you want.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
   });
 });

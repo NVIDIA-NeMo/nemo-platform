@@ -7,7 +7,7 @@ import { getGuardrailDetailRoute, getGuardrailsRoute } from '@studio/routes/util
 import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 const WORKSPACE = 'default';
 

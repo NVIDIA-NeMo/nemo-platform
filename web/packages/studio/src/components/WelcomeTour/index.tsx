@@ -6,7 +6,7 @@ import { TourController } from '@studio/components/WelcomeTour/TourController';
 import '@studio/components/WelcomeTour/theme.css';
 import { TourProvider } from 'modern-tour';
 import { FC, useMemo } from 'react';
-import { matchPath, useLocation } from 'react-router-dom';
+import { matchPath, useLocation } from 'react-router';
 
 export const WelcomeTour: FC = () => {
   const { pathname } = useLocation();
