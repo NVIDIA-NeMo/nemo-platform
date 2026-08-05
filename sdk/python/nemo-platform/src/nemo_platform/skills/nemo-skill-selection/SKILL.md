@@ -1,6 +1,6 @@
 ---
 name: nemo-skill-selection
-description: Top-level skill selector for ambiguous tasks involving NeMo Platform (NVIDIA's agent platform). Picks the right downstream skill for setup, design, specification, agent configuration, build, deployment, testing, status, teardown, evaluation, optimization, security, or model customization. Use when the user needs help deciding where a NeMo Platform task should start.
+description: Top-level skill selector for ambiguous tasks involving NeMo Platform (NVIDIA's agent platform). Picks the right downstream skill for setup, design, specification, agent configuration, build, deployment, testing, observability, status, teardown, evaluation, optimization, security, or model customization. Use when the user needs help deciding where a NeMo Platform task should start.
 triggers:
   - build an agent
   - create an agent
@@ -55,6 +55,8 @@ Match the user's intent to one downstream skill. Pick exactly one.
 | "write agent.yaml", "validate agent.yaml", "choose a harness", "migrate this NAT YAML", "convert to nemo-agents-spec-v1" | `nemo-agent-config` | Author or migrate the Platform-managed machine-readable config without running the full build |
 | "build the agent", "create the agent", "deploy", "scaffold from spec" | `nemo-build-agent` | Build from the approved spec, default to Platform `agent.yaml`, register, deploy, evaluate, and optionally apply guardrails |
 | "ask my agent", "try the agent", "test it", "invoke this agent.yaml" | `nemo-try-agent` | Invoke a named deployment or run a local agent YAML config once |
+| "instrument my agent", "send traces", "use Intake", "agent observability", "query spans or traces" | `nemo-intake` | Choose an ingest path, instrument the source, ingest telemetry, and verify spans, traces, sessions, or evaluator results |
+| "create an experiment", "publish evaluation runs", "evaluation leaderboard" | `nemo-experiments-upload` | Create Experiments and Evaluations, ingest their telemetry and scores, and verify leaderboard rollups |
 | "status", "what is running", "platform health", "is the platform up", "what's deployed", "show me what's running" | `nemo-status` | Read-only dashboard: platform, agents, providers, models |
 | "shut down", "stop NeMo", "tear down", "clean up" | `nemo-teardown` | Stop the cluster (keep data, delete platform data, or full cleanup) |
 | "fine-tune", "customize the model", "train on my data", "SFT", "LoRA" | `nemo-customizer` | Model customization via installed customization contributor plugins (`nemo-customizer-plugin`). Requires plugin skills to be installed (`nemo skills install` / enabled-plugins). |
@@ -117,6 +119,8 @@ NeMo Platform skills I can route to:
   nemo-agent-config  author, validate, or migrate Platform agent.yaml
   nemo-build-agent  build from the spec, register, deploy, evaluate, and sign off
   nemo-try-agent  invoke a named deployment or local agent YAML config
+  nemo-intake     instrument agents, ingest/query telemetry, attach scores
+  nemo-experiments-upload  publish named evaluation runs to an Experiments leaderboard
   nemo-status     read-only platform health dashboard
   nemo-teardown   guided shutdown
 
