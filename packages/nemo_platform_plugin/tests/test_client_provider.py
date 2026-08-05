@@ -207,6 +207,12 @@ class _CustomProvider:
     def get_async_nemo_client(self, **kwargs) -> AsyncNemoClient:
         return AsyncNemoClient(base_url="http://custom:1234")
 
+    def get_task_nemo_client(self, service_name, **kwargs) -> NemoClient:
+        return NemoClient(base_url="http://custom:1234")
+
+    def get_async_task_nemo_client(self, service_name, **kwargs) -> AsyncNemoClient:
+        return AsyncNemoClient(base_url="http://custom:1234")
+
 
 class TestProviderResolution:
     def setup_method(self):

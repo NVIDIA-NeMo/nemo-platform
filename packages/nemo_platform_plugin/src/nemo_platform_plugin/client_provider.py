@@ -36,9 +36,15 @@ import json
 import logging
 import os
 from importlib.metadata import entry_points
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from nemo_platform_plugin.client.auth import TokenProvider
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.constants import (
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    is_workload_identity_token_file_set,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +84,28 @@ class NemoClientProvider(Protocol):
         workspace: str | None = None,
     ) -> AsyncNemoClient:
         """Build an async NemoClient for the current service context."""
+
+    def get_task_nemo_client(
+        self,
+        service_name: str,
+        *,
+        workspace: str | None = None,
+    ) -> NemoClient:
+        """Build a sync NemoClient for use inside a task container.
+
+        Mirrors ``nmp.common.sdk_factory.get_task_sdk``: authenticate as
+        ``service:{service_name}`` while acting on behalf of the job creator
+        (read from ``NMP_PRINCIPAL``), or bootstrap workload-identity bearer-token
+        exchange when ``NMP_WORKLOAD_IDENTITY_TOKEN_FILE`` is set.
+        """
+
+    def get_async_task_nemo_client(
+        self,
+        service_name: str,
+        *,
+        workspace: str | None = None,
+    ) -> AsyncNemoClient:
+        """Async counterpart of :meth:`get_task_nemo_client`."""
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +173,60 @@ def _build_headers(
     return headers
 
 
+def _effective_on_behalf_of(principal: dict[str, Any]) -> tuple[str, list[str], str | None]:
+    """Collapse an env principal to its acting identity (id, groups, email).
+
+    Mirrors :pyattr:`nmp.common.auth.Principal.effective_principal`: if the job
+    creator's principal is itself delegated, the ``on_behalf_of`` identity wins;
+    otherwise the principal's own identity is used.
+    """
+    if principal.get("on_behalf_of"):
+        return (
+            principal["on_behalf_of"],
+            list(principal.get("on_behalf_of_groups") or []),
+            principal.get("on_behalf_of_email"),
+        )
+    return principal["id"], list(principal.get("groups") or []), principal.get("email")
+
+
+def _build_task_headers(service_name: str) -> dict[str, str]:
+    """Headers for a task container: service principal + creator delegation.
+
+    Wire-equivalent to ``get_task_sdk(as_service=service_name)`` in the
+    non-workload-identity path -- ``service:{service_name}`` plus the full
+    ``X-NMP-Principal-On-Behalf-Of*`` set derived from ``NMP_PRINCIPAL``.
+    """
+    headers: dict[str, str] = {
+        _INTERNAL_REQUEST_HEADER: "true",
+        "X-NMP-Principal-Id": f"service:{service_name}",
+    }
+    principal = _read_principal_from_env()
+    if principal is None:
+        logger.warning(
+            "NMP_PRINCIPAL not set; task NemoClient will authenticate as service:%s without on-behalf-of delegation",
+            service_name,
+        )
+        return headers
+    obo_id, obo_groups, obo_email = _effective_on_behalf_of(principal)
+    headers["X-NMP-Principal-On-Behalf-Of"] = obo_id
+    if obo_groups:
+        headers["X-NMP-Principal-On-Behalf-Of-Groups"] = ",".join(obo_groups)
+    if obo_email:
+        headers["X-NMP-Principal-On-Behalf-Of-Email"] = obo_email
+    return headers
+
+
+def _workload_identity_auth(base_url: str) -> TokenProvider:
+    """Build a workload-identity token-exchange auth provider.
+
+    Only call when :func:`is_workload_identity_token_file_set` is true.
+    """
+    from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
+
+    token_file = os.environ[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR]
+    return resolve_workload_exchange_provider(base_url=base_url, subject_token_file=Path(token_file))
+
+
 def _base_url() -> str:
     return os.environ.get("NMP_BASE_URL", "http://localhost:8080")
 
@@ -178,6 +260,46 @@ class DefaultNemoClientProvider:
     ) -> AsyncNemoClient:
         headers = _build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
         return AsyncNemoClient(base_url=_base_url(), workspace=workspace, default_headers=headers or None)
+
+    def get_task_nemo_client(
+        self,
+        service_name: str,
+        *,
+        workspace: str | None = None,
+    ) -> NemoClient:
+        base_url = _base_url()
+        if is_workload_identity_token_file_set():
+            return NemoClient(
+                base_url=base_url,
+                workspace=workspace,
+                auth=_workload_identity_auth(base_url),
+                default_headers={_INTERNAL_REQUEST_HEADER: "true"},
+            )
+        return NemoClient(
+            base_url=base_url,
+            workspace=workspace,
+            default_headers=_build_task_headers(service_name),
+        )
+
+    def get_async_task_nemo_client(
+        self,
+        service_name: str,
+        *,
+        workspace: str | None = None,
+    ) -> AsyncNemoClient:
+        base_url = _base_url()
+        if is_workload_identity_token_file_set():
+            return AsyncNemoClient(
+                base_url=base_url,
+                workspace=workspace,
+                auth=_workload_identity_auth(base_url),
+                default_headers={_INTERNAL_REQUEST_HEADER: "true"},
+            )
+        return AsyncNemoClient(
+            base_url=base_url,
+            workspace=workspace,
+            default_headers=_build_task_headers(service_name),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -305,3 +427,24 @@ def get_async_nemo_client(
         on_behalf_of=on_behalf_of,
         workspace=workspace,
     )
+
+
+def get_task_nemo_client(service_name: str, *, workspace: str | None = None) -> NemoClient:
+    """Build a sync NemoClient for use inside a task container.
+
+    NemoClient counterpart of ``nmp.common.sdk_factory.get_task_sdk``.  Reads the
+    job creator's principal from ``NMP_PRINCIPAL`` and authenticates as
+    ``service:{service_name}`` while acting on behalf of that creator, or --
+    when ``NMP_WORKLOAD_IDENTITY_TOKEN_FILE`` is set -- bootstraps
+    workload-identity bearer-token exchange instead of trusted ``X-NMP-*``
+    principal headers.
+
+    Use this from task containers rather than ``get_nemo_client(as_service=...)``,
+    which authenticates as an *undelegated* service principal.
+    """
+    return _resolve_provider().get_task_nemo_client(service_name, workspace=workspace)
+
+
+def get_async_task_nemo_client(service_name: str, *, workspace: str | None = None) -> AsyncNemoClient:
+    """Async counterpart of :func:`get_task_nemo_client`."""
+    return _resolve_provider().get_async_task_nemo_client(service_name, workspace=workspace)

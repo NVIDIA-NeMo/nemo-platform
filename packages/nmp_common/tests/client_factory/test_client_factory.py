@@ -250,3 +250,145 @@ class TestPlatformNemoClientProvider:
         client = provider.get_async_nemo_client(as_service="svc")
         assert isinstance(client, AsyncNemoClient)
         assert client._default_headers["X-NMP-Principal-Id"] == "service:svc"
+
+
+# ---------------------------------------------------------------------------
+# Task client: creator delegation (PR-800 claim 1)
+# ---------------------------------------------------------------------------
+
+
+class TestTaskClientDelegation:
+    def test_task_client_delegates_to_job_creator(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv(
+            "NMP_PRINCIPAL",
+            '{"id": "user:alice@acme.com", "email": "alice@acme.com", "groups": ["team-a"]}',
+        )
+        client = cf.get_task_nemo_client("evaluator")
+        headers = client._default_headers
+        assert headers["X-NMP-Internal"] == "true"
+        assert headers["X-NMP-Principal-Id"] == "service:evaluator"
+        assert headers["X-NMP-Principal-On-Behalf-Of"] == "user:alice@acme.com"
+        assert headers["X-NMP-Principal-On-Behalf-Of-Email"] == "alice@acme.com"
+        assert headers["X-NMP-Principal-On-Behalf-Of-Groups"] == "team-a"
+
+    def test_task_client_without_principal_warns(self, monkeypatch: pytest.MonkeyPatch, caplog):
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+        with caplog.at_level("WARNING"):
+            client = cf.get_task_nemo_client("evaluator")
+        assert client._default_headers["X-NMP-Principal-Id"] == "service:evaluator"
+        assert "X-NMP-Principal-On-Behalf-Of" not in client._default_headers
+        assert "without on-behalf-of delegation" in caplog.text
+
+    async def test_async_task_client_delegates(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv(
+            "NMP_PRINCIPAL",
+            '{"id": "user:alice@acme.com", "email": "alice@acme.com", "groups": ["team-a"]}',
+        )
+        client = cf.get_async_task_nemo_client("evaluator")
+        assert client._default_headers["X-NMP-Principal-On-Behalf-Of"] == "user:alice@acme.com"
+
+    def test_provider_exposes_task_methods(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("NMP_PRINCIPAL", '{"id": "user:alice@acme.com"}')
+        provider = cf.PlatformNemoClientProvider()
+        headers = provider.get_task_nemo_client("evaluator")._default_headers
+        assert headers["X-NMP-Principal-On-Behalf-Of"] == "user:alice@acme.com"
+
+
+# ---------------------------------------------------------------------------
+# Task client: workload identity (PR-800 claim 2)
+# ---------------------------------------------------------------------------
+
+
+class _FakeExchangeProvider:
+    def get_access_token(self) -> str:
+        return "exchanged-token"
+
+    async def get_access_token_async(self) -> str:
+        return "exchanged-token"
+
+
+class TestTaskClientWorkloadIdentity:
+    @pytest.fixture
+    def _stub_exchange(self, monkeypatch: pytest.MonkeyPatch):
+        captured: dict[str, str] = {}
+
+        def _fake(*, base_url, subject_token_file):
+            captured["base_url"] = base_url
+            captured["subject_token_file"] = str(subject_token_file)
+            return _FakeExchangeProvider()
+
+        monkeypatch.setattr(
+            "nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider",
+            _fake,
+        )
+        return captured
+
+    def test_task_client_bootstraps_workload_identity(self, monkeypatch, tmp_path, _stub_exchange):
+        token_file = tmp_path / "token"
+        token_file.write_text("subject-token")
+        monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+        monkeypatch.setenv("NMP_BASE_URL", "http://platform:8080")
+        monkeypatch.setenv("NMP_PRINCIPAL", '{"id": "user:alice@acme.com"}')  # ignored in WI mode
+        Configuration.clear_cache()
+
+        client = cf.get_task_nemo_client("evaluator")
+        assert isinstance(client._auth, _FakeExchangeProvider)
+        assert _stub_exchange["base_url"] == "http://platform:8080"
+        # No trusted principal headers in workload-identity mode.
+        assert "X-NMP-Principal-Id" not in client._default_headers
+        assert client._default_headers.get("X-NMP-Internal") == "true"
+
+    def test_uds_does_not_bootstrap_workload_identity(self, monkeypatch, tmp_path, _stub_exchange):
+        # Matches get_task_sdk exactly: with the WI token file set the task path
+        # delegates to get_nemo_client(internal=True); on UDS transport that skips
+        # bearer exchange and propagates the env principal as its own identity
+        # (no service principal, no bearer auth).
+        token_file = tmp_path / "token"
+        token_file.write_text("subject-token")
+        monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+        monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
+        monkeypatch.setenv("NMP_PRINCIPAL", '{"id": "user:alice@acme.com"}')
+        Configuration.clear_cache()
+
+        client = cf.get_task_nemo_client("evaluator")
+        assert client._auth is None
+        assert client._default_headers["X-NMP-Principal-Id"] == "user:alice@acme.com"
+        assert "X-NMP-Principal-On-Behalf-Of" not in client._default_headers
+
+
+# ---------------------------------------------------------------------------
+# UDS endpoint routing + transport (PR-800 claim 3)
+# ---------------------------------------------------------------------------
+
+
+class TestUdsTransport:
+    def test_uds_base_url_is_normalized_not_pathed(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
+        Configuration.clear_cache()
+        client = cf.get_nemo_client()
+        # base_url is the routable host, not the raw unix:// socket path.
+        assert client.base_url == "http://nemo-platform.local"
+        # concatenating an API path yields a valid URL, not a broken one.
+        assert client.base_url + "/apis/entities/v2/foo" == "http://nemo-platform.local/apis/entities/v2/foo"
+
+    def test_uds_sync_client_binds_socket_transport(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
+        Configuration.clear_cache()
+        client = cf.get_nemo_client()
+        transport = client._http._transport
+        assert isinstance(transport, httpx.HTTPTransport)
+        assert transport._pool._uds == "/tmp/nemo-platform.sock"
+
+    async def test_uds_async_client_binds_socket_transport(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
+        Configuration.clear_cache()
+        client = cf.get_async_nemo_client()
+        transport = client._http._transport
+        assert isinstance(transport, httpx.AsyncHTTPTransport)
+        assert transport._pool._uds == "/tmp/nemo-platform.sock"
+
+    def test_tcp_client_uses_shared_client(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("NMP_BASE_URL", "http://platform:8080")
+        Configuration.clear_cache()
+        client = cf.get_nemo_client()
+        assert client.base_url == "http://platform:8080"
