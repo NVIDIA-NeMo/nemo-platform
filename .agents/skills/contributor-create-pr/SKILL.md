@@ -40,41 +40,40 @@ nmp_repo_for_url() {
   gh repo view "$1" --json nameWithOwner --jq '.nameWithOwner'
 }
 
-NMP_UPSTREAM_CANDIDATES=""
-for NMP_REMOTE in $(git remote); do
-  NMP_REMOTE_IS_UPSTREAM=true
-  NMP_REMOTE_HAS_FETCH_URL=false
-  while IFS= read -r NMP_URL; do
-    NMP_REMOTE_HAS_FETCH_URL=true
-    NMP_URL_REPO="$(nmp_repo_for_url "$NMP_URL")" || {
-      NMP_REMOTE_IS_UPSTREAM=false
-      break
-    }
-    if [ "$NMP_URL_REPO" != "$NMP_REPO" ]; then
-      NMP_REMOTE_IS_UPSTREAM=false
-      break
-    fi
-  done < <(git remote get-url --all "$NMP_REMOTE")
-
-  if "$NMP_REMOTE_HAS_FETCH_URL" && "$NMP_REMOTE_IS_UPSTREAM"; then
-    NMP_UPSTREAM_CANDIDATES="${NMP_UPSTREAM_CANDIDATES}${NMP_UPSTREAM_CANDIDATES:+$'\n'}${NMP_REMOTE}"
+nmp_require_url_repo() {
+  NMP_ACTUAL_REPO="$(nmp_repo_for_url "$1")" || return 1
+  if [ "$NMP_ACTUAL_REPO" != "$2" ]; then
+    printf 'Git URL resolves to %s, expected %s\n' "$NMP_ACTUAL_REPO" "$2" >&2
+    return 1
   fi
-done
+}
 
-NMP_UPSTREAM_COUNT="$(printf '%s\n' "$NMP_UPSTREAM_CANDIDATES" | sed '/^$/d' | wc -l | tr -d ' ')"
-if printf '%s\n' "$NMP_UPSTREAM_CANDIDATES" | grep -qx upstream; then
-  NMP_UPSTREAM_REMOTE=upstream
-elif printf '%s\n' "$NMP_UPSTREAM_CANDIDATES" | grep -qx origin; then
+NMP_PUSH_REMOTE=origin
+NMP_PUSH_REPO="$(nmp_repo_for_url "$(git remote get-url "$NMP_PUSH_REMOTE")")"
+while IFS= read -r NMP_URL; do
+  nmp_require_url_repo "$NMP_URL" "$NMP_PUSH_REPO" || exit 1
+done < <(
+  git remote get-url --all "$NMP_PUSH_REMOTE"
+  git remote get-url --push --all "$NMP_PUSH_REMOTE"
+)
+NMP_PUSH_URL="$(git remote get-url --push "$NMP_PUSH_REMOTE")"
+NMP_PUSH_PARENT="$(gh api "repos/$NMP_PUSH_REPO" --jq '.parent.full_name // ""')"
+
+if [ "$NMP_PUSH_REPO" = "$NMP_REPO" ]; then
   NMP_UPSTREAM_REMOTE=origin
-elif [ "$NMP_UPSTREAM_COUNT" -eq 1 ]; then
-  NMP_UPSTREAM_REMOTE="$NMP_UPSTREAM_CANDIDATES"
+elif [ "$NMP_PUSH_PARENT" = "$NMP_REPO" ]; then
+  NMP_UPSTREAM_REMOTE=upstream
+  while IFS= read -r NMP_URL; do
+    nmp_require_url_repo "$NMP_URL" "$NMP_REPO" || exit 1
+  done < <(git remote get-url --all "$NMP_UPSTREAM_REMOTE")
 else
-  printf 'Could not select one encrypted remote for %s; found %s candidates\n' "$NMP_REPO" "$NMP_UPSTREAM_COUNT" >&2
+  printf 'origin is neither %s nor its fork\n' "$NMP_REPO" >&2
   exit 1
 fi
+NMP_HEAD_OWNER="${NMP_PUSH_REPO%%/*}"
 ```
 
-Require an active host-authenticated account, `nameWithOwner` equal to `NVIDIA-NeMo/nemo-platform`, and a configured remote whose fetch URLs all resolve to that repository over encrypted HTTPS or SSH. Prefer a matching `upstream`, then a matching `origin`, then a sole matching remote. A contributor fork may remain `origin`; use a separate canonical remote such as `upstream` for the trusted base. If no canonical remote exists or unnamed candidates remain ambiguous, stop and ask the user to configure or select one rather than adding or rewriting remotes implicitly. Keep `NMP_REPO`, `NMP_UPSTREAM_REMOTE`, and `nmp_repo_for_url` available for later sections.
+Require a conventional checkout: `origin` is the validated push target; when `origin` is a fork of `NMP_REPO`, an `upstream` remote must fetch from the canonical repository. Require every used URL to resolve to its expected GitHub repository over encrypted HTTPS or SSH. Stop on custom or mismatched layouts rather than mutating remotes implicitly. Keep the `NMP_*` variables and helper functions available for later sections.
 
 If `gh` fails only because a sandbox blocks host or network access, retry the same command with narrowly scoped host/network approval. If authentication or authorization still fails outside the sandbox, report the command and error and stop.
 
@@ -188,7 +187,16 @@ Never run `git commit`, `git commit --amend`, or a fixup commit without `-s`. If
 Run this gate after any commit, amend, rebase, cherry-pick, conflict resolution, or automated fix, and before every push or `gh pr create`. It requires a syntactically valid sign-off whose email matches the commit author's email, case-insensitively:
 
 ```bash
-bash -euo pipefail <<'BASH'
+if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+  git fetch --unshallow "$NMP_PUSH_REMOTE"
+fi
+if [ "$(git rev-parse --is-shallow-repository)" = true ] \
+  || ! git merge-base "$NMP_BASE_REF" HEAD >/dev/null; then
+  printf 'DCO audit requires complete feature-branch ancestry\n' >&2
+  exit 1
+fi
+
+NMP_BASE_REF="$NMP_BASE_REF" bash -euo pipefail <<'BASH'
 : "${NMP_BASE_REF:?set NMP_BASE_REF to the refreshed canonical upstream default branch}"
 NMP_DCO_FAILED=0
 NMP_COMMIT_COUNT=0
@@ -239,13 +247,22 @@ Use one of the conventional types accepted by the pinned title action: `feat`, `
 Locate the PR template in the trusted base, not in the feature branch and not in a recent PR body:
 
 ```bash
-git ls-tree -r --name-only "$NMP_BASE_REF" \
-  | rg -i '(^|/)(pull_request_template)(\.md|/.*\.md)$'
+NMP_TEMPLATE_PATHS="$(git ls-tree -r --name-only "$NMP_BASE_REF")"
+NMP_TEMPLATE_PATHS="$(
+  printf '%s\n' "$NMP_TEMPLATE_PATHS" \
+    | awk 'tolower($0) ~ /(^|\/)pull_request_template(\.md|\/.*\.md)$/'
+)"
+NMP_TEMPLATE_COUNT="$(printf '%s\n' "$NMP_TEMPLATE_PATHS" | sed '/^$/d' | wc -l | tr -d ' ')"
+if [ "$NMP_TEMPLATE_COUNT" -ne 1 ]; then
+  printf 'Expected one trusted PR template, found %s\n' "$NMP_TEMPLATE_COUNT" >&2
+  exit 1
+fi
+NMP_TEMPLATE_PATH="$NMP_TEMPLATE_PATHS"
+NMP_PR_BODY="$(mktemp /tmp/nemo-platform-pr-body.XXXXXX)"
+git show "$NMP_BASE_REF:$NMP_TEMPLATE_PATH" > "$NMP_PR_BODY"
 ```
 
-- If exactly one template applies, copy it with `git show "$NMP_BASE_REF:<template-path>"` into a file created by `mktemp /tmp/nemo-platform-pr-body.XXXXXX`.
-- If multiple templates exist, select the repository-defined template that matches the change. Ask when selection is ambiguous.
-- If no template exists on the trusted base, report the missing repository dependency and stop before `gh pr create`. Do not invent a template or silently reuse a branch-modified or historical body.
+- If the trusted base does not have exactly one template, report the missing or ambiguous repository dependency and stop before `gh pr create`. Do not invent a template or silently reuse a branch-modified or historical body.
 - If the PR changes the template, still populate the trusted base version and explain the template change in that body.
 
 Preserve the template's section order, comments, and checkbox semantics. Complete every applicable section from `git diff "$NMP_BASE_REF...HEAD"`. Check only items backed by command, hook, or CI evidence. Use `Fixes #NNN` or `Closes #NNN` only for a real related issue. Do not add a PR-body sign-off unless the trusted template requests it; the commit-level DCO audit remains mandatory.
@@ -256,46 +273,11 @@ Immediately before pushing, rerun the DCO audit, confirm the branch and remote, 
 
 ```bash
 NMP_BRANCH="$(git branch --show-current)"
-NMP_PUSH_REMOTE="$(git config --get "branch.$NMP_BRANCH.pushRemote" || true)"
-if [ -z "$NMP_PUSH_REMOTE" ]; then
-  NMP_PUSH_REMOTE="$(git config --get remote.pushDefault || true)"
-fi
-if [ -z "$NMP_PUSH_REMOTE" ]; then
-  NMP_PUSH_REMOTE="$(git config --get "branch.$NMP_BRANCH.remote" || true)"
-fi
-if [ -z "$NMP_PUSH_REMOTE" ] || [ "$NMP_PUSH_REMOTE" = "." ]; then
-  NMP_PUSH_REMOTE=origin
-fi
-
-NMP_PUSH_REPO=""
-NMP_PUSH_URL=""
-while IFS= read -r NMP_URL; do
-  NMP_URL_REPO="$(nmp_repo_for_url "$NMP_URL")" || exit 1
-  if [ -z "$NMP_PUSH_REPO" ]; then
-    NMP_PUSH_REPO="$NMP_URL_REPO"
-    NMP_PUSH_URL="$NMP_URL"
-  elif [ "$NMP_URL_REPO" != "$NMP_PUSH_REPO" ]; then
-    printf 'Push URLs for %s resolve to different repositories\n' "$NMP_PUSH_REMOTE" >&2
-    exit 1
-  fi
-done < <(git remote get-url --push --all "$NMP_PUSH_REMOTE")
-
-if [ -z "$NMP_PUSH_REPO" ]; then
-  printf 'Remote %s has no push URL\n' "$NMP_PUSH_REMOTE" >&2
-  exit 1
-fi
-NMP_PUSH_PARENT="$(gh api "repos/$NMP_PUSH_REPO" --jq '.parent.full_name // ""')"
-if [ "$NMP_PUSH_REPO" != "$NMP_REPO" ] && [ "$NMP_PUSH_PARENT" != "$NMP_REPO" ]; then
-  printf 'Push repository %s is neither %s nor its fork\n' "$NMP_PUSH_REPO" "$NMP_REPO" >&2
-  exit 1
-fi
-NMP_HEAD_OWNER="${NMP_PUSH_REPO%%/*}"
-
 git log --oneline "$NMP_BASE_REF..HEAD"
 git push --set-upstream "$NMP_PUSH_REMOTE" "HEAD:refs/heads/$NMP_BRANCH"
 ```
 
-Validate every configured push URL for the selected push remote. Permit the canonical repository or a GitHub fork whose parent is `NMP_REPO`; reject plaintext transports, unrelated repositories, and mixed push targets. Use a normal push first. On a non-fast-forward rejection, fetch the exact branch from the validated push URL and inspect both histories. Stop if the remote contains unexpected work.
+Use the validated `origin` push target from section 1. On a non-fast-forward rejection, fetch the exact branch from its validated push URL and inspect both histories. Stop if the remote contains unexpected work.
 
 Only after the user approves rewriting a published branch, pin the lease to the fetched remote SHA:
 
@@ -357,9 +339,9 @@ Inspect CodeRabbit's issue comments, reviews, and inline comments:
 
 ```bash
 gh api "repos/$NMP_REPO/issues/<number>/comments" --paginate \
-  --jq '.[] | select(.user.login | ascii_downcase | contains("coderabbit")) | {author:.user.login,updated_at,body}'
+  --jq '.[] | select(.user.login == "coderabbitai[bot]") | {author:.user.login,updated_at,body}'
 gh api "repos/$NMP_REPO/pulls/<number>/comments" --paginate \
-  --jq '.[] | select(.user.login | ascii_downcase | contains("coderabbit")) | {author:.user.login,path,line,updated_at,body}'
+  --jq '.[] | select(.user.login == "coderabbitai[bot]") | {author:.user.login,path,line,updated_at,body}'
 ```
 
 Verify each finding against the current head. Fix confirmed correctness, security, or test-coverage problems and rerun targeted validation. Do not add abstractions or behavior merely to satisfy reviewer wording. Explain false positives or style-only suggestions when useful. Ask before making a design-changing, risky, broad, or ambiguous change. Do not manually request or re-request CodeRabbit, and do not act on its suggested-reviewer text without user authorization.
