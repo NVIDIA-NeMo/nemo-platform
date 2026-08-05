@@ -12,6 +12,7 @@ from anonymizer.config.anonymizer_config import AnonymizerConfig
 from anonymizer.config.replace_strategies import Annotate, Hash, Redact, ReplaceMethodBase, Substitute
 from nemo_anonymizer_plugin.app.input import AnonymizerInputSpec
 from nemo_anonymizer_plugin.app.model_configs import SelectedModelsOverrides
+from nemo_anonymizer_plugin.config import DEFAULT_MAX_PREVIEW_NUM_RECORDS
 from pydantic import BaseModel, Field, field_serializer
 
 _REPLACE_METHOD_KINDS: dict[type[ReplaceMethodBase], str] = {
@@ -54,7 +55,12 @@ class AnonymizerRequest(BaseModel):
 
 
 class PreviewRequest(AnonymizerRequest):
-    num_records: int = Field(default=10, ge=1)
+    # Annotated, not `le=`: deployments may raise `preview_num_records.max` past this.
+    num_records: int = Field(
+        default=DEFAULT_MAX_PREVIEW_NUM_RECORDS,
+        ge=1,
+        json_schema_extra={"maximum": DEFAULT_MAX_PREVIEW_NUM_RECORDS},
+    )
 
 
 class AnonymizerStepConfig(BaseModel):

@@ -11,6 +11,7 @@ from anonymizer.config.anonymizer_config import AnonymizerConfig
 from anonymizer.config.replace_strategies import Redact
 from nemo_anonymizer_plugin.app.input import AnonymizerInputSpec
 from nemo_anonymizer_plugin.app.task_config import AnonymizerRequest, PreviewRequest
+from nemo_anonymizer_plugin.config import DEFAULT_MAX_PREVIEW_NUM_RECORDS
 
 
 def _config() -> AnonymizerConfig:
@@ -43,6 +44,23 @@ def test_anonymizer_request_accepts_fileset_source_without_local_path_validation
     )
 
     assert req.data.source == "team-a/pii-inputs#data/input.parquet"
+
+
+def test_preview_num_records_advertises_the_default_maximum() -> None:
+    schema = PreviewRequest.model_json_schema()["properties"]["num_records"]
+
+    assert schema["minimum"] == 1
+    assert schema["maximum"] == DEFAULT_MAX_PREVIEW_NUM_RECORDS
+
+
+def test_preview_num_records_leaves_the_ceiling_to_the_configured_max() -> None:
+    req = PreviewRequest(
+        config=_config(),
+        data=AnonymizerInputSpec(source="https://example.com/x.csv", text_column="text"),
+        num_records=DEFAULT_MAX_PREVIEW_NUM_RECORDS + 1,
+    )
+
+    assert req.num_records == DEFAULT_MAX_PREVIEW_NUM_RECORDS + 1
 
 
 def test_request_dump_preserves_replace_discriminator() -> None:
