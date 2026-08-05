@@ -420,13 +420,16 @@ class EvolutionaryStrategy(Agent, Strategy):
         phase: Literal["exploration", "exploitation"] = "exploration" if round_num % 2 == 0 else "exploitation"
 
         # ---- Pareto optimization loop (shared by fresh start and resume) --
-        while True:
+        # The round budget bounds the loop itself rather than being a component's opinion:
+        # a terminator that never stops — or none at all — must not produce an unbounded
+        # run. The terminator decides whether to stop *early*.
+        while round_num < config.max_rounds:
             prior_analysis = (
                 await self._load_round_analysis(analysis_dir=analysis_dir, round_num=round_num - 1)
                 if round_num > 0
                 else None
             )
-            # No terminator selected means the round budget is the only stopping rule.
+            # Selecting no terminator means no early stopping; the budget above still holds.
             if config.terminator is not None:
                 terminator = get_component("terminator", config.terminator, models=self._models)
                 decision = await terminator.run(

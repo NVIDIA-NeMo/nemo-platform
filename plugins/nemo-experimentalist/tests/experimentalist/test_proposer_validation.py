@@ -33,19 +33,39 @@ def test_an_ancestor_that_is_not_a_survivor_id_is_dropped_not_fatal() -> None:
     usable = Proposer._usable_improvements(
         [_improvement("agent-2"), _improvement("id-agent-2", optimization_type="add_tool")],
         known_ancestors={"id-agent-2"},
+        allowed_types={"add_method", "add_tool"},
     )
 
     assert [improvement.ancestor for improvement in usable] == ["id-agent-2"]
 
 
 def test_a_real_survivor_id_passes() -> None:
-    usable = Proposer._usable_improvements([_improvement("id-agent-2")], known_ancestors={"id-agent-2"})
+    usable = Proposer._usable_improvements(
+        [_improvement("id-agent-2")], known_ancestors={"id-agent-2"}, allowed_types={"add_method"}
+    )
 
     assert len(usable) == 1
-    Proposer._validate_improvements(improvements=usable, max_candidates=3, allowed_types={"add_method"})
+    Proposer._validate_improvements(improvements=usable, max_candidates=3)
 
 
 def test_a_batch_where_every_ancestor_is_unknown_still_fails_loudly() -> None:
     """Dropping them all would leave the round silently proposing nothing."""
-    with pytest.raises(ValueError, match="unknown ancestor on every one"):
-        Proposer._usable_improvements([_improvement("agent-2")], known_ancestors={"id-agent-2"})
+    with pytest.raises(ValueError, match="None of the Proposer's 1 improvements were usable"):
+        Proposer._usable_improvements(
+            [_improvement("agent-2")], known_ancestors={"id-agent-2"}, allowed_types={"add_method"}
+        )
+
+
+def test_a_near_miss_optimization_type_is_dropped_not_fatal() -> None:
+    """`edit_method` for `edit_concrete_method` ended a real run at round two.
+
+    There are twenty valid types, so a near miss is as likely as a wrong ancestor, and
+    this check runs after the CodeAct loop where raising buys no retry.
+    """
+    usable = Proposer._usable_improvements(
+        [_improvement("id-a", optimization_type="edit_method"), _improvement("id-a", optimization_type="add_method")],
+        known_ancestors={"id-a"},
+        allowed_types={"add_method", "edit_concrete_method"},
+    )
+
+    assert [improvement.optimization_type for improvement in usable] == ["add_method"]

@@ -209,47 +209,57 @@ class Proposer(Agent, roles.Proposer):
             phase=phase,
             max_candidates=max_candidates,
         )
-        usable = self._usable_improvements(improvements, known_ancestors={s.id for s in proposal_survivors})
-        self._validate_improvements(
-            improvements=usable,
-            max_candidates=max_candidates,
+        usable = self._usable_improvements(
+            improvements,
+            known_ancestors={s.id for s in proposal_survivors},
             allowed_types=set(available_types) or all_types,
         )
+        self._validate_improvements(improvements=usable, max_candidates=max_candidates)
         return [improvement.as_proposal() for improvement in usable]
 
     @staticmethod
-    def _usable_improvements(improvements: list[Improvement], *, known_ancestors: set[str]) -> list[Improvement]:
-        """Keep the improvements that branch from a real survivor, dropping the rest.
+    def _usable_improvements(
+        improvements: list[Improvement], *, known_ancestors: set[str], allowed_types: set[str]
+    ) -> list[Improvement]:
+        """Keep the improvements a Builder could actually build, dropping the rest.
 
-        Dropped rather than fatal. ``ancestor`` is a candidate id and survivors carry both
-        id and label, so a plausible-looking "agent-2" is exactly what a model returns.
-        This runs *after* the CodeAct loop, so raising buys no retry: it unwinds through
-        the strategy and kills a run that has already spent hours over one bad string.
-        Same policy as ``_build_candidates`` — one bad proposal is not a bad run.
+        Two ways a model gets this wrong, and neither is worth a run. ``ancestor`` is a
+        candidate id while survivors carry both id and label, so a plausible "agent-2" is
+        exactly what comes back. And ``optimization_type`` has twenty valid values, so a
+        near-miss like "edit_method" for "edit_concrete_method" is equally likely.
+
+        Both checks run *after* the CodeAct loop, so raising buys no retry: it unwinds
+        through the strategy and ends a run that has already spent hours. Same policy as
+        the Builder — one bad proposal is not a bad round.
         """
-        usable = [improvement for improvement in improvements if improvement.ancestor in known_ancestors]
-        for rejected in improvements:
-            if rejected.ancestor not in known_ancestors:
+        usable: list[Improvement] = []
+        for improvement in improvements:
+            if improvement.ancestor not in known_ancestors:
                 logger.warning(
-                    "Dropping a proposal with unknown ancestor %r (it must be a survivor id, one of %s): %s",
-                    rejected.ancestor,
+                    "Dropping a proposal whose ancestor %r is not a survivor id (%s): %s",
+                    improvement.ancestor,
                     sorted(known_ancestors),
-                    rejected.optimization,
+                    improvement.optimization,
                 )
+            elif improvement.optimization_type not in allowed_types:
+                logger.warning(
+                    "Dropping a proposal with unusable optimization_type %r (allowed: %s): %s",
+                    improvement.optimization_type,
+                    sorted(allowed_types),
+                    improvement.optimization,
+                )
+            else:
+                usable.append(improvement)
         if improvements and not usable:
             raise ValueError(
-                f"Proposer named an unknown ancestor on every one of its {len(improvements)} improvements; "
-                f"survivor ids are {sorted(known_ancestors)}"
+                f"None of the Proposer's {len(improvements)} improvements were usable: every one named "
+                f"an ancestor outside {sorted(known_ancestors)} or a type outside {sorted(allowed_types)}"
             )
         return usable
 
     @staticmethod
-    def _validate_improvements(
-        *,
-        improvements: list[Improvement],
-        max_candidates: int,
-        allowed_types: set[str],
-    ) -> None:
+    def _validate_improvements(*, improvements: list[Improvement], max_candidates: int) -> None:
+        """Reject a batch that is malformed as a whole, after the unusable ones are gone."""
         if not improvements:
             raise ValueError("Proposer returned no improvements")
         if len(improvements) > max_candidates:
@@ -258,11 +268,6 @@ class Proposer(Agent, roles.Proposer):
         seen_descriptions: set[str] = set()
         for improvement in improvements:
             optimization_type = improvement.optimization_type
-            if optimization_type not in allowed_types:
-                raise ValueError(
-                    f"Proposer returned disallowed optimization_type "
-                    f"{optimization_type!r}; allowed: {sorted(allowed_types)}"
-                )
             if optimization_type in seen_types:
                 raise ValueError(f"Proposer returned duplicate optimization_type {optimization_type!r}")
             seen_types.add(optimization_type)

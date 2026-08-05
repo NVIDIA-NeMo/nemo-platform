@@ -187,3 +187,22 @@ def test_an_installed_out_of_tree_package_is_discovered() -> None:
     assert resolved.__module__.startswith("acme_strategies"), "resolved to something in this repo"
     assert issubclass(resolved, Strategy)
     assert "random-search" in registered("strategy")
+
+
+@pytest.mark.asyncio
+async def test_the_round_budget_bounds_the_loop_without_a_terminator() -> None:
+    """`max_rounds` must hold even when no terminator is selected.
+
+    The loop used to be `while True`, with the only bound living inside the default
+    terminator's budget check. Selecting a different terminator — or none — therefore
+    removed the budget too, and the run kept proposing until something else failed. A
+    component's opinion must not be the only thing between a config and an unbounded run.
+    """
+    import inspect
+
+    from nemo_experimentalist_plugin.experimentalist.strategies import evolutionary
+
+    source = inspect.getsource(evolutionary.EvolutionaryStrategy._run)
+
+    assert "while True" not in source, "the optimization loop must bound itself"
+    assert "while round_num < config.max_rounds" in source
