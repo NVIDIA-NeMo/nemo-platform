@@ -77,7 +77,7 @@ async def run_online(task_names: list[str], *, output_dir: Path, min_pass_rate: 
     return await _pipeline(min_pass_rate).run_tasks(
         tasks,
         target=runtime,
-        benchmark={"benchmark": "run-agent-eval", "mode": "online"},
+        labels={"example": "run-agent-eval", "mode": "online"},
         output_dir=output_dir,
     )
 
@@ -132,7 +132,7 @@ async def run_agentic_task(
     return await _pipeline(min_pass_rate, extra_metrics=extra_metrics).run_tasks(
         [task],
         target=runtime,
-        benchmark={"benchmark": "agentic-use", "task": task_name, "backend": backend},
+        labels={"example": "agentic-use", "task": task_name, "backend": backend},
         output_dir=output_dir,
         prepare_task=lambda t: ensure_task_image(t, skip_build=skip_build),
     )
@@ -145,7 +145,7 @@ async def rescore(rescore_dirs: list[Path], *, output_dir: Path, min_pass_rate: 
     return await _pipeline(min_pass_rate).score_trials(
         tasks,
         trials=trials,
-        benchmark={"benchmark": "run-agent-eval", "mode": "offline"},
+        labels={"example": "run-agent-eval", "mode": "offline"},
         output_dir=output_dir,
     )
 

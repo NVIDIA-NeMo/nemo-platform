@@ -81,7 +81,7 @@ sbx exec --workdir "$repo" \
   --env NEMO_EXPERIMENTALIST_MODELS_MID \
   --env NEMO_EXPERIMENTALIST_MODELS_FAST \
   nemo-experimentalist \
-  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin \
+  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
   nemo agents experimentalist run
 ```
 

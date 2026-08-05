@@ -55,7 +55,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
 from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.api import AsyncSandbox
 from nemo_evaluator_sdk.agent_eval.runtimes.sandbox.base import SandboxExecResult, SandboxProvider, SandboxSpec
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.agent_eval.workspace_seeds import SEED_FILES_INPUT_KEY, seed_workspace
 from nemo_evaluator_sdk.resolver_protocols import SecretResolver
 from nemo_evaluator_sdk.resolvers import LocalSecretResolver
@@ -176,6 +176,22 @@ class FabricContainerRuntime:
             env[env_var] = value
         self._resolved_env = env
         self._secrets_resolved = True
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runner and the Fabric container settings that shape its results.
+
+        Records the provider only — never ``self._secrets``, which is persisted nowhere.
+        """
+        return RunnerInfo(
+            name="fabric_container",
+            kind="runner",
+            config={
+                "provider": self._provider.name,
+                "image": self._image,
+                "adapter_id": self._adapter_id(),
+                "skills": [skill.name for skill in self._skill_set.skills],
+            },
+        )
 
     async def run_tasks(
         self,

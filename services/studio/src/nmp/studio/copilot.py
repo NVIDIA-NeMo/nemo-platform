@@ -3,7 +3,9 @@
 
 """Local copilot bridge for Studio."""
 
+import ast
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -140,6 +142,12 @@ _pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _pending_agent_inputs: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _session_conversations: dict[str, list[dict[str, str]]] = {}
 _session_mtimes: dict[str, float] = {}
+# Cache of Entity-Store-confirmed workspace names, keyed by session then by
+# (caller fingerprint, requested workspace), so the membership lookup runs once per
+# session/caller/workspace rather than on every message. Session ids are not bound to
+# a caller, so the caller's credential participates in the key: a cached authorization
+# decision must never be reused for a different caller. Cleared on session eviction.
+_session_workspace_cache: dict[str, dict[tuple[str, str], str]] = {}
 _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 
 
@@ -157,9 +165,12 @@ def _evict_oldest_sessions(*, protected_session_ids: set[str] | None = None) -> 
         _session_conversations.pop(oldest_session_id, None)
         _session_mtimes.pop(oldest_session_id, None)
         _initialized_sessions.discard(oldest_session_id)
+        _session_workspace_cache.pop(oldest_session_id, None)
 
     for session_id in set(_session_mtimes) - set(_session_conversations):
         _session_mtimes.pop(session_id, None)
+    for session_id in set(_session_workspace_cache) - set(_session_conversations):
+        _session_workspace_cache.pop(session_id, None)
 
 
 def _retain_recent_turns(conversation: list[dict[str, str]]) -> None:
@@ -1245,6 +1256,78 @@ def _validated_workspace_or_default(value: str | None) -> str:
     return workspace
 
 
+# Bounds for the workspace-membership lookup below. The entities list is scoped to
+# the caller's own memberships (forwarded auth), so the page count is normally tiny.
+_WORKSPACE_LOOKUP_PAGE_SIZE = 100
+_WORKSPACE_LOOKUP_MAX_PAGES = 50
+
+
+def _caller_fingerprint(headers: Mapping[str, str]) -> str:
+    """Return a stable, non-reversible fingerprint of the caller's forwarded credentials.
+
+    Used only to scope cached authorization decisions to the caller they were made
+    for. The raw credential is never retained -- just the digest.
+    """
+    material = json.dumps({name.lower(): value for name, value in sorted(headers.items())}, sort_keys=True)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+async def _authorized_workspace(workspace: str, headers: Mapping[str, str], session_id: str) -> str:
+    """Confirm the caller may target ``workspace`` and return the platform's own
+    spelling of the name.
+
+    The value is looked up in the Entity Store (scoped to the caller's auth) and the
+    returned name is taken from the *response*, not from client input, so the value
+    that later becomes part of the agent request URL cannot be attacker-controlled.
+    The list request itself carries no user-provided value in its URL.
+
+    The confirmed name is cached per (session, caller, requested workspace) so the
+    lookup runs once per session/caller/workspace instead of on every message; only
+    successful resolutions are cached. The caller fingerprint is part of the key so
+    one caller's authorization decision is never reused for another.
+    """
+    # ``default`` is our own fallback constant, always addressable; skip the lookup.
+    if workspace == "default":
+        return "default"
+
+    cache_key = (_caller_fingerprint(headers), workspace)
+    cached = _session_workspace_cache.get(session_id, {}).get(cache_key)
+    if cached is not None:
+        return cached
+
+    base_url = _studio_copilot_base_url()
+    list_url = f"{base_url}/apis/entities/v2/workspaces"
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for page in range(1, _WORKSPACE_LOOKUP_MAX_PAGES + 1):
+                response = await client.get(
+                    list_url,
+                    headers=dict(headers),
+                    params={"page": page, "page_size": _WORKSPACE_LOOKUP_PAGE_SIZE},
+                )
+                response.raise_for_status()
+                body = response.json()
+                data = body.get("data") if isinstance(body, dict) else None
+                if not isinstance(data, list) or not data:
+                    break
+                for entry in data:
+                    name = entry.get("name") if isinstance(entry, dict) else None
+                    if isinstance(name, str) and name == workspace:
+                        # ``name`` is sourced from the platform response, not the request.
+                        _session_workspace_cache.setdefault(session_id, {})[cache_key] = name
+                        return name
+                pagination = body.get("pagination") if isinstance(body, dict) else None
+                total_pages = pagination.get("total_pages") if isinstance(pagination, dict) else None
+                if isinstance(total_pages, int) and page >= total_pages:
+                    break
+    except httpx.HTTPError as exc:
+        logger.warning("Workspace authorization lookup failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Could not verify the requested workspace") from exc
+
+    raise HTTPException(status_code=404, detail="workspace not found or not accessible")
+
+
 def _workspace_path_segment(workspace: str) -> str:
     if WORKSPACE_NAME_RE.fullmatch(workspace) is None:
         raise ValueError("Invalid workspace name")
@@ -1252,8 +1335,8 @@ def _workspace_path_segment(workspace: str) -> str:
 
 
 def _studio_copilot_url(workspace: str) -> str:
-    # MessageRequest validates workspace against the platform's restricted entity-name
-    # pattern before it can become part of this internal request path.
+    # ``workspace`` is expected to already be an Entity-Store-confirmed name (see
+    # _authorized_workspace); it is percent-encoded as a single path segment here.
     return (
         f"{_studio_copilot_base_url()}/apis/agents/v2/workspaces/{_workspace_path_segment(workspace)}"
         f"/agents/{quote(_studio_copilot_name(), safe='')}/-/v1/chat/completions"
@@ -1301,9 +1384,70 @@ def _copilot_request_payload(
 ) -> dict[str, Any]:
     return {
         "messages": messages,
-        "stream": False,
+        # Stream so the agent runs its streaming path and emits NAT
+        # ``intermediate_data:`` tool steps we relay to the chat as tool-use parts.
+        "stream": True,
         "studio_session_id": studio_session_id,
     }
+
+
+_TOOL_STEP_PREFIX = "Tool: "
+
+
+def _parse_tool_step_input(payload: Any) -> dict[str, Any]:
+    """Best-effort extract the tool input dict from a NAT step markdown payload.
+
+    Payloads look like ``**Input:**\\n```json\\n{'resource': 'secrets'}...``; the
+    dict is a Python repr (single quotes), so parse the first balanced ``{...}``
+    with ``ast.literal_eval`` and fall back to an empty dict.
+    """
+    if not isinstance(payload, str):
+        return {}
+    start = payload.find("{")
+    if start == -1:
+        return {}
+    depth = 0
+    for index in range(start, len(payload)):
+        if payload[index] == "{":
+            depth += 1
+        elif payload[index] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    value = ast.literal_eval(payload[start : index + 1])
+                except (ValueError, SyntaxError):
+                    return {}
+                return value if isinstance(value, dict) else {}
+    return {}
+
+
+# Framework-injected tool arguments that must never be surfaced in the browser
+# tool-use event (they are internal plumbing, not user-facing input).
+_TOOL_INPUT_INTERNAL_KEYS = frozenset({"studio_session_id"})
+
+
+def _tool_use_stream_event(tool_name: str, tool_input: dict[str, Any]) -> tuple[str, str]:
+    safe_input = {key: value for key, value in tool_input.items() if key not in _TOOL_INPUT_INTERNAL_KEYS}
+    return (
+        "agent",
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": f"nemo-copilot-tool-{uuid.uuid4()}",
+                    "model": _studio_copilot_name(),
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": f"tool-{uuid.uuid4()}",
+                            "name": tool_name,
+                            "input": safe_input,
+                        }
+                    ],
+                },
+            }
+        ),
+    )
 
 
 async def _invoke_copilot(
@@ -1318,17 +1462,73 @@ async def _invoke_copilot(
         write=60.0,
         pool=10.0,
     )
+    queue = _session_streams.get(studio_session_id)
+    content_parts: list[str] = []
+    model = _studio_copilot_name()
+    seen_tool_ids: set[str] = set()
     async with httpx.AsyncClient(timeout=timeout) as client:
-        # The origin and agent name are server-configured. The only request-derived URL
-        # component is a NAME_PATTERN-validated, percent-encoded workspace path segment.
-        # codeql[py/partial-ssrf]
-        response = await client.post(
+        # The origin and agent name are server-configured; the workspace path segment is
+        # an Entity-Store-confirmed name resolved by _authorized_workspace before this call.
+        async with client.stream(
+            "POST",
             agent_url,
             headers=dict(headers),
             json=_copilot_request_payload(messages, studio_session_id),
-        )
-        response.raise_for_status()
-        return _copilot_response(response.json())
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.startswith("data:"):
+                    data = line[len("data:") :].strip()
+                    if not data or data == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(chunk, dict):
+                        continue
+                    if chunk.get("model"):
+                        model = chunk["model"]
+                    for choice in chunk.get("choices", []):
+                        piece = (choice.get("delta") or {}).get("content")
+                        if isinstance(piece, str) and piece:
+                            content_parts.append(piece)
+                elif line.startswith("intermediate_data:") and queue is not None:
+                    data = line[len("intermediate_data:") :].strip()
+                    try:
+                        step = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    name = step.get("name") if isinstance(step, dict) else None
+                    if not isinstance(name, str) or not name.startswith(_TOOL_STEP_PREFIX):
+                        continue
+                    step_id = step.get("id")
+                    if isinstance(step_id, str):
+                        if step_id in seen_tool_ids:
+                            continue
+                        seen_tool_ids.add(step_id)
+                    await queue.put(
+                        _tool_use_stream_event(
+                            name[len(_TOOL_STEP_PREFIX) :].strip(),
+                            _parse_tool_step_input(step.get("payload")),
+                        )
+                    )
+    return "".join(content_parts), model
+
+
+def _render_session_event(event_type: str, payload: Any) -> str | None:
+    """Render a queued session event as an SSE frame, or None if it is not relayable."""
+    if event_type == "permission_request":
+        return _sse(payload, event="permission_request")
+    if event_type == "input_request":
+        return _sse(payload, event="input_request")
+    if event_type == "permission_expired":
+        return _sse(payload, event="permission_expired")
+    if event_type == "input_expired":
+        return _sse(payload, event="input_expired")
+    if event_type == "agent":
+        return _sse(payload)
+    return None
 
 
 async def _stream_copilot(
@@ -1380,18 +1580,28 @@ async def _stream_copilot(
                 yield ":\n\n"
                 continue
             if queued_event in done:
-                event_type, payload = queued_event.result()
-                if event_type == "permission_request":
-                    yield _sse(payload, event="permission_request")
-                elif event_type == "input_request":
-                    yield _sse(payload, event="input_request")
-                elif event_type == "permission_expired":
-                    yield _sse(payload, event="permission_expired")
-                elif event_type == "input_expired":
-                    yield _sse(payload, event="input_expired")
-                elif event_type == "agent":
-                    yield _sse(payload)
+                rendered = _render_session_event(*queued_event.result())
+                if rendered is not None:
+                    yield rendered
                 queued_event = asyncio.create_task(queue.get())
+
+        # The invocation finished, but tool-use / prompt events may have been
+        # queued in the same event-loop turn as completion. Flush them before the
+        # final assistant message so they are not dropped when the loop exits.
+        pending: list[tuple[str, Any]] = []
+        if queued_event.done() and not queued_event.cancelled():
+            pending.append(queued_event.result())
+        else:
+            queued_event.cancel()
+        while True:
+            try:
+                pending.append(queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        for event_type, payload in pending:
+            rendered = _render_session_event(event_type, payload)
+            if rendered is not None:
+                yield rendered
 
         assistant_text, model = await invocation
         conversation.extend(
@@ -1439,13 +1649,18 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
     """Send a message to the deployed NeMo Copilot and stream Studio events."""
     sid = _validate_session_id(session_id)
     workspace = _validated_workspace_or_default(body.workspace)
-    agent_url = _studio_copilot_url(workspace)
+    # Headers are forwarded only over HTTPS, and the scheme comes from the
+    # server-configured base URL, so deriving them before the workspace is
+    # confirmed is equivalent -- and the authorization lookup needs them.
+    agent_headers = _copilot_request_headers(request, _studio_copilot_url(workspace))
+    canonical_workspace = await _authorized_workspace(workspace, agent_headers, sid)
+    agent_url = _studio_copilot_url(canonical_workspace)
     studio_base_url = _studio_base_url_from_request(body, request)
     studio_pathname = _studio_pathname_from_request(body, request)
     enabled_destinations = studio_links.enabled_destinations_from_request(request)
     system_prompt = _build_copilot_system_prompt(
         sid,
-        workspace,
+        canonical_workspace,
         studio_base_url,
         studio_pathname,
         enabled_destinations,
@@ -1455,7 +1670,7 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
             sid,
             body.message,
             agent_url,
-            _copilot_request_headers(request, agent_url),
+            agent_headers,
             system_prompt,
         ),
         media_type="text/event-stream",

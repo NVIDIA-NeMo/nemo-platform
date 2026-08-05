@@ -11,7 +11,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_platform.beta.evaluator.agent_eval.trials import (
+    AgentEvalTrial,
+    AgentEvalTrialStatus,
+    AgentOutput,
+    RunnerInfo,
+    callable_identity,
+)
 from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence
 
 
@@ -52,6 +58,17 @@ class CallableAgentTaskRunner:
         self._agent_fn = agent_fn
         self._parallelism = parallelism
         self._trial_id_suffix = trial_id_suffix
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runner; the agent callable itself is the result-shaping detail."""
+        return RunnerInfo(
+            name="callable",
+            kind="runner",
+            config={
+                "agent_fn": callable_identity(self._agent_fn),
+                "parallelism": self._parallelism,
+            },
+        )
 
     async def run_tasks(
         self,

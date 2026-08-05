@@ -75,6 +75,7 @@ from nat.builder.function import Function
 from nat.cli.register_workflow import register_function
 from nat.data_models.api_server import ChatRequest, ChatResponse, ChatResponseChunk, Usage
 from nat.data_models.function import FunctionBaseConfig
+from nat.plugins.langchain.callback_handler import LangchainProfilerHandler
 from nemo_studio_copilot.register import create_nemo_studio_copilot
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -243,13 +244,18 @@ class NemoStudioCopilotWrapperFunction(
 
     @staticmethod
     def _invocation_config(value: NemoStudioCopilotWrapperInput) -> RunnableConfig:
-        if value.studio_session_id is None:
-            return {}
-        return {
-            "configurable": {
-                "studio_session_id": str(value.studio_session_id),
-            }
-        }
+        config: RunnableConfig = {}
+        # Attach NAT's LangChain profiler so tool/LLM calls emit IntermediateSteps,
+        # which NAT surfaces as ``intermediate_data:`` stream events (and telemetry).
+        # Construction binds to the request-scoped step manager; guard so calls
+        # outside a NAT context (e.g. unit tests) degrade gracefully.
+        try:
+            config["callbacks"] = [LangchainProfilerHandler()]
+        except Exception:
+            logger.debug("LangchainProfilerHandler unavailable; tool-call trace disabled", exc_info=True)
+        if value.studio_session_id is not None:
+            config["configurable"] = {"studio_session_id": str(value.studio_session_id)}
+        return config
 
     @staticmethod
     def _has_tool_calls(message: AIMessage | dict[str, Any]) -> bool:
