@@ -79,31 +79,34 @@ nemo-relay --version
 
 ---
 
-### Calculator agent demo — Codex + Relay
+### Calculator agent demo — DeepAgents + Relay
 
 [`examples/nemo-agent-config/calculator-agent/agent.yaml`](examples/nemo-agent-config/calculator-agent/agent.yaml)
-uses Codex as its harness and routes `nvidia-nemotron-3-nano-30b-a3b`
+uses DeepAgents as its harness and routes `nvidia-nemotron-3-nano-30b-a3b`
 through the Platform Inference Gateway. The agent answers arithmetic and
 numeric comparison requests and records ATIF and ATOF telemetry with NeMo
 Relay.
 
-#### Step 1 — Start the platform
+#### Step 1 — Configure and start the platform
 
-Run this in a **dedicated terminal** from the repository root. Use a separate
-terminal for the remaining steps.
+Set the NVIDIA API key and local Platform URL from the repository root:
 
 ```bash
-nemo services run
+export NVIDIA_API_KEY="<your NVIDIA API key>"
+export NMP_BASE_URL=http://localhost:8080
 ```
 
-#### Preflight — Verify Platform readiness
-
-In the second terminal, set the local Platform URL and confirm that an existing
-instance is running and ready before continuing:
+Start ClickHouse for Intake, then set up NeMo Platform without deploying the
+default demo agent:
 
 ```bash
-export NMP_BASE_URL=http://localhost:8080
+services/intake/scripts/spans/run_clickhouse.sh
+nemo setup --auto --start-services --install-skills --no-deploy-agent
+```
 
+Confirm that the Platform is ready before continuing:
+
+```bash
 curl -fsS --connect-timeout 2 --max-time 5 \
   "$NMP_BASE_URL/health/ready" >/dev/null || {
   echo "NeMo Platform is not ready at $NMP_BASE_URL"
@@ -111,35 +114,7 @@ curl -fsS --connect-timeout 2 --max-time 5 \
 }
 ```
 
-#### Step 2 — Configure the model provider and harness
-
-Set the NVIDIA API key, then verify that Codex and NeMo Relay are ready:
-
-```bash
-export NVIDIA_API_KEY="<your NVIDIA API key>"
-
-codex login
-nemo-relay --version
-```
-
-Create the local NVIDIA Build provider and wait for its models to be
-registered:
-
-```bash
-nemo secrets create ngc-api-key \
-  --value "$NVIDIA_API_KEY"
-
-nemo inference providers create nvidia-build \
-  --host-url https://integrate.api.nvidia.com \
-  --api-key-secret-name ngc-api-key
-
-nemo wait inference provider nvidia-build
-```
-
-In production, the `system/nvidia-build` provider is normally created by the
-Platform seed job, so this local provider setup is not required.
-
-#### Step 3 — Create and deploy the agent
+#### Step 2 — Create and deploy the agent
 
 ```bash
 nemo agents create \
@@ -155,7 +130,7 @@ nemo agents deploy \
 `create` validates the config and registers the agent. `deploy` waits for the
 deployment to reach `running` by default.
 
-#### Step 4 — Invoke through the gateway
+#### Step 3 — Invoke through the gateway
 
 ```bash
 nemo agents invoke \
@@ -165,21 +140,16 @@ nemo agents invoke \
 
 The response content should be `12`.
 
-#### Step 5 — Verify Relay telemetry
+#### Step 4 — Verify Relay telemetry
 
-The config writes ATIF and ATOF files beneath the deployment's artifacts
-directory:
+The config writes ATOF events beneath the deployment's artifacts directory:
 
 ```bash
 find ~/.local/share/nemo/agents/system/default \
   -path "*calculator-agent-deployment*/artifacts/*" \
-  \( -name "*atif*" -o -name "*atof*" \) \
+  -name "*.atof.jsonl" \
   -exec ls -lh {} \;
 ```
-
-Its ATIF configuration also sends trajectories to the local Platform Intake
-API at `http://127.0.0.1:8080`. Ensure Intake is running if you want to use that
-HTTP sink.
 
 ### Packaging agents as container images
 
