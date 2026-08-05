@@ -724,7 +724,7 @@ class TestPortAvailability:
         [
             (
                 PortConflict(kind="foreign", port=8080),
-                ("already in use", "lsof -i :8080"),
+                ("already in use", "EADDRINUSE", "lsof -i :8080"),
             ),
             (
                 PortConflict(kind="nemo_instance", port=8080, scope="abc-8080"),
