@@ -2,6 +2,7 @@
 title: "Optimize Agents"
 description: ""
 ---
+
 <a id="agents-optimization"></a>
 
 Use the Agent Optimizer to analyze a deployed agent and act on improvement
@@ -16,12 +17,12 @@ evaluation result before promotion.
 
 ## What the Optimizer Checks
 
-| Suggestion type | Signal | Result |
-|-----------------|--------|--------|
-| Model optimization | An agent uses a single frontier model where a smaller model or route split may preserve quality at lower cost | Suggests a model swap or Switchyard random-routing virtual model |
-| Skill optimization | The agent uses skills and has an evaluation suite | Suggests running `nemo agents optimize-skills` to improve skill files and keep changes that pass evaluation |
-| Prompt optimization | The agent has an optimization config and baseline dataset | Suggests `nemo agents optimize run` for Fabric-backed tuning |
-| New model scan | Difference between the current model list and the previous optimizer snapshot | Suggests evaluating or auditing newly available models |
+| Suggestion type     | Signal                                                                                                        | Result                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Model optimization  | An agent uses a single frontier model where a smaller model or route split may preserve quality at lower cost | Suggests a model swap or Switchyard random-routing virtual model                                            |
+| Skill optimization  | The agent uses skills and has an evaluation suite                                                             | Suggests running `nemo agents optimize-skills` to improve skill files and keep changes that pass evaluation |
+| Prompt optimization | The agent has an optimization config and baseline dataset                                                     | Suggests `nemo agents optimize run` for Fabric-backed tuning                                                |
+| New model scan      | Difference between the current model list and the previous optimizer snapshot                                 | Suggests evaluating or auditing newly available models                                                      |
 
 Optimizer state is stored in the `nemo-agent-optimizer` fileset:
 
@@ -38,7 +39,8 @@ Before running the optimizer, make sure you have:
 1. Local services running (`nemo services run`).
 1. The agents plugin installed. For local development from this repository:
    ```bash
-   uv pip install -e packages/nemo_platform_plugin -e plugins/nemo-agents
+   uv sync --package nemo-agents-plugin
+   source .venv/bin/activate   # puts `nemo` on PATH
    ```
 1. A workspace with at least one model provider and discovered model entities.
 1. At least one deployed platform-managed agent.
@@ -273,8 +275,11 @@ optimization through `agents.optimize` (implementation in
 `nemo-optimization`). Input must be a Fabric-native agent package
 (`schema_version: fabric.agent/v1alpha1`). The golden-path harness is
 Hermes (`nvidia.fabric.hermes`); see
-`plugins/nemo-optimization/examples/hermes-optimize/` (install steps,
-Fabric 0.2.0+ wheels, and `--no-sync` notes live in that README).
+`plugins/nemo-optimization/examples/hermes-optimize/` (install steps live in
+that README).
+
+After `uv sync --package nemo-agents-plugin` (and activating `.venv`), invoke
+`nemo` directly.
 
 `--optimize-config` must be an **absolute** path. Run from the
 `nemo-platform` repo root so dataset / `base_dir` paths resolve.
@@ -286,8 +291,8 @@ Fabric 0.2.0+ wheels, and `--no-sync` notes live in that README).
 <Tab title="CLI">
 
 ```bash
-uv run --no-sync --package nemo-agents-plugin nemo agents optimize run \
-  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-chatonly.yaml" \
+nemo agents optimize run \
+  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/chatonly.yaml" \
   --workspace default
 ```
 
@@ -326,7 +331,7 @@ from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 WORKSPACE = "default"
 optimize_config = Path(
-    "plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-chatonly.yaml"
+    "plugins/nemo-optimization/examples/hermes-optimize/chatonly.yaml"
 ).resolve()
 
 client = NeMoPlatform(
@@ -350,11 +355,12 @@ print(result)
 
 </Tabs>
 
-### Bound MCP Hermes (path-first)
+### MCP Hermes (phishing analyzer)
 
 Point `PHISHING_AGENT_SRC` / `PHISHING_MCP_BIN` at an
 `email-phishing-analyzer-harnesses` checkout (its own `.venv` after
 `uv sync`). Do **not** pip-install that agent into the platform venv.
+Full setup steps are in `plugins/nemo-optimization/examples/hermes-optimize/README.md`.
 
 <Tabs>
 
@@ -365,8 +371,10 @@ export PHISHING_AGENT_ROOT="${PHISHING_AGENT_ROOT:-$HOME/work/email-phishing-ana
 export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
 export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
 
-uv run --no-sync --package nemo-agents-plugin nemo agents optimize run \
-  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-mcp.e2e.yaml" \
+# These environment variables are templated into mcp.yaml.
+
+nemo agents optimize run \
+  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/mcp.yaml" \
   --workspace default
 ```
 
@@ -395,7 +403,7 @@ os.environ.setdefault(
 )
 
 optimize_config = Path(
-    "plugins/nemo-optimization/examples/hermes-optimize/phishing.optimize.fabric-mcp.e2e.yaml"
+    "plugins/nemo-optimization/examples/hermes-optimize/mcp.yaml"
 ).resolve()
 
 client = NeMoPlatform(

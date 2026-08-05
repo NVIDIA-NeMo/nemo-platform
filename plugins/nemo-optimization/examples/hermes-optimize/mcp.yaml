@@ -1,10 +1,10 @@
-# Extended MCP e2e optimize package (path-first mcp_run_binding).
-# Broader search space than the smoke config — temperature + top_p, several trials.
+# MCP optimize package: Hermes + phishing analyzer (separate agent checkout).
+# Broader search space than chat-only — temperature + top_p, several trials.
 # Dataset: full phishing-agent eval set (email-phishing-analyzer-harnesses data/smaller_test.csv).
 schema_version: fabric.agent/v1alpha1
 metadata:
-  name: hermes-optimize-phishing-mcp-e2e
-  description: Hermes + analyzer MCP e2e with extended HPO search space.
+  name: hermes-optimize-mcp
+  description: Hermes + analyzer MCP optimize demo with extended HPO search space.
 harness:
   adapter_id: nvidia.fabric.hermes
   resolution: preinstalled
@@ -80,7 +80,7 @@ optimizer:
 eval:
   general:
     dataset:
-      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset-phishing.json
+      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset.mcp.json
     max_concurrency: 1
   fabric:
     base_dir: plugins/nemo-optimization/examples/hermes-optimize

@@ -54,7 +54,7 @@ requires_live_optimize_atif = pytest.mark.skipif(
 
 
 def _build_payload(dataset_path: Path) -> dict:
-    agent = yaml.safe_load((_EXAMPLE / "package.yaml").read_text(encoding="utf-8"))
+    agent = yaml.safe_load((_EXAMPLE / "chatonly.yaml").read_text(encoding="utf-8"))
 
     agent["models"]["default"].update(
         {

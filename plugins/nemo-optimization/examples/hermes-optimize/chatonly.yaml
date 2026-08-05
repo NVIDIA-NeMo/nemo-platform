@@ -1,34 +1,32 @@
-# Self-contained Hermes optimize package (inline Fabric agent + optimizer).
-# Fill models.*.model / base_url before running.
+# Runnable chat-only Hermes optimize package (proven CLI smoke).
+# Optimize config path must be absolute for `nemo agents optimize run`.
 #
-#   nemo agents optimize run \
-#     --optimize-config plugins/nemo-optimization/examples/hermes-optimize/package.yaml
+# See README.md in this directory for install + run steps.
 schema_version: fabric.agent/v1alpha1
 metadata:
-  name: hermes-optimize-demo
-  description: Hermes-backed numeric HPO demo agent (chat-only).
+  name: hermes-optimize-chatonly
+  description: Hermes-backed numeric HPO demo (chat-only, no MCP hook).
 harness:
   adapter_id: nvidia.fabric.hermes
   resolution: preinstalled
   settings:
-    max_tokens: 512
+    max_tokens: 256
     reasoning_config:
       effort: none
 models:
   default:
-    provider: openai
-    model: REPLACE_ME
-    base_url: REPLACE_ME
-    api_key: not-used
-    allow_empty_api_key: true
+    provider: nvidia
+    # inference-api.nvidia.com model ids are often prefixed (e.g. nvidia/meta/...).
+    model: nvidia/meta/llama-3.1-8b-instruct
+    base_url: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
     temperature: 0.0
     top_p: 1.0
   judge:
-    provider: openai
-    model: REPLACE_ME
-    base_url: REPLACE_ME
-    api_key: not-used
-    allow_empty_api_key: true
+    provider: nvidia
+    model: nvidia/meta/llama-3.1-8b-instruct
+    base_url: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
     temperature: 0.0
     max_tokens: 512
 instructions:
@@ -40,7 +38,7 @@ runtime:
   input_schema: chat
   output_schema: message
   max_turns: 4
-  timeout_seconds: 60
+  timeout_seconds: 120
   artifacts: ./artifacts
 environment:
   provider: local
@@ -64,12 +62,12 @@ optimizer:
 eval:
   general:
     dataset:
-      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset.json
+      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset.chatonly.json
     max_concurrency: 1
   fabric:
     base_dir: plugins/nemo-optimization/examples/hermes-optimize
-    capture_trajectory: true
-    timeout_s: 300
+    capture_trajectory: false
+    timeout_s: 180
   evaluators:
     accuracy:
       _type: tunable_rag_evaluator
