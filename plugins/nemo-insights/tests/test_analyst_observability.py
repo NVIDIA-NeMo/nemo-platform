@@ -3,7 +3,6 @@
 
 """Nooa tracing adapter tests."""
 
-from pathlib import Path
 from typing import cast
 
 import pytest
@@ -50,31 +49,22 @@ def test_shutdown_flushes_nooa_traces(monkeypatch: pytest.MonkeyPatch) -> None:
     assert flushed == [True]
 
 
-def test_remote_http_export_never_attaches_auth_headers(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    seen: dict[str, object] = {}
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text("configured: true\n")
+def test_remote_http_export_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected_otlp(*args: object, **kwargs: object) -> object:
+        raise AssertionError("remote HTTP must be rejected before configuring the exporter")
 
-    def fake_otlp(*, endpoint: str, headers: dict[str, str] | None) -> object:
-        seen["otlp"] = (endpoint, headers)
-        return object()
+    monkeypatch.setattr(observability.exporters, "otlp", unexpected_otlp)
 
-    def unexpected_config_load(*args: object, **kwargs: object) -> object:
-        raise AssertionError("remote HTTP must be rejected before loading bearer credentials")
+    with pytest.raises(ValueError, match="must use HTTPS"):
+        observability.setup_analyst_observability(
+            base_url="http://platform.example",
+            workspace="workspace",
+            target_agent="target-agent",
+        )
 
-    monkeypatch.setattr(observability.Config, "get_default_config_path", lambda: config_path)
-    monkeypatch.setattr(observability.Config, "load", unexpected_config_load)
-    monkeypatch.setattr(observability.exporters, "otlp", fake_otlp)
-    monkeypatch.setattr(observability, "enable_tracing", lambda **kwargs: None)
-    monkeypatch.setattr(observability, "set_session", lambda session_id: None)
 
-    configured = observability.setup_analyst_observability(
-        base_url="http://platform.example",
-        workspace="workspace",
-        target_agent="target-agent",
+@pytest.mark.parametrize("base_url", ["http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080"])
+def test_loopback_http_export_is_allowed(base_url: str) -> None:
+    assert observability.build_intake_otlp_traces_endpoint(base_url=base_url, workspace="workspace") == (
+        f"{base_url}/apis/intake/v2/workspaces/workspace/ingest/otlp/v1/traces"
     )
-
-    assert seen["otlp"] == (configured.endpoint, None)

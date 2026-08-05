@@ -31,6 +31,14 @@ class AnalystObservability:
 
 def build_intake_otlp_traces_endpoint(*, base_url: str, workspace: str) -> str:
     """Return Intake's workspace-scoped OTLP/HTTP traces endpoint."""
+    parsed = urlparse(base_url)
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    if scheme != "https" and not (scheme == "http" and host in LOOPBACK_HOSTS):
+        raise ValueError(
+            f"Analyst observability endpoint must use HTTPS (got {base_url!r}). "
+            "HTTP is only allowed for loopback addresses."
+        )
     return f"{base_url.rstrip('/')}{OTLP_TRACES_PATH.format(workspace=workspace)}"
 
 
