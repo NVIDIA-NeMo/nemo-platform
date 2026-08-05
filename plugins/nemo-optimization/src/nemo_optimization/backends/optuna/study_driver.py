@@ -232,6 +232,15 @@ def run_numeric_study(
     study.optimize(objective, n_trials=n_trials, catch=(StudyDriverError,))
     logger.info("Numeric Optuna study finished")
 
+    completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    if not completed:
+        n_failed = sum(1 for t in study.trials if t.state == optuna.trial.TrialState.FAIL)
+        n_pruned = sum(1 for t in study.trials if t.state == optuna.trial.TrialState.PRUNED)
+        raise StudyDriverError(
+            f"Numeric study finished with no completed trials "
+            f"({n_failed} failed, {n_pruned} pruned, {len(study.trials)} total)."
+        )
+
     if len(metric_names) == 1:
         best_trial = study.best_trial
     else:
@@ -241,7 +250,12 @@ def run_numeric_study(
             weights=weights,
         )
 
-    optimized_config = apply_suggestions(base_config, best_trial.params)
+    # best_trial.params is keyed by logical search-space names; map to Fabric paths
+    # the same way trial configs do before writing optimized_config.yml.
+    optimized_config = apply_suggestions(
+        base_config,
+        suggestions_by_path(config.search_space, best_trial.params),
+    )
     write_optimized_config(output_dir, optimized_config)
     write_trials_dataframe(study=study, metric_names=metric_names, output_dir=output_dir)
     maybe_write_pareto_plots(study=study, metric_names=metric_names, directions=directions, output_dir=output_dir)
@@ -263,14 +277,63 @@ def write_trial_config(
     width: int,
 ) -> Path:
     path = output_dir / f"config_numeric_trial_{trial_number:0{width}d}.yml"
-    path.write_text(yaml.safe_dump(dict(trial_config), sort_keys=False), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(sanitize_config_for_artifact(trial_config), sort_keys=False),
+        encoding="utf-8",
+    )
     return path
 
 
 def write_optimized_config(output_dir: Path, optimized_config: Mapping[str, Any]) -> Path:
     path = output_dir / "optimized_config.yml"
-    path.write_text(yaml.safe_dump(dict(optimized_config), sort_keys=False), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(sanitize_config_for_artifact(optimized_config), sort_keys=False),
+        encoding="utf-8",
+    )
     return path
+
+
+_SECRET_VALUE_KEYS = frozenset(
+    {
+        "api_key",
+        "apikey",
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "authorization",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+        "nvidia_api_key",
+    }
+)
+
+
+def _is_secret_value_key(key: str) -> bool:
+    lowered = key.lower().replace("-", "_")
+    # Reference fields hold env/secret *names*, not credentials.
+    if lowered.endswith("_env") or lowered in {"api_key_secret", "api_key_env"}:
+        return False
+    if lowered in _SECRET_VALUE_KEYS:
+        return True
+    return any(lowered.endswith(f"_{suffix}") for suffix in ("api_key", "password", "token", "secret"))
+
+
+def sanitize_config_for_artifact(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a deep copy with secret-bearing fields redacted for persistent YAML."""
+
+    def _redact(value: Any, *, key: str | None = None) -> Any:
+        if isinstance(value, Mapping):
+            return {k: _redact(v, key=str(k)) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_redact(v, key=key) for v in value]
+        if key is not None and isinstance(value, str) and value and not value.startswith("${"):
+            if _is_secret_value_key(key):
+                return "${REDACTED}"
+        return value
+
+    return _redact(dict(config))
 
 
 class SyntheticTrialEvaluator:
@@ -315,6 +378,7 @@ __all__ = [
     "parse_numeric_study_config",
     "resolve_n_trials",
     "run_numeric_study",
+    "sanitize_config_for_artifact",
     "write_optimized_config",
     "write_trial_config",
 ]

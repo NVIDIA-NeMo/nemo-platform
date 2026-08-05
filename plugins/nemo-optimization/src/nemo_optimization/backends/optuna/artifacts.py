@@ -109,6 +109,9 @@ def _ordered_columns(rows: list[dict[str, Any]], metric_names: Sequence[str]) ->
 
 
 def _pareto_trial_numbers(study: optuna.Study) -> set[int]:
+    completed = [trial for trial in study.trials if trial.state == optuna.trial.TrialState.COMPLETE]
+    if not completed:
+        return set()
     if len(study.directions) == 1:
         return {study.best_trial.number}
     return {trial.number for trial in study.best_trials}

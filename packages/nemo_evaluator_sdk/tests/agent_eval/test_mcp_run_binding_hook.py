@@ -239,6 +239,107 @@ def test_mcp_run_binding_order_and_lifo_cleanup(tmp_path: Path) -> None:
     assert [c["name"] for c in config.calls] == ["a", "b"]
 
 
+def test_mcp_run_binding_registers_before_rebind_failure(tmp_path: Path) -> None:
+    cleaned: list[str] = []
+
+    class _TrackedBinding(_FakeBinding):
+        def cleanup(self) -> None:
+            cleaned.append("binding")
+            super().cleanup()
+
+    class _FailingConfig(_FakeConfig):
+        def add_mcp_server(self, *args: Any, **kwargs: Any) -> _FakeConfig:
+            raise RuntimeError("rebind boom")
+
+    hook = McpRunBindingHook(bindings=[{"server": "s1", "binding": _TrackedBinding}])
+    session = FabricTaskRunSession()
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    with pytest.raises(RuntimeError, match="rebind boom"):
+        hook.prepare(_FailingConfig(), _FakeTask(), evidence, tmp_path, session)
+    assert cleaned == ["binding"]
+    assert session.state.get("mcp_bindings") is None
+
+
+def test_mcp_run_binding_cleanup_continues_after_individual_failures(tmp_path: Path) -> None:
+    events: list[str] = []
+
+    class _BoomBinding:
+        @staticmethod
+        def create(prompt: str, parent: Path, **kwargs: Any) -> Any:
+            del prompt, kwargs
+            command = parent / "boom-mcp"
+            command.write_text("x", encoding="utf-8")
+
+            class _Inst:
+                mcp_command = command
+
+                def verify_exactly_once(self) -> _FakeAudit:
+                    return _FakeAudit()
+
+                def cleanup(self) -> None:
+                    events.append("cleanup:boom")
+                    raise RuntimeError("cleanup failed")
+
+            return _Inst()
+
+    class _OkBinding:
+        @staticmethod
+        def create(prompt: str, parent: Path, **kwargs: Any) -> Any:
+            del prompt, kwargs
+            command = parent / "ok-mcp"
+            command.write_text("x", encoding="utf-8")
+
+            class _Inst:
+                mcp_command = command
+
+                def verify_exactly_once(self) -> _FakeAudit:
+                    return _FakeAudit()
+
+                def cleanup(self) -> None:
+                    events.append("cleanup:ok")
+
+            return _Inst()
+
+    class _BoomHandoff:
+        @classmethod
+        def start(cls, credential: str, timeout_seconds: float = 60.0) -> Any:
+            del credential, timeout_seconds
+
+            class _H:
+                socket_path = Path("/tmp/h.sock")
+                token = "t"
+
+                def close(self) -> None:
+                    events.append("close:handoff")
+                    raise RuntimeError("close failed")
+
+            return _H()
+
+    hook = McpRunBindingHook(
+        bindings=[
+            {
+                "server": "a",
+                "binding": _BoomBinding,
+                "handoff": {"env": "NVIDIA_API_KEY", "ref": _BoomHandoff},
+            },
+            {"server": "b", "binding": _OkBinding},
+        ]
+    )
+    session = FabricTaskRunSession()
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    monkey_env = pytest.MonkeyPatch()
+    monkey_env.setenv("NVIDIA_API_KEY", "secret")
+    try:
+        hook.prepare(_FakeConfig(), _FakeTask(), evidence, tmp_path, session)
+        hook.cleanup(session)
+    finally:
+        monkey_env.undo()
+    assert events == ["cleanup:ok", "cleanup:boom", "close:handoff"]
+    assert session.state.get("mcp_bindings") is None
+
+
 def test_mcp_run_binding_path_based_ref(tmp_path: Path) -> None:
     pkg = tmp_path / "agent_pkg"
     pkg.mkdir()

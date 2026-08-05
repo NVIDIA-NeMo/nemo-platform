@@ -60,6 +60,11 @@ def build_optimize_payload(
     optimize_config: dict[str, Any],
 ) -> dict[str, Any]:
     """Compose a Fabric agent package dict with optimizer/eval overlays."""
+    if looks_like_nat_config(optimize_config):
+        raise FabricOptimizeError(
+            "optimize config appears to be legacy NAT workflow YAML. "
+            "Optimize requires Fabric-native input."
+        )
     if agent_config is None:
         payload = require_fabric_agent_config(optimize_config, label="optimize config")
     else:

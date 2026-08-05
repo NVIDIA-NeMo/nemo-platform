@@ -50,3 +50,8 @@ def test_build_optimize_payload_merges_sections() -> None:
     assert payload["schema_version"] == "fabric.agent/v1alpha1"
     assert payload["optimizer"]["numeric"]["enabled"] is True
     assert payload["eval"]["general"]["dataset"] == "rows.json"
+
+
+def test_build_optimize_payload_rejects_nat_optimize_overlay() -> None:
+    with pytest.raises(FabricOptimizeError, match="legacy NAT"):
+        build_optimize_payload(agent_config=FABRIC_AGENT, optimize_config=NAT_AGENT)

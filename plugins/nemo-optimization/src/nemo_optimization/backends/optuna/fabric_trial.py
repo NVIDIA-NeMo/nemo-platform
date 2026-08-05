@@ -25,6 +25,7 @@ from nemo_evaluator_sdk.values.models import Model
 
 from nemo_optimization.backends.optuna.atif_metadata import build_atif_trial_tags
 from nemo_optimization.backends.optuna.config_overlay import apply_suggestions
+from nemo_optimization.backends.optuna.search_space import SearchSpaceError, parse_search_space, suggestions_by_path
 from nemo_optimization.backends.optuna.study_driver import StudyDriverError
 
 
@@ -44,7 +45,6 @@ class FabricTrialEvaluator:
         self._output_dir = output_dir
         self._experiment_id = experiment_id
         self._eval_config = _eval_config(payload)
-        self._tasks = build_agent_eval_tasks(payload)
         fabric_eval = self._eval_config.get("fabric") if isinstance(self._eval_config.get("fabric"), Mapping) else {}
         run_hook_spec = self._eval_config.get("run_hook")
         try:
@@ -62,6 +62,8 @@ class FabricTrialEvaluator:
         default_parallelism = 1 if self._task_hook is not None else 4
         self._parallelism = int(self._eval_config.get("general", {}).get("max_concurrency", default_parallelism))
         self._trace_map: list[dict[str, Any]] = []
+        # Validate dataset/metrics once at construction so config errors fail before the study loop.
+        build_agent_eval_tasks(self._payload)
 
     def evaluate(
         self,
@@ -70,8 +72,13 @@ class FabricTrialEvaluator:
         trial_overlay: dict[str, Any],
         rep: int,
     ) -> dict[str, float]:
+        del trial_overlay  # reserved for profile overlays; runtime uses path-resolved payload
+        trial_payload = apply_suggestions(self._payload, self._path_suggestions(suggestions))
+        # Rebuild tasks from the path-resolved payload so search-space paths under
+        # eval.evaluators (and dataset settings) affect this trial's scoring.
+        tasks = build_agent_eval_tasks(trial_payload)
         runtime = FabricAgentRuntime(
-            config=_runtime_agent_config(apply_suggestions(self._payload, suggestions)),
+            config=_runtime_agent_config(trial_payload),
             base_dir=self._fabric_base_dir,
             work_root=self._trial_work_root(trial_number, rep),
             timeout_s=self._timeout_s,
@@ -84,7 +91,7 @@ class FabricTrialEvaluator:
             task_hook=self._task_hook,
         )
         result = AgentEvaluator().run_sync(
-            tasks=self._tasks,
+            tasks=tasks,
             target=runtime,
             config=AgentEvalRunConfig(
                 output_dir=self._trial_output_dir(trial_number, rep),
@@ -96,6 +103,19 @@ class FabricTrialEvaluator:
         self._record_traces(result, trial_number=trial_number, rep=rep)
         self._write_trace_map()
         return reduce_agent_eval_scores(result.scores, self._metric_names)
+
+    def _path_suggestions(self, suggestions: Mapping[str, Any]) -> dict[str, Any]:
+        """Map logical Optuna param names onto Fabric dotted paths when a search space exists."""
+        optimizer = self._payload.get("optimizer")
+        if not isinstance(optimizer, Mapping) or not suggestions:
+            return dict(suggestions)
+        try:
+            space = parse_search_space(optimizer)
+        except SearchSpaceError:
+            return dict(suggestions)
+        if all(name in space for name in suggestions):
+            return suggestions_by_path(space, suggestions)
+        return dict(suggestions)
 
     def _trial_work_root(self, trial_number: int, rep: int) -> Path:
         return self._output_dir / "evidence" / f"trial-{trial_number:03d}" / f"rep-{rep:03d}"

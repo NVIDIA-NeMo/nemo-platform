@@ -205,9 +205,18 @@ def get_shared_gpu_pool() -> DockerGPUPool | None:
             reserved = None
             try:
                 from nemo_platform_plugin.config import Configuration, NemoPlatformConfig
+
                 reserved = Configuration.get_service_config(NemoPlatformConfig).docker.get_reserved_gpu_ids()
-            except Exception:
-                pass
+            except ImportError:
+                logger.debug(
+                    "NeMo Platform configuration is unavailable; using GPU detection",
+                    exc_info=True,
+                )
+            except ValueError:
+                logger.exception(
+                    "Invalid platform.docker.reserved_gpu_device_ids; refusing to fall back to all GPUs"
+                )
+                raise
             if reserved is not None:
                 device_ids = reserved
             else:

@@ -29,8 +29,19 @@ def _payload(dataset: Path) -> dict[str, Any]:
         "metadata": {"name": "demo"},
         "harness": {"adapter_id": "nvidia.fabric.hermes"},
         "models": {
-            "default": {"provider": "openai", "model": "agent", "base_url": "http://agent/v1"},
+            "default": {"provider": "openai", "model": "agent", "base_url": "http://agent/v1", "temperature": 0.0},
             "judge": {"provider": "openai", "model": "judge", "base_url": "http://judge/v1"},
+        },
+        "optimizer": {
+            "numeric": {"enabled": True, "n_trials": 1},
+            "eval_metrics": {"average_score": {"direction": "maximize"}},
+            "search_space": {
+                "temperature": {
+                    "type": "fabric",
+                    "path": "models.default.temperature",
+                    "values": [0.0, 0.2],
+                }
+            },
         },
         "eval": {
             "general": {
@@ -183,7 +194,7 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
 
     scores = evaluator.evaluate(
         trial_number=7,
-        suggestions={"models.default.temperature": 0.2},
+        suggestions={"temperature": 0.2},
         trial_overlay={"metadata": {"name": "trial-007"}},
         rep=0,
     )

@@ -45,11 +45,14 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import inspect
+import logging
 import os
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class McpRunBindingHookError(RuntimeError):
@@ -294,6 +297,8 @@ class McpRunBindingHook:
                         handoff.close()
                     raise
 
+                # Register before rebinding so prepare failures can still cleanup.
+                started.append({"server": entry["server"], "binding": binding, "handoff": handoff})
                 transport, exposure, extra_fields = _server_snapshot(config, entry["server"])
                 config = config.add_mcp_server(
                     entry["server"],
@@ -302,7 +307,6 @@ class McpRunBindingHook:
                     exposure=exposure,  # type: ignore[arg-type]
                     extra_fields=extra_fields or None,
                 )
-                started.append({"server": entry["server"], "binding": binding, "handoff": handoff})
         except Exception:
             self.cleanup(session)
             raise
@@ -343,9 +347,14 @@ class McpRunBindingHook:
         for item in reversed(started):
             binding = item.get("binding")
             handoff = item.get("handoff")
+            server = item.get("server")
             try:
                 if binding is not None:
                     binding.cleanup()
-            finally:
+            except Exception:
+                logger.exception("Failed to cleanup MCP binding for %s", server)
+            try:
                 if handoff is not None:
                     handoff.close()
+            except Exception:
+                logger.exception("Failed to close MCP handoff for %s", server)

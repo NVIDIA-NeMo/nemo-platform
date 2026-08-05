@@ -95,6 +95,14 @@ def test_run_numeric_study_writes_configs(tmp_path: Path) -> None:
     optimized = yaml.safe_load((tmp_path / "optimized_config.yml").read_text(encoding="utf-8"))
     assert "optimizer" not in optimized
     assert result.best_trial.params
+    # Logical Optuna names must be mapped onto Fabric dotted paths in the export.
+    for name, value in result.best_trial.params.items():
+        path = payload["optimizer"]["search_space"][name]["path"]
+        cursor = optimized
+        for part in path.split("."):
+            cursor = cursor[part]
+        assert cursor == value
+    assert "temperature" not in optimized  # must not write logical top-level keys
 
     with (tmp_path / "trials_dataframe_params.csv").open(encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
@@ -160,3 +168,36 @@ def test_maybe_stop_if_target_met_ignored_for_multi_objective() -> None:
         directions=[StudyDirection.MAXIMIZE, StudyDirection.MINIMIZE],
     )
     assert not study._stop_flag  # noqa: SLF001
+
+
+def test_run_numeric_study_all_trials_failed(tmp_path: Path) -> None:
+    class AlwaysFailEvaluator:
+        def evaluate(self, *, trial_number: int, suggestions: dict, trial_overlay: dict, rep: int) -> dict[str, float]:
+            raise StudyDriverError("simulated trial failure")
+
+    from nemo_optimization.backends.optuna.study_driver import StudyDriverError
+
+    payload = _payload()
+    payload["optimizer"]["numeric"]["n_trials"] = 2
+    with pytest.raises(StudyDriverError, match="no completed trials"):
+        run_numeric_study(payload, tmp_path, AlwaysFailEvaluator(), seed=0)
+
+
+def test_sanitize_config_for_artifact_redacts_secrets() -> None:
+    from nemo_optimization.backends.optuna.study_driver import sanitize_config_for_artifact
+
+    sanitized = sanitize_config_for_artifact(
+        {
+            "models": {
+                "default": {
+                    "api_key": "super-secret",
+                    "base_url": "http://example/v1",
+                    "api_key_env": "NVIDIA_API_KEY",
+                }
+            }
+        }
+    )
+    assert sanitized["models"]["default"]["api_key"] == "${REDACTED}"
+    assert sanitized["models"]["default"]["base_url"] == "http://example/v1"
+    # Unexpanded env refs are left intact.
+    assert sanitized["models"]["default"]["api_key_env"] == "NVIDIA_API_KEY"
