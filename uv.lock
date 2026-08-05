@@ -21,6 +21,7 @@ members = [
     "filesets",
     "garak-api",
     "models",
+    "nemo-agent-config-example-calculator",
     "nemo-agents-example-calculator",
     "nemo-agents-example-email-phishing",
     "nemo-agents-example-email-security",
@@ -3789,6 +3790,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/6d/fd/91545e604bc3dad7d
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/82/0340caa499416c78e5d8f5f05947ae4bc3cba53c9f038ab6e9ed964e22f1/nbformat-5.10.4-py3-none-any.whl", hash = "sha256:3b48d6c8fbca4b299bf3982ea7db1af21580e4fec269ad087b9e81588891200b", size = 78454, upload-time = "2024-04-04T11:20:34.895Z" },
 ]
+
+[[package]]
+name = "nemo-agent-config-example-calculator"
+version = "0.1.0"
+source = { editable = "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent" }
+dependencies = [
+    { name = "mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "mcp", specifier = ">=1.28.1,<2" }]
 
 [[package]]
 name = "nemo-agents-example-calculator"
