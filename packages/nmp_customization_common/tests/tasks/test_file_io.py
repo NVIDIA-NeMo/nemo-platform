@@ -209,6 +209,43 @@ def no_retry_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("tenacity.nap.time.sleep", lambda _seconds: None)
 
 
+class TestCreateFilesetRetry:
+    """Create goes through the typed client, so it must catch the typed client's errors."""
+
+    @patch("nmp.customization_common.tasks.file_io.run.client_from_platform")
+    def test_retries_transport_error_wrapped_by_the_client(self, mock_cfp, no_retry_backoff) -> None:
+        import httpx
+        from nemo_platform_plugin.client.errors import NemoTransportError
+        from nmp.customization_common.schemas.file_io import FileSetRef
+
+        mock_fc = MagicMock()
+        mock_fc.with_options.return_value = mock_fc
+        mock_fc.create_fileset.side_effect = [NemoTransportError(httpx.ConnectError("refused")), MagicMock()]
+        mock_cfp.return_value = mock_fc
+        runner = _make_runner(_make_sdk())
+
+        runner.create_fileset(FileSetRef(workspace="default", name="models"))
+
+        assert mock_fc.create_fileset.call_count == 2
+
+    @patch("nmp.customization_common.tasks.file_io.run.client_from_platform")
+    def test_retries_rate_limit_wrapped_by_the_client(self, mock_cfp, no_retry_backoff) -> None:
+        import httpx
+        from nemo_platform_plugin.client.errors import RateLimitError
+        from nmp.customization_common.schemas.file_io import FileSetRef
+
+        response = httpx.Response(429, request=httpx.Request("POST", "http://test/filesets"), json={"detail": "slow"})
+        mock_fc = MagicMock()
+        mock_fc.with_options.return_value = mock_fc
+        mock_fc.create_fileset.side_effect = [RateLimitError(response), MagicMock()]
+        mock_cfp.return_value = mock_fc
+        runner = _make_runner(_make_sdk())
+
+        runner.create_fileset(FileSetRef(workspace="default", name="models"))
+
+        assert mock_fc.create_fileset.call_count == 2
+
+
 class TestUploadRetry:
     """The task layer owns upload retries.
 

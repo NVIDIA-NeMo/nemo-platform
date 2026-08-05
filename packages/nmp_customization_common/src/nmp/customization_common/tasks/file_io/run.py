@@ -24,9 +24,6 @@ from pathlib import Path
 
 import httpx
 from nemo_platform import (
-    APIConnectionError,
-    APITimeoutError,
-    InternalServerError,
     NeMoPlatform,
     NotFoundError,
 )
@@ -86,17 +83,20 @@ MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
 MAX_BACKOFF_SECONDS = 30.0
 
+# Transient failures worth another attempt, for every Files operation this task
+# runs. Uploads stream a one-shot body, so once it is on the wire the typed client
+# can no longer retry them itself — this is the layer that rebuilds the request
+# from the source file, so it has to catch what the client raises. Those are the
+# Nemo* entries: they wrap transport failures, 5xx responses (raise_for_status
+# maps every 5xx to InternalServerError) and 429 respectively, and are not httpx
+# types. Anything reaching this task through the typed client arrives as one of
+# them, never as the bare httpx error underneath.
 TRANSIENT_FILESYSTEM_EXCEPTIONS = (
     httpx.TimeoutException,
     httpx.ConnectError,
     httpx.ReadTimeout,
     httpx.RemoteProtocolError,
     httpx.ReadError,
-    # Uploads stream a one-shot body, so once it is on the wire the typed client
-    # can no longer retry them itself — this is the layer that rebuilds the
-    # request from the source file, so it has to catch what the client raises.
-    # These wrap transport failures, 5xx responses (raise_for_status maps every
-    # 5xx to InternalServerError) and 429 respectively, and are not httpx types.
     NemoTransportError,
     ClientInternalServerError,
     RateLimitError,
@@ -282,16 +282,7 @@ class FileIORunner:
     @retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=2, min=INITIAL_BACKOFF_SECONDS, max=MAX_BACKOFF_SECONDS),
-        retry=retry_if_exception_type(
-            (
-                InternalServerError,
-                APITimeoutError,
-                APIConnectionError,
-                ClientInternalServerError,
-                httpx.TimeoutException,
-                httpx.ConnectError,
-            )
-        ),
+        retry=retry_if_exception_type(TRANSIENT_FILESYSTEM_EXCEPTIONS),
         reraise=True,
     )
     def _create_fileset_with_retry(self, fileset: FileSetRef, metadata: dict | None = None) -> None:
