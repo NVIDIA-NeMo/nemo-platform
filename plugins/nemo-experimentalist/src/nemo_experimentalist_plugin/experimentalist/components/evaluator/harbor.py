@@ -1244,6 +1244,8 @@ class HarborEvaluator(Evaluator, roles.Evaluation):
     """Run Harbor evaluations and return parsed reward payloads."""
 
     name = "harbor"
+    dataset_type = HarborDataset
+    config_type = HarborEvaluatorConfig
 
     evaluator_type: EvaluatorType = "harbor"
 

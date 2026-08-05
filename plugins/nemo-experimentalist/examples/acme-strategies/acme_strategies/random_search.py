@@ -28,6 +28,16 @@ _IDEAS = [
 ]
 
 
+def _validation_score(candidate: Candidate) -> float:
+    """Mean of whatever the evaluator measured on the validation channel.
+
+    Reads `metrics`, not `summary`: `summary` is an optional scalar rollup that nothing
+    currently writes, so ranking on it scores every candidate zero.
+    """
+    metrics = candidate.rewards["validation"].metrics
+    return sum(metrics.values()) / len(metrics) if metrics else 0.0
+
+
 class RandomSearch(Strategy):
     """Propose a random change each round and keep whatever scores best."""
 
@@ -62,7 +72,7 @@ class RandomSearch(Strategy):
                 population.append(candidate)
             await ctx.report_progress(completed=generation, total=self._rounds, unit="round")
 
-        return max(population, key=lambda c: c.rewards["validation"].summary or 0.0)
+        return max(population, key=_validation_score)
 
     async def _import_baseline(self, ctx: StrategyContext) -> Candidate:
         """Commit the agent under test unchanged, using the built-in import Builder."""

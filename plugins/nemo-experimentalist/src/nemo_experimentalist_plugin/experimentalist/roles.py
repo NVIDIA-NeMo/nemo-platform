@@ -20,7 +20,8 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from nemo_experimentalist_plugin.entities import Candidate, Proposal
+from nemo_experimentalist_plugin.entities import Candidate, Dataset, Proposal
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorConfig
 from nemo_experimentalist_plugin.experimentalist.registry import Component
 from nemo_experimentalist_plugin.experimentalist.seam import BuilderContext, StrategyContext
 
@@ -56,6 +57,13 @@ class Evaluation(Component):
     """
 
     role: ClassVar[str] = "evaluation"
+
+    #: Dataset implementation this evaluator consumes, and the model it validates its
+    #: options with. Declared here so resolving the component is enough to build both:
+    #: a factory keyed on a hardcoded name cannot be swapped by config, whatever the
+    #: registry says.
+    dataset_type: ClassVar[type[Dataset]]
+    config_type: ClassVar[type[EvaluatorConfig]]
 
 
 class Proposer(Component):

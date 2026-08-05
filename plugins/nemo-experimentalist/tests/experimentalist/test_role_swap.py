@@ -206,3 +206,54 @@ async def test_the_round_budget_bounds_the_loop_without_a_terminator() -> None:
 
     assert "while True" not in source, "the optimization loop must bound itself"
     assert "while round_num < config.max_rounds" in source
+
+
+@pytest.mark.asyncio
+async def test_a_swapped_component_can_actually_be_built_and_called(tmp_path, isolated_registry: None) -> None:
+    """Resolution is not the bar; construction and use are.
+
+    Every default resolved by name and then failed on its constructor, because
+    `ctx.component` did not supply the run-scoped arguments a component cannot know for
+    itself. The earlier version of this file asserted `resolve(...) is not None` and
+    passed throughout — which is how two half-connected seams reached a review.
+    """
+    from doubles import FakeBackend, make_context
+
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+
+    for role, key in ROLES.items():
+        if role == "strategy":
+            continue  # built by the runner, not by a strategy through the context
+        name = getattr(EvolutionaryOptimizerConfig(), key)
+        built = ctx.component(role, name)
+        assert built is not None, f"{role}={name!r} resolved but could not be constructed"
+
+
+@pytest.mark.asyncio
+async def test_a_swapped_builder_runs_through_the_context(tmp_path, isolated_registry: None) -> None:
+    """The narrowest end-to-end check of the seam: config names it, the context builds
+    it, and it produces a Candidate through the same verbs the built-in Coder uses."""
+    from doubles import FakeBackend, make_context
+
+    class StubBuilder(Builder):
+        name = "acme-noop"
+        accepts: ClassVar[frozenset[str]] = frozenset({"code-change"})
+
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        async def build(self, ctx: Any, proposal: Proposal, *, generation: int = 0) -> Candidate:
+            fork = await ctx.fork(proposal)
+            (fork.workdir / "changed.py").write_text("# built by an out-of-tree builder\n")
+            return await ctx.commit_candidate(proposal=proposal, artifact=fork.workdir, generation=generation)
+
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    baseline = await ctx.component("builder", "import").build(
+        ctx, Proposal(ancestor=None, description="baseline", kind="import", payload={}), generation=0
+    )
+    proposal = Proposal(ancestor=baseline.id, description="a change", kind="code-change", payload={})
+
+    candidate = await ctx.component("builder", "acme-noop").build(ctx, proposal, generation=1)
+
+    assert candidate.ancestor == baseline.id
+    assert (ctx.candidate_dir(candidate) / "changed.py").exists()

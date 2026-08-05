@@ -451,12 +451,18 @@ class EvolutionaryStrategy(Agent, Strategy):
             for candidate in [c for c in candidates if c.id not in survived]:
                 await ctx.update_candidate(candidate, killed_generation=round_num)
 
-            train_candidate_results = await self._evaluate_train_candidates(
-                ctx=ctx,
-                survivors=survivors,
-                round_num=round_num,
-                max_train_batch_tasks=config.max_train_batch_tasks,
-                train_batch_seed=config.train_batch_seed,
+            # Only the analyzer consumes these, so a diagnosis-blind run does not pay for
+            # them — which is what makes `analyzer: null` cheaper and not merely quieter.
+            train_candidate_results = (
+                {}
+                if config.analyzer is None
+                else await self._evaluate_train_candidates(
+                    ctx=ctx,
+                    survivors=survivors,
+                    round_num=round_num,
+                    max_train_batch_tasks=config.max_train_batch_tasks,
+                    train_batch_seed=config.train_batch_seed,
+                )
             )
             for survivor in survivors:
                 if survivor.label in train_candidate_results:
@@ -1051,8 +1057,12 @@ class EvolutionaryStrategy(Agent, Strategy):
         if analysis_path.exists():
             return analysis_path.read_text()
         if config.analyzer is None:
-            # Diagnosis-blind: a strategy that does not reason about failures skips this
-            # and the train evaluation that feeds it.
+            # Still written, empty. This file is the strategy's resume marker as much as
+            # its analysis: `_detect_last_round` globs for it, so skipping the write on a
+            # diagnosis-blind run leaves a restart unable to tell which rounds finished —
+            # it starts from zero and every earlier cohort stays alive in the store.
+            analysis_path.parent.mkdir(parents=True, exist_ok=True)
+            analysis_path.write_text("")
             return ""
 
         per_agent = await asyncio.gather(

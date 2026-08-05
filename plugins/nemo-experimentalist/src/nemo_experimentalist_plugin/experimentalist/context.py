@@ -23,6 +23,7 @@ split, which is why one is not spelled with the other's name.
 from __future__ import annotations
 
 import fnmatch
+import inspect
 import logging
 import shutil
 from collections.abc import Callable, Mapping, Sequence
@@ -45,12 +46,28 @@ from nemo_experimentalist_plugin.experimentalist.components.model_config import 
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
-from nemo_experimentalist_plugin.experimentalist.registry import get_component
+from nemo_experimentalist_plugin.experimentalist.registry import resolve
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, reward_scalar
 from nemo_experimentalist_plugin.experimentalist.seam import Fork
 from nemo_platform import AsyncNeMoPlatform
 
 logger = logging.getLogger(__name__)
+
+
+def _accepted(constructor: Any, supplied: dict[str, Any]) -> dict[str, Any]:
+    """Narrow *supplied* to the arguments *constructor* names.
+
+    Named parameters only. A ``**kwargs`` on a component almost always means "forward
+    the rest to my base class" rather than "I tolerate anything", so treating it as
+    permission hands an nooa ``Agent`` a ``workspace`` it will reject.
+    """
+    parameters = inspect.signature(constructor).parameters
+    return {
+        key: value
+        for key, value in supplied.items()
+        if parameters.get(key) is not None and parameters[key].kind is not inspect.Parameter.VAR_KEYWORD
+    }
+
 
 #: The split every run has, and what ``evaluate()`` measures unless told otherwise.
 #: It is also the channel a selector ranks on by default.
@@ -463,17 +480,30 @@ class ExperimentContext:
             self._reporter.progress(phase=note or unit, completed=completed, total=total, unit=unit)
 
     def component(self, role: str, name: str, **kwargs: Any) -> Any:
-        """Resolve a component by name, so a strategy need not import the registry.
+        """Resolve a component by name and build it against this run.
 
-        The run's model tiers are supplied unless the caller overrides them, which is the
-        one thing every component needs and the one a strategy should not have to know to
-        pass. Everything else is the caller's business: a component's constructor belongs
-        to whoever resolves it.
+        Supplies the run-scoped arguments a component cannot know for itself — the
+        resolved model tiers and the run's working directory — to whichever of them the
+        constructor actually accepts, and passes *kwargs* through untouched. Without
+        that, resolving a component by name still fails on its constructor, and
+        "swappable from config" is only true of the lookup.
+
+        Explicit *kwargs* win, so a strategy that means something else by ``workspace``
+        keeps saying so.
 
         Raises:
             LookupError: if nothing is registered under that name.
         """
-        return get_component(role, name, **{"models": self.models, **kwargs})
+        component = resolve(role, name)
+        # `workspace` and `working_dir` are the same run root under two spellings that
+        # predate the registry; both are offered so a component keeps whichever it uses.
+        supplied: dict[str, Any] = {
+            "models": self.models,
+            "workspace": self.root,
+            "working_dir": self.root,
+            **kwargs,
+        }
+        return component(**_accepted(component.__init__, supplied))
 
     def note(self, message: str) -> None:
         """Say what is happening, for a human watching the run.

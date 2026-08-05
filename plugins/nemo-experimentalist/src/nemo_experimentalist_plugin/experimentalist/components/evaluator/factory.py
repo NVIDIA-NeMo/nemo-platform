@@ -12,26 +12,20 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     EvaluatorConfig,
     EvaluatorType,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
-    HarborEvaluator,
-    HarborEvaluatorConfig,
-)
+from nemo_experimentalist_plugin.experimentalist.registry import resolve
 
-_SUPPORTED_EVALUATOR_TYPES = {
-    "harbor": (HarborDataset, HarborEvaluator, HarborEvaluatorConfig),
-}
+
+def _evaluation(name: EvaluatorType) -> Any:
+    """The registered `evaluation` component called *name*.
+
+    Resolved rather than looked up in a table: a table keyed on names this package knows
+    is exactly what stops `evaluation:` being swappable from config.
+    """
+    return resolve("evaluation", name)
 
 
 class DatasetFactory:
     """Build evaluator-compatible Dataset objects from source references."""
-
-    def __init__(
-        self,
-        supported_evaluator_types: dict[EvaluatorType, tuple[type[Dataset], type[Evaluator], type[EvaluatorConfig]]]
-        | None = None,
-    ) -> None:
-        self.supported_evaluator_types = supported_evaluator_types or _SUPPORTED_EVALUATOR_TYPES
 
     def build_dataset(self, evaluator_type: EvaluatorType, dataset_ref: DatasetRef) -> Dataset:
         """Build a Dataset for the selected evaluator type.
@@ -48,10 +42,7 @@ class DatasetFactory:
         """
         if not evaluator_type or not dataset_ref:
             raise ValueError("Evaluator type and dataset reference are required")
-
-        if evaluator_type not in self.supported_evaluator_types:
-            raise ValueError(f"Unsupported evaluator type: {evaluator_type}")
-        return self.supported_evaluator_types[evaluator_type][0].from_ref(dataset_ref)
+        return _evaluation(evaluator_type).dataset_type.from_ref(dataset_ref)
 
     def build_task_template(self, evaluator_type: EvaluatorType, template_ref: DatasetRef) -> Task:
         """Parse an evaluator-specific template directory as one task.
@@ -94,14 +85,9 @@ class EvaluatorFactory:
             ValueError: If the evaluator type is not supported.
             TypeError: If the evaluator config is not an EvaluatorConfig or dict.
         """
-        if evaluator_type in _SUPPORTED_EVALUATOR_TYPES:
-            if isinstance(config, EvaluatorConfig):
-                config = config.model_dump()
-            elif not isinstance(config, dict):
-                raise TypeError(f"{evaluator_type.capitalize()} evaluator config must be an EvaluatorConfig or dict")
-            evaluator_config = _SUPPORTED_EVALUATOR_TYPES[evaluator_type][2].model_validate(config)
-            return _SUPPORTED_EVALUATOR_TYPES[evaluator_type][1](
-                options=evaluator_config, experiment_dir=experiment_dir
-            )
-
-        raise ValueError(f"Unsupported evaluator type: {evaluator_type}")
+        component = _evaluation(evaluator_type)
+        if isinstance(config, EvaluatorConfig):
+            config = config.model_dump()
+        elif not isinstance(config, dict):
+            raise TypeError(f"{evaluator_type} evaluator config must be an EvaluatorConfig or dict")
+        return component(options=component.config_type.model_validate(config), experiment_dir=experiment_dir)
