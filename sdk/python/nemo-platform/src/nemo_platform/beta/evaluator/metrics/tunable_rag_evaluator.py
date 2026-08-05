@@ -110,8 +110,8 @@ class TunableRagEvaluatorMetric(HooksBase, TunableRagEvaluator):
         ]
 
     async def compute_scores(self, input: MetricInput) -> MetricResult:
-        question, answer_description, generated_answer = _extract_eval_fields(input)
-        request = self._build_request(question, answer_description, generated_answer)
+        instruction, answer_description, generated_answer = _extract_eval_fields(input)
+        request = self._build_request(instruction, answer_description, generated_answer)
         max_retries = self._max_retries
 
         try:
@@ -129,10 +129,10 @@ class TunableRagEvaluatorMetric(HooksBase, TunableRagEvaluator):
 
         return self._score_from_parsed(parsed)
 
-    def _build_request(self, question: str, answer_description: str, generated_answer: str) -> dict[str, Any]:
+    def _build_request(self, instruction: str, answer_description: str, generated_answer: str) -> dict[str, Any]:
         prompt = build_evaluation_prompt(
             judge_llm_prompt=self.judge_llm_prompt,
-            question=question,
+            instruction=instruction,
             answer_description=answer_description,
             generated_answer=generated_answer,
             default_scoring=self.default_scoring,
@@ -211,18 +211,19 @@ class TunableRagEvaluatorMetric(HooksBase, TunableRagEvaluator):
 
 
 def _extract_eval_fields(metric_input: MetricInput) -> tuple[str, str, str]:
+    """Pull Fabric agent-eval fields: ``inputs.instruction`` + ``reference.answer``."""
     row = metric_input.row.data
     inputs = row.get("inputs")
     if not isinstance(inputs, dict):
         inputs = row
-    question = str(inputs.get("question") or row.get("prompt") or "")
+    instruction = str(inputs.get("instruction") or "")
     reference = row.get("reference") or {}
     if isinstance(reference, dict):
         answer_description = str(reference.get("answer") or reference.get("expected") or "")
     else:
         answer_description = str(reference)
     generated_answer = str(metric_input.candidate.output_text or metric_input.candidate.response or "")
-    return question, answer_description, generated_answer
+    return instruction, answer_description, generated_answer
 
 
 def _parse_json_object(text: str) -> dict[str, Any] | None:

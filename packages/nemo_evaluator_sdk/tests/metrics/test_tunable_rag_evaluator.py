@@ -45,6 +45,25 @@ def test_parse_json_object_strips_markdown_fence() -> None:
     assert parsed == {"score": 0.8, "reasoning": "ok"}
 
 
+def test_extract_eval_fields_reads_instruction() -> None:
+    from nemo_evaluator_sdk.metrics.protocol import CandidateOutput, DatasetRow, MetricInput
+    from nemo_evaluator_sdk.metrics.tunable_rag_evaluator import _extract_eval_fields
+
+    metric_input = MetricInput(
+        row=DatasetRow(
+            data={
+                "inputs": {"instruction": "What is 2+2?"},
+                "reference": {"answer": "4"},
+            }
+        ),
+        candidate=CandidateOutput(output_text="4"),
+    )
+    instruction, answer, generated = _extract_eval_fields(metric_input)
+    assert instruction == "What is 2+2?"
+    assert answer == "4"
+    assert generated == "4"
+
+
 @pytest.mark.asyncio
 async def test_default_scoring_emits_weighted_average_and_subscores() -> None:
     metric = TunableRagEvaluatorMetric(
@@ -68,7 +87,7 @@ async def test_default_scoring_emits_weighted_average_and_subscores() -> None:
     result = await compute_scores(
         metric,
         {
-            "inputs": {"question": "Who invented the telephone?"},
+            "inputs": {"instruction": "Who invented the telephone?"},
             "reference": {"answer": "Alexander Graham Bell"},
         },
         {"output_text": "Bell invented the telephone."},
@@ -106,7 +125,7 @@ async def test_max_retries_comes_from_run_config_online() -> None:
 
     await compute_scores(
         metric,
-        {"inputs": {"question": "q"}, "reference": {"answer": "a"}},
+        {"inputs": {"instruction": "q"}, "reference": {"answer": "a"}},
         {"output_text": "a"},
     )
     assert captured["max_retries"] == 7
@@ -115,7 +134,7 @@ async def test_max_retries_comes_from_run_config_online() -> None:
     metric.apply_evaluation_job_params(RunConfig())
     await compute_scores(
         metric,
-        {"inputs": {"question": "q"}, "reference": {"answer": "a"}},
+        {"inputs": {"instruction": "q"}, "reference": {"answer": "a"}},
         {"output_text": "a"},
     )
     assert captured["max_retries"] == 7
@@ -136,7 +155,7 @@ async def test_custom_scoring_emits_average_score_only() -> None:
 
     result = await compute_scores(
         metric,
-        {"inputs": {"question": "2+2?"}, "reference": {"answer": "4"}},
+        {"inputs": {"instruction": "2+2?"}, "reference": {"answer": "4"}},
         {"output_text": "4"},
     )
 
@@ -157,7 +176,7 @@ async def test_parse_failure_returns_zero_scores() -> None:
 
     result = await compute_scores(
         metric,
-        {"inputs": {"question": "q"}, "reference": {"answer": "a"}},
+        {"inputs": {"instruction": "q"}, "reference": {"answer": "a"}},
         {"output_text": "bad"},
     )
 

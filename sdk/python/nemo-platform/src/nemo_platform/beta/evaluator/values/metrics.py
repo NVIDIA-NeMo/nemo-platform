@@ -577,7 +577,7 @@ class TunableRagEvaluator(MetricBase):
                 "properties": {
                     "inputs": {
                         "type": "object",
-                        "properties": {"question": {"type": "string"}},
+                        "properties": {"instruction": {"type": "string"}},
                     },
                     "reference": {
                         "type": "object",

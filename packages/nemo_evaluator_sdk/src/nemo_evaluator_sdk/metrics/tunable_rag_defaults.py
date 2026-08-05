@@ -56,7 +56,7 @@ CUSTOM_SCORING_JSON_SCHEMA = {
 def build_evaluation_prompt(
     *,
     judge_llm_prompt: str,
-    question: str,
+    instruction: str,
     answer_description: str,
     generated_answer: str,
     default_scoring: bool,
@@ -67,13 +67,13 @@ def build_evaluation_prompt(
             "You are an intelligent assistant that responds strictly in JSON format. "
             f"Judge based on the following scoring rubric: {DEFAULT_SCORING_INSTRUCTIONS}"
             f"{judge_llm_prompt}\n"
-            f"Here is the user's query: {question}"
+            f"Here is the instruction: {instruction}"
             f"Here is the description of the expected answer: {answer_description}"
             f"Here is the generated answer: {generated_answer}"
         )
     return (
         f"You are an intelligent assistant that responds strictly in JSON format. {judge_llm_prompt}\n"
-        f"Here is the user's query: {question}"
+        f"Here is the instruction: {instruction}"
         f"Here is the description of the expected answer: {answer_description}"
         f"Here is the generated answer: {generated_answer}"
     )
