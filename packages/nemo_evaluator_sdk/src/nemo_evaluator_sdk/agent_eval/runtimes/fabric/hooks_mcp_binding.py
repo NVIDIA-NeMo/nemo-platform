@@ -236,11 +236,7 @@ def _audit_from_binding_path(binding: Any) -> Any | None:
             self.result = data.get("result")
 
         def public_mapping(self) -> dict[str, Any]:
-            return {
-                key: self._data[key]
-                for key in ("run_id", "input_sha256", "invocation_count")
-                if key in self._data
-            }
+            return {key: self._data[key] for key in ("run_id", "input_sha256", "invocation_count") if key in self._data}
 
     return _AuditShim(payload)
 

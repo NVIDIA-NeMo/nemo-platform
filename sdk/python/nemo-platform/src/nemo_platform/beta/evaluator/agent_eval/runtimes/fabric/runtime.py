@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import logging
 import shutil
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -82,6 +83,8 @@ _MISSING_RELAY_MSG = (
     "FabricAgentRuntime trajectory capture requires the `nemo-relay` package "
     "(install `nemo-fabric[relay]`), or set capture_trajectory=False."
 )
+
+logger = logging.getLogger(__name__)
 
 # Evidence-dir layout for trajectory capture. These subdir names are our own local layout — we create
 # them and hand them to Fabric/Relay, so they are not derived from either library.
@@ -343,8 +346,17 @@ class FabricAgentRuntime:
                 ),
                 timeout=self._timeout_s,
             )
-            if self._task_hook is not None and result.status == "succeeded":
-                hook_extras = self._task_hook.after_success(task=task, result=result, session=hook_session)
+            # Always try to harvest MCP binding results. Hermes often ends with
+            # ``completed=false`` / empty finals after a successful tool call; the binding
+            # audit is still the authoritative analyzer output for scoring.
+            if self._task_hook is not None:
+                try:
+                    hook_extras = self._task_hook.after_success(task=task, result=result, session=hook_session)
+                except Exception as exc:  # noqa: BLE001 - binding harvest must not abort the batch
+                    logger.warning("Fabric task hook after_success failed: %s", exc)
+                    if result.status == "succeeded":
+                        raise
+                    hook_extras = None
         except TimeoutError as exc:
             return self._failed_trial(task, evidence_dir, exc, extra_metadata=self._skill_metadata(skill_provenances))
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
@@ -412,6 +424,28 @@ class FabricAgentRuntime:
         }
 
         if result.status != "succeeded":
+            # Hermes may report a non-success final message after a successful MCP tool
+            # call. Prefer the binding audit result over a hard fail when present.
+            binding_result = _first_mcp_binding_result(extras)
+            analysis = binding_result if binding_result is not None else extras.get("analyzer_analysis")
+            if analysis is not None:
+                base_metadata = {
+                    **base_metadata,
+                    "fabric_status": result.status,
+                    "recovered_from_mcp_binding": True,
+                }
+                return AgentEvalTrial(
+                    id=f"{task.id}:fabric",
+                    task_id=task.id,
+                    status=AgentEvalTrialStatus.COMPLETED,
+                    output=AgentOutput(
+                        output_text=json.dumps(analysis, default=str),
+                        response=_normalize_output(result.output),
+                        metadata={**base_metadata, "evidence_dir": str(evidence_dir)},
+                    ),
+                    evidence=self._evidence(result, result_path, workspace_dir),
+                    metadata={**base_metadata, "generated": True, "agent_ok": True},
+                )
             return self._failed_trial(task, evidence_dir, _result_error(result), extra_metadata=base_metadata)
 
         # Fabric wraps the output in a ``RunOutput`` mapping (RunOutput response contract, #52),

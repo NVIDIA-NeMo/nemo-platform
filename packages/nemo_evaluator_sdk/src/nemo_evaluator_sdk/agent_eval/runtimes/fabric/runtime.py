@@ -351,9 +351,7 @@ class FabricAgentRuntime:
             # audit is still the authoritative analyzer output for scoring.
             if self._task_hook is not None:
                 try:
-                    hook_extras = self._task_hook.after_success(
-                        task=task, result=result, session=hook_session
-                    )
+                    hook_extras = self._task_hook.after_success(task=task, result=result, session=hook_session)
                 except Exception as exc:  # noqa: BLE001 - binding harvest must not abort the batch
                     logger.warning("Fabric task hook after_success failed: %s", exc)
                     if result.status == "succeeded":
