@@ -16,6 +16,7 @@ import type {
   GuardrailCheckResponse,
   RailsConfigOutput,
 } from '@nemo/sdk/generated/platform/schema';
+import { isVersionConflictError } from '@studio/api/common/utils';
 import {
   GUARDRAIL_CHECKS_ENTITY_TYPE,
   type GuardrailCheckData,
@@ -243,13 +244,32 @@ export async function runGuardrailCheck(
   const response = await executeGuardrailCheck(workspace, request);
   const run = responseToRunRecord(response, new Date().toISOString(), configEntity.db_version);
 
-  const entity = await updateGuardrailCheck(workspace, check.name, {
-    data: { ...check.data, runs: [...check.data.runs, run] },
-    expected_db_version: check.db_version,
-    parent: check.parent,
-  });
+  const entity = await persistRun(workspace, check, run);
 
   return { entity, run };
+}
+
+// A 409 only means `data.runs` came from a stale snapshot, so re-read and re-append rather
+// than discard a run that already cost an LLM round trip.
+async function persistRun(
+  workspace: string,
+  check: GuardrailCheckEntity,
+  run: RunRecord
+): Promise<GuardrailCheckEntity> {
+  const write = (base: GuardrailCheckEntity) =>
+    updateGuardrailCheck(workspace, base.name, {
+      data: { ...base.data, runs: [...base.data.runs, run] },
+      expected_db_version: base.db_version,
+      parent: base.parent,
+    });
+
+  try {
+    return await write(check);
+  } catch (error) {
+    if (!isVersionConflictError(error) || !check.parent) throw error;
+    const latest = await getGuardrailCheck(workspace, check.name, check.parent);
+    return write(latest);
+  }
 }
 
 /** Batch execution — backs the "Re-run N Tests" action. Failures are captured per check. */
