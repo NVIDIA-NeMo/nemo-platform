@@ -31,6 +31,7 @@ def reset_copilot_state():
     copilot._pending_agent_inputs.clear()
     copilot._session_conversations.clear()
     copilot._session_mtimes.clear()
+    copilot._session_workspace_cache.clear()
     yield
     copilot._initialized_sessions.clear()
     copilot._session_streams.clear()
@@ -38,6 +39,7 @@ def reset_copilot_state():
     copilot._pending_agent_inputs.clear()
     copilot._session_conversations.clear()
     copilot._session_mtimes.clear()
+    copilot._session_workspace_cache.clear()
 
 
 @pytest.fixture
@@ -1887,7 +1889,132 @@ def test_platform_route_rejects_workspace_path_injection(service_client: TestCli
     assert response.status_code == 422
 
 
-def test_copilot_error_detail_does_not_expose_exception_text():
+_WORKSPACES_LIST_URL = "http://127.0.0.1:8080/apis/entities/v2/workspaces"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_default_skips_lookup():
+    # No HTTP mock configured: the default fallback must not make a network call.
+    assert await copilot._authorized_workspace("default", {}, "sess") == "default"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_returns_name_from_entity_store(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": [{"name": "team-a"}, {"name": "my-ws"}], "pagination": {"total_pages": 1}},
+        )
+    )
+
+    # The returned value is the platform's own copy of the name (not client input).
+    assert await copilot._authorized_workspace("my-ws", {}, "sess") == "my-ws"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_paginates_until_match(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"data": [{"name": "a"}], "pagination": {"total_pages": 2}}),
+            httpx.Response(200, json={"data": [{"name": "target"}], "pagination": {"total_pages": 2}}),
+        ]
+    )
+
+    assert await copilot._authorized_workspace("target", {}, "sess") == "target"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_caches_per_session(respx_mock):
+    route = respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "my-ws"}], "pagination": {"total_pages": 1}})
+    )
+
+    first = await copilot._authorized_workspace("my-ws", {}, "sess")
+    second = await copilot._authorized_workspace("my-ws", {}, "sess")
+
+    assert first == second == "my-ws"
+    # The second resolution is served from the per-session cache, not the network.
+    assert route.call_count == 1
+    # A different session does not share the cache.
+    await copilot._authorized_workspace("my-ws", {}, "other-sess")
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_cache_is_not_shared_across_callers(respx_mock):
+    """A cached authorization decision must never be reused for a different caller."""
+    route = respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "my-ws"}], "pagination": {"total_pages": 1}})
+    )
+    session_id = "shared-session"
+    caller_a = {"authorization": "Bearer token-a"}
+    caller_b = {"authorization": "Bearer token-b"}
+
+    await copilot._authorized_workspace("my-ws", caller_a, session_id)
+    assert route.call_count == 1
+    # Same session id, different credential: must re-verify against the Entity Store.
+    await copilot._authorized_workspace("my-ws", caller_b, session_id)
+    assert route.call_count == 2
+    # Each caller still gets its own cache hit on repeat.
+    await copilot._authorized_workspace("my-ws", caller_a, session_id)
+    assert route.call_count == 2
+    # The raw credential is never retained in the cache key material.
+    assert "token-a" not in str(copilot._session_workspace_cache)
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_unauthorized_caller_is_rejected_on_cached_session(respx_mock):
+    """An unauthorized caller cannot ride a session that already resolved the workspace."""
+    session_id = "shared-session"
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"data": [{"name": "my-ws"}], "pagination": {"total_pages": 1}}),
+            # The second caller is not a member of that workspace.
+            httpx.Response(200, json={"data": [{"name": "other-ws"}], "pagination": {"total_pages": 1}}),
+        ]
+    )
+
+    assert await copilot._authorized_workspace("my-ws", {"authorization": "a"}, session_id) == "my-ws"
+
+    with pytest.raises(HTTPException) as excinfo:
+        await copilot._authorized_workspace("my-ws", {"authorization": "b"}, session_id)
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_rejects_unknown_workspace(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "team-a"}], "pagination": {"total_pages": 1}})
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await copilot._authorized_workspace("not-a-member", {}, "sess")
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_does_not_cache_failures(respx_mock):
+    route = respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "team-a"}], "pagination": {"total_pages": 1}})
+    )
+
+    for _ in range(2):
+        with pytest.raises(HTTPException):
+            await copilot._authorized_workspace("not-a-member", {}, "sess")
+    # Unresolved workspaces are re-checked every message (no negative caching).
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_maps_upstream_error_to_502(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(side_effect=httpx.ConnectError("boom"))
+
+    with pytest.raises(HTTPException) as excinfo:
+        await copilot._authorized_workspace("my-ws", {}, "sess")
+    assert excinfo.value.status_code == 502
+
+
+def test_nemo_agent_error_detail_does_not_expose_exception_text():
     request = httpx.Request("POST", "https://platform.test/agent")
     response = httpx.Response(502, request=request)
     status_error = httpx.HTTPStatusError("private upstream detail", request=request, response=response)
@@ -1898,6 +2025,64 @@ def test_copilot_error_detail_does_not_expose_exception_text():
     )
 
 
+def test_parse_tool_step_input_extracts_python_repr_dict():
+    payload = "**Input:**\n```json\n{'action': 'list', 'resource': 'secrets'}\n```\n**Output:** ..."
+    assert copilot._parse_tool_step_input(payload) == {"action": "list", "resource": "secrets"}
+
+
+def test_parse_tool_step_input_returns_empty_on_unparseable():
+    assert copilot._parse_tool_step_input("no dict here") == {}
+    assert copilot._parse_tool_step_input(None) == {}
+    assert copilot._parse_tool_step_input("**Input:** [1, 2, 3]") == {}
+
+
+def test_tool_use_stream_event_shape():
+    event_type, payload = copilot._tool_use_stream_event("nemo_api", {"resource": "secrets"})
+    assert event_type == "agent"
+    block = json.loads(payload)["message"]["content"][0]
+    assert block["type"] == "tool_use"
+    assert block["name"] == "nemo_api"
+    assert block["input"] == {"resource": "secrets"}
+
+
+def test_tool_use_stream_event_strips_internal_session_id():
+    _, payload = copilot._tool_use_stream_event(
+        "ask_user_question",
+        {"studio_session_id": "sess-123", "questions": [{"q": "?"}]},
+    )
+    block = json.loads(payload)["message"]["content"][0]
+    assert "studio_session_id" not in block["input"]
+    assert block["input"] == {"questions": [{"q": "?"}]}
+
+
+@pytest.mark.asyncio
+async def test_stream_copilot_flushes_tool_events_before_final_response(monkeypatch: pytest.MonkeyPatch):
+    session_id = str(uuid.uuid4())
+
+    async def fake_invoke(agent_url, headers, messages, studio_session_id):
+        queue = copilot._session_streams[studio_session_id]
+        # Two tool events queued in the same turn the invocation completes: the
+        # loop can consume at most one, so the drain must flush the remainder.
+        queue.put_nowait(copilot._tool_use_stream_event("nemo_api", {"resource": "secrets"}))
+        queue.put_nowait(copilot._tool_use_stream_event("describe_api", {"path": "secrets"}))
+        return "final answer", "model-x"
+
+    monkeypatch.setattr(copilot, "_invoke_copilot", fake_invoke)
+
+    frames = [
+        frame async for frame in copilot._stream_copilot(session_id, "hello", "https://agent.test/x", {}, "sys prompt")
+    ]
+
+    body = "".join(frames)
+    first_tool = body.find("nemo_api")
+    second_tool = body.find("describe_api")
+    final = body.find("final answer")
+    assert first_tool != -1 and second_tool != -1 and final != -1
+    # Both tool-use events survive and are emitted before the final assistant message.
+    assert first_tool < final
+    assert second_tool < final
+
+
 def test_copilot_request_payload_keeps_session_outside_model_messages():
     messages = [{"role": "user", "content": "hello"}]
     session_id = str(uuid.uuid4())
@@ -1906,7 +2091,7 @@ def test_copilot_request_payload_keeps_session_outside_model_messages():
 
     assert payload == {
         "messages": messages,
-        "stream": False,
+        "stream": True,
         "studio_session_id": session_id,
     }
     assert session_id not in json.dumps(payload["messages"])
