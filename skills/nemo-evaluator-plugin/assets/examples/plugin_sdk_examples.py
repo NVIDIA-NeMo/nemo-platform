@@ -101,7 +101,7 @@ def build_agent_eval_spec(metric_bundle: Any) -> Any:
                 metrics=[metric_bundle],
             )
         ],
-        target=CodexRunnerTarget(model="<codex-model>"),
+        target=CodexRunnerTarget(),
         max_concurrent_tasks=2,
         labels={"benchmark": "geography-smoke"},
     )

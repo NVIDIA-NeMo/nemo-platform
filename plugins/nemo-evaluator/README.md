@@ -3,10 +3,10 @@
 The Evaluator plugin connects the NeMo Evaluator SDK to NeMo Platform. It
 provides:
 
-- **CLI** `nemo evaluator` commands for plugin status, job schema inspection, local runs, and
-  job submissions.
+- **CLI** `nemo evaluator` commands for plugin status, job schema inspection, and
+  durable job submissions.
 - **Service** routes for evaluator job management: `plugins/nemo-evaluator/src/nemo_evaluator/service.py`.
-- **SDK accessor** at `client.evaluator` for status checks, local runs, job
+- **SDK accessor** at `client.evaluator` for status checks, job
   submission, status polling, result retrieval, and artifact download.
 - **Evaluator job** support for inline SDK metric specs, inline rows, and
   Fileset-backed datasets.
@@ -19,7 +19,7 @@ provides:
 
 | Surface | Entry point | Behavior |
 | --- | --- | --- |
-| CLI | `nemo.cli:evaluator` | Plugin status, metric discovery, job schema inspection, local runs, and durable submissions |
+| CLI | `nemo.cli:evaluator` | Plugin status, metric discovery, job schema inspection, and durable submissions |
 | Service | `nemo.services:evaluator` | Health, job, stored-resource, and result routes |
 | SDK | `nemo.sdk:evaluator` | `client.evaluator` execution, job lifecycle, stored resources, and result indexes |
 | Dataset job | `nemo.jobs:evaluator.evaluate` | Scores inline or Fileset-backed datasets |
@@ -55,16 +55,15 @@ Review the [Evaluator documentation](https://docs.nvidia.com/nemo-platform/docum
 
 ## Dataset-Driven evaluation
 
-### CLI Commands
-Inspect the current schema and run the checked offline example:
+### Dataset evaluation CLI commands
+
+Inspect the current schema:
 
 ```bash
 uv run nemo evaluator evaluate explain
-uv run nemo evaluator evaluate run \
-  --spec-file skills/nemo-evaluator-plugin/assets/specs/exact_match_metric.json
 ```
 
-Submit the same spec as a durable job:
+Submit the checked offline example as a durable job:
 
 ```bash
 uv run nemo evaluator evaluate submit \
@@ -116,7 +115,7 @@ artifact_dir = job.download_artifacts("evaluation-artifacts")
 
 ## Task-Driven Agent evaluation
 
-### CLI Commands
+### Agent evaluation CLI commands
 
 #### Durable job
 

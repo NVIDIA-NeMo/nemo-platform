@@ -72,10 +72,10 @@ spec = AgentEvalInputSpec(
             metrics=[metric_bundle],
         )
     ],
-    target=CodexRunnerTarget(model="<codex-model>"),
+    target=CodexRunnerTarget(),
     max_concurrent_tasks=2,
     fail_fast=False,
-    benchmark={"name": "geography-smoke"},
+    labels={"benchmark": "geography-smoke"},
 )
 ```
 
