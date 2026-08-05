@@ -4,11 +4,17 @@
 """Intake service implementation."""
 
 import logging
+from dataclasses import replace
 from typing import ClassVar, List
 
 from nmp.common.service import RouterConfig, Service
 from nmp.intake.api.v2.experiments import endpoints as experiments
-from nmp.intake.config import IntakeConfig
+from nmp.intake.config import IntakeConfig, should_provision_local_clickhouse
+from nmp.intake.local_clickhouse import (
+    DockerUnavailableError,
+    LocalClickHouseProvisioningError,
+    provision_local_clickhouse,
+)
 from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
@@ -70,18 +76,31 @@ class IntakeService(Service[IntakeConfig]):
         """Create the trace storage client without requiring ClickHouse to be online."""
 
         cfg = self.service_config or IntakeConfig()
-        self.clickhouse_client = ClickHouseSpanClient(ClickHouseSettings.from_config(cfg))
-        logger.warning(
-            "ClickHouse schema setup was not run during Intake startup; "
-            "trace endpoints will initialize ClickHouse on first use and return 503 until it is reachable. "
-            "For local development, start ClickHouse with services/intake/scripts/spans/run_clickhouse.sh; "
-            "see services/intake/README.md#local-development.",
-            extra={
-                "service": self.name,
-                "clickhouse_url": cfg.clickhouse_config.url,
-                "clickhouse_database": cfg.clickhouse_config.database,
-            },
-        )
+        settings = ClickHouseSettings.from_config(cfg)
+        if should_provision_local_clickhouse(cfg.clickhouse_config):
+            try:
+                local_url = await provision_local_clickhouse(
+                    settings,
+                    image=cfg.clickhouse_config.image,
+                    data_dir=cfg.clickhouse_config.data_dir,
+                )
+                settings = replace(settings, url=local_url)
+            except DockerUnavailableError as exc:
+                logger.warning(
+                    "Skipping local ClickHouse provisioning: %s ClickHouse-backed endpoints will return 503 until "
+                    "ClickHouse is reachable.",
+                    exc,
+                    extra={"service": self.name, "clickhouse_url": settings.url},
+                )
+            except LocalClickHouseProvisioningError as exc:
+                logger.error(
+                    "Local ClickHouse provisioning failed: %s Intake will continue starting; ClickHouse-backed "
+                    "endpoints will return 503 until ClickHouse is reachable.",
+                    exc,
+                    extra={"service": self.name, "clickhouse_url": settings.url},
+                )
+
+        self.clickhouse_client = ClickHouseSpanClient(settings)
         self._ready = True
 
     async def on_shutdown(self) -> None:

@@ -53,10 +53,10 @@ Require:
 For a remote deployment, set `NMP_BASE_URL` to its HTTPS origin and skip local startup. Use the
 deployment's authentication mechanism. Do not send authentication across an HTTP redirect: validate
 the final HTTPS origin and do not add `curl -L` to authenticated requests. For a local source
-checkout, follow `SETUP.md`, then start ClickHouse before the backend:
+checkout, follow `SETUP.md`, make sure Docker is running, then start the backend. Intake
+automatically provisions local ClickHouse unless `NMP_INTAKE_CLICKHOUSE_URL` is set:
 
 ```bash
-services/intake/scripts/spans/run_clickhouse.sh
 uv run nemo services run --services auth,entities,intake --host 127.0.0.1 --port 8080
 ```
 

@@ -522,10 +522,19 @@ let translate do the conversion.
 
 ## Troubleshooting
 
-**DB disk I/O error on startup** — orphaned WAL journal files. Delete all three:
+**DB disk I/O error on startup** — orphaned WAL journal files. With explicit
+confirmation, reset local platform state:
 ```bash
-rm -rf ~/.local/share/nemo
+DATA_DIR="${NMP_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/nemo}"
+CLICKHOUSE_DATA_DIR="${NMP_INTAKE_CLICKHOUSE_DATA_DIR:-$DATA_DIR/intake-clickhouse}"
+if [ -f "$CLICKHOUSE_DATA_DIR/.nmp-clickhouse-identity" ]; then
+  NMP_DATA_DIR="$DATA_DIR" .venv/bin/python -m nmp.intake.local_clickhouse --remove
+fi
+rm -rf "$DATA_DIR"
 ```
+This permanently deletes platform data and Intake traces stored under
+`$DATA_DIR`. An explicitly configured ClickHouse data directory outside it is
+preserved. If ClickHouse cleanup fails, do not delete any data.
 
 **`nemo-switchyard` fails to load at startup** — `switchyard.lib` not importable.
 Run `uv sync` from the repo root with default groups enabled to install the

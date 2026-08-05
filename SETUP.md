@@ -33,7 +33,7 @@ If port 8080 is in use **or** a `nemo services run` process exists, do not silen
   - The user may already have the workspace / secret / provider seeded — check with `nemo workspaces list`, `nemo secrets list --workspace …`, and `nemo inference providers list --workspace …` before re-creating anything (creates may 409).
 - **(c) Abort and let the user investigate.**
 
-> ⚠️ **macOS unlinked-inode gotcha:** running `rm -rf ~/.local/share/nemo` while a `nemo services run` process is still alive does **not** reset state. The files get unlinked from the directory tree but the running process keeps writing to its open inode, and a freshly-spawned platform will see the on-disk file (a new, empty inode) while the old process still owns the data. Always kill the platform process **first**, then wipe the DB.
+> ⚠️ **macOS unlinked-inode gotcha:** running `rm -rf ~/.local/share/nemo` while a `nemo services run` process or its managed ClickHouse container is still alive does **not** reset state safely. A process can keep writing to the unlinked inode. Always stop the platform and remove its managed ClickHouse container **before** wiping the data directory.
 
 ## Question 2 — Local data directory?
 
@@ -55,15 +55,23 @@ export NMP_DATA_DIR=/custom/path/to/state
 
 `nemo setup` persists the choice to `~/.config/nmp/config.yaml` under `local_services.data_dir` and re-uses it on subsequent runs. If you're running services manually (not via `nemo setup`), set `NMP_DATA_DIR` yourself each session.
 
-## Question 3 — Wipe the local DB?
+## Question 3 — Wipe local platform data?
 
-Ask whether the user wants to wipe the local entity-store database before platform startup. Warn clearly that this deletes local platform state, including secret metadata and the local encryption key. Providers/secrets must be re-seeded afterward. If the database and encryption key get out of sync, later runs can fail with decryption errors such as `cryptography.exceptions.InvalidTag`. **The wipe only works if no `nemo services run` process is currently holding the file open** (see the macOS gotcha under Question 1). If the user confirms, run this before `nemo services run`:
+Ask whether the user wants to wipe local platform data before startup. This is a destructive operation that requires explicit confirmation. Warn clearly that it deletes the entity-store database, encryption key, files, job history, secrets, and Intake ClickHouse traces stored under the selected platform data directory. An explicitly configured ClickHouse data directory outside it is preserved. Providers and secrets must be re-seeded afterward. If the database and encryption key get out of sync, later runs can fail with decryption errors such as `cryptography.exceptions.InvalidTag`. **The wipe only works if no `nemo services run` process or managed ClickHouse container is still using the data** (see the macOS gotcha under Question 1). If the user confirms, run this before `nemo services run`:
 
 ```bash
-rm -rf ~/.local/share/nemo
+DATA_DIR="${NMP_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/nemo}"
+CLICKHOUSE_DATA_DIR="${NMP_INTAKE_CLICKHOUSE_DATA_DIR:-$DATA_DIR/intake-clickhouse}"
+if [ -f "$CLICKHOUSE_DATA_DIR/.nmp-clickhouse-identity" ]; then
+  NMP_DATA_DIR="$DATA_DIR" .venv/bin/python -m nmp.intake.local_clickhouse --remove
+fi
+rm -rf "$DATA_DIR"
 ```
 
 Replace the path with whatever was chosen in Q2 (`$NMP_DATA_DIR`, `$XDG_DATA_HOME/nemo`, or the default `~/.local/share/nemo`).
+The cleanup command removes only the managed container; it does not delete the
+bind-mounted data. If it fails because Docker is unavailable, start Docker and
+retry—do not proceed to `rm -rf`.
 
 ---
 
@@ -135,6 +143,20 @@ LOG_LEVEL=DEBUG uv run nemo services run \
 
 `nemo-switchyard` is auto-discovered via its `nemo.inference_middleware` entry point once dependencies are installed.
 
+### Local ClickHouse for Intake
+
+When the `intake` service is selected and `NMP_INTAKE_CLICKHOUSE_URL` is unset, Intake automatically
+provisions a ClickHouse container owned by the resolved NeMo data directory, with a Docker-assigned
+loopback port. Platform processes using that data directory reuse the same container; shutdown does
+not remove it. Only the explicitly confirmed reset in Question 3 or teardown options 2/3 delete its
+default data under the NeMo data directory, after removing the managed container. A separately
+configured `NMP_INTAKE_CLICKHOUSE_DATA_DIR` is preserved.
+
+Docker must already be running. If startup logs report `Docker daemon is unavailable`, start Docker
+Desktop on macOS/Windows or the Docker service on Linux, then rerun `nemo setup` or restart
+`nemo services run`. To use an external ClickHouse and bypass local Docker provisioning, export
+`NMP_INTAKE_CLICKHOUSE_URL` before starting the platform.
+
 ### Demo agent
 
 `make bootstrap` installs the NeMo agents plugin and the calculator-agent example through the root workspace, so no separate `uv pip install` is needed. After services start, `nemo setup` (or `nemo setup --auto --deploy-agent`) will deploy a demo `calculator-agent` in the default workspace. Verify with:
@@ -148,7 +170,8 @@ nemo agents invoke --agent calculator-agent --input "What is 12 * 8?"
 
 - **Port**: `8080` (CLI default — do NOT pass a custom `--base-url`).
 - **`export NMP_BASE_URL=http://localhost:8080` — required when targeting a local platform.** If your `~/.config/nmp/config.yaml` already points at a remote cluster, the CLI uses that base URL and ignores the local platform entirely. Setting this env var overrides the config file for the current shell session.
-- **Reset state:** `rm -rf ~/.local/share/nemo` (only with platform stopped — see the gotcha above).
+- **Reset state:** follow Question 3 above; it requires explicit confirmation and removes the managed
+  ClickHouse container before deleting platform data.
 
 ---
 
