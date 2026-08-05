@@ -276,3 +276,44 @@ def test_finalized_suite_identity_is_stable_and_changes_with_task_or_verifier_co
     assert changed_verifier_identity != first_identity
     assert changed_scorer_identity != first_scorer_identity
     assert list((tmp_path / "eval-and-optimize" / "eval_author").glob("*/artifacts")) == []
+
+
+def test_verifier_hashes_track_each_task_independently(tmp_path: Path) -> None:
+    # The caller snapshots these around metric authoring to catch a task the authoring
+    # agent never touched, so an edit to one verifier must not perturb its siblings.
+    template = _write_template(tmp_path / "template")
+    refs = ["trace-1", "trace-2"]
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
+
+    staged = suite.stage(refs)
+    for index, task in enumerate(staged, start=1):
+        (task.path / "instruction.md").write_text(f"Reproduce scenario {index}.\n", encoding="utf-8")
+        suite.validate(task)
+    suite.promote_local(refs, staged)
+
+    before = suite.verifier_hashes()
+    assert sorted(before) == sorted(task.slug for task in staged)
+
+    authored = suite.suite_dir / staged[0].slug / "tests" / "check_behavior.py"
+    authored.write_text("print('scored')\n", encoding="utf-8")
+    after = suite.verifier_hashes()
+
+    assert after[staged[0].slug] != before[staged[0].slug]
+    assert after[staged[1].slug] == before[staged[1].slug]
+
+
+def test_verifier_hashes_ignore_edits_outside_the_verifier_directory(tmp_path: Path) -> None:
+    # Authoring is only allowed to add grades, so a changed instruction must not read as
+    # an authored verifier and let a skipped task slip through the coverage check.
+    template = _write_template(tmp_path / "template")
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
+
+    staged = suite.stage(["trace-1"])
+    (staged[0].path / "instruction.md").write_text("Reproduce the scenario.\n", encoding="utf-8")
+    suite.validate(staged[0])
+    suite.promote_local(["trace-1"], staged)
+
+    before = suite.verifier_hashes()
+    (suite.suite_dir / staged[0].slug / "instruction.md").write_text("Rewritten.\n", encoding="utf-8")
+
+    assert suite.verifier_hashes() == before

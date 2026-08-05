@@ -315,6 +315,28 @@ class InsightSuite:
         pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(pending_path, manifest_path)
 
+    def verifier_hashes(self) -> dict[str, str]:
+        """Return each promoted task's verifier content hash, keyed by task directory.
+
+        Comparing these before and after metric authoring is what proves the authoring
+        agent reached every task. A hash that survives unchanged means that task never
+        received the Insight metric, which otherwise surfaces much later as a ragged
+        metric key set that aborts aggregation partway through an evaluation.
+        """
+        manifest = json.loads((self.suite_dir / "manifest.json").read_text(encoding="utf-8"))
+        raw_tasks = manifest.get("tasks")
+        if not isinstance(raw_tasks, list):
+            raise ValueError(f"Insight suite manifest has invalid tasks: {self.suite_dir / 'manifest.json'}")
+
+        hashes: dict[str, str] = {}
+        for entry in raw_tasks:
+            relative_path = entry.get("path") if isinstance(entry, dict) else None
+            if not isinstance(relative_path, str) or not relative_path:
+                raise ValueError(f"Insight suite manifest task has invalid path: {entry!r}")
+            verifier_dir = _verifier_dir(self.suite_dir / relative_path)
+            hashes[relative_path] = f"sha256:{_canonical_digest(_file_hashes(verifier_dir))}"
+        return hashes
+
     def finalize(self) -> FinalizedInsightSuite:
         """Persist content identities on the experiment-local authored suite."""
         manifest_path = self.suite_dir / "manifest.json"

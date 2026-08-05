@@ -6,7 +6,7 @@
 import asyncio
 import inspect
 import io
-from collections.abc import Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +14,7 @@ from typing import Any, cast
 
 import pytest
 from nemo_eval_author_plugin.eval_author import agent as eval_author_module
-from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
+from nemo_eval_author_plugin.eval_author.agent import EvalAuthor, EvalAuthorUnauthoredTasksError
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
@@ -57,6 +57,9 @@ class _PipelineCalls:
     discovered_datasets: list[Dataset]
     author_args: list[tuple[Insight, list[tuple[str, Diagnostic]], Dataset, str, str | None]]
     suite_discards: int
+    # Tests that swap in their own authoring fake call this to act like an agent that
+    # edited every verifier, so the authoring-coverage check sees the suite as authored.
+    mark_all_authored: Callable[[], None]
 
 
 @dataclass
@@ -152,7 +155,25 @@ def _install_pipeline(
     eval_author: EvalAuthor,
     *,
     materialized_dataset: Dataset | None = None,
+    skip_authoring: Sequence[Collection[str]] = (),
 ) -> _PipelineCalls:
+    """Install fakes for one Eval Author pipeline run.
+
+    ``skip_authoring`` names the task ids the authoring fake leaves untouched, indexed by
+    authoring attempt, so a test can reproduce the real agent silently missing a task.
+    """
+    next_analyzer = 0
+    # Stands in for the verifier content hashes on disk: promotion seeds it and each
+    # authoring attempt advances the tasks it actually edited.
+    verifier_state: dict[str, str] = {}
+    authoring_rounds = 0
+
+    def mark_all_authored() -> None:
+        nonlocal authoring_rounds
+        authoring_rounds += 1
+        for task_id in verifier_state:
+            verifier_state[task_id] = f"sha256:authored-{authoring_rounds}"
+
     calls = _PipelineCalls(
         fill_task_template=[],
         analyzer_init=[],
@@ -160,8 +181,8 @@ def _install_pipeline(
         discovered_datasets=[],
         author_args=[],
         suite_discards=0,
+        mark_all_authored=mark_all_authored,
     )
-    next_analyzer = 0
 
     class FakeInsightSuite:
         def __init__(self, *, task_template: Task, **_: Any) -> None:
@@ -185,12 +206,17 @@ def _install_pipeline(
         def promote_local(self, trace_refs: list[str], staged_tasks: list[Any]) -> Dataset:
             assert trace_refs == [staged.trace_ref for staged in staged_tasks]
             tasks = [staged.result for staged in staged_tasks]
+            verifier_state.clear()
+            verifier_state.update({task.id: "sha256:pre-authoring" for task in tasks})
             if materialized_dataset is not None:
                 materialized_dataset.tasks = tasks
                 self.materialized_dataset = materialized_dataset
                 return materialized_dataset
             self.materialized_dataset = Dataset(id="insight-suite", tasks=tasks)
             return self.materialized_dataset
+
+        def verifier_hashes(self) -> dict[str, str]:
+            return dict(verifier_state)
 
         def discard(self) -> None:
             calls.suite_discards += 1
@@ -295,6 +321,14 @@ def _install_pipeline(
                     validation_feedback,
                 )
             )
+            attempt = len(calls.author_args) - 1
+            skipped = skip_authoring[attempt] if attempt < len(skip_authoring) else ()
+            if not skipped:
+                mark_all_authored()
+            else:
+                for task_id in verifier_state:
+                    if task_id not in skipped:
+                        verifier_state[task_id] = f"sha256:authored-{attempt}-partial"
             return "authored insight metrics"
 
     eval_author.fill_task_template = cast(Any, FillTaskTemplate())
@@ -599,7 +633,7 @@ async def test_run_feeds_validation_failures_back_for_one_repair_attempt(
 ) -> None:
     eval_author = _eval_author(tmp_path)
     insight_dataset = _RepairableDataset("insight-suite", "task 'insight-a': check.py:2:1: invalid syntax")
-    _install_pipeline(
+    calls = _install_pipeline(
         monkeypatch,
         [_diagnostic("diagnostic")],
         eval_author,
@@ -621,6 +655,7 @@ async def test_run_feeds_validation_failures_back_for_one_repair_attempt(
             validation_feedback: str | None = None,
         ) -> str:
             feedback.append(validation_feedback)
+            calls.mark_all_authored()
             if validation_feedback is not None:
                 insight_dataset.error = None
             return "repaired insight metric"
@@ -674,6 +709,124 @@ async def test_run_raises_after_validation_repair_budget_is_exhausted(
     assert calls.author_args[0][-1] is None
     assert calls.author_args[1][-1] is not None
     assert insight_dataset.validate_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_run_repairs_a_task_metric_authoring_silently_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Static checks pass on a task that was never touched, because a verifier missing the
+    # Insight metric is still valid Python. The gap only shows up as ragged metric keys
+    # after a full evaluation has run, so compare verifier hashes and repair immediately.
+    eval_author = _eval_author(tmp_path, max_validation_repair_attempts=1)
+    calls = _install_pipeline(
+        monkeypatch,
+        [_diagnostic("one"), _diagnostic("two")],
+        eval_author,
+        skip_authoring=[{"task-trace-2"}],
+    )
+    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
+
+    result = await eval_author.run(
+        _insight(["trace-1", "trace-2"]),
+        Path("agent"),
+        Task(id="template"),
+        Dataset(id="train"),
+        Dataset(id="validation"),
+        client=cast(Any, object()),
+    )
+
+    assert len(calls.author_args) == 2
+    feedback = calls.author_args[1][-1]
+    assert feedback is not None
+    assert "task-trace-2" in feedback
+    assert "byte-identical" in feedback
+    assert result.insight_suite_identity is not None
+
+
+@pytest.mark.asyncio
+async def test_run_raises_when_a_task_is_never_authored_within_the_repair_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eval_author = _eval_author(tmp_path, max_validation_repair_attempts=1)
+    calls = _install_pipeline(
+        monkeypatch,
+        [_diagnostic("one"), _diagnostic("two")],
+        eval_author,
+        skip_authoring=[{"task-trace-2"}, {"task-trace-2"}],
+    )
+    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
+
+    with pytest.raises(EvalAuthorUnauthoredTasksError) as exc_info:
+        await eval_author.run(
+            _insight(["trace-1", "trace-2"]),
+            Path("agent"),
+            Task(id="template"),
+            Dataset(id="train"),
+            Dataset(id="validation"),
+            client=cast(Any, object()),
+        )
+
+    assert exc_info.value.paths == ("task-trace-2",)
+    assert len(calls.author_args) == 2
+
+
+class _FailsValidationOnceDataset(Dataset):
+    def __init__(self, id: str) -> None:
+        super().__init__(id=id)
+        self.validate_calls = 0
+
+    async def validate(self) -> None:
+        self.validate_calls += 1
+        if self.validate_calls == 1:
+            raise DatasetValidationError("task 'insight-a': check.py:2:1: invalid syntax")
+
+
+@pytest.mark.asyncio
+async def test_run_accepts_a_task_authored_on_an_earlier_repair_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The pre-authoring snapshot is the baseline for every attempt, so a task authored on
+    # attempt one must not be reported as skipped when a later repair touches only its
+    # sibling. The check asks whether a task was ever authored, not whether it changed last.
+    eval_author = _eval_author(tmp_path, max_validation_repair_attempts=2)
+    insight_dataset = _FailsValidationOnceDataset("insight-suite")
+    calls = _install_pipeline(
+        monkeypatch,
+        [_diagnostic("one"), _diagnostic("two")],
+        eval_author,
+        materialized_dataset=insight_dataset,
+        skip_authoring=[(), {"task-trace-1"}],
+    )
+    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
+
+    result = await eval_author.run(
+        _insight(["trace-1", "trace-2"]),
+        Path("agent"),
+        Task(id="template"),
+        Dataset(id="train"),
+        Dataset(id="validation"),
+        client=cast(Any, object()),
+    )
+
+    assert len(calls.author_args) == 2
+    assert insight_dataset.validate_calls == 2
+    assert result.insight_suite_identity is not None
+
+
+def test_eval_author_prompts_forbid_scoring_a_trial_that_could_not_be_measured() -> None:
+    # A judge that crashes and writes 0.0 is indistinguishable from a real regression: the
+    # metric reads as healthy while sitting at a constant, so nothing can improve it.
+    prompt = _prompt(EvalAuthor.author_insight_metrics)
+
+    assert "Never score a trial you could not measure" in prompt
+    assert 'must never double as "the check could not run"' in prompt
+    assert "let the exception propagate and exit non-zero without writing the metric file" in prompt
+    assert "``except Exception: score = 0.0`` fallback is forbidden" in prompt
+    assert "never drop the metric key while still exiting zero" in prompt
 
 
 def test_eval_author_config_defaults_and_bounds_validation_repair_attempts() -> None:
@@ -755,7 +908,7 @@ async def test_run_with_reporter_emits_repair_progress(
     reporter, sink = _string_reporter()
     eval_author = _eval_author(tmp_path, max_validation_repair_attempts=2, reporter=reporter)
     insight_dataset = _RepairableDataset("insight-suite", "task 'insight-a': check.py:2:1: invalid syntax")
-    _install_pipeline(
+    calls = _install_pipeline(
         monkeypatch,
         [_diagnostic("diagnostic")],
         eval_author,
@@ -772,6 +925,7 @@ async def test_run_with_reporter_emits_repair_progress(
             runner_conventions: str,
             validation_feedback: str | None = None,
         ) -> str:
+            calls.mark_all_authored()
             if validation_feedback is not None:
                 insight_dataset.error = None
             return "repaired insight metric"

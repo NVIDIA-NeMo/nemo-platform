@@ -9,6 +9,7 @@ before beginning insight-driven optimization.
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,38 @@ from nooa.config.summarizer_config import TokenBudgetConfig
 from nooa.tools import TodoManager
 
 logger = logging.getLogger(__name__)
+
+
+class EvalAuthorUnauthoredTasksError(DatasetValidationError):
+    """Metric authoring left at least one task in the Insight suite untouched.
+
+    Subclasses ``DatasetValidationError`` so the caller's repair loop treats a skipped
+    task the same as a malformed one and feeds this message back as validation feedback.
+    """
+
+    def __init__(self, paths: Sequence[str]) -> None:
+        """Name the tasks whose verifiers never changed, and what to do about it."""
+        self.paths = tuple(paths)
+        listed = "\n".join(f"  - {path}" for path in self.paths)
+        super().__init__(
+            f"Metric authoring left {len(self.paths)} of the Insight suite's verifiers byte-identical, "
+            f"so those tasks carry no Insight metric:\n{listed}\n"
+            "Every task in the suite needs the same Insight metric key set. Add it to each task listed above."
+        )
+
+
+def _assert_every_task_authored(suite: InsightSuite, before: dict[str, str]) -> None:
+    """Fail when a task's verifier is unchanged since before metric authoring.
+
+    A static comparison, so a skipped task costs seconds here instead of surfacing as an
+    aggregation error after a full evaluation has already run. ``before`` stays pinned to
+    the pre-authoring snapshot across repair attempts: the question is whether a task was
+    ever authored, not whether it changed on the most recent attempt.
+    """
+    after = suite.verifier_hashes()
+    unauthored = sorted(path for path, digest in after.items() if before.get(path) == digest)
+    if unauthored:
+        raise EvalAuthorUnauthoredTasksError(unauthored)
 
 
 class EvalAuthor(Agent):
@@ -186,6 +219,21 @@ class EvalAuthor(Agent):
         The root cause is that the agent does not retrieve the full set of relevant database
         objects for Y, so X is missing from its context.  Measure whether the agent retrieves
         all required objects, not merely whether X appears in the final answer.
+
+        **Never score a trial you could not measure**
+
+        ``0.0`` means the agent definitively exhibited the bad behavior, so it must never
+        double as "the check could not run".  When the runtime artifact is missing or
+        unparseable, a judge call raises, or a judge response will not parse, let the
+        exception propagate and exit non-zero without writing the metric file.  The harness
+        then marks the trial failed, excludes it from aggregation, and surfaces the error.
+
+        An ``except Exception: score = 0.0`` fallback is forbidden.  It reports maximum
+        failure on every trial, which no downstream consumer can tell apart from a real
+        regression: the metric looks healthy, sits at a constant, and gives an optimizer
+        nothing to climb.  Equally, never write a partial metric file and never drop the
+        metric key while still exiting zero — completed trials that disagree on metric keys
+        abort aggregation outright.
 
         Return a concise summary naming the new metric key(s), what they measure, and
         which runtime evidence they score. The caller retains the materialized suite and
@@ -394,6 +442,7 @@ class EvalAuthor(Agent):
         runner_conventions = await self.discover_runner(materialized_dataset)
         if reporter is not None:
             reporter.progress(phase="eval author · authoring metrics")
+        verifiers_before_authoring = insight_suite.verifier_hashes()
         summary = await self.author_insight_metrics(
             insight,
             diagnostics,
@@ -402,6 +451,7 @@ class EvalAuthor(Agent):
         )
         for repair_attempt in range(self._config.max_validation_repair_attempts + 1):
             try:
+                _assert_every_task_authored(insight_suite, verifiers_before_authoring)
                 await materialized_dataset.validate()
             except DatasetValidationError as exc:
                 if repair_attempt >= self._config.max_validation_repair_attempts:
