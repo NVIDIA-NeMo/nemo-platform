@@ -735,7 +735,7 @@ class Coder(Agent, Builder):
             own_doc = fork.workdir / "architecture.md"
             if upstream_doc.exists() and not own_doc.exists():
                 shutil.copy2(upstream_doc, own_doc)
-        await self.create_architecture_doc(fork.workdir, source_path=self._source_path, entrypoint=self._entrypoint)
+        await self.describe(fork.workdir)
 
         return await ctx.commit_candidate(proposal=proposal, artifact=fork.workdir, generation=generation)
 

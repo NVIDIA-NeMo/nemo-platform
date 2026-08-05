@@ -495,7 +495,9 @@ class ExperimentContext:
             "workspace": self.root,
             "working_dir": self.root,
             "evaluator": self._evaluator,
-            "dataset": self.datasets[PRIMARY_SPLIT],
+            # Train, not the primary split: a Builder runs bounded repair loops against
+            # whatever it is handed, and `validation` is held out for scoring.
+            "dataset": self.datasets.get("train", self.datasets[PRIMARY_SPLIT]),
             **kwargs,
         }
         return component(**_accepted(component.__init__, supplied))

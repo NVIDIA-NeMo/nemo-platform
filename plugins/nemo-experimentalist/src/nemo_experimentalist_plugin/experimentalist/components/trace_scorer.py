@@ -3,7 +3,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 from nemo_experimentalist_plugin.entities import Dataset, TrialResult
 from nemo_experimentalist_plugin.experimentalist import roles
@@ -35,7 +35,6 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
     """Score a group of agent traces against a goal-tree leaf node."""
 
     name = "goal-tree"
-    needs_goal_tree: ClassVar[bool] = True
 
     def __init__(
         self,

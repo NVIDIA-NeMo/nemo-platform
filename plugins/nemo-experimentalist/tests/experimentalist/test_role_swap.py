@@ -59,6 +59,11 @@ async def _no_proposals(*_args: Any, **_kwargs: Any) -> list[Proposal]:
     return []
 
 
+async def _one_baseline(*, ctx: Any, config: Any) -> None:
+    proposal = Proposal(ancestor=None, description="baseline", kind="import", payload={})
+    await ctx.component("builder", "import").build(ctx, proposal, generation=0)
+
+
 @pytest.fixture
 def isolated_registry() -> Iterator[None]:
     """Register stand-ins without leaking them into other tests.
@@ -141,19 +146,35 @@ def test_every_role_can_be_swapped_for_one_this_repo_does_not_know(isolated_regi
         assert issubclass(resolved, Swapped), f"{role} resolved to {resolved.__name__}, not the configured one"
 
 
-def test_turning_off_the_analyzer_skips_the_work_that_feeds_it(isolated_registry: None) -> None:
+@pytest.mark.asyncio
+async def test_turning_off_the_analyzer_skips_the_work_that_feeds_it(tmp_path, isolated_registry: None) -> None:
     """`analyzer: null` must skip the train evaluation, which is the expensive half.
 
-    Asserted against the loop rather than the config, because the config echoing back
-    what it was handed says nothing about whether the loop reads it.
+    Driven through the loop: the config echoing back what it was handed says nothing
+    about whether the loop reads it.
     """
-    import inspect
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
-    from nemo_experimentalist_plugin.experimentalist.strategies import evolutionary
+    trained: list[int] = []
 
-    source = inspect.getsource(evolutionary.EvolutionaryStrategy._run)
+    async def train_eval(**kwargs: Any) -> dict[str, Any]:
+        trained.append(kwargs["round_num"])
+        return {}
 
-    assert "if config.analyzer is None" in source, "the loop no longer branches on a missing analyzer"
+    config = EvolutionaryOptimizerConfig(max_rounds=1, analyzer=None, terminator=None, trajectory_scorer=None)
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+    loop._ensure_baseline = _one_baseline
+    loop._evaluate_train_candidates = train_eval
+    loop._evaluate_validation_candidates = _no_results
+    loop._record_baseline_validation = _no_results
+    loop._analyze_round = _no_results
+    loop._generate_initial_goal_tree = _no_results
+    loop._propose_improvements = _no_proposals
+
+    await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
+
+    assert trained == [], "the train evaluation ran even though nothing consumes it"
 
 
 def test_resolution_constructs_with_what_the_caller_passes(isolated_registry: None) -> None:
@@ -255,11 +276,7 @@ async def test_the_round_budget_bounds_the_loop_without_a_terminator(tmp_path, i
             raise AssertionError(f"loop ran round {rounds} with max_rounds={config.max_rounds}")
         return []
 
-    async def baseline(*, ctx: Any, config: Any) -> None:
-        proposal = Proposal(ancestor=None, description="baseline", kind="import", payload={})
-        await ctx.component("builder", "import").build(ctx, proposal, generation=0)
-
-    loop._ensure_baseline = baseline
+    loop._ensure_baseline = _one_baseline
     loop._propose_improvements = one_round
     loop._evaluate_validation_candidates = _no_results
     loop._record_baseline_validation = _no_results
@@ -313,7 +330,7 @@ def test_the_context_supplies_every_run_scoped_argument(tmp_path, isolated_regis
         "working_dir": ctx.root,
         "models": ctx.models,
         "evaluator": ctx.evaluation,
-        "dataset": ctx.datasets["validation"],
+        "dataset": ctx.datasets["train"],
     }
 
 
@@ -327,7 +344,9 @@ def test_the_built_in_coder_gets_what_it_needs_to_verify_a_build(tmp_path, isola
     coder = ctx.component("builder", "coder")
 
     assert coder._evaluator is ctx.evaluation
-    assert coder._dataset is ctx.datasets["validation"]
+    # Train, never validation: a Builder repairs against what it is handed, and the
+    # winner is chosen on validation.
+    assert coder._dataset is ctx.datasets["train"]
 
 
 @pytest.mark.asyncio
@@ -411,18 +430,36 @@ async def test_a_proposal_no_builder_accepts_is_dropped_not_raised(tmp_path, iso
     assert built == []
 
 
-def test_a_scorer_that_does_not_read_a_goal_tree_is_not_charged_for_one(isolated_registry: None) -> None:
-    """Building and updating a goal tree costs two LLM passes per round."""
+@pytest.mark.asyncio
+async def test_naming_a_trajectory_scorer_reaches_it(tmp_path, isolated_registry: None) -> None:
+    """A gate that skips the scoring step is indistinguishable from `trajectory_scorer:
+    null`, so the run silently loses a reward channel it was configured to measure."""
+    from doubles import FakeBackend, make_context
     from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
+    reached: list[str] = []
+
     class StepCountScorer(TrajectoryScorer):
-        name = "acme-steps-only"
+        name = "acme-steps"
 
-    loop = EvolutionaryStrategy(working_dir=Path("/tmp"), config=EvolutionaryOptimizerConfig())
+    config = EvolutionaryOptimizerConfig(max_rounds=1, analyzer=None, terminator=None, trajectory_scorer="acme-steps")
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
 
-    assert loop._goal_tree_wanted(EvolutionaryOptimizerConfig()) is True
-    assert loop._goal_tree_wanted(EvolutionaryOptimizerConfig(trajectory_scorer="acme-steps-only")) is False
-    assert loop._goal_tree_wanted(EvolutionaryOptimizerConfig(trajectory_scorer=None)) is False
+    async def scoring(**kwargs: Any) -> dict[str, Any]:
+        reached.append(kwargs["config"].trajectory_scorer)
+        return {}
+
+    loop._ensure_baseline = _one_baseline
+    loop._reward_trajectories = scoring
+    loop._evaluate_validation_candidates = _no_results
+    loop._record_baseline_validation = _no_results
+    loop._analyze_round = _no_results
+    loop._generate_initial_goal_tree = _no_results
+    loop._propose_improvements = _no_proposals
+
+    await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
+
+    assert reached == ["acme-steps"]
 
 
 @pytest.mark.asyncio

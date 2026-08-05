@@ -141,16 +141,6 @@ async def test_assess_convergence_no_prior_analysis_does_not_stop() -> None:
     assert decision == TerminationDecision(stop=False)
 
 
-async def test_no_terminator_selected_means_the_round_budget_is_the_only_rule() -> None:
-    """Turning a step off is the degenerate case of choosing a different implementation.
-
-    There is no disable flag to short-circuit: a run that should stop only on max_rounds
-    selects no terminator, and the loop never resolves one.
-    """
-    assert EvolutionaryOptimizerConfig(terminator=None).terminator is None
-    assert EvolutionaryOptimizerConfig().terminator == "convergence"
-
-
 async def test_has_converged_false_when_too_few_rounds() -> None:
     term = _terminator()
     tree = _tree(

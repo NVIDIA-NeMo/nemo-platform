@@ -93,14 +93,14 @@ class TrajectoryScorer(Component):
     """Score the steps a candidate took, not just its outcome.
 
     A second measurement of the same run, landing in its own reward channel.
+
+    The narrowest of the eight: the evolutionary strategy builds a goal tree and calls a
+    scorer once per (leaf, task) group, so a replacement is handed ``GoalNode`` objects
+    whether or not it models goals. Moving that pipeline into the component is what would
+    make this seam as wide as the rest.
     """
 
     role: ClassVar[str] = "trajectory-scorer"
-
-    #: Whether the strategy should build and maintain a goal tree for this scorer. The
-    #: built-in one ranks traces against goal-tree leaves; a scorer that models something
-    #: else leaves this False and the strategy skips two LLM passes per round for it.
-    needs_goal_tree: ClassVar[bool] = False
 
 
 class Selector(Component):

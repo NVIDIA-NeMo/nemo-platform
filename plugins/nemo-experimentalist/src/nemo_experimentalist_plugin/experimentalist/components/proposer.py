@@ -185,7 +185,9 @@ class Proposer(Agent, roles.Proposer):
             try:
                 candidate = self.workspace.get_metadata(s.label)
                 meta = candidate.slim().model_dump()
-                arch_text = (local_path_from_uri(candidate.artifact.uri) / "architecture.md").read_text()
+                artifact = local_path_from_uri(candidate.artifact.uri)
+                artifact = artifact if artifact.is_dir() else artifact.parent
+                arch_text = (artifact / "architecture.md").read_text()
             except Exception:  # noqa: BLE001 - a survivor without a readable doc is still proposable
                 pass
             survivor_context.append(

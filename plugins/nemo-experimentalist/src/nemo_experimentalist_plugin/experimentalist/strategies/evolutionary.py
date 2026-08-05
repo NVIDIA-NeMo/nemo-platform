@@ -56,7 +56,7 @@ from nemo_experimentalist_plugin.experimentalist.components.tools import (
 )
 from nemo_experimentalist_plugin.experimentalist.components.util import load_framework_skills
 from nemo_experimentalist_plugin.experimentalist.registry import get_component, resolve
-from nemo_experimentalist_plugin.experimentalist.roles import Builder, Proposer, Selector, Strategy, TrajectoryScorer
+from nemo_experimentalist_plugin.experimentalist.roles import Builder, Proposer, Selector, Strategy
 from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
@@ -373,10 +373,9 @@ class EvolutionaryStrategy(Agent, Strategy):
             )
 
         # ---- Initial goal tree (idempotent) ------------------------------
-        goal_tree_wanted = self._goal_tree_wanted(config)
         await self._generate_initial_goal_tree(
             dataset=train_eval_dataset,
-            wanted=goal_tree_wanted,
+            wanted=config.trajectory_scorer is not None,
             config=config,
             agent_spec_path=agent_spec_path,
         )
@@ -417,6 +416,13 @@ class EvolutionaryStrategy(Agent, Strategy):
                 else list(candidates)
             )
             survivors = [by_id[s.id] for s in chosen if s.id in by_id]
+            if len(survivors) != len(chosen):
+                logger.warning(
+                    "Selector returned %d candidates this round but only %d are in the population; "
+                    "the rest are dropped and their originals killed.",
+                    len(chosen),
+                    len(survivors),
+                )
             survived = {s.id for s in survivors}
             for candidate in [c for c in candidates if c.id not in survived]:
                 await ctx.update_candidate(candidate, killed_generation=round_num)
@@ -452,7 +458,7 @@ class EvolutionaryStrategy(Agent, Strategy):
                 nmp_workspace=ctx.workspace,
                 agent_spec_path=agent_spec_path,
             )
-            if goal_tree_wanted:
+            if config.trajectory_scorer is not None:
                 await self._update_goal_tree(
                     analysis_dir=analysis_dir,
                     round_num=round_num,
@@ -513,7 +519,7 @@ class EvolutionaryStrategy(Agent, Strategy):
                         channel="validation",
                         result=validation_candidate_results[candidate.label],
                     )
-            if goal_tree_wanted:
+            if config.trajectory_scorer is not None:
                 trajectory_results = await self._reward_trajectories(
                     ctx=ctx,
                     dataset=validation_eval_dataset,
@@ -929,16 +935,6 @@ class EvolutionaryStrategy(Agent, Strategy):
                 f"proposer {config.proposer!r} emits {sorted(produces)} but builder "
                 f"{config.builder!r} accepts {sorted(accepts) or 'nothing'}; no proposal could be built"
             )
-
-    def _goal_tree_wanted(self, config: EvolutionaryOptimizerConfig) -> bool:
-        """Whether the configured trajectory scorer ranks against a goal tree.
-
-        Building and updating one costs two LLM passes per round, so a scorer that reads
-        something else must not be charged for it.
-        """
-        if config.trajectory_scorer is None:
-            return False
-        return cast("type[TrajectoryScorer]", resolve("trajectory-scorer", config.trajectory_scorer)).needs_goal_tree
 
     async def _generate_initial_goal_tree(
         self,
