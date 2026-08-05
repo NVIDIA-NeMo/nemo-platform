@@ -7,23 +7,22 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from nemo_experimentalist_plugin.entities import Candidate
-from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
     Dataset,
+    DatasetRef,
+    DataValue,
     EvaluationResult,
     MetricResult,
+    ResourceRef,
+    RewardRecord,
     Task,
     TrialResult,
 )
+from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborEvaluatorConfig
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
-    DatasetRef,
-    DataValue,
-    ResourceRef,
-)
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
-from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 
 
 class _StopAfterOneRound(Exception):
@@ -137,7 +136,7 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
                 aggregate_metrics={"reward": 0.5},
             )
             for candidate in candidates
-            if candidate.validation_reward is None
+            if "validation" not in candidate.rewards
         }
 
     async def update_candidate(
@@ -243,11 +242,11 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
         (insight_dataset, [baseline]),
         (insight_dataset, [new_candidate]),
     ]
-    assert baseline.insight_reward == {"uses_required_tool": 0.0}
-    assert new_candidate.insight_reward == {"uses_required_tool": 1.0}
-    assert baseline.insight_suite_identity == f"sha256:{'a' * 64}"
-    assert new_candidate.insight_suite_identity == f"sha256:{'a' * 64}"
-    assert baseline.insight_metric_keys == ["uses_required_tool"]
+    assert baseline.reward("insight").metrics == {"uses_required_tool": 0.0}
+    assert new_candidate.reward("insight").metrics == {"uses_required_tool": 1.0}
+    assert baseline.rewards["insight"].metadata["suite_identity"] == f"sha256:{'a' * 64}"
+    assert new_candidate.rewards["insight"].metadata["suite_identity"] == f"sha256:{'a' * 64}"
+    assert baseline.rewards["insight"].metadata["metric_keys"] == ["uses_required_tool"]
     insight_persistence = [
         call.kwargs for call in backend.persist_evaluation.await_args_list if call.kwargs["split"] == "insight"
     ]
@@ -275,10 +274,13 @@ async def test_insight_evaluation_skips_cached_candidates_and_empty_suites(
         label="agent-0",
         round=0,
         optimization="baseline",
-        insight_reward={"uses_required_tool": 0.0},
-        insight_reward_details=[],
-        insight_suite_identity=f"sha256:{'a' * 64}",
-        insight_metric_keys=["uses_required_tool"],
+        rewards={
+            "insight": RewardRecord(
+                metrics={"uses_required_tool": 0.0},
+                trials=[],
+                metadata={"suite_identity": f"sha256:{'a' * 64}", "metric_keys": ["uses_required_tool"]},
+            )
+        },
     )
     pending = Candidate(
         run_id="run-1",
@@ -325,10 +327,13 @@ async def test_insight_evaluation_reuses_only_matching_suite_identity(
         label="agent-0",
         round=0,
         optimization="baseline",
-        insight_reward={"uses_required_tool": 0.0},
-        insight_reward_details=[],
-        insight_suite_identity=f"sha256:{'a' * 64}",
-        insight_metric_keys=["uses_required_tool"],
+        rewards={
+            "insight": RewardRecord(
+                metrics={"uses_required_tool": 0.0},
+                trials=[],
+                metadata={"suite_identity": f"sha256:{'a' * 64}", "metric_keys": ["uses_required_tool"]},
+            )
+        },
     )
     result = _insight_result("agent-0", 0.5)
     evaluate_agent = AsyncMock(return_value=(cached, result))
@@ -375,20 +380,26 @@ async def test_cached_insight_metric_keys_are_order_independent(
             label="agent-0",
             round=0,
             optimization="baseline",
-            insight_reward={"reward": 0.5, "uses_required_tool": 0.0},
-            insight_reward_details=[],
-            insight_suite_identity=identity,
-            insight_metric_keys=["uses_required_tool", "reward"],
+            rewards={
+                "insight": RewardRecord(
+                    metrics={"reward": 0.5, "uses_required_tool": 0.0},
+                    trials=[],
+                    metadata={"suite_identity": identity, "metric_keys": ["uses_required_tool", "reward"]},
+                )
+            },
         ),
         Candidate(
             run_id="run-1",
             label="agent-1",
             round=1,
             optimization="improve tool use",
-            insight_reward={"reward": 0.75, "uses_required_tool": 1.0},
-            insight_reward_details=[],
-            insight_suite_identity=identity,
-            insight_metric_keys=["reward", "uses_required_tool"],
+            rewards={
+                "insight": RewardRecord(
+                    metrics={"reward": 0.75, "uses_required_tool": 1.0},
+                    trials=[],
+                    metadata={"suite_identity": identity, "metric_keys": ["reward", "uses_required_tool"]},
+                )
+            },
         ),
     ]
     dataset = Dataset(

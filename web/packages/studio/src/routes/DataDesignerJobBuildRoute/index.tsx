@@ -47,7 +47,7 @@ import {
 import { type FC, useCallback, useMemo, useState } from 'react';
 import { FormProvider } from 'react-hook-form';
 import { useAuth } from 'react-oidc-context';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 
 /**
  * Edges are derived from entered values: Jinja2 `{{ column_name }}` references (and
@@ -140,16 +140,16 @@ export const DataDesignerJobBuildRoute: FC = () => {
     getCurrentConfig,
   });
 
-  const handlePreview = () => {
+  const handlePreview = useCallback(() => {
     if (validateAndCollectErrors().length > 0) return;
     setIsDetailsOpen(true);
     void runPreview();
-  };
+  }, [validateAndCollectErrors, runPreview]);
 
   const createJob = useDataDesignerCreateJob();
   const submitError = createJob.error ? getErrorMessage(createJob.error) : null;
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (validateAndCollectErrors().length > 0) return;
     const { columns, models, name, rows } = builder.getBuilderValues();
 
@@ -173,7 +173,17 @@ export const DataDesignerJobBuildRoute: FC = () => {
       setIsDetailsOpen(true);
       // Error surfaced via createJob.error / submitError below.
     }
-  };
+  }, [validateAndCollectErrors, builder, createJob, workspace, servedModelNames, navigate]);
+
+  const toggleDetails = useCallback(() => setIsDetailsOpen((open) => !open), []);
+  const onColumnRemove = useCallback(() => {
+    if (builder.selectedColumnId) builder.removeColumn(builder.selectedColumnId);
+  }, [builder]);
+  const onColumnClose = useCallback(() => builder.selectColumn(null), [builder]);
+  const onModelRemove = useCallback(() => {
+    if (builder.selectedModelId) builder.removeModel(builder.selectedModelId);
+  }, [builder]);
+  const onModelClose = useCallback(() => builder.selectModel(null), [builder]);
 
   return (
     <AccessibleTitle title={heading}>
@@ -195,7 +205,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
             submitError={submitError}
             previewLogs={previewLogs}
             isOpen={isDetailsOpen}
-            onToggle={() => setIsDetailsOpen((open) => !open)}
+            onToggle={toggleDetails}
           />
 
           <Flex className="min-h-0 border-t border-base h-full">
@@ -229,14 +239,10 @@ export const DataDesignerJobBuildRoute: FC = () => {
               selectedColumnId={builder.selectedColumnId}
               selectedModelId={builder.selectedModelId}
               workspace={workspace}
-              onColumnRemove={() =>
-                builder.selectedColumnId && builder.removeColumn(builder.selectedColumnId)
-              }
-              onColumnClose={() => builder.selectColumn(null)}
-              onModelRemove={() =>
-                builder.selectedModelId && builder.removeModel(builder.selectedModelId)
-              }
-              onModelClose={() => builder.selectModel(null)}
+              onColumnRemove={onColumnRemove}
+              onColumnClose={onColumnClose}
+              onModelRemove={onModelRemove}
+              onModelClose={onModelClose}
             />
           </Flex>
         </Stack>

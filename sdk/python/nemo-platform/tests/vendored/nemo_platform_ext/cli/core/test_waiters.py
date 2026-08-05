@@ -44,6 +44,13 @@ def _quiet_rich_output() -> Iterator[None]:
         yield
 
 
+@pytest.fixture(autouse=True)
+def _no_telemetry() -> Iterator[None]:
+    """Neutralize best-effort job_run telemetry so waiter tests never do real I/O."""
+    with patch("nemo_platform.cli.telemetry.emit.emit_event"):
+        yield
+
+
 @pytest.fixture
 def frozen_time() -> Iterator[MagicMock]:
     with patch(f"{WAITERS_MODULE}.time.time", return_value=0) as time:

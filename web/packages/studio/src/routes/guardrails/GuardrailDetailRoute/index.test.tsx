@@ -5,6 +5,8 @@ import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { mockGuardrailConfigs } from '@studio/mocks/handlers/guardrails';
 import { server } from '@studio/mocks/node';
+import { GuardrailChecksTab } from '@studio/routes/guardrails/GuardrailChecksTab';
+import { GUARDRAIL_CHECKS_DEFAULT_SUB_TAB } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailConfigTab } from '@studio/routes/guardrails/GuardrailConfigTab';
 import { GuardrailDetailRoute } from '@studio/routes/guardrails/GuardrailDetailRoute';
 import { getGuardrailDetailRoute } from '@studio/routes/utils';
@@ -12,7 +14,7 @@ import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router';
 
 const WORKSPACE = 'default';
 
@@ -27,6 +29,11 @@ const routes = [
     children: [
       { index: true, element: <Navigate to="config" replace /> },
       { path: ROUTES.workspace.guardrailConfig, element: <GuardrailConfigTab /> },
+      {
+        path: ROUTES.workspace.guardrailChecks,
+        element: <Navigate to={GUARDRAIL_CHECKS_DEFAULT_SUB_TAB} replace />,
+      },
+      { path: ROUTES.workspace.guardrailChecksSubTab, element: <GuardrailChecksTab /> },
     ],
   },
   {
@@ -42,13 +49,19 @@ const renderDetail = (name: string) =>
   });
 
 describe('GuardrailDetailRoute', () => {
-  it('renders the Configuration tab from the detail endpoint', async () => {
+  it('renders the config details from the detail endpoint', async () => {
     renderDetail('pii-filter');
 
     expect(
       await screen.findByText('pii-filter', undefined, { timeout: XL_SELECTOR_TIMEOUT })
     ).toBeInTheDocument();
-    expect(screen.getByText('Blocks PII in user inputs and outputs')).toBeInTheDocument();
+    // The index route redirects to `config`; react-router v7 runs that navigation
+    // inside startTransition, so the tab content resolves asynchronously.
+    expect(
+      await screen.findByText('Blocks PII in user inputs and outputs', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      })
+    ).toBeInTheDocument();
     // pii-filter has 2 models and 4 rail flows (2 input + 2 output).
     expect(screen.getAllByText('2').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('4').length).toBeGreaterThanOrEqual(1);
@@ -68,7 +81,15 @@ describe('GuardrailDetailRoute', () => {
     renderDetail('pii-filter');
     await screen.findByText('pii-filter', undefined, { timeout: XL_SELECTOR_TIMEOUT });
 
-    await user.type(screen.getByRole('textbox', { name: 'General instruction' }), 'Be concise.');
+    // Tab content arrives after the index route's redirect settles (see above).
+    await user.type(
+      await screen.findByRole(
+        'textbox',
+        { name: 'General instruction' },
+        { timeout: XL_SELECTOR_TIMEOUT }
+      ),
+      'Be concise.'
+    );
 
     expect(await screen.findByRole('button', { name: 'Save Guardrail' })).toBeInTheDocument();
     const reset = screen.getByRole('button', { name: 'Reset' });
@@ -107,7 +128,15 @@ describe('GuardrailDetailRoute', () => {
     renderDetail('pii-filter');
     await screen.findByText('pii-filter', undefined, { timeout: XL_SELECTOR_TIMEOUT });
 
-    await user.type(screen.getByRole('textbox', { name: 'General instruction' }), 'Be concise.');
+    // Tab content arrives after the index route's redirect settles (see above).
+    await user.type(
+      await screen.findByRole(
+        'textbox',
+        { name: 'General instruction' },
+        { timeout: XL_SELECTOR_TIMEOUT }
+      ),
+      'Be concise.'
+    );
     await user.click(await screen.findByRole('button', { name: 'Save Guardrail' }));
 
     await waitFor(() =>

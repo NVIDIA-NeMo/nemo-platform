@@ -3,7 +3,7 @@
 
 import { DEFAULT_DEBOUNCE_MS } from '@nemo/common/src/constants';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useDebounce } from 'use-debounce';
 
 import * as DataView from '../../components/DataView/internal';

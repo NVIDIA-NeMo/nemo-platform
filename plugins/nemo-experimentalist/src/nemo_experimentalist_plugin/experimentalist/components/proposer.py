@@ -63,7 +63,7 @@ class ProposerConfig(BaseModel):
     )
 
 
-class Proposer(Agent, llm=get_smart_model()):
+class Proposer(Agent):
     """Propose the next round's isolated optimization candidates."""
 
     def __init__(
@@ -73,7 +73,7 @@ class Proposer(Agent, llm=get_smart_model()):
         framework_skills_dirs: list[Path] | None = None,
         **kwargs: Any,
     ):
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
         self._config = config or ProposerConfig()
         self._workspace_path = workspace.resolve()
         self.workspace = WorkspaceTool(workspace=self._workspace_path)
@@ -134,14 +134,14 @@ class Proposer(Agent, llm=get_smart_model()):
                 arch_text = f"(architecture.md missing for {s.label})"
             try:
                 candidate = self.workspace.get_metadata(s.label)
-                meta = candidate.slim().model_dump(exclude={"artifacts"})
+                meta = candidate.slim().model_dump()
             except Exception:  # noqa: BLE001
                 meta = {}
             survivor_context.append(
                 {
                     "id": s.label,
-                    "reward": s.validation_reward or {},
-                    "trajectory_reward": s.validation_trajectory_reward or {},
+                    "reward": s.reward("validation").metrics or {},
+                    "trajectory_reward": s.reward("validation-trajectory").metrics or {},
                     "metadata": meta,
                     "architecture": arch_text,
                 }

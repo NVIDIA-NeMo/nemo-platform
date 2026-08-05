@@ -32,7 +32,7 @@ import { useDefaultRoleModels } from '@studio/routes/AnonymizerBuilderRoute/useD
 import { getWorkspaceAnonymizerRoute, getWorkspaceJobDetailRoute } from '@studio/routes/utils';
 import { useState, type FC } from 'react';
 import { useFormContext } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const TAB_SOURCE = 'source';
 const TAB_MODEL_SETTINGS = 'model-settings';

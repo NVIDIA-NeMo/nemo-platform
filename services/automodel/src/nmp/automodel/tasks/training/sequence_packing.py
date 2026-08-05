@@ -81,6 +81,13 @@ def _ceil_even(num: int | float) -> int:
     return int(math.ceil(num / 2) * 2)
 
 
+def calculate_target_packing_factor(config: TrainingStepConfig) -> int:
+    """Return the target number of samples per packed sequence."""
+    parallelism = config.parallelism
+    total_gpus = parallelism.num_nodes * parallelism.num_gpus_per_node
+    return max(config.batch.global_batch_size // total_gpus, 1)
+
+
 def calculate_optimal_pack_size(
     config: TrainingStepConfig,
     dataset_avg_seq_length: int | None = None,
@@ -122,9 +129,6 @@ def calculate_optimal_pack_size(
         - target_pack_size = ceil_even(512 * 4) = 2048
         - final = max(2048, 1024) = 2048 (clamped to 4096) = 2048
     """
-    parallelism = config.parallelism
-    total_gpus = parallelism.num_nodes * parallelism.num_gpus_per_node
-    gbs = config.batch.global_batch_size
     model_max_seq = config.model.max_seq_length
 
     # If no dataset stats provided, use model's max_seq_length (conservative)
@@ -134,7 +138,7 @@ def calculate_optimal_pack_size(
 
     # Calculate target packing factor (how many sequences can fit in one pack)
     # This keeps the effective batch size close to the original gbs
-    target_packing_factor = max(gbs // total_gpus, 1)
+    target_packing_factor = calculate_target_packing_factor(config)
 
     # Calculate pack size based on average sequence length
     # Round to nearest even number for efficiency

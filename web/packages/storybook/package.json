@@ -14,9 +14,10 @@
     "msw": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-router-dom": "catalog:"
+    "react-router": "catalog:"
   },
   "devDependencies": {
+    "@storybook/addon-a11y": "catalog:",
     "@storybook/react": "catalog:",
     "@storybook/react-vite": "catalog:",
     "@tailwindcss/postcss": "catalog:",

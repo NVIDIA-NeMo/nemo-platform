@@ -65,6 +65,7 @@ test_runtimes:
       - workload_provider_token
       - workload_subject_token
       - workload_token_exchange
+      - platform_access_keys
       - workspace_rbac
       - workload_job
       - device_flow
@@ -79,6 +80,7 @@ test_runtimes:
       - workload_provider_token
       - workload_subject_token
       - workload_token_exchange
+      - platform_access_keys
       - workspace_rbac
       - workload_job
       - device_flow

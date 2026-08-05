@@ -62,6 +62,24 @@ def test_adam_eps_must_be_positive(bad: float) -> None:
         DPOTraining(adam_eps=bad)
 
 
+@pytest.mark.parametrize(
+    ("field", "bad"),
+    [
+        ("learning_rate", 0.0),
+        ("learning_rate", -1e-4),
+        ("min_learning_rate", -1e-4),
+        ("weight_decay", -0.01),
+        ("adam_beta1", -0.1),
+        ("adam_beta1", 1.0),
+        ("adam_beta2", -0.1),
+        ("adam_beta2", 1.0),
+    ],
+)
+def test_optimizer_bounds(field: str, bad: float) -> None:
+    with pytest.raises(ValueError):
+        DPOTraining(**{field: bad})
+
+
 def test_keep_top_k_must_be_positive() -> None:
     with pytest.raises(ValueError):
         DPOTraining(keep_top_k=0)

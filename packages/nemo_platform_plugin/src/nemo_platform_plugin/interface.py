@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -26,3 +27,23 @@ class PluginManifest:
     name: str
     version: str
     description: str = field(default="")
+
+
+@dataclass
+class StudioSpec:
+    """Describes a plugin's Studio web UI contribution.
+
+    Registered under the ``nemo.studio`` entry-point group as a zero-argument
+    callable that returns an instance of this class.
+
+    Attributes:
+        name: Entry-point key matching the plugin name, e.g. ``"example"``.
+        bundle_path: Absolute path to the plugin's built ``web/dist/index.js``
+            on disk. Use ``Path(__file__).parent... / "web" / "dist" / "index.js"``
+            so the path resolves correctly for both editable and wheel installs.
+            ``None`` for plugins that have no web UI (Python-only plugins that
+            still wish to appear in the ``/apis/plugins`` manifest).
+    """
+
+    name: str
+    bundle_path: Path | None = field(default=None)

@@ -32,12 +32,7 @@ from harbor.models.job.config import AgentConfig, ArtifactConfig, RetryConfig
 from harbor.models.task.task import Task as HarborTaskModel
 from harbor.models.trial.config import ServiceVolumeConfig
 from harbor.models.trial.paths import EnvironmentPaths, TrialPaths
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
-    Evaluator,
-    EvaluatorConfig,
-    EvaluatorType,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+from nemo_experimentalist_plugin.entities import (
     Dataset,
     DatasetRef,
     DatasetValidationError,
@@ -51,6 +46,11 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.models imp
     local_path_from_uri,
     run_dependency_command,
     subset_dataset_id,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
+    Evaluator,
+    EvaluatorConfig,
+    EvaluatorType,
 )
 from pydantic import Field
 

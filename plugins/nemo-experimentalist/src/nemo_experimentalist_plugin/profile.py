@@ -4,9 +4,9 @@
 """Experimentalist-owned models for the shared ``optimizer.yaml`` profile.
 
 The profile is the shared per-agent contract: the Platform-owned
-``nemo insights analyze`` producer writes
+``nemo agents analyst run`` producer writes
 ``<profile-dir>/.nemo-optimizer/insights.yaml``, and
-``nemo experimentalist run`` reads it by default. NeMo Experimentalist validates
+``nemo agents experimentalist run`` reads it by default. NeMo Experimentalist validates
 the full experiment schema; NeMo Insights consumes only its analysis subset.
 """
 

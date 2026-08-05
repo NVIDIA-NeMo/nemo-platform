@@ -10,7 +10,7 @@ dependencies (sqlalchemy, etc.) or internal platform logic.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Any, Literal, Self
 
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES as LOOPBACK_ADDRESSES
 from nemo_platform_plugin.config import NMP_CONFIG_FILE_PATH_DEFAULT as NMP_CONFIG_FILE_PATH_DEFAULT
@@ -35,8 +35,8 @@ from nemo_platform_plugin.config import get_service_config_prefix as get_service
 from nemo_platform_plugin.config import internal_field as internal_field
 from nemo_platform_plugin.config import register_platform_config_class as register_platform_config_class
 from nmp.common.config.paths import nmp_user_data_dir
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import URL
 
 # Kept here for backward compat (used by services and tests)
@@ -184,9 +184,12 @@ class OIDCConfig(BaseSettings):
         description="Lifetime in seconds for workload identity access tokens minted by the NeMo auth service.",
     )
 
-    workload_token_key_id: str = Field(
-        default="nemo-workload-exchange",
-        description="JWT key id advertised by the NeMo auth service workload identity JWKS endpoint.",
+    workload_token_key_id: str | None = Field(
+        default=None,
+        description=(
+            "Workload-specific JWT key id advertised by the NeMo auth service workload identity JWKS endpoint. "
+            "When unset, workload token exchange uses auth.token_signing.key_id."
+        ),
     )
 
     workload_token_private_key_file: str | None = Field(
@@ -251,6 +254,105 @@ class OIDCConfig(BaseSettings):
     )
 
 
+class TokenSigningConfig(BaseSettings):
+    """Shared NeMo auth-service token signing configuration."""
+
+    issuer: str | None = Field(
+        default=None,
+        description="Shared issuer for NeMo Platform-minted JWTs. Defaults to <platform.base_url>/apis/auth.",
+    )
+    key_id: str = Field(
+        default="nemo-platform-signing",
+        description="Shared JWT key id advertised by NeMo Platform JWKS endpoints.",
+    )
+    private_key_file: str | None = Field(
+        default=None,
+        description=(
+            "Path to the PEM-encoded RSA private key used by the auth service to sign NeMo Platform-minted JWTs. "
+            "Intended for mounted shared secrets."
+        ),
+    )
+
+
+def _default_access_key_accepted_formats() -> list[Literal["jwt"]]:
+    return ["jwt"]
+
+
+AccessKeyAcceptedFormat = Literal["jwt"]
+
+
+class AccessKeyConfig(BaseSettings):
+    """NeMo Platform Scoped Access Key configuration."""
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable NeMo Platform Scoped Access Key creation and validation.",
+    )
+    issue_format: Literal["jwt"] = Field(
+        default="jwt",
+        description="Token format to issue for newly created Scoped Access Keys.",
+    )
+    accepted_formats: Annotated[list[AccessKeyAcceptedFormat], NoDecode] = Field(
+        default_factory=_default_access_key_accepted_formats,
+        description="Scoped Access Key token formats accepted by validators.",
+    )
+    audience: str = Field(
+        default="nemo-platform-access-key",
+        description="Expected audience for NeMo Platform Scoped Access Key JWTs.",
+    )
+    default_expires_in_seconds: int | None = Field(
+        default=30 * 24 * 60 * 60,
+        ge=1,
+        description=(
+            "Default finite lifetime in seconds for newly created Scoped Access Keys when "
+            "expires_in_seconds is omitted. Set to null to require callers to provide an expiry "
+            "when max_expires_in_seconds is finite, or to make omitted expiry non-time-delimited "
+            "when max_expires_in_seconds is also null."
+        ),
+    )
+    max_expires_in_seconds: int | None = Field(
+        default=30 * 24 * 60 * 60,
+        ge=1,
+        description=(
+            "Maximum finite lifetime accepted when creating Scoped Access Keys. "
+            "Set to null to allow explicit no-expiration requests."
+        ),
+    )
+
+    @staticmethod
+    def _parse_nullable_expiry(value: Any) -> Any:
+        if isinstance(value, str) and value.strip().lower() in {"", "none", "null"}:
+            return None
+        return value
+
+    @field_validator("accepted_formats", mode="before")
+    @classmethod
+    def parse_accepted_formats(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+
+        return [part.strip() for part in value.split(",") if part.strip()]
+
+    @field_validator("default_expires_in_seconds", "max_expires_in_seconds", mode="before")
+    @classmethod
+    def parse_nullable_expiry(cls, value: Any) -> Any:
+        return cls._parse_nullable_expiry(value)
+
+    @model_validator(mode="after")
+    def validate_expiry_policy(self) -> Self:
+        if self.max_expires_in_seconds is None:
+            return self
+        if (
+            self.default_expires_in_seconds is not None
+            and self.default_expires_in_seconds > self.max_expires_in_seconds
+        ):
+            raise ValueError(
+                "auth.access_keys.default_expires_in_seconds must be less than or equal to "
+                "auth.access_keys.max_expires_in_seconds"
+            )
+        return self
+
+
 class AuthConfig(create_service_config_class("auth")):  # ty: ignore[unsupported-base]
     """
     Shared authorization configuration read from the 'auth' key in config.yaml.
@@ -258,6 +360,13 @@ class AuthConfig(create_service_config_class("auth")):  # ty: ignore[unsupported
     This config is read by all services to know if auth is enabled and where the PDP is.
     The auth service extends this with additional fields (admin_email, etc.).
     """
+
+    model_config = SettingsConfigDict(
+        env_prefix=get_service_config_prefix("auth"),
+        env_nested_delimiter="__",
+        extra="allow",
+        populate_by_name=True,
+    )
 
     enabled: bool = Field(
         default=False,
@@ -315,6 +424,29 @@ class AuthConfig(create_service_config_class("auth")):  # ty: ignore[unsupported
         default_factory=OIDCConfig,
         description="OIDC configuration for native token validation.",
     )
+
+    token_signing: TokenSigningConfig = Field(
+        default_factory=TokenSigningConfig,
+        description="Shared token signing configuration for NeMo Platform-minted JWTs.",
+    )
+
+    access_keys: AccessKeyConfig = Field(
+        default_factory=AccessKeyConfig,
+        description="Scoped Access Key configuration.",
+    )
+
+    @model_validator(mode="after")
+    def validate_workload_token_signing_key_id(self) -> Self:
+        if not self.oidc.workload_token_exchange_enabled:
+            return self
+
+        key_id = self.oidc.workload_token_key_id or self.token_signing.key_id
+        if not key_id or not key_id.strip():
+            raise ValueError(
+                "auth.oidc.workload_token_key_id or auth.token_signing.key_id must be configured "
+                "when auth.oidc.workload_token_exchange_enabled is true"
+            )
+        return self
 
     def get_pdp_url(self, entrypoint: str) -> str:
         # Import lazily to avoid a module cycle: platform_endpoint imports

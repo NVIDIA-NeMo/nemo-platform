@@ -28,7 +28,7 @@ import { logger } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChartBar, LayoutList, CircleX } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface DetailsPanelProps {
   evaluationJob?: EvaluateJob;

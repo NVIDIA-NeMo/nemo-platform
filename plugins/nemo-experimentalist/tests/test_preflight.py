@@ -50,7 +50,7 @@ def test_preflight_results_use_shared_check_result() -> None:
 
 
 def test_healthy_experiment_setup_all_pass(tmp_path: Path) -> None:
-    probes = make_probes(env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"})
+    probes = make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"})
     profile = full_profile(tmp_path)
     results = (
         check_profile(profile, None)
@@ -112,7 +112,9 @@ def test_unreachable_platform_is_advisory(tmp_path: Path) -> None:
         profile=full_profile(tmp_path),
         insight=None,
         base_url="http://x",
-        probes=make_probes(http=False, env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(
+            http=False, env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}
+        ),
     )
     assert any(r.name == "platform-reachable" and r.status == "warn" for r in results)
     assert all(r.severity == "advisory" for r in results if r.status != "pass")
@@ -135,7 +137,7 @@ def test_environment_display_urls_are_sanitized_without_changing_probes(tmp_path
         probes=Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=http_ok,
-            env={"EXPERIMENTALIST_API_BASE": model_base, "EXPERIMENTALIST_API_KEY": "k"},
+            env={"NEMO_EXPERIMENTALIST_API_BASE": model_base, "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
 
@@ -155,10 +157,10 @@ def test_missing_experiment_credentials_are_required(tmp_path: Path) -> None:
         profile=full_profile(tmp_path),
         insight=None,
         base_url="http://x",
-        probes=make_probes(env={"EXPERIMENTALIST_API_BASE": "   "}),  # whitespace-only = unset
+        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "   "}),  # whitespace-only = unset
     )
-    assert any(r.name == "EXPERIMENTALIST_API_BASE" and r.status == "fail" for r in results)
-    assert any(r.name == "EXPERIMENTALIST_API_KEY" and r.status == "fail" for r in results)
+    assert any(r.name == "NEMO_EXPERIMENTALIST_API_BASE" and r.status == "fail" for r in results)
+    assert any(r.name == "NEMO_EXPERIMENTALIST_API_KEY" and r.status == "fail" for r in results)
     assert not any(r.name == "INFERENCE_API_KEY" for r in results)
 
 
@@ -361,7 +363,9 @@ def test_unreadable_insight_file_is_required_failure(tmp_path: Path) -> None:
             profile=full_profile(tmp_path),
             insight=str(insight),
             base_url="http://x",
-            probes=make_probes(env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"}),
+            probes=make_probes(
+                env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}
+            ),
         )
     finally:
         insight.chmod(0o644)
@@ -384,7 +388,7 @@ def test_non_json_insight_content_is_required_failure(tmp_path: Path) -> None:
         insight=str(insight),
         insight_id="0",
         base_url="http://x",
-        probes=make_probes(env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
     )
     failure = next(r for r in required_failures(results) if r.name == "insight-file")
     assert "JSON-serializable" in failure.message
@@ -593,7 +597,7 @@ def test_local_multi_insight_requires_selector(tmp_path: Path) -> None:
         profile=full_profile(tmp_path),
         insight=str(insights),
         base_url="http://x",
-        probes=make_probes(env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
     )
     failure = next(r for r in results if r.name == "insight-file")
     assert failure.status == "fail" and failure.severity == "required"
@@ -609,7 +613,7 @@ def test_single_insight_file_with_matching_selector_passes(tmp_path: Path) -> No
         insight=str(insights),
         insight_id="i-a",
         base_url="http://x",
-        probes=make_probes(env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
     )
     parse = next(r for r in results if r.name == "insight-file")
     assert parse.status == "pass"
@@ -627,7 +631,7 @@ def test_selected_insight_checks_only_selected_agent_without_selector_warning(tm
         insight=str(insights),
         insight_id="i-a",
         base_url="http://x",
-        probes=make_probes(env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
     )
     agent = next(r for r in results if r.name == "insight-agent")
     assert agent.status == "pass"
@@ -646,7 +650,7 @@ def test_ambiguous_selected_insight_is_required_failure(tmp_path: Path) -> None:
         insight=str(insights),
         insight_id="same",
         base_url="http://x",
-        probes=make_probes(env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
     )
     failure = next(r for r in required_failures(results) if r.name == "insight-file")
     assert "ambiguous" in failure.message
@@ -698,8 +702,8 @@ def test_missing_env_hint_names_source_and_env_file(tmp_path: Path) -> None:
         base_url="http://x",
         probes=make_probes(env={}),
     )
-    base = next(r for r in results if r.name == "EXPERIMENTALIST_API_BASE")
+    base = next(r for r in results if r.name == "NEMO_EXPERIMENTALIST_API_BASE")
     assert "inference-api.nvidia.com" in (base.hint or "")  # names the real endpoint
     assert str(tmp_path / ".env") in (base.hint or "")  # says exactly where to save it
-    assert ".env.example" in (base.hint or "")
-    assert "export EXPERIMENTALIST_API_BASE" in (base.hint or "")
+    assert "example-agent.mdx" in (base.hint or "")  # points at a doc that exists
+    assert "export NEMO_EXPERIMENTALIST_API_BASE" in (base.hint or "")

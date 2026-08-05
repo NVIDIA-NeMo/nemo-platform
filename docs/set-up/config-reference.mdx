@@ -117,8 +117,8 @@ auth:
     workload_token_issuer:
     # Lifetime in seconds for workload identity access tokens minted by the NeMo auth service. | default: 300
     workload_token_ttl_seconds: 300
-    # JWT key id advertised by the NeMo auth service workload identity JWKS endpoint. | default: 'nemo-workload-exchange'
-    workload_token_key_id: nemo-workload-exchange
+    # Workload-specific JWT key id advertised by the NeMo auth service workload identity JWKS endpoint. When unset, workload token exchange uses auth.token_signing.key_id.
+    workload_token_key_id:
     # Path to a PEM-encoded RSA private key used by the NeMo auth service to sign workload identity access tokens. Intended for mounted shared secrets.
     workload_token_private_key_file:
     # Additional RFC 8693 audience values accepted by the NeMo auth service workload token exchange endpoint. The configured workload_audience is always accepted.
@@ -135,6 +135,29 @@ auth:
     scope_prefix:
     # TTL in seconds for caching IdP discovery document responses. Used by the discovery endpoint to avoid per-request IdP calls. Set to 0 to disable caching. | default: 300
     discovery_cache_ttl: 300
+  # Shared token signing configuration for NeMo Platform-minted JWTs.
+  token_signing:
+    # Shared issuer for NeMo Platform-minted JWTs. Defaults to <platform.base_url>/apis/auth.
+    issuer:
+    # Shared JWT key id advertised by NeMo Platform JWKS endpoints. | default: 'nemo-platform-signing'
+    key_id: nemo-platform-signing
+    # Path to the PEM-encoded RSA private key used by the auth service to sign NeMo Platform-minted JWTs. Intended for mounted shared secrets.
+    private_key_file:
+  # Scoped Access Key configuration.
+  access_keys:
+    # Enable NeMo Platform Scoped Access Key creation and validation. | default: False
+    enabled: false
+    # Token format to issue for newly created Scoped Access Keys. | default: 'jwt' | values: 'jwt'
+    issue_format: jwt
+    # Scoped Access Key token formats accepted by validators.
+    accepted_formats:
+    - jwt
+    # Expected audience for NeMo Platform Scoped Access Key JWTs. | default: 'nemo-platform-access-key'
+    audience: nemo-platform-access-key
+    # Default finite lifetime in seconds for newly created Scoped Access Keys when expires_in_seconds is omitted. Set to null to require callers to provide an expiry when max_expires_in_seconds is finite, or to make omitted expiry non-time-delimited when max_expires_in_seconds is also null. | default: 2592000
+    default_expires_in_seconds: 2592000
+    # Maximum finite lifetime accepted when creating Scoped Access Keys. Set to null to allow explicit no-expiration requests. | default: 2592000
+    max_expires_in_seconds: 2592000
   # Port to run the service on | default: 8000
   port: 8000
   # Refresh interval for policy data in seconds | default: 30
@@ -865,13 +888,33 @@ safe_synthesizer:
   default_job_resource_cpu_limit: '4'
 ```
 
+### `experimentalist`
+
+LLM endpoint and model tiers the Experimentalist's own agents run on.
+
+```yaml wordWrap
+experimentalist:
+  # Base URL of the OpenAI-compatible endpoint the optimizer's agents call.
+  api_base:
+  # Credential for that endpoint. Prefer NEMO_EXPERIMENTALIST_API_KEY over writing it here.
+  api_key:
+  # Model per tier, named as your endpoint names it. Every tier is required.
+  models:
+    # Model for the smart tier, as your endpoint names it.
+    smart:
+    # Model for the mid tier, as your endpoint names it.
+    mid:
+    # Model for the fast tier, as your endpoint names it.
+    fast:
+```
+
 ### `studio`
 
 Configuration for the Studio service.
 
 ```yaml wordWrap
 studio:
-  # Path to the directory containing the built static UI assets. When unset, defaults to the `static/` directory bundled alongside the `nmp.studio` package (populated by the wheel build).
+  # Path to the directory containing the built static UI assets. When unset, Studio looks for the `static/` directory bundled alongside the `nmp.studio` package (populated by the wheel build), then `/static/studio` (where NeMo Platform container images place the bundle), then `web/packages/studio/dist` in a source checkout.
   static_files_path:
   # Base URL of the platform. This is used by the Studio UI to make API calls. | default: ''
   platform_base_url: ''

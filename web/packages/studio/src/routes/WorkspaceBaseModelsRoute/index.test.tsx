@@ -16,7 +16,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 
 const mockNavigate = vi.fn();
 const mockEnvironment = vi.hoisted(() => ({
@@ -33,7 +33,7 @@ vi.mock('@studio/constants/environment', async (importOriginal) => {
   };
 });
 
-vi.mock('react-router-dom', async (importOriginal) => {
+vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...(actual as object),

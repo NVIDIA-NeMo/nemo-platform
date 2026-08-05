@@ -3,6 +3,7 @@
 
 """Unit tests for automodel config compilation functions."""
 
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,12 @@ from nmp.automodel.tasks.training.backends.config import (  # noqa: E402
     _configure_chat_dataset,
     _configure_moe_backend,
     _configure_sft_dataset,
+    compile_automodel_config,
+    estimate_steps_per_epoch,
+    resolve_warmup_steps,
 )
+from nmp.automodel.tasks.training.datasets.preparation import PreparedDataset  # noqa: E402
+from nmp.automodel.tasks.training.schemas import TrainingStepConfig  # noqa: E402
 
 CONFIG_MODULE = "nmp.automodel.tasks.training.backends.config"
 AUTOCONFIG_PATCH = "transformers.AutoConfig"
@@ -319,3 +325,92 @@ class TestConfigureMoeBackend:
                 cfg,
                 self._make_config(num_gpus_per_node=8, tensor_parallel_size=4, expert_parallel_size=2),
             )
+
+
+class TestResolveWarmupSteps:
+    """Tests for resolve_warmup_steps function."""
+
+    @staticmethod
+    def _resolve(**overrides: int) -> int:
+        kwargs: dict[str, int] = {
+            "warmup_steps": 50,
+            "max_steps": 10,
+        }
+        kwargs.update(overrides)
+        return resolve_warmup_steps(**kwargs)
+
+    def test_warmup_below_decay_steps_is_unchanged(self) -> None:
+        assert self._resolve(warmup_steps=5, max_steps=39) == 5
+
+    def test_warmup_clamped_to_one_below_decay_steps(self) -> None:
+        # max_steps=10 is the shorter schedule, so warmup must land at 9.
+        assert self._resolve(warmup_steps=50) == 9
+
+    def test_warmup_equal_to_decay_steps_is_clamped(self) -> None:
+        assert self._resolve(warmup_steps=10) == 9
+
+    def test_single_step_schedule_disables_warmup(self) -> None:
+        assert self._resolve(warmup_steps=50, max_steps=1) == 0
+
+    def test_zero_warmup_is_left_alone(self) -> None:
+        assert self._resolve(warmup_steps=0) == 0
+
+    def test_clamping_logs_a_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("WARNING"):
+            self._resolve(warmup_steps=50)
+        assert "clamping warmup_steps to 9" in caplog.text
+
+
+class TestEstimateStepsPerEpoch:
+    """Tests for sequence-packing-aware step estimation."""
+
+    def test_without_packing_uses_raw_sample_count(self) -> None:
+        assert estimate_steps_per_epoch(train_samples=9741, batch_size=1024) == 10
+
+    def test_packing_factor_reduces_steps(self) -> None:
+        assert estimate_steps_per_epoch(train_samples=9741, batch_size=1024, packing_factor=1.6) == 6
+
+    @pytest.mark.parametrize("packing_factor", [None, 0.0, 1.0])
+    def test_non_effective_packing_factor_is_ignored(self, packing_factor: float | None) -> None:
+        assert (
+            estimate_steps_per_epoch(
+                train_samples=9741,
+                batch_size=1024,
+                packing_factor=packing_factor,
+            )
+            == 10
+        )
+
+
+def test_compile_uses_fallback_packing_factor_for_schedule(tmp_path: Path) -> None:
+    fixture = (
+        Path(__file__).parents[3] / "contract" / "input_configs" / "llama-3.2-1b" / "llama_3_2_1b_lora_packing.json"
+    )
+    raw = json.loads(fixture.read_text())
+    raw.pop("backend")
+    config = TrainingStepConfig.model_validate(raw)
+    config.optimizer.warmup_steps = 50
+
+    prepared = PreparedDataset(
+        merged_dir=tmp_path,
+        train_file=tmp_path / "train.jsonl",
+        validation_file=tmp_path / "validation.jsonl",
+        train_samples=100,
+        validation_samples=10,
+    )
+
+    with (
+        patch(f"{CONFIG_MODULE}.prepare_dataset", return_value=prepared),
+        patch(f"{CONFIG_MODULE}.DatasetValidator"),
+        patch(f"{CONFIG_MODULE}.estimate_dataset_sequence_lengths", return_value=None),
+        patch(f"{CONFIG_MODULE}._configure_datasets"),
+        patch(f"{CONFIG_MODULE}._configure_moe_backend"),
+        patch(f"{CONFIG_MODULE}.build_wandb_config", return_value=None),
+        patch(f"{CONFIG_MODULE}.build_mlflow_config", return_value=None),
+    ):
+        compiled = compile_automodel_config(config, tmp_path, MagicMock())
+
+    assert compiled["packed_sequence"]["packed_sequence_size"] == 2048
+    assert compiled["step_scheduler"]["max_steps"] == 2
+    assert compiled["step_scheduler"]["val_every_steps"] == 1
+    assert compiled["lr_scheduler"]["lr_warmup_steps"] == 1

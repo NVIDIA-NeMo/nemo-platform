@@ -278,16 +278,29 @@ RUN uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps -e /opt/nemo-
 # deep_ep / mamba-ssm / causal-conv1d on every job, with a cold uv cache. Prefetching bakes them in
 # (same approach as NeMo-RL's own release stage).
 #
-# Prefetched (filters are SUBSTRING matches against ACTOR FQNs, not extra names). The four filters
-# below resolve to FIVE venvs - exactly what DPO + GRPO + Gym need:
+# Prefetched (filters are SUBSTRING matches against ACTOR FQNs, not extra names). One venv is built
+# PER ACTOR, not per extra - prefetch_venvs.py passes the actor FQN as the venv name - so actors
+# sharing an extra still need their own filter. The six filters below resolve to SEVEN venvs,
+# exactly what DPO + GRPO + sandboxed Gym need:
 #   dtensor_policy_worker.DTensorPolicyWorker -> --extra fsdp     (DPO/GRPO policy training)
 #   vllm.vllm_worker                          -> --extra vllm     (GRPO generation) - matches BOTH
 #       VllmGenerationWorker and VllmAsyncGenerationWorker, which is wanted: NeMo-Gym forces async
 #       rollouts, so the async engine is on the GRPO+Gym path.
 #   sync_rollout_actor.SyncRolloutActor       -> --extra vllm     (GRPO rollout driver, sync path)
-#   nemo_gym.NemoGym                          -> --extra nemo_gym (Gym environment actor)
+#   nemo_gym.NemoGym                          -> --extra nemo_gym (Gym environment actor, mode A)
+#   nemo_gym_actor.SandboxedGymActor          -> --extra nemo_gym (trusted proxy actor, mode B - the
+#       Gym stack itself runs in the job sandbox; this actor never imports user environment code)
+#   broker_actor.SandboxEpisodeBrokerActor    -> --extra nemo_gym (trusted episode broker: creates
+#       per-episode sandboxes on the agent's behalf so the untrusted job sandbox never holds the
+#       OpenSandbox credential)
 # The filters are intentionally specific: a bare "vllm" would also match nemo_rl.modelopt's
-# vllm_quant_worker and drag in the modelopt+vllm combination.
+# vllm_quant_worker and drag in the modelopt+vllm combination, and a bare "nemo_gym" would not
+# distinguish the three nemo_gym-extra actors (it would match all three, which is fine, but naming
+# them keeps this list readable against ray_actor_environment_registry.py).
+#
+# The opensandbox / tenacity SDKs the sandbox path needs arrive through the extra itself: RL
+# declares `nemo_gym = ["nemo_gym[sandbox]"]`, and Gym's `sandbox` extra pins opensandbox>=0.1.9 and
+# tenacity>=9.1.4.
 #
 # NOT prefetched: automodel / mcore (unused by our DPO+GRPO path - see README), sglang, trtllm,
 # modelopt-quant, and the async-GRPO bookkeeping actors AsyncTrajectoryCollector / ReplayBuffer
@@ -299,40 +312,35 @@ uv run nemo_rl/utils/prefetch_venvs.py \
     dtensor_policy_worker.DTensorPolicyWorker \
     vllm.vllm_worker \
     sync_rollout_actor.SyncRolloutActor \
-    nemo_gym.NemoGym
+    nemo_gym.NemoGym \
+    nemo_gym_actor.SandboxedGymActor \
+    broker_actor.SandboxEpisodeBrokerActor
 
-# Gym sandbox CLIENT SDK, into the NemoGym ACTOR venv. NeMo-RL's lock carries opensandbox only
-# behind nemo_gym's own `sandbox` extra, so `uv run --extra nemo_gym` (the executable this actor
-# launches with) does NOT install it. NeMo-Gym imports it lazily in
-# nemo_gym/sandbox/providers/opensandbox/provider.py, so a missing package would surface only on
-# first sandbox use rather than at startup. Installing into the base venv alone is not enough:
-# the actor runs from /opt/ray_venvs, not /opt/nemo_rl_venv.
-GYM_VENV=/opt/ray_venvs/nemo_rl.environments.nemo_gym.NemoGym
-if [ -x "${GYM_VENV}/bin/python" ]; then
-    uv pip install --python "${GYM_VENV}/bin/python" "opensandbox>=0.1.9" "tenacity>=9.1.4"
-else
-    echo "ERROR: expected prefetched NemoGym venv at ${GYM_VENV}" >&2
-    exit 1
-fi
+# Fail loudly if the registry moved an actor out from under a filter above - otherwise the venv
+# would silently be built on the node at first use instead, turning a build error into a slow job.
+for actor in \
+    nemo_rl.environments.nemo_gym.NemoGym \
+    nemo_rl.environments.sandbox.nemo_gym_actor.SandboxedGymActor \
+    nemo_rl.environments.sandbox.broker_actor.SandboxEpisodeBrokerActor
+do
+    if [ ! -x "/opt/ray_venvs/${actor}/bin/python" ]; then
+        echo "ERROR: expected prefetched venv at /opt/ray_venvs/${actor}" >&2
+        echo "       check the filters above against ray_actor_environment_registry.py" >&2
+        exit 1
+    fi
+done
 EOF
 
-# ---- Bundled NeMo-Gym environment venvs (GRPO only) ----
+# ---- Bundled NeMo-Gym environment venvs (GRPO only; OFF by default, opt in below) ----
 # SECOND, separate venv layer from /opt/ray_venvs above: NeMo-Gym gives every environment server its
 # own venv under NEMO_GYM_VENV_DIR (/opt/gym_venvs), built from that server's own pyproject.toml /
 # requirements.txt. The isolation is required - env deps (rdkit, spacy, numpy 2.x) would otherwise
 # clobber RL's pinned stack.
 #
-# Baking the SHIPPED environments in removes their install cost from job startup. The default config
-# is NeMo-RL's curated union of the environments used across the RLVR / SWE / RLHF stages; it is
-# purpose-built for this (dry-run NemoGym._spinup, dummy interpolation values) and is kept in step
-# with the Gym pin. Override with a space-separated list of config paths, or set empty to skip.
-#
-# NOT covered (by design): user-supplied environment FileSets, which are downloaded per job and so
-# cannot exist at build time - those install into /opt/gym_venvs at first use. A `wheels-v1` FileSet
-# vendors its wheels and installs without PyPI egress; `native-v1` installs from source.
-#
-# DPO does not use NeMo-Gym at all (no rollout/environment stage), so this layer is GRPO-only.
-ARG NEMO_GYM_PREFETCH_CONFIGS=examples/nemo_gym/prefetch_super_all_envs.yaml
+# Nothing is prefetched: every environment installs into /opt/gym_venvs at first use on the node.
+# To bake a set in, pass a space-separated list of Gym config paths - e.g. NeMo-RL's curated
+# examples/nemo_gym/prefetch_super_all_envs.yaml.
+ARG NEMO_GYM_PREFETCH_CONFIGS=""
 # Gym's model servers pin a plain `vllm==0.20.0`, which resolves to the CUDA 12 wheel on PyPI -
 # it would fail to load CUDA libraries inside this CUDA 13 image. Override it to vLLM's prebuilt
 # cu130 GitHub wheel (the same one RL's policy pins) and keep torch on the matching backend, so
@@ -343,7 +351,7 @@ ARG TARGETARCH
 RUN <<"EOF" bash -exu
 export UV_LINK_MODE=symlink
 mkdir -p /opt/gym_venvs
-if [ -n "${NEMO_GYM_PREFETCH_CONFIGS}" ]; then
+if [ -n "${NEMO_GYM_PREFETCH_CONFIGS:-}" ]; then
     cd /opt/nemo-rl
     case "${TARGETARCH:-amd64}" in arm64) WHEEL_ARCH=aarch64 ;; *) WHEEL_ARCH=x86_64 ;; esac
     GYM_VLLM_OVERRIDE=/opt/nemo-rl/.gym-vllm-override.txt
@@ -395,9 +403,10 @@ FROM builder AS nmp-rl-base
 # toolkit / nvcc (deep_ep JIT-compiles kernels at runtime), gcc/build-essential + libibverbs-dev
 # (JIT + native-v1 env-dep compiles), git + curl (git+https env deps, downloads).
 #
-# /opt/uv_cache is NOT pruned and must never be: the venvs under /opt/ray_venvs and /opt/gym_venvs
-# are symlinked into it (UV_LINK_MODE=symlink), so deleting it breaks every one of them. It also
-# doubles as a warm cache for environments installed at runtime (user Gym FileSets, non-prefetched
+# /opt/uv_cache is NOT pruned and must never be: the per-worker venvs under /opt/ray_venvs are
+# symlinked into it (UV_LINK_MODE=symlink), so deleting it breaks every one of them - as it would
+# any /opt/gym_venvs environment baked in via NEMO_GYM_PREFETCH_CONFIGS. It also doubles as a warm
+# cache for everything installed at runtime (Gym environments, user FileSets, non-prefetched
 # actors), making those installs faster.
 RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
     apt-get autoremove -y >/dev/null 2>&1 || true; \

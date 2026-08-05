@@ -4,7 +4,7 @@
 import { Button, ButtonProps } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationResultsRoute } from '@studio/routes/utils';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 /**
  * Button that navigates to the evaluation results page.

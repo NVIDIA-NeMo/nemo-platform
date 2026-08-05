@@ -94,6 +94,26 @@ from pydantic import SecretStr
 
 SETUP_MOD = "nemo_platform_ext.cli.commands.setup"
 
+
+@pytest.fixture(autouse=True)
+def _silence_telemetry():
+    """Silence stray telemetry side effects across this module.
+
+    These are direct-call unit tests with no telemetry intent. Several exercise
+    the real setup wrappers (`_create_provider`, `_wait_for_models`,
+    `_deploy_demo_agent`, `_auto_setup`), which call the real `emit_event`. With
+    telemetry enabled by default that constructs a `TelemetryHandler` and
+    schedules `_flush_events`, whose orphaned coroutine surfaces later as a
+    "coroutine ... was never awaited" RuntimeWarning (blamed on whichever
+    mock-heavy test triggers GC, not the emitting one). Patch emit_event at module
+    scope so no handler is ever built. No test in this file asserts on emit_event
+    (the telemetry assertions live in test_onboarding_events.py), so this weakens
+    nothing.
+    """
+    with patch("nemo_platform_ext.cli.telemetry.emit.emit_event"):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # KnownProvider catalog tests
 # ---------------------------------------------------------------------------
@@ -759,6 +779,66 @@ class TestMaybeStartServices:
             maybe_start_preflight_mocks.return_value = MagicMock(pid=999)
             _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
         maybe_start_preflight_mocks.assert_called_once()
+
+    def test_early_exit_prints_docker_hint_when_daemon_unavailable(self, maybe_start_preflight_mocks, capsys):
+        dead = MagicMock(pid=999)
+        dead.poll.return_value = 3
+        wait = MagicMock(return_value=False)
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}._wait_for_platform", wait),
+            patch(f"{SETUP_MOD}.validate_docker_available", return_value=False),
+            patch(f"{SETUP_MOD}.log_path_for", return_value=MagicMock(__str__=lambda self: "/tmp/services.log")),
+            patch(f"{SETUP_MOD}._pause"),
+            pytest.raises(ClickExit),
+        ):
+            maybe_start_preflight_mocks.return_value = dead
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        wait.assert_called_once()
+        assert wait.call_args.kwargs.get("proc") is dead
+        captured = capsys.readouterr()
+        assert "exited early (exit code 3)" in captured.err
+        assert "Check /tmp/services.log for details." in captured.err
+        assert "Docker does not appear to be available" in captured.err
+
+    def test_readiness_timeout_does_not_hint_docker_without_evidence(
+        self, maybe_start_preflight_mocks, capsys, tmp_path
+    ):
+        alive = MagicMock(pid=999)
+        alive.poll.return_value = None
+        log = tmp_path / "services.log"
+        log.write_text("starting auth\n", encoding="utf-8")
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
+            patch(f"{SETUP_MOD}.validate_docker_available", return_value=False),
+            patch(f"{SETUP_MOD}.log_path_for", return_value=log),
+            patch(f"{SETUP_MOD}._pause"),
+            pytest.raises(ClickExit),
+        ):
+            maybe_start_preflight_mocks.return_value = alive
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        captured = capsys.readouterr()
+        assert "did not become ready" in captured.err
+        assert "Docker does not appear to be available" not in captured.err
+
+    def test_docker_hint_from_services_log_markers(self, maybe_start_preflight_mocks, capsys, tmp_path):
+        alive = MagicMock(pid=999)
+        alive.poll.return_value = None
+        log = tmp_path / "services.log"
+        log.write_text("Skipping executor 'local-docker': Docker daemon is unavailable\n", encoding="utf-8")
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
+            patch(f"{SETUP_MOD}.validate_docker_available", return_value=True),
+            patch(f"{SETUP_MOD}.log_path_for", return_value=log),
+            patch(f"{SETUP_MOD}._pause"),
+            pytest.raises(ClickExit),
+        ):
+            maybe_start_preflight_mocks.return_value = alive
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        captured = capsys.readouterr()
+        assert "Docker does not appear to be available" in captured.err
 
 
 class TestRemoteConnection:
@@ -2018,6 +2098,21 @@ class TestWaitForPlatformSpinner:
         assert result is True
         update_texts = [c.args[0] for c in mock_status.update.call_args_list]
         assert all("loaded" not in t for t in update_texts)
+
+    def test_returns_false_immediately_when_process_exits(self, spinner_console):
+        """Do not wait the full timeout when the service process already exited."""
+        dead = MagicMock()
+        dead.poll.return_value = 3
+        with (
+            patch(f"{self._MOD}._pause") as pause,
+            patch(f"{self._MOD}.time.monotonic", side_effect=[0, 0, 1, 2]),
+            patch(f"{self._MOD}._check_platform_reachable") as reachable,
+        ):
+            result = _wait_for_platform("http://localhost:8080", timeout=120, proc=dead)
+
+        assert result is False
+        reachable.assert_not_called()
+        pause.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

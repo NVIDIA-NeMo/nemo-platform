@@ -13,7 +13,7 @@ import { NavItem } from '@studio/components/Layouts/NavigationDrawer/components/
 import { Props } from '@studio/components/Layouts/NavigationDrawer/types';
 import { toGroups } from '@studio/components/Layouts/NavigationDrawer/utils';
 import { Fragment, useCallback, useMemo, useState, type FC } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 export const NavigationDrawer: FC<Props> = ({ items, bottomItems, collapsed = false }) => {
   const { pathname } = useLocation();

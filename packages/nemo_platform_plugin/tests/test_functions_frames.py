@@ -39,3 +39,15 @@ def test_frames_round_trip_through_ndjson() -> None:
     encoded = "\n".join(f.model_dump_json() for f in frames) + "\n"
     decoded = [json.loads(ln) for ln in encoded.splitlines() if ln]
     assert decoded == [{"kind": "heartbeat"}, {"kind": "heartbeat"}, {"kind": "done"}]
+
+
+def test_kind_is_required_in_the_schema_despite_its_default() -> None:
+    """An optional discriminator does not discriminate — clients could not narrow."""
+    for frame in (Heartbeat, Done, Error):
+        assert "kind" in frame.model_json_schema()["required"]
+
+
+def test_nullable_fields_stay_optional() -> None:
+    """Promoting every defaulted field would make these required but non-nullable,
+    because the spec pipeline drops the ``null`` branch."""
+    assert "details" not in Error.model_json_schema()["required"]

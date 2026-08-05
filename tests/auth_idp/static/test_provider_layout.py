@@ -58,6 +58,10 @@ def test_authentik_compose_defaults_support_direct_docker_compose_start():
     assert compose["x-authentik-env"]["AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD"] == password_default
     assert compose["services"]["nemo"]["environment"]["AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD"] == password_default
     assert (
+        compose["services"]["nemo"]["environment"]["NMP_AUTH_TOKEN_SIGNING__PRIVATE_KEY_FILE"]
+        == "/var/run/secrets/nemo-platform/workload-token-signing/private-key.pem"
+    )
+    assert (
         "../.generated/workload-token-private-key.pem:"
         "/var/run/secrets/nemo-platform/workload-token-signing/private-key.pem:ro"
     ) in compose["services"]["nemo"]["volumes"]
@@ -134,23 +138,43 @@ def test_authentik_compose_uses_liveness_for_container_health_and_routes_status_
         'gateway_ready_http_call(request_handle, "authentik", "authentik-server", '
         '"/application/o/nemo/.well-known/openid-configuration")'
     ) in lua_code
+    assert 'headers:remove("x-nmp-authorized")' in lua_code
+    assert 'headers:remove("x-nmp-scopes")' in lua_code
 
-    jwt_filter = next(
+    assert "claim_to_headers" not in yaml.safe_dump(http_manager)
+    assert all(
+        filter_config["name"] != "envoy.filters.http.jwt_authn" for filter_config in http_manager["http_filters"]
+    )
+
+    ext_authz_filter = next(
         filter_config
         for filter_config in http_manager["http_filters"]
-        if filter_config["name"] == "envoy.filters.http.jwt_authn"
+        if filter_config["name"] == "envoy.filters.http.ext_authz"
     )
-    jwt_providers = jwt_filter["typed_config"]["providers"]
-    assert jwt_providers["authentik_workload"]["audiences"] == [
-        "nemo-platform",
-        "nemo-platform-cli",
-        "nemo-platform-workload",
-    ]
-    assert jwt_providers["workload_exchange"]["audiences"] == ["nemo-platform"]
-    jwt_rules = jwt_filter["typed_config"]["rules"]
-    jwt_rule_matches = [rule["match"] for rule in jwt_rules]
-    assert {"prefix": "/health/"} in jwt_rule_matches
-    assert {"path": "/status"} in jwt_rule_matches
+    ext_authz = ext_authz_filter["typed_config"]
+    assert ext_authz["@type"] == "type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz"
+    assert ext_authz["transport_api_version"] == "V3"
+    assert ext_authz["failure_mode_allow"] is False
+    assert ext_authz["http_service"]["path_prefix"] == "/apis/auth/authenticate"
+    assert ext_authz["http_service"]["server_uri"] == {
+        "uri": "http://nemo:8080",
+        "cluster": "nemo",
+        "timeout": "5s",
+    }
+    allowed_headers = ext_authz["http_service"]["authorization_response"]["allowed_upstream_headers"]["patterns"]
+    assert {"exact": "x-nmp-principal-id"} in allowed_headers
+    assert {"exact": "x-nmp-principal-email"} in allowed_headers
+    assert {"exact": "x-nmp-principal-groups"} in allowed_headers
+    assert {"exact": "x-nmp-scopes"} in allowed_headers
+
+    protected_api_route = next(route for route in routes if route["match"] == {"prefix": "/apis/"})
+    assert "typed_per_filter_config" not in protected_api_route
+
+    public_authenticate_route = next(route for route in routes if route["match"] == {"path": "/apis/auth/authenticate"})
+    assert public_authenticate_route["typed_per_filter_config"]["envoy.filters.http.ext_authz"] == {
+        "@type": "type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute",
+        "disabled": True,
+    }
 
 
 def test_authentik_compose_mounts_workload_token_signing_key():
@@ -164,9 +188,10 @@ def test_authentik_compose_mounts_workload_token_signing_key():
 
     assert key_mount in compose["services"]["nemo"]["volumes"]
     assert (
-        config["auth"]["oidc"]["workload_token_private_key_file"]
+        config["auth"]["token_signing"]["private_key_file"]
         == "/var/run/secrets/nemo-platform/workload-token-signing/private-key.pem"
     )
+    assert "workload_token_private_key_file" not in config["auth"]["oidc"]
 
 
 def test_authentik_compose_uses_https_gateway_for_workloads():
@@ -183,7 +208,10 @@ def test_authentik_compose_uses_https_gateway_for_workloads():
     assert "loopback_address" not in config["platform"]
     assert "service_discovery" not in config["platform"]
     assert config["auth"]["oidc"]["token_endpoint"] == "https://127.0.0.1:18080/application/o/token/"
-    assert config["auth"]["oidc"]["workload_token_issuer"] == "https://nemo-gateway:8080/apis/auth"
+    assert config["auth"]["token_signing"]["issuer"] == "https://nemo-gateway:8080/apis/auth"
+    assert config["auth"]["token_signing"]["key_id"] == "nemo-platform-signing"
+    assert config["auth"]["access_keys"]["enabled"] is True
+    assert "workload_token_issuer" not in config["auth"]["oidc"]
     assert config["auth"]["oidc"]["workload_token_endpoint"] == "https://nemo-gateway:8080/apis/auth/token"
     assert (
         "https://nemo-gateway:8080/application/o/nemo-workload/" in config["auth"]["oidc"]["workload_subject_issuers"]
@@ -239,3 +267,12 @@ def test_authentik_compose_mounts_gateway_ca_into_docker_workloads():
             "mount_path": "/etc/nmp/gateway-tls",
         }
     ]
+
+
+def test_authentik_runtimes_declare_platform_access_key_capability():
+    manifest = yaml.safe_load(Path("contrib/auth/authentik/manifest.yaml").read_text())
+
+    runtimes = {runtime["id"]: runtime for runtime in manifest["test_runtimes"]}
+
+    assert "platform_access_keys" in runtimes["authentik-compose"]["capabilities"]
+    assert "platform_access_keys" in runtimes["authentik-kubernetes"]["capabilities"]

@@ -1,0 +1,48 @@
+# NAT workflow YAML for a NeMo Platform agent.
+# Required top-level keys: functions, llms, workflow.
+# Optional: intercepts, middleware.
+# Anything else at top level causes NAT to reject the config.
+
+functions:
+  clock:
+    _type: current_datetime
+
+llms:
+  llm:
+    _type: openai
+    api_key: not-used
+    model_name: nvidia-llama-3-3-nemotron-super-49b-v1
+    temperature: 0.0
+    max_tokens: 1024
+
+general:
+  telemetry:
+    tracing:
+      nemo_files_trace:
+        _type: nemo_files
+        # workspace and agent_name are injected at deploy time
+
+workflow:
+  _type: react_agent
+  tool_names: [clock]
+  llm_name: llm
+  verbose: false
+  parse_agent_response_max_retries: 3
+  system_prompt: |
+    <one-paragraph role description from the spec>
+
+    Your job: <one sentence from the spec>.
+
+    You handle these categories:
+    - <category 1>
+    - <category 2>
+    - <category 3>
+
+    Constraints:
+    - <constraint from spec>
+    - <constraint from spec>
+
+    You have access to the following tools:
+    {tools}
+
+    Tool names: {tool_names}

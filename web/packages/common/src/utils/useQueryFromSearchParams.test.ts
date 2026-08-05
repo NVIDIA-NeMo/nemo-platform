@@ -3,7 +3,7 @@
 
 import { renderHook, act } from '@testing-library/react';
 import React, { ReactNode } from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 import { useQueryFromSearchParams, paginationQueryState } from './useQueryFromSearchParams';
 import {
@@ -73,9 +73,9 @@ class MockURLSearchParams {
 let mockSearchParamsData = new MockURLSearchParams();
 const mockSetSearchParams = vi.fn();
 
-// Mock react-router-dom
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+// Mock react-router
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useSearchParams: () => [mockSearchParamsData, mockSetSearchParams],

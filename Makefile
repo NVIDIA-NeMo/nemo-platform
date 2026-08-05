@@ -233,7 +233,7 @@ bootstrap: bootstrap-python ## Bootstrap the local dev environment, including St
 		echo "warning: optional Studio asset bootstrap did not complete."; \
 		echo "Studio will be unavailable at http://localhost:8080/studio/ until assets are built."; \
 		echo "Install Node.js matching web/package.json with pnpm, then rerun:"; \
-		echo "  pnpm env use --global 22.18.0"; \
+		echo "  pnpm env use --global 22.23.2"; \
 		echo "  make bootstrap-studio"; \
 	fi
 	@echo "bootstrap completed"

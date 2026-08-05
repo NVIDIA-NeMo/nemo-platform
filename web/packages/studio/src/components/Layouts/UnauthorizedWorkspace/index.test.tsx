@@ -4,7 +4,7 @@
 import { UnauthorizedWorkspace } from '@studio/components/Layouts/UnauthorizedWorkspace';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 const renderComponent = () =>
   render(

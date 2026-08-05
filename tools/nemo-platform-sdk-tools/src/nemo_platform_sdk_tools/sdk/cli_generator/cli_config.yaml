@@ -15,6 +15,14 @@ defaults:
 
 # Root `nemo --help` metadata for generated API commands.
 top_level:
+  auth:
+    panel: Core plugins
+    help: Manage auth.
+    hidden: true
+  access-keys:
+    panel: Core plugins
+    help: Manage access keys.
+    hidden: true
   adapters:
     panel: Core plugins
     help: Manage adapters.
@@ -57,6 +65,10 @@ top_level:
 
 # Resource-specific configurations
 config:
+- resource: [auth]
+  skip: true
+- resource: [access_keys]
+  skip: true
 - resource: [models]
   methods:
     list:

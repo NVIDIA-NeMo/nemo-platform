@@ -14,12 +14,12 @@ The plugin is installed by default through the root workspace's `enabled-plugins
 
 From an agent directory, Insights discovers `optimizer.yaml` in the current
 directory or its parents. Start by checking the profile and its environment,
-then run analysis:
+then run the analyst:
 
 ```bash
 cd <agent-directory>
-uv run nemo insights doctor
-uv run nemo insights analyze
+uv run nemo agents analyst doctor
+uv run nemo agents analyst run
 ```
 
 The profile contract consumed by Insights is deliberately small:
@@ -48,7 +48,7 @@ With a discovered profile, analysis reads and writes the shared local output at
 `--insights-file-output` to use a different file explicitly.
 
 ```bash
-uv run nemo insights analyze \
+uv run nemo agents analyst run \
   --agent research-agent \
   --workspace default \
   --base-url http://localhost:8080
@@ -93,4 +93,4 @@ uv run ruff check plugins/nemo-insights
 ## Testbed
 
 The analyst-only testbed is in [`testbed/`](testbed/). It can replay pinned
-Intake traces or run Tau2 benchmarks before invoking `nemo insights analyze`.
+Intake traces or run Tau2 benchmarks before invoking `nemo agents analyst run`.

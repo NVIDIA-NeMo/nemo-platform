@@ -6,8 +6,14 @@ packages:
 # https://pnpm.io/settings#overrides
 overrides:
   '@codemirror/view': 6.43.1
-  'brace-expansion@1.1.15': 1.1.16
+  'brace-expansion@<1.1.18': 1.1.18
+  'brace-expansion@>=4.0.0 <5.0.9': 5.0.9
+  'fast-uri@<3.1.4': ^3.1.4
+  'js-yaml@>=4.0.0 <4.3.0': ^4.3.0
+  'linkify-it@<5.0.2': ^5.0.2
+  'postcss@<8.5.18': ^8.5.18
   'shell-quote@1.8.4': 1.9.0
+  'undici@>=7.0.0 <7.29.0': ^7.29.0
 
 # https://pnpm.io/catalogs
 catalog:
@@ -16,8 +22,9 @@ catalog:
   '@nvidia/foundations-react-core': 1.7.0
   '@nvidia/foundations-tailwind-plugin': 1.7.0
   'lucide-react': ^0.577.0
-  '@storybook/react': ^10.4.6
-  '@storybook/react-vite': ^10.4.6
+  '@storybook/addon-a11y': ^10.5.5
+  '@storybook/react': ^10.5.5
+  '@storybook/react-vite': ^10.5.5
   '@tailwindcss/postcss': ^4.1.18
   '@tanstack/react-query': ^5.69.0
   '@tanstack/react-query-devtools': ^5.69.0
@@ -39,13 +46,13 @@ catalog:
   classnames: ^2.5.1
   concurrently: ^10.0.3
   date-fns: ^4.1.0
-  jsdom: ^29.0.2
+  jsdom: ^29.1.1
   handlebars: ^4.7.9
   happy-dom: ^20.10.6
   hyparquet: ^1.8.1
   p-limit: ^6.2.0
   msw: ^2.13.2
-  postcss: ^8.5.15
+  postcss: ^8.5.18
   prettier: ^3.5.3
   oidc-client-ts: ^3.3.0
   openai: ^4.67.3
@@ -56,10 +63,9 @@ catalog:
   react-dropzone: ^14.3.5
   react-hook-form: ^7.58.1
   react-oidc-context: ^3.3.0
-  react-router: ^6.30.4
-  react-router-dom: ^6.30.4
+  react-router: ^8.3.0
   recharts: ^2.15.1
-  storybook: ^10.4.6
+  storybook: ^10.5.5
   tailwindcss: ^4.1.11
   tsx: ^4.22.4
   typescript: ~7.0.0

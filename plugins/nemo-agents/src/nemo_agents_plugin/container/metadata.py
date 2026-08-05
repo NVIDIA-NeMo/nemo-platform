@@ -16,6 +16,9 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import yaml
+from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT
+
+NEMO_PLATFORM_AGENT_FRAMEWORK = "nemo_platform_agent"
 
 
 def extract_agent_metadata(
@@ -30,16 +33,19 @@ def extract_agent_metadata(
 
     Resolution order for each field:
 
-    * **agent_name**: ``pyproject [project].name`` → config file stem
+    * **agent_name**: ``pyproject [project].name`` → Platform config ``name`` →
+      config file stem
     * **agent_version**: *agent_version* arg → ``pyproject [project].version`` → ``YY.MM.DD``
     * **agent_author**: *agent_author* arg → ``git config user.name`` (run in the
       project's git repo) → ``"unknown"``
-    * **agent_framework**: ``"nemo_agent_toolkit"`` when config has ``workflow`` key
+    * **agent_framework**: ``"nemo_platform_agent"`` for Platform-owned agent
+      specs, ``"nemo_agent_toolkit"`` when config has a ``workflow`` key
     * **agent_id**: truncated SHA-256 of config + pyproject + build-env inputs,
       so changing ``--nat-version`` (etc.) yields a distinct identifier.
     * **build_timestamp**: honors ``SOURCE_DATE_EPOCH`` →
       ``git log -1 --format=%cI`` of the project repo → current UTC time
-    * **description**: ``pyproject [project].description`` → ``"{workflow._type} agent"``
+    * **description**: ``pyproject [project].description`` → Platform config
+      ``description`` → ``"{workflow._type} agent"``
     * **licenses**: ``pyproject [project].license`` → ``""``
     * **revision**: ``git rev-parse HEAD`` in the project repo → ``""``
     * **source**: ``git remote get-url origin`` in the project repo → ``""``
@@ -51,6 +57,7 @@ def extract_agent_metadata(
     """
     pyproject_data = _load_pyproject(pyproject)
     config_text = agent_config.read_text(encoding="utf-8") if agent_config.exists() else ""
+    config_data = _parse_config(config_text)
 
     # Git commands and timestamp resolution all operate against the project's
     # repo, not the CLI's cwd. Without this, running the packager from `~`
@@ -58,13 +65,13 @@ def extract_agent_metadata(
     # (or empty string) into the image labels.
     cwd = pyproject.resolve().parent if pyproject is not None else agent_config.resolve().parent
 
-    name = _resolve_name(pyproject_data, agent_config)
+    name = _resolve_name(pyproject_data, config_data, agent_config)
     version = _resolve_version(agent_version, pyproject_data)
     author = _resolve_author(agent_author, cwd=cwd)
-    framework = _detect_framework(config_text)
+    framework = _detect_framework(config_data)
     agent_id = _compute_agent_id(config_text, pyproject, build_env=build_env)
     timestamp = _resolve_timestamp(cwd=cwd)
-    description = _resolve_description(pyproject_data, config_text)
+    description = _resolve_description(pyproject_data, config_data)
     licenses = _resolve_licenses(pyproject_data)
     revision = _git_revision(cwd=cwd)
     source = _git_source(cwd=cwd)
@@ -101,10 +108,23 @@ def _load_pyproject(pyproject: Path | None) -> dict:
         return {}
 
 
-def _resolve_name(pyproject_data: dict, agent_config: Path) -> str:
-    name = pyproject_data.get("project", {}).get("name", "")
-    if name:
-        return name
+def _parse_config(config_text: str) -> dict:
+    """Parse agent YAML once for all metadata field resolvers."""
+    try:
+        data = yaml.safe_load(config_text)
+    except yaml.YAMLError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _resolve_name(pyproject_data: dict, config_data: dict, agent_config: Path) -> str:
+    project_name = pyproject_data.get("project", {}).get("name", "")
+    if isinstance(project_name, str) and project_name:
+        return project_name
+    if config_data.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        config_name = config_data.get("name", "")
+        if isinstance(config_name, str) and config_name:
+            return config_name
     return agent_config.stem
 
 
@@ -172,15 +192,10 @@ def _resolve_timestamp(cwd: Path | None = None) -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _detect_framework(config_text: str) -> str:
-    try:
-        data = yaml.safe_load(config_text)
-    except yaml.YAMLError:
-        # Malformed YAML — validator.py reports the parse error separately;
-        # don't double-fail packaging here, return the "unknown" sentinel
-        # so the OCI label is still populated with a deterministic value.
-        return "unknown"
-    if isinstance(data, dict) and "workflow" in data:
+def _detect_framework(config_data: dict) -> str:
+    if config_data.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        return NEMO_PLATFORM_AGENT_FRAMEWORK
+    if "workflow" in config_data:
         return "nemo_agent_toolkit"
     return "unknown"
 
@@ -194,9 +209,9 @@ def _compute_agent_id(
 
     Domain-separated so distinct inputs cannot accidentally collide (e.g.
     config="ab", pyproject="cdef" vs config="abc", pyproject="def"). Includes
-    *build_env* (resolved ``nat_version`` / base image / python version) so a
-    rebuild with a different toolchain produces a distinct id, instead of
-    silently re-tagging an ABI-incompatible image with the same suffix.
+    *build_env* (runtime contract, dependency pins, base image, and Python
+    toolchain) so a rebuild with a different runtime produces a distinct id,
+    instead of silently re-tagging an incompatible image with the same suffix.
     """
     hasher = hashlib.sha256()
     hasher.update(b"agent_config\0")
@@ -211,21 +226,17 @@ def _compute_agent_id(
     return hasher.hexdigest()[:12]
 
 
-def _resolve_description(pyproject_data: dict, config_text: str) -> str:
+def _resolve_description(pyproject_data: dict, config_data: dict) -> str:
     desc = pyproject_data.get("project", {}).get("description", "")
-    if desc:
+    if isinstance(desc, str) and desc:
         return desc
-    try:
-        data = yaml.safe_load(config_text)
-    except yaml.YAMLError:
-        # Malformed YAML — fall back to an empty description rather than
-        # crashing image labeling.  validator.py raises a structured parse
-        # error elsewhere, so the user still sees the YAML problem.
-        return ""
-    if isinstance(data, dict):
-        wf = data.get("workflow", {})
-        if isinstance(wf, dict) and wf.get("_type"):
-            return f"{wf['_type']} agent"
+    if config_data.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        config_description = config_data.get("description", "")
+        if isinstance(config_description, str) and config_description:
+            return config_description
+    wf = config_data.get("workflow", {})
+    if isinstance(wf, dict) and wf.get("_type"):
+        return f"{wf['_type']} agent"
     return ""
 
 
