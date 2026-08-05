@@ -95,6 +95,29 @@ def test_build_agent_eval_tasks_accepts_body_label(tmp_path: Path) -> None:
     assert tasks[0].reference == {"answer": "phishing"}
 
 
+def test_build_agent_eval_tasks_composes_subject_and_body(tmp_path: Path) -> None:
+    dataset = tmp_path / "rows.json"
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "mail-1",
+                    "subject": "Urgent",
+                    "body": "Click this link",
+                    "label": "phishing",
+                }
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    tasks = build_agent_eval_tasks(_payload(dataset))
+
+    assert tasks[0].inputs == {"instruction": "Urgent\n\nClick this link"}
+    assert tasks[0].reference == {"answer": "phishing"}
+
+
 def test_build_agent_eval_tasks_preserves_judge_api_key_env(tmp_path: Path) -> None:
     dataset = tmp_path / "rows.json"
     dataset.write_text('[{"id": "1", "question": "q?", "answer": "a"}]\n', encoding="utf-8")
@@ -183,7 +206,6 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
                 trials=[trial],
                 scores=[score],
                 summary=AgentEvalSummary.from_scores([score], tasks=tasks),
-                benchmark={},
             )
 
     monkeypatch.setattr("nemo_optimization.backends.optuna.fabric_trial.FabricAgentRuntime", FakeRuntime)

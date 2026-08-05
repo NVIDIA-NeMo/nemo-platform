@@ -22,11 +22,9 @@ class _FakeServer:
     transport: str = "stdio"
     url: str = "placeholder"
     exposure: str = "harness_native"
+    args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
-
-    @property
-    def extra_fields(self) -> dict[str, Any]:
-        return {"env": dict(self.env)} if self.env else {}
+    extra_fields: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -46,6 +44,8 @@ class _FakeConfig:
         transport: str,
         url: str,
         exposure: str = "harness_native",
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None,
         extra_fields: dict[str, Any] | None = None,
     ) -> _FakeConfig:
         self.calls.append(
@@ -54,14 +54,19 @@ class _FakeConfig:
                 "transport": transport,
                 "url": url,
                 "exposure": exposure,
+                "args": list(args or []),
+                "env": dict(env or {}),
                 "extra_fields": dict(extra_fields or {}),
             }
         )
-        existing = self.mcp.servers.get(name)
-        env = dict(existing.env) if existing else {}
-        if extra_fields and isinstance(extra_fields.get("env"), dict):
-            env = dict(extra_fields["env"])
-        self.mcp.servers[name] = _FakeServer(transport=transport, url=url, exposure=exposure, env=env)
+        self.mcp.servers[name] = _FakeServer(
+            transport=transport,
+            url=url,
+            exposure=exposure,
+            args=list(args or []),
+            env=dict(env or {}),
+            extra_fields=dict(extra_fields or {}),
+        )
         return self
 
 
@@ -158,6 +163,7 @@ def test_mcp_run_binding_prepare_preserves_env_and_rebinds_url(tmp_path: Path, m
             servers={
                 "email-phishing-analyzer": _FakeServer(
                     url="placeholder",
+                    args=["--config", "analyzer.yaml"],
                     env={"NVIDIA_API_KEY": "${NVIDIA_API_KEY}"},
                 )
             }
@@ -190,7 +196,9 @@ def test_mcp_run_binding_prepare_preserves_env_and_rebinds_url(tmp_path: Path, m
     call = config.calls[0]
     assert call["name"] == "email-phishing-analyzer"
     assert call["url"].endswith("mcp-bin")
-    assert call["extra_fields"]["env"] == {"NVIDIA_API_KEY": "${NVIDIA_API_KEY}"}
+    assert call["env"] == {"NVIDIA_API_KEY": "${NVIDIA_API_KEY}"}
+    assert call["args"] == ["--config", "analyzer.yaml"]
+    assert call["extra_fields"] == {}
 
     started = session.state["mcp_bindings"][0]
     binding = started["binding"]
@@ -210,6 +218,34 @@ def test_mcp_run_binding_prepare_preserves_env_and_rebinds_url(tmp_path: Path, m
     assert binding.cleaned is True
     assert handoff.closed is True
     assert session.state.get("mcp_bindings") is None
+
+
+def test_mcp_run_binding_lifts_legacy_extra_fields_env_args(tmp_path: Path) -> None:
+    """Older Fabric snapshots stored env/args under extra_fields; lift to top-level."""
+    config = _FakeConfig(
+        mcp=_FakeMcp(
+            servers={
+                "legacy": _FakeServer(
+                    url="placeholder",
+                    extra_fields={
+                        "args": ["--read-only"],
+                        "env": {"TOKEN": "x"},
+                        "custom": 1,
+                    },
+                )
+            }
+        )
+    )
+    hook = McpRunBindingHook(bindings=[{"server": "legacy", "binding": _FakeBinding}])
+    session = FabricTaskRunSession()
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    hook.prepare(config, _FakeTask(), evidence, tmp_path, session)
+    call = config.calls[0]
+    assert call["args"] == ["--read-only"]
+    assert call["env"] == {"TOKEN": "x"}
+    assert call["extra_fields"] == {"custom": 1}
+    hook.cleanup(session)
 
 
 def test_mcp_run_binding_order_and_lifo_cleanup(tmp_path: Path) -> None:

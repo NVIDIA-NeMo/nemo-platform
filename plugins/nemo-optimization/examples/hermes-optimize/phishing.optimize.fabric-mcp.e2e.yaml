@@ -1,5 +1,6 @@
 # Extended MCP e2e optimize package (path-first mcp_run_binding).
 # Broader search space than the smoke config — temperature + top_p, several trials.
+# Dataset: full phishing-agent eval set (email-phishing-analyzer-harnesses data/smaller_test.csv).
 schema_version: fabric.agent/v1alpha1
 metadata:
   name: hermes-optimize-phishing-mcp-e2e

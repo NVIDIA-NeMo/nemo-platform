@@ -3,7 +3,7 @@
 
 """Platform Fabric task hook for per-task MCP bindings (path-first).
 
-**Static MCP (no hook):** declare ``mcp.servers`` (transport, url, exposure, env) in the
+**Static MCP (no hook):** declare ``mcp.servers`` (transport, url, exposure, env, args) in the
 optimize / Fabric YAML. That is the hero path for fixed stdio MCP servers.
 
 **Bound MCP (this hook):** use when the agent needs run-scoped MCP state (private input
@@ -22,8 +22,9 @@ binding, audit/verify, optional credential handoff). Configure via::
               env: NVIDIA_API_KEY
               ref: my_pkg.handoff:CredentialHandoff
 
-``mcp.servers`` still owns transport / placeholder url / exposure / env. This hook only
-rebinds ``url`` to ``binding.mcp_command`` after ``Binding.create``, preserving env.
+``mcp.servers`` still owns transport / placeholder url / exposure / env / args. This hook
+only rebinds ``url`` to ``binding.mcp_command`` after ``Binding.create``, preserving
+top-level ``env`` and ``args``.
 
 **Agent protocol (duck-typed, in the agent checkout):**
 
@@ -129,15 +130,40 @@ def _filter_kwargs(fn: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in kwargs.items() if key in params}
 
 
-def _server_snapshot(config: Any, name: str) -> tuple[str, str, dict[str, Any]]:
-    """Return (transport, exposure, extra_fields) for an existing MCP server, or defaults."""
+def _as_str_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raise McpRunBindingHookError("MCP server args must be a list of strings, not a string")
+    if isinstance(value, Sequence):
+        return [str(item) for item in value]
+    raise McpRunBindingHookError(f"MCP server args must be a sequence of strings, got {type(value)!r}")
+
+
+def _as_str_map(value: Any) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise McpRunBindingHookError(f"MCP server env must be a mapping, got {type(value)!r}")
+    return {str(key): str(item) for key, item in value.items()}
+
+
+def _server_snapshot(config: Any, name: str) -> dict[str, Any]:
+    """Return preserved ``add_mcp_server`` kwargs for an existing MCP server.
+
+    Fabric now owns ``env`` / ``args`` as top-level MCP server fields (not
+    ``extra_fields``). Legacy snapshots that still stash them under
+    ``extra_fields`` are lifted to top-level kwargs.
+    """
     mcp = getattr(config, "mcp", None)
     servers = getattr(mcp, "servers", None) or {}
     server = servers.get(name) if isinstance(servers, Mapping) else None
     if server is None:
-        return "stdio", "harness_native", {}
+        return {"transport": "stdio", "exposure": "harness_native"}
+
     transport = str(getattr(server, "transport", None) or "stdio")
     exposure = str(getattr(server, "exposure", None) or "harness_native")
+
     extra: dict[str, Any] = {}
     extra_fields = getattr(server, "extra_fields", None)
     if isinstance(extra_fields, Mapping):
@@ -146,7 +172,23 @@ def _server_snapshot(config: Any, name: str) -> tuple[str, str, dict[str, Any]]:
         extra = dict(extra_fields())
     elif hasattr(server, "model_extra") and isinstance(server.model_extra, Mapping):
         extra = dict(server.model_extra)
-    return transport, exposure, extra
+
+    args = _as_str_list(getattr(server, "args", None))
+    if not args and "args" in extra:
+        args = _as_str_list(extra.pop("args"))
+
+    env = _as_str_map(getattr(server, "env", None))
+    if not env and "env" in extra:
+        env = _as_str_map(extra.pop("env"))
+
+    snapshot: dict[str, Any] = {"transport": transport, "exposure": exposure}
+    if args:
+        snapshot["args"] = args
+    if env:
+        snapshot["env"] = env
+    if extra:
+        snapshot["extra_fields"] = extra
+    return snapshot
 
 
 def _verify_binding(binding: Any) -> Any:
@@ -299,13 +341,11 @@ class McpRunBindingHook:
 
                 # Register before rebinding so prepare failures can still cleanup.
                 started.append({"server": entry["server"], "binding": binding, "handoff": handoff})
-                transport, exposure, extra_fields = _server_snapshot(config, entry["server"])
+                preserved = _server_snapshot(config, entry["server"])
                 config = config.add_mcp_server(
                     entry["server"],
-                    transport=transport,
                     url=str(binding.mcp_command),
-                    exposure=exposure,  # type: ignore[arg-type]
-                    extra_fields=extra_fields or None,
+                    **preserved,
                 )
         except Exception:
             self.cleanup(session)

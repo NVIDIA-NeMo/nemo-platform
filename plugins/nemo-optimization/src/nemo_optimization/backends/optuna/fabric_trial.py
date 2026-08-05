@@ -145,16 +145,7 @@ def build_agent_eval_tasks(payload: Mapping[str, Any]) -> list[AgentEvalTask]:
     tasks: list[AgentEvalTask] = []
     for index, row in enumerate(rows):
         row_id = str(row.get("id", index))
-        instruction = str(
-            row.get("instruction")
-            or row.get("question")
-            or row.get("prompt")
-            or row.get("body")
-            or row.get("input")
-            or ""
-        )
-        if not instruction:
-            raise StudyDriverError(f"Dataset row {row_id!r} has no instruction/question/body/input.")
+        instruction = _row_instruction(row, row_id)
         answer = row.get("answer") or row.get("expected_answer") or row.get("reference") or row.get("label") or ""
         tasks.append(
             AgentEvalTask(
@@ -167,6 +158,27 @@ def build_agent_eval_tasks(payload: Mapping[str, Any]) -> list[AgentEvalTask]:
             )
         )
     return tasks
+
+
+def _row_instruction(row: Mapping[str, Any], row_id: str) -> str:
+    """Build the agent prompt for one dataset row.
+
+    Prefer explicit instruction fields. Otherwise match the phishing-agent eval
+    convention of ``subject\\n\\nbody`` when both are present.
+    """
+    for key in ("instruction", "question", "prompt"):
+        value = row.get(key)
+        if value is not None and str(value).strip():
+            return str(value)
+
+    subject = row.get("subject")
+    body = row.get("body") if row.get("body") is not None else row.get("input")
+    if subject is not None and str(subject).strip() and body is not None and str(body).strip():
+        return f"{subject}\n\n{body}"
+    if body is not None and str(body).strip():
+        return str(body)
+
+    raise StudyDriverError(f"Dataset row {row_id!r} has no instruction/question/body/input.")
 
 
 def reduce_agent_eval_scores(scores: Sequence[AgentEvalTaskScore], metric_names: Sequence[str]) -> dict[str, float]:

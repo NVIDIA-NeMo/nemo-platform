@@ -6,6 +6,7 @@ Fabric-backed numeric HPO demos for `nemo agents optimize`.
 |------|---------|
 | `phishing.optimize.fabric-chatonly.yaml` | **Proven clean run** — chat-only Hermes, no MCP |
 | `phishing.optimize.fabric-mcp.e2e.yaml` | Path-first MCP via platform `mcp_run_binding` (extended HPO) |
+| `dataset-phishing.json` | Full phishing-agent eval set (mirrors `data/smaller_test.csv`: 5 emails) |
 | `analyzer.inference-api.yaml` | Analyzer LLM settings for keys that work on inference-api |
 | `package.yaml` / `agent.yaml` / `optimize.yaml` | Generic templates (`REPLACE_ME` models) |
 
