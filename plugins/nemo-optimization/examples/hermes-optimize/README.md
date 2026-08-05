@@ -53,6 +53,9 @@ models (`GET /v1/models`).
 - Paths inside the YAML (`dataset`, `base_dir`) are relative to your **current
   working directory** — stay at the repo root.
 - Local Hermes output lands in `./artifacts/` under this folder (safe to delete).
+- Every example shell below assumes the env from **Platform URL** and
+  **ADAPTER_PYTHON** is already exported in this shell. Example command blocks
+  do not repeat those exports.
 - Point Fabric at the platform venv so Hermes adapters resolve:
 
   ```bash
@@ -61,6 +64,8 @@ models (`GET /v1/models`).
 
   Without this, Fabric may pick a system Python and fail with
   `No module named 'nemo_fabric_adapters'`.
+- Re-run the `hermes-agent==0.18.2 --no-deps` install after any fresh
+  `uv sync` — sync does not install Hermes and can leave `hermes_cli` missing.
 
 ### Platform URL
 
@@ -175,9 +180,13 @@ line `Resolved agent 'hermes-optimize-chatonly' to platform agent ...`.
 To replace the stored config after editing `agent.yaml`:
 
 ```bash
-nemo agents delete hermes-optimize-chatonly --workspace default
+nemo agents delete hermes-optimize-chatonly --workspace default -y
 # then re-run create
 ```
+
+`delete` prompts for confirmation unless you pass `-y`. Create returns
+**HTTP 409** if the name already exists; optimize will keep using the **old**
+stored config until you delete + recreate.
 
 ---
 
@@ -231,6 +240,13 @@ nemo agents optimize run \
 **Success:** job finishes with `status: completed`, `n_trials: 4`, and a best
 score near `1.0` when the model follows the “call the analyzer once” prompt.
 
+**Flakiness:** Hermes + `llama-3.1-70b-instruct` sometimes returns an empty
+message on a single dataset row. That sample is scored as failed and **skipped**
+when reducing the Optuna objective (the trial still completes from the remaining
+rows). The Optuna trial only fails if **every** sample fails. Check
+`plugins/nemo-optimization/examples/hermes-optimize/artifacts/.fabric/hermes/runtimes/*/logs/`
+(`errors.log`, `agent.log`, `mcp-stderr.log`) if many rows fail.
+
 Python equivalent:
 
 ```python
@@ -274,13 +290,17 @@ print(
 | Symptom | Likely fix |
 |---------|------------|
 | `nemo: command not found` | `source .venv/bin/activate` after `uv sync --package nemo-agents-plugin` |
-| `No module named hermes_cli` | Re-run the `hermes-agent==0.18.2 --no-deps` install |
+| `No module named hermes_cli` | Re-run the `hermes-agent==0.18.2 --no-deps` install (needed after every fresh `uv sync`) |
 | `No module named 'nemo_fabric_adapters'` | `export ADAPTER_PYTHON="$(pwd)/.venv/bin/python"` |
 | Missing `PHISHING_AGENT_SRC` / MCP binary | Sync the phishing agent checkout; export both env vars before `optimize run` |
 | Analyzer / LLM 401 | Confirm `NVIDIA_API_KEY` works on inference-api; keep using `analyzer-inference-api.yaml` |
 | Dataset / config file not found | Run from the `nemo-platform` repo root |
 | Agent create fails on fileset size / too many files | Pass `--agent-config` to `agents/chatonly/agent.yaml` (slim dir), not the parent examples folder |
+| `delete` hangs / `Aborted!` | Pass `-y` (`nemo agents delete NAME -y`) |
+| Create `409 Conflict` / stale models | Delete with `-y`, then create again; optimize always uses the **stored** agent config |
 | Optional `--agent ...` rejected for `http://` / `file://` | Pass a workspace agent name (e.g. `hermes-optimize-chatonly`), or omit `--agent` and use `--optimize-config` only |
+| MCP: many samples `trial_status: failed` / `no completed trials` | Inspect `artifacts/.fabric/hermes/runtimes/*/logs/`; empty Hermes responses skip that row — Optuna fails only if all rows fail |
+| Judge / best scores look like `4.5` not `~1.0` | `tunable_rag_evaluator` with `default_scoring` can sum component scores; compare trials relative to each other |
 
 Trajectory capture (`capture_trajectory`) is off in these YAMLs so you do not
 need the Relay gateway for a first smoke. Turn it on only if you need ATIF

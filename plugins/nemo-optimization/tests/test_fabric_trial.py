@@ -157,6 +157,49 @@ def test_reduce_agent_eval_scores_averages_requested_output() -> None:
     assert reduce_agent_eval_scores(scores, ["average_score"]) == {"average_score": 0.5}
 
 
+def test_reduce_agent_eval_scores_skips_failed_task_scores() -> None:
+    """One failed dataset row must not fail the Optuna trial reduction."""
+    scores = [
+        AgentEvalTaskScore(
+            id="s1",
+            run_id="r",
+            task_id="ok",
+            trial_id="t1",
+            metric_type="tunable-rag-evaluator",
+            status=AgentEvalScoreStatus.COMPLETED,
+            outputs=[MetricOutput(name="average_score", value=1.0)],
+        ),
+        AgentEvalTaskScore(
+            id="s2",
+            run_id="r",
+            task_id="urgent-your-account-has-been-suspended",
+            trial_id="t2",
+            metric_type="tunable-rag-evaluator",
+            status=AgentEvalScoreStatus.FAILED,
+            outputs=[],
+            diagnostics=[],
+        ),
+    ]
+
+    assert reduce_agent_eval_scores(scores, ["average_score"]) == {"average_score": 1.0}
+
+
+def test_reduce_agent_eval_scores_rejects_when_all_failed() -> None:
+    scores = [
+        AgentEvalTaskScore(
+            id="s1",
+            run_id="r",
+            task_id="1",
+            trial_id="t1",
+            metric_type="tunable-rag-evaluator",
+            status=AgentEvalScoreStatus.FAILED,
+            outputs=[],
+        ),
+    ]
+    with pytest.raises(StudyDriverError, match="did not produce"):
+        reduce_agent_eval_scores(scores, ["average_score"])
+
+
 def test_reduce_agent_eval_scores_rejects_missing_metric() -> None:
     with pytest.raises(StudyDriverError, match="did not produce"):
         reduce_agent_eval_scores([], ["average_score"])

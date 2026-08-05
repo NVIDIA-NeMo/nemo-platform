@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,8 @@ from nemo_evaluator_sdk.values.models import Model
 from nemo_optimization.backends.optuna.atif_metadata import build_atif_trial_tags
 from nemo_optimization.backends.optuna.config_overlay import apply_suggestions
 from nemo_optimization.backends.optuna.study_driver import StudyDriverError
+
+logger = logging.getLogger(__name__)
 
 
 class FabricTrialEvaluator:
@@ -99,7 +102,9 @@ class FabricTrialEvaluator:
                 output_dir=self._trial_output_dir(trial_number, rep),
                 parallelism=self._parallelism,
                 write_dashboard=False,
-                fail_fast=True,
+                # Keep scoring the rest of the dataset when one metric raises;
+                # reduce_agent_eval_scores skips FAILED task scores.
+                fail_fast=False,
             ),
         )
         self._record_traces(result, trial_number=trial_number, rep=rep)
@@ -182,17 +187,43 @@ def _row_instruction(row: Mapping[str, Any], row_id: str) -> str:
 
 
 def reduce_agent_eval_scores(scores: Sequence[AgentEvalTaskScore], metric_names: Sequence[str]) -> dict[str, float]:
+    """Reduce per-task metric scores into one float per study objective.
+
+    Failed / incomplete task scores are skipped so a single bad dataset row does
+    not fail the whole Optuna trial. The study still fails if a metric has no
+    completed samples left to average.
+    """
     reduced: dict[str, float] = {}
     for metric_name in metric_names:
         values: list[float] = []
+        skipped = 0
         for score in scores:
             if score.status != AgentEvalScoreStatus.COMPLETED:
-                raise StudyDriverError(f"Agent evaluation metric {score.metric_type!r} failed: {score.diagnostics}")
+                skipped += 1
+                logger.warning(
+                    "Skipping non-completed agent-eval score for Optuna reduction "
+                    "(metric=%s task=%s status=%s): %s",
+                    score.metric_type,
+                    score.task_id,
+                    score.status,
+                    score.diagnostics,
+                )
+                continue
             for output in score.outputs:
                 if output.name == metric_name:
                     values.append(float(output.value))
         if not values:
-            raise StudyDriverError(f"Agent evaluation did not produce metric output {metric_name!r}.")
+            detail = f" ({skipped} non-completed score(s) skipped)" if skipped else ""
+            raise StudyDriverError(
+                f"Agent evaluation did not produce metric output {metric_name!r}{detail}."
+            )
+        if skipped:
+            logger.info(
+                "Averaged metric %r over %d completed sample(s) (%d skipped)",
+                metric_name,
+                len(values),
+                skipped,
+            )
         reduced[metric_name] = sum(values) / len(values)
     return reduced
 
