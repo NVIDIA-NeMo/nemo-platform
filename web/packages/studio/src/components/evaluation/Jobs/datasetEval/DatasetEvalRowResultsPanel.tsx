@@ -156,7 +156,7 @@ export const DatasetEvalRowResultsPanel: FC<DatasetEvalRowResultsPanelProps> = (
 
   return (
     <AccordionPanel slotHeading={`Row Results (${rows.length})`} slotIcon={<Rows3 />}>
-      <div className="flex flex-col min-h-[400px] max-h-[640px]">
+      <Stack className="min-h-[400px] max-h-[640px]">
         <StudioDataView
           dataViewState={dataViewState}
           makeColumns={makeColumns}
@@ -172,7 +172,7 @@ export const DatasetEvalRowResultsPanel: FC<DatasetEvalRowResultsPanelProps> = (
             },
           }}
         />
-      </div>
+      </Stack>
       <Modal
         open={expandedCell !== null}
         onOpenChange={(open) => {

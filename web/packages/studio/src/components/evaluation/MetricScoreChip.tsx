@@ -3,6 +3,7 @@
 
 import { Badge, Stack, Text } from '@nvidia/foundations-react-core';
 import { formatScore, scoreColor } from '@studio/components/evaluation/utils';
+import { isNaNScore } from '@studio/util/functions';
 import { type FC } from 'react';
 
 interface MetricScoreChipProps {
@@ -15,7 +16,7 @@ const NOT_SCORED = 'not scored';
 export const MetricScoreChip: FC<MetricScoreChipProps> = ({ label, value }) => {
   const numeric = typeof value === 'number' && Number.isFinite(value) ? value : null;
   const categorical =
-    numeric === null && typeof value === 'string' && value.toLowerCase() !== 'nan' ? value : null;
+    numeric === null && typeof value === 'string' && !isNaNScore(value) ? value : null;
 
   return (
     <Stack gap="density-xs" className="min-w-0">

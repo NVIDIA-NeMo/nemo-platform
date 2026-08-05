@@ -6,6 +6,7 @@ import {
   getAgentEvaluationDetailRoute,
   getEvaluationResultDetailsRoute,
 } from '@studio/routes/utils';
+import { isPlainObject } from '@studio/util/functions';
 
 export type EvalJobKind = 'task' | 'dataset';
 
@@ -19,18 +20,13 @@ export interface EvalJobRow {
   configLabel: string | null;
 }
 
-interface EvalJobSpec {
-  dataset?: unknown;
-  tasks?: unknown;
-  benchmark?: { eval_config_fileset?: unknown };
-  target?: {
-    kind?: string;
-    name?: string;
-    agent?: { name?: string };
-  };
-}
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  isPlainObject(value) ? value : undefined;
 
-const specOf = (job: PlatformJobResponse): EvalJobSpec => (job.spec ?? {}) as EvalJobSpec;
+const asNonEmptyString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 ? value : undefined;
+
+const specOf = (job: PlatformJobResponse): Record<string, unknown> => job.spec ?? {};
 
 export const evalJobKind = (job: PlatformJobResponse): EvalJobKind =>
   specOf(job).dataset !== undefined ? 'dataset' : 'task';
@@ -41,22 +37,25 @@ const stripWorkspacePrefix = (name: string, workspace?: string): string => {
 };
 
 export const targetNameForEvalJob = (job: PlatformJobResponse): string | null => {
-  const target = specOf(job).target;
+  const target = asRecord(specOf(job).target);
   if (!target) return null;
-  const name = target.kind === 'agent' ? target.agent?.name : target.name;
-  if (typeof name !== 'string' || name.length === 0) return null;
+  const name =
+    target.kind === 'agent'
+      ? asNonEmptyString(asRecord(target.agent)?.name)
+      : asNonEmptyString(target.name);
+  if (!name) return null;
   return stripWorkspacePrefix(name, job.workspace);
 };
 
 export const evalJobConfigLabel = (job: PlatformJobResponse): string | null => {
   const spec = specOf(job);
   if (evalJobKind(job) === 'dataset') {
-    if (typeof spec.dataset !== 'string' || !spec.dataset) return null;
-    const [filesetRef] = spec.dataset.split('#');
+    const dataset = asNonEmptyString(spec.dataset);
+    if (!dataset) return null;
+    const [filesetRef] = dataset.split('#');
     return filesetRef.split('/').pop() || filesetRef;
   }
-  const fileset = spec.benchmark?.eval_config_fileset;
-  return typeof fileset === 'string' && fileset.length > 0 ? fileset : null;
+  return asNonEmptyString(asRecord(spec.benchmark)?.eval_config_fileset) ?? null;
 };
 
 export const hasMixedEvalKinds = (rows: EvalJobRow[]): boolean =>

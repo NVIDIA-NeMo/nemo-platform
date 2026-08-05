@@ -12,15 +12,13 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { Badge, Block, Button, Flex, Modal, Stack, Text } from '@nvidia/foundations-react-core';
 import type { AgentEvalTaskDetail } from '@studio/api/evaluation/agent-evaluations';
 import { MetricScoreChip } from '@studio/components/evaluation/MetricScoreChip';
+import { isScalar } from '@studio/util/functions';
 import { ListChecks } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
 
 interface AgentEvalTaskResultsPanelProps {
   tasks: AgentEvalTaskDetail[];
 }
-
-const isScalar = (v: unknown): v is string | number | boolean =>
-  typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
 
 /** Reference entries worth rendering as labelled chips: every value is a scalar and each
  *  is short enough to read inline. Anything else (step lists, nested objects) stays a
