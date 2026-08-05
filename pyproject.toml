@@ -297,6 +297,7 @@ constraint-dependencies = [
   "pillow>=12.3.0",
   "postcss>=8.5.10",
   "pyasn1>=0.6.3",
+  "pydantic-monty==0.0.18",               # 0.0.19 dropped MontyRepl required by pydantic-ai-harness==0.3.0 CodeMode
   "python-multipart>=0.0.27",
   "regex>=2025.10.22",
   "safetensors>=0.8.0rc0",                # explicit prerelease so uv allows the rc
