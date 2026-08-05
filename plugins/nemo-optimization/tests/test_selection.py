@@ -25,10 +25,16 @@ def test_pick_trial_sum_and_chebyshev_select_center_point() -> None:
     assert tuple(pick_trial(study, mode="chebyshev").values) == (0.2, 0.2)
 
 
+def test_pick_trial_harmonic_selects_compromise_not_zero_cost_extreme() -> None:
+    # Normalized costs [0,1] vs [0.4,0.4]: argmin(hmean(cost)) wrongly prefers the extreme.
+    study = _study_with_trials([(0.0, 1.0), (0.4, 0.4)])
+    assert tuple(pick_trial(study, mode="harmonic").values) == (0.4, 0.4)
+
+
 def test_pick_trial_harmonic_returns_pareto_member() -> None:
     study = _study_with_trials([(0.1, 0.9), (0.2, 0.2), (0.9, 0.1)])
     trial = pick_trial(study, mode="harmonic")
-    assert tuple(trial.values) in {(0.1, 0.9), (0.2, 0.2), (0.9, 0.1)}
+    assert tuple(trial.values) == (0.2, 0.2)
 
 
 def test_pick_trial_rejects_hypervolume() -> None:

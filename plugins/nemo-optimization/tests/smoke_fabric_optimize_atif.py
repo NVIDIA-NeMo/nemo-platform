@@ -127,7 +127,8 @@ def test_optimize_study_writes_trial_trace_map(tmp_path: Path) -> None:
         assert entry["row_id"] == "capital-france"
         assert entry["trace_format"] == "atif"
 
-    atif_path = Path(trace_map[0]["trace_ref"])
-    assert atif_path.is_file(), entry["trace_ref"]
+    first_trace = trace_map[0]
+    atif_path = Path(first_trace["trace_ref"])
+    assert atif_path.is_file(), first_trace["trace_ref"]
     trajectory = json.loads(atif_path.read_text(encoding="utf-8"))
     assert trajectory.get("steps"), trajectory

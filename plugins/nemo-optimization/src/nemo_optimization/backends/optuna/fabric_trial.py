@@ -59,7 +59,9 @@ class FabricTrialEvaluator:
         )
         # Hooks often own per-task sockets/files; default serial when a hook is configured.
         default_parallelism = 1 if self._task_hook is not None else 4
-        self._parallelism = int(self._eval_config.get("general", {}).get("max_concurrency", default_parallelism))
+        general = self._eval_config.get("general")
+        general = general if isinstance(general, Mapping) else {}
+        self._parallelism = int(general.get("max_concurrency", default_parallelism))
         self._trace_map: list[dict[str, Any]] = []
         # Validate dataset/metrics once at construction so config errors fail before the study loop.
         build_agent_eval_tasks(self._payload)

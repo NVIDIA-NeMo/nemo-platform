@@ -40,8 +40,11 @@ def pick_trial(
         )
 
     if normalized_mode == "harmonic":
-        hmean = norm.shape[1] / (1.0 / (norm + eps)).sum(axis=1)
-        best_idx = int(hmean.argmin())
+        # Harmonic mean of *utilities* (1 - normalized cost). Using costs directly
+        # lets a single zero cost dominate via argmin(hmean).
+        utility = 1.0 - norm
+        hmean = norm.shape[1] / (1.0 / (utility + eps)).sum(axis=1)
+        best_idx = int(hmean.argmax())
     elif normalized_mode == "sum":
         w = np.ones(norm.shape[1]) if weights is None else np.asarray(weights, float)
         if w.size != norm.shape[1]:
