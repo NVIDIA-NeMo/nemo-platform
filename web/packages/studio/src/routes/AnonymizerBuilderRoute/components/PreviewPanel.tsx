@@ -59,6 +59,24 @@ export const PreviewPanel: FC<PreviewPanelProps> = ({
     [activeRow, textColumn]
   );
 
+  // Rebuilt per streamed log frame otherwise, collapsed accordion or not.
+  const logItems = useMemo(
+    () => [
+      {
+        value: 'logs',
+        slotTrigger: 'Logs',
+        slotContent: (
+          <CodeSnippet
+            attributes={{ CodeSnippetCode: { className: 'max-h-[240px]' } }}
+            kind="block"
+            value={logs.join('\n')}
+          />
+        ),
+      },
+    ],
+    [logs]
+  );
+
   return (
     <Panel
       className="flex-1 h-full min-w-0"
@@ -74,26 +92,7 @@ export const PreviewPanel: FC<PreviewPanelProps> = ({
           {slotActions}
         </Flex>
       }
-      slotFooter={
-        logs.length > 0 ? (
-          <Accordion
-            className="w-full"
-            items={[
-              {
-                value: 'logs',
-                slotTrigger: 'Logs',
-                slotContent: (
-                  <CodeSnippet
-                    attributes={{ CodeSnippetCode: { className: 'max-h-[240px]' } }}
-                    kind="block"
-                    value={logs.join('\n')}
-                  />
-                ),
-              },
-            ]}
-          />
-        ) : null
-      }
+      slotFooter={logs.length > 0 ? <Accordion className="w-full" items={logItems} /> : null}
     >
       <Stack className="h-full" gap="density-lg">
         {error ? (
