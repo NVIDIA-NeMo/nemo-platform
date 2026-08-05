@@ -386,7 +386,9 @@ nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "6e027
 # FABRIC-167 (Hermes MCP discover + preserve mcp.servers.*.env). Override every
 # package — git subdirectory sources do not inherit Fabric's own path mappings,
 # and the metapackage pins runtime/adapters to ==0.2.0.
-# Remove these entries and revert version floors once PyPI has 0.2.0.
+# Declared dep floors stay >=0.1.0 so wheelcheck / PyPI installs of the published
+# wheel still resolve (uv.sources do not apply outside this workspace).
+# Remove these entries once PyPI has 0.2.0.
 nemo-fabric = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2" }
 nemo-fabric-runtime = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "python" }
 nemo-fabric-adapters-common = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/common" }
