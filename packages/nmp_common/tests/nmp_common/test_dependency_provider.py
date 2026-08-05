@@ -5,24 +5,73 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+from nmp.common.config import Configuration
 from nmp.common.service import DependencyProvider
 from nmp.common.service.dependencies import get_entity_client, get_platform_config, get_sdk_client
 
 
-def test_get_http_client_caches_default_client() -> None:
+def test_get_http_client_caches_endpoint_client() -> None:
     provider = DependencyProvider()
     client = MagicMock()
 
-    with patch("nmp.common.service.base.DefaultAsyncHttpxClient", return_value=client) as factory:
+    with patch(
+        "nmp.common.service.base.resolve_platform_endpoint",
+    ) as resolve:
+        resolve.return_value.async_sdk_http_client.return_value = client
         first = provider.get_http_client()
         second = provider.get_http_client()
 
     assert first is client
     assert second is client
-    factory.assert_called_once_with()
+    resolve.assert_called_once_with()
+    resolve.return_value.async_sdk_http_client.assert_called_once_with()
+
+
+def _uds_of(client: httpx.AsyncClient) -> str | None:
+    """Socket path bound to the client's transport pool, or None for TCP."""
+    return getattr(client._transport._pool, "_uds", None)
+
+
+def test_get_http_client_binds_uds_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Under a unix:// endpoint the provider-owned client must be socket-bound.
+
+    Regression: the provider used to build a plain TCP DefaultAsyncHttpxClient
+    and inject it into the SDK/NemoClient factories, which then skipped their
+    own UDS selection, so service-to-service calls went to http://nemo-platform
+    .local over TCP (_uds=None) and failed.
+    """
+    monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
+    Configuration.clear_cache()
+    try:
+        provider = DependencyProvider()
+        assert _uds_of(provider.get_http_client()) == "/tmp/nemo-platform.sock"
+    finally:
+        Configuration.clear_cache()
+
+
+def test_request_scoped_nemo_client_binds_uds_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
+    Configuration.clear_cache()
+    try:
+        provider = DependencyProvider()
+        client = provider.get_request_scoped_nemo_client()
+        assert _uds_of(client._http) == "/tmp/nemo-platform.sock"
+    finally:
+        Configuration.clear_cache()
+
+
+def test_tcp_endpoint_client_is_not_socket_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_BASE_URL", "http://platform:8080")
+    Configuration.clear_cache()
+    try:
+        provider = DependencyProvider()
+        assert _uds_of(provider.get_http_client()) is None
+    finally:
+        Configuration.clear_cache()
 
 
 def test_get_sdk_client_caches_request_sdk_and_creates_fresh_service_sdk() -> None:

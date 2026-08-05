@@ -16,13 +16,13 @@ from typing import ClassVar, Dict, Generic, List, Optional, Self, Type, TypeVar,
 import httpx
 from fastapi import APIRouter, FastAPI
 from fastapi.openapi.utils import get_openapi
-from nemo_platform import AsyncNeMoPlatform, DefaultAsyncHttpxClient
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.utils import register_query_param_schemas
 from nmp.common.config import Configuration, PlatformConfig, ServiceConfig
 from nmp.common.controller import Controller
 from nmp.common.entities.client import EntityClient
-from nmp.common.platform_endpoint import resolve_service_endpoint
+from nmp.common.platform_endpoint import resolve_platform_endpoint, resolve_service_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +79,20 @@ class DependencyProvider:
     def get_http_client(self) -> httpx.AsyncClient:
         """Return the httpx.AsyncClient for this provider, creating it lazily.
 
+        The client is transport-aware: for a ``unix://`` platform endpoint it is
+        bound to the Unix domain socket, otherwise it is the SDK's default TCP
+        client. Because this cached client is injected into the SDK and
+        NemoClient factories (which skip their own transport selection when a
+        client is supplied), building it endpoint-aware here is what makes
+        service-to-service requests work over UDS.
+
         Each DependencyProvider manages its own HTTP client by default.
         If you need to share a client across providers (e.g., for connection
         pooling), you can inject the same client via _http_client.
         """
         with self._client_lock:
             if self._http_client is None:
-                self._http_client = DefaultAsyncHttpxClient()
+                self._http_client = resolve_platform_endpoint().async_sdk_http_client()
             return self._http_client
 
     def get_sdk_client(self, as_service: str | None = None) -> AsyncNeMoPlatform:

@@ -8,6 +8,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event, Lock
+from types import SimpleNamespace
 from typing import List
 from unittest.mock import AsyncMock, patch
 
@@ -345,7 +346,8 @@ class TestDependencyProvider:
             assert release_factory.wait(timeout=5)
             return transport
 
-        monkeypatch.setattr(service_base, "DefaultAsyncHttpxClient", create_transport)
+        endpoint = SimpleNamespace(async_sdk_http_client=lambda: create_transport())
+        monkeypatch.setattr(service_base, "resolve_platform_endpoint", lambda: endpoint)
 
         with patch.object(
             sdk_factory, "get_async_platform_sdk", wraps=sdk_factory.get_async_platform_sdk
