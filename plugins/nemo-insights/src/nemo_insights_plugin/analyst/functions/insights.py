@@ -4,7 +4,7 @@
 """Analyst read tool: ``list_insights``.
 
 The analyst no longer mutates Insights through tools — it reports its whole
-change-set at the end via the ``analyst_result`` output tool (see
+change-set at the end via Nooa's ``return_result`` helper (see
 :mod:`nemo_insights_plugin.analyst.result`). This module keeps only the
 read-only ``list_insights`` tool, which the analyst uses to see which Insights
 already exist for the agent so it can decide what is new versus an update.
@@ -19,11 +19,10 @@ import json
 
 from nemo_insights_plugin.analyst.deps import AnalystDeps
 from nemo_insights_plugin.entities import InsightStatus
-from pydantic_ai import RunContext
 
 
 async def list_insights(
-    ctx: RunContext[AnalystDeps],
+    deps: AnalystDeps,
     agent: str | None = None,
     status: str | None = None,
     page: int = 1,
@@ -41,7 +40,6 @@ async def list_insights(
         page: Page number (1-indexed).
         page_size: Items per page.
     """
-    deps = ctx.deps
     assert deps.backend is not None
     target_agent = agent if agent is not None else deps.agent
     result = await deps.backend.list_insights(

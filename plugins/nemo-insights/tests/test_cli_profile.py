@@ -13,7 +13,7 @@ from nemo_insights_plugin.analyst.cli import AnalystCLI
 from nemo_insights_plugin.contracts.profile import DEFAULT_BASE_URL
 from nemo_insights_plugin.preflight import AnalysisProbes
 from nemo_platform import NeMoPlatformError
-from pydantic_ai import AgentRunError
+from nooa import GenerationError
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -521,13 +521,13 @@ def test_analyze_renders_expected_platform_failures_without_traceback(
     assert "Traceback" not in result.output
 
 
-def test_analyze_renders_agent_run_error_with_model_and_usage_guidance(
+def test_analyze_renders_generation_error_with_model_and_usage_guidance(
     app: typer.Typer,
     profile_tree: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fail_analysis(**kwargs: object) -> str:
-        raise AgentRunError("request limit exceeded")
+        raise GenerationError("request limit exceeded")
 
     monkeypatch.setattr(cli, "run_analyst", fail_analysis)
     monkeypatch.chdir(profile_tree)
