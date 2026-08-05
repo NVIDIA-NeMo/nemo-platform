@@ -236,3 +236,45 @@ async def test_intake_availability_is_part_of_cache_key(tmp_path: Path, monkeypa
     assert len(calls) == 2
     assert calls[0]["client"] is None
     assert calls[1]["client"] is not None
+
+
+def test_a_method_level_tier_reaches_the_model_it_names(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The canary for tier injection: nothing else proves a method-level ``llm=`` works.
+
+    ``AgentAnalyzer`` binds the smart tier at the class level but overrides
+    ``select_trials`` onto the fast one. The tests above deliberately stub past the
+    decorator, so if that override silently stopped resolving — a nooa pin bump dropping
+    callable ``llm=`` support is how it would happen — every one of them would still pass
+    while the run quietly moved to the wrong, more expensive model.
+
+    Resolved through nooa's own ``resolve_method_llm`` rather than by calling the method,
+    so this asserts on our wiring and needs no LLM.
+
+    The tiers are set through the environment rather than passed to
+    ``ExperimentalistConfig``, because for a ``NemoConfig`` the environment wins over
+    constructor arguments — passing them here would read back whatever the suite's
+    conftest exported, and all three tiers would collapse onto one client.
+    """
+    from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
+    from nemo_experimentalist_plugin.settings import ExperimentalistConfig
+    from nemo_platform_plugin.config import Configuration
+    from nooa.method_llm import resolve_method_llm
+
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "http://canary.invalid/v1")
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "canary-key")
+    for tier in ("SMART", "MID", "FAST"):
+        monkeypatch.setenv(f"NEMO_EXPERIMENTALIST_MODELS_{tier}", f"canary/{tier.lower()}")
+    Configuration.clear_cache()
+
+    tiers = ModelTiers(ExperimentalistConfig())
+    assert tiers.fast is not tiers.smart, "the tiers must be distinguishable for this to prove anything"
+    analyzer = AgentAnalyzer(workspace=tmp_path, models=tiers)
+
+    resolved = resolve_method_llm(
+        AgentAnalyzer.select_trials._strategy_llm,  # type: ignore[attr-defined]
+        analyzer,
+        "select_trials",
+    )
+
+    assert resolved is tiers.fast
+    assert resolved is not tiers.smart, "the method-level override never took effect"

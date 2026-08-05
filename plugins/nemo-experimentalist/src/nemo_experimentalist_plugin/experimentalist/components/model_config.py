@@ -85,9 +85,16 @@ class ModelTiers:
     """The clients one run's components talk to, resolved from one settings object.
 
     Handed to each component at construction so none of them reaches for a module-level
-    getter. That matters for three reasons: two runs in one process can target different
-    endpoints, a test can inject fakes without touching the environment, and the runner
-    can record what a run actually resolved instead of what was declared.
+    getter. That matters because two runs in one process can target different endpoints,
+    and because the runner can record what a run actually resolved instead of what was
+    declared.
+
+    Injecting tiers still means setting the environment, though: ``ExperimentalistConfig``
+    is a ``NemoConfig``, where the environment wins over constructor arguments, so
+    ``ModelTiers(ExperimentalistConfig(models=...))`` reads back whatever is exported
+    rather than what was passed. A test that wants distinguishable tiers sets the
+    ``NEMO_EXPERIMENTALIST_MODELS_*`` variables — see the canary in
+    ``test_experimentalist_analyzer.py``.
 
     Resolution is per tier and lazy, so a component that never uses a tier never requires
     it to be configured. The underlying client cache is keyed on the full identity, so
