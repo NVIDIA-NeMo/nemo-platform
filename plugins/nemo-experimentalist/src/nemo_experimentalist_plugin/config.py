@@ -27,6 +27,7 @@ from nemo_experimentalist_plugin.experimentalist.components.analyzer import Anal
 from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
 from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
+from nemo_experimentalist_plugin.experimentalist.components.selector import SelectorConfig
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -84,6 +85,11 @@ class EvolutionaryOptimizerConfig(BaseModel):
             "with no code change."
         ),
     )
+    selector: str = Field(
+        default="pareto-llm-diversity",
+        description="Registered 'selector' component choosing survivors and the winner.",
+    )
+    selector_config: SelectorConfig = Field(default_factory=SelectorConfig, description="Tuning for the selector.")
     builder: str = Field(
         default="coder",
         description=(

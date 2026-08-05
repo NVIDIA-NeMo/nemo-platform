@@ -51,8 +51,6 @@ from nemo_experimentalist_plugin.experimentalist.components.model_config import 
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
     OptimizationType,
-    pareto_front,
-    pareto_sort,
 )
 from nemo_experimentalist_plugin.experimentalist.components.proposer import Proposer
 from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
@@ -64,7 +62,7 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import 
     GroupLeafScorer,
 )
 from nemo_experimentalist_plugin.experimentalist.registry import get_component, resolve
-from nemo_experimentalist_plugin.experimentalist.roles import Builder, Strategy
+from nemo_experimentalist_plugin.experimentalist.roles import Builder, Selector, Strategy
 from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
@@ -446,7 +444,7 @@ class EvolutionaryOptimizer(Agent, Strategy):
                 break
 
             survivors = (
-                await self._select_survivors([c.slim() for c in candidates], k=config.max_survivors)
+                await self._selector(config).survivors([c.slim() for c in candidates], k=config.max_survivors)
                 if len(candidates) > 1
                 else list(candidates)
             )
@@ -558,39 +556,7 @@ class EvolutionaryOptimizer(Agent, Strategy):
             for candidate in new_candidates:
                 await ctx.archive_candidate(candidate)
 
-        return await self._finalize(evolution_tree=evolution_tree)
-
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, cell_timeout=3600.0)))
-    async def select_diverse_survivors(self, ranked: list[Candidate], k: int) -> list[Candidate]:  # pyright: ignore[reportReturnType]
-        """Choose up to k survivors from Pareto-ranked candidates.
-
-        ``ranked`` is already Pareto-sorted using outcome and trajectory scores:
-        front 0 (non-dominated) first, then front 1, etc. Inside a front,
-        candidates are incomparable, so prefer agents with distinct architecture
-        changes, complementary task coverage, and different trajectory strengths.
-
-        To avoid getting stuck on the same agents round after round:
-        1. Always include at least 1 candidate that was newly created this round. Look up
-           `self.workspace.get_metadata(c.label).generation` for each candidate; new
-           candidates are the ones whose generation equals the max across `ranked`.
-        2. Prefer candidates whose `generated_from.payload` shows different
-           optimization_type values, or that address different root causes.
-        3. If all new candidates sit on a worse Pareto front, still include the best new candidate.
-
-        ## MANDATORY: Prefer agents with complementary strengths
-
-        Read each candidate's per-dimension validation rewards from metadata and
-        prefer a set whose strong dimensions cover each other (one agent leads on
-        dimensions where another trails):
-
-        ```python
-        rewards = {c.label: self.workspace.get_metadata(c.label).rewards["validation"].metrics or {} for c in ranked}
-        ```
-
-        Between 1 to 3 survivors per round.
-        Return the selected subset, preserving the input's Pareto-front order.
-        """
-        ...
+        return await self._finalize(evolution_tree=evolution_tree, selector=self._selector(config))
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, cell_timeout=3600.0)))
     async def merge_analysis(
@@ -1009,15 +975,6 @@ class EvolutionaryOptimizer(Agent, Strategy):
         tree_path.parent.mkdir(parents=True, exist_ok=True)
         tree_path.write_text(tree.to_json())
 
-    async def _select_survivors(
-        self,
-        candidates: list[Candidate],
-        k: int,
-    ) -> list[Candidate]:
-        """Return the top-k Pareto-optimal and architecturally diverse candidates."""
-        ranked = pareto_sort(candidates, lambda c: c.rewards["validation"].metrics or {})
-        return await self.select_diverse_survivors(ranked, k)
-
     async def _evaluate_train_candidates(
         self,
         *,
@@ -1243,6 +1200,10 @@ class EvolutionaryOptimizer(Agent, Strategy):
             built.append(outcome)
         return built
 
+    def _selector(self, config: EvolutionaryOptimizerConfig) -> Selector:
+        """Resolve this run's selector."""
+        return get_component("selector", config.selector, config=config.selector_config, models=self._models)
+
     def _new_builder(self, *, ctx: StrategyContext, dataset: Dataset, config: EvolutionaryOptimizerConfig) -> Builder:
         """Resolve and construct this run's Builder, one per build.
 
@@ -1371,25 +1332,22 @@ class EvolutionaryOptimizer(Agent, Strategy):
 
         return trajectory_results
 
-    async def _finalize(self, *, evolution_tree: EvolutionTree) -> Candidate | None:
+    async def _finalize(self, *, evolution_tree: EvolutionTree, selector: Selector) -> Candidate | None:
         """Pick the winner and write this strategy's own report; return the winner.
 
         Everything host-owned that used to happen here — restoring the held-out splits,
         copying the winner into the workspace, closing out the run entity, and the
         Insight-suite report sections — belongs to the runner now.
         """
-        # Only survivors that actually have a validation reward are eligible winners.
-        scored = [n for n in evolution_tree.nodes.values() if n.is_survivor and n.val_reward]
-        front = pareto_front(scored, lambda n: n.val_reward) if scored else []
-        if not front:
+        best = selector.winner([n.candidate for n in evolution_tree.nodes.values()])
+        if best is None:
             logger.warning("[FINAL] no candidates to finalize")
             return None
 
-        best = front[0]
-        evolution_tree.mark_best(best.candidate.id or best.label)
+        evolution_tree.mark_best(best.id or best.label)
         try:
             # The report writer reads the workspace, which files agents by display handle.
             await self.write_final_report(best.label)
         except Exception as exc:  # noqa: BLE001 - the runner falls back to a compact summary
             logger.warning(f"[FINAL] Failed to write final report: {exc}")
-        return best.candidate
+        return best

@@ -47,6 +47,24 @@ class Strategy(Component):
         raise NotImplementedError
 
 
+class Selector(Component):
+    """Decide which candidates breed, and which one wins.
+
+    Ranks on reward channels alone and never reads a Proposal or an artifact, which is
+    what lets one selector serve a code-optimizing run and a numeric one.
+    """
+
+    role: ClassVar[str] = "selector"
+
+    async def survivors(self, candidates: list[Candidate], *, k: int) -> list[Candidate]:
+        """Up to *k* candidates to carry into the next round as parents."""
+        raise NotImplementedError
+
+    def winner(self, candidates: list[Candidate]) -> Candidate | None:
+        """The run's winner, or None when nothing is eligible."""
+        raise NotImplementedError
+
+
 class Builder(Component):
     """Turn one Proposal into one committed Candidate.
 

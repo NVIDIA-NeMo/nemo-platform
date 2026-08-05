@@ -35,6 +35,7 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 "strategy.evolutionary" = "nemo_experimentalist_plugin.experimentalist.components.loop"
 "builder.coder" = "nemo_experimentalist_plugin.experimentalist.components.coder"
 "builder.import" = "nemo_experimentalist_plugin.experimentalist.components.importer"
+"selector.pareto-llm-diversity" = "nemo_experimentalist_plugin.experimentalist.components.selector"
 
 [build-system]
 requires = ["hatchling"]

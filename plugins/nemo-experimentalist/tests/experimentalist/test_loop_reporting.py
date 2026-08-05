@@ -44,6 +44,15 @@ def _measure(candidate: Candidate, channel: str, **fields: object) -> None:
     candidate.rewards[channel] = candidate.rewards[channel].model_copy(update=fields)
 
 
+def _selector() -> object:
+    """A selector with its ranking but no model, which is all `_finalize` needs."""
+    from nemo_experimentalist_plugin.experimentalist.components.selector import ParetoDiversitySelector, SelectorConfig
+
+    selector = object.__new__(ParetoDiversitySelector)
+    selector._config = SelectorConfig()
+    return selector
+
+
 def _candidate(
     label: str,
     *,
@@ -501,7 +510,7 @@ def test_deterministic_insight_comparison_section_uses_local_suite_identity(
 
 @pytest.mark.asyncio
 async def test_finalize_returns_the_winner_when_its_label_is_not_its_id() -> None:
-    """The tree is keyed by candidate id; a label lookup used to KeyError at the last step."""
+    """The tree is keyed by candidate id, so the winner must be looked up by id."""
     baseline = make_candidate(label="agent-0", generation=0, rewards={"validation": RewardRecord(metrics={"r": 0.5})})
     loser = make_candidate(
         label="agent-1",
@@ -521,7 +530,7 @@ async def test_finalize_returns_the_winner_when_its_label_is_not_its_id() -> Non
 
     type.__setattr__(EvolutionaryOptimizer, "write_final_report", _record_report)
     try:
-        winner = await optimizer._finalize(evolution_tree=tree)
+        winner = await optimizer._finalize(evolution_tree=tree, selector=_selector())
     finally:
         type.__setattr__(EvolutionaryOptimizer, "write_final_report", original)
 
