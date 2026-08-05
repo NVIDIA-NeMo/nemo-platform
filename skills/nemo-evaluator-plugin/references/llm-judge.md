@@ -5,7 +5,8 @@ must score existing or generated responses.
 
 ## Configure the judge
 
-Keep the judge model, score contract, parser, and prompt explicit:
+Keep the judge model, score contract, parser, and prompt explicit. This first
+template scores responses already present in dataset rows:
 
 ```python
 from nemo_evaluator_sdk import (
@@ -46,6 +47,28 @@ judge = LLMJudgeMetric(
     },
 )
 ```
+
+When a separate generation target produces the response, use an online template
+that reads the generated sample instead:
+
+```python
+online_prompt_template = {
+    "messages": [
+        {
+            "role": "system",
+            "content": 'Return JSON only: {"helpfulness": <integer 0-4>}.',
+        },
+        {
+            "role": "user",
+            "content": "Request: {{item.input}}\nResponse: {{sample.output_text}}",
+        },
+    ]
+}
+```
+
+Pass `online_prompt_template` to `LLMJudgeMetric` when configuring the online
+judge. Keep `{{item.output}}` for offline datasets whose rows contain existing
+responses.
 
 Use lowercase letters, numbers, and underscores in score names. Ensure the
 judge response exactly matches the parser: the example parser expects a JSON

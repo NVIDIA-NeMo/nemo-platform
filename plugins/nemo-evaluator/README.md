@@ -127,15 +127,19 @@ uv run nemo evaluator agent-evaluate explain
 ```
 
 The checked spec gives Fabric one task and scores the runner's final response
-with exact match. Submit it as a durable platform job:
+with exact match. Copy it, replace `target.model` in the copy with a real
+provider/model identifier, then submit the copy as a durable platform job:
 
 ```bash
+cp skills/nemo-evaluator-plugin/assets/specs/fabric_agent_eval.json \
+  fabric_agent_eval.local.json
+# Edit target.model in fabric_agent_eval.local.json before submitting.
 uv run nemo evaluator agent-evaluate submit \
-  --spec-file skills/nemo-evaluator-plugin/assets/specs/fabric_agent_eval.json
+  --spec-file fabric_agent_eval.local.json
 ```
 
-Replace `<provider>/<model>` and ensure the job environment includes the Fabric
-Codex adapter, Codex CLI, and its provider credentials. Set
+Ensure the job environment includes the Fabric Codex adapter, Codex CLI, and
+its provider credentials. Set
 `capture_trajectory` to `true` only when NeMo Relay is also available.
 For repository setup, follow
 [Prepare Fabric in a repository checkout](../../skills/nemo-evaluator-plugin/SKILL.md#prepare-fabric-in-a-repository-checkout).

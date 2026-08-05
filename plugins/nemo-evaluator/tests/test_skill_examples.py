@@ -118,6 +118,16 @@ def test_markdown_examples_use_typed_local_and_platform_secret_references() -> N
     assert 'api_key_secret="<platform-secret-name>"' not in execution
 
 
+def test_llm_judge_separates_offline_and_online_output_templates() -> None:
+    judge = (_repo_root() / "skills/nemo-evaluator-plugin/references/llm-judge.md").read_text(encoding="utf-8")
+    offline, online = judge.split("When a separate generation target produces the response", 1)
+
+    assert "{{item.output}}" in offline
+    assert "{{sample.output_text}}" not in offline
+    assert "{{sample.output_text}}" in online
+    assert "Keep `{{item.output}}` for offline datasets" in online
+
+
 def test_skill_python_examples_import_and_build_agent_spec() -> None:
     examples = _load_module(
         "skills/nemo-evaluator-plugin/assets/examples/plugin_sdk_examples.py",
@@ -210,6 +220,15 @@ def test_readme_standalone_direct_runner_scores_task(tmp_path: Path, monkeypatch
     result = namespace["result"]
     assert result.trials[0].output.output_text == "Paris"
     assert result.scores[0].outputs[0].value == 1.0
+
+
+def test_readme_fabric_submission_uses_an_edited_copy() -> None:
+    readme = (_repo_root() / "plugins/nemo-evaluator/README.md").read_text(encoding="utf-8")
+    section = readme.split("#### Durable job", 1)[1].split("### SDK Execution", 1)[0]
+
+    assert "replace `target.model` in the copy with a real" in section
+    assert "cp skills/nemo-evaluator-plugin/assets/specs/fabric_agent_eval.json" in section
+    assert "--spec-file fabric_agent_eval.local.json" in section
 
 
 def test_skill_points_to_working_repository_fabric_installer() -> None:
