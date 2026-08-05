@@ -57,19 +57,21 @@ export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
     ComponentProps<typeof StudioDataView<EvalAggregateScoreRow>>['makeColumns']
   >(
     (col) => [
-      col.display({
+      col.accessor((original) => displayMetricName(original.name), {
         id: 'metric',
         header: 'Metric',
         size: 200,
+        enableSorting: false,
         cell: ({ row }) => (
           <Text kind="body/semibold/sm" title={row.original.name}>
             {displayMetricName(row.original.name)}
           </Text>
         ),
       }),
-      col.display({
+      col.accessor((original) => original.mean ?? null, {
         id: 'score',
         header: 'Score',
+        enableSorting: false,
         size: 100,
         cell: ({ row }) => (
           <Badge kind="solid" color={scoreColor(row.original.mean)}>
@@ -77,10 +79,11 @@ export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
           </Badge>
         ),
       }),
-      col.display({
+      col.accessor((original) => trialsText(original), {
         id: 'trials',
         header: 'Trials',
         size: 90,
+        enableSorting: false,
         cell: ({ row }) => (
           <Text kind="body/regular/sm" color="secondary">
             {trialsText(row.original)}
@@ -131,7 +134,7 @@ export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
   }
 
   return (
-    <div className="flex flex-col max-h-[420px]">
+    <Stack className="max-h-[420px]">
       <StudioDataView
         dataViewState={dataViewState}
         makeColumns={makeColumns}
@@ -144,6 +147,6 @@ export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
           DataViewPagination: { showWhileLessThanPageSize: false },
         }}
       />
-    </div>
+    </Stack>
   );
 };

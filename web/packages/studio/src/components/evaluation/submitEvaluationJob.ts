@@ -17,6 +17,17 @@ export const generateEvalConfigName = (): string => generateDefaultName({ length
 /** Default parallelism for a submitted eval (Studio default; the config value is a hint). */
 export const DEFAULT_MAX_CONCURRENT_TASKS = 1;
 
+/** ``RunConfigOnline`` for an agent target, shared by both submit paths. Serial by
+ *  default: NAT reports workflow failures (including output truncation) as 422,
+ *  which is not retried, so one failure would otherwise abort the whole job.
+ *  ``ignore_request_failure`` degrades a failed row to NaN instead. */
+const AGENT_RUN_PARAMS = {
+  parallelism: 1,
+  request_timeout: 300,
+  max_retries: 3,
+  ignore_request_failure: true,
+} as const;
+
 export const buildEvalJobName = (filesetName: string): string => {
   const suffix = Math.random().toString(36).slice(2, 10).padEnd(8, '0');
   const base = toValidFilesetName(filesetName)
@@ -106,12 +117,7 @@ export const buildAgentTarget = (workspace: string, agent: string) => ({
     response_path: '$.value',
     stream: false,
   },
-  params: {
-    parallelism: 1,
-    request_timeout: 300,
-    max_retries: 3,
-    ignore_request_failure: true,
-  },
+  params: AGENT_RUN_PARAMS,
 });
 
 /** Override a metric's judge model with a ``workspace/name`` ModelRef (resolved
@@ -200,12 +206,7 @@ export const buildDatasetEvalRequestBody = (
     target: buildDatasetAgentTarget(selections.workspace, selections.agent),
     prompt_template: spec.prompt_template,
     ...(spec.field_mapping ? { field_mapping: spec.field_mapping } : {}),
-    params: {
-      parallelism: 1,
-      request_timeout: 300,
-      max_retries: 3,
-      ignore_request_failure: true,
-    },
+    params: AGENT_RUN_PARAMS,
   },
 });
 
