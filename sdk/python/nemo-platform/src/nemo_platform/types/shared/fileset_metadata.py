@@ -18,8 +18,8 @@
 from typing import Optional
 
 from ..._models import BaseModel
-from ..shared.model_metadata_content import ModelMetadataContent
-from ..shared.dataset_metadata_content import DatasetMetadataContent
+from .model_metadata_content import ModelMetadataContent
+from .dataset_metadata_content import DatasetMetadataContent
 
 __all__ = ["FilesetMetadata"]
 

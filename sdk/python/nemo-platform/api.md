@@ -10,6 +10,7 @@ from nemo_platform.types import (
     DatetimeFilter,
     DeleteResponse,
     FileStorageType,
+    FilesetMetadata,
     FinetuningType,
     GenericSortField,
     HTTPValidationError,

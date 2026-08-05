@@ -20,10 +20,10 @@ from typing_extensions import TypeAlias
 
 from ..._models import BaseModel
 from .fileset_purpose import FilesetPurpose
-from .fileset_metadata import FilesetMetadata
 from .s3_storage_config import S3StorageConfig
 from .ngc_storage_config import NGCStorageConfig
 from .local_storage_config import LocalStorageConfig
+from ..shared.fileset_metadata import FilesetMetadata
 from .huggingface_storage_config import HuggingfaceStorageConfig
 
 __all__ = ["Fileset", "Storage"]

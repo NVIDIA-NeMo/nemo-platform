@@ -254,7 +254,6 @@ resources:
       filesets:
         models:
           fileset_filter: FilesetFilter
-          fileset_metadata: FilesetMetadata
         methods:
           create: post /apis/files/v2/workspaces/{workspace}/filesets
           list: get /apis/files/v2/workspaces/{workspace}/filesets
@@ -732,6 +731,7 @@ resources:
       # level. Pin both Output and Input variants in $shared so sync-models does not re-home
       # them under `files`, which would break ``from nemo_platform.types.shared import
       # FilesetMetadata`` imports downstream (models service tests).
+      fileset_metadata: FilesetMetadata
       dataset_metadata_content: DatasetMetadataContent
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat
@@ -740,6 +740,7 @@ resources:
       workload_token_exchange_error_response: WorkloadTokenExchangeErrorResponse
       json_web_key: JsonWebKey
       json_web_key_set_response: JsonWebKeySetResponse
+
   iam:
     standalone_api: true
     subresources:

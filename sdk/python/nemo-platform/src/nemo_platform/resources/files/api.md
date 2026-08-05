@@ -33,7 +33,7 @@ Methods:
 Types:
 
 ```python
-from nemo_platform.types.files import FilesetFilter, FilesetMetadata
+from nemo_platform.types.files import FilesetFilter
 ```
 
 Methods:

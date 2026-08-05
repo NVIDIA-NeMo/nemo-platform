@@ -201,8 +201,7 @@ def reduce_agent_eval_scores(scores: Sequence[AgentEvalTaskScore], metric_names:
             if score.status != AgentEvalScoreStatus.COMPLETED:
                 skipped += 1
                 logger.warning(
-                    "Skipping non-completed agent-eval score for Optuna reduction "
-                    "(metric=%s task=%s status=%s): %s",
+                    "Skipping non-completed agent-eval score for Optuna reduction (metric=%s task=%s status=%s): %s",
                     score.metric_type,
                     score.task_id,
                     score.status,
@@ -214,9 +213,7 @@ def reduce_agent_eval_scores(scores: Sequence[AgentEvalTaskScore], metric_names:
                     values.append(float(output.value))
         if not values:
             detail = f" ({skipped} non-completed score(s) skipped)" if skipped else ""
-            raise StudyDriverError(
-                f"Agent evaluation did not produce metric output {metric_name!r}{detail}."
-            )
+            raise StudyDriverError(f"Agent evaluation did not produce metric output {metric_name!r}{detail}.")
         if skipped:
             logger.info(
                 "Averaged metric %r over %d completed sample(s) (%d skipped)",
