@@ -38,12 +38,13 @@ export const HistorySessionButton = ({
         active && 'bg-surface-sunken'
       )}
     >
-      <button
+      <Button
+        kind="tertiary"
         type="button"
         aria-current={active ? 'page' : undefined}
         aria-label={`Open chat ${sessionTitle}`}
         title={tooltip}
-        className="min-w-0 flex-1 cursor-pointer px-density-md py-density-sm text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        className="h-auto min-w-0 flex-1 justify-start rounded-none px-density-md py-density-sm text-left"
         onClick={onSelect}
       >
         <Stack gap="density-xs">
@@ -71,7 +72,7 @@ export const HistorySessionButton = ({
             </div>
           )}
         </Stack>
-      </button>
+      </Button>
       <Tooltip slotContent={`Delete ${sessionTitle}`} side="left">
         <Button
           aria-label={`Delete chat ${sessionTitle}`}
