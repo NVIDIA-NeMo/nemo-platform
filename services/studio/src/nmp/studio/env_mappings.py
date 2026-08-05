@@ -122,7 +122,7 @@ ENV_MAPPINGS: list[EnvMapping] = [
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_GUARDRAILS_ENABLED",
         config_path="studio.feature_flags.guardrails_enabled",
-        default="true",
+        default="false",
     ),
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_INFERENCE_PROVIDER_ENABLED",
