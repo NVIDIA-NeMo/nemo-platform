@@ -368,11 +368,21 @@ def test_prepare_operator_data_dir_does_not_change_permissions(
     chmod = MagicMock()
     monkeypatch.setattr(Path, "chmod", chmod)
 
-    data_instance_id = _prepare_data_dir(tmp_path / "operator-clickhouse", manage_permissions=False)
+    data_dir = tmp_path / "operator-clickhouse"
+    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=False)
 
     assert data_instance_id
-    assert (tmp_path / "operator-clickhouse" / ".nmp-clickhouse-identity").stat().st_mode & 0o777 == 0o600
+    assert (data_dir / ".nmp-clickhouse-identity").stat().st_mode & 0o777 == 0o600
     chmod.assert_not_called()
+
+
+def test_prepare_data_dir_reuses_unreadable_identity_marker(tmp_path: Path) -> None:
+    data_dir = tmp_path / "intake-clickhouse"
+    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    identity_path = data_dir / ".nmp-clickhouse-identity"
+    identity_path.chmod(0)
+
+    assert _prepare_data_dir(data_dir, manage_permissions=True) == data_instance_id
 
 
 def test_data_directory_permission_failure_is_wrapped(

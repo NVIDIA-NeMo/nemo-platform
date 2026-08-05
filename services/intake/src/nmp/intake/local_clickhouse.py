@@ -15,7 +15,6 @@ import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final, cast
-from uuid import uuid4
 
 import clickhouse_connect
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
@@ -415,17 +414,16 @@ def _prepare_data_dir(data_dir: Path, *, manage_permissions: bool) -> str:
     except FileExistsError:
         pass
     else:
-        with os.fdopen(file_descriptor, "w", encoding="utf-8") as identity_file:
-            identity_file.write(f"{uuid4().hex}\n")
+        os.close(file_descriptor)
 
-    for _attempt in range(10):
-        data_instance_id = identity_path.read_text(encoding="utf-8").strip()
-        if data_instance_id:
-            return data_instance_id
-        time.sleep(0.01)
-    raise LocalClickHouseProvisioningError(
-        f"ClickHouse data identity marker {identity_path} is empty; remove it only if this data can be re-provisioned"
+    # The Linux image changes ownership of the bind-mounted directory to its
+    # ClickHouse user. Derive identity from stable metadata so the host can
+    # reuse the owner-only marker without weakening its permissions.
+    identity_stat = identity_path.stat()
+    identity_material = (
+        f"{identity_stat.st_dev}:{identity_stat.st_ino}:{identity_stat.st_mtime_ns}:{identity_stat.st_size}"
     )
+    return hashlib.sha256(identity_material.encode()).hexdigest()
 
 
 def _ensure_clickhouse_tmp_dir(container: Container) -> None:
