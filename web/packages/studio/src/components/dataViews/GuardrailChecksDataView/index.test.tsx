@@ -17,7 +17,7 @@ import { TestProviders } from '@studio/tests/util/TestProviders';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type FC, useState } from 'react';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 
 const makeCheck = ({
   id,

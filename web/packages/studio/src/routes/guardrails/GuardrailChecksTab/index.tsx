@@ -15,7 +15,7 @@ import { GuardrailTestCasesEditor } from '@studio/routes/guardrails/GuardrailChe
 import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import type { FC } from 'react';
-import { Navigate, useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router';
 
 export const GuardrailChecksTab: FC = () => {
   const workspace = useWorkspaceFromPath();

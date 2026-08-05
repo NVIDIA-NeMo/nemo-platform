@@ -18,7 +18,7 @@ import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { ListChecks, Plus, Settings } from 'lucide-react';
 import type { FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface GuardrailTestCasesEditorProps {
   readonly workspace: string;

@@ -11,7 +11,7 @@ interface ResultSummaryProps {
 }
 
 const GUARDED_BG = 'bg-[var(--text-color-feedback-warning)]';
-const ALLOWED_BG = 'bg-[var(--text-color-feedback-success)]';
+const ALLOWED_BG = 'bg-[var(--text-color-brand)]';
 const NOTRUN_BG = 'bg-[var(--color-gray-200)]';
 
 /** Count of checks by their latest-run verdict: allowed, guarded, or never run. */
@@ -71,8 +71,9 @@ export const ResultSummary: FC<ResultSummaryProps> = ({ checks }) => {
     <Panel slotHeading="Result Summary">
       <Stack gap="density-lg">
         <Flex
-          className=" h-2 overflow-hidden rounded-full bg-surface-sunken"
+          className=" h-3 overflow-hidden rounded-full bg-surface-sunken"
           role="img"
+          gap="0.5"
           aria-label={`${guarded} guarded, ${allowed} allowed, ${notRun} not run`}
         >
           <BarSegment colorClassName={GUARDED_BG} pct={pct(guarded)} />
