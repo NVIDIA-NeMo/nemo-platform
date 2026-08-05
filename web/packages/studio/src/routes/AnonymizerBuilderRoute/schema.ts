@@ -5,6 +5,7 @@ import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName'
 import type {
   AnonymizerConfigInput,
   ModelConfig,
+  PreviewRequest,
   Rewrite,
   RunJobRequest,
   SelectedModelsOverrides,
@@ -16,6 +17,7 @@ import {
   DEFAULT_MODEL_MAX_TOKENS,
   DEFAULT_MODEL_TIMEOUT_SECONDS,
   DEFAULT_PREVIEW_ROWS,
+  MAX_PREVIEW_ROWS,
   ENTITY_MODE_CUSTOM,
   HASH_ALGORITHM_DEFAULT,
   HASH_ALGORITHM_VALUES,
@@ -53,7 +55,7 @@ export const anonymizerFormSchema = z
     sourceType: z.enum(['url', 'dataset']),
     source: z.string().trim().min(1, 'A data source is required'),
     strategy: z.enum(['substitute', 'redact', 'annotate', 'hash', 'rewrite']),
-    previewRows: z.number().int().min(1),
+    previewRows: z.number().int().min(1).max(MAX_PREVIEW_ROWS),
     textColumn: z.string().optional(),
     dataSummary: z.string().optional(),
     entityMode: z.enum([ENTITY_MODE_CUSTOM, 'auto']),
@@ -272,3 +274,11 @@ export const buildAnonymizerJobRequest = (
     },
   };
 };
+
+export const buildAnonymizerPreviewRequest = (
+  form: AnonymizerFormData,
+  defaultEntityLabels: string[] = []
+): PreviewRequest => ({
+  ...buildAnonymizerJobRequest(form, defaultEntityLabels).spec,
+  num_records: form.previewRows,
+});
