@@ -16,8 +16,8 @@ import {
   Stack,
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { EvalAggregateScoresTable } from '@studio/components/evaluation/EvalAggregateScoresTable';
 import { DatasetEvalRowResultsPanel } from '@studio/components/evaluation/Jobs/datasetEval/DatasetEvalRowResultsPanel';
-import { DatasetEvalScoresPanel } from '@studio/components/evaluation/Jobs/datasetEval/DatasetEvalScoresPanel';
 import { useDatasetEvalResults } from '@studio/components/evaluation/Jobs/datasetEval/useDatasetEvalResults';
 import { DetailsPanel } from '@studio/components/evaluation/Jobs/DetailsPanel';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
@@ -108,7 +108,7 @@ export const EvaluationResultDetailsRoute: FC = () => {
                   </Flex>
                 )}
                 {!isPending && !hasFailed && !isLoadingScores && !scoresError && (
-                  <DatasetEvalScoresPanel scores={scores} />
+                  <EvalAggregateScoresTable scores={scores} />
                 )}
                 {!isPending && !hasFailed && scoresError && (
                   <Block className="text-subtle">Scores could not be loaded.</Block>
