@@ -115,6 +115,14 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
     },
   });
 
+  // `keepPreviousData` keeps the previous workspace's rows on screen after a switch,
+  // so a selection made there would still resolve — and delete by name against the new
+  // workspace. Drop it as soon as the workspace changes.
+  const clearRowSelection = dataViewState.rowSelection.set;
+  useEffect(() => {
+    clearRowSelection({});
+  }, [workspace, clearRowSelection]);
+
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
   const sortParam = getSortParamWithWhitelist(
