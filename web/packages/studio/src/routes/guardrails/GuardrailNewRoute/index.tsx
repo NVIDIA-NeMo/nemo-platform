@@ -59,6 +59,7 @@ export const GuardrailNewRoute: FC = () => {
       open
       title="Create Guardrail"
       submitButtonText="Create"
+      disabled={isPending}
       loading={isPending}
       submitDisabled={!isValid}
       errorText={error ? getErrorMessage(error) : null}

@@ -146,15 +146,15 @@ export const guardrailsHandlers = [
   http.post(
     `${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs`,
     async ({ params, request }) => {
-      const body = (await request.json()) as { name: string; description?: string };
+      const input = (await request.json()) as { name: string; description?: string };
       const config: GuardrailConfig = {
         id: `cfg-${Date.now()}`,
         entity_id: `cfg-${Date.now()}`,
         parent: `ws-${params.workspace}`,
         db_version: 1,
-        name: body.name,
+        name: input.name,
         workspace: params.workspace as string,
-        description: body.description,
+        description: input.description,
         created_at: new Date().toISOString(),
         created_by: 'user@example.com',
         updated_at: new Date().toISOString(),
