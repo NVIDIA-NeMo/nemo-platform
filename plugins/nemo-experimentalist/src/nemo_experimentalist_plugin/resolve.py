@@ -491,7 +491,7 @@ async def resolve_experiment_inputs(
 
 def profile_storage_flags(profile: AgentProfile) -> dict:
     """Return validated, explicitly configured storage flags for Doctor."""
-    return _resolve_config(None, profile).storage.model_dump(exclude_defaults=True)
+    return _resolve_config(None, profile).storage.model_dump(exclude_unset=True)
 
 
 def pick_agent_spec(profile: AgentProfile) -> str | None:

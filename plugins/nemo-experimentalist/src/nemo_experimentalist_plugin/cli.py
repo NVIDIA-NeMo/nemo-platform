@@ -274,7 +274,7 @@ class ExperimentalistCLI(NemoCLI):
                         profile,
                         task_template=plan.task_template,
                         agent_source=plan.agent,
-                        storage=plan.config.storage.model_dump(),
+                        storage=plan.config.storage.model_dump(exclude_unset=True),
                         require_template=plan.insight is not None,
                         probes=_PREFLIGHT_PROBES,
                     )
