@@ -79,12 +79,13 @@ export const toUtf16Offsets = (
   }
   unitForCodePoint.push(text.length);
 
-  const unitAt = (offset: number): number => unitForCodePoint[offset] ?? text.length;
-  return entities.map((entity) => ({
-    ...entity,
-    start: unitAt(entity.start),
-    end: unitAt(entity.end),
-  }));
+  // Dropping rather than clamping: an offset past the last code point would map onto
+  // text.length and slip through the bounds check in toSegments.
+  return entities.flatMap((entity) => {
+    const start = unitForCodePoint[entity.start];
+    const end = unitForCodePoint[entity.end];
+    return start === undefined || end === undefined ? [] : [{ ...entity, start, end }];
+  });
 };
 
 export const toSegments = (text: string, entities: readonly AnonymizerEntity[]): TextSegment[] => {
@@ -244,8 +245,9 @@ export const buildAnonymizerRecord = (
     FINAL_ENTITIES_COLUMN in row
       ? parseEntities(row[FINAL_ENTITIES_COLUMN])
       : parseEntities(row[DETECTED_ENTITIES_COLUMN]);
-  const originalEntities = detected.length
-    ? toUtf16Offsets(original, detected)
+  const converted = toUtf16Offsets(original, detected);
+  const originalEntities = converted.length
+    ? converted
     : entitiesByCaseInsensitiveSearch(replacements, original);
 
   const derived = buildReplacedEntities(originalEntities, replacements, original, replaced);

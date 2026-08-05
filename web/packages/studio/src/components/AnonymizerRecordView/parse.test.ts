@@ -158,6 +158,34 @@ describe('toUtf16Offsets', () => {
   it('leaves offsets alone when the text is all BMP', () => {
     expect(toUtf16Offsets(ORIGINAL, entities)).toBe(entities);
   });
+
+  it('drops spans that run past the last code point', () => {
+    const text = '😀 Alice';
+
+    expect(
+      toUtf16Offsets(text, [{ value: 'Alice', label: 'first_name', start: 2, end: 900 }])
+    ).toEqual([]);
+  });
+
+  it('falls back to the replacement map when every converted span is dropped', () => {
+    const record = buildAnonymizerRecord(
+      {
+        biography: '😀 Bobby is a veterinarian.',
+        biography_replaced: '😀 Teddy is a veterinarian.',
+        final_entities: {
+          entities: [{ value: 'Bobby', label: 'first_name', start_position: 2, end_position: 900 }],
+        },
+        _replacement_map: { replacements: [replacements[0]] },
+      },
+      'biography'
+    );
+
+    expect(record.originalSegments).toEqual([
+      { text: '😀 ' },
+      { text: 'Bobby', label: 'first_name' },
+      { text: ' is a veterinarian.' },
+    ]);
+  });
 });
 
 describe('outputColumn', () => {
