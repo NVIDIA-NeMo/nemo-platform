@@ -2294,6 +2294,14 @@ def test_tool_use_stream_event_strips_internal_session_id():
 @pytest.mark.asyncio
 async def test_stream_copilot_flushes_tool_events_before_final_response(monkeypatch: pytest.MonkeyPatch):
     session_id = str(uuid.uuid4())
+    entity_store = FakeEntityStore()
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+    )
+    await entity_store.create(conversation)
 
     async def fake_invoke(agent_url, headers, messages, studio_session_id):
         queue = copilot._session_streams[studio_session_id]
@@ -2306,7 +2314,16 @@ async def test_stream_copilot_flushes_tool_events_before_final_response(monkeypa
     monkeypatch.setattr(copilot, "_invoke_copilot", fake_invoke)
 
     frames = [
-        frame async for frame in copilot._stream_copilot(session_id, "hello", "https://agent.test/x", {}, "sys prompt")
+        frame
+        async for frame in copilot._stream_copilot(
+            session_id,
+            "hello",
+            "https://agent.test/x",
+            {},
+            "sys prompt",
+            conversation,
+            entity_store,
+        )
     ]
 
     body = "".join(frames)
@@ -2317,6 +2334,7 @@ async def test_stream_copilot_flushes_tool_events_before_final_response(monkeypa
     # Both tool-use events survive and are emitted before the final assistant message.
     assert first_tool < final
     assert second_tool < final
+    assert [message.content for message in conversation.messages] == ["hello", "final answer"]
 
 
 def test_copilot_request_payload_keeps_session_outside_model_messages():
