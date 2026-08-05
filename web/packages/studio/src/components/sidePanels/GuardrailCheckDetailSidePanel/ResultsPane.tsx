@@ -20,10 +20,10 @@ import cn from 'classnames';
 import type { FC } from 'react';
 
 export interface ResultsPaneProps {
-  check: GuardrailCheckEntity;
-  configData: RailsConfigOutput | undefined;
-  checkIndex: number;
-  className?: string;
+  readonly check: GuardrailCheckEntity;
+  readonly configData: RailsConfigOutput | undefined;
+  readonly checkIndex: number;
+  readonly className?: string;
 }
 
 /**

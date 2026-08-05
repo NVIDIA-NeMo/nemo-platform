@@ -21,11 +21,12 @@ export const GuardrailChecksTab: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { guardrailConfigName } = useRequiredPathParams([ROUTE_PARAMS.guardrailConfigName]);
   const subTab = useParams()[ROUTE_PARAMS.guardrailChecksSubTab];
+  const isValidSubTab = isGuardrailChecksSubTab(subTab);
 
   const { data: config, isPending: isConfigPending } = useGuardrailsGetGuardrailConfig(
     workspace,
     guardrailConfigName,
-    { query: { enabled: Boolean(workspace && guardrailConfigName) } }
+    { query: { enabled: isValidSubTab && Boolean(workspace && guardrailConfigName) } }
   );
 
   const {
@@ -36,13 +37,13 @@ export const GuardrailChecksTab: FC = () => {
     workspace,
     config?.id ?? '',
     { page_size: 1000 },
-    { enabled: Boolean(config?.id) }
+    { enabled: isValidSubTab && Boolean(config?.id) }
   );
 
-  // Resolved ahead of the loading gate so a hand-typed sub-tab corrects itself on the
-  // first render, instead of sitting on a "Loading checks..." spinner for a URL that
-  // is about to be thrown away.
-  if (!isGuardrailChecksSubTab(subTab)) {
+  // Must stay above the loading gate: both queries are disabled for a hand-typed sub-tab,
+  // and a disabled query reports `isPending`, so falling through would park the redirect
+  // behind a "Loading checks..." spinner that never resolves.
+  if (!isValidSubTab) {
     return (
       <Navigate
         replace

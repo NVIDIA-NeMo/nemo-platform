@@ -34,7 +34,7 @@ const makeCheck = (name: string, data: GuardrailCheckData): GuardrailCheckEntity
  * flows. The runs below exercise only two, so the other two render dimmed —
  * the coverage gap the section exists to surface.
  */
-const config: RailsConfigOutput = {
+const CONFIG: RailsConfigOutput = {
   rails: {
     config: { gliner: { server_endpoint: 'http://gliner.local' } },
     input: {
@@ -48,7 +48,7 @@ const config: RailsConfigOutput = {
   },
 } as RailsConfigOutput;
 
-const guardedCheck = makeCheck('leaks-ssn', {
+const GUARDED_CHECK = makeCheck('leaks-ssn', {
   messages: [{ role: 'user', content: 'My SSN is 123-45-6789, can you store it for me?' }],
   runs: [
     {
@@ -74,7 +74,7 @@ const guardedCheck = makeCheck('leaks-ssn', {
   ],
 });
 
-const neverRunCheck = makeCheck('benign-greeting', {
+const NEVER_RUN_CHECK = makeCheck('benign-greeting', {
   messages: [
     { role: 'user', content: 'Hello there' },
     { role: 'assistant', content: 'Hi! How can I help you today?' },
@@ -82,7 +82,7 @@ const neverRunCheck = makeCheck('benign-greeting', {
   runs: [],
 });
 
-const withSystemPromptCheck = makeCheck('long-system-prompt', {
+const WITH_SYSTEM_PROMPT_CHECK = makeCheck('long-system-prompt', {
   messages: [
     {
       role: 'system',
@@ -122,7 +122,7 @@ const meta = {
     open: true,
     onClose: () => {},
     onNavigate: () => {},
-    configData: config,
+    configData: CONFIG,
     checkIndex: 0,
     visibleIndex: 0,
     visibleCount: 3,
@@ -138,7 +138,7 @@ type Story = StoryObj<typeof meta>;
  * counts it once and dims the Jailbreak Detection that never ran.
  */
 export const Guarded: Story = {
-  args: { check: guardedCheck },
+  args: { check: GUARDED_CHECK },
 };
 
 /**
@@ -146,17 +146,17 @@ export const Guarded: Story = {
  * the config's four guardrails — every one dimmed, since nothing has run.
  */
 export const NeverRun: Story = {
-  args: { check: neverRunCheck, checkIndex: 1, visibleIndex: 1 },
+  args: { check: NEVER_RUN_CHECK, checkIndex: 1, visibleIndex: 1 },
 };
 
 /** A long system prompt collapses into the accordion so the exchange stays visible. */
 export const WithSystemPrompt: Story = {
-  args: { check: withSystemPromptCheck, checkIndex: 2, visibleIndex: 2 },
+  args: { check: WITH_SYSTEM_PROMPT_CHECK, checkIndex: 2, visibleIndex: 2 },
 };
 
 /** Last of the visible rows, so Next is disabled and Previous is not. */
 export const LastCheck: Story = {
-  args: { check: guardedCheck, checkIndex: 2, visibleIndex: 2 },
+  args: { check: GUARDED_CHECK, checkIndex: 2, visibleIndex: 2 },
 };
 
 /**
@@ -164,10 +164,10 @@ export const LastCheck: Story = {
  * with no visible sequence to step through, so the controls are gone.
  */
 export const NotInVisibleRows: Story = {
-  args: { check: guardedCheck, checkIndex: 2, visibleIndex: null, visibleCount: 0 },
+  args: { check: GUARDED_CHECK, checkIndex: 2, visibleIndex: null, visibleCount: 0 },
 };
 
 /** No config loaded: the rail table still renders, Activated Guardrails is omitted. */
 export const WithoutConfigCoverage: Story = {
-  args: { check: guardedCheck, configData: undefined },
+  args: { check: GUARDED_CHECK, configData: undefined },
 };

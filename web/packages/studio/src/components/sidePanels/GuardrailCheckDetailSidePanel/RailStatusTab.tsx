@@ -16,8 +16,8 @@ import type { FC } from 'react';
 const STATUS_COLUMN = 'w-[149px]';
 
 export interface RailStatusTabProps {
-  latestRun: RunRecord | undefined;
-  configData: RailsConfigOutput | undefined;
+  readonly latestRun: RunRecord | undefined;
+  readonly configData: RailsConfigOutput | undefined;
 }
 
 /**
@@ -72,8 +72,6 @@ export const RailStatusTab: FC<RailStatusTabProps> = ({ latestRun, configData })
             <Stack gap="density-sm">
               {guardrails.map(({ id, label, active }) => (
                 <Flex key={id} align="center" gap="density-sm">
-                  {/* KUI ships no neutral dot, so the inactive one borrows its
-                      label's disabled token through the component's --color. */}
                   <StatusIndicator
                     size="small"
                     color={active ? 'green' : null}

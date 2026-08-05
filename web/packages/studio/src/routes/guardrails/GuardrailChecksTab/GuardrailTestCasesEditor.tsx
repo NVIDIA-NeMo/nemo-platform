@@ -21,13 +21,13 @@ import type { FC } from 'react';
 import { Link } from 'react-router-dom';
 
 interface GuardrailTestCasesEditorProps {
-  workspace: string;
-  configId: string;
+  readonly workspace: string;
+  readonly configId: string;
   /** The config's rails, used by the result panel to list guardrail coverage. */
-  configData: RailsConfigOutput | undefined;
-  checks: GuardrailCheckEntity[];
+  readonly configData: RailsConfigOutput | undefined;
+  readonly checks: GuardrailCheckEntity[];
   /** Which sub-tab to show. The route owns this; an unknown segment redirects upstream. */
-  subTab: GuardrailChecksSubTab;
+  readonly subTab: GuardrailChecksSubTab;
 }
 
 export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({

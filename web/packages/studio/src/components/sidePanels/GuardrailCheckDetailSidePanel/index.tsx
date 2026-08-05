@@ -10,21 +10,21 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { FC } from 'react';
 
 export interface GuardrailCheckDetailSidePanelProps {
-  open: boolean;
-  onClose: () => void;
-  check: GuardrailCheckEntity;
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly check: GuardrailCheckEntity;
   /** The parent config's rails, used to list declared guardrail coverage. */
-  configData: RailsConfigOutput | undefined;
+  readonly configData: RailsConfigOutput | undefined;
   /** The check's stable number in the full test list, as the Tests sub-tab numbers its cards. */
-  checkIndex: number;
+  readonly checkIndex: number;
   /**
    * Position among the rows the results table is showing, or null when the
    * check is not one of them — navigation is hidden in that case.
    */
-  visibleIndex: number | null;
+  readonly visibleIndex: number | null;
   /** How many rows the results table is showing. */
-  visibleCount: number;
-  onNavigate: (visibleIndex: number) => void;
+  readonly visibleCount: number;
+  readonly onNavigate: (visibleIndex: number) => void;
 }
 
 /**

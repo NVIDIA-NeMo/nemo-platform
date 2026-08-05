@@ -17,6 +17,10 @@ const COLLIDING_LABELS = {
 } as unknown as RailsConfigOutput;
 
 describe('RailStatusTab', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('keys guardrail rows so two sharing a label do not collide', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -29,8 +33,6 @@ describe('RailStatusTab', () => {
       .map((call) => call.map(String).join(' '))
       .filter((message) => message.includes('same key'));
     expect(duplicateKeyWarnings).toEqual([]);
-
-    errors.mockRestore();
   });
 
   it('lists the config coverage a check with no runs has never exercised', () => {

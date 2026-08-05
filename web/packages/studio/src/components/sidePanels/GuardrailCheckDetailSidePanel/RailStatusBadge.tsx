@@ -7,7 +7,7 @@ import { ShieldCheck } from 'lucide-react';
 import type { FC } from 'react';
 
 export interface RailStatusBadgeProps {
-  status: Verdict;
+  readonly status: Verdict;
 }
 
 /**
@@ -21,7 +21,7 @@ export interface RailStatusBadgeProps {
 export const RailStatusBadge: FC<RailStatusBadgeProps> = ({ status }) => {
   if (status === 'blocked') {
     return (
-      <Badge color="purple" kind="solid">
+      <Badge color="yellow" kind="solid">
         <ShieldCheck size={10} />
         Guarded
       </Badge>

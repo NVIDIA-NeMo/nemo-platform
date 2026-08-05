@@ -1,7 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Accordion, Flex, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  Accordion,
+  CodeSnippet,
+  Flex,
+  SegmentedControl,
+  Stack,
+  Text,
+} from '@nvidia/foundations-react-core';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
 import { textFromContent } from '@studio/components/dataViews/GuardrailChecksDataView/checkMessages';
 import { getHumanReadableFileSize, getTextSizeInBytes } from '@studio/util/files';
@@ -19,8 +26,8 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 export interface ConversationPaneProps {
-  check: GuardrailCheckEntity;
-  className?: string;
+  readonly check: GuardrailCheckEntity;
+  readonly className?: string;
 }
 
 /**
@@ -116,11 +123,13 @@ export const ConversationPane: FC<ConversationPaneProps> = ({ check, className }
           })}
         </Stack>
       ) : (
-        // Height-capped rather than truncated: this is the raw-data escape hatch, so
-        // the payload stays complete and copyable however long the system prompt is.
-        <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded bg-surface-sunken p-density-md text-xs font-mono text-primary">
-          {JSON.stringify(messages, null, 2)}
-        </pre>
+        <CodeSnippet
+          kind="block"
+          language="json"
+          collapsible
+          rows={20}
+          value={JSON.stringify(messages, null, 2)}
+        />
       )}
     </Stack>
   );

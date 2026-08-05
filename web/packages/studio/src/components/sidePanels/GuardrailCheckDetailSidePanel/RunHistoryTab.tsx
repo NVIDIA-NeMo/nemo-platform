@@ -10,7 +10,7 @@ import { RailStatusBadge } from '@studio/components/sidePanels/GuardrailCheckDet
 import type { FC } from 'react';
 
 export interface RunHistoryTabProps {
-  runs: RunRecord[];
+  readonly runs: RunRecord[];
 }
 
 /**
