@@ -63,6 +63,30 @@ export const parseReplacements = (cell: unknown): EntityReplacement[] =>
 const byPosition = (a: AnonymizerEntity, b: AnonymizerEntity): number =>
   a.start - b.start || a.end - b.end;
 
+const SURROGATE_PAIR = /[\uD800-\uDBFF][\uDC00-\uDFFF]/;
+
+/** Detection counts code points the way Python does; string indices here are UTF-16 units. */
+export const toUtf16Offsets = (
+  text: string,
+  entities: readonly AnonymizerEntity[]
+): readonly AnonymizerEntity[] => {
+  if (!entities.length || !SURROGATE_PAIR.test(text)) return entities;
+
+  const unitForCodePoint: number[] = [];
+  for (let index = 0; index < text.length; ) {
+    unitForCodePoint.push(index);
+    index += (text.codePointAt(index) ?? 0) > 0xffff ? 2 : 1;
+  }
+  unitForCodePoint.push(text.length);
+
+  const unitAt = (offset: number): number => unitForCodePoint[offset] ?? text.length;
+  return entities.map((entity) => ({
+    ...entity,
+    start: unitAt(entity.start),
+    end: unitAt(entity.end),
+  }));
+};
+
 export const toSegments = (text: string, entities: readonly AnonymizerEntity[]): TextSegment[] => {
   if (!entities.length) return text ? [{ text }] : [];
 
@@ -221,7 +245,7 @@ export const buildAnonymizerRecord = (
       ? parseEntities(row[FINAL_ENTITIES_COLUMN])
       : parseEntities(row[DETECTED_ENTITIES_COLUMN]);
   const originalEntities = detected.length
-    ? detected
+    ? toUtf16Offsets(original, detected)
     : entitiesByCaseInsensitiveSearch(replacements, original);
 
   const derived = buildReplacedEntities(originalEntities, replacements, original, replaced);

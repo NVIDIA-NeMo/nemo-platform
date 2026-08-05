@@ -8,6 +8,7 @@ import {
   parseEntities,
   parseReplacements,
   toSegments,
+  toUtf16Offsets,
 } from '@studio/components/AnonymizerRecordView/parse';
 
 const ORIGINAL = 'Bobby, a 40-year-old veterinarian.';
@@ -137,6 +138,25 @@ describe('buildReplacedEntities', () => {
     expect(buildReplacedEntities([entities[0]], mixedCase, ORIGINAL, REPLACED)).toEqual([
       { value: 'Teddy', label: 'first_name', start: 0, end: 5 },
     ]);
+  });
+});
+
+describe('toUtf16Offsets', () => {
+  it('shifts offsets past a non-BMP character', () => {
+    const text = '😀 Alice';
+    const detected = [{ value: 'Alice', label: 'first_name', start: 2, end: 7 }];
+
+    expect(toUtf16Offsets(text, detected)).toEqual([
+      { value: 'Alice', label: 'first_name', start: 3, end: 8 },
+    ]);
+    expect(toSegments(text, toUtf16Offsets(text, detected))).toEqual([
+      { text: '😀 ' },
+      { text: 'Alice', label: 'first_name' },
+    ]);
+  });
+
+  it('leaves offsets alone when the text is all BMP', () => {
+    expect(toUtf16Offsets(ORIGINAL, entities)).toBe(entities);
   });
 });
 

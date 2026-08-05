@@ -232,6 +232,8 @@ export const entityTagColor = (label: string): EntityTagColor =>
   COLOR_BY_LABEL.get(label) ?? ENTITY_CUSTOM_TAG_COLOR;
 
 export const DEFAULT_PREVIEW_ROWS = 1;
+/** Mirrors the plugin's `preview_num_records.max`, which 422s rather than clamping. */
+export const MAX_PREVIEW_ROWS = 10;
 
 export const MAX_COLUMN_INTROSPECTION_BYTES = 50 * 1024 * 1024;
 

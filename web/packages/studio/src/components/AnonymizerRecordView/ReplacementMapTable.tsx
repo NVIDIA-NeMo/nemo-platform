@@ -7,7 +7,7 @@ import { Badge, Text } from '@nvidia/foundations-react-core';
 import type { EntityReplacement } from '@studio/components/AnonymizerRecordView/types';
 import { entityTagColor } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import { ArrowRight } from 'lucide-react';
-import { memo, useCallback, useMemo, type ComponentProps, type FC } from 'react';
+import { memo, useCallback, useEffect, useMemo, type ComponentProps, type FC } from 'react';
 
 const REPLACEMENTS_PAGE_SIZE = 20;
 const ARROW_COLUMN_SIZE = 48;
@@ -21,10 +21,16 @@ export const ReplacementMapTable: FC<ReplacementMapTableProps> = memo(({ replace
 
   const { pageIndex: requestedPage, pageSize } = dataViewState.pagination.state;
   // `page` is shared, so it outlives a record pager move to a map with fewer rows.
-  const pageIndex = Math.min(
-    requestedPage,
-    Math.max(Math.ceil(replacements.length / pageSize) - 1, 0)
-  );
+  const lastPageIndex = Math.max(Math.ceil(replacements.length / pageSize) - 1, 0);
+  const pageIndex = Math.min(requestedPage, lastPageIndex);
+
+  const setPagination = dataViewState.pagination.set;
+  useEffect(() => {
+    if (requestedPage > lastPageIndex) {
+      setPagination((prev) => ({ ...prev, pageIndex: lastPageIndex }));
+    }
+  }, [requestedPage, lastPageIndex, setPagination]);
+
   const pageRows = useMemo(
     () => replacements.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
     [replacements, pageIndex, pageSize]
