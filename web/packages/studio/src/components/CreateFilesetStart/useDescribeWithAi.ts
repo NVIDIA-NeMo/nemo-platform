@@ -126,6 +126,7 @@ export const useDescribeWithAi = (
       const model = generationModel.model;
       setRequestError(null);
       setRawOutput(null);
+      onValidConfig(null);
       const { workspace: chatWorkspace, name: modelName } = getWorkspaceAndModel(model, workspace);
 
       try {
