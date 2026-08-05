@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { InferenceParameters } from '@nemo/common/src/components/ModelSelectV2/InferenceParameters';
+import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 
 const renderComponent = (props: Partial<React.ComponentProps<typeof InferenceParameters>> = {}) => {
   const onChange = vi.fn();
@@ -61,6 +63,21 @@ describe('InferenceParameters', () => {
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ top_p: 0.9, temperature: 0.5, max_tokens: 256 })
     );
+  });
+
+  it('lets the user clear the temperature field and type a new value', () => {
+    const StatefulHarness = () => {
+      const [value, setValue] = useState<Partial<InferenceParams>>({ temperature: 1 });
+      return <InferenceParameters value={value} onChange={setValue} />;
+    };
+    render(<StatefulHarness />);
+    const temperature = screen.getAllByRole('spinbutton')[0];
+
+    fireEvent.change(temperature, { target: { value: '' } });
+    expect(temperature).toHaveValue(null);
+
+    fireEvent.change(temperature, { target: { value: '0.7' } });
+    expect(temperature).toHaveValue(0.7);
   });
 
   it('disables all inputs when disabled', () => {

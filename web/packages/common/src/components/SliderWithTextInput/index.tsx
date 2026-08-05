@@ -16,7 +16,7 @@ import {
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import { Info, RotateCcw } from 'lucide-react';
-import { ComponentProps, ReactNode } from 'react';
+import { ComponentProps, ReactNode, useState } from 'react';
 import { FieldValues } from 'react-hook-form';
 
 type SliderProps = ComponentProps<typeof Slider>;
@@ -57,12 +57,19 @@ export const SliderWithTextInput = ({
   slotEnd,
   displayName,
 }: SliderWithTextInputProps) => {
+  const [draftValue, setDraftValue] = useState<string | null>(null);
+
+  const clamp = (value: number) => Math.min(Math.max(value, min), max);
+
   const handleSliderChange = (newValue: number) => {
-    const clampedValue = Math.min(Math.max(newValue, min), max);
+    const clampedValue = clamp(newValue);
+    setDraftValue(null);
     field.onChange(clampedValue);
     attributes?.Slider?.onValueChange?.(clampedValue);
   };
   const handleTextInputChange = (newValue: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    setDraftValue(newValue);
+    if (event.target.validity?.badInput) return;
     if (newValue === '') {
       field.onChange(undefined);
       attributes?.TextInput?.onValueChange?.('', event);
@@ -70,18 +77,31 @@ export const SliderWithTextInput = ({
     }
     const numberValue = parseFloat(newValue);
     if (Number.isNaN(numberValue)) return;
-    const clampedValue = Math.min(Math.max(numberValue, min), max);
+    if (numberValue < min || numberValue > max) return;
+    field.onChange(numberValue);
+    attributes?.TextInput?.onValueChange?.(numberValue.toString(), event);
+  };
+  const handleTextInputBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+    const rawValue = draftValue;
+    setDraftValue(null);
+    attributes?.TextInput?.onBlur?.(event);
+    if (rawValue === null || rawValue === '') return;
+    const numberValue = parseFloat(rawValue);
+    if (Number.isNaN(numberValue)) return;
+    const clampedValue = clamp(numberValue);
+    if (clampedValue === field.value) return;
     field.onChange(clampedValue);
-    attributes?.TextInput?.onValueChange?.(clampedValue.toString(), event);
+    attributes?.Slider?.onValueChange?.(clampedValue);
   };
   const handleReset = () => {
+    setDraftValue(null);
     field.onChange(defaultValue);
     attributes?.Slider?.onValueChange?.(defaultValue);
   };
   const fallback = defaultValue ?? min;
   const isFieldValueNumber = typeof field.value === 'number' && !Number.isNaN(field.value);
   const safeFieldValue = isFieldValueNumber ? field.value : fallback;
-  const textInputValue = isFieldValueNumber ? field.value.toString() : '';
+  const textInputValue = draftValue ?? (isFieldValueNumber ? field.value.toString() : '');
 
   const stepMarkerClassNames =
     'pb-5 [&_.nv-slider-step:first-of-type]:items-start [&_.nv-slider-step:last-of-type]:items-end';
@@ -156,6 +176,7 @@ export const SliderWithTextInput = ({
         className={`${textInputWidth} h-[40px] shrink-0`}
         {...attributes?.TextInput}
         onValueChange={handleTextInputChange}
+        onBlur={handleTextInputBlur}
         attributes={{
           Input: {
             'aria-label': `${id || 'slider'}_text_input`,
