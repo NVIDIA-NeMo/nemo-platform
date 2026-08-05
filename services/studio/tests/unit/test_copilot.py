@@ -2070,10 +2070,7 @@ async def test_stream_copilot_flushes_tool_events_before_final_response(monkeypa
     monkeypatch.setattr(copilot, "_invoke_copilot", fake_invoke)
 
     frames = [
-        frame
-        async for frame in copilot._stream_copilot(
-            session_id, "hello", "https://agent.test/x", {}, "sys prompt"
-        )
+        frame async for frame in copilot._stream_copilot(session_id, "hello", "https://agent.test/x", {}, "sys prompt")
     ]
 
     body = "".join(frames)
