@@ -23,16 +23,24 @@ import { useNavigate } from 'react-router';
 
 // Static import would pull the whole chat surface into the entry chunk, since
 // the trigger renders in the global nav on every route.
+const importChatThread = () => import('@studio/routes/agents/CopilotChatRoute/CopilotChatThread');
+
 const CopilotChatThread = lazy(() =>
-  import('@studio/routes/agents/CopilotChatRoute/CopilotChatThread').then((m) => ({
-    default: m.CopilotChatThread,
-  }))
+  importChatThread().then((m) => ({ default: m.CopilotChatThread }))
 );
+
+const preloadChatThread = () => void importChatThread();
 
 const OPEN_LABEL = 'Open NeMo Copilot chat';
 const CLOSE_LABEL = 'Close NeMo Copilot chat';
 
 const TopBarChatIcon = () => <Terminal size={16} />;
+
+const chatThreadFallback = (
+  <Flex align="center" justify="center" className="h-full">
+    <Spinner size="medium" aria-label="Loading chat..." />
+  </Flex>
+);
 
 /**
  * The top-bar pop-out is a thin view of the shared chat runtime (owned by
@@ -168,13 +176,7 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
             </Flex>
             <Stack className="min-h-0 flex-1 overflow-hidden">
               {hasOpened ? (
-                <Suspense
-                  fallback={
-                    <Flex align="center" justify="center" className="h-full">
-                      <Spinner size="medium" aria-label="Loading chat..." />
-                    </Flex>
-                  }
-                >
+                <Suspense fallback={chatThreadFallback}>
                   <CopilotChatThread
                     chat={chat}
                     mode="compact"
@@ -192,6 +194,9 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
           aria-label={isOpen ? CLOSE_LABEL : OPEN_LABEL}
           className="relative"
           title={isOpen ? CLOSE_LABEL : OPEN_LABEL}
+          // Not onPointerEnter: PopoverTrigger spreads `...props` after its own,
+          // so passing one here replaces it and breaks the pop-out.
+          onMouseEnter={preloadChatThread}
           onPointerDown={handleTriggerPointerDown}
           onClick={handleTriggerClick}
         >
