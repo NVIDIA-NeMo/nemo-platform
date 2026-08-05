@@ -174,13 +174,15 @@ class ExperimentContext:
 
     # -- Candidates ----------------------------------------------------------
 
-    async def candidates(self) -> list[Candidate]:
-        """Every Candidate committed to this run, in store order.
+    async def candidates(self, *, include_discarded: bool = False) -> list[Candidate]:
+        """The Candidates committed to this run, in store order.
 
         This is what makes resume possible for a strategy the host did not write: the
         population is persisted, so a strategy rebuilds it rather than checkpointing it.
         """
-        return await self._backend.list_candidates(workspace=self.workspace, run_id=self.run_id)
+        return await self._backend.list_candidates(
+            workspace=self.workspace, run_id=self.run_id, include_discarded=include_discarded
+        )
 
     def candidate_dir(self, candidate: Candidate) -> Path:
         """Local directory holding *candidate*'s artifact.
@@ -354,18 +356,18 @@ class ExperimentContext:
         return await self._backend.update_candidate(workspace=self.workspace, candidate=candidate)
 
     async def discard_candidate(self, candidate: Candidate) -> None:
-        """Remove *candidate* entirely: its artifact and the record addressing it.
+        """Mark *candidate* as rolled back, keeping both its record and its artifact.
 
-        A record and its artifact are two halves of one thing. Deleting only the
-        directory used to be enough, because the population was derived from the
-        directories; now it is derived from the records, so a half-deleted candidate
-        stays in the tree pointing at nothing.
+        The only thing that discards a candidate is rolling back a round that never
+        finished, and that work is about to be redone — so nothing here is lost history
+        worth destroying, and a rollback that turns out to be wrong stays recoverable.
+
+        Both halves survive together on purpose. Deleting the directory while keeping the
+        record would let :meth:`_reserve` hand out a label a discarded record still
+        claims, giving one run two candidates with the same handle. :meth:`candidates`
+        excludes discarded candidates, so nothing evaluates, ranks or publishes them.
         """
-        path = local_path_from_uri(candidate.artifact.uri, context="Candidate artifact")
-        target = path if path.is_dir() else path.parent
-        if target.is_dir() and target.resolve() != self._candidate_root.resolve():
-            shutil.rmtree(target)
-        await self._backend.delete_candidate(workspace=self.workspace, candidate_id=candidate.id)
+        await self.update_candidate(candidate, discarded=True)
 
     async def archive_candidate(self, candidate: Candidate) -> None:
         """Persist *candidate*'s code to durable storage, if the run archives at all.

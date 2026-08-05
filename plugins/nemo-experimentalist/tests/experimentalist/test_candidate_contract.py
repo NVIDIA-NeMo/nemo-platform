@@ -241,16 +241,22 @@ async def test_a_record_whose_artifact_is_gone_is_refused_not_guessed(tmp_path: 
 
 
 @pytest.mark.asyncio
-async def test_discarding_a_candidate_removes_the_record_as_well(tmp_path: Path) -> None:
-    """Population is derived from records now, so a surviving record is a live candidate."""
+async def test_a_discarded_candidate_is_hidden_but_kept(tmp_path: Path) -> None:
+    """Rolling back a round is the only thing that discards, and that work is redone.
+
+    Keeping both halves is what stops `_reserve` handing out a label a discarded record
+    still claims, and leaves a wrong rollback recoverable.
+    """
     ctx = make_context(root=tmp_path, backend=FakeBackend())
     baseline = await ctx.import_baseline("baseline")
     artifact = ctx.candidate_dir(baseline)
 
     await ctx.discard_candidate(baseline)
 
-    assert not artifact.exists()
-    assert await ctx.candidates() == []
+    assert await ctx.candidates() == [], "nothing may evaluate, rank or publish it"
+    assert artifact.exists(), "the artifact survives, so its directory name stays taken"
+    (kept,) = await ctx.candidates(include_discarded=True)
+    assert kept.discarded is True
 
 
 @pytest.mark.asyncio
@@ -371,3 +377,24 @@ async def test_a_nested_architecture_doc_is_the_agents_own_and_survives(tmp_path
 
     assert not (imported / "architecture.md").exists(), "the generated one is ours to leave out"
     assert (imported / "docs" / "architecture.md").read_text() == "# the agent's own docs\n"
+
+
+@pytest.mark.asyncio
+async def test_the_store_itself_hides_discarded_candidates(tmp_path: Path) -> None:
+    """Through the real backend, not the double.
+
+    The filter lives in `list_candidates` rather than at each call site precisely so a
+    consumer cannot forget it — which means the check has to go through the backend that
+    ships, or it only proves the double agrees with itself.
+    """
+    from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
+
+    ctx = make_context(root=tmp_path, backend=LocalExperimentalistBackend(path=tmp_path))
+    baseline = await ctx.import_baseline("baseline")
+    await ctx.discard_candidate(baseline)
+
+    assert await ctx.candidates() == []
+    assert [c.id for c in await ctx.candidates(include_discarded=True)] == [baseline.id]
+    # The record is still on disk, marked — not removed.
+    stored = json.loads((tmp_path / "eval-and-optimize" / "candidates" / f"{baseline.id}.json").read_text())
+    assert stored["discarded"] is True

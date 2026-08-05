@@ -447,10 +447,9 @@ class RewardRecord(BaseModel):
 class RewardMap(dict[str, RewardRecord]):
     """A candidate's measurements, keyed by reward channel.
 
-    One mapping answers both questions that used to need two APIs: ``rewards[channel]``
-    always yields a record, so ``rewards["train"].metrics`` never needs a presence check,
-    while ``channel in rewards`` still answers *was this measured at all* — the question
-    eight call sites gate evaluation on.
+    One mapping answers both questions: ``rewards[channel]`` always yields a record, so
+    ``rewards["train"].metrics`` needs no presence check, while ``channel in rewards``
+    answers *was this measured at all* — which is what gates whether to evaluate.
 
     ``__missing__`` **returns** without inserting, which is the whole point and why this
     is not a ``defaultdict``: that one's ``__missing__`` inserts, so merely reading a
@@ -541,8 +540,7 @@ class Candidate(NemoEntity, entity_type="candidate"):
     ancestor: str | None = Field(
         default=None,
         description=(
-            "Parent Candidate id. None means this is the baseline — the one place the "
-            "distinction is encoded, replacing the round-0 sentinel it used to share it with."
+            "Parent Candidate id. None means this is the baseline, and is the only place that distinction is encoded."
         ),
     )
     generation: int = Field(
@@ -588,6 +586,15 @@ class Candidate(NemoEntity, entity_type="candidate"):
     killed_generation: int | None = Field(
         default=None,
         description="Generation in which this candidate was eliminated. None means still alive.",
+    )
+    discarded: bool = Field(
+        default=False,
+        description=(
+            "True once this candidate has been rolled back. The record and its artifact "
+            "both survive so the rollback is auditable and reversible; listing excludes it "
+            "by default. Distinct from killed_generation, which marks a candidate that "
+            "lost selection but is still part of the run's history."
+        ),
     )
 
     @model_validator(mode="after")

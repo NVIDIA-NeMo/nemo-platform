@@ -404,8 +404,12 @@ async def test_insight_evaluation_uses_at_least_two_attempts_without_changing_ot
 
 
 @pytest.mark.asyncio
-async def test_rollback_removes_a_candidates_artifact_and_every_scratch_dir(tmp_path: Path) -> None:
-    """Which candidates to roll back comes from the store, not from a directory walk."""
+async def test_rollback_clears_evaluator_scratch_for_the_rolled_back_candidate(tmp_path: Path) -> None:
+    """Which candidates to roll back comes from the store, not from a directory walk.
+
+    Scratch is keyed by label, so leaving it would let the re-run read the previous
+    round's results. The candidate itself is discarded rather than deleted.
+    """
     root = tmp_path / "eval-and-optimize"
     agents_dir = root / "agents"
     results_dir = root / "results"
@@ -441,9 +445,9 @@ async def test_rollback_removes_a_candidates_artifact_and_every_scratch_dir(tmp_
 
     optimizer = object.__new__(EvolutionaryOptimizer)
     optimizer.working_dir = tmp_path
-    await optimizer._delete_all_artifacts(ctx=ctx, from_round=1)
+    await optimizer._roll_back_to(ctx=ctx, from_round=1)
 
-    assert not removed_dir.exists()
+    assert removed_dir.exists(), "the artifact is kept; only the record is marked"
     assert all(not result_dir.exists() for result_dir in removed_results)
     assert surviving_dir.is_dir()
     assert surviving_result.is_dir()
@@ -468,17 +472,18 @@ async def test_rollback_revives_a_survivor_whose_killing_round_was_itself_rolled
 
     optimizer = object.__new__(EvolutionaryOptimizer)
     optimizer.working_dir = tmp_path
-    await optimizer._delete_all_artifacts(ctx=ctx, from_round=2)
+    await optimizer._roll_back_to(ctx=ctx, from_round=2)
 
     assert backend.by_label["agent-1"].killed_generation is None
 
 
 @pytest.mark.asyncio
-async def test_rollback_removes_the_record_not_only_the_directory(tmp_path: Path) -> None:
-    """A record left behind is a candidate that still exists to every consumer.
+async def test_rollback_hides_the_record_so_nothing_downstream_sees_it(tmp_path: Path) -> None:
+    """A rolled-back candidate must not survive into the rebuilt tree.
 
-    It survives into the rebuilt tree, gets offered to the Proposer as a branchable
-    survivor, and can be selected as the Pareto winner while addressing nothing.
+    If it did it would be offered to the Proposer as a branchable survivor and could be
+    selected as the Pareto winner. Discarding hides it from `candidates()` while leaving
+    both halves on disk.
     """
     root = tmp_path / "eval-and-optimize"
     for sub in ("agents", "results", "analysis", "smoke-dataset", "smoke-results"):
@@ -500,10 +505,11 @@ async def test_rollback_removes_the_record_not_only_the_directory(tmp_path: Path
 
     optimizer = object.__new__(EvolutionaryOptimizer)
     optimizer.working_dir = tmp_path
-    await optimizer._delete_all_artifacts(ctx=ctx, from_round=1)
+    await optimizer._roll_back_to(ctx=ctx, from_round=1)
 
-    assert not rolled_back.exists()
     assert sorted(c.label for c in await ctx.candidates()) == ["agent-1"]
+    assert rolled_back.exists(), "kept on disk; the rollback is auditable and reversible"
+    assert sorted(c.label for c in await ctx.candidates(include_discarded=True)) == ["agent-1", "agent-2"]
 
 
 @pytest.mark.asyncio

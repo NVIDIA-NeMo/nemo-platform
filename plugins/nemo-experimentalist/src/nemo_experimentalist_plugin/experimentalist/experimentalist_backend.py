@@ -155,17 +155,12 @@ class ExperimentalistBackend(ABC):
         ...
 
     @abstractmethod
-    async def list_candidates(self, *, workspace: str, run_id: str) -> list[Candidate]:
-        """Return all Candidates that belong to a given ExperimentRun."""
-        ...
+    async def list_candidates(self, *, workspace: str, run_id: str, include_discarded: bool = False) -> list[Candidate]:
+        """Return the Candidates belonging to an ExperimentRun.
 
-    @abstractmethod
-    async def delete_candidate(self, *, workspace: str, candidate_id: str) -> None:
-        """Remove a Candidate record. Silent when it is already gone.
-
-        Rolling back partial work has to remove the record as well as the artifact:
-        listing reads the store, so a record left behind is a candidate that still
-        exists as far as every consumer is concerned.
+        Discarded candidates are excluded unless asked for: a rolled-back candidate is
+        still on disk, and a consumer that got one back would evaluate, rank or publish
+        work the run has already abandoned.
         """
         ...
 
@@ -292,12 +287,10 @@ def _atomic_write(path: Path, text: str) -> None:
 def load_winner(run_dir: Path) -> Candidate:
     """The winning Candidate of a finished run, read from its stored record.
 
-    Here so consumers stop rebuilding the run layout themselves. ``run.json`` names the
-    winner by **candidate id**, not by directory: the key is spelled ``winner_agent`` for
-    compatibility, but treating it as a label is what broke this consumer when identity
-    stopped being the directory name. The winner's location comes from its own artifact
-    reference, which is the only thing that stays true if candidates ever move off local
-    disk.
+    Here so consumers do not rebuild the run layout themselves. ``run.json`` names the
+    winner by **candidate id**, despite the key being spelled ``winner_agent``; the
+    winner's location comes from its own artifact reference, which stays true even if
+    candidates move off local disk.
 
     Args:
         run_dir: The run's directory — the one holding ``run.json`` and ``candidates/``.
@@ -505,11 +498,10 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         if src is None or self._agent_checkout is None:
             return None
         checkout, branch = self._agent_checkout, self._candidate_branch(candidate)
-        # A PR title is one line. `description` is the Proposer's graph-level prose — often
-        # several sentences, sometimes with newlines — which forges truncate or reject, and
-        # which `_compose_pr_body` already puts in the body. The optimization type is the
-        # short handle that used to be on the Candidate; it now lives in the payload the
-        # Proposer and Builder own.
+        # A PR title is one line, and `description` is the Proposer's graph-level prose —
+        # often several sentences, sometimes with newlines — which forges truncate or
+        # reject, and which `_compose_pr_body` already puts in the body. The optimization
+        # type is the short handle, and lives in the payload the Proposer and Builder own.
         payload = candidate.generated_from.payload if candidate.generated_from is not None else {}
         kind = payload.get("optimization_type")
         title = self.storage.pr_title or (
@@ -629,15 +621,13 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
     async def get_candidate(self, *, workspace: str, candidate_id: str) -> Candidate:
         return load_candidate(self._candidate_path(candidate_id))
 
-    async def delete_candidate(self, *, workspace: str, candidate_id: str) -> None:
-        self._candidate_path(candidate_id).unlink(missing_ok=True)
-
-    async def list_candidates(self, *, workspace: str, run_id: str) -> list[Candidate]:
+    async def list_candidates(self, *, workspace: str, run_id: str, include_discarded: bool = False) -> list[Candidate]:
         store = self._eo / "candidates"
         if not store.is_dir():
             return []
         candidates = [load_candidate(path) for path in sorted(store.glob("*.json"))]
-        return sorted((c for c in candidates if c.run_id == run_id), key=lambda c: (c.generation, c.label))
+        live = (c for c in candidates if c.run_id == run_id and (include_discarded or not c.discarded))
+        return sorted(live, key=lambda c: (c.generation, c.label))
 
     # ------------------------------------------------------------------
     # Result persistence  (eval-and-optimize/OPTIMIZATION.md)

@@ -386,7 +386,7 @@ class EvolutionaryOptimizer(Agent, Strategy):
         # re-opened an existing run.
         if (round_num := self._detect_last_round()) is not None:
             logger.info(f"[RESUME] round {round_num}")
-            await self._delete_all_artifacts(ctx=ctx, from_round=round_num)
+            await self._roll_back_to(ctx=ctx, from_round=round_num)
             evolution_tree = EvolutionTree.from_candidates(await ctx.candidates())
             candidates: list[Candidate] = list(evolution_tree.survivors(round_num))
         else:
@@ -713,16 +713,16 @@ class EvolutionaryOptimizer(Agent, Strategy):
                 continue
         return max(rounds) if rounds else None
 
-    async def _delete_all_artifacts(self, *, ctx: StrategyContext, from_round: int) -> None:
+    async def _roll_back_to(self, *, ctx: StrategyContext, from_round: int) -> None:
         """Roll back everything produced after *from_round* so the loop can re-enter cleanly.
 
         Which candidates those are comes from the stored records rather than a directory
-        walk, so the rollback follows the entity contract instead of re-deriving it from
-        our own layout. Both halves go: deleting only the artifact used to be enough when
-        the population was derived from directories, but it is derived from records now,
-        so a surviving record is a candidate that still exists to every consumer and
-        addresses a directory that does not. Stale ``killed_generation`` markers whose
-        killing round was itself rolled back are cleared, or those survivors stay dead.
+        walk, so the rollback follows the entity contract rather than our own layout.
+        Candidates are discarded, not deleted: the record and artifact both survive, and
+        ``ctx.candidates()`` stops returning them. Evaluator scratch *is* removed, since
+        it is keyed by label and the re-run would otherwise read a previous round's
+        results. Stale ``killed_generation`` markers whose killing round was itself rolled
+        back are cleared, or those survivors stay dead.
         """
         results_dir = self.working_dir / "eval-and-optimize" / "results"
         analysis_dir = self.working_dir / "eval-and-optimize" / "analysis"

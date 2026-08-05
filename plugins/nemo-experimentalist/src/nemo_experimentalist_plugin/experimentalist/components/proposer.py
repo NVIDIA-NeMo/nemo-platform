@@ -218,12 +218,11 @@ class Proposer(Agent):
     def _usable_improvements(improvements: list[Improvement], *, known_ancestors: set[str]) -> list[Improvement]:
         """Keep the improvements that branch from a real survivor, dropping the rest.
 
-        Dropped rather than fatal. ``ancestor`` is a candidate id, not the display handle
-        it used to be, and survivors carry both — so a plausible-looking "agent-2" is
-        exactly what a model returns. This runs *after* the CodeAct loop, so raising here
-        buys no retry: it unwinds through the strategy and kills a run that has already
-        spent hours over one bad string. Same policy as ``_build_candidates`` — one bad
-        proposal is not a bad run.
+        Dropped rather than fatal. ``ancestor`` is a candidate id and survivors carry both
+        id and label, so a plausible-looking "agent-2" is exactly what a model returns.
+        This runs *after* the CodeAct loop, so raising buys no retry: it unwinds through
+        the strategy and kills a run that has already spent hours over one bad string.
+        Same policy as ``_build_candidates`` — one bad proposal is not a bad run.
         """
         usable = [improvement for improvement in improvements if improvement.ancestor in known_ancestors]
         for rejected in improvements:

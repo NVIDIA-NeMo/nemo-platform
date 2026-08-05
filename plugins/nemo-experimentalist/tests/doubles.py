@@ -102,16 +102,13 @@ class FakeBackend(ExperimentalistBackend):
     async def get_candidate(self, *, workspace: str, candidate_id: str) -> Candidate:
         return self.candidates[candidate_id]
 
-    async def delete_candidate(self, *, workspace: str, candidate_id: str) -> None:
-        self.candidates.pop(candidate_id, None)
-
     @property
     def by_label(self) -> dict[str, Candidate]:
         """Stored candidates keyed by display handle, for readable assertions."""
         return {c.label: c for c in self.candidates.values()}
 
-    async def list_candidates(self, *, workspace: str, run_id: str) -> list[Candidate]:
-        return [c for c in self.candidates.values() if c.run_id == run_id]
+    async def list_candidates(self, *, workspace: str, run_id: str, include_discarded: bool = False) -> list[Candidate]:
+        return [c for c in self.candidates.values() if c.run_id == run_id and (include_discarded or not c.discarded)]
 
     async def persist_result(self, *, workspace: str, result: ExperimentalistResult) -> None:
         self.results.append(result)

@@ -218,9 +218,9 @@ class EvolutionTree:
     def mark_best(self, key: str) -> None:
         """Designate the node under *key* as the best, clearing all other best flags.
 
-        *key* is a candidate id, which is what :meth:`add` files nodes under — passing a
-        display label used to no-op silently, so a caller that confused the two only
-        found out at the next lookup.
+        *key* is a candidate id, which is what :meth:`add` files nodes under. Raising on
+        an unknown key is deliberate: a display label passed here would otherwise no-op,
+        and the caller would find out at the next lookup.
 
         Raises:
             KeyError: if no node is filed under *key*.
