@@ -1,14 +1,26 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
 from nemo_eval_author_plugin.eval_author import run as eval_author_run
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
+from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
+from nemo_eval_author_plugin.eval_author.inventory import ReferenceTaskSetInventory
+from nemo_eval_author_plugin.eval_author.models import (
+    ArtifactDescriptor,
+    AuthoredMetric,
+    AuthoredMetricContract,
+    EvalAuthorConfig,
+    EvalAuthorEvaluationContext,
+    EvalAuthorRequest,
+    EvalAuthorResult,
+    InsightRef,
+)
+from nemo_experimentalist_plugin.entities import DatasetRef, Task
 from nemo_insights_plugin.entities import Insight
 
 
@@ -45,8 +57,7 @@ class EvalAuthorCall:
     insight: Insight
     agent_path: Path
     task_template: Task
-    train_dataset: Dataset
-    validation_dataset: Dataset
+    reference_inventory: ReferenceTaskSetInventory
     client: ClosingClient
 
 
@@ -66,17 +77,8 @@ class FakeBackend:
 
 class FakeDatasetFactory:
     def __init__(self) -> None:
-        self.train = Dataset(id="train")
-        self.validation = Dataset(id="validation")
         self.template = Task(id="template-task", uri="file:///template")
-        self.dataset_refs: list[tuple[str, DatasetRef]] = []
         self.template_refs: list[tuple[str, DatasetRef]] = []
-
-    def build_dataset(self, evaluator_type: str, dataset_ref: DatasetRef) -> Dataset:
-        self.dataset_refs.append((evaluator_type, dataset_ref))
-        if dataset_ref.metadata.get("id") == "validation":
-            return self.validation
-        return self.train
 
     def build_task_template(self, evaluator_type: str, template_ref: DatasetRef) -> Task:
         self.template_refs.append((evaluator_type, template_ref))
@@ -92,8 +94,7 @@ class FakeEvalAuthor:
         insight: Insight,
         agent_path: Path,
         task_template: Task,
-        train_dataset: Dataset,
-        validation_dataset: Dataset,
+        reference_inventory: ReferenceTaskSetInventory,
         *,
         client: ClosingClient,
     ) -> EvalAuthorResult:
@@ -101,15 +102,44 @@ class FakeEvalAuthor:
             insight=insight,
             agent_path=agent_path,
             task_template=task_template,
-            train_dataset=train_dataset,
-            validation_dataset=validation_dataset,
+            reference_inventory=reference_inventory,
             client=client,
         )
         return EvalAuthorResult(
-            train_dataset=train_dataset,
-            validation_dataset=validation_dataset,
+            task_set=ArtifactDescriptor(
+                uri="file:///artifacts/task-set",
+                identity=f"sha256:{'a' * 64}",
+            ),
+            verifier_patch=ArtifactDescriptor(
+                uri="file:///artifacts/verifier-patch",
+                identity=f"sha256:{'b' * 64}",
+            ),
+            metric_contract=AuthoredMetricContract(
+                metrics=(
+                    AuthoredMetric(
+                        key="uses_correct_tool",
+                        description="Measures whether the current run used the required tool.",
+                        runtime_evidence=("Current-run OTLP tool spans",),
+                    ),
+                )
+            ),
             summary="Eval Author complete",
         )
+
+
+def _request(
+    *,
+    insight: str = "insight-remote-123",
+    task_template: DatasetRef,
+    reference_task_sets: tuple[DatasetRef, ...],
+) -> EvalAuthorRequest:
+    return EvalAuthorRequest(
+        insight=InsightRef(uri=insight),
+        evaluation_context=EvalAuthorEvaluationContext(
+            task_template=task_template,
+            reference_task_sets=reference_task_sets,
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -131,6 +161,8 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
     backend_calls: list[BackendFactoryCall] = []
     eval_author_calls: list[EvalAuthorFactoryCall] = []
     litellm_calls: list[bool] = []
+    inventory_calls: list[tuple[DatasetRef, ...]] = []
+    reference_inventory = ReferenceTaskSetInventory.empty()
 
     def make_backend(
         *,
@@ -144,10 +176,20 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
         eval_author_calls.append(EvalAuthorFactoryCall(experiment_dir=experiment_dir, config=config))
         return eval_author
 
+    def build_inventory(reference_task_sets: tuple[DatasetRef, ...]) -> ReferenceTaskSetInventory:
+        inventory_calls.append(reference_task_sets)
+        return reference_inventory
+
     monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
     monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", make_backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", build_eval_author_agent)
+    monkeypatch.setattr(
+        eval_author_run,
+        "build_reference_task_set_inventory",
+        build_inventory,
+        raising=False,
+    )
     monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: litellm_calls.append(True))
 
     config = EvalAuthorConfig(max_traces=2)
@@ -156,12 +198,14 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
     template_path = tmp_path / "template"
     template_path.mkdir()
     template_ref = DatasetRef(uri=str(template_path), metadata={"id": "task-template"})
+    request = _request(
+        insight="insight://workspace-a/insight-remote-123",
+        task_template=template_ref,
+        reference_task_sets=(train_ref, validation_ref),
+    )
 
     result = await eval_author_run.run_eval_author(
-        insight="insight-remote-123",
-        train_dataset=train_ref,
-        validation_dataset=validation_ref,
-        task_template=template_ref,
+        request=request,
         experiment_dir=tmp_path / "eval_author",
         workspace="workspace-a",
         base_url="http://platform.test",
@@ -170,8 +214,12 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
 
     experiment_dir = (tmp_path / "eval_author").resolve()
     assert result.summary == "Eval Author complete"
-    assert result.train_dataset is dataset_factory.train
-    assert result.validation_dataset is dataset_factory.validation
+    assert result.task_set is not None
+    assert result.task_set.uri == "file:///artifacts/task-set"
+    assert result.verifier_patch is not None
+    assert result.verifier_patch.uri == "file:///artifacts/verifier-patch"
+    assert result.metric_contract is not None
+    assert result.metric_contract.keys == ("uses_correct_tool",)
     assert litellm_calls == [True]
     assert backend_calls == [
         BackendFactoryCall(client=client, experiments_output=str(experiment_dir)),
@@ -184,11 +232,18 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
             dest=experiment_dir / "eval_author" / "source-agent",
         )
     ]
-    assert dataset_factory.dataset_refs == [("harbor", train_ref), ("harbor", validation_ref)]
-    assert dataset_factory.template_refs == [
+    assert [(reference.uri, reference.metadata["id"]) for reference in inventory_calls[0]] == [
+        (train_ref.uri, "train"),
+        (validation_ref.uri, "validation"),
+    ]
+    assert [
+        (evaluator_type, reference.uri, reference.metadata["id"])
+        for evaluator_type, reference in dataset_factory.template_refs
+    ] == [
         (
             "harbor",
-            template_ref.model_copy(update={"uri": str(experiment_dir / "dataset" / "task-template")}),
+            str(experiment_dir / "dataset" / "task-template"),
+            "task-template",
         )
     ]
     assert eval_author_calls == [EvalAuthorFactoryCall(experiment_dir=experiment_dir, config=config)]
@@ -196,11 +251,23 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
         insight=insight,
         agent_path=experiment_dir / "eval_author" / "source-agent",
         task_template=dataset_factory.template,
-        train_dataset=dataset_factory.train,
-        validation_dataset=dataset_factory.validation,
+        reference_inventory=reference_inventory,
         client=client,
     )
     assert client.closed
+
+
+def test_public_run_boundaries_do_not_expose_split_specific_inputs() -> None:
+    orchestration_parameters = inspect.signature(eval_author_run.run_eval_author).parameters
+    agent_parameters = inspect.signature(EvalAuthor.run).parameters
+
+    assert "request" in orchestration_parameters
+    assert "task_template" not in orchestration_parameters
+    assert "train_dataset" not in orchestration_parameters
+    assert "validation_dataset" not in orchestration_parameters
+    assert "reference_inventory" in agent_parameters
+    assert "train_dataset" not in agent_parameters
+    assert "validation_dataset" not in agent_parameters
 
 
 @pytest.mark.asyncio
@@ -222,20 +289,28 @@ async def test_run_eval_author_hydrates_fileset_task_template(
     backend = FakeBackend(insight)
     dataset_factory = FakeDatasetFactory()
     eval_author = FakeEvalAuthor()
+    inventory_refs: list[tuple[DatasetRef, ...]] = []
 
     monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
     monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
+    monkeypatch.setattr(
+        eval_author_run,
+        "build_reference_task_set_inventory",
+        lambda refs: inventory_refs.append(refs) or ReferenceTaskSetInventory.empty(),
+        raising=False,
+    )
     monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: None)
 
     template_ref = DatasetRef(uri="fileset://workspace-a/task-template", metadata={"id": "task-template"})
+    reference_ref = DatasetRef(uri="fileset://workspace-a/reference-task-set", metadata={"id": "reference"})
     experiment_dir = (tmp_path / "eval_author").resolve()
     await eval_author_run.run_eval_author(
-        insight="insight-remote-123",
-        train_dataset=DatasetRef(uri="train", metadata={"id": "train"}),
-        validation_dataset=DatasetRef(uri="validation", metadata={"id": "validation"}),
-        task_template=template_ref,
+        request=_request(
+            task_template=template_ref,
+            reference_task_sets=(reference_ref,),
+        ),
         experiment_dir=experiment_dir,
         workspace="workspace-a",
         base_url="http://platform.test",
@@ -243,14 +318,25 @@ async def test_run_eval_author_hydrates_fileset_task_template(
     )
 
     staged_path = experiment_dir / "dataset" / "task-template"
+    staged_reference_path = experiment_dir / "dataset" / "reference-task-sets" / "001"
     assert download_calls == [
         {
             "remote_path": template_ref.uri,
             "local_path": str(staged_path),
             "workspace": "workspace-a",
-        }
+        },
+        {
+            "remote_path": reference_ref.uri,
+            "local_path": str(staged_reference_path),
+            "workspace": "workspace-a",
+        },
     ]
-    assert dataset_factory.template_refs == [("harbor", template_ref.model_copy(update={"uri": str(staged_path)}))]
+    assert [(evaluator_type, reference.uri) for evaluator_type, reference in dataset_factory.template_refs] == [
+        ("harbor", str(staged_path))
+    ]
+    assert [(reference.uri, reference.metadata["id"]) for reference in inventory_refs[0]] == [
+        (str(staged_reference_path), "reference")
+    ]
     assert client.closed
 
 
@@ -269,17 +355,24 @@ async def test_run_eval_author_uses_agent_override(
     monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
+    monkeypatch.setattr(
+        eval_author_run,
+        "build_reference_task_set_inventory",
+        lambda refs: ReferenceTaskSetInventory.empty(),
+        raising=False,
+    )
     monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: None)
 
     override = tmp_path / "override-agent"
     template = tmp_path / "template"
     template.mkdir()
     await eval_author_run.run_eval_author(
-        insight="insight-remote-123",
+        request=_request(
+            insight="insight-remote-123",
+            task_template=DatasetRef(uri=str(template)),
+            reference_task_sets=(DatasetRef(uri="reference"),),
+        ),
         agent=override,
-        train_dataset=DatasetRef(uri="train", metadata={"id": "train"}),
-        validation_dataset=DatasetRef(uri="validation", metadata={"id": "validation"}),
-        task_template=DatasetRef(uri=str(template)),
         experiment_dir=tmp_path / "eval_author",
         workspace="workspace-a",
         base_url="http://platform.test",
@@ -305,10 +398,10 @@ async def test_run_eval_author_closes_client_when_backend_creation_fails(
 
     with pytest.raises(RuntimeError, match="backend creation failed"):
         await eval_author_run.run_eval_author(
-            insight="insight-remote-123",
-            train_dataset=DatasetRef(uri="train"),
-            validation_dataset=DatasetRef(uri="validation"),
-            task_template=DatasetRef(uri="template"),
+            request=_request(
+                task_template=DatasetRef(uri="template"),
+                reference_task_sets=(),
+            ),
             experiment_dir=tmp_path / "eval_author",
             workspace="workspace-a",
             base_url="http://platform.test",
