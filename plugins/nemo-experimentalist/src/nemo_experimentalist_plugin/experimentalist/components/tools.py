@@ -219,7 +219,10 @@ class WorkspaceTool:
         stamp = tuple((str(path), path.stat().st_mtime_ns) for path in paths)
         if self._candidates_cache is not None and self._candidates_cache[0] == stamp:
             return self._candidates_cache[1]
-        loaded = [load_candidate(path) for path in paths]
+        # Discarded candidates are excluded here for the same reason `list_candidates`
+        # excludes them: these feed the report and analysis prompts, and a rolled-back
+        # candidate in the lineage tree is one the run already abandoned.
+        loaded = [c for c in (load_candidate(path) for path in paths) if not c.discarded]
         self._candidates_cache = (stamp, loaded)
         return loaded
 

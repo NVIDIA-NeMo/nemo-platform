@@ -257,3 +257,22 @@ async def test_a_swapped_builder_runs_through_the_context(tmp_path, isolated_reg
 
     assert candidate.ancestor == baseline.id
     assert (ctx.candidate_dir(candidate) / "changed.py").exists()
+
+
+def test_registering_a_component_in_a_test_does_not_leak(isolated_registry: None) -> None:
+    """Four separate bugs have come from the registry being global mutable state.
+
+    A poisoned discovery flag; a fixture swapping the mapping instead of restoring its
+    contents; a fixture snapshotting before discovery ran; and a `monkeypatch.setattr`
+    given the object it was already holding, which restores it unchanged and leaves the
+    entry behind. Each was invisible to the full suite and showed up only in isolation or
+    reverse order, so the invariant is asserted here rather than assumed.
+    """
+    before = set(Component._registry)
+
+    class Ephemeral(Terminator):
+        name = "acme-ephemeral"
+
+    assert ("terminator", "acme-ephemeral") in Component._registry
+    # The fixture's teardown is what must remove it; this records the contract.
+    assert set(Component._registry) - before == {("terminator", "acme-ephemeral")}

@@ -59,6 +59,8 @@ def pseudo_source_link(gname: str, label: str) -> str:
 
 def experiment_status(candidate: Candidate) -> str:
     """Derive the producer status string from candidate lineage (spec §4.1)."""
+    if candidate.discarded:
+        return "discarded"
     if candidate.killed_generation is not None:
         return "killed"
     if candidate.is_baseline:

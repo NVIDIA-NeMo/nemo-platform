@@ -69,6 +69,19 @@ class EvolutionaryOptimizerConfig(BaseModel):
             return data
         if "curator" in data:
             raise ValueError("'curator' was renamed to 'eval_author'; update the optimizer configuration")
+        for removed, replacement in (
+            ("disable_convergence_check", "terminator: null"),
+            ("disable_trajectory_scoring", "trajectory_scorer: null"),
+            ("analyzer", "analyzer_config"),
+            ("proposer", "proposer_config"),
+        ):
+            value = data.get(removed)
+            if removed in data and (replacement.endswith("_config") and isinstance(value, dict) or ":" in replacement):
+                raise ValueError(
+                    f"{removed!r} is no longer a run-config key; use {replacement!r}. Turning a step off is "
+                    "how you choose no implementation of it, and each role's config now sits under "
+                    "'<role>_config' so the role key can name the component."
+                )
         if "models" in data:
             raise ValueError(
                 "'models' is no longer a run-config key; model tiers are deployment settings. "
