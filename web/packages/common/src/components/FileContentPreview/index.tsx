@@ -12,7 +12,7 @@ import { MarkdownContent } from '@nemo/common/src/components/MarkdownContent';
 import { ScrollTable } from '@nemo/common/src/components/ScrollTable';
 import { Flex, Spinner, TableRowDefinition, Text } from '@nvidia/foundations-react-core';
 import Papa from 'papaparse';
-import { FC, lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { type FC, lazy, Suspense, useEffect, useMemo, useState } from 'react';
 
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
 

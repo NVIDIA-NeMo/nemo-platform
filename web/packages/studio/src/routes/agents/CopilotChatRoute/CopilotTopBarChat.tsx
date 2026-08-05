@@ -4,6 +4,7 @@
 import { Button, Flex, Popover, Spinner, Stack, Tooltip } from '@nvidia/foundations-react-core';
 import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
+import { ChatThreadErrorBoundary } from '@studio/routes/agents/CopilotChatRoute/ChatThreadErrorBoundary';
 import { useCopilotChatContext } from '@studio/routes/agents/CopilotChatRoute/context/useCopilotChatContext';
 import { getCopilotChatRouteForSession } from '@studio/routes/agents/CopilotChatRoute/util';
 import { getCopilotChatRoute } from '@studio/routes/utils';
@@ -25,11 +26,11 @@ import { useNavigate } from 'react-router';
 // the trigger renders in the global nav on every route.
 const importChatThread = () => import('@studio/routes/agents/CopilotChatRoute/CopilotChatThread');
 
-const CopilotChatThread = lazy(() =>
-  importChatThread().then((m) => ({ default: m.CopilotChatThread }))
-);
+// lazy() caches a rejected import forever, so a retry needs a fresh component.
+const createChatThread = () =>
+  lazy(() => importChatThread().then((m) => ({ default: m.CopilotChatThread })));
 
-const preloadChatThread = () => void importChatThread();
+const preloadChatThread = () => void importChatThread().catch(() => undefined);
 
 const OPEN_LABEL = 'Open NeMo Copilot chat';
 const CLOSE_LABEL = 'Close NeMo Copilot chat';
@@ -55,6 +56,9 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
   const [hasUnreadResponse, setHasUnreadResponse] = useState(false);
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0);
   const [hasOpened, setHasOpened] = useState(false);
+  const [ChatThread, setChatThread] = useState(createChatThread);
+
+  const retryChatThread = useCallback(() => setChatThread(() => createChatThread()), []);
 
   // While the agent is blocked on a permission/input request the stream stays
   // open (isRunning is still true), but it is waiting on the user rather than
@@ -176,13 +180,15 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
             </Flex>
             <Stack className="min-h-0 flex-1 overflow-hidden">
               {hasOpened ? (
-                <Suspense fallback={chatThreadFallback}>
-                  <CopilotChatThread
-                    chat={chat}
-                    mode="compact"
-                    scrollToBottomSignal={scrollToBottomSignal}
-                  />
-                </Suspense>
+                <ChatThreadErrorBoundary onRetry={retryChatThread}>
+                  <Suspense fallback={chatThreadFallback}>
+                    <ChatThread
+                      chat={chat}
+                      mode="compact"
+                      scrollToBottomSignal={scrollToBottomSignal}
+                    />
+                  </Suspense>
+                </ChatThreadErrorBoundary>
               ) : null}
             </Stack>
           </Stack>

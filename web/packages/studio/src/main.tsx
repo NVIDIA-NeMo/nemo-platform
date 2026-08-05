@@ -5,11 +5,14 @@ import '@studio/index.css';
 
 import { App } from '@studio/App';
 import { UI_THEME } from '@studio/util/localStorage';
+import { logger } from '@studio/util/logger';
 import ReactDOM from 'react-dom/client';
 
 // OpenTelemetry patches fetch/XHR globally, so this must settle before React
 // renders and issues the first requests.
-const telemetryReady = import('@studio/telemetry/telemetry');
+const telemetryReady = import('@studio/telemetry/telemetry').catch((error: unknown) => {
+  logger.error('Telemetry failed to initialize', error);
+});
 
 const storedTheme = window.localStorage.getItem(UI_THEME);
 const theme = storedTheme ? JSON.parse(storedTheme) : 'dark';
