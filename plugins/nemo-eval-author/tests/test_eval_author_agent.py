@@ -10,12 +10,18 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, cast, get_type_hints
 
 import pytest
 from nemo_eval_author_plugin.eval_author import agent as eval_author_module
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
+from nemo_eval_author_plugin.eval_author.inventory import ReferenceTaskSetInventory
+from nemo_eval_author_plugin.eval_author.models import (
+    AuthoredMetric,
+    AuthoredMetricContract,
+    EvalAuthorConfig,
+    MetricAuthoringResult,
+)
 from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
@@ -55,7 +61,16 @@ class _PipelineCalls:
     analyzer_init: list[_AnalyzerInitCall]
     analyzer_run: list[_AnalyzerRunCall]
     discovered_datasets: list[Dataset]
-    author_args: list[tuple[Insight, list[tuple[str, Diagnostic]], Dataset, str, str | None]]
+    author_args: list[
+        tuple[
+            Insight,
+            list[tuple[str, Diagnostic]],
+            Dataset,
+            ReferenceTaskSetInventory,
+            str,
+            str | None,
+        ]
+    ]
     suite_discards: int
 
 
@@ -104,6 +119,21 @@ def _diagnostic(summary: str) -> Diagnostic:
     return Diagnostic(outcome="FAILURE", summary=summary, failure_point=1, root_cause="wrong tool")
 
 
+def _authoring_result(summary: str = "authored insight metrics") -> MetricAuthoringResult:
+    return MetricAuthoringResult(
+        metric_contract=AuthoredMetricContract(
+            metrics=(
+                AuthoredMetric(
+                    key="uses_correct_tool",
+                    description="Measures whether the current run used the required tool.",
+                    runtime_evidence=("Current-run OTLP tool spans",),
+                ),
+            )
+        ),
+        summary=summary,
+    )
+
+
 def _prompt(method: Any) -> str:
     prompt = inspect.getdoc(method)
     assert prompt is not None
@@ -134,6 +164,15 @@ def test_eval_author_prompts_retain_root_cause_and_normalized_scoring_guidance()
     assert "Presence of a behavior → ``1.0`` if present, ``0.0`` if absent" in prompt
     assert "Partial credit → fraction of required steps completed correctly" in prompt
     assert "Do not hard-code scores for the production traces" in prompt
+
+
+def test_author_insight_metrics_has_structured_inventory_and_result_contract() -> None:
+    signature = inspect.signature(EvalAuthor.author_insight_metrics)
+    hints = get_type_hints(EvalAuthor.author_insight_metrics)
+
+    assert "reference_inventory" in signature.parameters
+    assert hints["reference_inventory"] is ReferenceTaskSetInventory
+    assert hints["return"] is MetricAuthoringResult
 
 
 def test_eval_author_prompts_retain_template_path_and_harbor_name_guidance() -> None:
@@ -218,6 +257,7 @@ def _install_pipeline(
                 dataset=self.materialized_dataset,
                 identity=identity,
                 scorer_identity=scorer_identity,
+                path=eval_author.experiment_dir / "authored-task-set",
             )
 
     class FillTaskTemplate:
@@ -283,19 +323,21 @@ def _install_pipeline(
             insight: Insight,
             diagnostics: list[tuple[str, Diagnostic]],
             insight_suite: Dataset,
+            reference_inventory: ReferenceTaskSetInventory,
             runner_conventions: str,
             validation_feedback: str | None = None,
-        ) -> str:
+        ) -> MetricAuthoringResult:
             calls.author_args.append(
                 (
                     insight,
                     diagnostics,
                     insight_suite,
+                    reference_inventory,
                     runner_conventions,
                     validation_feedback,
                 )
             )
-            return "authored insight metrics"
+            return _authoring_result()
 
     eval_author.fill_task_template = cast(Any, FillTaskTemplate())
     eval_author.discover_runner = cast(Any, DiscoverRunner())
@@ -306,22 +348,20 @@ def _install_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_run_without_traces_returns_input_datasets_unchanged(tmp_path: Path) -> None:
+async def test_run_without_traces_returns_explicit_no_artifact_result(tmp_path: Path) -> None:
     eval_author = _eval_author(tmp_path)
-    train_dataset = Dataset(id="train")
-    validation_dataset = Dataset(id="validation")
 
     result = await eval_author.run(
         _insight([]),
         Path("agent"),
         Task(id="template"),
-        train_dataset,
-        validation_dataset,
+        ReferenceTaskSetInventory.empty(),
         client=cast(Any, object()),
     )
 
-    assert result.train_dataset is train_dataset
-    assert result.validation_dataset is validation_dataset
+    assert result.task_set is None
+    assert result.verifier_patch is None
+    assert result.metric_contract is None
     assert result.summary == "No trace refs on insight — nothing to analyze."
     assert cast(_ClosingShell, eval_author.shell).close_calls == 1
 
@@ -341,8 +381,7 @@ async def test_run_requires_persisted_insight_id(tmp_path: Path) -> None:
             insight,
             Path("agent"),
             Task(id="template"),
-            Dataset(id="train"),
-            Dataset(id="validation"),
+            ReferenceTaskSetInventory.empty(),
             client=cast(Any, object()),
         )
 
@@ -361,8 +400,7 @@ async def test_run_enforces_max_traces(
         _insight(["trace-1", "trace-2", "trace-3"]),
         Path("agent"),
         Task(id="template"),
-        Dataset(id="train"),
-        Dataset(id="validation"),
+        ReferenceTaskSetInventory.empty(),
         client=cast(Any, object()),
     )
 
@@ -389,8 +427,7 @@ async def test_run_discards_staged_suite_when_filling_fails(
             _insight(["trace-1"]),
             Path("agent"),
             Task(id="template"),
-            Dataset(id="train"),
-            Dataset(id="validation"),
+            ReferenceTaskSetInventory.empty(),
             client=cast(Any, object()),
         )
 
@@ -432,8 +469,7 @@ async def test_run_caches_each_successful_diagnostic(
         _insight(["trace-a", "trace-b"]),
         Path("agent"),
         Task(id="template"),
-        Dataset(id="train"),
-        Dataset(id="validation"),
+        ReferenceTaskSetInventory.empty(),
         client=cast(Any, object()),
     )
 
@@ -460,8 +496,7 @@ async def test_run_skips_failed_trace_analysis_and_keeps_successes(
         insight,
         Path("agent"),
         Task(id="template"),
-        Dataset(id="train"),
-        Dataset(id="validation"),
+        ReferenceTaskSetInventory.empty(),
         client=cast(Any, object()),
     )
 
@@ -485,8 +520,7 @@ async def test_run_propagates_trace_analysis_cancellation(
             _insight(["trace-cancelled"]),
             Path("agent"),
             Task(id="template"),
-            Dataset(id="train"),
-            Dataset(id="validation"),
+            ReferenceTaskSetInventory.empty(),
             client=cast(Any, object()),
         )
 
@@ -512,16 +546,14 @@ async def test_run_authors_metrics_on_materialized_insight_suite(
     monkeypatch.setattr(eval_author_module, "doc", fake_doc)
     insight = _insight(["trace-1"])
     task_template = Task(id="template")
-    train_dataset = Dataset(id="train")
-    validation_dataset = Dataset(id="validation")
+    expected_reference_inventory = ReferenceTaskSetInventory.empty()
     client = cast(Any, object())
 
     result = await eval_author.run(
         insight,
         Path("relative-agent"),
         task_template,
-        train_dataset,
-        validation_dataset,
+        expected_reference_inventory,
         client=client,
     )
 
@@ -558,26 +590,27 @@ async def test_run_authors_metrics_on_materialized_insight_suite(
     assert eval_author.context["dataset_documentation"] is documentation
     assert len(calls.discovered_datasets) == 1
     materialized_dataset = calls.discovered_datasets[0]
-    assert result.insight_suite is materialized_dataset
-    assert result.insight_suite_identity == f"sha256:{'a' * 64}"
+    assert result.task_set is not None
+    assert result.task_set.uri == (tmp_path / "authored-task-set").resolve().as_uri()
+    assert result.task_set.identity == f"sha256:{'a' * 64}"
+    assert result.verifier_patch is None
+    assert result.metric_contract == _authoring_result().metric_contract
     assert materialized_dataset.id == "insight-suite"
-    assert materialized_dataset is not train_dataset
-    assert materialized_dataset is not validation_dataset
     assert len(calls.author_args) == 1
     (
         authored_insight,
         diagnostics,
         authored_suite,
+        authored_reference_inventory,
         runner_conventions,
         validation_feedback,
     ) = calls.author_args[0]
     assert authored_insight is insight
     assert diagnostics == [("trace-1", diagnostic)]
     assert authored_suite is materialized_dataset
+    assert authored_reference_inventory is expected_reference_inventory
     assert runner_conventions == "runner conventions"
     assert validation_feedback is None
-    assert result.train_dataset is train_dataset
-    assert result.validation_dataset is validation_dataset
 
 
 class _RepairableDataset(Dataset):
@@ -606,8 +639,6 @@ async def test_run_feeds_validation_failures_back_for_one_repair_attempt(
         materialized_dataset=insight_dataset,
     )
     monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
-    train_dataset = Dataset(id="train")
-    validation_dataset = Dataset(id="validation")
     client = cast(Any, object())
     feedback: list[str | None] = []
 
@@ -617,13 +648,14 @@ async def test_run_feeds_validation_failures_back_for_one_repair_attempt(
             insight: Insight,
             diagnostics: list[tuple[str, Diagnostic]],
             insight_suite: Dataset,
+            reference_inventory: ReferenceTaskSetInventory,
             runner_conventions: str,
             validation_feedback: str | None = None,
-        ) -> str:
+        ) -> MetricAuthoringResult:
             feedback.append(validation_feedback)
             if validation_feedback is not None:
                 insight_dataset.error = None
-            return "repaired insight metric"
+            return _authoring_result("repaired insight metric")
 
     eval_author.author_insight_metrics = cast(Any, RepairInsightMetrics())
 
@@ -631,13 +663,13 @@ async def test_run_feeds_validation_failures_back_for_one_repair_attempt(
         _insight(["trace-1"]),
         Path("agent"),
         Task(id="template"),
-        train_dataset,
-        validation_dataset,
+        ReferenceTaskSetInventory.empty(),
         client=client,
     )
 
-    assert result.train_dataset is train_dataset
-    assert result.validation_dataset is validation_dataset
+    assert result.task_set is not None
+    assert result.verifier_patch is None
+    assert result.metric_contract == _authoring_result().metric_contract
     assert feedback[0] is None
     assert feedback[1] is not None
     assert "task 'insight-a': check.py:2:1: invalid syntax" in feedback[1]
@@ -664,8 +696,7 @@ async def test_run_raises_after_validation_repair_budget_is_exhausted(
             _insight(["trace-1"]),
             Path("agent"),
             Task(id="template"),
-            Dataset(id="train"),
-            Dataset(id="validation"),
+            ReferenceTaskSetInventory.empty(),
             client=cast(Any, object()),
         )
 
@@ -701,8 +732,7 @@ async def test_run_with_reporter_emits_start_note_and_complete_on_empty_traces(t
         _insight([]),
         Path("agent"),
         Task(id="template"),
-        Dataset(id="train"),
-        Dataset(id="validation"),
+        ReferenceTaskSetInventory.empty(),
         client=cast(Any, object()),
     )
 
@@ -730,8 +760,7 @@ async def test_run_with_reporter_emits_pipeline_phases(
         _insight(["trace-1", "trace-2"]),
         Path("agent"),
         Task(id="template"),
-        Dataset(id="train"),
-        Dataset(id="validation"),
+        ReferenceTaskSetInventory.empty(),
         client=cast(Any, object()),
     )
 
@@ -769,12 +798,13 @@ async def test_run_with_reporter_emits_repair_progress(
             insight: Insight,
             diagnostics: list[tuple[str, Diagnostic]],
             insight_suite: Dataset,
+            reference_inventory: ReferenceTaskSetInventory,
             runner_conventions: str,
             validation_feedback: str | None = None,
-        ) -> str:
+        ) -> MetricAuthoringResult:
             if validation_feedback is not None:
                 insight_dataset.error = None
-            return "repaired insight metric"
+            return _authoring_result("repaired insight metric")
 
     eval_author.author_insight_metrics = cast(Any, RepairInsightMetrics())
 
@@ -782,8 +812,7 @@ async def test_run_with_reporter_emits_repair_progress(
         _insight(["trace-1"]),
         Path("agent"),
         Task(id="template"),
-        Dataset(id="train"),
-        Dataset(id="validation"),
+        ReferenceTaskSetInventory.empty(),
         client=cast(Any, object()),
     )
 

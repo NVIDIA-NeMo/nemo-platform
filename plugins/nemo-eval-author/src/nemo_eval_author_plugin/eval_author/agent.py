@@ -12,14 +12,26 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from nemo_eval_author_plugin.eval_author.inventory import ReferenceTaskSetInventory
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
+from nemo_eval_author_plugin.eval_author.models import (
+    ArtifactDescriptor,
+    EvalAuthorConfig,
+    EvalAuthorResult,
+    MetricAuthoringResult,
+)
 from nemo_eval_author_plugin.model_config import (
     bridge_author_env_to_experimentalist,
     get_fast_model,
     get_smart_model,
 )
-from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, ResourceRef, Task, TrialResult
+from nemo_experimentalist_plugin.entities import (
+    Dataset,
+    DatasetValidationError,
+    ResourceRef,
+    Task,
+    TrialResult,
+)
 from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
@@ -116,15 +128,20 @@ class EvalAuthor(Agent):
         insight: Insight,
         diagnostics: list[tuple[str, Diagnostic]],
         insight_suite: Dataset,
+        reference_inventory: ReferenceTaskSetInventory,
         runner_conventions: str,
         validation_feedback: str | None = None,
-    ) -> str:
+    ) -> MetricAuthoringResult:
         """Author verifier metrics for the materialized tasks that capture the insight.
 
         Args:
             insight: The insight whose failure mode the tasks should detect.
             diagnostics: Per-trace ``(trace_ref, Diagnostic)`` pairs for concrete evidence.
             insight_suite: The materialized tasks recreated from the Insight's production traces.
+            reference_inventory: Immutable, content-addressed facts about existing
+                reference tasks, duplicate provenance/fingerprints, verifier families,
+                and metric contracts. Use it for compatibility and collision avoidance.
+                It contains no mutable source Dataset and must not be modified.
             runner_conventions: Summary of how this dataset's runner works (from ``discover_runner``).
                 Use this as the authoritative reference for what artifacts exist at
                 evaluation runtime, how tasks are structured, and how to add metrics.
@@ -187,9 +204,12 @@ class EvalAuthor(Agent):
         objects for Y, so X is missing from its context.  Measure whether the agent retrieves
         all required objects, not merely whether X appears in the final answer.
 
-        Return a concise summary naming the new metric key(s), what they measure, and
-        which runtime evidence they score. The caller retains the materialized suite and
-        the user's unchanged train and validation datasets.
+        Return ``MetricAuthoringResult`` with a unique, non-empty metric declaration for
+        every new key plus a concise summary. Each declaration must describe the behavior
+        measured and name the runtime evidence it requires. Keep the fixed
+        ``unit_interval`` scale and ``higher_is_better`` direction. Do not return free
+        text alone. The caller retains the materialized suite; the reference inventory
+        cannot expose or mutate the user's source task sets.
         """  # noqa: D413
         ...
 
@@ -248,8 +268,7 @@ class EvalAuthor(Agent):
         insight: Insight,
         agent_path: Path,
         task_template: Task,
-        train_dataset: Dataset,
-        validation_dataset: Dataset,
+        reference_inventory: ReferenceTaskSetInventory,
         *,
         client: AsyncNeMoPlatform,
     ) -> EvalAuthorResult:
@@ -259,8 +278,7 @@ class EvalAuthor(Agent):
                 insight=insight,
                 agent_path=agent_path,
                 task_template=task_template,
-                train_dataset=train_dataset,
-                validation_dataset=validation_dataset,
+                reference_inventory=reference_inventory,
                 client=client,
             )
         finally:
@@ -271,8 +289,7 @@ class EvalAuthor(Agent):
         insight: Insight,
         agent_path: Path,
         task_template: Task,
-        train_dataset: Dataset,
-        validation_dataset: Dataset,
+        reference_inventory: ReferenceTaskSetInventory,
         *,
         client: AsyncNeMoPlatform,
     ) -> EvalAuthorResult:
@@ -282,8 +299,8 @@ class EvalAuthor(Agent):
             insight: The Insight to investigate with relevant traces.
             agent_path: Agent root, relative to ``experiment_dir`` or absolute.
             task_template: Parsed evaluator task containing explicit placeholders.
-            train_dataset: The train dataset, returned unchanged.
-            validation_dataset: The validation dataset, returned unchanged.
+            reference_inventory: Immutable, split-agnostic context constructed from
+                the request's reference task-set descriptors.
             client: Existing NeMo Platform client used for Intake requests.
         """
         reporter = self._reporter
@@ -300,10 +317,8 @@ class EvalAuthor(Agent):
             if reporter is not None:
                 reporter.note("no trace refs — nothing to analyze")
                 reporter.progress(phase="eval author · complete")
-            return EvalAuthorResult(
-                train_dataset=train_dataset,
-                validation_dataset=validation_dataset,
-                summary="No trace refs on insight — nothing to analyze.",
+            return EvalAuthorResult.no_artifacts(
+                "No trace refs on insight — nothing to analyze.",
             )
 
         insight_suite = InsightSuite(
@@ -394,10 +409,11 @@ class EvalAuthor(Agent):
         runner_conventions = await self.discover_runner(materialized_dataset)
         if reporter is not None:
             reporter.progress(phase="eval author · authoring metrics")
-        summary = await self.author_insight_metrics(
+        authoring_result = await self.author_insight_metrics(
             insight,
             diagnostics,
             materialized_dataset,
+            reference_inventory,
             runner_conventions,
         )
         for repair_attempt in range(self._config.max_validation_repair_attempts + 1):
@@ -419,10 +435,11 @@ class EvalAuthor(Agent):
                         total=self._config.max_validation_repair_attempts,
                         unit="attempt",
                     )
-                summary = await self.author_insight_metrics(
+                authoring_result = await self.author_insight_metrics(
                     insight,
                     diagnostics,
                     materialized_dataset,
+                    reference_inventory,
                     runner_conventions,
                     validation_feedback=str(exc),
                 )
@@ -431,11 +448,13 @@ class EvalAuthor(Agent):
                 if reporter is not None:
                     reporter.progress(phase="eval author · complete")
                 return EvalAuthorResult(
-                    train_dataset=train_dataset,
-                    validation_dataset=validation_dataset,
-                    insight_suite=finalized_suite.dataset,
-                    insight_suite_identity=finalized_suite.identity,
-                    summary=summary,
+                    task_set=ArtifactDescriptor(
+                        uri=finalized_suite.path.resolve().as_uri(),
+                        identity=finalized_suite.identity,
+                    ),
+                    verifier_patch=None,
+                    metric_contract=authoring_result.metric_contract,
+                    summary=authoring_result.summary,
                 )
 
         raise AssertionError("unreachable")
