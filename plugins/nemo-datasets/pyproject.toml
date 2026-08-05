@@ -4,18 +4,19 @@ description = "Dataset profiler for NeMo Platform filesets."
 requires-python = ">=3.11,<3.15"
 dependencies = [
     "nemo-platform-plugin",
-    "pyarrow>=17.0.0",
-    "pyyaml>=6.0.2",
+    "nemo-platform-sdk",
+    "pyarrow>=19.0.1",
     "pydantic>=2.10.3",
-    "typer>=0.20.0,<0.26",
 ]
 version = "0.1.0"
 
 [tool.uv.sources]
 nemo-platform-plugin = { workspace = true }
+nemo-platform-sdk = { workspace = true }
 
-[project.entry-points."nemo.cli"]
-datasets = "nemo_datasets_plugin.cli:DatasetsCLI"
+# Deliberately contributes no `nemo.cli` entry point. The profiler runs as a job task
+# (`python -m nemo_datasets_plugin.tasks.profile`), which is invoked by the platform rather than
+# typed by a user, so its inputs can keep moving while the feature is new.
 
 [build-system]
 requires = ["hatchling"]
