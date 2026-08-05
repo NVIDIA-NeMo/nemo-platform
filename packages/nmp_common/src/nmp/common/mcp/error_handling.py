@@ -10,6 +10,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_ERROR_HINT = "Check the MCP server logs for details, then retry after fixing the request or platform state."
+
 
 def format_error_response(error: Exception) -> dict[str, Any]:
     """
@@ -21,7 +23,7 @@ def format_error_response(error: Exception) -> dict[str, Any]:
         error: The exception to format
 
     Returns:
-        Dictionary with success=False, error message, and error type
+        Dictionary with success=False and a structured error object
 
     Example:
         >>> try:
@@ -30,8 +32,12 @@ def format_error_response(error: Exception) -> dict[str, Any]:
         ...     return format_error_response(e)
     """
     logger.error(f"Error in MCP tool: {error}", exc_info=True)
+    message = str(error) or type(error).__name__
     return {
         "success": False,
-        "error": str(error),
-        "error_type": type(error).__name__,
+        "error": {
+            "code": type(error).__name__,
+            "message": message,
+            "hint": _DEFAULT_ERROR_HINT,
+        },
     }

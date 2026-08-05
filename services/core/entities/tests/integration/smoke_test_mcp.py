@@ -10,10 +10,11 @@ Creates and tests an MCP server instance that is connected to a running NeMo Pla
 from __future__ import annotations
 
 import os
-from typing import Generator
+from typing import Any, Generator
 
 import pytest
 from fastmcp import FastMCP
+from mcp.types import TextContent
 from nemo_platform import NeMoPlatform
 from nmp.common.sdk_factory import get_platform_sdk
 from nmp.core.entities.mcp.server import create_server
@@ -38,6 +39,12 @@ def mcp_server(nmp_base_url: str) -> Generator[FastMCP, None, None]:
     """Create entities MCP server instance."""
     server = create_server(nmp_base_url)
     yield server
+
+
+def _text_content(tool_result: Any) -> str:
+    first_content = tool_result.content[0]
+    assert isinstance(first_content, TextContent)
+    return first_content.text
 
 
 class TestEntitiesMCPServerSmoke:
@@ -78,7 +85,7 @@ class TestEntitiesMCPServerSmoke:
         # Get workspaces via MCP tool
         tool_result = await mcp_server.call_tool("list_workspaces", {})
 
-        mcp_result = json.loads(tool_result.content[0].text)
+        mcp_result = json.loads(_text_content(tool_result))
         assert isinstance(mcp_result, dict)  # Type narrowing for ty
         assert mcp_result["success"] is True
 
@@ -94,20 +101,38 @@ class TestEntitiesMCPServerSmoke:
         )
 
     @pytest.mark.asyncio
-    async def test_list_workspaces_error_handling(self) -> None:
+    async def test_list_workspaces_error_handling(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """
         Verify list_workspaces handles connection errors gracefully.
 
-        Creates a server with invalid URL to test error handling.
+        Creates a server with a controlled failing SDK client to test error handling.
         """
         import json
 
-        bad_server = create_server("http://invalid-host:9999")
+        class FailingWorkspacesClient:
+            def list(self, *args: object, **kwargs: object) -> object:
+                raise RuntimeError("platform unavailable")
+
+        class FailingPlatformClient:
+            workspaces = FailingWorkspacesClient()
+
+        def get_failing_platform_sdk(base_url: str | None = None) -> FailingPlatformClient:
+            _ = base_url
+            return FailingPlatformClient()
+
+        monkeypatch.setattr(
+            "nmp.core.entities.mcp.server.get_platform_sdk",
+            get_failing_platform_sdk,
+        )
+        bad_server = create_server("http://unused.example.com")
         tool_result = await bad_server.call_tool("list_workspaces", {})
 
-        result = json.loads(tool_result.content[0].text)
+        result = json.loads(_text_content(tool_result))
 
         assert isinstance(result, dict)
         assert result["success"] is False, "Should indicate failure"
-        assert "error" in result, "Should contain error message"
-        assert "error_type" in result, "Should contain error type"
+        assert "error_type" not in result
+        assert isinstance(result["error"], dict), "Should contain structured error details"
+        assert result["error"]["code"], "Should contain stable error code"
+        assert result["error"]["message"], "Should contain error message"
+        assert result["error"]["hint"], "Should contain remediation hint"
