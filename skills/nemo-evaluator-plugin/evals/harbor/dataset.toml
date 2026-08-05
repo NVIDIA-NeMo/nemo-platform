@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+[dataset]
+name = "nvidia/nemo-evaluator-plugin"
+description = "Live NeMo Platform evaluator plugin skill evaluation"
+
+[[tasks]]
+name = "nvidia/nemo-evaluator-plugin-001"
