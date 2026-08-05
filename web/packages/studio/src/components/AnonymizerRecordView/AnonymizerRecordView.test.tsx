@@ -3,8 +3,9 @@
 
 import { AnonymizerRecordView } from '@studio/components/AnonymizerRecordView/AnonymizerRecordView';
 import { buildAnonymizerRecord } from '@studio/components/AnonymizerRecordView/parse';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { render, screen, waitFor } from '@testing-library/react';
+import type { FC } from 'react';
+import { MemoryRouter, useLocation } from 'react-router';
 
 const traceRow = {
   biography: 'Bobby, a 40-year-old veterinarian.',
@@ -23,6 +24,8 @@ const traceRow = {
   },
 };
 
+const SearchProbe: FC = () => <span data-testid="search">{useLocation().search}</span>;
+
 const renderRecord = (
   row: Record<string, unknown>,
   outputHeading = 'Replaced',
@@ -34,6 +37,7 @@ const renderRecord = (
         outputHeading={outputHeading}
         record={buildAnonymizerRecord(row, 'biography')}
       />
+      <SearchProbe />
     </MemoryRouter>
   );
 
@@ -67,6 +71,13 @@ describe('AnonymizerRecordView', () => {
 
     expect(screen.getAllByText('Teddy').length).toBeGreaterThan(0);
     expect(screen.queryByText('No Entries Found')).not.toBeInTheDocument();
+  });
+
+  it('rewinds the shared page param instead of leaving it out of range', async () => {
+    renderRecord(traceRow, 'Replaced', '/?page=3');
+
+    await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(''));
+    expect(screen.getByTestId('search').textContent).toBe('');
   });
 
   it('explains when nothing was replaced', () => {
