@@ -10,9 +10,8 @@ interface ResultSummaryProps {
   checks: GuardrailCheckEntity[];
 }
 
-/** Segment/legend colors for the result summary: yellow guarded, green allowed, gray not-run. */
-const GUARDED_BG = 'bg-[var(--color-yellow-600)]';
-const ALLOWED_BG = 'bg-[var(--color-green-200)]';
+const GUARDED_BG = 'bg-[var(--text-color-feedback-warning)]';
+const ALLOWED_BG = 'bg-[var(--text-color-feedback-success)]';
 const NOTRUN_BG = 'bg-[var(--color-gray-200)]';
 
 /** Count of checks by their latest-run verdict: allowed, guarded, or never run. */
@@ -71,7 +70,6 @@ export const ResultSummary: FC<ResultSummaryProps> = ({ checks }) => {
   return (
     <Panel slotHeading="Result Summary">
       <Stack gap="density-lg">
-        {/* Left → right: guarded (yellow), allowed (green), not-run (gray) at the end. */}
         <Flex
           className=" h-2 overflow-hidden rounded-full bg-surface-sunken"
           role="img"
