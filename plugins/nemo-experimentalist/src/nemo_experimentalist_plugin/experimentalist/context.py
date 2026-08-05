@@ -174,8 +174,7 @@ class ExperimentContext:
         """The evaluation component this run was configured with.
 
         Exposed so a composite strategy can hand it to a component it owns — the Coder
-        runs smoke evals of its own. Once the registry lands this becomes
-        ``ctx.component("evaluation", …)`` and this property goes away.
+        runs smoke evals of its own, against work that is not yet a Candidate.
         """
         return self._evaluator
 
@@ -224,10 +223,9 @@ class ExperimentContext:
     async def fork(self, proposal: Proposal) -> Fork:
         """Reserve a working copy for *proposal*, seeded from what it branches off.
 
-        The ignore policy lives here rather than in a Builder because it is host
-        knowledge composed from three owners — this run's own layout, generic hygiene,
-        and the evaluator's scratch — and because three divergent copy paths with three
-        different ignore lists is what this replaces.
+        The ignore policy is host knowledge composed from three owners — this run's
+        layout, generic hygiene, and the evaluator's scratch — so it lives here rather
+        than in a Builder.
 
         Returns:
             Fork: the reserved directory to write into, and the pristine parent it came
@@ -327,10 +325,8 @@ class ExperimentContext:
     async def update_candidate(self, candidate: Candidate, **fields: Any) -> Candidate:
         """Persist changes to a candidate that already exists.
 
-        Update-only, deliberately. The previous create-or-update verb would happily
-        persist a Candidate that had never been through :meth:`commit_candidate`, which
-        is the one thing "no durable record points at partial work" forbids — so the
-        create path is private and this cannot reach it.
+        Update-only: the create path is private, so nothing can persist a Candidate that
+        never went through :meth:`commit_candidate`.
         """
         if not candidate.id:
             raise ValueError(

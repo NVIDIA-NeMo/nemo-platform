@@ -3,19 +3,10 @@
 
 """What a component sees of the run, and the working copy a Builder builds in.
 
-Kept apart from :mod:`context` so a component can depend on the *shape* of the seam
-rather than on the implementation. That is not tidiness: ``roles`` declares what a
-strategy must implement, the implementation reaches the backend, and the backend reaches
-the config tree, which imports the component config slices — so a role that named the
-concrete context would close a cycle through every component in the plugin. Depending on
-a Protocol breaks it, and it is also what lets an out-of-tree strategy type its own
-``run`` without importing our internals.
-
-:class:`BuilderContext` narrows; :class:`StrategyContext` does not, and is not meant to —
-a strategy orchestrates, so it sees everything. Its value is the direction of the
-dependency. The Proposer will want a view of its own when it becomes a resolved component
-in M2; it takes plain arguments today, so writing one now would be guessing at a shape
-with no caller.
+Protocols rather than the concrete context, so a role contract does not import the
+implementation: naming ``ExperimentContext`` in :mod:`roles` closes an import cycle
+through the backend, the config tree, and every component config slice. It also lets an
+out-of-tree strategy type its own ``run`` without importing our internals.
 """
 
 from __future__ import annotations
@@ -49,14 +40,10 @@ class Fork(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     workdir: Path = Field(description="Write here. Seeded from upstream, and this becomes the candidate's artifact.")
+    # Needed even though workdir is seeded from it: once the Builder edits, the parent is
+    # gone from its view, and architecture.md is excluded from the seeding by design.
     upstream: Path | None = Field(
-        default=None,
-        description=(
-            "The pristine parent, read-only; None when forked from the agent under test. "
-            "Needed even though workdir is seeded from it: once the Builder edits, the "
-            "parent is gone from its view, and architecture.md is excluded from the "
-            "seeding by design, so it is reachable nowhere else."
-        ),
+        default=None, description="The pristine parent, read-only; None when forked from the agent under test."
     )
 
 
@@ -117,7 +104,7 @@ class StrategyContext(BuilderContext, Protocol):
     @property
     def evaluation(self) -> Evaluator:
         """The run's configured evaluation component, for a strategy to hand to a
-        component it owns. Becomes ``component("evaluation", …)`` in M2."""
+        component it owns."""
         ...
 
     @property

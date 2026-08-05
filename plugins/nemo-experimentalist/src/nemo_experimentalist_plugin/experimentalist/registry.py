@@ -14,8 +14,7 @@ The entry point's only job is to import the module, so the ``__init_subclass__``
 fires and the class registers itself. First-party components need no entry point: they
 register by being imported, which :func:`load_plugins` also arranges.
 
-Two behaviours are deliberately different, both taken from the platform's
-customization-contributor hub — the one surface in this monorepo that gets this right:
+Two behaviours are deliberately different:
 
 * **Resolving** a named component raises on an unknown name. Never skip, never fall back
   to a default: a run configured for ``strategy: bandit`` that quietly runs the
@@ -80,25 +79,22 @@ class Component:
             return
         key = (role, name)
         existing = Component._registry.get(key)
+        # By module and qualname, not object identity: a module executed twice — reloaded,
+        # or reachable under two import paths — re-registers rather than clashing with
+        # itself. Two *different* classes claiming one name still raises.
         if existing is not None and _identity(existing) != _identity(cls):
             raise RuntimeError(
                 f"duplicate component {role}.{name}: {existing.__module__}.{existing.__qualname__} "
                 f"and {cls.__module__}.{cls.__qualname__}"
             )
-        # Compared by module and qualified name rather than by object identity, so a
-        # module that gets executed twice — reloaded, or reachable under two import
-        # paths — re-registers the same component instead of reporting a clash between a
-        # class and itself. A genuine clash is two *different* classes claiming one name,
-        # and that still raises.
         Component._registry[key] = cls
 
 
 def load_plugins(*, force: bool = False) -> None:
     """Import every installed component package so its classes self-register.
 
-    Idempotent via the module flag below; re-importing would be a no-op anyway because
-    of ``sys.modules``. A broken third-party entry point is logged and skipped rather
-    than raised, so it only breaks runs that actually name it.
+    Idempotent. A broken third-party entry point is logged and skipped rather than
+    raised, so it only breaks runs that actually name it.
     """
     global _loaded
     if _loaded and not force:

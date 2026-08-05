@@ -146,7 +146,7 @@ async def test_a_candidate_cannot_be_updated_into_existence(tmp_path: Path) -> N
     # Assembled by hand rather than committed, so it has no store id — exactly the shape
     # a component could otherwise smuggle into the store.
     never_committed = make_candidate(label="agent-7", ancestor=None)
-    never_committed._id = ""  # assembled by hand rather than committed, so it has no store id
+    never_committed._id = ""
 
     with pytest.raises(ValueError, match="never by updating one into existence"):
         await ctx.update_candidate(never_committed, killed_generation=3)
@@ -383,3 +383,19 @@ async def test_the_store_itself_hides_discarded_candidates(tmp_path: Path) -> No
     # The record is still on disk, marked — not removed.
     stored = json.loads((tmp_path / "eval-and-optimize" / "candidates" / f"{baseline.id}.json").read_text())
     assert stored["discarded"] is True
+
+
+def test_a_candidate_keeps_its_identity_through_serialization() -> None:
+    """Selection crosses a JSON boundary, and identity has to survive it.
+
+    Survivors are the return value of an LLM method, so they arrive validated from the
+    model's JSON rather than as the objects that went in. `id` is a computed field backed
+    by a private attribute, so without restoring it a survivor comes back with an empty
+    id while its label looks fine — and `survived = {s.id for s in survivors}` becomes
+    `{""}`, which marks every candidate in the round killed.
+    """
+    candidate = make_candidate(label="agent-1", ancestor="id-agent-0", candidate_id="a-real-uuid")
+
+    assert Candidate.model_validate(candidate.model_dump()).id == "a-real-uuid"
+    assert Candidate.model_validate_json(candidate.model_dump_json()).id == "a-real-uuid"
+    assert candidate.slim().id == "a-real-uuid"

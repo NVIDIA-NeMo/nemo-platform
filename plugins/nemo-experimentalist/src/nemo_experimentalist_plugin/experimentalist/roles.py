@@ -3,17 +3,12 @@
 
 """The roles a component can fill, and what each must implement.
 
-Two roles are resolvable in M1: the ``strategy`` the runner runs, and the ``builder`` that
-turns one Proposal into one Candidate. The rest — proposer, selector, terminator,
-root-cause-analyzer, trajectory-scorer — are still constructed directly by the
-evolutionary strategy and become registry citizens in M2.
+Each class sets ``role`` and leaves ``name`` empty, so it declares a slot without
+claiming to implement it.
 
-Each class here sets ``role`` and leaves ``name`` empty, so it declares a slot without
-registering as an implementation of it.
-
-A role's *signature* is owned by whatever resolves it, not by this module: an out-of-tree
-builder targets the evolutionary strategy's ``builder`` contract, because that strategy is
-what calls it. These are the contracts as that strategy states them.
+A role's *signature* is owned by whatever resolves it, not by this module: an
+out-of-tree builder targets the evolutionary strategy's ``builder`` contract, because
+that strategy is what calls it.
 """
 
 from __future__ import annotations
@@ -132,15 +127,8 @@ class Builder(Component):
 
     role: ClassVar[str] = "builder"
 
-    #: Proposal kinds this Builder can build.
-    #:
-    #: Checked per proposal at build time: the strategy drops one whose ``kind`` no
-    #: configured Builder accepts, and logs it. That is weaker than §3.2 wants — it
-    #: describes a resolution-time check that every kind the Proposer *produces* is
-    #: covered, so a mismatch fails before the run spends anything rather than after
-    #: hours. The check cannot exist yet: ``produces`` lives on the Proposer, and the
-    #: Proposer is not a resolved component until M2. Until then a mismatched pairing
-    #: yields rounds that build nothing.
+    #: Proposal kinds this Builder accepts. The strategy drops a proposal no configured
+    #: Builder claims, so a Proposer and Builder that disagree produce empty rounds.
     accepts: ClassVar[frozenset[str]] = frozenset()
 
     async def build(self, ctx: BuilderContext, proposal: Proposal, *, generation: int) -> Candidate:

@@ -219,8 +219,7 @@ class EvolutionTree:
         """Designate the node under *key* as the best, clearing all other best flags.
 
         *key* is a candidate id, which is what :meth:`add` files nodes under. Raising on
-        an unknown key is deliberate: a display label passed here would otherwise no-op,
-        and the caller would find out at the next lookup.
+        an unknown key is deliberate: a display label would otherwise no-op silently.
 
         Raises:
             KeyError: if no node is filed under *key*.

@@ -538,7 +538,7 @@ async def test_rollback_hides_the_record_so_nothing_downstream_sees_it(tmp_path:
 
 @pytest.mark.asyncio
 async def test_an_interrupted_round_zero_does_not_mint_a_second_baseline(monkeypatch, tmp_path) -> None:
-    """Ids are uuids now, so re-committing the baseline no longer overwrites idempotently.
+    """A second baseline is a second candidate, not an overwrite of the first.
 
     A crash during round-0 evaluation leaves run.json but no round analysis, so the
     runner resumes and the loop re-enters its fresh-start branch.

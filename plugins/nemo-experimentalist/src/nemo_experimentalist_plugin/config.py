@@ -14,9 +14,7 @@ models -- is a deployment setting, lives in ``settings.py`` as a :class:`NemoCon
 every other plugin's, and *does* let the environment win over the config file.
 
 Component-owned slices (``CoderConfig``, ``AnalyzerConfig``, ...) are imported from the
-components that consume them rather than redeclared here -- ``resolve.py`` used to carry a
-second copy of each because importing a component module required credentials, which it no
-longer does.
+components that consume them rather than redeclared here.
 """
 
 from pathlib import Path

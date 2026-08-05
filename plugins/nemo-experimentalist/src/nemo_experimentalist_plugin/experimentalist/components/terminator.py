@@ -101,9 +101,6 @@ class Terminator(Agent, roles.Terminator):
         when there is no prior analysis to reason about or when the convergence
         there is no prior round to compare against. Otherwise consults :meth:`_has_converged`.
 
-        Selecting no terminator at all is how a run stops only on its round budget; by
-        the time this is called, one was chosen.
-
         Args:
             evolution_tree: Live tree of scored candidates across rounds.
             prior_analysis: Markdown analysis from the previous round, if any.

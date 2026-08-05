@@ -176,17 +176,35 @@ def test_agent_class_docstrings_stay_prompt_shaped() -> None:
     vocabulary it cannot act on, and nothing else in the suite would notice. Design notes
     belong in comments above the class.
     """
+    from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
     from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.proposer import Proposer
+    from nemo_experimentalist_plugin.experimentalist.components.selector import ParetoDiversitySelector
+    from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
+    from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import GroupLeafScorer
     from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
-    for agent in (Coder, EvolutionaryStrategy):
-        prompt = agent.__doc__ or ""
-        assert prompt.strip(), f"{agent.__name__} has no system prompt"
-        assert ":class:" not in prompt, (
-            f"{agent.__name__}'s system prompt carries Sphinx role markup meant for developers"
+    agents = (
+        Coder,
+        EvolutionaryStrategy,
+        Proposer,
+        Terminator,
+        AgentAnalyzer,
+        GroupLeafScorer,
+        ParetoDiversitySelector,
+    )
+    for agent in agents:
+        prompt = (agent.__doc__ or "").strip()
+        assert prompt, f"{agent.__name__} has no system prompt"
+        # Length is the blunt guard that catches what a keyword list will not: a prompt
+        # that has grown into design documentation is spent on the model at every call.
+        assert len(prompt.splitlines()) <= 3, (
+            f"{agent.__name__}'s system prompt is {len(prompt.splitlines())} lines; "
+            "design notes belong in a comment above the class"
         )
-        for leaked in ("ctx.evaluate", "commit_candidate", "BuilderContext", "ExperimentContext"):
-            assert leaked not in prompt, f"{agent.__name__}'s system prompt leaks host vocabulary: {leaked}"
+        assert ":class:" not in prompt, f"{agent.__name__}'s prompt carries Sphinx markup"
+        for leaked in ("ctx.", "commit_candidate", "BuilderContext", "ExperimentContext", "Candidate", "AAD"):
+            assert leaked not in prompt, f"{agent.__name__}'s prompt leaks host vocabulary: {leaked}"
 
 
 def test_subclassing_a_registered_component_is_allowed() -> None:

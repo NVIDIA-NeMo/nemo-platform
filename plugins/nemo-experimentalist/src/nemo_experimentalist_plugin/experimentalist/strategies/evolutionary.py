@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Evolutionary optimization loop — ported from AAD ``optimizer/optimize_agent.py``.
+"""The default strategy: a Pareto evolutionary loop over candidate agents.
 
-The public entry point is :class:`EvolutionaryStrategy`.
+Orchestrates baseline → [stop? → select → train-eval → analyze → propose → build →
+record → validation-eval] across rounds, delegating every step to a resolved component.
 """
 
 from __future__ import annotations
@@ -290,12 +291,7 @@ class AnalysisSkill(Skill):
 
 
 class EvolutionaryStrategy(Agent, Strategy):
-    """The Experimentalist's deterministic Pareto optimization loop.
-
-    Orchestrates the baseline → [convergence-check → select → train-eval →
-    analyze → propose → implement → record → validation-eval] cycle across
-    rounds, mirroring the AAD ``EvolutionaryStrategy``.
-    """
+    """Merge each round's per-agent analyses, and write the run's optimization report."""
 
     #: Resolvable as ``strategy: evolutionary``. Ours registers exactly like a third
     #: party's — there is no privileged built-in.
@@ -745,9 +741,8 @@ class EvolutionaryStrategy(Agent, Strategy):
 
         A crash during round 0 leaves ``run.json`` behind but no round analysis, so the
         runner resumes and this branch runs again. Candidate ids are uuids now, so a
-        second commit no longer overwrites the first the way a label-keyed record did —
-        it mints a duplicate baseline that is re-evaluated, offered to the Proposer, and
-        published to the same branch as the original.
+        second commit mints a duplicate baseline that is re-evaluated, offered to the
+        Proposer, and published to the same branch as the original.
         """
         if any(candidate.is_baseline for candidate in await ctx.candidates()):
             logger.info("[RESUME] baseline already committed; not creating a second one")
@@ -890,9 +885,8 @@ class EvolutionaryStrategy(Agent, Strategy):
         pending = [
             candidate
             for candidate in candidates
-            # One channel-presence check replaces the old pair of `insight_reward is None`
-            # / `insight_reward_details is None`: a RewardRecord carries metrics and trials
-            # together, and an empty `trials` is valid cached state, not a missing measurement.
+            # Channel presence, not emptiness: a RewardRecord carries metrics and trials
+            # together, and empty `trials` is valid cached state, not a missing measurement.
             if "insight" not in candidate.rewards
             or candidate_suite_identity(candidate) != provenance.identity
             or not candidate_metric_keys(candidate)
@@ -1359,9 +1353,8 @@ class EvolutionaryStrategy(Agent, Strategy):
     async def _finalize(self, *, evolution_tree: EvolutionTree, selector: Selector) -> Candidate | None:
         """Pick the winner and write this strategy's own report; return the winner.
 
-        Everything host-owned that used to happen here — restoring the held-out splits,
-        copying the winner into the workspace, closing out the run entity, and the
-        Insight-suite report sections — belongs to the runner now.
+        Restoring held-out splits, copying the winner out, closing the run entity and
+        the Insight-suite report sections are the runner's.
         """
         best = selector.winner([n.candidate for n in evolution_tree.nodes.values()])
         if best is None:

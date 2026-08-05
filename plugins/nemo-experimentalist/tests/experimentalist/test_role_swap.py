@@ -193,10 +193,8 @@ def test_an_installed_out_of_tree_package_is_discovered() -> None:
 async def test_the_round_budget_bounds_the_loop_without_a_terminator() -> None:
     """`max_rounds` must hold even when no terminator is selected.
 
-    The loop used to be `while True`, with the only bound living inside the default
-    terminator's budget check. Selecting a different terminator — or none — therefore
-    removed the budget too, and the run kept proposing until something else failed. A
-    component's opinion must not be the only thing between a config and an unbounded run.
+    A component's opinion must not be the only thing between a config and an unbounded
+    run, so the bound cannot live inside whichever terminator happens to be selected.
     """
     import inspect
 

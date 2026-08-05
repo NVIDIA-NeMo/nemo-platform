@@ -215,9 +215,8 @@ def test_reward_summary_is_separate_from_the_dimensions() -> None:
 def test_writing_a_channel_replaces_it() -> None:
     """A channel is measured once, so the mapping is a plain assignment.
 
-    The old accessor merged, to protect a second writer from dropping the first's
-    metrics. Nothing writes a channel twice now — the Builder commits, then the strategy
-    records — and merge semantics would instead hide a genuine double-write.
+    A channel is written once — the Builder commits, then the strategy records — so merge
+    semantics would hide a genuine double-write rather than protect against one.
     """
     from doubles import make_candidate
 

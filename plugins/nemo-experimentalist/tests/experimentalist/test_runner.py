@@ -187,7 +187,7 @@ async def test_the_winner_is_copied_out_without_any_owners_scaffolding(monkeypat
     assert (root / "main.py").read_text() == "print('hello')\n"
     for scaffolding in ("architecture.md", "harbor_wrapper.py"):
         assert not (root / scaffolding).exists(), scaffolding
-    # Candidate metadata lives in its own store, so this name is no longer the host's
+    # Candidate metadata lives in its own store, so this name is not the host's
     # to strip — a strategy that writes one has produced real output.
     assert (root / "metadata.json").exists()
 

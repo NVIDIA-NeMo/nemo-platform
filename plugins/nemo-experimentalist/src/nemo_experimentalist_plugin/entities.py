@@ -597,6 +597,22 @@ class Candidate(NemoEntity, entity_type="candidate"):
         ),
     )
 
+    @model_validator(mode="wrap")
+    @classmethod
+    def _restore_id_from_json(cls, data: Any, handler: Any) -> "Candidate":
+        """Restore the computed ``id`` when deserializing.
+
+        ``id`` is backed by private ``_id``; it serializes but ``model_validate`` ignores
+        computed fields, so a Candidate that has been through JSON comes back with an
+        empty id while its label survives intact. Selection crosses exactly that boundary
+        — survivors are the return value of an LLM method — and an empty id makes every
+        candidate look unselected, so the round marks all of them killed.
+        """
+        instance = handler(data)
+        if isinstance(data, dict) and data.get("id"):
+            instance._id = data["id"]  # type: ignore[attr-defined]
+        return instance
+
     @model_validator(mode="after")
     def _projections_agree_with_origin(self) -> "Candidate":
         """Reject a record whose derived projections disagree with its origin.

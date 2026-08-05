@@ -54,7 +54,6 @@ logger = logging.getLogger(__name__)
 #: Names the winner's artifact must not carry into the user's workspace, named by the
 #: owner that generates them rather than as one flat list — a third-party strategy's
 #: real output has to survive this, and it cannot if the reason for each entry is lost.
-#: The backend contributes nothing: candidate metadata lives in its own store now.
 _STRATEGY_ARTIFACTS = frozenset({"architecture.md"})
 _EVALUATOR_ARTIFACTS = frozenset({"harbor_wrapper.py", "dind_environment.py"})
 
