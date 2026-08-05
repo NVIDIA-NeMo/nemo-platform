@@ -69,7 +69,8 @@ automatically; you don't call `/evaluator-results` separately for Harbor runs.
 - Two rewards under `extra.verifier_result.rewards` → two `evaluator_results` rows named
   `correctness` and `structure`, aggregated per-evaluator on the read model.
 
-See `harbor-quickstart.md` for mapping a Harbor trial result to this shape.
+See `../../nemo-experiments-upload/references/harbor-quickstart.md` for mapping a Harbor trial result
+to this shape and publishing it as an Evaluation.
 
 ---
 
@@ -113,10 +114,14 @@ See `harbor-quickstart.md` for mapping a Harbor trial result to this shape.
 
 ---
 
-## 3. OTLP (OpenTelemetry spans)
+## 3. OTLP (OpenInference or OTel GenAI spans)
 
 `POST .../ingest/otlp/v1/traces` with `Content-Type: application/x-protobuf` (a standard
 OTLP/HTTP trace export). Response `{ "errors": [] }` (per-span errors collected; HTTP stays 200).
+
+Use this path only when spans carry OpenInference or OTel GenAI semantic conventions. If the runtime
+has neither, capture its OpenAI-compatible requests and responses and use `ingest/chat-completions`;
+generic OTel spans do not provide the semantic fields needed for useful model and tool telemetry.
 
 There is **no JSON `evaluation_context`** here — evaluation identity travels as **span attributes** on
 the root span:

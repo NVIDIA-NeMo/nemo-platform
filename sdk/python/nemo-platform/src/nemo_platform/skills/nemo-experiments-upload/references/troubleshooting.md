@@ -18,7 +18,7 @@ string — read it first.
 |---|---|---|
 | `400 "Evaluation '…' must be created before it can be logged."` | Ingested before the Evaluation existed, or `evaluation_id` typo | Create the Evaluation first; set `evaluation_context.evaluation_id` to its **name** |
 | `400 "Evaluation '…' has been deleted…"` | The referenced Evaluation is soft-deleted | Recreate it or target a live one |
-| `422` on ATIF/chat-completions | Unknown top-level key (both are `extra="forbid"`) | Remove stray keys; check the schema in `ingest-formats.md` |
+| `422` on ATIF/chat-completions | Unknown top-level key (both are `extra="forbid"`) | Remove stray keys; check the schema in `../../nemo-intake/references/ingest-formats.md` |
 | `422` bad `schema_version` (ATIF) | Not one of `ATIF-v1.0` … `ATIF-v1.7` | Use a supported literal |
 | `422` non-sequential `step_id` / duplicate `tool_call_id` (ATIF) | Step/tool-call invariants violated | 1-based sequential `step_id`; unique `tool_call_id`; observation `source_call_id` must resolve |
 | `422 cost_total_usd` unexpected (chat-completions) | Used the wrong cost key | Use top-level `cost_usd` (not `cost_total_usd`, not nested in `response`) |
