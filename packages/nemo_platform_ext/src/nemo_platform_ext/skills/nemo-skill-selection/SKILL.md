@@ -22,18 +22,18 @@ not-for:
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
   - running downstream workflow or state-changing platform commands (each downstream skill owns its own commands)
   - loading multiple downstream skills in one turn
-compatibility: nemo-platform >= 0.1.0; selection plus a read-only host scan; safe under macOS or Linux sandbox; works without an installed CLI (selector can pick setup, which then tells the user how to run the CLI install).
+compatibility: nemo-platform >= 0.1.0; selection plus a host scan on macOS or Linux; works without an installed CLI (selector can pick setup, which then tells the user how to run the CLI install).
 maturity: active
 license: Apache-2.0
 user-invocable: true
-allowed-tools: [Bash, Read]
 ---
 
 # NeMo Platform skill selection
 
-Decide which downstream NeMo Platform skill should run. Execute only the read-only host scan in this
-skill's Pre-flight section, then announce the choice and hand off. Never run downstream workflow or
-state-changing platform commands from this skill.
+Decide which downstream NeMo Platform skill should run. Bash access is unrestricted at runtime and
+can execute state-changing commands; the scope below is a behavioral constraint, not an enforced
+allowlist. Execute only the host scan in this skill's Pre-flight section, then announce the choice
+and hand off. Never run downstream workflow or state-changing platform commands from this skill.
 
 New NeMo Platform agent builds use a Platform-managed `agent.yaml` with
 `config_format: nemo-agents-spec-v1` and a supported harness. NVIDIA NeMo Agent
@@ -87,7 +87,8 @@ lsof -iTCP:8080 -sTCP:LISTEN 2>/dev/null
 curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o /dev/null -w "%{http_code}\n" 2>/dev/null || echo "no-response"
 
 # 3. Conflict check: other platform processes / data dirs / configs on this host?
-ps -eo pid,user,command 2>/dev/null | grep -E "nemo services (run|start)|nemo-platform run" | grep -v grep
+ps -eo pid=,user=,comm=,args= 2>/dev/null \
+  | awk '$0 ~ /[n]emo services (run|start)|[n]emo-platform run/ {print $1, $2, $3}'
 ls -d ~/.local/share/nemo* 2>/dev/null
 ls ~/.config/nmp*/config.yaml 2>/dev/null
 ```
@@ -98,7 +99,7 @@ Interpretation:
 |---|---|---|
 | (1) returns a listener AND (2) returns `200` | the requested downstream skill | Platform is up and ready. Skip `setup`. |
 | (1) returns a listener but (2) returns `no-response` or non-200 | `nemo-status` | Something is bound to :8080 but the platform is not ready. Do not start a second platform. |
-| (1) empty but (3) finds another `nemo services` process OR more than one data dir / config | **stop, do not hand off yet** | Another install on this host, possibly on a different port. Surface the inventory verbatim. Ask whether to tear that one down first, pick a different port + data dir, or abort. Two installs writing to the same `~/.config/nmp/config.yaml` is how users end up with one Studio frontend pointing at the wrong backend. |
+| (1) empty but (3) finds another `nemo services` process OR more than one data dir / config | **stop, do not hand off yet** | Another install on this host, possibly on a different port. Surface only the redacted PID, user, and executable inventory emitted above. Ask whether to tear that one down first, pick a different port + data dir, or abort. Two installs writing to the same `~/.config/nmp/config.yaml` is how users end up with one Studio frontend pointing at the wrong backend. |
 | (1), (2), and (3) all empty | `setup` | Clean machine, no platform installed. |
 
 Read-only callers (this skill, `nemo-status`, the build/try pre-flights) should not trust `nemo services status` or `nemo services ls` as an up-check. Both report stale "running" from a held instance lock after the underlying process has died. The lock reconciles automatically the next time `nemo services run` is invoked, but until that happens, `lsof` is ground truth. (Tracking a CLI-side fix for this so we can drop the workaround from skills.)
@@ -141,7 +142,15 @@ Which one fits what you're trying to do?
 
 For things outside this catalog (for example, "show me how Switchyard routes between models"), point at the relevant repo skill (`nemo-evaluator`, `nemo-auditor`, etc.) or tell the user no skill claims that intent yet. Do not invent a path.
 
-If the pre-flight finds no platform but the user insists they have installed one: ask them to report the output of `lsof -iTCP:8080 -sTCP:LISTEN` and `ps -eo pid,user,command | grep -E "nemo services|nemo-platform run" | grep -v grep` from the shell where they ran setup. The platform may be bound to a non-default port, or the install may be in a venv whose `nemo` binary is not on `PATH`.
+If the pre-flight finds no platform but the user insists they have installed one: ask them to report
+the output of `lsof -iTCP:8080 -sTCP:LISTEN` and the redacted scan below from the shell where they ran
+setup. The platform may be bound to a non-default port, or the install may be in a venv whose `nemo`
+binary is not on `PATH`.
+
+```bash
+ps -eo pid=,user=,comm=,args= 2>/dev/null \
+  | awk '$0 ~ /[n]emo services|[n]emo-platform run/ {print $1, $2, $3}'
+```
 
 ## If the user asks about Studio (web UI)
 

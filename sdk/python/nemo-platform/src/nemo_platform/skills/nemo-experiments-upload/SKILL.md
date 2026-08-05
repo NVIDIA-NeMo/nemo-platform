@@ -41,8 +41,25 @@ unreachable and stop; route to `setup`/`nemo-status` only for a local platform.
 set -euo pipefail
 : "${NMP_BASE_URL:=http://localhost:8080}"
 : "${WORKSPACE:=default}"
+nmp_authority=${NMP_BASE_URL#*://}
+nmp_authority=${nmp_authority%%/*}
+case "${nmp_authority}" in
+  *@*) echo "NMP_BASE_URL must not contain userinfo" >&2; exit 1 ;;
+esac
 case "${NMP_BASE_URL}" in
-  https://*|http://localhost|http://localhost:*|http://127.0.0.1|http://127.0.0.1:*) ;;
+  https://*) ;;
+  http://*)
+    case "${nmp_authority}" in
+      localhost|127.0.0.1) ;;
+      localhost:*|127.0.0.1:*)
+        nmp_port=${nmp_authority#*:}
+        case "${nmp_port}" in
+          ""|*[!0-9]*) echo "loopback NMP_BASE_URL has an invalid port" >&2; exit 1 ;;
+        esac
+        ;;
+      *) echo "HTTP NMP_BASE_URL must use exactly localhost or 127.0.0.1" >&2; exit 1 ;;
+    esac
+    ;;
   *) echo "remote NMP_BASE_URL must use https://" >&2; exit 1 ;;
 esac
 if curl -sf "${NMP_BASE_URL}/health/ready" >/dev/null; then
