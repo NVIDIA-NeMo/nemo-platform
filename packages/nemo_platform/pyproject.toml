@@ -574,7 +574,6 @@ anonymizer = "nemo_anonymizer_plugin.skills:get_skills_path"
 guardrails = "nemo_guardrails_plugin.skills:get_skills_path"
 platform = "nemo_platform.skills:skills_dir"
 safe-synthesizer = "nemo_safe_synthesizer_plugin.skills:get_skills_path"
-
 [tool.uv.sources]
 nemo-platform-sdk = { workspace = true }
 nemo-platform-ext = { workspace = true }

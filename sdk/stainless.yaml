@@ -254,6 +254,7 @@ resources:
       filesets:
         models:
           fileset_filter: FilesetFilter
+          reviewme_files_filesets_fileset_metadata: FilesetMetadata
         methods:
           create: post /apis/files/v2/workspaces/{workspace}/filesets
           list: get /apis/files/v2/workspaces/{workspace}/filesets
@@ -330,27 +331,22 @@ resources:
       pangea_rail_config: PangeaRailConfig
       pangea_rail_options: PangeaRailOptions
       patronus_evaluate_api_params: PatronusEvaluateApiParams
-      patronus_evaluate_config: PatronusEvaluateConfigOutput
-      patronus_evaluate_config_param: PatronusEvaluateConfigInput
       patronus_evaluation_success_strategy: PatronusEvaluationSuccessStrategy
-      patronus_rail_config: PatronusRailConfigOutput
-      patronus_rail_config_param: PatronusRailConfigInput
       polygraf_detection: PolygrafDetection
       polygraf_detection_options: PolygrafDetectionOptions
       private_ai_detection: PrivateAIDetection
       private_ai_detection_options: PrivateAIDetectionOptions
       rail_status: RailStatus
-      rails: RailsOutput
-      rails_config: RailsConfigOutput
-      rails_config_data: RailsConfigDataOutput
-      rails_config_data_param: RailsConfigDataInput
-      rails_config_param: RailsConfigInput
-      rails_param: RailsInput
       reasoning_config: ReasoningConfig
       regex_detection: RegexDetection
       regex_detection_options: RegexDetectionOptions
       remote_hf_classifier_config: RemoteHFClassifierConfig
       retrieval_rails: RetrievalRails
+      reviewme_guardrail_patronus_evaluate_config: PatronusEvaluateConfig
+      reviewme_guardrail_patronus_rail_config: PatronusRailConfig
+      reviewme_guardrail_rails: Rails
+      reviewme_guardrail_rails_config: RailsConfig
+      reviewme_guardrail_rails_config_data: RailsConfigData
       sensitive_data_detection: SensitiveDataDetection
       sensitive_data_detection_options: SensitiveDataDetectionOptions
       single_call_config: SingleCallConfig
@@ -526,11 +522,7 @@ resources:
       compute_resource_spec: ComputeResourceSpec
       compute_resources: ComputeResources
       container_spec: ContainerSpec
-      cpu_execution_provider: CPUExecutionProviderOutput
-      cpu_execution_provider_param: CPUExecutionProviderInput
       create_platform_job_request: CreatePlatformJobRequest
-      distributed_gpu_execution_provider: DistributedGPUExecutionProviderOutput
-      distributed_gpu_execution_provider_param: DistributedGPUExecutionProviderInput
       docker_job_execution_profile: DockerJobExecutionProfile
       docker_job_execution_profile_config: DockerJobExecutionProfileConfig
       docker_job_network_config: DockerJobNetworkConfig
@@ -538,8 +530,6 @@ resources:
       docker_volume_mount: DockerVolumeMount
       docker_workload_identity_config: DockerWorkloadIdentityConfig
       e2e_job_execution_profile: E2EJobExecutionProfile
-      gpu_execution_provider: GPUExecutionProviderOutput
-      gpu_execution_provider_param: GPUExecutionProviderInput
       image_pull_secret: ImagePullSecret
       job_execution_profile_config: JobExecutionProfileConfig
       kubernetes_config_map_volume: KubernetesConfigMapVolume
@@ -559,11 +549,12 @@ resources:
       platform_job_responses_page: PlatformJobResponsesPage
       platform_job_secret_environment_variable_ref: PlatformJobSecretEnvironmentVariableRef
       platform_job_sort_field: PlatformJobSortField
-      platform_job_spec: PlatformJobSpecOutput
-      platform_job_spec_param: PlatformJobSpecInput
-      platform_job_step_spec: PlatformJobStepSpecOutput
-      platform_job_step_spec_param: PlatformJobStepSpecInput
       platform_jobs_list_filter: PlatformJobsListFilter
+      reviewme_jobs_cpu_execution_provider: CPUExecutionProvider
+      reviewme_jobs_distributed_gpu_execution_provider: DistributedGPUExecutionProvider
+      reviewme_jobs_gpu_execution_provider: GPUExecutionProvider
+      reviewme_jobs_platform_job_spec: PlatformJobSpec
+      reviewme_jobs_platform_job_step_spec: PlatformJobStepSpec
       step_lifecycle: StepLifecycle
       subprocess_execution_provider: SubprocessExecutionProvider
       subprocess_job_execution_profile: SubprocessJobExecutionProfile
@@ -741,8 +732,6 @@ resources:
       # level. Pin both Output and Input variants in $shared so sync-models does not re-home
       # them under `files`, which would break ``from nemo_platform.types.shared import
       # FilesetMetadata`` imports downstream (models service tests).
-      fileset_metadata: FilesetMetadataOutput
-      fileset_metadata_param: FilesetMetadataInput
       dataset_metadata_content: DatasetMetadataContent
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat

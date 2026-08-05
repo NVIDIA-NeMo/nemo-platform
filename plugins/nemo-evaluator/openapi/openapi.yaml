@@ -1630,8 +1630,8 @@ components:
       properties:
         target:
           anyOf:
-          - $ref: '#/components/schemas/ModelTargetInput'
-          - $ref: '#/components/schemas/AgentTargetInput'
+          - $ref: '#/components/schemas/ModelTarget'
+          - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
@@ -1644,7 +1644,7 @@ components:
           description: Precomputed trials to score directly (offline eval), instead
             of generating them from a `target`. Mutually exclusive with `target`.
           items:
-            $ref: '#/components/schemas/AgentEvalTrialInput'
+            $ref: '#/components/schemas/AgentEvalTrial'
           type: array
         max_concurrent_tasks:
           type: integer
@@ -1796,8 +1796,8 @@ components:
       properties:
         target:
           anyOf:
-          - $ref: '#/components/schemas/ModelTargetOutput'
-          - $ref: '#/components/schemas/AgentTargetOutput'
+          - $ref: '#/components/schemas/ModelTarget'
+          - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
@@ -1810,7 +1810,7 @@ components:
           description: Precomputed trials to score directly (offline eval), instead
             of generating them from a `target`. Mutually exclusive with `target`.
           items:
-            $ref: '#/components/schemas/AgentEvalTrialOutput'
+            $ref: '#/components/schemas/AgentEvalTrial'
           type: array
         max_concurrent_tasks:
           type: integer
@@ -1948,7 +1948,7 @@ components:
       title: AgentEvalTaskSpec
       description: 'Canonical task DTO: metrics fully resolved to inline bundles,
         reconstructed at run time.'
-    AgentEvalTrialInput:
+    AgentEvalTrial:
       properties:
         id:
           type: string
@@ -1969,7 +1969,7 @@ components:
             is completed.
         evidence:
           allOf:
-          - $ref: '#/components/schemas/CandidateEvidenceInput'
+          - $ref: '#/components/schemas/CandidateEvidence'
           description: Named evidence descriptors (final state, traces, logs, ...)
             captured for the trial.
         metadata:
@@ -1983,45 +1983,7 @@ components:
       - id
       - task_id
       - status
-      title: AgentEvalTrialInput
-      description: 'Durable trial artifact for one task: output, evidence, status,
-        and metadata.'
-    AgentEvalTrialOutput:
-      properties:
-        id:
-          type: string
-          title: Id
-          description: Stable identifier for this trial.
-        task_id:
-          type: string
-          title: Task Id
-          description: Identifier of the AgentEvalTask this trial was produced for.
-        status:
-          allOf:
-          - $ref: '#/components/schemas/AgentEvalTrialStatus'
-          description: Lifecycle status of the trial.
-        output:
-          allOf:
-          - $ref: '#/components/schemas/AgentOutput'
-          description: Final agent output captured for the trial; required when status
-            is completed.
-        evidence:
-          allOf:
-          - $ref: '#/components/schemas/CandidateEvidenceOutput'
-          description: Named evidence descriptors (final state, traces, logs, ...)
-            captured for the trial.
-        metadata:
-          additionalProperties: true
-          type: object
-          title: Metadata
-          description: Free-form metadata associated with the trial.
-      additionalProperties: false
-      type: object
-      required:
-      - id
-      - task_id
-      - status
-      title: AgentEvalTrialOutput
+      title: AgentEvalTrial
       description: 'Durable trial artifact for one task: output, evidence, status,
         and metadata.'
     AgentEvalTrialStatus:
@@ -2195,7 +2157,7 @@ components:
       title: AgentOutput
       description: Captured final output from the evaluated agent, model, or imported
         baseline for a trial.
-    AgentTargetInput:
+    AgentTarget:
       properties:
         kind:
           type: string
@@ -2221,42 +2183,7 @@ components:
       type: object
       required:
       - agent
-      title: AgentTargetInput
-      description: 'Generate trials by calling a generic HTTP or NeMo Agent Toolkit
-        target.
-
-
-        The selected agent variant owns its request and response profile, so there
-        is no
-
-        separate prompt template here.'
-    AgentTargetOutput:
-      properties:
-        kind:
-          type: string
-          const: agent
-          title: Kind
-          default: agent
-        agent:
-          oneOf:
-          - $ref: '#/components/schemas/GenericAgent'
-          - $ref: '#/components/schemas/NemoAgentToolkitAgent'
-          title: Agent
-          description: The agent endpoint to generate trials against.
-          discriminator:
-            propertyName: format
-            mapping:
-              generic: '#/components/schemas/GenericAgent'
-              nemo_agent_toolkit: '#/components/schemas/NemoAgentToolkitAgent'
-        params:
-          allOf:
-          - $ref: '#/components/schemas/RunConfigOnline'
-          description: Optional online-inference parameters for trial generation.
-      additionalProperties: false
-      type: object
-      required:
-      - agent
-      title: AgentTargetOutput
+      title: AgentTarget
       description: 'Generate trials by calling a generic HTTP or NeMo Agent Toolkit
         target.
 
@@ -2424,7 +2351,7 @@ components:
       - value_json_schema
       title: BundledMetricOutputSpec
       description: JSON-safe projection of a runtime metric output spec.
-    CandidateEvidenceInput:
+    CandidateEvidence:
       properties:
         descriptors:
           additionalProperties:
@@ -2440,25 +2367,7 @@ components:
           description: Free-form metadata associated with the evidence collection.
       additionalProperties: false
       type: object
-      title: CandidateEvidenceInput
-      description: Named evidence descriptors attached to an AgentEvalTrial.
-    CandidateEvidenceOutput:
-      properties:
-        descriptors:
-          additionalProperties:
-            $ref: '#/components/schemas/EvidenceDescriptor'
-          type: object
-          title: Descriptors
-          description: Evidence descriptors keyed by name (e.g. 'final_state', 'trace',
-            'logs').
-        metadata:
-          additionalProperties: true
-          type: object
-          title: Metadata
-          description: Free-form metadata associated with the evidence collection.
-      additionalProperties: false
-      type: object
-      title: CandidateEvidenceOutput
+      title: CandidateEvidence
       description: Named evidence descriptors attached to an AgentEvalTrial.
     CloudpickleMetricPayload:
       properties:
@@ -3649,7 +3558,7 @@ components:
       - name
       title: Model
       description: Model definition for use without persisting to the Models API.
-    ModelTargetInput:
+    ModelTarget:
       properties:
         kind:
           type: string
@@ -3676,40 +3585,7 @@ components:
       type: object
       required:
       - model
-      title: ModelTargetInput
-      description: 'Generate trials by calling a Model (OpenAI-compatible) endpoint.
-
-
-        The prompt template *is* the request sent to the model, so it lives here with
-        the endpoint.'
-    ModelTargetOutput:
-      properties:
-        kind:
-          type: string
-          const: model
-          title: Kind
-          default: model
-        model:
-          allOf:
-          - $ref: '#/components/schemas/Model'
-          description: The model endpoint to generate trials against.
-        prompt_template:
-          anyOf:
-          - type: string
-          - additionalProperties: true
-            type: object
-          title: Prompt Template
-          description: How each task maps to the chat/completion request. Defaults
-            to a single user message carrying the task prompt when omitted.
-        params:
-          allOf:
-          - $ref: '#/components/schemas/RunConfigOnlineModel'
-          description: Optional online-inference parameters for trial generation.
-      additionalProperties: false
-      type: object
-      required:
-      - model
-      title: ModelTargetOutput
+      title: ModelTarget
       description: 'Generate trials by calling a Model (OpenAI-compatible) endpoint.
 
 
@@ -4340,6 +4216,10 @@ components:
       description: 'Reference to a platform secret or local environment variable.
         Format: ''secret_name'' (uses request workspace) or ''workspace/secret_name''
         (explicit workspace).'
+      examples:
+      - my-secret
+      - my-workspace/my-secret
+      - NVIDIA_API_KEY
     SemanticReducer:
       type: string
       enum:
