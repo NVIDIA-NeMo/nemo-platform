@@ -81,10 +81,10 @@ An agent's behavior is described by the platform-managed `agent.yaml`:
 |---------|---------|---------|
 | `config_format` | Selects the versioned Platform agent contract. Use `nemo-agents-spec-v1`. | `nemo-agents-spec-v1` |
 | `name` | Provides the agent name used in runtime metadata. | `calculator-agent` |
-| `description` | Summarizes the agent's purpose for users and image metadata. | `Calculator agent executed with Codex` |
+| `description` | Summarizes the agent's purpose for users and image metadata. | `Calculator agent executed with DeepAgents` |
 | `instructions` | Defines shared instructions for every harness. `instructions.system.content` contains the system prompt. | `system.content: You are a concise calculator agent.` |
-| `default_harness` | Selects the entry under `harnesses` that runs by default. | `codex` |
-| `harnesses` | Declares the supported harness adapters and their harness-specific model or runtime settings. | `codex.kind: codex`, `codex.settings.sandbox: read-only` |
+| `default_harness` | Selects the entry under `harnesses` that runs by default. | `deepagents` |
+| `harnesses` | Declares the supported harness adapters and their harness-specific model or runtime settings. | `deepagents.kind: deepagents` |
 | `models` | Declares shared named model bindings. A harness uses `models.default` unless it defines its own model. | `default.provider: nvidia`, `default.model: nvidia-nemotron-3-nano-30b-a3b` |
 | `skills` | Lists skill directories, relative to `agent.yaml`, that are made available to the harness. | `paths: [./skills/math]` |
 | `mcp` | Configures shared MCP servers that expose tools and resources to the harness. | `servers.github.transport: streamable-http`, `servers.github.url: ${GITHUB_MCP_URL}` |
@@ -92,14 +92,14 @@ An agent's behavior is described by the platform-managed `agent.yaml`:
 | `environment` | Configures the agent's runtime workspace, artifacts directory, provider, and provider-specific settings. | `workspace: ./workspace`, `artifacts: ./artifacts` |
 | `telemetry` | Configures telemetry collection and output, including Relay, ATIF, and ATOF settings. | `provider: relay`, `atif.enabled: true`, `atof.enabled: true` |
 
-The calculator agent uses Codex as its harness and the Platform Inference
+The calculator agent uses DeepAgents as its harness and the Platform Inference
 Gateway for model access. It answers arithmetic and numeric comparison
 requests and records ATIF and ATOF telemetry with NeMo Relay:
 
 ```yaml
 config_format: nemo-agents-spec-v1
 name: calculator-agent
-description: Calculator agent executed with Codex
+description: Calculator agent executed with DeepAgents
 
 instructions:
   system:
@@ -107,14 +107,13 @@ instructions:
       You are a concise calculator agent. Solve arithmetic and numeric
       comparison requests yourself and return only the answer.
 
-default_harness: codex
+default_harness: deepagents
 
 harnesses:
-  codex:
-    kind: codex
+  deepagents:
+    kind: deepagents
     settings:
-      sandbox: read-only
-      reasoning_effort: high
+      deepagents: {}
 
 models:
   default:
@@ -145,7 +144,7 @@ telemetry:
     filename_template: trajectory-{session_id}.atif.json
     storage:
       - type: http
-        endpoint: http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif
+        endpoint: http://localhost:8080/apis/intake/v2/workspaces/default/ingest/atif
         timeout_millis: 3000
   atof:
     enabled: true
