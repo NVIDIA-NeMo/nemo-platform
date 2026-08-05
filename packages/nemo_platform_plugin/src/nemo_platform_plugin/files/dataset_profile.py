@@ -214,9 +214,10 @@ class FeatureSchema(BaseModel):
 class CategoricalStats(BaseModel):
     """Cardinality signals for string / int columns.
 
-    ``distinct_count`` is always safe to store; the values themselves ARE row data, so they appear
-    only when proven to be a small enumeration by an exhaustive scan — the same
-    assert-only-what-was-proven rule applied everywhere the profiler would otherwise leak row content.
+    ``distinct_count`` is a count, not row content, and is always safe to store. The values
+    themselves ARE row content, so they appear only for a column whose detected role makes it a
+    controlled vocabulary — the assert-only-what-was-proven rule applied to the one place the
+    profiler would otherwise leak the data it is describing.
     """
 
     distinct_count: int = Field(
@@ -227,7 +228,14 @@ class CategoricalStats(BaseModel):
     )
     values: list[str] | None = Field(
         default=None,
-        description="The proven enumeration; only when the scan was exhaustive and distinct_count <= 32.",
+        description=(
+            "The observed values, present only when this column's `semantic_role` marks it a controlled "
+            "vocabulary (label | provenance | meta | rank) and it holds at most 32 of them. Cardinality "
+            "alone cannot be the gate: it inverts on small data, where every column holds few distinct "
+            "values — free text included — so a three-row dataset had its prompts stored verbatim. A role "
+            "says what a column *is*, at any size. Read `PartitionProfile.stats_complete` to know whether "
+            "this is the whole vocabulary or only what the sampled rows showed."
+        ),
     )
 
 
@@ -237,7 +245,8 @@ class ColumnStats(BaseModel):
     The kind-specific block is populated by dtype; deep measurements fold into it (e.g.
     ``MessageStats.content_chars``) so stats stay flat — no path addressing to drift against the
     schema tree. Never row values — profiles stay safe to display / export without leaking data —
-    with one gated exception: ``categorical.values``, a proven small enumeration.
+    with one role-gated exception: ``categorical.values``, and only for a column whose role makes it
+    a controlled vocabulary rather than free text that happens to repeat.
     """
 
     null_rate: float = Field(default=0.0, ge=0.0, le=1.0)
