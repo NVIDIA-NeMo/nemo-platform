@@ -25,16 +25,20 @@ const parseKeyParts = (key: string): string[] | null => {
   return parts;
 };
 
-const renderMapping = (value: string | undefined, row: Record<string, unknown>): string => {
+const renderMapping = (
+  value: string | undefined,
+  row: Record<string, unknown>,
+  context: Handlebars.HelperOptions
+): string => {
   try {
-    return Handlebars.compile(value ?? '')(row);
+    return Handlebars.compile(value ?? '')(row, context);
   } catch {
     // An in-progress template (e.g. `{{name`) must not break the whole preview.
     return value ?? '';
   }
 };
 
-const applyMappings = (row: Row, mappings: Mapping[]): Row => {
+const applyMappings = (row: Row, mappings: Mapping[], rowNumber: number): Row => {
   const newRow: Record<string, unknown> = {};
 
   const processedRow = Object.fromEntries(
@@ -60,7 +64,9 @@ const applyMappings = (row: Row, mappings: Mapping[]): Row => {
     }
 
     const lastPart = keyParts[keyParts.length - 1];
-    const compiledValue = renderMapping(value, processedRow);
+    const compiledValue = renderMapping(value, processedRow, {
+      data: { row: rowNumber },
+    } as Handlebars.HelperOptions);
 
     try {
       if (compiledValue.trim().startsWith('[') || compiledValue.trim().startsWith('{')) {
@@ -101,8 +107,8 @@ export const useTransformPreview = ({ fileContent, fileType, mappings }: Props) 
 
   const afterRow = useMemo(() => {
     if (!sourceRow || activeMappings.length === 0) return null;
-    return applyMappings(sourceRow, activeMappings);
-  }, [sourceRow, activeMappings]);
+    return applyMappings(sourceRow, activeMappings, rowIndex + 1);
+  }, [sourceRow, activeMappings, rowIndex]);
 
   const totalRows = rows.length;
 

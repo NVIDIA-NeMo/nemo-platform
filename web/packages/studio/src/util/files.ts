@@ -51,8 +51,14 @@ export const getFullFilePath = (filepath: string, folder?: string) => {
  * Tree nodes and API responses use full paths (e.g. `training/data/file.txt`). When the path
  * already contains `/`, it is returned as-is. Only single-segment paths (filename or root-level
  * name) are joined with `folder` — the legacy case for folder-scoped listings.
+ *
+ * Returns an empty string when `filepath` is missing, so callers can detect a
+ * file entry that carries no usable path instead of throwing during render.
  */
-export const resolveDatasetFilePath = (filepath: string, folder?: string) => {
+export const resolveDatasetFilePath = (filepath: string | undefined, folder?: string): string => {
+  if (!filepath) {
+    return '';
+  }
   if (filepath.includes('/')) {
     return filepath;
   }

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
+import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { MappingFields } from '@nemo/common/src/components/form/MappingFields';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { ModelSelect } from '@nemo/common/src/components/ModelSelect';
@@ -11,6 +13,20 @@ import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import { Divider, Flex, Label, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { useDatasetFileTransform } from '@studio/api/datasets/useDatasetFileTransform';
+import { MappingValueHelp } from '@studio/components/FilesTable/TransformFileModal/MappingValueHelp';
+import {
+  columnTemplate,
+  DEFAULT_TARGET_FORMAT,
+  getDefaultMappingValue,
+  getKeyDescriptions,
+  getDefaultOutputFilepath,
+  getKeySuggestions,
+  getPrefilledSchema,
+  getTargetFormatHelp,
+  ROW_NUMBER_TEMPLATE,
+  TARGET_FORMAT_OPTIONS,
+  TargetFormat,
+} from '@studio/components/FilesTable/TransformFileModal/targetFormats';
 import { TransformPreview } from '@studio/components/FilesTable/TransformFileModal/TransformPreview';
 import {
   type TransformFileFormFields,
@@ -22,8 +38,8 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getContentSchema } from '@studio/util/files';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { GitBranch } from 'lucide-react';
-import { useMemo, type ComponentProps, type FC } from 'react';
-import { useForm } from 'react-hook-form';
+import { useCallback, useMemo, type ComponentProps, type FC } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 
 interface Props extends Pick<ComponentProps<typeof FormModal>, 'open' | 'onClose'> {
   filepath?: string;
@@ -40,14 +56,17 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, dataset
   const datasetNameSplit = getPartsFromReference(resolvedDatasetId);
   const workspace = useWorkspaceFromPath();
 
-  const { control, reset, handleSubmit } = useForm<TransformFileFormFields>({
+  const { control, reset, handleSubmit, getValues, setValue } = useForm<TransformFileFormFields>({
     mode: 'onChange',
     resolver: zodResolver(transformFileSchema),
     defaultValues: {
       filepath,
+      outputFilepath: getDefaultOutputFilepath(DEFAULT_TARGET_FORMAT, filepath ?? ''),
+      targetFormat: DEFAULT_TARGET_FORMAT,
       mappings: [],
     },
   });
+  const targetFormat = useWatch({ control, name: 'targetFormat' });
   const resetAndClose = () => {
     reset();
     onClose();
@@ -73,9 +92,34 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, dataset
     return getContentSchema(fileContent, { fileType });
   }, [fileType, fileContent]);
 
+  const sourceColumns = useMemo(() => Object.keys(schema ?? {}), [schema]);
+
+  const valueSuggestions = useMemo(
+    () => [...sourceColumns.map(columnTemplate), ROW_NUMBER_TEMPLATE],
+    [sourceColumns]
+  );
+
+  const mappingSchema = getPrefilledSchema(targetFormat) ?? schema;
+
+  const retargetOutputFilepath = (nextFormat: string) => {
+    if (getValues('outputFilepath') !== getDefaultOutputFilepath(targetFormat, resolvedFilepath)) {
+      return;
+    }
+    setValue(
+      'outputFilepath',
+      getDefaultOutputFilepath(nextFormat as TargetFormat, resolvedFilepath),
+      { shouldValidate: true }
+    );
+  };
+
+  const schemaValueForKey = useCallback(
+    (key: string) => getDefaultMappingValue(targetFormat, key, sourceColumns),
+    [targetFormat, sourceColumns]
+  );
+
   const { mutate: transformFile, isPending } = useDatasetFileTransform({
-    onSuccess: () => {
-      toast.success('Successfully finished file transformation!');
+    onSuccess: (_data, variables) => {
+      toast.success(`Transformed rows written to ${variables.outputFilepath}`);
       resetAndClose();
     },
   });
@@ -94,6 +138,7 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, dataset
       workspace: datasetNameSplit.workspace,
       datasetName: datasetNameSplit.name,
       filepath: resolvedFilepath,
+      outputFilepath: data.outputFilepath.trim(),
       mappings: data.mappings.filter((m) => m.key.trim() !== ''),
       fileContent: fileContent,
       model,
@@ -123,7 +168,8 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, dataset
       <Stack gap="density-xl">
         <Text className="leading-normal">
           Map existing columns to new names, add computed fields, and optionally run inference
-          models on each row to enhance your data with AI-generated content.
+          models on each row to enhance your data with AI-generated content. The result is written
+          to a new file.
         </Text>
         <ValueWithLabel
           labelProps={{ className: 'font-bold' }}
@@ -137,11 +183,32 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath, dataset
           </Flex>
         ) : (
           <Stack gap="density-xl" className="pb-4">
+            <ControlledSelect
+              items={TARGET_FORMAT_OPTIONS}
+              onChange={retargetOutputFilepath}
+              formFieldProps={{
+                slotLabel: <Label className="font-bold">Target Format</Label>,
+                slotHelp: getTargetFormatHelp(targetFormat),
+              }}
+              useControllerProps={{ control, name: 'targetFormat' }}
+            />
+            <ControlledTextInput
+              formFieldProps={{
+                slotLabel: <Label className="font-bold">Output File</Label>,
+                slotHelp: 'Written as JSON Lines. The source file is left unchanged.',
+              }}
+              useControllerProps={{ control, name: 'outputFilepath' }}
+            />
             <MappingFields
               control={control}
               name="mappings"
               disabled={isLoadingFileContent}
-              schema={schema}
+              schema={mappingSchema}
+              schemaValueForKey={schemaValueForKey}
+              keySuggestions={getKeySuggestions(targetFormat)}
+              valueSuggestions={valueSuggestions}
+              keyDescriptions={getKeyDescriptions(targetFormat)}
+              valueColumnInfo={<MappingValueHelp />}
             />
             <TransformPreview control={control} fileContent={fileContent} fileType={fileType} />
             <ModelSelect

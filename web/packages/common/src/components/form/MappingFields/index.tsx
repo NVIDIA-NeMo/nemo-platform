@@ -17,7 +17,7 @@ import type {
 } from '@nemo/common/src/components/form/MappingFields/types';
 import { isDefined } from '@nemo/common/src/utils/isDefined';
 import { Banner, Stack } from '@nvidia/foundations-react-core';
-import { useEffect, useMemo } from 'react';
+import { ReactNode, useEffect, useMemo } from 'react';
 import {
   Control,
   FieldArrayPath,
@@ -98,6 +98,14 @@ export interface MappingFieldsProps<
   valueSuggestions?: string[];
   keyColumnLabel?: string;
   valueColumnLabel?: string;
+  /** Popover content for the info icon beside each column's header label. */
+  keyColumnInfo?: ReactNode;
+  valueColumnInfo?: ReactNode;
+  /**
+   * Help text keyed by mapping key, rendered under whichever row currently holds that key.
+   * Use it to document the fields of a fixed target schema.
+   */
+  keyDescriptions?: Record<string, string>;
   /** Forward props to the key/value field controls (combobox vs text input is chosen automatically). */
   attributes?: {
     keyCombobox?: Partial<KeyValueComboboxPassthrough>;
@@ -120,6 +128,9 @@ export const MappingFields = <
   valueSuggestions: valueSuggestionsProp,
   keyColumnLabel = 'Key',
   valueColumnLabel = 'Value',
+  keyColumnInfo,
+  valueColumnInfo,
+  keyDescriptions,
   attributes,
 }: MappingFieldsProps<TFieldValues, TName>) => {
   const nameStr = name as string;
@@ -217,6 +228,9 @@ export const MappingFields = <
             valueOpts={valueOpts}
             keyColumnLabel={keyColumnLabel}
             valueColumnLabel={valueColumnLabel}
+            keyColumnInfo={keyColumnInfo}
+            valueColumnInfo={valueColumnInfo}
+            description={keyDescriptions?.[watchedRows?.[index]?.key ?? '']}
             keyCombobox={keyComboboxProps}
             valueCombobox={valueComboboxProps}
             keyTextInput={keyTextInputProps}

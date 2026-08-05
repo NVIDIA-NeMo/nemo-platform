@@ -3,7 +3,10 @@
 
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { SidePanel, SidePanelCloseButton } from '@nvidia/foundations-react-core';
-import { FilesetFilePreviewHeader } from '@studio/components/FilesetFilePreviewPanel/components/FilesetFilePreviewHeader';
+import {
+  FilesetFilePreviewHeader,
+  SIDE_PANEL_HEADING_CLASS,
+} from '@studio/components/FilesetFilePreviewPanel/components/FilesetFilePreviewHeader';
 import { FilesetFilePreviewContent } from '@studio/components/FilesetFilePreviewPanel/FilesetFilePreviewContent';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
 import { useRef, type FC } from 'react';
@@ -27,6 +30,8 @@ export interface FilesetFilePreviewPanelProps {
   // File actions
   onDeleteSuccess?: () => void;
   onRenameSuccess?: (newPath: string) => void;
+  /** When true, the header action menu shows the full set (Move, Duplicate, Create Split, Transform, Rename). */
+  isReadWriteDataset?: boolean;
 
   // Optional: pre-fetched data (for performance or when parent already has data)
   file?: FileSystemFile;
@@ -55,6 +60,7 @@ export const FilesetFilePreviewPanel: FC<FilesetFilePreviewPanelProps> = ({
   onFolderClick,
   onDeleteSuccess,
   onRenameSuccess,
+  isReadWriteDataset,
   file: externalFile,
   fileContent,
   isLoading,
@@ -101,6 +107,8 @@ export const FilesetFilePreviewPanel: FC<FilesetFilePreviewPanelProps> = ({
           filesetName={filesetName}
           filePath={filePath}
           file={file}
+          isReadWriteDataset={isReadWriteDataset}
+          actionsPlacement="overlay"
           onFilesetClick={onFilesetClick ? () => closeWith(onFilesetClick) : undefined}
           onFolderClick={
             onFolderClick ? (folderPath) => closeWith(() => onFolderClick(folderPath)) : undefined
@@ -110,7 +118,7 @@ export const FilesetFilePreviewPanel: FC<FilesetFilePreviewPanelProps> = ({
         />
       }
       attributes={{
-        SidePanelHeading: { className: 'font-normal' },
+        SidePanelHeading: { className: SIDE_PANEL_HEADING_CLASS },
         SidePanelCloseButton: { type: 'button' },
       }}
       bordered
@@ -131,6 +139,7 @@ export const FilesetFilePreviewPanel: FC<FilesetFilePreviewPanelProps> = ({
         filesetName={filesetName}
         filePath={filePath}
         file={file}
+        isReadWriteDataset={isReadWriteDataset}
         fileContent={fileContent}
         isLoading={isLoading}
         error={error}

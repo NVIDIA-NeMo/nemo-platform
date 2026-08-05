@@ -16,10 +16,10 @@ import type {
   KeyValueComboboxPassthrough,
   KeyValueTextInputPassthrough,
 } from '@nemo/common/src/components/form/MappingFields/types';
-import { Button, Flex } from '@nvidia/foundations-react-core';
+import { Button, Grid, Text } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
 import { Trash } from 'lucide-react';
-import { memo } from 'react';
+import { memo, ReactNode } from 'react';
 import { Control, FieldValues } from 'react-hook-form';
 
 interface Props<TFieldValues extends FieldValues> {
@@ -34,6 +34,11 @@ interface Props<TFieldValues extends FieldValues> {
   valueOpts: string[];
   keyColumnLabel: string;
   valueColumnLabel: string;
+  /** Popover content for the column header info icons; only the labelled first row shows them. */
+  keyColumnInfo?: ReactNode;
+  valueColumnInfo?: ReactNode;
+  /** Help text for this row's key, rendered beneath the inputs. */
+  description?: string;
   keyCombobox: Partial<KeyValueComboboxPassthrough>;
   valueCombobox: Partial<KeyValueComboboxPassthrough>;
   keyTextInput: Partial<KeyValueTextInputPassthrough>;
@@ -51,6 +56,9 @@ const MappingRowInner = <TFieldValues extends FieldValues>({
   valueOpts,
   keyColumnLabel,
   valueColumnLabel,
+  keyColumnInfo,
+  valueColumnInfo,
+  description,
   keyCombobox,
   valueCombobox,
   keyTextInput,
@@ -87,8 +95,11 @@ const MappingRowInner = <TFieldValues extends FieldValues>({
     ...valueTextRest
   } = valueTextInput;
 
+  /** Only the first row carries the column labels, and with them the info popovers. */
+  const isHeaderRow = index === 0;
+
   return (
-    <Flex gap="density-lg" align="end" justify="between">
+    <Grid className="grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-x-density-lg gap-y-density-xs">
       {keyOpts.length > 0 ? (
         <ControlledCombobox
           {...keyComboboxRest}
@@ -99,12 +110,13 @@ const MappingRowInner = <TFieldValues extends FieldValues>({
           className={cn('font-normal', keyComboboxClassName)}
           attributes={keyComboboxAttributes}
           formFieldProps={{
-            className: 'min-w-0 flex-1 font-bold',
+            className: 'min-w-0 font-bold',
+            slotInfo: isHeaderRow ? keyColumnInfo : undefined,
             ...keyComboboxFormFieldProps,
           }}
           useControllerProps={{ control, name: `${name}.${index}.key`, disabled: isDisabled }}
           items={keyOpts}
-          label={index === 0 ? keyColumnLabel : ''}
+          label={isHeaderRow ? keyColumnLabel : ''}
         />
       ) : (
         <ControlledTextInput
@@ -114,11 +126,12 @@ const MappingRowInner = <TFieldValues extends FieldValues>({
           className={keyTextClassName}
           attributes={keyTextAttributes}
           formFieldProps={{
-            className: 'min-w-0 flex-1',
+            className: 'min-w-0',
+            slotInfo: isHeaderRow ? keyColumnInfo : undefined,
             ...keyTextFormFieldProps,
           }}
           useControllerProps={{ control, name: `${name}.${index}.key`, disabled: isDisabled }}
-          label={index === 0 ? keyColumnLabel : ''}
+          label={isHeaderRow ? keyColumnLabel : ''}
         />
       )}
       {valueOpts.length > 0 ? (
@@ -131,12 +144,13 @@ const MappingRowInner = <TFieldValues extends FieldValues>({
           className={cn('font-normal', valueComboboxClassName)}
           attributes={valueComboboxAttributes}
           formFieldProps={{
-            className: 'min-w-0 flex-1 font-bold',
+            className: 'min-w-0 font-bold',
+            slotInfo: isHeaderRow ? valueColumnInfo : undefined,
             ...valueComboboxFormFieldProps,
           }}
           useControllerProps={{ control, name: `${name}.${index}.value`, disabled: isDisabled }}
           items={valueOpts}
-          label={index === 0 ? valueColumnLabel : ''}
+          label={isHeaderRow ? valueColumnLabel : ''}
         />
       ) : (
         <ControlledTextInput
@@ -146,11 +160,12 @@ const MappingRowInner = <TFieldValues extends FieldValues>({
           className={valueTextClassName}
           attributes={valueTextAttributes}
           formFieldProps={{
-            className: 'min-w-0 flex-1',
+            className: 'min-w-0',
+            slotInfo: isHeaderRow ? valueColumnInfo : undefined,
             ...valueTextFormFieldProps,
           }}
           useControllerProps={{ control, name: `${name}.${index}.value`, disabled: isDisabled }}
-          label={index === 0 ? valueColumnLabel : ''}
+          label={isHeaderRow ? valueColumnLabel : ''}
         />
       )}
       <Button
@@ -164,7 +179,10 @@ const MappingRowInner = <TFieldValues extends FieldValues>({
       >
         <Trash />
       </Button>
-    </Flex>
+      {description ? (
+        <Text className="col-start-1 col-end-2 text-secondary">{description}</Text>
+      ) : null}
+    </Grid>
   );
 };
 

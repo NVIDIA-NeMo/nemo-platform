@@ -252,6 +252,12 @@ describe('resolveDatasetFilePath', () => {
   it('returns multi-segment paths unchanged when folder is empty string', () => {
     expect(resolveDatasetFilePath('a/b/c.txt', '')).toBe('a/b/c.txt');
   });
+
+  it('returns empty string when the filepath is missing', () => {
+    expect(resolveDatasetFilePath(undefined)).toBe('');
+    expect(resolveDatasetFilePath(undefined, 'training')).toBe('');
+    expect(resolveDatasetFilePath('', 'training')).toBe('');
+  });
 });
 
 describe('getContentColumns', () => {

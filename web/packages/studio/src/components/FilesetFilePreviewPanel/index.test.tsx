@@ -5,7 +5,7 @@ import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPa
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-// Mock the useWorkers hook since FileActions uses it
+// Mock the useWorkers hook since the file actions menu downloads via a worker
 vi.mock('@studio/providers/workers/useWorkers', () => ({
   useWorkers: () => ({
     createWorker: vi.fn(),

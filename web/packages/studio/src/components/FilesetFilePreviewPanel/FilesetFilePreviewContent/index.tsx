@@ -25,6 +25,8 @@ export interface FilesetFilePreviewContentProps {
   // File actions
   onDeleteSuccess?: () => void;
   onRenameSuccess?: (newPath: string) => void;
+  /** When true, the header action menu shows the full set (Move, Duplicate, Create Split, Transform, Rename). */
+  isReadWriteDataset?: boolean;
 
   // Optional: pre-fetched data (parent already has the file + content)
   file?: FileSystemFile;
@@ -58,6 +60,7 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
   onFolderClick,
   onDeleteSuccess,
   onRenameSuccess,
+  isReadWriteDataset,
   file: externalFile,
   fileContent: externalContent,
   isLoading: externalLoading,
@@ -138,6 +141,7 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
         filesetName={filesetName}
         filePath={filePath}
         file={file}
+        isReadWriteDataset={isReadWriteDataset}
         onFilesetClick={onFilesetClick}
         onFolderClick={onFolderClick}
         onDeleteSuccess={onDeleteSuccess}

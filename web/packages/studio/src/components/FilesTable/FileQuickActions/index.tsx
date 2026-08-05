@@ -18,6 +18,7 @@ import {
 } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { useSelectedDatasetId } from '@studio/hooks/useSelectedDatasetId';
 import { resolveDatasetFilePath } from '@studio/util/files';
+import { logger } from '@studio/util/logger';
 import { FC, useState } from 'react';
 
 type ModalType = 'createSplit' | 'rename' | 'delete' | 'info' | 'transform' | 'addToFolder';
@@ -33,6 +34,10 @@ interface Props {
   onViewFile?: (filePath: string) => void;
   /** When true, show full menu (Move, Duplicate, Create Split, Transform, Rename). Read/write storage: local, s3. Read-only: ngc, huggingface. */
   isReadWriteDataset?: boolean;
+  /** Callback when the file is successfully deleted */
+  onDeleteSuccess?: () => void;
+  /** Callback when the file is successfully renamed */
+  onRenameSuccess?: (newPath: string) => void;
 }
 export const FileQuickActions: FC<Props> = ({
   datasetId,
@@ -40,6 +45,8 @@ export const FileQuickActions: FC<Props> = ({
   currentFolder,
   onViewFile,
   isReadWriteDataset = false,
+  onDeleteSuccess,
+  onRenameSuccess,
 }) => {
   const [modalFile, setModalFile] = useState<FileSystemNode | undefined>();
   const [openModal, setOpenModal] = useState<ModalType | undefined>();
@@ -86,6 +93,9 @@ export const FileQuickActions: FC<Props> = ({
 
     try {
       const response = await mutateAsync({ workspace, datasetName: name, path });
+      if (response) {
+        onDeleteSuccess?.();
+      }
       return Boolean(response);
     } catch {
       return false;
@@ -100,6 +110,11 @@ export const FileQuickActions: FC<Props> = ({
     setModalFile(file);
     setOpenModal(modal);
   };
+
+  if (!path) {
+    logger.warn('FileQuickActions received a file without a path', file);
+    return null;
+  }
 
   const handleCopyPath = async () => {
     try {
@@ -148,6 +163,7 @@ export const FileQuickActions: FC<Props> = ({
           onClose={() => setOpenModal(undefined)}
           filepath={path}
           datasetId={datasetFullName}
+          onSuccess={onRenameSuccess}
         />
       )}
       {openModal === 'createSplit' && modalFile && (

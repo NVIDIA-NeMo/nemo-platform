@@ -20,6 +20,8 @@ type MutationProps = {
   workspace: string;
   datasetName: string;
   filepath: TransformFileFormFields['filepath'];
+  /** Destination for the transformed rows; the source file is left untouched. */
+  outputFilepath: TransformFileFormFields['outputFilepath'];
   mappings: TransformFileFormFields['mappings'];
   fileContent: string;
   model?: ModelEntity;
@@ -36,7 +38,15 @@ export const useDatasetFileTransform = ({ onError, onSuccess }: Props) => {
   const progPostInferValue = 90;
 
   const mutationFn = useCallback(
-    async ({ fileContent, filepath, model, mappings, workspace, datasetName }: MutationProps) => {
+    async ({
+      fileContent,
+      filepath,
+      outputFilepath,
+      model,
+      mappings,
+      workspace,
+      datasetName,
+    }: MutationProps) => {
       setProgressValue(10);
 
       // Parse JSON objects
@@ -53,7 +63,7 @@ export const useDatasetFileTransform = ({ onError, onSuccess }: Props) => {
       // Re-map each row to the described mappings
       if (mappings) {
         rows = rows
-          .map((row) => {
+          .map((row, rowIndex) => {
             const newRow: Record<string, unknown> = {};
             let skipInvalidRow = false;
             mappings.forEach(({ key, value }) => {
@@ -81,7 +91,7 @@ export const useDatasetFileTransform = ({ onError, onSuccess }: Props) => {
 
               // Handle the last part of the key
               const lastPart = keyParts[keyParts.length - 1];
-              const compiledValue = template(processedRow);
+              const compiledValue = template(processedRow, { data: { row: rowIndex + 1 } });
 
               // Try to parse as JSON if it looks like an array or object
               try {
@@ -155,7 +165,7 @@ export const useDatasetFileTransform = ({ onError, onSuccess }: Props) => {
       const fileContent2 = rows.map((row) => JSON.stringify(row)).join('\n');
       const blob = new Blob([fileContent2], { type: 'application/json' });
 
-      return filesUploadFile(workspace, datasetName, filepath, blob);
+      return filesUploadFile(workspace, datasetName, outputFilepath, blob);
     },
     [createChatCompletions, toast]
   );
@@ -171,7 +181,7 @@ export const useDatasetFileTransform = ({ onError, onSuccess }: Props) => {
           variables.workspace,
           variables.datasetName,
           ['files', 'content'],
-          variables.filepath
+          variables.outputFilepath
         );
         onSuccess?.(data, variables, onMutateResult, context);
       },

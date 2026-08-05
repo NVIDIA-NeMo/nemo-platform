@@ -73,6 +73,13 @@ describe('FileQuickActions', () => {
     expect(screen.getByText('Delete')).toBeInTheDocument();
   });
 
+  it('renders nothing when the file has no path', () => {
+    const pathlessFile = { size: 0, type: 'file', oid: 'oid-none' } as unknown as FileSystemNode;
+    renderComponent({ file: pathlessFile, isReadWriteDataset: true });
+
+    expect(screen.queryByTestId(rootTestId)).not.toBeInTheDocument();
+  });
+
   it('uses currentFolder prop instead of query params', async () => {
     const onViewFile = vi.fn();
     renderComponent({
