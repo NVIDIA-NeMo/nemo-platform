@@ -540,7 +540,7 @@ Run the Analyst for one analysis of an agent's traces.
 | `--workspace` | no | profile `workspace`, else `default` | Workspace to operate in. |
 | `--base-url` | no | `NMP_BASE_URL`, else `http://localhost:8080` | Running platform instance the Analyst's tools call. |
 | `--profile` | no | discovered by walking up from the current working directory | Path to `optimizer.yaml`. |
-| `--insights-file-output` | no | `<profile-dir>/.nemo-optimizer/insights.yaml` when a profile is found, else the Insights API | Read and write Insights from a local YAML file. |
+| `--insights-file-output` | no | off — Insights go to the platform only | Additionally mirror the Insights the platform stored into a local YAML file, platform ids included. Each run merges into the file. |
 | `--verbose` / `-v` | no | off | Stream tool calls and reasoning to standard error. |
 
 ### `nemo insights analysis enable | disable | status`

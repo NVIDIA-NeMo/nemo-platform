@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nemo-agent-config-example-calculator"
+version = "0.1.0"
+description = "A calculator tool server for the nemo-agents-spec-v1 example."
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "mcp>=1.28.1,<2",
+]
+
+[project.scripts]
+calculator-server = "mcps.calculator:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcps"]

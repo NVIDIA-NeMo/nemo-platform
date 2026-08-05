@@ -27,8 +27,9 @@ class FakeBackend:
 
 
 def _stub_pipeline(monkeypatch: pytest.MonkeyPatch, seen: dict[str, object]) -> None:
-    def fake_make_backend(*, client: FakeClient, insights_output: str | None) -> FakeBackend:
+    def fake_make_backend(*, client: FakeClient, insights_output: str | None, local_only: bool) -> FakeBackend:
         seen["backend_client"] = client
+        seen["local_only"] = local_only
         return FakeBackend()
 
     async def fake_run_agent(analyst: object, *, verbose: bool) -> object:
@@ -79,7 +80,7 @@ def test_litellm_compatibility_is_enabled(monkeypatch: pytest.MonkeyPatch) -> No
 async def test_client_closed_when_backend_construction_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeClient()
 
-    def raising_backend(*, client: FakeClient, insights_output: str | None) -> FakeBackend:
+    def raising_backend(*, client: FakeClient, insights_output: str | None, local_only: bool) -> FakeBackend:
         raise RuntimeError("backend failed")
 
     monkeypatch.setattr(run_module, "make_analyst_backend", raising_backend)

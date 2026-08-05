@@ -495,7 +495,6 @@ agents-deployment = "nemo_agents_plugin.runner.controller:AgentDeploymentControl
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.docs"]
 auditor = "nemo_auditor.docs:get_docs_path"
-evaluator = "nemo_evaluator.docs:get_docs_path"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.functions"]

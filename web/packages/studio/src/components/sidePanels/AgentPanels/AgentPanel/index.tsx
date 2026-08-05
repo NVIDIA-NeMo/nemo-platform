@@ -6,6 +6,7 @@ import { Block, SegmentedControl, SidePanel, Stack, Text } from '@nvidia/foundat
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
+import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
 import { AgentDetailsContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/AgentDetailsContent';
 import { ChatPlaygroundContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ChatPlaygroundContent';
 import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
@@ -18,7 +19,6 @@ import {
   isAgentWalkthroughPending,
 } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
-import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
 import { type ComponentProps, type FC, useEffect, useMemo, useRef, useState } from 'react';
 
 export type { AgentPanelTab };

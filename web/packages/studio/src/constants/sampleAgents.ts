@@ -51,6 +51,47 @@ export const SAMPLE_AGENTS: SampleAgent[] = [
   },
 ];
 
+// Eval configs are a SEPARATE registry (EVAL_CONFIG_SAMPLES) on purpose: either
+// paradigm can target any agent, so a config is not owned by an agent.
+export interface EvalConfigSample {
+  key: string;
+  displayName: string;
+  description: string;
+  /** Public path to a reusable nemo-evaluator eval config. */
+  configPath: string;
+  /** Public path to the dataset a dataset-driven config scores over. Seeded into
+   *  the run's fileset alongside the config so the sample is self-contained. */
+  datasetPath?: string;
+  /** Public path to a README seeded beside the config, explaining what the suite
+   *  measures. Best-effort: a fetch failure does not block the submission. */
+  readmePath?: string;
+}
+
+export const EVAL_CONFIG_SAMPLES: EvalConfigSample[] = [
+  {
+    key: 'task_driven',
+    displayName: 'Task-Driven',
+    description:
+      'Inputs are varied tasks, each with its own metrics, so one suite can grade different kinds of work.',
+    configPath: 'sample-agents/email-security-analyst/eval-config.task-driven.json',
+    readmePath: 'sample-agents/email-security-analyst/eval-config.task-driven.README.md',
+  },
+  {
+    key: 'dataset_driven',
+    displayName: 'Dataset-Driven',
+    description:
+      'Inputs are rows in a dataset, each with an ideal response, scored by a common metric set.',
+    configPath: 'sample-agents/email-security-analyst/eval-config.dataset-driven.json',
+    datasetPath: 'sample-agents/email-security-analyst/dataset.jsonl',
+    readmePath: 'sample-agents/email-security-analyst/eval-config.dataset-driven.README.md',
+  },
+];
+
+export const DEFAULT_EVAL_CONFIG_KEY = EVAL_CONFIG_SAMPLES[0].key;
+
+export const getEvalConfigSample = (key: string): EvalConfigSample =>
+  EVAL_CONFIG_SAMPLES.find((sample) => sample.key === key) ?? EVAL_CONFIG_SAMPLES[0];
+
 export type EvaluationSampleAgent = SampleAgent & { evalConfigPath: string };
 
 export const EVALUATION_SAMPLE_AGENTS = SAMPLE_AGENTS.filter(

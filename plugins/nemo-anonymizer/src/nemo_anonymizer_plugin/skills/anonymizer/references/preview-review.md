@@ -2,7 +2,7 @@
 
 Use this when the user has run a preview and asked you to evaluate plugin results before committing to a full run.
 
-Reference docs: `docs/anonymizer/tutorials/preview.md` (frame schema, surfaces, CLI usage). For detection quality, strategy behavior, and rewrite tuning, defer to the [Anonymizer library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) or library skills.
+Reference docs: `docs/anonymizer/tutorials/preview.mdx` (frame schema, surfaces, CLI usage). For detection quality, strategy behavior, and rewrite tuning, defer to the [Anonymizer library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) or library skills.
 
 ## What you get back
 

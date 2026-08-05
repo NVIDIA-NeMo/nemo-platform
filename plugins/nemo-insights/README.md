@@ -43,9 +43,22 @@ explicit command-line flags, then profile values (for `agent`, `agent_spec`,
 and `workspace`) or `NMP_BASE_URL` (for the base URL), then the built-in
 defaults. `--base-url` takes precedence over `NMP_BASE_URL`.
 
-With a discovered profile, analysis reads and writes the shared local output at
-`.nemo-optimizer/insights.yaml` beside `optimizer.yaml`. Pass
-`--insights-file-output` to use a different file explicitly.
+### Where insights are written
+
+Insights always go to the platform, through the Insights plugin API. There is no
+mode that keeps them off it.
+
+Pass `--insights-file-output <path>` to also keep a local copy: the platform is
+written first and the file mirrors what it stored, platform ids included, so a
+later run's updates land in both stores. Each run merges into the file rather
+than overwriting it. Because the platform is the source of truth, a file that
+cannot be written is reported as a warning on the run report instead of failing
+the run.
+
+```bash
+uv run nemo agents analyst run                                  # platform only
+uv run nemo agents analyst run --insights-file-output out.yaml  # platform + local mirror
+```
 
 ```bash
 uv run nemo agents analyst run \

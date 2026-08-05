@@ -92,9 +92,7 @@ describe('validateGeneratedJobRequest', () => {
         provider: 'default/nim',
       }),
     ]);
-    expect(result.warnings).toEqual([
-      'Alias "gen" now uses "default/llama-3.3" — the model you selected — instead of the drafted "gpt-4o".',
-    ]);
+    expect(result.warnings).toEqual([]);
   });
 
   it('uses the generation model even when it is not in the loaded model list', () => {

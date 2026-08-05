@@ -99,6 +99,7 @@ nemo-deployments-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
 nemo-agents-example-email-phishing = { workspace = true }
 nemo-agents-example-email-security = { workspace = true }
+nemo-agent-config-example-calculator = {workspace = true}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

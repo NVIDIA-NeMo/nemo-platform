@@ -16,7 +16,7 @@ Self-check rails reuse the request's main LLM. For dedicated content moderation,
 
 ## Config
 
-This is the production-grade config used in `docs/guardrails/tutorials/content-safety.md`. The two prompts share the same 23-category taxonomy and JSON output schema — they differ only in whether the conversation block includes the agent response.
+This is the production-grade config used in `docs/guardrails/tutorials/content-safety.mdx`. The two prompts share the same 23-category taxonomy and JSON output schema — they differ only in whether the conversation block includes the agent response.
 
 ```json
 {

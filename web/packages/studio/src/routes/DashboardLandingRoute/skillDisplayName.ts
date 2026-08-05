@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ClaudeCodeSkill } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import type { CopilotSkill } from '@studio/routes/agents/CopilotChatRoute/types';
 
 const titleCaseSkillSegment = (segment: string): string =>
   segment ? segment.charAt(0).toUpperCase() + segment.slice(1) : segment;
 
 /** Strip repeated ``nemo-`` prefixes before title-casing skill folder names. */
-export const getSkillLookupKeys = (skill: ClaudeCodeSkill): string[] => {
+export const getSkillLookupKeys = (skill: CopilotSkill): string[] => {
   const keys = new Set<string>();
 
   for (const rawName of [skill.name, skill.claude_name]) {
@@ -22,7 +22,7 @@ export const getSkillLookupKeys = (skill: ClaudeCodeSkill): string[] => {
   return [...keys];
 };
 
-export const getSkillDisplayName = (skill: ClaudeCodeSkill): string => {
+export const getSkillDisplayName = (skill: CopilotSkill): string => {
   let name = skill.name;
   while (name.startsWith('nemo-')) {
     name = name.slice(5);
