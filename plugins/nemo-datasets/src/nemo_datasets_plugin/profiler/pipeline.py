@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 
 import pyarrow as pa
 from nemo_datasets_plugin.profiler.classify import classify
@@ -81,15 +82,25 @@ def profile(
     data_entries = [entry for entry in all_entries if detect_format(entry.path) is not None]
     # Files that plainly hold records but have no reader yet. They are not profiled, but they must be
     # reported: silently dropping them let a directory of .csv shards profile as an exhaustively
-    # scanned, empty dataset — indistinguishable from a dataset that really is empty.
-    unsupported = sorted(
-        entry.path for entry in all_entries if detect_format(entry.path) is None and is_unsupported_data(entry.path)
-    )
+    # scanned, empty dataset — indistinguishable from a dataset that really is empty. They get real
+    # FileRecords like any other file the profiler could not read, just at the envelope, since no
+    # partition ever grouped them.
+    unreadable_files = [
+        FileRecord(
+            path=entry.path,
+            size_bytes=entry.size_bytes,
+            checksum=entry.checksum,
+            error=f"no reader for '{PurePosixPath(entry.path).suffix.lower()}' files",
+        )
+        for entry in sorted(all_entries, key=lambda entry: entry.path)
+        if detect_format(entry.path) is None and is_unsupported_data(entry.path)
+    ]
 
     partitions: list[PartitionProfile] = []
     rows_scanned = 0
     files_read = 0
-    all_scanned = True
+    # None once any file's row count is unknown: the fileset's total is then unknowable, not zero.
+    rows_present: int | None = 0
 
     groups = group_partitions(data_entries)
     for source_dir, partition_entries in groups:
@@ -98,35 +109,41 @@ def profile(
         partitions.append(outcome.partition)
         rows_scanned += outcome.rows_scanned
         files_read += outcome.files_read
-        all_scanned = all_scanned and outcome.scanned_all
+        rows_present = _add_known(rows_present, outcome.rows_present)
 
-    # Data we could not read is data we did not scan, so unsupported files defeat exhaustiveness just
-    # as an unreadable file does.
-    exhaustive = all_scanned and not unsupported
-    profiler_info: dict = {"name": PROFILER_NAME, "version": PROFILER_VERSION}
-    if unsupported:
-        profiler_info["unsupported_files"] = unsupported
+    # A format with no reader holds an unknown number of rows, so it makes the fileset total unknown
+    # in exactly the way an unread file does.
+    if unreadable_files:
+        rows_present = None
 
     sampling = SamplingInfo(
-        exhaustive=exhaustive,
-        # The policy in effect, which `exhaustive` deliberately does not encode: a capped run over
-        # files that all fit under the cap is still a full scan, and an uncapped run can still fall
-        # short of exhaustive because a file was unreadable.
-        strategy="full" if row_cap is None else "head_per_file",
-        # `rows_total` is documented as never zero: a 0 here would read as "this dataset is empty"
-        # when it more often means nothing was recognized. Unknown is the honest answer.
-        rows_total=rows_scanned if exhaustive and rows_scanned else None,
         rows_scanned=rows_scanned,
-        files_scanned=files_read,  # files actually opened and read, not files merely listed
+        rows_present=rows_present,
+        files_read=files_read,  # files actually opened and read, not files merely listed
+        # Every data file, readable or not: the denominator that makes `files_read` a fraction rather
+        # than a bare count. Non-data files (a README, a LICENSE) are not data and are counted nowhere.
+        files_present=len(data_entries) + len(unreadable_files),
         per_file_row_cap=row_cap,
         seed=None,  # head sampling makes no random choices; a seed would be theatre
     )
     return DatasetProfile(
         created_at=created_at,
-        profiler_info=profiler_info,
+        profiler_info={"name": PROFILER_NAME, "version": PROFILER_VERSION},
         sampling=sampling,
         partitions=partitions,
+        unreadable_files=unreadable_files,
     )
+
+
+def _add_known(total: int | None, addend: int | None) -> int | None:
+    """Sum two counts, where ``None`` means unknown and poisons the total.
+
+    A fileset whose row count is unknown for even one file has an unknown total — reporting the sum
+    of the rest would look like a fact and read low.
+    """
+    if total is None or addend is None:
+        return None
+    return total + addend
 
 
 def _partition_label(source_dir: str | None, group_count: int) -> str:
@@ -204,8 +221,8 @@ class _PartitionOutcome:
 
     partition: PartitionProfile
     rows_scanned: int
-    files_read: int  # files actually opened and read, so `files_scanned` can exclude failures
-    scanned_all: bool
+    files_read: int  # files actually opened and read, so `files_read` can exclude failures
+    rows_present: int | None  # rows known to exist here, or None once any file's count is unknown
 
 
 def _profile_partition(
@@ -228,7 +245,9 @@ def _profile_partition(
     all_declared = True  # every file that contributed rows carried a declared schema
     rows_scanned = 0
     files_read = 0
+    rows_present: int | None = 0
     partition_scanned = True
+    read_strategy = "full" if row_cap is None else "head"
     split_profiles: list[SplitProfile] = []
     for split in resolve_splits(entries):
         file_records: list[FileRecord] = []
@@ -270,10 +289,12 @@ def _profile_partition(
                     size_bytes=entry.size_bytes,
                     checksum=entry.checksum,
                     file_format=file_format,
+                    read_strategy=read_strategy,
                     num_rows=num_rows,
                     error=error,
                 )
             )
+            rows_present = _add_known(rows_present, num_rows)
             if num_rows is None:
                 split_counts_known = False
             else:
@@ -301,8 +322,11 @@ def _profile_partition(
         splits=split_profiles,
         features=features,
         stats=stats,
+        # Scoped to this partition, which is where it was decided all along: `partition_scanned` is
+        # the value that already gated whether `categorical.values` could quote a proven enumeration.
+        stats_complete=partition_scanned,
         classification=classification,
     )
     return _PartitionOutcome(
-        partition=partition, rows_scanned=rows_scanned, files_read=files_read, scanned_all=partition_scanned
+        partition=partition, rows_scanned=rows_scanned, files_read=files_read, rows_present=rows_present
     )
