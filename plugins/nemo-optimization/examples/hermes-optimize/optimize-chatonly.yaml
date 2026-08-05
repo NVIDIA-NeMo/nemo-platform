@@ -1,5 +1,5 @@
-# Runnable chat-only Hermes optimize package (proven CLI smoke).
-# Optimize config path must be absolute for `nemo agents optimize run`.
+# --optimize-config: chat-only Hermes package (proven CLI smoke).
+# Pass an absolute path to `nemo agents optimize run`.
 #
 # See README.md in this directory for install + run steps.
 schema_version: fabric.agent/v1alpha1
@@ -62,7 +62,7 @@ optimizer:
 eval:
   general:
     dataset:
-      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset.chatonly.json
+      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset-chatonly.json
     max_concurrency: 1
   fabric:
     base_dir: plugins/nemo-optimization/examples/hermes-optimize

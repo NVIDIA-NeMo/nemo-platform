@@ -1,4 +1,4 @@
-# MCP optimize package: Hermes + phishing analyzer (separate agent checkout).
+# --optimize-config: Hermes + phishing analyzer MCP (separate agent checkout).
 # Broader search space than chat-only — temperature + top_p, several trials.
 # Dataset: full phishing-agent eval set (email-phishing-analyzer-harnesses data/smaller_test.csv).
 schema_version: fabric.agent/v1alpha1
@@ -80,7 +80,7 @@ optimizer:
 eval:
   general:
     dataset:
-      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset.mcp.json
+      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset-mcp.json
     max_concurrency: 1
   fabric:
     base_dir: plugins/nemo-optimization/examples/hermes-optimize
@@ -94,7 +94,7 @@ eval:
         binding: email_phishing_analyzer.audit:AnalyzerRunBinding
         executable: ${PHISHING_MCP_BIN}
         config_paths:
-          - plugins/nemo-optimization/examples/hermes-optimize/analyzer.inference-api.yaml
+          - plugins/nemo-optimization/examples/hermes-optimize/analyzer-inference-api.yaml
         handoff:
           env: NVIDIA_API_KEY
           ref: email_phishing_analyzer.credential_handoff:CredentialHandoff

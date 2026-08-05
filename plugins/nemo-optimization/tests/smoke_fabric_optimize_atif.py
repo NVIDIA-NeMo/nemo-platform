@@ -8,7 +8,7 @@ Requires a reachable OpenAI-compatible inference endpoint and NeMo Fabric with H
   NEMO_FABRIC_REPO=/path/to/NeMo-Fabric \\
   RUN_NEMO_OPTIMIZE_ATIF_E2E=1 \\
   FABRIC_QWEN_BASE_URL=http://.../v1 \\
-  FABRIC_QWEN_MODEL=qwen3-8b-csqa-m16 \\
+  FABRIC_QWEN_MODEL=<your-model-id> \\
   uv run --package nemo-optimization-plugin pytest \\
     plugins/nemo-optimization/tests/smoke_fabric_optimize_atif.py -q
 
@@ -54,7 +54,7 @@ requires_live_optimize_atif = pytest.mark.skipif(
 
 
 def _build_payload(dataset_path: Path) -> dict:
-    agent = yaml.safe_load((_EXAMPLE / "chatonly.yaml").read_text(encoding="utf-8"))
+    agent = yaml.safe_load((_EXAMPLE / "optimize-chatonly.yaml").read_text(encoding="utf-8"))
 
     agent["models"]["default"].update(
         {

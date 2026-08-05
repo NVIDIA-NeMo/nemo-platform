@@ -71,6 +71,13 @@ def build_optimize_payload(
         for key in ("optimizer", "eval"):
             if key in optimize_config:
                 payload[key] = copy.deepcopy(optimize_config[key])
+        # Allow the overlay to add/override models (e.g. judge for tunable_rag).
+        if isinstance(optimize_config.get("models"), Mapping):
+            merged_models = copy.deepcopy(payload.get("models") or {})
+            if not isinstance(merged_models, dict):
+                merged_models = {}
+            merged_models.update(copy.deepcopy(dict(optimize_config["models"])))
+            payload["models"] = merged_models
 
     if "optimizer" not in payload:
         raise FabricOptimizeError("optimize config must declare an 'optimizer' section.")

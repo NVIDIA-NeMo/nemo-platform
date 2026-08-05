@@ -2,12 +2,14 @@
 
 Runnable demos for `nemo agents optimize` using the Hermes Fabric harness.
 
-Pick one:
+**Convention:** files named `optimize-*.yaml` are passed to `--optimize-config`.
+Agent entity YAML lives under `agents/` and is passed to `--agent-config`.
 
-| Example | What it does | Config | Dataset |
-|---------|--------------|--------|---------|
-| **Chat-only** | Tunes temperature on a short Q&A agent (no tools) | [`chatonly.yaml`](chatonly.yaml) | [`dataset.chatonly.json`](dataset.chatonly.json) |
-| **MCP** | Tunes temperature / top_p on a phishing agent that calls an MCP analyzer | [`mcp.yaml`](mcp.yaml) | [`dataset.mcp.json`](dataset.mcp.json) |
+| Example | What it does | `--optimize-config` | Other |
+|---------|--------------|---------------------|-------|
+| **Chat-only** | Tunes temperature on a short Q&A agent (no tools) | [`optimize-chatonly.yaml`](optimize-chatonly.yaml) | [`dataset-chatonly.json`](dataset-chatonly.json) |
+| **Chat-only + `--agent`** | Same study; agent body from a platform entity | [`optimize-chatonly-via-agent.yaml`](optimize-chatonly-via-agent.yaml) | [`agents/chatonly/agent.yaml`](agents/chatonly/agent.yaml) |
+| **MCP** | Tunes temperature / top_p on a phishing agent that calls an MCP analyzer | [`optimize-mcp.yaml`](optimize-mcp.yaml) | [`dataset-mcp.json`](dataset-mcp.json) |
 
 Official docs: [Optimize Agents](../../../../docs/agents/optimization.mdx).
 
@@ -51,6 +53,22 @@ models (`GET /v1/models`).
 - Paths inside the YAML (`dataset`, `base_dir`) are relative to your **current
   working directory** — stay at the repo root.
 - Local Hermes output lands in `./artifacts/` under this folder (safe to delete).
+- Point Fabric at the platform venv so Hermes adapters resolve:
+
+  ```bash
+  export ADAPTER_PYTHON="$(pwd)/.venv/bin/python"
+  ```
+
+  Without this, Fabric may pick a system Python and fail with
+  `No module named 'nemo_fabric_adapters'`.
+
+### Platform URL
+
+```bash
+export NMP_BASE_URL="${NMP_BASE_URL:-http://localhost:8080}"
+# Optional alias used by some CLI paths:
+export NEMO_BASE_URL="${NEMO_BASE_URL:-$NMP_BASE_URL}"
+```
 
 ---
 
@@ -63,7 +81,7 @@ cd /path/to/nemo-platform
 source .venv/bin/activate   # if not already
 
 nemo agents optimize run \
-  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/chatonly.yaml" \
+  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-chatonly.yaml" \
   --workspace default
 ```
 
@@ -81,7 +99,9 @@ from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 WORKSPACE = "default"
 repo = Path("/path/to/nemo-platform").resolve()
-optimize_config = (repo / "plugins/nemo-optimization/examples/hermes-optimize/chatonly.yaml").resolve()
+optimize_config = (
+    repo / "plugins/nemo-optimization/examples/hermes-optimize/optimize-chatonly.yaml"
+).resolve()
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -95,6 +115,68 @@ print(
         sdk=client,
     )
 )
+```
+
+---
+
+## Example 1b — Chat-only with `--agent`
+
+Same smoke as Example 1, but the agent body is a **platform-managed** entity.
+[`optimize-chatonly-via-agent.yaml`](optimize-chatonly-via-agent.yaml) is an
+overlay (optimizer + eval only). Optimize resolves `--agent`, translates
+`nemo-agents-spec-v1` → Fabric, and merges the overlay.
+
+### 1. Register the agent (once)
+
+Point `--agent-config` at the **slim**
+[`agents/chatonly/agent.yaml`](agents/chatonly/agent.yaml) file — not the
+parent `hermes-optimize/` directory (that tree includes `artifacts/` and will
+fail the fileset size check).
+
+```bash
+cd /path/to/nemo-platform
+source .venv/bin/activate
+export NMP_BASE_URL="${NMP_BASE_URL:-http://localhost:8080}"
+export ADAPTER_PYTHON="$(pwd)/.venv/bin/python"
+
+# Optional: retarget models to your platform IGW before create, e.g.
+#   model: <your-igw-model-id>
+#   base_url: http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1
+#   api_key_env: NEMO_AGENTS_IGW_API_KEY
+# (Replace host/model with your NMP_BASE_URL and IGW model id; values are
+# stored as-is at create time — no ${...} expansion for this path.)
+# Defaults in agent.yaml use inference-api (same as optimize-chatonly.yaml).
+
+nemo agents create \
+  --name hermes-optimize-chatonly \
+  --agent-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/agents/chatonly/agent.yaml" \
+  --workspace default
+```
+
+For a local IGW, also export a key env (any non-empty value is fine if the
+gateway does not check it):
+
+```bash
+export NEMO_AGENTS_IGW_API_KEY="${NEMO_AGENTS_IGW_API_KEY:-not-used}"
+```
+
+### 2. Run optimize against the stored agent
+
+```bash
+nemo agents optimize run \
+  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-chatonly-via-agent.yaml" \
+  --agent hermes-optimize-chatonly \
+  --workspace default
+```
+
+**Success:** same as Example 1 (`status: completed`, `n_trials: 2`), with log
+line `Resolved agent 'hermes-optimize-chatonly' to platform agent ...`.
+
+To replace the stored config after editing `agent.yaml`:
+
+```bash
+nemo agents delete hermes-optimize-chatonly --workspace default
+# then re-run create
 ```
 
 ---
@@ -125,8 +207,8 @@ virtualenv — do not `pip install` it into the platform `.venv`.
    test -x "$PHISHING_MCP_BIN"
    ```
 
-`mcp.yaml` reads those two variables. It also loads
-[`analyzer.inference-api.yaml`](analyzer.inference-api.yaml) so the analyzer
+`optimize-mcp.yaml` reads those two variables. It also loads
+[`analyzer-inference-api.yaml`](analyzer-inference-api.yaml) so the analyzer
 uses inference-api (many keys 401 against `integrate.api.nvidia.com`).
 The dataset is the agent’s full eval set (5 emails: 3 phishing, 2 benign).
 
@@ -142,7 +224,7 @@ export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
 export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
 
 nemo agents optimize run \
-  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/mcp.yaml" \
+  --optimize-config "$(pwd)/plugins/nemo-optimization/examples/hermes-optimize/optimize-mcp.yaml" \
   --workspace default
 ```
 
@@ -167,7 +249,9 @@ agent_root = Path(
 os.environ.setdefault("PHISHING_AGENT_SRC", str(agent_root / "src"))
 os.environ.setdefault("PHISHING_MCP_BIN", str(agent_root / ".venv/bin/email-phishing-analyzer-mcp"))
 
-optimize_config = (repo / "plugins/nemo-optimization/examples/hermes-optimize/mcp.yaml").resolve()
+optimize_config = (
+    repo / "plugins/nemo-optimization/examples/hermes-optimize/optimize-mcp.yaml"
+).resolve()
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -191,9 +275,11 @@ print(
 |---------|------------|
 | `nemo: command not found` | `source .venv/bin/activate` after `uv sync --package nemo-agents-plugin` |
 | `No module named hermes_cli` | Re-run the `hermes-agent==0.18.2 --no-deps` install |
+| `No module named 'nemo_fabric_adapters'` | `export ADAPTER_PYTHON="$(pwd)/.venv/bin/python"` |
 | Missing `PHISHING_AGENT_SRC` / MCP binary | Sync the phishing agent checkout; export both env vars before `optimize run` |
-| Analyzer / LLM 401 | Confirm `NVIDIA_API_KEY` works on inference-api; keep using `analyzer.inference-api.yaml` |
+| Analyzer / LLM 401 | Confirm `NVIDIA_API_KEY` works on inference-api; keep using `analyzer-inference-api.yaml` |
 | Dataset / config file not found | Run from the `nemo-platform` repo root |
+| Agent create fails on fileset size / too many files | Pass `--agent-config` to `agents/chatonly/agent.yaml` (slim dir), not the parent examples folder |
 | Optional `--agent ...` rejected for `http://` / `file://` | Pass a workspace agent name (e.g. `hermes-optimize-chatonly`), or omit `--agent` and use `--optimize-config` only |
 
 Trajectory capture (`capture_trajectory`) is off in these YAMLs so you do not

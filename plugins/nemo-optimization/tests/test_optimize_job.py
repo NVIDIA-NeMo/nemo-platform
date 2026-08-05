@@ -80,11 +80,39 @@ def test_run_resolves_platform_agent_before_dispatch(tmp_path: Path, ctx: JobCon
     optimize_yaml = tmp_path / "optimize.yml"
     optimize_yaml.write_text("optimizer:\n  numeric:\n    enabled: true\n")
 
+    platform_agent = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "react-agent",
+        "default_harness": "hermes",
+        "harnesses": {
+            "hermes": {
+                "kind": "hermes",
+                "model": {
+                    "provider": "openai",
+                    "model": "demo-model",
+                    "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                    "api_key_env": "NEMO_AGENTS_IGW_API_KEY",
+                },
+                "settings": {"max_tokens": 256, "reasoning_config": {"effort": "none"}},
+            }
+        },
+        "instructions": {"system": {"content": "Be brief."}},
+        "environment": {"provider": "local", "workspace": "./workspace", "artifacts": "./artifacts"},
+        "models": {
+            "judge": {
+                "provider": "openai",
+                "model": "demo-model",
+                "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+                "api_key_env": "NEMO_AGENTS_IGW_API_KEY",
+            }
+        },
+    }
+
     class _StubAgents:
         def get(self, *, name: str, workspace: str) -> dict[str, Any]:
             assert name == "react-agent"
             assert workspace == "default"
-            return {"config": FABRIC_AGENT}
+            return {"config": platform_agent}
 
     class _StubSDK:
         agents = _StubAgents()
@@ -102,7 +130,11 @@ def test_run_resolves_platform_agent_before_dispatch(tmp_path: Path, ctx: JobCon
             sdk=_StubSDK(),  # type: ignore[arg-type]
         )
 
-    assert dispatch.call_args.kwargs["agent_config"] == FABRIC_AGENT
+    agent_config = dispatch.call_args.kwargs["agent_config"]
+    assert agent_config["schema_version"] == "fabric.agent/v1alpha1"
+    assert agent_config["harness"]["adapter_id"] == "nvidia.fabric.hermes"
+    assert agent_config["models"]["default"]["model"] == "demo-model"
+    assert agent_config["models"]["judge"]["model"] == "demo-model"
 
 
 def test_run_rejects_endpoint_agent(tmp_path: Path, ctx: JobContext) -> None:

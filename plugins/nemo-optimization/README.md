@@ -10,10 +10,11 @@ nemo agents optimize run|submit|explain
 ```
 
 Golden-path agent shape: Fabric Hermes (``nvidia.fabric.hermes``). See
-``examples/hermes-optimize/`` — two runnable packages:
+``examples/hermes-optimize/`` — runnable ``optimize-*.yaml`` packages:
 
-* ``chatonly.yaml`` — chat-only Hermes smoke
-* ``mcp.yaml`` — phishing analyzer via MCP (separate agent checkout)
+* ``optimize-chatonly.yaml`` — chat-only Hermes smoke
+* ``optimize-chatonly-via-agent.yaml`` — same study with a platform ``--agent``
+* ``optimize-mcp.yaml`` — phishing analyzer via MCP (separate agent checkout)
 
 Install and QA steps live in that directory's README.
 
