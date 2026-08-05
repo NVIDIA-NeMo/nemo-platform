@@ -22,7 +22,7 @@ from nemo_experimentalist_plugin.entities import (
 
 def candidate_suite_identity(candidate: Candidate) -> str | None:
     """The Insight-suite identity this candidate's insight reward was measured against."""
-    value = candidate.reward("insight").metadata.get("suite_identity")
+    value = candidate.rewards["insight"].metadata.get("suite_identity")
     return value if isinstance(value, str) else None
 
 
@@ -34,7 +34,7 @@ def candidate_metric_keys(candidate: Candidate) -> list[str]:
     (``[1]`` to ``["1"]``) would let malformed metadata pass as a valid measurement and
     skip a fresh evaluation.
     """
-    value = candidate.reward("insight").metadata.get("metric_keys")
+    value = candidate.rewards["insight"].metadata.get("metric_keys")
     if not isinstance(value, list) or not all(isinstance(key, str) for key in value):
         return []
     return list(value)
@@ -225,7 +225,7 @@ def _task_evidence(
         return None
 
     trials_by_candidate = {
-        candidate.label: [trial for trial in candidate.reward("insight").trials or () if trial.task_id == task.id]
+        candidate.label: [trial for trial in candidate.rewards["insight"].trials or () if trial.task_id == task.id]
         for candidate in suite_candidates
     }
     values_by_candidate: dict[str, dict[str, list[float]]] = {}
@@ -478,8 +478,8 @@ def render_insight_comparison_section(
             raise ValueError(
                 f"Candidate {candidate.label!r} Insight evidence does not match finalized suite {provenance.identity}"
             )
-    baseline_reward = baseline.reward("insight").metrics or {}
-    winner_reward = winner.reward("insight").metrics or {}
+    baseline_reward = baseline.rewards["insight"].metrics or {}
+    winner_reward = winner.rewards["insight"].metrics or {}
     metric_names = sorted(set(baseline_reward) | set(winner_reward))
     lines = [
         "## Deterministic Insight Suite Comparison",

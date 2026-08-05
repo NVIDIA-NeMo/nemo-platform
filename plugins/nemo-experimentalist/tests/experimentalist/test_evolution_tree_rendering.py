@@ -62,7 +62,7 @@ def test_node_reward_str_renders_every_measured_channel() -> None:
 def test_rendering_picks_up_an_unknown_channel_without_code_changes() -> None:
     """The point of the channel map: a new channel reaches the report unaided."""
     node = _node("agent-0", round_num=0, train={"reward": 0.25}, val={"reward": 0.5})
-    node.candidate.record_reward("some-new-channel", metrics={"score": 0.9})
+    node.candidate.rewards["some-new-channel"] = RewardRecord(metrics={"score": 0.9})
     tree = EvolutionTree()
     tree.nodes = {"agent-0": node}
 

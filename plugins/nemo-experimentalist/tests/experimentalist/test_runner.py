@@ -44,7 +44,7 @@ class RecordingStrategy:
         if self.error is not None:
             raise self.error
         if self.winner is not None:
-            await ctx.save_candidate(self.winner)
+            await ctx.update_candidate(self.winner)
         return self.winner
 
 
@@ -420,8 +420,8 @@ async def test_an_insight_suite_mismatch_does_not_fail_a_completed_run(monkeypat
     baseline = _insight_candidate("agent-0", round_num=0, insight=0.0, validation=0.5)
     winner = _insight_candidate("agent-1", round_num=1, insight=1.0, validation=0.75)
     # The winner was scored against a different suite than the run ended up with.
-    winner.record_reward(
-        "insight", metadata={**winner.rewards["insight"].metadata, "suite_identity": "sha256:" + "e" * 64}
+    winner.rewards["insight"] = RewardRecord(
+        metadata={**winner.rewards["insight"].metadata, "suite_identity": "sha256:" + "e" * 64}
     )
 
     with caplog.at_level("WARNING"):

@@ -182,8 +182,8 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
         (insight_dataset, [baseline]),
         (insight_dataset, [new_candidate]),
     ]
-    assert baseline.reward("insight").metrics == {"uses_required_tool": 0.0}
-    assert new_candidate.reward("insight").metrics == {"uses_required_tool": 1.0}
+    assert baseline.rewards["insight"].metrics == {"uses_required_tool": 0.0}
+    assert new_candidate.rewards["insight"].metrics == {"uses_required_tool": 1.0}
     assert baseline.rewards["insight"].metadata["suite_identity"] == f"sha256:{'a' * 64}"
     assert new_candidate.rewards["insight"].metadata["suite_identity"] == f"sha256:{'a' * 64}"
     assert baseline.rewards["insight"].metadata["metric_keys"] == ["uses_required_tool"]
@@ -521,7 +521,7 @@ async def test_an_interrupted_round_zero_does_not_mint_a_second_baseline(monkeyp
     async def _commit_baseline(self, *, ctx, config):
         nonlocal created
         created += 1
-        return await ctx.commit_candidate(proposal=None, artifact=await ctx.fork(None), description="baseline")
+        return await ctx.import_baseline("baseline")
 
     monkeypatch.setattr(EvolutionaryOptimizer, "_create_baseline_agent", _commit_baseline)
     config = EvolutionaryOptimizerConfig()

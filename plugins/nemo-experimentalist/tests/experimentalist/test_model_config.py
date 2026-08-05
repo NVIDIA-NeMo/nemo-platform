@@ -7,6 +7,7 @@ import sys
 import textwrap
 
 import pytest
+from nemo_experimentalist_plugin.entities import RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.model_config import (
     _client,
     api_base,
@@ -211,22 +212,36 @@ def test_reward_summary_is_separate_from_the_dimensions() -> None:
     assert record.summary == 0.7
 
 
-def test_record_reward_merges_rather_than_replaces() -> None:
-    """A second writer must not drop what the first measured.
+def test_writing_a_channel_replaces_it() -> None:
+    """A channel is measured once, so the mapping is a plain assignment.
 
-    No production path writes a channel twice today, so nothing else would catch a
-    change to replace semantics — but the channel set is open by design, and the loss
-    would be silent.
+    The old accessor merged, to protect a second writer from dropping the first's
+    metrics. Nothing writes a channel twice now — the Builder commits, then the strategy
+    records — and merge semantics would instead hide a genuine double-write.
     """
     from doubles import make_candidate
 
     candidate = make_candidate(label="agent-0", description="baseline")
-    candidate.record_reward("insight", metrics={"reward": 0.5})
-    candidate.record_reward("insight", metadata={"suite_identity": "sha256:abc"})
+    candidate.rewards["insight"] = RewardRecord(metrics={"reward": 0.5})
+    candidate.rewards["insight"] = RewardRecord(metadata={"suite_identity": "sha256:abc"})
 
-    record = candidate.reward("insight")
-    assert record.metrics == {"reward": 0.5}
+    record = candidate.rewards["insight"]
+    assert record.metrics == {}, "replaced, not merged"
     assert record.metadata == {"suite_identity": "sha256:abc"}
+
+
+def test_reading_an_unmeasured_channel_does_not_mark_it_measured() -> None:
+    """The reason this is not a defaultdict: its __missing__ inserts.
+
+    Eight call sites gate an evaluation on ``channel not in rewards``. If a read marked
+    the channel measured, the evaluation would be skipped and a phantom record persisted.
+    """
+    from doubles import make_candidate
+
+    candidate = make_candidate(label="agent-0", description="baseline")
+
+    assert candidate.rewards["never-measured"].metrics == {}
+    assert "never-measured" not in candidate.rewards
 
 
 def test_an_unmeasured_channel_is_distinguishable_from_an_empty_one() -> None:
@@ -240,5 +255,5 @@ def test_an_unmeasured_channel_is_distinguishable_from_an_empty_one() -> None:
 
     candidate = make_candidate(label="agent-0", description="baseline")
 
-    assert candidate.reward("train").metrics == {}
+    assert candidate.rewards["train"].metrics == {}
     assert "train" not in candidate.rewards

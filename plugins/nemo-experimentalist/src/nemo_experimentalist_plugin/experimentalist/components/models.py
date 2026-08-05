@@ -146,15 +146,15 @@ class EvolutionNode(BaseModel):
 
     @property
     def train_reward(self) -> dict[str, float]:
-        return self.candidate.reward("train").metrics or {}
+        return self.candidate.rewards["train"].metrics or {}
 
     @property
     def val_reward(self) -> dict[str, float]:
-        return self.candidate.reward("validation").metrics or {}
+        return self.candidate.rewards["validation"].metrics or {}
 
     @property
     def trajectory_reward(self) -> dict[str, float]:
-        return self.candidate.reward("validation-trajectory").metrics or {}
+        return self.candidate.rewards["validation-trajectory"].metrics or {}
 
     @property
     def is_survivor(self) -> bool:
@@ -266,7 +266,7 @@ class EvolutionTree:
             n = self.nodes[key]
             reward_vals = []
             for channel, dimension in reward_cols:
-                metrics = n.candidate.reward(channel).metrics
+                metrics = n.candidate.rewards[channel].metrics
                 reward_vals.append(f"{metrics[dimension]:.2f}" if dimension in metrics else "-")
             opt = (n.description or "")[:50].replace("\n", " ")
             cells = [

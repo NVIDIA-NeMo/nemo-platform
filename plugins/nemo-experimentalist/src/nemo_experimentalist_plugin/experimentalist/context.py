@@ -42,6 +42,7 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
     ExperimentalistBackend,
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, reward_scalar
+from nemo_experimentalist_plugin.experimentalist.seam import Fork
 from nemo_platform import AsyncNeMoPlatform
 
 logger = logging.getLogger(__name__)
@@ -132,11 +133,6 @@ class ExperimentContext:
     # -- Inputs --------------------------------------------------------------
 
     @property
-    def dataset(self) -> Dataset:
-        """The run's primary dataset — what ``evaluate()`` measures by default."""
-        return self.datasets[PRIMARY_SPLIT]
-
-    @property
     def run_id(self) -> str:
         """Durable id of this run, and the key every Candidate is grouped under."""
         return self._run.id or ""
@@ -191,70 +187,86 @@ class ExperimentContext:
             )
         return path if path.is_dir() else path.parent
 
-    async def fork(self, proposal: Proposal | None) -> Path:
-        """Reserve and populate a fresh candidate directory, copied from the ancestor.
+    async def import_baseline(self, description: str) -> Candidate:
+        """Seed the run with the agent under test, as-is, and commit it as the baseline.
+
+        Not a fork and not a build: nothing proposed it, so it has no Proposal, and it is
+        the one Candidate whose ``generated_from`` is None. Keeping it a separate verb is
+        what lets :meth:`fork` and :meth:`commit_candidate` drop their "unless this is the
+        baseline" branches — and it is deliberately absent from
+        :class:`~nemo_experimentalist_plugin.experimentalist.seam.BuilderContext`, because
+        a Builder never creates a baseline.
+        """
+        existing = next((c for c in await self.candidates() if c.is_baseline), None)
+        if existing is not None:
+            # Idempotent because the invariant above has to hold for a strategy the host
+            # did not write. A resumed run re-enters this, and a second record addressing
+            # the same directory would be re-evaluated, offered to the Proposer, and
+            # published — while discarding either one deletes the artifact the other
+            # still points at. Guarding it strategy-side leaves every other strategy
+            # exposed, so it is guarded here.
+            logger.info("[RESUME] this run already has a baseline; returning it rather than minting a second")
+            return existing
+        destination = self._candidate_root / BASELINE_LABEL
+        if not destination.exists():
+            shutil.copytree(self.agent_dir, destination, ignore=_ignore_forked)
+        return await self._create(
+            artifact=destination,
+            proposal=None,
+            description=description,
+            generation=0,
+        )
+
+    async def fork(self, proposal: Proposal) -> Fork:
+        """Reserve a working copy for *proposal*, seeded from what it branches off.
 
         The ignore policy lives here rather than in a Builder because it is host
         knowledge composed from three owners — this run's own layout, generic hygiene,
         and the evaluator's scratch — and because three divergent copy paths with three
         different ignore lists is what this replaces.
 
-        Passing ``None`` forks the agent under test, for the baseline.
-
         Returns:
-            Path: the reserved directory, for the Builder to write into. It is not a
-            Candidate until :meth:`commit_candidate` validates and commits it.
+            Fork: the reserved directory to write into, and the pristine parent it came
+            from. Neither is a Candidate until :meth:`commit_candidate` validates the
+            finished work and commits it.
         """
-        destination = self._reserve(proposal)
-        if destination.exists():
-            return destination  # resume: the fork already happened
-        source = self.agent_dir if proposal is None or proposal.ancestor is None else await self._ancestor_dir(proposal)
-        shutil.copytree(source, destination, ignore=_ignore_forked)
-        return destination
+        upstream = await self._ancestor_dir(proposal) if proposal.ancestor is not None else None
+        # No "already forked?" guard: _reserve returns max(existing) + 1, so the name is
+        # always fresh. A stray *file* by that name would make copytree raise, which is
+        # the right outcome — skipping the copy would hand the Builder a Fork whose
+        # workdir is a file.
+        destination = self._reserve()
+        shutil.copytree(upstream or self.agent_dir, destination, ignore=_ignore_forked)
+        return Fork(workdir=destination, upstream=upstream)
 
-    async def allocate(self, proposal: Proposal | None, *, filename: str) -> Path:
-        """Reserve a path for a candidate whose evaluation consumes a single file.
-
-        The file itself is the Builder's to write; the context only guarantees the path
-        is inside this run's candidate root, so the runner can archive and publish every
-        candidate without the strategy's cooperation.
-
-        Raises:
-            ValueError: if *filename* is not a plain name.
-        """
-        if not filename or Path(filename).name != filename:
-            raise ValueError(f"allocate() takes a bare filename, not a path: {filename!r}")
-        directory = self._reserve(proposal)
-        directory.mkdir(parents=True, exist_ok=True)
-        return directory / filename
-
-    async def commit_candidate(
-        self,
-        *,
-        proposal: Proposal | None,
-        artifact: Path,
-        description: str | None = None,
-        generation: int = 0,
-        label: str | None = None,
-    ) -> Candidate:
+    async def commit_candidate(self, *, proposal: Proposal, artifact: Path, generation: int = 0) -> Candidate:
         """Validate a finished artifact and create the Candidate that addresses it.
 
-        This is the only way a Candidate comes into existence, which is what makes
+        This is the only way a Candidate is born from a build, which is what makes
         ``artifact`` safe to require: nothing durable ever points at partial work.
 
-        With a Proposal, ``ancestor`` and ``description`` are derived from it and an
-        explicit *description* is rejected — the two accounts of a candidate's origin
-        must not be able to drift. ``proposal=None`` is for the baseline or an
-        explicitly imported candidate, and then *description* is required.
+        ``ancestor`` and ``description`` are always derived from the Proposal — there is
+        no override, so the two accounts of a candidate's origin cannot drift.
 
         Raises:
-            ValueError: if the artifact is missing, was not reserved for this proposal,
-                or the description is given when it is derived (or missing when it is not).
+            ValueError: if the artifact is missing or lies outside the run's candidate root.
         """
-        if proposal is not None and description is not None:
-            raise ValueError("description is derived from the Proposal; do not pass it as well")
-        if proposal is None and not description:
-            raise ValueError("committing without a Proposal requires an explicit description")
+        return await self._create(
+            artifact=artifact,
+            proposal=proposal,
+            description=proposal.description,
+            generation=generation,
+        )
+
+    async def _create(
+        self, *, artifact: Path, proposal: Proposal | None, description: str, generation: int
+    ) -> Candidate:
+        """Validate a finished artifact and persist the Candidate addressing it.
+
+        The one place a Candidate comes into existence, shared by :meth:`fork`-and-build
+        and by :meth:`import_baseline`. Private so that neither of those invariants can be
+        bypassed by a caller assembling a Candidate itself.
+        """
         if not artifact.exists():
             raise ValueError(f"Candidate artifact does not exist: {artifact}")
         artifact = artifact.resolve()
@@ -262,8 +274,7 @@ class ExperimentContext:
         if not artifact.is_relative_to(root):
             raise ValueError(f"Candidate artifact must live under {root}, got {artifact}")
 
-        text = proposal.description if proposal is not None else (description or "")
-        handle = label or (artifact.parent if artifact.is_file() else artifact).name
+        handle = (artifact.parent if artifact.is_file() else artifact).name
         candidate = Candidate(
             name=handle,
             label=handle,
@@ -272,28 +283,28 @@ class ExperimentContext:
             ancestor=proposal.ancestor if proposal is not None else None,
             generation=generation,
             generated_from=proposal,
-            description=text,
-            artifact=ResourceRef(uri=artifact.as_uri(), description=text),
+            description=description,
+            artifact=ResourceRef(uri=artifact.as_uri(), description=description),
         )
-        return await self.save_candidate(candidate)
+        stored = await self._backend.create_candidate(workspace=self.workspace, candidate=candidate)
+        candidate._id = stored._id  # type: ignore[attr-defined]
+        return candidate
 
     @property
     def _candidate_root(self) -> Path:
         """Runner-owned root every candidate artifact must live under."""
         return self.root / "eval-and-optimize" / "agents"
 
-    def _reserve(self, proposal: Proposal | None) -> Path:
+    def _reserve(self) -> Path:
         """Pick the next free candidate directory under the run's candidate root.
 
-        Only the baseline gets the fixed handle. A Proposal with no ancestor is a
-        candidate built from the agent under test rather than from a parent — the HPO
-        case — and there can be many of those in one run, so each needs its own
-        directory or they overwrite each other and the baseline.
+        Every fork gets a fresh directory, including one built from the agent under test
+        rather than from a parent — the HPO case — because a run may hold many of those
+        and they would otherwise overwrite each other and the baseline. Only
+        :meth:`import_baseline` uses the fixed handle.
         """
         root = self._candidate_root
         root.mkdir(parents=True, exist_ok=True)
-        if proposal is None:
-            return root / BASELINE_LABEL
         taken = [
             int(entry.name.split("-")[1])
             for entry in root.iterdir()
@@ -311,22 +322,22 @@ class ExperimentContext:
         ancestor = await self._backend.get_candidate(workspace=self.workspace, candidate_id=proposal.ancestor)
         return self.candidate_dir(ancestor)
 
-    async def save_candidate(self, candidate: Candidate, *, updates: dict[str, Any] | None = None) -> Candidate:
-        """Create or update *candidate* in the entity store.
+    async def update_candidate(self, candidate: Candidate, **fields: Any) -> Candidate:
+        """Persist changes to a candidate that already exists.
 
-        Fills in ``workspace`` and ``run_id`` from the run (which is authoritative)
-        before persisting. On first save the backend assigns a store id; later saves
-        update the existing record.
+        Update-only, deliberately. The previous create-or-update verb would happily
+        persist a Candidate that had never been through :meth:`commit_candidate`, which
+        is the one thing "no durable record points at partial work" forbids — so the
+        create path is private and this cannot reach it.
         """
-        candidate.workspace = self.workspace
-        candidate.run_id = self.run_id
-        for key, value in (updates or {}).items():
+        if not candidate.id:
+            raise ValueError(
+                f"Candidate {candidate.label!r} has no store id; a Candidate is created by "
+                "commit_candidate or import_baseline, never by updating one into existence"
+            )
+        for key, value in fields.items():
             setattr(candidate, key, value)
-        if candidate.id:
-            return await self._backend.update_candidate(workspace=self.workspace, candidate=candidate)
-        stored = await self._backend.create_candidate(workspace=self.workspace, candidate=candidate)
-        candidate._id = stored._id  # type: ignore[attr-defined]
-        return candidate
+        return await self._backend.update_candidate(workspace=self.workspace, candidate=candidate)
 
     async def discard_candidate(self, candidate: Candidate) -> None:
         """Remove *candidate* entirely: its artifact and the record addressing it.
@@ -387,14 +398,8 @@ class ExperimentContext:
             )
         else:
             record = result if metadata is None else result.model_copy(update={"metadata": dict(metadata)})
-        candidate.record_reward(
-            channel,
-            metrics=record.metrics,
-            summary=record.summary,
-            trials=record.trials,
-            metadata=record.metadata,
-        )
-        await self.save_candidate(candidate)
+        candidate.rewards[channel] = record
+        await self.update_candidate(candidate)
 
     async def evaluate(
         self,

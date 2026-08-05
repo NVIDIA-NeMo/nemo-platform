@@ -20,7 +20,6 @@ import logging
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import (
@@ -49,6 +48,7 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, reward_scalar
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
+from nemo_experimentalist_plugin.experimentalist.roles import Strategy
 
 logger = logging.getLogger(__name__)
 
@@ -58,22 +58,6 @@ logger = logging.getLogger(__name__)
 #: The backend contributes nothing: candidate metadata lives in its own store now.
 _STRATEGY_ARTIFACTS = frozenset({"architecture.md"})
 _EVALUATOR_ARTIFACTS = frozenset({"harbor_wrapper.py", "dind_environment.py"})
-
-
-class Strategy(Protocol):
-    """What the runner requires of a strategy.
-
-    ``supports_resume`` is a class attribute rather than an optional ``resume()`` so the
-    runner can check it without instantiating anything, and so a future
-    ``strategies list`` gets it for free. There is one entry point, not two: a strategy
-    reads ``ctx.resuming`` and those that do not care ignore it.
-    """
-
-    supports_resume: bool
-
-    async def run(self, ctx: ExperimentContext) -> Candidate | None:
-        """Optimize the agent under test and return the winning Candidate, or None."""
-        ...
 
 
 @dataclass(frozen=True)
@@ -327,8 +311,8 @@ class ExperimentRunner:
         except Exception as exc:  # noqa: BLE001 - narration must never fail the run
             logger.debug("[RESUME] could not seed the narration baseline: %s", exc)
             return
-        if baseline is not None and baseline.reward("validation").metrics:
-            self._reporter.seed_baseline(reward_scalar(baseline.reward("validation").metrics))
+        if baseline is not None and baseline.rewards["validation"].metrics:
+            self._reporter.seed_baseline(reward_scalar(baseline.rewards["validation"].metrics))
 
     def _load_run(self) -> ExperimentRun | None:
         """Read this directory's ``run.json``, or None when it is absent or unreadable."""
@@ -442,12 +426,12 @@ def _render_summary(completed: int, unit: str, baseline: Candidate | None, winne
     """One-line outcome summary, used when the strategy's own report is missing."""
     details: list[str] = []
     if winner is not None:
-        if winner.reward("validation").metrics:
-            details.append(f"validation_reward={winner.reward('validation').metrics}")
-        if baseline is not None and baseline.reward("insight").metrics and winner.reward("insight").metrics:
+        if winner.rewards["validation"].metrics:
+            details.append(f"validation_reward={winner.rewards['validation'].metrics}")
+        if baseline is not None and baseline.rewards["insight"].metrics and winner.rewards["insight"].metrics:
             details.append(
-                f"insight_suite=(baseline={baseline.reward('insight').metrics}, "
-                f"winner={winner.reward('insight').metrics})"
+                f"insight_suite=(baseline={baseline.rewards['insight'].metrics}, "
+                f"winner={winner.rewards['insight'].metrics})"
             )
     suffix = f", {', '.join(details)}" if details else ""
     winner_str = winner.label if winner is not None else "none"

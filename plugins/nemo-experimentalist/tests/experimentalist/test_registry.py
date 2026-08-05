@@ -1,0 +1,189 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""The plugin mechanism: components are found by ``(role, name)``.
+
+This is what a developer relies on when they ``pip install`` their own package beside
+ours and select it by name, so the two behaviours that differ are pinned here: resolving
+a name never falls back, and enumerating never lets one broken package take down a run
+that does not use it.
+"""
+
+import types
+from typing import ClassVar
+
+import pytest
+from nemo_experimentalist_plugin.experimentalist import registry as registry_module
+from nemo_experimentalist_plugin.experimentalist.registry import (
+    Component,
+    get,
+    load_plugins,
+    registered,
+    resolve,
+)
+from nemo_experimentalist_plugin.experimentalist.roles import Builder, Strategy
+
+
+def test_our_own_components_are_discovered_through_the_entry_point_group() -> None:
+    """No privileged built-ins: ours ship an entry point exactly like a third party's.
+
+    If this breaks, the mechanism a plugin developer depends on is broken too — which is
+    the point of registering ours the same way rather than importing them directly.
+    """
+    assert "evolutionary" in registered("strategy")
+    assert "coder" in registered("builder")
+
+
+def test_resolving_an_unknown_name_raises_and_says_what_is_known() -> None:
+    """Never skip, never fall back. A run configured for a strategy that is not installed
+    must not quietly run a different one and report a result for a question nobody asked."""
+    with pytest.raises(LookupError) as excinfo:
+        resolve("strategy", "not-installed")
+
+    message = str(excinfo.value)
+    assert "not-installed" in message
+    assert "evolutionary" in message, "the error should list what is available"
+
+
+def test_a_role_base_class_does_not_register_itself() -> None:
+    """``Strategy`` and ``Builder`` declare a slot; they are not implementations of one."""
+    assert ("strategy", "") not in Component._registry
+    assert ("builder", "") not in Component._registry
+    assert Strategy.name == ""
+    assert Builder.name == ""
+
+
+def test_two_different_classes_claiming_one_name_is_an_error() -> None:
+    """Last-win is the wrong semantics for a named component that must exist."""
+    with pytest.raises(RuntimeError, match="duplicate component builder.coder"):
+
+        class Clashing(Builder):
+            name = "coder"
+
+
+def test_re_executing_a_component_module_is_not_a_duplicate() -> None:
+    """A module reachable twice — reloaded, or importable by two paths — re-registers.
+
+    Comparing by object identity reported a class as a duplicate of itself, with both
+    sides of the message naming the same class.
+
+    Built by hand rather than with ``importlib.reload`` on the real module: reloading
+    rebinds every class in it, so the config tree's ``CoderConfig`` would stop being the
+    same object as the freshly imported one and unrelated tests would fail.
+    """
+    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+
+    def _same_identity(namespace: dict[str, object]) -> None:
+        namespace["name"] = "coder"
+        namespace["__module__"] = Coder.__module__
+        namespace["__qualname__"] = Coder.__qualname__
+
+    try:
+        stand_in = types.new_class("Coder", (Builder,), exec_body=_same_identity)  # must not raise
+
+        # It really did re-register: the entry now points at the stand-in, not the real
+        # Coder. Asserting the qualname instead would only re-read what was just written.
+        assert resolve("builder", "coder") is stand_in
+        assert stand_in is not Coder
+    finally:
+        # Restore, or every later resolution of the builder gets a class with no build().
+        Component._registry[("builder", "coder")] = Coder
+
+    assert resolve("builder", "coder") is Coder
+
+
+def test_a_broken_third_party_package_does_not_break_unrelated_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Enumeration degrades; resolution still raises, and says why the name is missing."""
+
+    class _BrokenEntryPoint:
+        name = "strategy.broken"
+        value = "acme_broken.strategy"
+
+        def load(self) -> object:
+            raise ImportError("no module named 'acme_broken'")
+
+    monkeypatch.setattr(registry_module, "entry_points", lambda group: [_BrokenEntryPoint()])
+    monkeypatch.setattr(registry_module, "_LOAD_FAILURES", {})
+    # Restored by monkeypatch: forcing a reload with only the broken entry point visible
+    # would otherwise leave discovery marked done, and every later enumeration in this
+    # process would short-circuit over a registry that never saw the real components.
+    monkeypatch.setattr(registry_module, "_loaded", False)
+
+    load_plugins(force=True)  # must not raise
+
+    with pytest.raises(LookupError, match="failed to import"):
+        resolve("strategy", "broken")
+
+
+def test_get_constructs_with_the_arguments_the_resolver_was_given() -> None:
+    """Construction arguments are the consuming strategy's business, not the registry's."""
+    seen: dict[str, object] = {}
+
+    class Recording(Builder):
+        name = "recording-builder-for-test"
+        accepts: ClassVar[frozenset[str]] = frozenset({"code-change"})
+
+        def __init__(self, **kwargs: object) -> None:
+            seen.update(kwargs)
+
+    try:
+        instance = get("builder", "recording-builder-for-test", workspace="/tmp", config=None)
+
+        assert isinstance(instance, Recording)
+        assert seen == {"workspace": "/tmp", "config": None}
+    finally:
+        Component._registry.pop(("builder", "recording-builder-for-test"), None)
+
+
+def test_a_builder_declares_which_proposal_kinds_it_accepts() -> None:
+    """Routing by ``Proposal.kind`` is what lets one run mix candidate kinds later."""
+    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.proposer import CODE_CHANGE
+
+    assert CODE_CHANGE in Coder.accepts
+    assert "parameters" not in Coder.accepts
+
+
+@pytest.mark.asyncio
+async def test_the_context_actually_satisfies_the_protocols_it_is_typed_against(tmp_path) -> None:
+    """Otherwise the seam is decoration.
+
+    ``roles`` types ``Strategy.run`` and ``Builder.build`` against these Protocols rather
+    than the concrete context — naming the implementation there closes an import cycle
+    through every component config slice. That indirection is only sound if the real
+    context still provides what they name.
+
+    Scope, precisely: ``isinstance`` against a ``runtime_checkable`` Protocol compares
+    *attribute names only*. It catches a renamed or deleted verb, which is the drift this
+    guards against; it does not catch a changed signature, return type, or sync-vs-async
+    flip. ``ty`` covers those at the call sites.
+    """
+    from doubles import make_context
+    from nemo_experimentalist_plugin.experimentalist.seam import BuilderContext, StrategyContext
+
+    ctx = make_context(root=tmp_path)
+
+    assert isinstance(ctx, BuilderContext)
+    assert isinstance(ctx, StrategyContext)
+
+
+def test_agent_class_docstrings_stay_prompt_shaped() -> None:
+    """A component Agent's class docstring IS its system prompt.
+
+    nooa's ``_resolve_system_prompt`` walks the MRO and installs the nearest class
+    docstring verbatim, so it is spent on the model at every call. Explaining the host's
+    design there — Fork, Candidate, ctx.evaluate, reST markup — hands a coding agent
+    vocabulary it cannot act on, and nothing else in the suite would notice. Design notes
+    belong in comments above the class.
+    """
+    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
+
+    for agent in (Coder, EvolutionaryOptimizer):
+        prompt = agent.__doc__ or ""
+        assert prompt.strip(), f"{agent.__name__} has no system prompt"
+        assert ":class:" not in prompt, (
+            f"{agent.__name__}'s system prompt carries Sphinx role markup meant for developers"
+        )
+        for leaked in ("ctx.evaluate", "commit_candidate", "BuilderContext", "ExperimentContext"):
+            assert leaked not in prompt, f"{agent.__name__}'s system prompt leaks host vocabulary: {leaked}"

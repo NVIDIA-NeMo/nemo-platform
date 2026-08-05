@@ -34,6 +34,16 @@ _SUITE_IDENTITY = f"sha256:{'a' * 64}"
 _SUITE_PATH = Path("/experiment/eval-and-optimize/eval_author/insight-1/insight-suite")
 
 
+def _measure(candidate: Candidate, channel: str, **fields: object) -> None:
+    """Add fields to a channel's record, keeping what ``_candidate`` already seeded.
+
+    Writing the channel outright would drop the suite identity and metric keys these
+    tests depend on. A channel is written once in production — Builder commits, strategy
+    records — so this shape is the test's, not the loop's.
+    """
+    candidate.rewards[channel] = candidate.rewards[channel].model_copy(update=fields)
+
+
 def _candidate(
     label: str,
     *,
@@ -158,7 +168,8 @@ def test_insight_promotion_suggestions_are_stable_discriminative_and_diverse(
         Task(id="task-flat", uri=(tmp_path / "task-flat").as_uri()),
     ]
     baseline = _candidate("agent-0", round_num=0)
-    baseline.record_reward(
+    _measure(
+        baseline,
         "insight",
         trials=[
             _insight_trial("task-a", 0.0, attempt=1),
@@ -174,11 +185,10 @@ def test_insight_promotion_suggestions_are_stable_discriminative_and_diverse(
         ],
     )
     winner = _candidate("agent-1", round_num=1)
-    winner.record_reward(
-        "insight", metadata={**winner.rewards["insight"].metadata, "metric_keys": ["uses_required_tool", "reward"]}
-    )
-    winner.record_reward(
+    _measure(
+        winner,
         "insight",
+        metadata={**winner.rewards["insight"].metadata, "metric_keys": ["uses_required_tool", "reward"]},
         trials=[
             _insight_trial("task-a", 1.0, attempt=1),
             _insight_trial("task-a", 1.0, attempt=2),
@@ -223,11 +233,10 @@ def test_task_evidence_excludes_candidates_from_other_suites(tmp_path: Path) -> 
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
     stale = _candidate("agent-stale", round_num=1)
-    stale.record_reward(
-        "insight", metadata={**stale.rewards["insight"].metadata, "suite_identity": f"sha256:{'e' * 64}"}
-    )
+    _measure(stale, "insight", metadata={**stale.rewards["insight"].metadata, "suite_identity": f"sha256:{'e' * 64}"})
     for candidate, score in ((baseline, 0.0), (winner, 1.0), (stale, 0.5)):
-        candidate.record_reward(
+        _measure(
+            candidate,
             "insight",
             trials=[
                 _insight_trial(task.id, score, attempt=1),
@@ -336,7 +345,8 @@ def test_invalid_runtime_metrics_cannot_be_promotion_evidence(
     task = Task(id="task-a")
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
-    baseline.record_reward(
+    _measure(
+        baseline,
         "insight",
         trials=[
             _insight_trial("task-a", 0.0, attempt=1),
@@ -346,7 +356,8 @@ def test_invalid_runtime_metrics_cannot_be_promotion_evidence(
     invalid_trial = _insight_trial("task-a", invalid_score, attempt=1)
     if missing_key:
         invalid_trial.metrics.pop("uses_required_tool")
-    winner.record_reward(
+    _measure(
+        winner,
         "insight",
         trials=[
             invalid_trial,
@@ -368,8 +379,8 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
     task = Task(id="task-a")
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
-    baseline.record_reward("insight", trials=[_insight_trial("task-a", 0.0)])
-    winner.record_reward("insight", trials=[_insight_trial("task-a", 1.0)])
+    _measure(baseline, "insight", trials=[_insight_trial("task-a", 0.0)])
+    _measure(winner, "insight", trials=[_insight_trial("task-a", 1.0)])
 
     assert (
         select_insight_promotion_suggestions(
@@ -380,12 +391,13 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
         == []
     )
 
-    baseline.record_reward(
-        "insight", trials=[*baseline.reward("insight").trials, _insight_trial("task-a", 0.0, attempt=2)]
+    _measure(
+        baseline, "insight", trials=[*baseline.rewards["insight"].trials, _insight_trial("task-a", 0.0, attempt=2)]
     )
-    winner.record_reward(
+    _measure(
+        winner,
         "insight",
-        trials=[*winner.reward("insight").trials, _insight_trial("task-a", 1.0, attempt=2, status="failed")],
+        trials=[*winner.rewards["insight"].trials, _insight_trial("task-a", 1.0, attempt=2, status="failed")],
     )
     assert (
         select_insight_promotion_suggestions(
@@ -396,7 +408,7 @@ def test_one_attempt_failed_and_incomplete_evidence_do_not_qualify_as_stable() -
         == []
     )
 
-    winner.record_reward("insight", trials=[])
+    _measure(winner, "insight", trials=[])
     assert (
         select_insight_promotion_suggestions(
             _insight_dataset([task]),
@@ -424,14 +436,16 @@ def test_promotion_requires_baseline_to_winner_improvement(
     baseline = _candidate("agent-0", round_num=0)
     winner = _candidate("agent-1", round_num=1)
     candidates = [baseline, winner]
-    baseline.record_reward(
+    _measure(
+        baseline,
         "insight",
         trials=[
             _insight_trial("task-a", baseline_score, attempt=1),
             _insight_trial("task-a", baseline_score, attempt=2),
         ],
     )
-    winner.record_reward(
+    _measure(
+        winner,
         "insight",
         trials=[
             _insight_trial("task-a", winner_score, attempt=1),
@@ -440,7 +454,8 @@ def test_promotion_requires_baseline_to_winner_improvement(
     )
     if bad_score is not None:
         bad = _candidate("agent-bad", round_num=1)
-        bad.record_reward(
+        _measure(
+            bad,
             "insight",
             trials=[
                 _insight_trial("task-a", bad_score, attempt=1),

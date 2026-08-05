@@ -186,8 +186,8 @@ class Proposer(Agent):
                 {
                     "id": s.id,
                     "label": s.label,
-                    "reward": s.reward("validation").metrics or {},
-                    "trajectory_reward": s.reward("validation-trajectory").metrics or {},
+                    "reward": s.rewards["validation"].metrics or {},
+                    "trajectory_reward": s.rewards["validation-trajectory"].metrics or {},
                     "metadata": meta,
                     "architecture": arch_text,
                 }

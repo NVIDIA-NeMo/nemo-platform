@@ -1,0 +1,190 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""What a component sees of the run, and the working copy a Builder builds in.
+
+Kept apart from :mod:`context` so a component can depend on the *shape* of the seam
+rather than on the implementation. That is not tidiness: ``roles`` declares what a
+strategy must implement, the implementation reaches the backend, and the backend reaches
+the config tree, which imports the component config slices — so a role that named the
+concrete context would close a cycle through every component in the plugin. Depending on
+a Protocol breaks it, and it is also what lets an out-of-tree strategy type its own
+``run`` without importing our internals.
+
+:class:`BuilderContext` narrows; :class:`StrategyContext` does not, and is not meant to —
+a strategy orchestrates, so it sees everything. Its value is the direction of the
+dependency. The Proposer will want a view of its own when it becomes a resolved component
+in M2; it takes plain arguments today, so writing one now would be guessing at a shape
+with no caller.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Protocol, runtime_checkable
+
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
+    Dataset,
+    DataValue,
+    EvaluationResult,
+    Proposal,
+    RewardRecord,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
+from nemo_platform import AsyncNeMoPlatform
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class Fork(BaseModel):
+    """A working copy, and the thing it was forked from.
+
+    Returned as one value because a fork inherently knows its upstream. Asking the
+    context separately for "the ancestor directory of a proposal" is a confused question:
+    the proposal describes a change, and only the fork knows where that change is being
+    made and what it is being made against.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    workdir: Path = Field(description="Write here. Seeded from upstream, and this becomes the candidate's artifact.")
+    upstream: Path | None = Field(
+        default=None,
+        description=(
+            "The pristine parent, read-only; None when forked from the agent under test. "
+            "Needed even though workdir is seeded from it: once the Builder edits, the "
+            "parent is gone from its view, and architecture.md is excluded from the "
+            "seeding by design, so it is reachable nowhere else."
+        ),
+    )
+
+
+@runtime_checkable
+class BuilderContext(Protocol):
+    """Everything a Builder may reach, which is two verbs: get a place to work, hand back
+    the finished thing.
+
+    Both take the ``Proposal`` and return a ``Fork`` or a ``Candidate``. A Builder never
+    handles an id and never receives a path from outside — an id is the store's internal
+    currency, and a component that is handed one can only give it back. Resolving a
+    proposal's ancestor to a location is the context's job because the context is what
+    knows where candidates live, and that is exactly what lets candidate storage move
+    without changing a single Builder signature.
+
+    This is a Protocol, so it documents and type-checks rather than enforces; a component
+    handed the real context can still call anything on it. That is deliberate — plugin
+    authors are collaborators, not adversaries, and the context's job is to make the
+    supported surface obvious, not to sandbox hostile code.
+    """
+
+    async def fork(self, proposal: Proposal) -> Fork:
+        """Reserve a working copy for *proposal*, seeded from what it branches off."""
+        ...
+
+    async def commit_candidate(self, *, proposal: Proposal, artifact: Path, generation: int = 0) -> Candidate:
+        """Validate the finished artifact and create the Candidate addressing it."""
+        ...
+
+
+@runtime_checkable
+class StrategyContext(BuilderContext, Protocol):
+    """Everything the run offers, which is what a strategy orchestrating it needs.
+
+    Wider than :class:`BuilderContext` on purpose. The point is not to restrict the
+    strategy — it is the thing in charge — but to let ``roles`` and any out-of-tree
+    strategy name this contract without importing the implementation behind it.
+    """
+
+    #: True when the runner re-opened an existing run, so the strategy should rebuild its
+    #: state from :meth:`candidates` rather than starting over.
+    resuming: bool
+
+    #: NeMo Platform workspace this run belongs to.
+    workspace: str
+
+    @property
+    def run_id(self) -> str:
+        """Durable id of this run, and the key every Candidate is grouped under."""
+        ...
+
+    #: Evaluator-domain datasets keyed by split. ``validation`` is always present.
+    datasets: Mapping[str, Dataset]
+
+    #: Markdown description of the agent under test, when the run has one.
+    agent_spec: Path | None
+
+    @property
+    def evaluation(self) -> Evaluator:
+        """The run's configured evaluation component, for a strategy to hand to a
+        component it owns. Becomes ``component("evaluation", …)`` in M2."""
+        ...
+
+    @property
+    def client(self) -> AsyncNeMoPlatform | None:
+        """Platform client, for reading ``intake://`` traces. **Transitional.**
+
+        The last piece of backend still reaching a component: trace readers resolve
+        ``intake://`` trial traces themselves. A context verb that loads a trace by
+        reference would close it, and M2's evaluator extraction is where that lands. A
+        strategy that does not read traces should ignore this.
+        """
+        ...
+
+    async def candidates(self) -> list[Candidate]:
+        """Every Candidate committed to this run. What makes resume possible."""
+        ...
+
+    def candidate_dir(self, candidate: Candidate) -> Path:
+        """Where *candidate*'s artifact lives, raising if the record outlived it."""
+        ...
+
+    async def import_baseline(self, description: str) -> Candidate:
+        """Commit the agent under test, as-is, as the run's baseline."""
+        ...
+
+    async def update_candidate(self, candidate: Candidate, **fields: object) -> Candidate:
+        """Persist changes to a Candidate that already exists."""
+        ...
+
+    async def discard_candidate(self, candidate: Candidate) -> None:
+        """Remove a Candidate entirely: its artifact and the record addressing it."""
+        ...
+
+    async def archive_candidate(self, candidate: Candidate) -> None:
+        """Persist a Candidate's code to durable storage, if this run archives at all."""
+        ...
+
+    async def record_reward(
+        self,
+        candidate: Candidate,
+        *,
+        channel: str,
+        result: EvaluationResult | RewardRecord,
+        metadata: dict[str, DataValue] | None = None,
+    ) -> None:
+        """Store one measurement of *candidate* on *channel*. Universal."""
+        ...
+
+    async def evaluate(
+        self,
+        candidate: Candidate,
+        *,
+        split: str = "validation",
+        task_ids: Sequence[str] | None = None,
+        minimum_attempts: int | None = None,
+    ) -> EvaluationResult:
+        """Run the configured evaluation component. Optional: a self-scoring strategy
+        skips this and calls :meth:`record_reward` directly."""
+        ...
+
+    async def report_progress(
+        self, *, completed: int, total: int | None = None, unit: str = "step", note: str | None = None
+    ) -> None:
+        """Report progress as a counter, not a fraction — opaque strategies cannot
+        compute one."""
+        ...
+
+    def note(self, message: str) -> None:
+        """Narrate, for a human watching. Touches no entity and never raises."""
+        ...

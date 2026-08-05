@@ -281,4 +281,4 @@ async def test_mirror_projects_every_measured_channel_without_an_allowlist() -> 
     # entity alone would pass even if project_candidate went back to a fixed allowlist.
     projected = {call.kwargs["metadata"]["split"] for call in experiments.create.await_args_list}
     assert projected == {"validation", "some-new-channel"}
-    assert candidate.reward("never-measured").metrics == {}
+    assert candidate.rewards["never-measured"].metrics == {}

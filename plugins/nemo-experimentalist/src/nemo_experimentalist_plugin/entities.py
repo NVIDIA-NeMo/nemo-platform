@@ -444,6 +444,34 @@ class RewardRecord(BaseModel):
     metadata: dict[str, DataValue] = Field(default_factory=dict, description="Provenance for this measurement.")
 
 
+class RewardMap(dict[str, RewardRecord]):
+    """A candidate's measurements, keyed by reward channel.
+
+    One mapping answers both questions that used to need two APIs: ``rewards[channel]``
+    always yields a record, so ``rewards["train"].metrics`` never needs a presence check,
+    while ``channel in rewards`` still answers *was this measured at all* — the question
+    eight call sites gate evaluation on.
+
+    ``__missing__`` **returns** without inserting, which is the whole point and why this
+    is not a ``defaultdict``: that one's ``__missing__`` inserts, so merely reading a
+    channel would mark it measured, skip its evaluation, and persist a phantom record.
+    """
+
+    def __missing__(self, channel: str) -> RewardRecord:
+        return RewardRecord()
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any) -> Any:
+        """Validate as a plain channel map, then re-wrap so ``__missing__`` survives.
+
+        Pydantic rejects a bare ``dict`` subclass, and validating into one would hand
+        back a plain ``dict`` that has lost the behaviour this class exists for.
+        """
+        from pydantic_core import core_schema
+
+        return core_schema.no_info_after_validator_function(cls, handler.generate_schema(dict[str, RewardRecord]))
+
+
 class Proposal(BaseModel):
     """A request to build one candidate — the Proposer → Builder contract.
 
@@ -538,13 +566,15 @@ class Candidate(NemoEntity, entity_type="candidate"):
         ...,
         description="The completed resource that defines this candidate, written by its Builder.",
     )
-    rewards: dict[str, RewardRecord] = Field(
-        default_factory=dict,
+    rewards: RewardMap = Field(
+        default_factory=RewardMap,
         description=(
             "Measurements keyed by reward channel. An open set: 'train', 'validation', "
             "'insight' and 'validation-trajectory' today. A channel is a measurement, not a "
             "dataset split — trajectory scoring is a second measurement of the validation "
-            "split — so adding one costs no entity change."
+            "split — so adding one costs no entity change. Read with rewards[channel], "
+            "which always yields a record; ask 'channel in rewards' to learn whether it "
+            "was ever measured."
         ),
     )
     trajectory_detail: dict[str, Any] | None = Field(
@@ -599,52 +629,11 @@ class Candidate(NemoEntity, entity_type="candidate"):
         parts.append(")")
         return "".join(parts)
 
-    def reward(self, channel: str) -> RewardRecord:
-        """This candidate's measurement on *channel*, empty when unmeasured.
-
-        Returns a blank record rather than ``None`` so call sites read
-        ``candidate.reward("train").metrics`` without a presence check. Use
-        ``channel in candidate.rewards`` to ask whether it was measured at all —
-        an empty record and an unmeasured channel are different things.
-        """
-        return self.rewards.get(channel) or RewardRecord()
-
-    def record_reward(
-        self,
-        channel: str,
-        *,
-        metrics: dict[str, float] | None = None,
-        summary: float | None = None,
-        trials: Sequence[TrialResult] | None = None,
-        metadata: dict[str, DataValue] | None = None,
-    ) -> None:
-        """Merge a measurement into *channel*, leaving unspecified parts untouched.
-
-        Named ``record_`` rather than ``set_`` because it merges: an argument left as
-        ``None`` keeps whatever the channel already holds. Every caller today writes a
-        channel exactly once, so nothing currently depends on that — but the channel set
-        is open, and a second writer adding ``metadata`` to a channel another path
-        measured should not silently drop its ``metrics``. Replace semantics would make
-        that a data loss no test would catch.
-        """
-        current = self.rewards.get(channel) or RewardRecord()
-        update = {
-            key: value
-            for key, value in (
-                ("metrics", metrics),
-                ("summary", summary),
-                ("trials", trials),
-                ("metadata", metadata),
-            )
-            if value is not None
-        }
-        self.rewards = {**self.rewards, channel: current.model_copy(update=update)}
-
     def slim(self) -> "Candidate":
         """Return a copy without per-trial detail (safe to pass to LLM methods)."""
         return self.model_copy(
             update={
-                "rewards": {c: r.model_copy(update={"trials": []}) for c, r in self.rewards.items()},
+                "rewards": RewardMap((c, r.model_copy(update={"trials": []})) for c, r in self.rewards.items()),
                 "trajectory_detail": None,
             }
         )

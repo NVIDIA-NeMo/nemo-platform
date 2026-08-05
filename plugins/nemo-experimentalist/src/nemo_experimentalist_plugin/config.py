@@ -76,6 +76,22 @@ class EvolutionaryOptimizerConfig(BaseModel):
             )
         return data
 
+    strategy: str = Field(
+        default="evolutionary",
+        description=(
+            "Registered 'strategy' component the runner runs. Ours is resolved by name "
+            "like any other, so a strategy shipped by another package is selected here "
+            "with no code change."
+        ),
+    )
+    builder: str = Field(
+        default="coder",
+        description=(
+            "Registered 'builder' component that turns a Proposal into a Candidate. "
+            "Swap it for one shipped by another package to change how candidates are "
+            "built without touching the loop."
+        ),
+    )
     max_rounds: int = Field(default=15, description="Hard ceiling on optimization rounds.")
     min_rounds_before_stopping: int = Field(
         default=3, description="Rounds that must complete before the convergence check may stop the run."

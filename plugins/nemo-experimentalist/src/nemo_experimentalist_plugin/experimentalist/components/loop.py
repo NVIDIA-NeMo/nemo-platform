@@ -27,7 +27,7 @@ from nemo_experimentalist_plugin.entities import (
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
-from nemo_experimentalist_plugin.experimentalist.components.coder import BuildRequest, Coder, CoderConfig
+from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import (
     GoalTree,
     GoalTreeConfig,
@@ -62,7 +62,9 @@ from nemo_experimentalist_plugin.experimentalist.components.tools import (
 from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import (
     GroupLeafScorer,
 )
-from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
+from nemo_experimentalist_plugin.experimentalist.registry import get, resolve
+from nemo_experimentalist_plugin.experimentalist.roles import Builder, Strategy
+from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -193,7 +195,7 @@ class AnalysisSkill(Skill):
 
     ```python
     candidate = self.workspace.get_metadata(agent_id)
-    traj = candidate.reward("validation-trajectory").metrics or {}
+    traj = candidate.rewards["validation-trajectory"].metrics or {}
     # e.g. {"aggregate": 0.74, "parse-cli-input": 0.31, "search-web-sources": 0.78}
     details = candidate.trajectory_detail or {}
     # details[node_id][task_id] = {"reward": 0.7, "explanation": "..."}
@@ -295,13 +297,17 @@ class AnalysisSkill(Skill):
     """
 
 
-class EvolutionaryOptimizer(Agent):
+class EvolutionaryOptimizer(Agent, Strategy):
     """The Experimentalist's deterministic Pareto optimization loop.
 
     Orchestrates the baseline → [convergence-check → select → train-eval →
     analyze → propose → implement → record → validation-eval] cycle across
     rounds, mirroring the AAD ``EvolutionaryOptimizer``.
     """
+
+    #: Resolvable as ``strategy: evolutionary``. Ours registers exactly like a third
+    #: party's — there is no privileged built-in.
+    name = "evolutionary"
 
     #: This loop resumes from its own round-analysis files plus ``ctx.candidates()``,
     #: so the runner may re-open an existing run and hand it back.
@@ -349,14 +355,14 @@ class EvolutionaryOptimizer(Agent):
     # Public entry point
     # ------------------------------------------------------------------
 
-    async def run(self, ctx: ExperimentContext) -> Candidate | None:
+    async def run(self, ctx: StrategyContext) -> Candidate | None:
         """Run optimization and always close the owned shell session."""
         try:
             return await self._run(ctx)
         finally:
             await self.shell.close()
 
-    async def _run(self, ctx: ExperimentContext) -> Candidate | None:
+    async def _run(self, ctx: StrategyContext) -> Candidate | None:
         """Run the Pareto evolutionary optimization loop.
 
         Args:
@@ -445,7 +451,7 @@ class EvolutionaryOptimizer(Agent):
             )
             survived = {s.id for s in survivors}
             for candidate in [c for c in candidates if c.id not in survived]:
-                await ctx.save_candidate(candidate, updates={"killed_generation": round_num})
+                await ctx.update_candidate(candidate, killed_generation=round_num)
 
             train_candidate_results = await self._evaluate_train_candidates(
                 ctx=ctx,
@@ -490,7 +496,6 @@ class EvolutionaryOptimizer(Agent):
             )
             new_candidates = await self._build_candidates(
                 ctx=ctx,
-                evolution_tree=evolution_tree,
                 dataset=train_eval_dataset,
                 proposals=proposals,
                 generation=round_num + 1,
@@ -578,7 +583,7 @@ class EvolutionaryOptimizer(Agent):
         dimensions where another trails):
 
         ```python
-        rewards = {c.label: self.workspace.get_metadata(c.label).reward("validation").metrics or {} for c in ranked}
+        rewards = {c.label: self.workspace.get_metadata(c.label).rewards["validation"].metrics or {} for c in ranked}
         ```
 
         Between 1 to 3 survivors per round.
@@ -600,9 +605,9 @@ class EvolutionaryOptimizer(Agent):
         Read each agent's per-dimension train rewards from metadata:
 
         ```python
-        rewards = {c.label: self.workspace.get_metadata(c.label).reward("train").metrics or {} for c in agent_ids}
+        rewards = {c.label: self.workspace.get_metadata(c.label).rewards["train"].metrics or {} for c in agent_ids}
         insight_rewards = {
-            c.label: self.workspace.get_metadata(c.label).reward("insight").metrics or {} for c in agent_ids
+            c.label: self.workspace.get_metadata(c.label).rewards["insight"].metrics or {} for c in agent_ids
         }
         all_candidates = [
             self.workspace.get_metadata(agent_id).slim() for agent_id in self.workspace.list_agents()
@@ -626,7 +631,7 @@ class EvolutionaryOptimizer(Agent):
         First, discover reward dimensions from metadata:
         ```python
         candidate = self.workspace.get_metadata(agent_ids[0].label).slim()
-        train_reward = candidate.reward("train").metrics or {}
+        train_reward = candidate.rewards["train"].metrics or {}
         dim_keys = sorted(train_reward.keys())
         insight_dim_keys = sorted({key for reward in insight_rewards.values() for key in reward})
         ```
@@ -656,7 +661,7 @@ class EvolutionaryOptimizer(Agent):
         ```python
         agent_ids = self.workspace.list_agents()
         candidate = self.workspace.get_metadata(agent_id).slim()
-        insight_reward = candidate.reward("insight").metrics or {}
+        insight_reward = candidate.rewards["insight"].metrics or {}
         analysis  = self.workspace.read_analysis_file(n)
         ```
 
@@ -710,7 +715,7 @@ class EvolutionaryOptimizer(Agent):
                 continue
         return max(rounds) if rounds else None
 
-    async def _delete_all_artifacts(self, *, ctx: ExperimentContext, from_round: int) -> None:
+    async def _delete_all_artifacts(self, *, ctx: StrategyContext, from_round: int) -> None:
         """Roll back everything produced after *from_round* so the loop can re-enter cleanly.
 
         Which candidates those are comes from the stored records rather than a directory
@@ -737,7 +742,7 @@ class EvolutionaryOptimizer(Agent):
                     if scratch.is_dir():
                         shutil.rmtree(scratch)
             elif candidate.killed_generation is not None and candidate.killed_generation > from_round:
-                await ctx.save_candidate(candidate, updates={"killed_generation": None})
+                await ctx.update_candidate(candidate, killed_generation=None)
 
         for pattern in ("round-*.md", "round-*-goal.json"):
             for f in analysis_dir.glob(pattern):
@@ -748,7 +753,7 @@ class EvolutionaryOptimizer(Agent):
                 if n > from_round:
                     f.unlink()
 
-    async def _ensure_baseline(self, *, ctx: ExperimentContext, config: EvolutionaryOptimizerConfig) -> None:
+    async def _ensure_baseline(self, *, ctx: StrategyContext, config: EvolutionaryOptimizerConfig) -> None:
         """Create the baseline candidate unless this run already has one.
 
         A crash during round 0 leaves ``run.json`` behind but no round analysis, so the
@@ -765,22 +770,18 @@ class EvolutionaryOptimizer(Agent):
     async def _create_baseline_agent(
         self,
         *,
-        ctx: ExperimentContext,
+        ctx: StrategyContext,
         config: EvolutionaryOptimizerConfig,
     ) -> Candidate:
-        """Fork the agent under test and commit it as the run's baseline candidate.
+        """Import the agent under test as the run's baseline candidate.
 
-        The baseline has no Proposal — it is the agent as it arrived, not a variant —
-        so it supplies its own description and is committed with ``proposal=None``.
+        Not a fork and not a build: the baseline is the agent as it arrived, so nothing
+        proposed it and the context has a separate verb for it. The architecture doc is
+        generated afterwards, into the artifact the Candidate already addresses.
         """
-        baseline_dir = await ctx.fork(None)
-        await self._generate_architecture_doc(agent_dir=baseline_dir, config=config)
-        return await ctx.commit_candidate(
-            proposal=None,
-            artifact=baseline_dir,
-            description="baseline: the agent under test, unchanged",
-            generation=0,
-        )
+        baseline = await ctx.import_baseline("baseline: the agent under test, unchanged")
+        await self._generate_architecture_doc(agent_dir=ctx.candidate_dir(baseline), config=config)
+        return baseline
 
     async def _load_round_analysis(
         self,
@@ -829,7 +830,7 @@ class EvolutionaryOptimizer(Agent):
 
     async def _evaluate_agent(
         self,
-        ctx: ExperimentContext,
+        ctx: StrategyContext,
         candidate: Candidate,
         split: str,
         task_ids: list[str] | None = None,
@@ -857,14 +858,13 @@ class EvolutionaryOptimizer(Agent):
         """Generate ``architecture.md`` for *agent_dir* via Coder."""
         if (agent_dir / "architecture.md").exists():
             return
-        agent_id = agent_dir.name
         await Coder(
             workspace=self.working_dir,
             config=self._coder_config(config),
             framework_skills_dirs=self._framework_skills_dirs,
             models=self._models,
         ).create_architecture_doc(
-            agent_id,
+            agent_dir,
             source_path=config.source.source_path,
             entrypoint=config.source.entrypoint,
         )
@@ -872,7 +872,7 @@ class EvolutionaryOptimizer(Agent):
     async def _evaluate_validation_candidates(
         self,
         *,
-        ctx: ExperimentContext,
+        ctx: StrategyContext,
         candidates: list[Candidate],
     ) -> dict[str, EvaluationResult]:
         """Evaluate candidates on the validation split; skip any that already have a reward."""
@@ -890,7 +890,7 @@ class EvolutionaryOptimizer(Agent):
     async def _evaluate_insight_candidates(
         self,
         *,
-        ctx: ExperimentContext,
+        ctx: StrategyContext,
         dataset: Dataset,
         candidates: list[Candidate],
     ) -> dict[str, EvaluationResult]:
@@ -916,7 +916,7 @@ class EvolutionaryOptimizer(Agent):
     async def _evaluate_and_persist_insight_candidates(
         self,
         *,
-        ctx: ExperimentContext,
+        ctx: StrategyContext,
         dataset: Dataset,
         candidates: list[Candidate],
     ) -> None:
@@ -997,13 +997,13 @@ class EvolutionaryOptimizer(Agent):
         k: int,
     ) -> list[Candidate]:
         """Return the top-k Pareto-optimal and architecturally diverse candidates."""
-        ranked = pareto_sort(candidates, lambda c: c.reward("validation").metrics or {})
+        ranked = pareto_sort(candidates, lambda c: c.rewards["validation"].metrics or {})
         return await self.select_diverse_survivors(ranked, k)
 
     async def _evaluate_train_candidates(
         self,
         *,
-        ctx: ExperimentContext,
+        ctx: StrategyContext,
         max_train_batch_tasks: int | None,
         train_batch_seed: int,
         survivors: list[Candidate],
@@ -1033,8 +1033,8 @@ class EvolutionaryOptimizer(Agent):
                     continue
                 results[survivor.label] = EvaluationResult(
                     id=f"{survivor.label}-train",
-                    aggregate_metrics=survivor.reward("train").metrics or {},
-                    trials=list(survivor.reward("train").trials or []),
+                    aggregate_metrics=survivor.rewards["train"].metrics or {},
+                    trials=list(survivor.rewards["train"].trials or []),
                 )
             return results
 
@@ -1161,8 +1161,7 @@ class EvolutionaryOptimizer(Agent):
     async def _build_candidates(
         self,
         *,
-        ctx: ExperimentContext,
-        evolution_tree: EvolutionTree,
+        ctx: StrategyContext,
         dataset: Dataset,
         proposals: list[Proposal],
         generation: int,
@@ -1175,42 +1174,27 @@ class EvolutionaryOptimizer(Agent):
         after the build validates — there is no half-finished record to resurrect on
         resume, and no killed marker to remember to write.
 
-        Forking is part of the build for that purpose. It runs before the Coder and can
-        fail on its own (an ancestor whose artifact has gone, say), and a proposal that
-        cannot even be forked is one bad proposal — not a reason to end a run that has
-        already spent hours.
+        The Builder owns the whole span, forking included, so every way a build can fail
+        — an ancestor whose artifact has gone, a smoke eval that will not pass — arrives
+        here the same way: the Builder raised. One bad proposal is not a reason to end a
+        run that has already spent hours, so it is logged and dropped.
         """
-        builds: list[BuildRequest] = []
-        buildable: list[Proposal] = []
+        builder_cls = cast("type[Builder]", resolve("builder", config.builder))
+        buildable = [proposal for proposal in proposals if proposal.kind in builder_cls.accepts]
         for proposal in proposals:
-            try:
-                forked = await ctx.fork(proposal)
-            except (OSError, ValueError) as exc:
-                logger.warning(f"Cannot fork a candidate for proposal {proposal.description!r}: {exc}")
-                continue
-            builds.append(
-                BuildRequest.from_proposal(
-                    proposal,
-                    name=forked.name,
-                    ancestor=self._label_of(evolution_tree, proposal.ancestor),
+            if proposal.kind not in builder_cls.accepts:
+                logger.warning(
+                    "No builder for a %r proposal: %r accepts %s. Dropping %r.",
+                    proposal.kind,
+                    config.builder,
+                    sorted(builder_cls.accepts) or "nothing",
+                    proposal.description,
                 )
-            )
-            buildable.append(proposal)
+
         outcomes = await asyncio.gather(
             *[
-                Coder(
-                    workspace=self.working_dir,
-                    config=self._coder_config(config),
-                    framework_skills_dirs=self._framework_skills_dirs,
-                    models=self._models,
-                ).run(
-                    build,
-                    dataset,
-                    ctx.evaluation,
-                    source_path=config.source.source_path,
-                    entrypoint=config.source.entrypoint,
-                )
-                for build in builds
+                self._new_builder(ctx=ctx, dataset=dataset, config=config).build(ctx, proposal, generation=generation)
+                for proposal in buildable
             ],
             return_exceptions=True,
         )
@@ -1218,48 +1202,56 @@ class EvolutionaryOptimizer(Agent):
         # Cancellation is not a build failure and must not be swallowed as one:
         # `CancelledError` derives from BaseException, so the filter below would let a
         # cancelled candidate through as if it had built, and it would go on to be
-        # committed, evaluated and ranked. Re-raise so the whole round unwinds instead.
+        # evaluated and ranked. Re-raise so the whole round unwinds instead.
         for outcome in outcomes:
             if isinstance(outcome, asyncio.CancelledError):
                 raise outcome
 
         built: list[Candidate] = []
-        agents_dir = self.working_dir / "eval-and-optimize" / "agents"
-        for proposal, build, outcome in zip(buildable, builds, outcomes, strict=True):
+        for proposal, outcome in zip(buildable, outcomes, strict=True):
             if isinstance(outcome, BaseException):
                 # `return_exceptions=True` means a failure arrives as a value, not a
                 # raise, so the reason is only ever seen if it is logged here. A build
                 # that never became a candidate is the one thing a run cannot cheaply
                 # reproduce, so keep the exception and its traceback.
                 logger.warning(
-                    "Build failed for %s — %s: %s",
-                    build.name,
+                    "Build failed for proposal %r — %s: %s",
+                    proposal.description,
                     type(outcome).__name__,
                     outcome,
                     exc_info=outcome,
                 )
                 continue
-            built.append(
-                await ctx.commit_candidate(
-                    proposal=proposal,
-                    artifact=agents_dir / build.name,
-                    generation=generation,
-                )
-            )
+            built.append(outcome)
         return built
 
-    @staticmethod
-    def _label_of(evolution_tree: EvolutionTree, candidate_id: str | None) -> str | None:
-        """The display handle of *candidate_id*, which is the directory it was forked into."""
-        if candidate_id is None:
-            return None
-        node = evolution_tree.nodes.get(candidate_id)
-        return node.label if node is not None else None
+    def _new_builder(self, *, ctx: StrategyContext, dataset: Dataset, config: EvolutionaryOptimizerConfig) -> Builder:
+        """Resolve and construct this run's Builder, one per build.
+
+        One instance per build because a Builder is stateful — the Coder holds a shell
+        session and a todo list — and builds run concurrently.
+
+        These constructor arguments are this strategy's contract with its Builder, not a
+        global one: a replacement shipped by another package targets *this* signature,
+        because this is the strategy that resolves it.
+        """
+        return get(
+            "builder",
+            config.builder,
+            workspace=self.working_dir,
+            config=self._coder_config(config),
+            framework_skills_dirs=self._framework_skills_dirs,
+            models=self._models,
+            evaluator=ctx.evaluation,
+            dataset=dataset,
+            source_path=config.source.source_path,
+            entrypoint=config.source.entrypoint,
+        )
 
     async def _reward_trajectories(
         self,
         *,
-        ctx: ExperimentContext,
+        ctx: StrategyContext,
         dataset: Dataset,
         candidates: list[Candidate],
         config: EvolutionaryOptimizerConfig,
@@ -1288,7 +1280,7 @@ class EvolutionaryOptimizer(Agent):
         for candidate in candidates:
             if "validation" not in candidate.rewards:
                 continue
-            for trial in candidate.reward("validation").trials or []:
+            for trial in candidate.rewards["validation"].trials or []:
                 if trial.trace is None:
                     continue
                 traces_by_task.setdefault(trial.task_id, {}).setdefault(candidate.label, trial)
