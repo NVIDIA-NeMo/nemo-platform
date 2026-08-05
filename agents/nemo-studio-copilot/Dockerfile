@@ -59,7 +59,7 @@ ENV NAT_CONFIG_FILE=/workspace/src/nemo_studio_copilot/nemo-studio-copilot.yml
 # this port. NMP_BASE_URL is supplied by the deployment runtime, so use the
 # agent-specific legacy override for SDK calls and allow local runtimes to
 # replace it when needed.
-ENV NEMO_BASE_URL=http://127.0.0.1:8090
+ENV NEMO_BASE_URL=https://127.0.0.1:8090
 
 ENV PATH="/workspace/.venv/bin:$PATH"
 
