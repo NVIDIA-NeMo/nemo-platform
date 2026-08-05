@@ -36,7 +36,7 @@ profile_schema_version: "1.0"
 created_at: 2026-07-08T22:05:12Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 2112, rows_present: 3201061,
-           files_read: 33, files_present: 33, per_file_row_cap: 64}
+           files_read: 33, files_present: 33, row_budget: 4096}
 partitions:
   - name: default
     source_dir: null
@@ -45,10 +45,10 @@ partitions:
     splits:
       - {name: train, canonical: train, num_examples: 3200861,
          files: [{path: train-00000-of-00032.parquet, size_bytes: 193777041,
-                  checksum: sha256:9c1e..., num_rows: 100027, file_format: parquet, read_strategy: head}]}
+                  checksum: sha256:9c1e..., num_rows: 100027, file_format: parquet, read_strategy: head, row_cap: 512}]}
       - {name: test, canonical: test, num_examples: 200,
          files: [{path: test-00000-of-00001.parquet, size_bytes: 411552,
-                  checksum: sha256:02af..., num_rows: 200, file_format: parquet, read_strategy: head}]}
+                  checksum: sha256:02af..., num_rows: 200, file_format: parquet, read_strategy: head, row_cap: 512}]}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -80,7 +80,7 @@ profile_schema_version: "1.0"
 created_at: 2026-07-08T22:41:37Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 1024, rows_present: 46189,
-           files_read: 2, files_present: 2, per_file_row_cap: 512}
+           files_read: 2, files_present: 2, row_budget: 1024}
 partitions:
   - name: default
     source_dir: null
@@ -89,10 +89,10 @@ partitions:
     splits:
       - {name: train, canonical: train, num_examples: 43835,
          files: [{path: train-00000-of-00001.parquet, size_bytes: 22105331,
-                  checksum: sha256:77b0..., num_rows: 43835, file_format: parquet, read_strategy: head}]}
+                  checksum: sha256:77b0..., num_rows: 43835, file_format: parquet, read_strategy: head, row_cap: 512}]}
       - {name: test, canonical: test, num_examples: 2354,
          files: [{path: test-00000-of-00001.parquet, size_bytes: 1198422,
-                  checksum: sha256:5c1d..., num_rows: 2354, file_format: parquet, read_strategy: head}]}
+                  checksum: sha256:5c1d..., num_rows: 2354, file_format: parquet, read_strategy: head, row_cap: 512}]}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -124,7 +124,7 @@ profile_schema_version: "1.0"
 created_at: 2026-07-09T10:12:45Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 1024, rows_present: 21362,
-           files_read: 2, files_present: 2, per_file_row_cap: 512}
+           files_read: 2, files_present: 2, row_budget: 1024}
 partitions:
   - name: default
     source_dir: null
@@ -133,10 +133,10 @@ partitions:
     splits:
       - {name: train, canonical: train, num_examples: 20324,
          files: [{path: train-00000-of-00001.parquet, size_bytes: 44201991,
-                  checksum: sha256:e410..., num_rows: 20324, file_format: parquet, read_strategy: head}]}
+                  checksum: sha256:e410..., num_rows: 20324, file_format: parquet, read_strategy: head, row_cap: 512}]}
       - {name: validation, canonical: validation, num_examples: 1038,
          files: [{path: validation-00000-of-00001.parquet, size_bytes: 2311008,
-                  checksum: sha256:8bd2..., num_rows: 1038, file_format: parquet, read_strategy: head}]}
+                  checksum: sha256:8bd2..., num_rows: 1038, file_format: parquet, read_strategy: head, row_cap: 512}]}
     features:
       - {name: prompt,      dtype: string, semantic_role: prompt, semantic_role_source: detected}
       - {name: response,    dtype: string, semantic_role: completion, semantic_role_source: detected}
@@ -184,7 +184,7 @@ def _build_profile() -> DatasetProfile:
             rows_present=2048,
             files_read=2,
             files_present=2,
-            per_file_row_cap=512,
+            row_budget=1024,
             seed=7,
         ),
         partitions=[
@@ -204,6 +204,7 @@ def _build_profile() -> DatasetProfile:
                                 checksum="sha256:ab",
                                 file_format="parquet",
                                 read_strategy="head",
+                                row_cap=512,
                                 num_rows=2048,
                             )
                         ],

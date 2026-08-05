@@ -138,7 +138,9 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
     # levels where each is decided, per file and per partition.
     assert {f.read_strategy for s in partition.splits for f in s.files} == {"head"}
     assert partition.stats_complete is True
-    assert result.sampling.per_file_row_cap == 1000
+    assert result.sampling.row_budget == 10_000
+    # The budget is split across the partition's two files, and each file records its own share.
+    assert {f.row_cap for s in partition.splits for f in s.files} == {5_000}
     assert result.sampling.rows_scanned == 3
     assert result.sampling.rows_present == 3
     assert result.sampling.files_read == result.sampling.files_present == 2
@@ -304,13 +306,13 @@ def test_profile_isolates_unreadable_files(tmp_path):
     assert result.sampling.files_present == 2  # ...out of two that were there to read
 
 
-def test_profile_row_cap_bounds_reads_and_says_so(tmp_path):
+def test_profile_row_budget_bounds_reads_and_says_so(tmp_path):
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": i} for i in range(10)])
 
-    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_cap=4)
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=4)
 
     assert result.sampling.rows_scanned == 4
-    assert result.sampling.per_file_row_cap == 4
+    assert result.sampling.row_budget == 4
     assert result.partitions[0].stats_complete is False  # 4 of 10 rows is not a full scan
     # The footer knows the total even though the cap stopped the read. Gating this on completeness
     # nulled it exactly when it carried information: "4 of 10" is a ratio, "4 of unknown" is not.
@@ -321,10 +323,11 @@ def test_profile_row_cap_bounds_reads_and_says_so(tmp_path):
 def test_profile_uncapped_read_is_a_full_scan(tmp_path):
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": i} for i in range(10)])
 
-    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_cap=None)
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=None)
 
     assert {f.read_strategy for s in result.partitions[0].splits for f in s.files} == {"full"}
-    assert result.sampling.per_file_row_cap is None
+    assert result.sampling.row_budget is None
+    assert {f.row_cap for s in result.partitions[0].splits for f in s.files} == {None}
     assert result.partitions[0].stats_complete is True
     assert result.sampling.rows_scanned == result.sampling.rows_present == 10
 
@@ -334,7 +337,7 @@ def test_profile_cap_larger_than_a_jsonl_file_keeps_it_exhaustive(tmp_path):
     # Reading to EOF under the cap must stay exact, or capping would degrade every small dataset.
     (tmp_path / "train.jsonl").write_text('{"a": 1}\n{"a": 2}\n')
 
-    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_cap=1000)
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=1000)
 
     assert result.partitions[0].splits[0].num_examples == 2
     assert result.partitions[0].stats_complete is True
@@ -571,3 +574,39 @@ def test_dataset_wide_completeness_is_one_expression(tmp_path):
     assert all(p.stats_complete for p in with_csv.partitions)  # the parquet rows are still complete
     assert with_csv.unreadable_files  # but there is data here that went unprofiled
     assert with_csv.sampling.files_read == 1 and with_csv.sampling.files_present == 2
+
+
+def test_row_budget_is_divided_across_a_partitions_files(tmp_path):
+    for shard in range(4):
+        _write_parquet(tmp_path / f"train-{shard:05d}-of-00004.parquet", [{"a": i} for i in range(200)])
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=400)
+
+    assert {f.row_cap for s in result.partitions[0].splits for f in s.files} == {100}  # 400 / 4 files
+    assert result.sampling.rows_scanned == 400
+    assert result.sampling.row_budget == 400
+
+
+def test_rows_read_do_not_grow_when_a_dataset_is_resharded(tmp_path_factory):
+    # The property the budget exists for. Under a per-file cap the same data split ten ways further
+    # cost ten times the peak memory while describing exactly the same rows.
+    def rows_read(shards, per_shard):
+        root = tmp_path_factory.mktemp(f"shards{shards}")
+        for shard in range(shards):
+            _write_parquet(root / f"train-{shard:05d}-of-{shards:05d}.parquet", [{"a": i} for i in range(per_shard)])
+        return profile(LocalFileSource(root), created_at=FIXED_TIME, row_budget=400).sampling.rows_scanned
+
+    assert rows_read(4, 200) == rows_read(40, 20) == 400
+
+
+def test_row_budget_keeps_a_floor_under_very_thin_shards(tmp_path):
+    # Below the floor a file cannot witness the columns only it holds, which is the reason every file
+    # is opened rather than a subset sampled. Overshooting the budget there is the right trade, and
+    # the profile says so: row_cap is 10, not the 1 the arithmetic asked for.
+    for shard in range(10):
+        _write_parquet(tmp_path / f"train-{shard:05d}-of-00010.parquet", [{"a": i} for i in range(50)])
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=10)
+
+    assert {f.row_cap for s in result.partitions[0].splits for f in s.files} == {10}
+    assert result.sampling.rows_scanned == 100  # deliberately over the budget

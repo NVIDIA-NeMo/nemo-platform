@@ -29,11 +29,12 @@ class DatasetsCLI(NemoCLI):
         def profile(
             path: str = typer.Argument(..., help="Path to a local directory of dataset files."),
             output: str = typer.Option("json", "--output", "-o", help="Output format: json | yaml."),
-            rows_per_file: int = typer.Option(
+            row_budget: int = typer.Option(
                 None,
-                "--rows-per-file",
-                help="Rows to read from each file (default 1000); 0 reads every row, which is exact "
-                "but scales memory with the dataset rather than the file count.",
+                "--row-budget",
+                help="Rows to read per partition, divided across its files (default 10000); 0 reads "
+                "every row, which is exact but scales memory with the dataset. A budget rather than a "
+                "per-file cap so peak memory does not grow when a dataset is resharded.",
                 min=0,
             ),
             column_role: list[str] = typer.Option(
@@ -47,7 +48,7 @@ class DatasetsCLI(NemoCLI):
         ) -> None:
             """Profile a local dataset directory and print its DatasetProfile."""
             # Imported here, not at module scope: the platform calls get_cli() for every plugin at
-            # startup, and the profiler pulls in pyarrow. The row-cap default lives in the pipeline
+            # startup, and the profiler pulls in pyarrow. The budget default lives in the pipeline
             # rather than being restated here, so an unspecified flag simply omits the argument.
             from nemo_datasets_plugin.profiler.file_source import LocalFileSource
             from nemo_datasets_plugin.profiler.pipeline import profile as run_profile
@@ -65,10 +66,10 @@ class DatasetsCLI(NemoCLI):
             except NotADirectoryError as exc:
                 raise typer.BadParameter(str(exc)) from exc
 
-            if rows_per_file is None:
+            if row_budget is None:
                 result = run_profile(source, column_roles=column_roles)
             else:
-                result = run_profile(source, row_cap=rows_per_file or None, column_roles=column_roles)
+                result = run_profile(source, row_budget=row_budget or None, column_roles=column_roles)
             if output == "yaml":
                 import yaml
 
