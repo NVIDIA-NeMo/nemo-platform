@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateResponse
-from nmp.core.auth.app.access_keys import AccessKeyRegistry
+from nmp.common.auth.jwt import TokenClaims
+from nmp.common.entities import EntityNotFoundError
+from nmp.core.auth.app.access_keys import AccessKeyNotFoundError, AccessKeyRegistry
 from nmp.core.auth.entities import AccessKeyEntity
 
 NOW = datetime(2026, 8, 4, 18, 0, tzinfo=UTC)
@@ -106,3 +108,104 @@ async def test_registry_reports_expired_status() -> None:
     result = await registry.list_for_principal("alice@example.com", page=1, page_size=100)
 
     assert result.data[0].status == "EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_registry_revokes_owned_key_without_deleting_audit_record() -> None:
+    entity_client = AsyncMock()
+    original = _record()
+    entity_client.get.return_value = original
+    registry = AccessKeyRegistry(entity_client)
+
+    assert await registry.revoke("ak_example", "alice@example.com")
+
+    updated = entity_client.update.await_args.args[0]
+    assert updated is not original
+    assert original.revoked_at is None
+    assert updated.revoked_at is not None
+    entity_client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_registry_reports_revoked_key_as_inactive() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _record(revoked=True)
+    registry = AccessKeyRegistry(entity_client)
+
+    assert not await registry.is_active("ak_example", "alice@example.com")
+
+
+@pytest.mark.asyncio
+async def test_registry_hides_missing_and_other_principals_keys() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _record(principal="bob@example.com")
+    registry = AccessKeyRegistry(entity_client)
+
+    with pytest.raises(AccessKeyNotFoundError):
+        await registry.revoke("ak_example", "alice@example.com")
+
+    entity_client.get.side_effect = EntityNotFoundError("missing")
+    assert not await registry.is_active("ak_missing", "alice@example.com")
+
+
+@pytest.mark.asyncio
+async def test_registry_backfills_missing_legacy_access_key_from_validated_claims() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = EntityNotFoundError("missing")
+    registry = AccessKeyRegistry(entity_client)
+    claims = TokenClaims(
+        subject="alice@example.com",
+        email=None,
+        groups=[],
+        scopes=[],
+        raw_claims={
+            "iss": "https://platform.example.com/apis/auth",
+            "aud": ["nemo-platform-access-key"],
+            "sub": "alice@example.com",
+            "iat": 1_785_280_000,
+            "nbf": 1_785_280_000,
+            "exp": 1_893_456_000,
+            "jti": "ak_legacy",
+            "nmp_token_type": "access_key",
+            "nmp_access_key": {"version": 1, "name": "legacy-key"},
+        },
+    )
+
+    assert await registry.is_active("ak_legacy", "alice@example.com", claims=claims)
+
+    saved = entity_client.create.await_args.args[0]
+    assert saved.name == "ak_legacy"
+    assert saved.key_name == "legacy-key"
+    assert saved.description is None
+    assert saved.principal == "alice@example.com"
+    assert saved.issuer == "https://platform.example.com/apis/auth"
+    assert saved.audiences == ["nemo-platform-access-key"]
+    assert saved.issued_at == datetime.fromtimestamp(1_785_280_000, tz=UTC)
+    assert saved.expires_at == datetime.fromtimestamp(1_893_456_000, tz=UTC)
+
+
+@pytest.mark.asyncio
+async def test_registry_rejects_missing_current_access_key_record() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = EntityNotFoundError("missing")
+    registry = AccessKeyRegistry(entity_client)
+    claims = TokenClaims(
+        subject="alice@example.com",
+        email=None,
+        groups=[],
+        scopes=[],
+        raw_claims={
+            "iss": "https://platform.example.com/apis/auth",
+            "aud": ["nemo-platform-access-key"],
+            "sub": "alice@example.com",
+            "iat": 1_785_280_000,
+            "nbf": 1_785_280_000,
+            "exp": 1_893_456_000,
+            "jti": "ak_current",
+            "nmp_token_type": "access_key",
+            "nmp_access_key": {"version": 2, "name": "current-key"},
+        },
+    )
+
+    assert not await registry.is_active("ak_current", "alice@example.com", claims=claims)
+    entity_client.create.assert_not_awaited()

@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
@@ -14,6 +15,11 @@ from nmp.common.config import AuthConfig
 from nmp.common.config.base import AccessKeyConfig, TokenSigningConfig
 from nmp.core.auth.config import AuthServiceConfig
 from nmp.testing.client import create_test_client
+
+# Run on a dedicated worker so the inline create_test_client call doesn't share
+# the module-level wasmtime singleton with the module-scoped test_client fixture
+# used by sibling integration tests (which would violate wasmtime thread affinity).
+pytestmark = pytest.mark.xdist_group("auth_scoped_access_keys")
 
 ACCESS_KEYS_PATH = "/apis/auth/v2/access-keys"
 IAM_ROLE_BINDINGS_PATH = "/apis/auth/v2/iam/role-bindings"
@@ -57,7 +63,7 @@ def _auth_configs(private_key_file: str) -> tuple[AuthConfig, AuthServiceConfig]
     )
     service_config = AuthServiceConfig(
         **shared_config.model_dump(),
-        policy_data_refresh_interval=0.05,
+        policy_data_refresh_interval=0.2,
         bundle_cache_seconds=0,
         admin_email="admin@example.com",
     )
@@ -101,7 +107,13 @@ def test_scoped_access_key_created_by_auth_service_authenticates_platform_reques
                 headers=user_headers,
             )
             assert create_key.status_code == 200, create_key.text
-            access_key = create_key.json()["token"]
+            access_key_body = create_key.json()
+            access_key = access_key_body["token"]
+            access_key_jti = access_key_body["jti"]
+
+            list_keys = client.get(ACCESS_KEYS_PATH, headers=user_headers)
+            assert list_keys.status_code == 200, list_keys.text
+            assert [key["jti"] for key in list_keys.json()["data"]] == [access_key_jti]
 
             role_binding = client.post(
                 IAM_ROLE_BINDINGS_PATH,
@@ -120,11 +132,9 @@ def test_scoped_access_key_created_by_auth_service_authenticates_platform_reques
                     f"{WORKSPACES_PATH}/{workspace}",
                     headers={"Authorization": f"Bearer {access_key}"},
                 )
+                assert response.status_code == 200, response.text
+                assert response.json()["name"] == workspace
 
-            assert response.status_code == 200, response.text
-            assert response.json()["name"] == workspace
-
-            with patch("nmp.common.auth.access_keys.validate_access_key_token", validate_with_local_jwks):
                 authenticate_response = client.get(
                     "/apis/auth/authenticate",
                     headers={"Authorization": f"Bearer {access_key}"},
@@ -133,18 +143,33 @@ def test_scoped_access_key_created_by_auth_service_authenticates_platform_reques
                     "/apis/auth/authenticate",
                     headers={"Authorization": f"Bearer {_tamper_jwt(access_key)}"},
                 )
+                assert authenticate_response.status_code == 200, authenticate_response.text
+                assert authenticate_response.json()["principal"] == user
+                assert authenticate_response.json()["token_kind"] == "access_key"
+                assert invalid_authenticate_response.status_code == 401, invalid_authenticate_response.text
 
-            assert authenticate_response.status_code == 200, authenticate_response.text
-            assert authenticate_response.json()["principal"] == user
-            assert authenticate_response.json()["token_kind"] == "access_key"
-            assert invalid_authenticate_response.status_code == 401, invalid_authenticate_response.text
-
-            with patch("nmp.common.auth.access_keys.validate_access_key_token", validate_with_local_jwks):
                 invalid_workspace_response = client.get(
                     f"{WORKSPACES_PATH}/{workspace}",
                     headers={"Authorization": f"Bearer {_tamper_jwt(access_key)}"},
                 )
+                assert invalid_workspace_response.status_code == 401, invalid_workspace_response.text
 
-            assert invalid_workspace_response.status_code == 401, invalid_workspace_response.text
+                revoke_key = client.delete(f"{ACCESS_KEYS_PATH}/{access_key_jti}", headers=user_headers)
+                assert revoke_key.status_code == 200, revoke_key.text
+                revoked_keys = client.get(ACCESS_KEYS_PATH, headers=user_headers).json()["data"]
+                assert len(revoked_keys) == 1
+                assert revoked_keys[0]["status"] == "REVOKED"
+
+                revoked_authenticate_response = client.get(
+                    "/apis/auth/authenticate",
+                    headers={"Authorization": f"Bearer {access_key}"},
+                )
+                assert revoked_authenticate_response.status_code == 401, revoked_authenticate_response.text
+
+                revoked_workspace_response = client.get(
+                    f"{WORKSPACES_PATH}/{workspace}",
+                    headers={"Authorization": f"Bearer {access_key}"},
+                )
+                assert revoked_workspace_response.status_code == 401, revoked_workspace_response.text
         finally:
             client.delete(f"{WORKSPACES_PATH}/{workspace}", headers=SERVICE_HEADERS)

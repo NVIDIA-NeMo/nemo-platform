@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 import httpx
 
 from ..._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
@@ -33,6 +35,7 @@ from ..._base_client import make_request_options
 from ...types.access_keys import access_key_create_params, access_key_list_params
 from ...types.access_keys.access_key_list_response import AccessKeyListResponse
 from ...types.access_keys.access_key_create_response import AccessKeyCreateResponse
+from ...types.access_keys.access_key_revoke_response import AccessKeyRevokeResponse
 
 __all__ = ["AccessKeysResource", "AsyncAccessKeysResource"]
 
@@ -60,8 +63,9 @@ class AccessKeysResource(SyncAPIResource):
     def create(
         self,
         *,
-        expires_in_seconds: int | Omit = omit,
-        name: str | Omit = omit,
+        description: Optional[str] | Omit = omit,
+        expires_in_seconds: Optional[int] | Omit = omit,
+        name: Optional[str] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -73,6 +77,8 @@ class AccessKeysResource(SyncAPIResource):
         Create Access Key
 
         Args:
+          description: Optional human-readable description of the Scoped Access Key.
+
           expires_in_seconds: Scoped Access Key lifetime in seconds. Omit to use
               auth.access_keys.default_expires_in_seconds. Send explicit null to request a
               non-time-delimited key, which requires auth.access_keys.max_expires_in_seconds
@@ -93,6 +99,7 @@ class AccessKeysResource(SyncAPIResource):
             "/apis/auth/v2/access-keys",
             body=maybe_transform(
                 {
+                    "description": description,
                     "expires_in_seconds": expires_in_seconds,
                     "name": name,
                 },
@@ -156,7 +163,7 @@ class AccessKeysResource(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> object:
+    ) -> AccessKeyRevokeResponse:
         """
         Revoke Access Key
 
@@ -176,7 +183,7 @@ class AccessKeysResource(SyncAPIResource):
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=object,
+            cast_to=AccessKeyRevokeResponse,
         )
 
 
@@ -203,8 +210,9 @@ class AsyncAccessKeysResource(AsyncAPIResource):
     async def create(
         self,
         *,
-        expires_in_seconds: int | Omit = omit,
-        name: str | Omit = omit,
+        description: Optional[str] | Omit = omit,
+        expires_in_seconds: Optional[int] | Omit = omit,
+        name: Optional[str] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -216,6 +224,8 @@ class AsyncAccessKeysResource(AsyncAPIResource):
         Create Access Key
 
         Args:
+          description: Optional human-readable description of the Scoped Access Key.
+
           expires_in_seconds: Scoped Access Key lifetime in seconds. Omit to use
               auth.access_keys.default_expires_in_seconds. Send explicit null to request a
               non-time-delimited key, which requires auth.access_keys.max_expires_in_seconds
@@ -236,6 +246,7 @@ class AsyncAccessKeysResource(AsyncAPIResource):
             "/apis/auth/v2/access-keys",
             body=await async_maybe_transform(
                 {
+                    "description": description,
                     "expires_in_seconds": expires_in_seconds,
                     "name": name,
                 },
@@ -299,7 +310,7 @@ class AsyncAccessKeysResource(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> object:
+    ) -> AccessKeyRevokeResponse:
         """
         Revoke Access Key
 
@@ -319,7 +330,7 @@ class AsyncAccessKeysResource(AsyncAPIResource):
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=object,
+            cast_to=AccessKeyRevokeResponse,
         )
 
 

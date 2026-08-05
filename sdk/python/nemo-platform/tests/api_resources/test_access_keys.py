@@ -24,7 +24,11 @@ import pytest
 
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
-from nemo_platform.types.access_keys import AccessKeyListResponse, AccessKeyCreateResponse
+from nemo_platform.types.access_keys import (
+    AccessKeyListResponse,
+    AccessKeyCreateResponse,
+    AccessKeyRevokeResponse,
+)
 
 base_url = os.environ.get("TEST_API_BASE_URL", "http://127.0.0.1:4010")
 
@@ -42,6 +46,7 @@ class TestAccessKeys:
     @parametrize
     def test_method_create_with_all_params(self, client: NeMoPlatform) -> None:
         access_key = client.access_keys.create(
+            description="description",
             expires_in_seconds=1,
             name="x",
         )
@@ -109,7 +114,7 @@ class TestAccessKeys:
         access_key = client.access_keys.delete(
             "jti",
         )
-        assert_matches_type(object, access_key, path=["response"])
+        assert_matches_type(AccessKeyRevokeResponse, access_key, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -121,7 +126,7 @@ class TestAccessKeys:
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
         access_key = response.parse()
-        assert_matches_type(object, access_key, path=["response"])
+        assert_matches_type(AccessKeyRevokeResponse, access_key, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -133,7 +138,7 @@ class TestAccessKeys:
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
             access_key = response.parse()
-            assert_matches_type(object, access_key, path=["response"])
+            assert_matches_type(AccessKeyRevokeResponse, access_key, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -161,6 +166,7 @@ class TestAsyncAccessKeys:
     @parametrize
     async def test_method_create_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
         access_key = await async_client.access_keys.create(
+            description="description",
             expires_in_seconds=1,
             name="x",
         )
@@ -228,7 +234,7 @@ class TestAsyncAccessKeys:
         access_key = await async_client.access_keys.delete(
             "jti",
         )
-        assert_matches_type(object, access_key, path=["response"])
+        assert_matches_type(AccessKeyRevokeResponse, access_key, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -240,7 +246,7 @@ class TestAsyncAccessKeys:
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
         access_key = await response.parse()
-        assert_matches_type(object, access_key, path=["response"])
+        assert_matches_type(AccessKeyRevokeResponse, access_key, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -252,7 +258,7 @@ class TestAsyncAccessKeys:
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
             access_key = await response.parse()
-            assert_matches_type(object, access_key, path=["response"])
+            assert_matches_type(AccessKeyRevokeResponse, access_key, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 

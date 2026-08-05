@@ -22,6 +22,7 @@ from nmp.core.auth.api.v2.workload_token_exchange import (
     WorkloadTokenExchangeService,
     get_workload_token_exchange_service,
 )
+from nmp.core.auth.app.access_keys import get_access_key_registry
 
 
 def _private_key_pem() -> bytes:
@@ -33,6 +34,25 @@ def _private_key_pem() -> bytes:
     )
 
 
+class AlwaysActiveAccessKeyRegistry:
+    async def is_active(self, jti: str, principal: str, **kwargs) -> bool:
+        return True
+
+
+class RevokedAccessKeyRegistry:
+    async def is_active(self, jti: str, principal: str, **kwargs) -> bool:
+        return False
+
+
+class ClaimAwareAccessKeyRegistry:
+    def __init__(self) -> None:
+        self.claims = None
+
+    async def is_active(self, jti: str, principal: str, **kwargs) -> bool:
+        self.claims = kwargs.get("claims")
+        return True
+
+
 @contextmanager
 def _test_client(
     config: AuthConfig,
@@ -41,6 +61,7 @@ def _test_client(
 ) -> Iterator[TestClient]:
     app = FastAPI()
     app.include_router(router)
+    app.dependency_overrides[get_access_key_registry] = lambda: AlwaysActiveAccessKeyRegistry()
     if workload_token_exchange_service is not None:
         app.dependency_overrides[get_workload_token_exchange_service] = lambda: workload_token_exchange_service
     with patch("nmp.core.auth.api.v2.authenticate.get_auth_config", return_value=config):
@@ -97,6 +118,68 @@ def test_authenticate_access_key_returns_principal_headers(tmp_path):
     assert len(resolver_call.kwargs["extra_resolvers"]) == 2
 
 
+def test_authenticate_passes_access_key_claims_for_legacy_record_backfill(tmp_path):
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(private_key_file=str(tmp_path / "private.pem")),
+        access_keys=AccessKeyConfig(enabled=True),
+    )
+    (tmp_path / "private.pem").write_bytes(_private_key_pem())
+    claims = TokenClaims(
+        subject="alice@example.com",
+        email=None,
+        groups=[],
+        scopes=[],
+        raw_claims={
+            "iss": "http://testserver/apis/auth",
+            "aud": ["nemo-platform-access-key"],
+            "sub": "alice@example.com",
+            "iat": 1_785_280_000,
+            "nbf": 1_785_280_000,
+            "jti": "ak_legacy",
+            "nmp_token_type": "access_key",
+            "nmp_access_key": {"version": 1, "name": "legacy"},
+        },
+    )
+    resolved = ResolvedBearerToken(claims=claims, token_kind="access_key")
+    registry = ClaimAwareAccessKeyRegistry()
+    with (
+        _test_client(config) as client,
+        patch("nmp.core.auth.api.v2.authenticate.resolve_bearer_token", new=AsyncMock(return_value=resolved)),
+    ):
+        client.app.dependency_overrides[get_access_key_registry] = lambda: registry
+        response = client.get("/authenticate", headers={"Authorization": "Bearer signed.jwt.token"})
+
+    assert response.status_code == 200
+    assert registry.claims is claims
+
+
+def test_authenticate_rejects_revoked_access_key(tmp_path):
+    config = AuthConfig(
+        enabled=True,
+        token_signing=TokenSigningConfig(private_key_file=str(tmp_path / "private.pem")),
+        access_keys=AccessKeyConfig(enabled=True),
+    )
+    (tmp_path / "private.pem").write_bytes(_private_key_pem())
+    claims = TokenClaims(
+        subject="alice@example.com",
+        email=None,
+        groups=[],
+        scopes=[],
+        raw_claims={"jti": "ak_revoked", "nmp_token_type": "access_key"},
+    )
+    resolved = ResolvedBearerToken(claims=claims, token_kind="access_key")
+    with (
+        _test_client(config) as client,
+        patch("nmp.core.auth.api.v2.authenticate.resolve_bearer_token", new=AsyncMock(return_value=resolved)),
+    ):
+        client.app.dependency_overrides[get_access_key_registry] = lambda: RevokedAccessKeyRegistry()
+        response = client.get("/authenticate", headers={"Authorization": "Bearer signed.jwt.token"})
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid bearer token"
+
+
 def test_authenticate_callout_accepts_original_request_methods(tmp_path):
     config = AuthConfig(
         enabled=True,
@@ -109,7 +192,7 @@ def test_authenticate_callout_accepts_original_request_methods(tmp_path):
         email=None,
         groups=[],
         scopes=["models:write"],
-        raw_claims={"nmp_token_type": "access_key"},
+        raw_claims={"jti": "ak_writer", "nmp_token_type": "access_key"},
     )
     resolved = ResolvedBearerToken(claims=claims, token_kind="access_key")
     with (

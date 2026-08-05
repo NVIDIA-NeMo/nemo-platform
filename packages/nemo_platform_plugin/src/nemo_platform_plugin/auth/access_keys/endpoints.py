@@ -10,6 +10,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateResponse,
     AccessKeyListQueryParams,
     AccessKeyListResponse,
+    AccessKeyRevokeResponse,
 )
 from nemo_platform_plugin.client.endpoint import delete, get, post
 
@@ -26,4 +27,4 @@ def list_access_keys(*, query_params: AccessKeyListQueryParams | None = None) ->
 
 @delete("/apis/auth/v2/access-keys/{jti}")
 @abstractmethod
-def revoke_access_key(*, jti: str) -> None: ...
+def revoke_access_key(*, jti: str) -> AccessKeyRevokeResponse: ...

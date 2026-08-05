@@ -275,9 +275,10 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AccessKeyRevokeResponse'
         '404':
-          description: Scoped Access Keys are not enabled
+          description: Scoped Access Keys are not enabled or the key was not found
           content:
             application/json:
               schema:
@@ -8137,6 +8138,22 @@ components:
       - detail
       title: AccessKeyNotImplementedErrorResponse
       description: Response returned by unsupported Scoped Access Key lifecycle endpoints.
+    AccessKeyRevokeResponse:
+      properties:
+        jti:
+          type: string
+          title: Jti
+          description: Stable JWT ID for this Scoped Access Key.
+        revoked:
+          type: boolean
+          title: Revoked
+          description: True when this request changed the key from active to revoked.
+      type: object
+      required:
+      - jti
+      - revoked
+      title: AccessKeyRevokeResponse
+      description: Response returned after a Scoped Access Key revoke request.
     ActionRails:
       properties:
         instant_actions:

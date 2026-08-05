@@ -15,6 +15,7 @@ from nemo_platform_plugin.auth.access_keys.issuer import (
 from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
+    AccessKeyRevokeResponse,
 )
 from nemo_platform_plugin.client.errors import NemoHTTPError
 
@@ -51,6 +52,18 @@ def test_access_key_issuer_client_delegates_create_to_client() -> None:
 
     assert result == created
     client.create_access_key.assert_called_once_with(body=AccessKeyCreateRequest())
+
+
+def test_access_key_issuer_client_revokes_by_jti() -> None:
+    client = _AccessKeysClientStub()
+    revoked = AccessKeyRevokeResponse(jti="ak_example", revoked=True)
+    client.revoke_access_key.return_value.data.return_value = revoked
+
+    issuer = AccessKeyIssuerClient(client.as_client())
+    result = issuer.revoke("ak_example")
+
+    assert result == revoked
+    client.revoke_access_key.assert_called_once_with(jti="ak_example")
 
 
 def test_access_key_issuer_client_lists_requested_page() -> None:

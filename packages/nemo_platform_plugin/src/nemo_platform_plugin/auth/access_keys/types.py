@@ -89,14 +89,11 @@ class AccessKeyListResponse(BaseModel):
     )
 
 
-class AccessKeyAuthenticateResponse(BaseModel):
-    """Successful Scoped Access Key authentication response for gateway callouts."""
+class AccessKeyRevokeResponse(BaseModel):
+    """Response returned after a Scoped Access Key revoke request."""
 
-    jti: str
-    principal: str
-    email: str | None = None
-    groups: list[str] = Field(default_factory=list)
-    scopes: list[str] = Field(default_factory=list)
+    jti: str = Field(description="Stable JWT ID for this Scoped Access Key.")
+    revoked: bool = Field(description="True when this request changed the key from active to revoked.")
 
 
 class AccessKeyNotImplementedErrorResponse(BaseModel):

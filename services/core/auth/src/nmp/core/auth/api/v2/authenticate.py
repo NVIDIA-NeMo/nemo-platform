@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import Annotated, Any
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -18,6 +19,7 @@ from nmp.core.auth.api.v2.workload_token_exchange import (
     _workload_token_issuer,
     get_workload_token_exchange_service,
 )
+from nmp.core.auth.app.access_keys import AccessKeyRegistry, get_access_key_registry
 from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["Authentication"])
@@ -51,6 +53,25 @@ _AUTHENTICATE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         "model": AuthenticateErrorResponse,
     },
 }
+
+
+@dataclass(frozen=True)
+class AuthenticateDependencies:
+    workload_token_exchange_service: WorkloadTokenExchangeService
+    access_key_registry: AccessKeyRegistry
+
+
+def get_authenticate_dependencies(
+    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    access_key_registry: AccessKeyRegistry = Depends(get_access_key_registry),
+) -> AuthenticateDependencies:
+    return AuthenticateDependencies(
+        workload_token_exchange_service=workload_token_exchange_service,
+        access_key_registry=access_key_registry,
+    )
+
+
+AuthenticateDependency = Annotated[AuthenticateDependencies, Depends(get_authenticate_dependencies)]
 
 
 def _bearer_token_from_request(request: Request) -> str:
@@ -187,6 +208,7 @@ async def _authenticate_bearer_token(
     request: Request,
     response: Response,
     workload_token_exchange_service: WorkloadTokenExchangeService,
+    access_key_registry: AccessKeyRegistry,
 ) -> AuthenticateResponse:
     token = _bearer_token_from_request(request)
     config = get_auth_config()
@@ -205,6 +227,13 @@ async def _authenticate_bearer_token(
     if resolved is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token")
 
+    if resolved.token_kind == "access_key":
+        jti = resolved.claims.raw_claims.get("jti")
+        if not isinstance(jti, str) or not jti:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token")
+        if not await access_key_registry.is_active(jti, resolved.claims.subject, claims=resolved.claims):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token")
+
     _stamp_principal_headers(response, resolved)
     return _response_from_claims(resolved.claims, resolved.token_kind)
 
@@ -218,9 +247,14 @@ async def _authenticate_bearer_token(
 async def authenticate_bearer_token_get(
     request: Request,
     response: Response,
-    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    dependencies: AuthenticateDependency,
 ) -> AuthenticateResponse:
-    return await _authenticate_bearer_token(request, response, workload_token_exchange_service)
+    return await _authenticate_bearer_token(
+        request,
+        response,
+        dependencies.workload_token_exchange_service,
+        dependencies.access_key_registry,
+    )
 
 
 @router.post(
@@ -232,9 +266,14 @@ async def authenticate_bearer_token_get(
 async def authenticate_bearer_token_post(
     request: Request,
     response: Response,
-    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    dependencies: AuthenticateDependency,
 ) -> AuthenticateResponse:
-    return await _authenticate_bearer_token(request, response, workload_token_exchange_service)
+    return await _authenticate_bearer_token(
+        request,
+        response,
+        dependencies.workload_token_exchange_service,
+        dependencies.access_key_registry,
+    )
 
 
 @router.api_route(
@@ -246,9 +285,14 @@ async def authenticate_bearer_token_post(
 async def authenticate_bearer_token_callout_methods(
     request: Request,
     response: Response,
-    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    dependencies: AuthenticateDependency,
 ) -> AuthenticateResponse:
-    return await _authenticate_bearer_token(request, response, workload_token_exchange_service)
+    return await _authenticate_bearer_token(
+        request,
+        response,
+        dependencies.workload_token_exchange_service,
+        dependencies.access_key_registry,
+    )
 
 
 @router.api_route(
@@ -261,7 +305,12 @@ async def authenticate_bearer_token_prefixed_callout(
     request: Request,
     response: Response,
     original_path: str,
-    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    dependencies: AuthenticateDependency,
 ) -> AuthenticateResponse:
     _ = original_path
-    return await _authenticate_bearer_token(request, response, workload_token_exchange_service)
+    return await _authenticate_bearer_token(
+        request,
+        response,
+        dependencies.workload_token_exchange_service,
+        dependencies.access_key_registry,
+    )

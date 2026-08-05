@@ -13,6 +13,7 @@ from nemo_platform_plugin.auth.access_keys.issuer import (
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.config import get_auth_config
 from nmp.core.auth.app.access_keys import (
+    AccessKeyNotFoundError,
     AccessKeyRegistry,
     PersistentAccessKeyIssuer,
     get_access_key_registry,
@@ -24,6 +25,10 @@ router = APIRouter(tags=["Scoped Access Keys"])
 
 _ACCESS_KEY_DISABLED_ERROR_RESPONSE: dict[str, Any] = {
     "description": "Scoped Access Keys are not enabled",
+    "model": schemas.AccessKeyErrorResponse,
+}
+_ACCESS_KEY_DISABLED_OR_NOT_FOUND_ERROR_RESPONSE: dict[str, Any] = {
+    "description": "Scoped Access Keys are not enabled or the key was not found",
     "model": schemas.AccessKeyErrorResponse,
 }
 _ACCESS_KEY_NOT_IMPLEMENTED_ERROR_RESPONSE: dict[str, Any] = {
@@ -40,6 +45,10 @@ _ACCESS_KEY_CREATE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 _ACCESS_KEY_LIFECYCLE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: _ACCESS_KEY_DISABLED_ERROR_RESPONSE,
+    501: _ACCESS_KEY_NOT_IMPLEMENTED_ERROR_RESPONSE,
+}
+_ACCESS_KEY_REVOKE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    404: _ACCESS_KEY_DISABLED_OR_NOT_FOUND_ERROR_RESPONSE,
     501: _ACCESS_KEY_NOT_IMPLEMENTED_ERROR_RESPONSE,
 }
 
@@ -96,11 +105,21 @@ async def list_access_keys(
         raise _not_implemented(exc) from exc
 
 
-@router.delete("/v2/access-keys/{jti}", responses=_ACCESS_KEY_LIFECYCLE_ERROR_RESPONSES)
-async def revoke_access_key(jti: str, issuer: PersistentAccessKeyIssuer = Depends(get_access_key_issuer)) -> None:
+@router.delete(
+    "/v2/access-keys/{jti}",
+    response_model=schemas.AccessKeyRevokeResponse,
+    responses=_ACCESS_KEY_REVOKE_ERROR_RESPONSES,
+)
+async def revoke_access_key(
+    jti: str,
+    issuer: PersistentAccessKeyIssuer = Depends(get_access_key_issuer),
+) -> schemas.AccessKeyRevokeResponse:
     try:
-        issuer.revoke(jti)
+        revoked = await issuer.revoke_async(jti)
     except AccessKeyFeatureDisabledError as exc:
         raise _disabled(exc) from exc
     except AccessKeyOperationNotImplementedError as exc:
         raise _not_implemented(exc) from exc
+    except AccessKeyNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.AccessKeyRevokeResponse(jti=jti, revoked=revoked)

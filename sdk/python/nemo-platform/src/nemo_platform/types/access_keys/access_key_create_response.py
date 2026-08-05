@@ -15,7 +15,7 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 from typing_extensions import Literal
 
@@ -29,7 +29,13 @@ class AccessKeyCreateResponse(BaseModel):
 
     token: str
 
+    audiences: List[str]
+    """Audiences accepted for the Scoped Access Key JWT."""
+
     created_at: datetime
+
+    issuer: str
+    """Issuer stamped into the Scoped Access Key JWT."""
 
     jti: str
     """Stable JWT ID for this Scoped Access Key."""
@@ -37,7 +43,12 @@ class AccessKeyCreateResponse(BaseModel):
     principal: str
     """Principal ID stamped into the token."""
 
+    status: Literal["ACTIVE", "EXPIRED", "REVOKED"]
+
     token_type: Literal["Bearer"]
+
+    description: Optional[str] = None
+    """Human-readable description of the Scoped Access Key."""
 
     expires_at: Optional[datetime] = None
 

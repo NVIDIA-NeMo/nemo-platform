@@ -15,21 +15,16 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import List, Optional
-
 from ..._models import BaseModel
-from .access_key_metadata_response import AccessKeyMetadataResponse
 
-__all__ = ["AccessKeyListResponse"]
+__all__ = ["AccessKeyRevokeResponse"]
 
 
-class AccessKeyListResponse(BaseModel):
-    """List response for Scoped Access Key metadata."""
+class AccessKeyRevokeResponse(BaseModel):
+    """Response returned after a Scoped Access Key revoke request."""
 
-    data: List[AccessKeyMetadataResponse]
+    jti: str
+    """Stable JWT ID for this Scoped Access Key."""
 
-    has_more: Optional[bool] = None
-    """
-    True when the response was capped and more keys are available than this response
-    includes.
-    """
+    revoked: bool
+    """True when this request changed the key from active to revoked."""

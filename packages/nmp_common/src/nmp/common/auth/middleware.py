@@ -4,11 +4,14 @@
 """Authorization middleware for NeMo Platform services."""
 
 import logging
+import math
+import time
+from functools import cached_property
 from typing import Any, Callable, Optional
 
 import httpx
 from fastapi import Request, Response
-from nmp.common.config import AuthConfig, get_auth_config
+from nmp.common.config import AuthConfig, get_auth_config, get_platform_config
 from nmp.common.observability.context import get_app_ctx
 from nmp.common.platform_endpoint import parse_platform_endpoint
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -19,10 +22,13 @@ from .bearer import MalformedBearerTokenError, parse_bearer_authorization_header
 from .client import AuthClient
 from .dependencies import auth_client_context
 from .exceptions import InvalidPrincipalHeader, InvalidScopeFormatError
+from .jwt import TokenClaims
 from .models import Principal
 from .token_resolver import ResolvedBearerToken, resolve_bearer_token
 
 logger = logging.getLogger(__name__)
+_ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD = 3
+_ACCESS_KEY_LIFECYCLE_CIRCUIT_OPEN_SECONDS = 5.0
 
 
 class PrincipalExtractionError(RuntimeError):
@@ -116,6 +122,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         service_name: Optional[str] = None,
         http_client: Optional[httpx.AsyncClient] = None,
+        access_key_lifecycle_http_client: Optional[httpx.AsyncClient] = None,
     ):
         """Initialize the authorization middleware.
 
@@ -125,17 +132,32 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             http_client: Optional HTTP client for PDP calls. If not provided,
                         one will be created lazily on first use. This is used for
                         testing with ASGI transport - see architecture/docs/http-client-injection.md.
+            access_key_lifecycle_http_client: Optional HTTP client for access-key
+                        lifecycle calls. If not provided, a client using the platform
+                        endpoint transport is created lazily.
         """
         super().__init__(app)
         self.config: AuthConfig = get_auth_config()
         self.service_name = service_name
         self._client: Optional[httpx.AsyncClient] = http_client
+        self._access_key_lifecycle_client: Optional[httpx.AsyncClient] = access_key_lifecycle_http_client
         self._jwt_validator: Optional[Any] = None
+        # Soft circuit-breaker state is intentionally local to this middleware
+        # instance (and therefore to one worker process); failures still fail
+        # closed independently in every worker.
+        self._access_key_lifecycle_failure_count = 0
+        self._access_key_lifecycle_circuit_open_until = 0.0
 
         if self.config.allow_unsigned_jwt:
             logger.warning(
                 "auth.allow_unsigned_jwt is enabled. Unsigned JWTs (`alg=none`) are accepted; use only for local/testing."
             )
+
+    @cached_property
+    def _access_key_lifecycle_url(self) -> str:
+        """Resolve the auth-service access-key lifecycle callout URL from current platform config."""
+        platform_endpoint = parse_platform_endpoint(str(get_platform_config().base_url))
+        return f"{platform_endpoint.connect_base_url}/apis/auth/authenticate"
 
     @staticmethod
     def _principal_from_headers(headers_dict: dict) -> tuple[Principal, None] | tuple[None, JSONResponse]:
@@ -176,6 +198,15 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             endpoint = parse_platform_endpoint(self.config.policy_decision_point_base_url)
             self._client = endpoint.async_http_client(timeout=self.config.policy_decision_point_request_timeout_seconds)
         return self._client
+
+    def _get_access_key_lifecycle_client(self) -> httpx.AsyncClient:
+        """Get a client bound to the platform endpoint transport."""
+        if self._access_key_lifecycle_client is None:
+            endpoint = parse_platform_endpoint(str(get_platform_config().base_url))
+            self._access_key_lifecycle_client = endpoint.async_http_client(
+                timeout=self.config.policy_decision_point_request_timeout_seconds
+            )
+        return self._access_key_lifecycle_client
 
     def _update_auth_context(self, principal: Principal) -> None:
         """Update the observability AuthContext with principal info.
@@ -459,6 +490,15 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
     async def _handle_bearer_token_request(self, request: Request, call_next: Callable, token: str) -> Response:
         """Handle requests with Authorization: Bearer tokens through the shared resolver."""
+        if self.config.access_keys.enabled:
+            from .access_keys import is_access_key_token_candidate
+
+            if is_access_key_token_candidate(token):
+                resolved_or_error = await self._authenticate_access_key_lifecycle(request, token)
+                if isinstance(resolved_or_error, Response):
+                    return resolved_or_error
+                return await self._handle_resolved_bearer_token(request, call_next, resolved_or_error)
+
         jwt_validator = self._get_jwt_validator()
         if jwt_validator is None and not self.config.access_keys.enabled:
             logger.warning("Bearer token provided but bearer token authentication is not configured")
@@ -484,6 +524,145 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             )
 
         return await self._handle_resolved_bearer_token(request, call_next, resolved)
+
+    def _access_key_lifecycle_retry_after(self) -> int:
+        retry_after = max(1, math.ceil(self._access_key_lifecycle_circuit_open_until - time.monotonic()))
+        return retry_after
+
+    def _access_key_lifecycle_error_response(
+        self,
+        status_code: int,
+        detail: str,
+        *,
+        retry_after: int | None = None,
+    ) -> JSONResponse:
+        headers = {"Retry-After": str(retry_after)} if retry_after is not None else None
+        return JSONResponse(status_code=status_code, content={"detail": detail}, headers=headers)
+
+    def _access_key_lifecycle_circuit_response(self) -> JSONResponse | None:
+        if time.monotonic() < self._access_key_lifecycle_circuit_open_until:
+            retry_after = self._access_key_lifecycle_retry_after()
+            logger.warning("Access-key lifecycle validation circuit is open for %s more seconds", retry_after)
+            return self._access_key_lifecycle_error_response(
+                503,
+                "Access-key lifecycle validation unavailable",
+                retry_after=retry_after,
+            )
+        return None
+
+    def _record_access_key_lifecycle_success(self) -> None:
+        self._access_key_lifecycle_failure_count = 0
+        self._access_key_lifecycle_circuit_open_until = 0.0
+
+    def _record_access_key_lifecycle_failure(self) -> int | None:
+        self._access_key_lifecycle_failure_count += 1
+        if self._access_key_lifecycle_failure_count >= _ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD:
+            self._access_key_lifecycle_circuit_open_until = (
+                time.monotonic() + _ACCESS_KEY_LIFECYCLE_CIRCUIT_OPEN_SECONDS
+            )
+            return self._access_key_lifecycle_retry_after()
+        return None
+
+    async def _call_access_key_lifecycle(self, request: Request, token: str) -> httpx.Response | JSONResponse:
+        """Call the auth-service access-key validator and map transport failures.
+
+        The callout uses the platform endpoint transport and the configured PDP
+        request timeout.
+        """
+        circuit_response = self._access_key_lifecycle_circuit_response()
+        if circuit_response is not None:
+            return circuit_response
+
+        url = self._access_key_lifecycle_url
+        try:
+            response = await self._get_access_key_lifecycle_client().get(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except httpx.ConnectError as exc:
+            logger.error("Cannot connect to access-key lifecycle validator at %s: %s", url, exc)
+            return self._access_key_lifecycle_error_response(
+                503,
+                "Access-key lifecycle validation unavailable",
+                retry_after=self._record_access_key_lifecycle_failure(),
+            )
+        except httpx.TimeoutException as exc:
+            logger.error("Access-key lifecycle validation timed out at %s: %s", url, exc)
+            return self._access_key_lifecycle_error_response(
+                504,
+                "Access-key lifecycle validation timeout",
+                retry_after=self._record_access_key_lifecycle_failure(),
+            )
+        except httpx.HTTPError as exc:
+            logger.error("Access-key lifecycle validation failed at %s: %s", url, exc)
+            return self._access_key_lifecycle_error_response(
+                502,
+                "Access-key lifecycle validation error",
+                retry_after=self._record_access_key_lifecycle_failure(),
+            )
+
+        if response.status_code == 200:
+            self._record_access_key_lifecycle_success()
+            return response
+        if response.status_code == 401:
+            self._record_access_key_lifecycle_success()
+            return response
+
+        logger.error(
+            "Access-key lifecycle validator returned HTTP %s from %s",
+            response.status_code,
+            url,
+        )
+        return self._access_key_lifecycle_error_response(
+            503,
+            "Access-key lifecycle validation unavailable",
+            retry_after=self._record_access_key_lifecycle_failure(),
+        )
+
+    def _resolved_access_key_from_lifecycle_response(self, response: httpx.Response) -> ResolvedBearerToken | None:
+        try:
+            body = response.json()
+        except ValueError:
+            return None
+        if not isinstance(body, dict) or body.get("token_kind") != "access_key":
+            return None
+        principal = body.get("principal")
+        if not isinstance(principal, str) or not principal:
+            return None
+        email = body.get("email")
+        groups = body.get("groups")
+        scopes = body.get("scopes")
+        jti = body.get("jti")
+        raw_claims: dict[str, object] = {"nmp_token_type": "access_key"}
+        if isinstance(jti, str) and jti:
+            raw_claims["jti"] = jti
+        return ResolvedBearerToken(
+            claims=TokenClaims(
+                subject=principal,
+                email=email if isinstance(email, str) else None,
+                groups=[group for group in groups if isinstance(group, str)] if isinstance(groups, list) else [],
+                scopes=[scope for scope in scopes if isinstance(scope, str)] if isinstance(scopes, list) else [],
+                raw_claims=raw_claims,
+            ),
+            token_kind="access_key",
+        )
+
+    async def _authenticate_access_key_lifecycle(
+        self,
+        request: Request,
+        token: str,
+    ) -> ResolvedBearerToken | Response:
+        response_or_error = await self._call_access_key_lifecycle(request, token)
+        if isinstance(response_or_error, Response):
+            return response_or_error
+        if response_or_error.status_code == 401:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
+
+        resolved = self._resolved_access_key_from_lifecycle_response(response_or_error)
+        if resolved is None:
+            logger.error("Access-key lifecycle validator returned an invalid success response")
+            return self._access_key_lifecycle_error_response(503, "Access-key lifecycle validation unavailable")
+        return resolved
 
     async def _handle_resolved_bearer_token(
         self,

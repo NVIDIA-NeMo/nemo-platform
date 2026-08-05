@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 import yaml
 from nemo_platform_ext.auth.helpers import decode_jwt_claims, generate_unsigned_jwt
@@ -19,8 +20,10 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateResponse,
     AccessKeyListResponse,
     AccessKeyMetadataResponse,
+    AccessKeyRevokeResponse,
 )
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.errors import NotFoundError
 from typer.testing import CliRunner
 
 from ..utils import assert_exit_code
@@ -87,6 +90,16 @@ def _created_access_key(
         status="ACTIVE",
         issuer="https://platform.example.com/apis/auth",
         audiences=["nemo-platform-access-key"],
+    )
+
+
+def _access_key_not_found_error(jti: str) -> NotFoundError:
+    return NotFoundError(
+        httpx.Response(
+            404,
+            json={"detail": f"Scoped Access Key {jti} was not found"},
+            request=httpx.Request("DELETE", f"https://platform.example.com/apis/auth/v2/access-keys/{jti}"),
+        )
     )
 
 
@@ -557,16 +570,75 @@ def test_auth_access_keys_list_points_to_next_page(monkeypatch: pytest.MonkeyPat
     fake_access_keys_client.list_access_keys.assert_called_once_with(query_params={"page": 3, "page_size": 25})
 
 
+def test_auth_access_keys_revoke_sends_jti(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.revoke_access_key.return_value.data.return_value = AccessKeyRevokeResponse(
+        jti="ak_example",
+        revoked=True,
+    )
+    monkeypatch.setattr("nemo_platform_ext.cli.core.context.CLIContext.get_client", lambda self: MagicMock())
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "revoke", "ak_example"])
+
+    assert_exit_code(result, 0)
+    assert "Revoked Scoped Access Key ak_example." in result.output
+    fake_access_keys_client.revoke_access_key.assert_called_once_with(jti="ak_example")
+
+
+def test_auth_access_keys_revoke_reports_already_revoked(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.revoke_access_key.return_value.data.return_value = AccessKeyRevokeResponse(
+        jti="ak_example",
+        revoked=False,
+    )
+    monkeypatch.setattr("nemo_platform_ext.cli.core.context.CLIContext.get_client", lambda _self: MagicMock())
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.client_from_platform",
+        lambda _platform, _client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "revoke", "ak_example"])
+
+    assert_exit_code(result, 0)
+    assert "Scoped Access Key ak_example was already revoked." in result.output
+
+
+def test_auth_access_keys_revoke_reports_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.revoke_access_key.side_effect = _access_key_not_found_error("ak_unknown")
+    monkeypatch.setattr("nemo_platform_ext.cli.core.context.CLIContext.get_client", lambda _self: MagicMock())
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.client_from_platform",
+        lambda _platform, _client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "revoke", "ak_unknown"])
+
+    assert_exit_code(result, 1)
+    assert "Not found: (404) Scoped Access Key ak_unknown was not found" in result.output
+    fake_access_keys_client.revoke_access_key.assert_called_once_with(jti="ak_unknown")
+
+
 def test_auth_access_keys_help_exposes_lifecycle_commands() -> None:
     result = runner.invoke(app, ["auth", "access-keys", "--help"])
 
     assert_exit_code(result, 0)
     assert "create" in result.output
     assert "list" in result.output
+    assert "revoke" in result.output
 
     create_help = runner.invoke(app, ["auth", "access-keys", "create", "--help"])
     assert_exit_code(create_help, 0)
     assert "Use 'none' to request no expiration" in " ".join(create_help.output.split())
+
+    revoke_help = runner.invoke(app, ["auth", "access-keys", "revoke", "--help"])
+    assert_exit_code(revoke_help, 0)
+    assert "Stable ID of the Scoped Access Key" in " ".join(revoke_help.output.split())
+
 
 def test_auth_tokens_group_is_not_exposed() -> None:
     result = runner.invoke(app, ["auth", "tokens", "create"])

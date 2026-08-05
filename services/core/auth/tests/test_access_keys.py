@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -15,17 +16,20 @@ from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig
 from nmp.common.config.base import AccessKeyConfig, TokenSigningConfig
 from nmp.core.auth.api.v2.access_keys.endpoints import get_access_key_issuer, router
-from nmp.core.auth.app.access_keys import get_access_key_registry
+from nmp.core.auth.app.access_keys import AccessKeyNotFoundError, get_access_key_registry
 
 
 class InMemoryAccessKeyRegistry:
     def __init__(self):
         self.keys = {}
+        self.revoked = set()
 
     async def add(self, key):
         self.keys[key.jti] = key
 
-    def _status(self, key):
+    def _status(self, jti, key):
+        if jti in self.revoked:
+            return "REVOKED"
         if key.expires_at is not None and key.expires_at <= datetime.now(tz=UTC):
             return "EXPIRED"
         return key.status
@@ -39,12 +43,25 @@ class InMemoryAccessKeyRegistry:
         return AccessKeyListResponse(
             data=[
                 AccessKeyMetadataResponse.model_validate(
-                    key.model_dump(exclude={"token", "token_type"}) | {"status": self._status(key)}
+                    key.model_dump(exclude={"token", "token_type"}) | {"status": self._status(jti, key)}
                 )
                 for jti, key in selected
             ],
             has_more=start + page_size < len(owned),
         )
+
+    async def revoke(self, jti, principal):
+        key = self.keys.get(jti)
+        if key is None or key.principal != principal:
+            raise AccessKeyNotFoundError(f"Scoped Access Key {jti} was not found")
+        revoked = jti not in self.revoked
+        self.revoked.add(jti)
+        return revoked
+
+    async def is_active(self, jti, principal, **kwargs):
+        key = self.keys.get(jti)
+        return key is not None and key.principal == principal and self._status(jti, key) == "ACTIVE"
+
 
 @pytest.fixture
 def client(tmp_path):
@@ -127,6 +144,30 @@ def test_create_access_key_returns_token_for_current_principal(client):
     assert body["token"].count(".") == 2
 
 
+def test_create_and_revoke_emit_actor_aware_audit_logs(client, caplog):
+    with caplog.at_level(logging.INFO, logger="nmp.core.auth.app.access_keys"):
+        created = client.post(
+            "/v2/access-keys",
+            json={"name": "gtc-intake", "description": "GTC intake automation"},
+        ).json()
+        response = client.delete(f"/v2/access-keys/{created['jti']}")
+        repeat_response = client.delete(f"/v2/access-keys/{created['jti']}")
+
+    assert response.status_code == 200
+    assert repeat_response.status_code == 200
+    events = {record.audit_event: record for record in caplog.records if hasattr(record, "audit_event")}
+    assert events["access_key.created"].actor_principal == "alice@example.com"
+    assert events["access_key.created"].access_key_jti == created["jti"]
+    assert events["access_key.revoked"].actor_principal == "alice@example.com"
+    assert events["access_key.revoked"].access_key_jti == created["jti"]
+    assert not events["access_key.revoked"].access_key_already_revoked
+    assert events["access_key.revoke_noop"].actor_principal == "alice@example.com"
+    assert events["access_key.revoke_noop"].access_key_jti == created["jti"]
+    assert events["access_key.revoke_noop"].access_key_already_revoked
+    assert created["token"] not in caplog.text
+    assert "GTC intake automation" not in caplog.text
+
+
 @pytest.mark.asyncio
 async def test_in_memory_access_key_registry_reports_expired_status() -> None:
     registry = InMemoryAccessKeyRegistry()
@@ -149,6 +190,7 @@ async def test_in_memory_access_key_registry_reports_expired_status() -> None:
     result = await registry.list_for_principal("alice@example.com", page=1, page_size=100)
 
     assert result.data[0].status == "EXPIRED"
+    assert not await registry.is_active("ak_expired", "alice@example.com")
 
 
 def test_create_access_key_allows_unnamed_tokens(client):
@@ -268,6 +310,8 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
     assert create_response_schema["properties"]["audiences"]["uniqueItems"] is True
     list_schema = openapi["components"]["schemas"]["AccessKeyListResponse"]
     assert list_schema["properties"]["has_more"]["default"] is False
+    revoke_schema = openapi["components"]["schemas"]["AccessKeyRevokeResponse"]
+    assert set(revoke_schema["required"]) == {"jti", "revoked"}
 
     list_operation = openapi["paths"]["/v2/access-keys"]["get"]
     list_parameters = {parameter["name"]: parameter for parameter in list_operation["parameters"]}
@@ -293,8 +337,10 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
     }
 
     revoke_responses = openapi["paths"]["/v2/access-keys/{jti}"]["delete"]["responses"]
-    assert revoke_responses["200"]["content"]["application/json"]["schema"] == {}
-    assert revoke_responses["404"]["description"] == "Scoped Access Keys are not enabled"
+    assert revoke_responses["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AccessKeyRevokeResponse"
+    }
+    assert revoke_responses["404"]["description"] == "Scoped Access Keys are not enabled or the key was not found"
     assert revoke_responses["404"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccessKeyErrorResponse"
     }
@@ -342,3 +388,28 @@ def test_list_access_keys_supports_pagination(client):
     assert second_page.status_code == 200
     assert [key["jti"] for key in second_page.json()["data"]] == [second["jti"]]
     assert second_page.json()["has_more"] is False
+
+
+def test_revoke_access_key_marks_key_revoked_in_listing(client):
+    created = client.post("/v2/access-keys", json={"name": "gtc-intake"}).json()
+
+    response = client.delete(f"/v2/access-keys/{created['jti']}")
+
+    assert response.status_code == 200
+    assert response.json() == {"jti": created["jti"], "revoked": True}
+    listed = client.get("/v2/access-keys").json()["data"]
+    assert len(listed) == 1
+    assert listed[0]["jti"] == created["jti"]
+    assert listed[0]["status"] == "REVOKED"
+
+    repeat_response = client.delete(f"/v2/access-keys/{created['jti']}")
+
+    assert repeat_response.status_code == 200
+    assert repeat_response.json() == {"jti": created["jti"], "revoked": False}
+
+
+def test_revoke_access_key_returns_not_found_for_unknown_key(client):
+    response = client.delete("/v2/access-keys/ak_unknown")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Scoped Access Key ak_unknown was not found"

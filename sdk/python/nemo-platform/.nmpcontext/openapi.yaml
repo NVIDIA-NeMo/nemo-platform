@@ -269,9 +269,10 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AccessKeyRevokeResponse'
         '404':
-          description: Scoped Access Keys are not enabled
+          description: Scoped Access Keys are not enabled or the key was not found
           content:
             application/json:
               schema:
@@ -7950,14 +7951,22 @@ components:
           title: Name
           description: Optional human-readable Scoped Access Key label. The token
             jti remains the stable identifier.
+          nullable: true
           type: string
           maxLength: 128
           minLength: 1
+        description:
+          title: Description
+          description: Optional human-readable description of the Scoped Access Key.
+          nullable: true
+          type: string
+          maxLength: 1024
         expires_in_seconds:
           title: Expires In Seconds
           description: Scoped Access Key lifetime in seconds. Omit to use auth.access_keys.default_expires_in_seconds.
             Send explicit null to request a non-time-delimited key, which requires
             auth.access_keys.max_expires_in_seconds to be disabled.
+          nullable: true
           type: integer
           minimum: 1.0
       type: object
@@ -7972,17 +7981,42 @@ components:
         name:
           title: Name
           description: Optional human-readable Scoped Access Key label.
+          nullable: true
+          type: string
+        description:
+          title: Description
+          description: Human-readable description of the Scoped Access Key.
+          nullable: true
           type: string
         principal:
           type: string
           title: Principal
           description: Principal ID stamped into the token.
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - EXPIRED
+          - REVOKED
+          title: Status
+        issuer:
+          type: string
+          title: Issuer
+          description: Issuer stamped into the Scoped Access Key JWT.
+        audiences:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Audiences
+          description: Audiences accepted for the Scoped Access Key JWT.
         created_at:
           type: string
           format: date-time
           title: Created At
         expires_at:
           title: Expires At
+          nullable: true
           type: string
           format: date-time
         token:
@@ -7996,6 +8030,9 @@ components:
       required:
       - jti
       - principal
+      - status
+      - issuer
+      - audiences
       - created_at
       - token
       - token_type
@@ -8037,23 +8074,51 @@ components:
         name:
           title: Name
           description: Optional human-readable Scoped Access Key label.
+          nullable: true
+          type: string
+        description:
+          title: Description
+          description: Human-readable description of the Scoped Access Key.
+          nullable: true
           type: string
         principal:
           type: string
           title: Principal
           description: Principal ID stamped into the token.
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - EXPIRED
+          - REVOKED
+          title: Status
+        issuer:
+          type: string
+          title: Issuer
+          description: Issuer stamped into the Scoped Access Key JWT.
+        audiences:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Audiences
+          description: Audiences accepted for the Scoped Access Key JWT.
         created_at:
           type: string
           format: date-time
           title: Created At
         expires_at:
           title: Expires At
+          nullable: true
           type: string
           format: date-time
       type: object
       required:
       - jti
       - principal
+      - status
+      - issuer
+      - audiences
       - created_at
       title: AccessKeyMetadataResponse
       description: Metadata for a Scoped Access Key.
@@ -8067,6 +8132,22 @@ components:
       - detail
       title: AccessKeyNotImplementedErrorResponse
       description: Response returned by unsupported Scoped Access Key lifecycle endpoints.
+    AccessKeyRevokeResponse:
+      properties:
+        jti:
+          type: string
+          title: Jti
+          description: Stable JWT ID for this Scoped Access Key.
+        revoked:
+          type: boolean
+          title: Revoked
+          description: True when this request changed the key from active to revoked.
+      type: object
+      required:
+      - jti
+      - revoked
+      title: AccessKeyRevokeResponse
+      description: Response returned after a Scoped Access Key revoke request.
     ActionRails:
       properties:
         instant_actions:

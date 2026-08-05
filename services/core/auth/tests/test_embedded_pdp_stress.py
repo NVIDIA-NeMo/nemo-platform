@@ -332,12 +332,16 @@ def large_scale_policy_data():
     reload_policy()
     set_policy_data(data)
 
-    yield {
+    ctx = {
         "endpoints": endpoints,
+        "post_endpoints": [path for path in endpoints if "post" in data["authz"]["endpoints"][path]],
         "workspace_ids": [f"workspace-{i:05d}" for i in range(NUM_WORKSPACES)],
         "user_ids": [f"user{i:05d}@example.com" for i in range(NUM_USERS)],
         "rng": random.Random(SEED + 1),  # Separate RNG for test execution
     }
+    assert ctx["post_endpoints"], "expected at least one POST endpoint in static-authz"
+
+    yield ctx
 
     reload_policy()
 
@@ -523,14 +527,14 @@ def test_large_scale_authorization_accuracy(large_scale_policy_data):
         result = evaluate("allow", {"principal_id": "admin@example.com", "method": "DELETE", "path": path})
         assert result["allowed"] is True, f"Platform admin should be allowed on {path!r}"
 
-    # Test 2: Service principals should always be allowed
+    # Test 2: Service principals should be allowed on registered POST routes.
     for _ in range(50):
         workspace_id = rng.choice(ctx["workspace_ids"])
-        endpoint = rng.choice(ctx["endpoints"])
+        endpoint = rng.choice(ctx["post_endpoints"])
         path = _generate_random_path(endpoint, workspace_id, rng)
 
         result = evaluate("allow", {"principal_id": "service:test-svc", "method": "POST", "path": path})
-        assert result["allowed"] is True, "Service principal should always be allowed"
+        assert result["allowed"] is True, f"Service principal should be allowed on {path!r}"
 
     # Test 3: Health/status endpoints should always be allowed
     for path in ["/health/live", "/health/ready", "/status"]:

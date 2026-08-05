@@ -109,7 +109,7 @@ the SDK's OIDC refresh flow:
 
 ```bash
 # Create a Scoped Access Key with the platform default expiry and print the token once.
-nemo auth access-keys create --name ci-build
+nemo auth access-keys create --name ci-build --description "CI build automation"
 ```
 
 Scoped Access Key management commands live under the `auth` namespace as
@@ -131,15 +131,17 @@ Pass `--expires-in <seconds>` to request a specific finite lifetime. Pass
 `--expires-in none` only for deployments where the administrator has explicitly
 allowed unlimited keys.
 
-List keys with optional pagination:
+List keys or revoke one by its stable `jti`:
 
 ```bash
 nemo auth access-keys list
 nemo auth access-keys list --page 2 --page-size 100
+nemo auth access-keys revoke ak_example
 ```
 
-The list includes each key's status, description, issuer, audiences, creation
-time, and expiration time. Revocation and rotation are not implemented.
+The list includes each key's `ACTIVE`, `EXPIRED`, or `REVOKED` status plus its
+description, issuer, audiences, creation time, and expiration time. Revocation takes
+effect on subsequent authenticated platform requests. Rotation is not implemented.
 
 ### Token Inspection
 

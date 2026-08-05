@@ -13,6 +13,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
     AccessKeyListResponse,
+    AccessKeyRevokeResponse,
 )
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.errors import NemoHTTPError
@@ -53,9 +54,9 @@ class AccessKeyIssuerClient(AccessKeyIssuer):
             _raise_domain_error_from_http(exc)
             raise
 
-    def revoke(self, jti: str) -> None:
+    def revoke(self, jti: str) -> AccessKeyRevokeResponse:
         try:
-            self._client.revoke_access_key(jti=jti).data()
+            return self._client.revoke_access_key(jti=jti).data()
         except NemoHTTPError as exc:
             _raise_domain_error_from_http(exc)
             raise

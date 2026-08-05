@@ -906,6 +906,25 @@ def list_access_keys(
         typer.echo(f"More Scoped Access Keys are available; use --page {page + 1} to retrieve them.", err=True)
 
 
+@access_keys_app.command("revoke")
+@handle_errors
+def revoke_access_key(
+    ctx: typer.Context,
+    jti: Annotated[str, typer.Argument(help="Stable ID of the Scoped Access Key to revoke.")],
+) -> None:
+    """Revoke a Scoped Access Key owned by the current authenticated user."""
+    try:
+        result = _access_key_issuer(ctx).revoke(jti)
+    except AccessKeyFeatureDisabledError as exc:
+        _raise_access_key_disabled(exc)
+    except AccessKeyOperationNotImplementedError as exc:
+        _raise_access_key_not_implemented(exc)
+    if result.revoked:
+        typer.echo(f"Revoked Scoped Access Key {jti}.")
+    else:
+        typer.echo(f"Scoped Access Key {jti} was already revoked.")
+
+
 @app.command("status")
 @handle_errors
 def status(ctx: typer.Context) -> None:
