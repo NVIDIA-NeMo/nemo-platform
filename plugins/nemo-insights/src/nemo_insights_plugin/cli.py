@@ -19,7 +19,11 @@ from typing import ClassVar
 
 import httpx
 import typer
-from nemo_insights_plugin.analyst.run import ClientConstructionError, run_analyst
+from nemo_insights_plugin.analyst.run import (
+    ClientConstructionError,
+    InsightsServiceUnavailableError,
+    run_analyst,
+)
 from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.contracts.checks import CheckResult, advisories, format_report, required_failures
 from nemo_insights_plugin.contracts.insights import InsightsFileError, validate_insights_file
@@ -171,6 +175,9 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             insights_output=analysis.insights_output,
             verbose=verbose,
         )
+    except InsightsServiceUnavailableError as exc:
+        typer.echo(f"Error: {_one_line_error(exc)}", err=True)
+        raise typer.Exit(1) from None
     except AgentRunError as exc:
         detail = _one_line_error(exc).rstrip(".")
         typer.echo(

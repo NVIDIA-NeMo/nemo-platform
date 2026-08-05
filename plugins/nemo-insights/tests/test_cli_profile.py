@@ -507,6 +507,31 @@ def test_analyze_renders_agent_run_error_with_model_and_usage_guidance(
     assert "Traceback" not in result.output
 
 
+def test_analyze_renders_insights_service_preflight_failure_with_start_guidance(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_analysis(**kwargs: object) -> str:
+        raise cli.InsightsServiceUnavailableError(
+            "Insights service preflight failed for workspace 'default': connection refused. "
+            "Start the Insights service and retry."
+        )
+
+    monkeypatch.setattr(cli, "run_analyst", fail_analysis)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["analyze"])
+
+    assert result.exit_code == 1
+    assert result.stderr.splitlines()[-1] == (
+        "Error: Insights service preflight failed for workspace 'default': connection refused. "
+        "Start the Insights service and retry."
+    )
+    assert "Intake availability" not in result.stderr
+    assert "Traceback" not in result.output
+
+
 @pytest.mark.parametrize("error_type", [RuntimeError, ValueError])
 def test_analyze_constructor_failure_warns_then_exits_cleanly(
     app: typer.Typer,
