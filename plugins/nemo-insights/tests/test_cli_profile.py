@@ -90,7 +90,60 @@ def test_analyze_runs_flag_free_from_profile(app: typer.Typer, profile_tree: Pat
     assert recorder.kwargs["agent"] == "flight-planner"
     assert recorder.kwargs["workspace"] == "flight-workspace"
     assert recorder.kwargs["agent_spec"] == "# Flight planner"
-    assert recorder.kwargs["insights_output"] == profile_tree / ".nemo-optimizer" / "insights.yaml"
+    assert recorder.kwargs["insights_output"] is None, "a discovered profile must not divert writes off the platform"
+
+
+def test_no_local_only_flag_is_exposed(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["run", "--local-only"])
+
+    assert result.exit_code != 0
+    assert recorder.kwargs is None
+
+
+def test_insights_file_output_is_a_mirror_not_a_redirect(
+    app: typer.Typer, profile_tree: Path, tmp_path: Path, monkeypatch
+) -> None:
+    recorder = AnalystRecorder()
+    output = tmp_path / "mirror.yaml"
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["run", "--insights-file-output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert recorder.kwargs is not None
+    assert recorder.kwargs["insights_output"] == output
+    assert "local_only" not in recorder.kwargs, "the CLI must never ask for local-only persistence"
+
+
+def test_unusable_mirror_directory_drops_the_mirror_and_still_analyzes(
+    app: typer.Typer, profile_tree: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The platform is the source of truth; a bad local path must not cost the run."""
+    recorder = AnalystRecorder()
+    output = tmp_path / "unwritable" / "insights.yaml"
+    original_mkdir = Path.mkdir
+
+    def refuse_mirror_dir(self: Path, *args: object, **kwargs: object) -> None:
+        if self == output.parent:
+            raise PermissionError(13, "Permission denied")
+        original_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "mkdir", refuse_mirror_dir)
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["run", "--insights-file-output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert recorder.kwargs is not None, "the analysis must still run"
+    assert recorder.kwargs["insights_output"] is None
+    assert "insights mirror disabled" in result.stderr
+    assert "still written to the platform" in result.stderr
 
 
 def test_analyze_flags_override_profile(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:
@@ -378,21 +431,6 @@ def test_malformed_discovered_profile_errors_without_agent(app: typer.Typer, tmp
     assert recorder.kwargs is None
 
 
-def test_explicit_output_overrides_profile_default(
-    app: typer.Typer, profile_tree: Path, tmp_path: Path, monkeypatch
-) -> None:
-    recorder = AnalystRecorder()
-    output = tmp_path / "custom.yaml"
-    monkeypatch.setattr(cli, "run_analyst", recorder)
-    monkeypatch.chdir(profile_tree)
-
-    result = runner.invoke(app, ["run", "--insights-file-output", str(output)])
-
-    assert result.exit_code == 0, result.output
-    assert recorder.kwargs is not None
-    assert recorder.kwargs["insights_output"] == output
-
-
 def test_missing_profile_and_agent_errors(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
@@ -538,7 +576,6 @@ def test_analyze_constructor_failure_warns_then_exits_cleanly(
     assert "During handling of the above exception" not in result.output
 
 
-@pytest.mark.parametrize("explicit", [False, True], ids=["profile-default", "explicit-path"])
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
@@ -554,17 +591,16 @@ def test_analyze_rejects_invalid_existing_insights_file_before_runner(
     profile_tree: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    explicit: bool,
     payload: bytes,
     expected: str,
 ) -> None:
     recorder = AnalystRecorder()
-    output = tmp_path / "explicit-insights.yaml" if explicit else profile_tree / ".nemo-optimizer" / "insights.yaml"
+    output = tmp_path / "explicit-insights.yaml"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(payload)
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
-    arguments = ["run", "--insights-file-output", str(output)] if explicit else ["run"]
+    arguments = ["run", "--insights-file-output", str(output)]
 
     result = runner.invoke(app, arguments)
 
@@ -577,7 +613,6 @@ def test_analyze_rejects_invalid_existing_insights_file_before_runner(
     assert recorder.kwargs is None
 
 
-@pytest.mark.parametrize("explicit", [False, True], ids=["profile-default", "explicit-path"])
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
@@ -597,17 +632,16 @@ def test_analyze_rejects_invalid_insights_records_before_runner(
     profile_tree: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    explicit: bool,
     payload: bytes,
     expected: str,
 ) -> None:
     recorder = AnalystRecorder()
-    output = tmp_path / "explicit-insights.yaml" if explicit else profile_tree / ".nemo-optimizer" / "insights.yaml"
+    output = tmp_path / "explicit-insights.yaml"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(payload)
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
-    arguments = ["run", "--insights-file-output", str(output)] if explicit else ["run"]
+    arguments = ["run", "--insights-file-output", str(output)]
 
     result = runner.invoke(app, arguments)
 
@@ -620,21 +654,19 @@ def test_analyze_rejects_invalid_insights_records_before_runner(
     assert recorder.kwargs is None
 
 
-@pytest.mark.parametrize("explicit", [False, True], ids=["profile-default", "explicit-path"])
 def test_analyze_accepts_existing_insights_file_without_insights_key(
     app: typer.Typer,
     profile_tree: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    explicit: bool,
 ) -> None:
     recorder = AnalystRecorder()
-    output = tmp_path / "explicit-insights.yaml" if explicit else profile_tree / ".nemo-optimizer" / "insights.yaml"
+    output = tmp_path / "explicit-insights.yaml"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("metadata: retained\n", encoding="utf-8")
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.chdir(profile_tree)
-    arguments = ["run", "--insights-file-output", str(output)] if explicit else ["run"]
+    arguments = ["run", "--insights-file-output", str(output)]
 
     result = runner.invoke(app, arguments)
 
