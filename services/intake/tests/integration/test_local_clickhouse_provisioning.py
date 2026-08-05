@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from uuid import uuid4
 
@@ -68,9 +69,11 @@ def test_data_directory_owned_container_uses_dynamic_loopback_port_and_is_reused
         assert second_url == first_url
         assert reused.id == first_id
 
-        assert remove_local_clickhouse(data_dir=data_dir) is True
+        assert remove_local_clickhouse(data_dir=data_dir, restore_data_ownership=True) is True
         with pytest.raises(NotFound):
             client.containers.get(container_name)
+        shutil.rmtree(data_dir)
+        assert not data_dir.exists()
     finally:
         try:
             client.containers.get(container_name).remove(force=True)

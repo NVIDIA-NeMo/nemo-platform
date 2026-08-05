@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Annotated, NoReturn
 import httpx
 import typer
 from nemo_platform.cli.core.help_formatter import create_typer_app
+from nemo_platform.config.config import Config
 from nemo_platform.local.process import (
     ForegroundInstanceError,
     InstanceAlreadyRunningError,
@@ -27,6 +29,7 @@ from nemo_platform.local.process import (
     format_port_conflict,
     instance_log_bytes,
     is_instance_alive,
+    is_port_bindable,
     list_instances,
     log_path_for,
     prune_instances,
@@ -37,6 +40,7 @@ from nemo_platform.local.process import (
     stop_instance,
     write_descriptor,
 )
+from nemo_platform_plugin.config import nmp_user_data_dir
 from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
 
 logger = logging.getLogger(__name__)
@@ -120,6 +124,33 @@ def _warn_bind_all(host: str) -> None:
 def _effective_base_dir() -> str | None:
     """Allow test/internal override of the base state dir via env var."""
     return os.environ.get("_NMP_STATE_DIR")
+
+
+def _resolve_reset_data_dir(explicit_data_dir: Path | None) -> Path:
+    if explicit_data_dir is not None:
+        return explicit_data_dir.expanduser().resolve()
+    if os.environ.get("NMP_DATA_DIR"):
+        return nmp_user_data_dir().resolve()
+
+    config_path = Config.get_default_config_path()
+    if config_path.exists():
+        config = Config.load(config_path=config_path).get_config_file()
+        if config.local_services and config.local_services.data_dir:
+            return Path(config.local_services.data_dir).expanduser().resolve()
+    return nmp_user_data_dir().resolve()
+
+
+def _validate_reset_data_dir(data_dir: Path) -> None:
+    home_dir = Path.home().resolve()
+    working_dir = Path.cwd().resolve()
+    filesystem_root = Path(data_dir.anchor).resolve()
+    if (
+        data_dir in {filesystem_root, home_dir, working_dir}
+        or len(data_dir.parts) < 3
+        or home_dir.is_relative_to(data_dir)
+        or working_dir.is_relative_to(data_dir)
+    ):
+        raise ValueError(f"Refusing unsafe local data directory: {data_dir}")
 
 
 def _find_sole_running_scope(base_dir: Path | None) -> str:
@@ -436,6 +467,105 @@ def stop_services_cmd(
         msg += f" and {n} child {noun}"
     typer.echo(msg)
     typer.echo(f"Instance directory kept (logs preserved). Remove with: nemo services rm {scope}")
+
+
+# ---------------------------------------------------------------------------
+# reset-data
+# ---------------------------------------------------------------------------
+
+
+@services_app.command("reset-data")
+def reset_services_data(
+    data_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--data-dir",
+            help="Local platform data directory. Defaults to NMP_DATA_DIR, persisted setup config, or XDG data.",
+        ),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Delete without confirmation after safety checks pass."),
+    ] = False,
+) -> None:
+    """Permanently delete local platform data after guarded service cleanup.
+
+    The command refuses unsafe paths and live services. It removes the managed
+    Intake ClickHouse container before deleting its bind-mounted data. A custom
+    ClickHouse data directory outside the platform data directory is preserved.
+
+    Examples:
+      nemo services reset-data
+      nemo services reset-data --force
+      nemo services reset-data --data-dir /var/lib/nemo --force
+    """
+    _require_services_extra()
+    try:
+        resolved_data_dir = _resolve_reset_data_dir(data_dir)
+        _validate_reset_data_dir(resolved_data_dir)
+    except (OSError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+
+    base_dir_str = _effective_base_dir()
+    base_dir = Path(base_dir_str) if base_dir_str else None
+    running = [info.scope for info in list_instances(base_dir=base_dir) if info.alive]
+    if running:
+        typer.echo(
+            f"Platform services are still running ({', '.join(running)}). Stop them before resetting data.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    if not is_port_bindable(DEFAULT_LOCAL_SERVICES_BIND_HOST, _DEFAULT_PORT):
+        typer.echo(
+            f"Port {_DEFAULT_PORT} is still in use. Stop the local platform process before resetting data.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    typer.echo(f"Local platform data directory: {resolved_data_dir}")
+    typer.echo("This permanently deletes local databases, keys, files, job history, secrets, and Intake traces.")
+    if not force and not typer.confirm("Reset local platform data?", default=False):
+        typer.echo("Data reset cancelled.")
+        return
+
+    from nmp.intake.config import ClickHouseConfig
+    from nmp.intake.local_clickhouse import (
+        CLICKHOUSE_IDENTITY_FILE,
+        DockerUnavailableError,
+        LocalClickHouseProvisioningError,
+        remove_local_clickhouse,
+    )
+
+    clickhouse_config = ClickHouseConfig()
+    clickhouse_data_dir = (clickhouse_config.data_dir or resolved_data_dir / "intake-clickhouse").expanduser().resolve()
+    identity_marker = clickhouse_data_dir / CLICKHOUSE_IDENTITY_FILE
+    if identity_marker.is_file():
+        try:
+            remove_local_clickhouse(
+                data_dir=clickhouse_data_dir,
+                restore_data_ownership=clickhouse_data_dir.is_relative_to(resolved_data_dir),
+            )
+        except DockerUnavailableError as exc:
+            typer.echo(
+                "ClickHouse cleanup failed; platform data was not deleted. "
+                f"Start Docker and rerun `nemo services reset-data`. Details: {exc}",
+                err=True,
+            )
+            raise typer.Exit(1) from None
+        except LocalClickHouseProvisioningError as exc:
+            typer.echo(f"ClickHouse cleanup failed; platform data was not deleted: {exc}", err=True)
+            raise typer.Exit(1) from None
+
+    if not resolved_data_dir.exists():
+        typer.echo("No local platform data directory found.")
+        return
+    try:
+        shutil.rmtree(resolved_data_dir)
+    except OSError as exc:
+        typer.echo(f"Could not delete local platform data at {resolved_data_dir}: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Deleted local platform data at {resolved_data_dir}.")
 
 
 # ---------------------------------------------------------------------------

@@ -67,6 +67,7 @@ class FakeContainer:
         self.started = False
         self.stopped = False
         self.removed = False
+        self.exec_calls: list[tuple[list[str], str | None]] = []
 
     def reload(self) -> None:
         return None
@@ -80,7 +81,8 @@ class FakeContainer:
         self.stopped = True
         self.status = "exited"
 
-    def exec_run(self, _command: list[str]) -> FakeExecResult:
+    def exec_run(self, command: list[str], *, user: str | None = None) -> FakeExecResult:
+        self.exec_calls.append((command, user))
         return FakeExecResult()
 
     def remove(self) -> None:
@@ -496,6 +498,31 @@ def test_remove_local_clickhouse_validates_and_removes_owned_container(
     assert container.stopped is True
     assert container.removed is True
     assert client.closed is True
+
+
+def test_remove_local_clickhouse_restores_host_ownership_before_removal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    data_dir = (tmp_path / "intake-clickhouse").resolve()
+    name = _managed_container_name(data_dir)
+    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    container = FakeContainer(
+        name=name,
+        image=f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
+        labels=_expected_labels(data_dir, data_instance_id),
+        data_dir=data_dir,
+    )
+    client = FakeDockerClient({name: container})
+    monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", lambda **_kwargs: client)
+    monkeypatch.setattr("nmp.intake.local_clickhouse.os.getuid", lambda: 1234)
+    monkeypatch.setattr("nmp.intake.local_clickhouse.os.getgid", lambda: 5678)
+
+    assert remove_local_clickhouse(data_dir=data_dir, restore_data_ownership=True) is True
+    assert container.exec_calls == [
+        (["chown", "-R", "1234:5678", CLICKHOUSE_DATA_PATH], "root"),
+    ]
+    assert container.removed is True
 
 
 def test_remove_local_clickhouse_refuses_unowned_container(

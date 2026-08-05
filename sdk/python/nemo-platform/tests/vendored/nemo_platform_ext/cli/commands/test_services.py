@@ -74,7 +74,7 @@ def test_services_group_is_registered():
 def test_services_help_lists_all_commands():
     result = runner.invoke(app, ["services", "--help"])
     assert result.exit_code == 0
-    for cmd in ("run", "start", "stop", "restart", "status", "ls", "logs", "rm", "prune"):
+    for cmd in ("run", "start", "stop", "reset-data", "restart", "status", "ls", "logs", "rm", "prune"):
         assert cmd in result.stdout, f"'{cmd}' not in help output"
 
 
@@ -345,6 +345,195 @@ class TestServicesStop:
         assert result.exit_code == 0
         _, kwargs = mock_stop.call_args
         assert kwargs["force"] is True
+
+
+# ---------------------------------------------------------------------------
+# reset-data
+# ---------------------------------------------------------------------------
+
+
+class TestServicesResetData:
+    def test_uses_data_directory_persisted_by_setup(
+        self,
+        base_dir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        data_dir = tmp_path / "persisted-platform-data"
+        data_dir.mkdir()
+        config_path = tmp_path / "config.yaml"
+        config_path.touch()
+        config_file = MagicMock(local_services=MagicMock(data_dir=str(data_dir)))
+        config = MagicMock()
+        config.get_config_file.return_value = config_file
+        monkeypatch.delenv("NMP_DATA_DIR", raising=False)
+        monkeypatch.delenv("NMP_INTAKE_CLICKHOUSE_DATA_DIR", raising=False)
+
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.Config.get_default_config_path", return_value=config_path),
+            patch(f"{_CLI_MODULE}.Config.load", return_value=config),
+            patch(f"{_CLI_MODULE}.list_instances", return_value=[]),
+            patch(f"{_CLI_MODULE}.is_port_bindable", return_value=True),
+        ):
+            result = runner.invoke(app, ["services", "reset-data", "--force"])
+
+        assert result.exit_code == 0, result.stderr
+        assert f"Local platform data directory: {data_dir.resolve()}" in result.stdout
+        assert not data_dir.exists()
+
+    def test_removes_clickhouse_before_deleting_platform_data(
+        self,
+        base_dir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        data_dir = tmp_path / "platform-data"
+        clickhouse_data_dir = data_dir / "intake-clickhouse"
+        clickhouse_data_dir.mkdir(parents=True)
+        (clickhouse_data_dir / ".nmp-clickhouse-identity").touch()
+        (data_dir / "nmp-platform.db").touch()
+        monkeypatch.delenv("NMP_INTAKE_CLICKHOUSE_DATA_DIR", raising=False)
+
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.list_instances", return_value=[]),
+            patch(f"{_CLI_MODULE}.is_port_bindable", return_value=True),
+            patch("nmp.intake.local_clickhouse.remove_local_clickhouse", return_value=True) as remove_clickhouse,
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "reset-data", "--data-dir", str(data_dir), "--force"],
+            )
+
+        assert result.exit_code == 0, result.stderr
+        remove_clickhouse.assert_called_once_with(
+            data_dir=clickhouse_data_dir.resolve(),
+            restore_data_ownership=True,
+        )
+        assert not data_dir.exists()
+
+    def test_preserves_explicit_clickhouse_data_outside_platform_data(
+        self,
+        base_dir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        data_dir = tmp_path / "platform-data"
+        data_dir.mkdir()
+        clickhouse_data_dir = tmp_path / "clickhouse-data"
+        clickhouse_data_dir.mkdir()
+        (clickhouse_data_dir / ".nmp-clickhouse-identity").touch()
+        monkeypatch.setenv("NMP_INTAKE_CLICKHOUSE_DATA_DIR", str(clickhouse_data_dir))
+
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.list_instances", return_value=[]),
+            patch(f"{_CLI_MODULE}.is_port_bindable", return_value=True),
+            patch("nmp.intake.local_clickhouse.remove_local_clickhouse", return_value=True) as remove_clickhouse,
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "reset-data", "--data-dir", str(data_dir), "--force"],
+            )
+
+        assert result.exit_code == 0, result.stderr
+        remove_clickhouse.assert_called_once_with(
+            data_dir=clickhouse_data_dir.resolve(),
+            restore_data_ownership=False,
+        )
+        assert clickhouse_data_dir.exists()
+        assert not data_dir.exists()
+
+    def test_docker_cleanup_failure_keeps_platform_data(
+        self,
+        base_dir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from nmp.intake.local_clickhouse import DockerUnavailableError
+
+        data_dir = tmp_path / "platform-data"
+        clickhouse_data_dir = data_dir / "intake-clickhouse"
+        clickhouse_data_dir.mkdir(parents=True)
+        (clickhouse_data_dir / ".nmp-clickhouse-identity").touch()
+        monkeypatch.delenv("NMP_INTAKE_CLICKHOUSE_DATA_DIR", raising=False)
+
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.list_instances", return_value=[]),
+            patch(f"{_CLI_MODULE}.is_port_bindable", return_value=True),
+            patch(
+                "nmp.intake.local_clickhouse.remove_local_clickhouse",
+                side_effect=DockerUnavailableError("Docker daemon is unavailable. Start Docker Desktop and retry."),
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "reset-data", "--data-dir", str(data_dir), "--force"],
+            )
+
+        assert result.exit_code == 1
+        assert "Docker daemon is unavailable" in result.stderr
+        assert "platform data was not deleted" in result.stderr
+        assert "Start Docker and rerun `nemo services reset-data`" in result.stderr
+        assert data_dir.exists()
+
+    def test_refuses_unsafe_data_directory(self, base_dir: Path) -> None:
+        with patch(f"{_CLI_MODULE}._require_services_extra"):
+            result = runner.invoke(app, ["services", "reset-data", "--data-dir", "/", "--force"])
+
+        assert result.exit_code == 1
+        assert "Refusing unsafe local data directory" in result.stderr
+
+    def test_refuses_while_services_are_running(self, base_dir: Path, tmp_path: Path) -> None:
+        running = MagicMock(alive=True, scope="running-scope")
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.list_instances", return_value=[running]),
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "reset-data", "--data-dir", str(tmp_path / "platform-data"), "--force"],
+            )
+
+        assert result.exit_code == 1
+        assert "still running" in result.stderr
+
+    def test_refuses_while_default_port_is_in_use(self, base_dir: Path, tmp_path: Path) -> None:
+        data_dir = tmp_path / "platform-data"
+        data_dir.mkdir()
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.list_instances", return_value=[]),
+            patch(f"{_CLI_MODULE}.is_port_bindable", return_value=False),
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "reset-data", "--data-dir", str(data_dir), "--force"],
+            )
+
+        assert result.exit_code == 1
+        assert "Port 8080 is still in use" in result.stderr
+        assert data_dir.exists()
+
+    def test_cancel_keeps_data(self, base_dir: Path, tmp_path: Path) -> None:
+        data_dir = tmp_path / "platform-data"
+        data_dir.mkdir()
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.list_instances", return_value=[]),
+            patch(f"{_CLI_MODULE}.is_port_bindable", return_value=True),
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "reset-data", "--data-dir", str(data_dir)],
+                input="n\n",
+            )
+
+        assert result.exit_code == 0
+        assert "cancelled" in result.stdout.lower()
+        assert data_dir.exists()
 
 
 # ---------------------------------------------------------------------------
