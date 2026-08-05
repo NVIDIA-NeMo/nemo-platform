@@ -21,6 +21,7 @@ from nemo_platform_ext.cli.core.types import (
     ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
+    StreamOutputOption,
 )
 
 app = create_typer_app(name="configs", help="Manage configs")
@@ -160,6 +161,7 @@ def list_configs(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """List available guardrail configs.
@@ -209,6 +211,7 @@ def list_configs(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)

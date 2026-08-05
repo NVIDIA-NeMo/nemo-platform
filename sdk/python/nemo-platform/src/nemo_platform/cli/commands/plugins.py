@@ -7,11 +7,16 @@ from __future__ import annotations
 
 import typer
 
-from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.types import (
+    NoTruncateOption,
+    StreamOutputOption,
+    OutputColumnsOption,
+    ListOutputFormatOption,
+)
 from nemo_platform.cli.core.errors import handle_errors
-from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.formatters import Column, format_output, check_output_columns_with_format
 from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
-from nemo_platform.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
 
 app = create_typer_app(
     name="plugins",
@@ -38,6 +43,7 @@ def list_plugins(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
 ) -> None:
     """List installed plugins.
 
@@ -58,8 +64,9 @@ def list_plugins(
         Column("version", None),
         Column("description", None),
     ]
+    output_columns: str | list[Column] | None = columns
     if not columns_explicit:
-        columns = default_columns
+        output_columns = default_columns
 
     try:
         from nemo_platform_plugin.discovery import discover_manifests
@@ -81,7 +88,8 @@ def list_plugins(
         items,
         is_list=True,
         output_format=output_format,
-        output_columns=columns,
+        output_columns=output_columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )

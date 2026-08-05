@@ -9,12 +9,17 @@ from typing import Annotated
 import typer
 
 from nemo_platform.cli.core.api import build_kwargs
-from nemo_platform.cli.core.code_generator import handle_code_generation
-from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.types import (
+    NoTruncateOption,
+    StreamOutputOption,
+    OutputColumnsOption,
+    ListOutputFormatOption,
+)
 from nemo_platform.cli.core.errors import handle_errors
-from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.formatters import Column, format_output, check_output_columns_with_format
+from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
-from nemo_platform.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
 
 app = create_typer_app(name="evaluator_results", help="Manage evaluator_results")
 
@@ -29,6 +34,7 @@ def list_evaluator_results(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
 ) -> None:
     """List Evaluator Results For Span"""
     state: CLIContext = ctx.obj
@@ -62,4 +68,5 @@ def list_evaluator_results(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )

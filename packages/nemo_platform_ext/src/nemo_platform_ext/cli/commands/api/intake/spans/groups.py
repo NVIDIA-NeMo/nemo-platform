@@ -15,7 +15,12 @@ from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_with_format, format_output
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
+from nemo_platform_ext.cli.core.types import (
+    ListOutputFormatOption,
+    NoTruncateOption,
+    OutputColumnsOption,
+    StreamOutputOption,
+)
 
 app = create_typer_app(name="groups", help="Manage groups")
 
@@ -83,6 +88,7 @@ def list_groups(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """List Span Groups"""
@@ -152,6 +158,7 @@ def list_groups(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)

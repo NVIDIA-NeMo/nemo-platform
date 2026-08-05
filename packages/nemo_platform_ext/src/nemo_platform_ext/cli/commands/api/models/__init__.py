@@ -22,6 +22,7 @@ from nemo_platform_ext.cli.core.types import (
     ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
+    StreamOutputOption,
 )
 
 _cli_child_adapters = _importlib_import_module("nemo_platform_ext.cli.commands.api.models.adapters")
@@ -290,6 +291,7 @@ def list_models(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """List Models endpoint with filtering, pagination, and sorting.
@@ -353,6 +355,7 @@ def list_models(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)

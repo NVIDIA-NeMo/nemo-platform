@@ -4,24 +4,25 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from typing import Literal, Annotated
 from pathlib import Path
-from typing import Annotated, Literal
 
 import typer
 
 from nemo_platform.cli.core.api import build_kwargs
-from nemo_platform.cli.core.code_generator import handle_code_generation
-from nemo_platform.cli.core.context import CLIContext
-from nemo_platform.cli.core.errors import handle_errors
-from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
-from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
-from nemo_platform.cli.core.stdin_utils import read_data_input_with_flags, validate_required_fields
 from nemo_platform.cli.core.types import (
-    EntityOutputFormatOption,
-    ListOutputFormatOption,
     NoTruncateOption,
+    StreamOutputOption,
     OutputColumnsOption,
+    ListOutputFormatOption,
+    EntityOutputFormatOption,
 )
+from nemo_platform.cli.core.errors import handle_errors
+from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.formatters import Column, format_output, check_output_columns_with_format
+from nemo_platform.cli.core.stdin_utils import validate_required_fields, read_data_input_with_flags
+from nemo_platform.cli.core.code_generator import handle_code_generation
+from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
 
 app = create_typer_app(name="results", help="Manage results")
 
@@ -141,6 +142,7 @@ def list_results(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
 ) -> None:
     """List results for a job."""
     state: CLIContext = ctx.obj
@@ -175,6 +177,7 @@ def list_results(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
 
 

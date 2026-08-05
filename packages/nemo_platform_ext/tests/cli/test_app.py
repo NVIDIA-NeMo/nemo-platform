@@ -52,11 +52,26 @@ def test_help_includes_getting_started():
     assert "Getting started:" in result.stdout
     assert "nemo docs --list" in result.stdout
     assert "nemo services run --help" in result.stdout
+    assert "Exit codes:" in result.stdout
+    assert "3: Remote/API error" in result.stdout
     # Help panel truncation depends on terminal width; match a stable prefix.
     assert "Set up NeMo Platform" in result.stdout
+    assert "--output-format, --output, -f" in result.stdout
     assert "--help, -h" in result.stdout
     assert "nemo auth login --base-url" not in result.stdout
     assert "nemo quickstart configure" not in result.stdout
+
+
+def test_generated_list_help_includes_stream_option():
+    runner = CliRunner()
+    qs_config = QuickstartConfig(auth_enabled=False)
+
+    with patch("nemo_platform_ext.quickstart.QuickstartConfig.load", return_value=qs_config):
+        result = runner.invoke(app, ["models", "list", "--help"])
+
+    assert result.exit_code == 0
+    assert "--stream" in result.stdout
+    assert "--output-format, --output, -f" in result.stdout
 
 
 @pytest.mark.parametrize(

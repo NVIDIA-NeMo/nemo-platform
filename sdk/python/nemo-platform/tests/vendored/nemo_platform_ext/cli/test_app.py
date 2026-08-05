@@ -6,23 +6,24 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import click
-import nemo_platform
-import pytest
 import typer
+import pytest
 from click.testing import CliRunner as ClickCliRunner
+from typer.testing import CliRunner
+from nemo_platform_plugin.cli import NemoCLI
+
+import nemo_platform
 from nemo_platform.cli.app import app
-from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
-from nemo_platform.cli.core.lazy_load import (
-    ManifestBackedNmpGroup,
-    attach_lazy_entries,
-    lazy_command_loader,
-    lazy_group_loader,
-    lazy_plugin_loader,
-)
 from nemo_platform.cli.manifest import TopLevelEntry, build_top_level_entries
 from nemo_platform.quickstart.config import QuickstartConfig
-from nemo_platform_plugin.cli import NemoCLI
-from typer.testing import CliRunner
+from nemo_platform.cli.core.lazy_load import (
+    ManifestBackedNmpGroup,
+    lazy_group_loader,
+    lazy_plugin_loader,
+    attach_lazy_entries,
+    lazy_command_loader,
+)
+from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
 
 
 @pytest.mark.parametrize("flag", ["--version", "-V"])
@@ -52,11 +53,26 @@ def test_help_includes_getting_started():
     assert "Getting started:" in result.stdout
     assert "nemo docs --list" in result.stdout
     assert "nemo services run --help" in result.stdout
+    assert "Exit codes:" in result.stdout
+    assert "3: Remote/API error" in result.stdout
     # Help panel truncation depends on terminal width; match a stable prefix.
     assert "Set up NeMo Platform" in result.stdout
+    assert "--output-format, --output, -f" in result.stdout
     assert "--help, -h" in result.stdout
     assert "nemo auth login --base-url" not in result.stdout
     assert "nemo quickstart configure" not in result.stdout
+
+
+def test_generated_list_help_includes_stream_option():
+    runner = CliRunner()
+    qs_config = QuickstartConfig(auth_enabled=False)
+
+    with patch("nemo_platform.quickstart.QuickstartConfig.load", return_value=qs_config):
+        result = runner.invoke(app, ["models", "list", "--help"])
+
+    assert result.exit_code == 0
+    assert "--stream" in result.stdout
+    assert "--output-format, --output, -f" in result.stdout
 
 
 @pytest.mark.parametrize(

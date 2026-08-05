@@ -9,7 +9,7 @@ from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_with_format, format_output
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings
 from nemo_platform_ext.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
+from nemo_platform_ext.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption, StreamOutputOption
 
 
 @app.command("{{ cli_command_name }}")
@@ -22,6 +22,7 @@ def {{ function_name }}(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     {% if pagination_type != "NOT_PAGINATED" %}all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,{% endif %}
 ) -> None:
     """{{ help_text }}"""
@@ -63,6 +64,7 @@ def {{ function_name }}(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     {% if pagination_type != "NOT_PAGINATED" %}
     if not all_pages:

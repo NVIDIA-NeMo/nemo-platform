@@ -5,13 +5,12 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Literal, Annotated
 
 import typer
 
+from nemo_platform.config.types import OutputFormat as SDKOutputFormat, TimestampFormat as SDKTimestampFormat
 from nemo_platform.cli.core.autocomplete import autocomplete_workspace
-from nemo_platform.config.types import OutputFormat as SDKOutputFormat
-from nemo_platform.config.types import TimestampFormat as SDKTimestampFormat
 
 # Output format type
 ListOutputFormat = Literal[SDKOutputFormat, "code"]
@@ -26,6 +25,7 @@ ListOutputFormatOption = Annotated[
     ListOutputFormat | None,
     typer.Option(
         "--output-format",
+        "--output",
         "-f",
         show_choices=True,
         help="Output format for the list of results.",
@@ -37,6 +37,7 @@ EntityOutputFormatOption = Annotated[
     EntityOutputFormat | None,
     typer.Option(
         "--output-format",
+        "--output",
         "-f",
         show_choices=True,
         help="Output format for an entity.",
@@ -47,9 +48,19 @@ ConfigOutputFormatOption = Annotated[
     ConfigOutputFormat | None,
     typer.Option(
         "--output-format",
+        "--output",
         "-f",
         show_choices=True,
         help="Output format for config.",
+        rich_help_panel="Output Options",
+    ),
+]
+
+StreamOutputOption = Annotated[
+    bool,
+    typer.Option(
+        "--stream",
+        help="Emit newline-delimited JSON, one record per line. Requires JSON or raw output.",
         rich_help_panel="Output Options",
     ),
 ]

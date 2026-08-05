@@ -19,6 +19,7 @@ from nemo_platform_ext.cli.core.types import (
     ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
+    StreamOutputOption,
 )
 
 app = create_typer_app(name="versions", help="Manage versions")
@@ -61,6 +62,7 @@ def list_versions(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
 ) -> None:
     """List all versions of a ModelDeploymentConfig."""
     state: CLIContext = ctx.obj
@@ -94,6 +96,7 @@ def list_versions(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
 
 

@@ -3,22 +3,28 @@
 
 """CLI commands for installing AI agent skill files."""
 
-from pathlib import Path
 from typing import Annotated
+from pathlib import Path
 
 import typer
+
+from nemo_platform.cli.core.types import (
+    NoTruncateOption,
+    StreamOutputOption,
+    OutputColumnsOption,
+    ListOutputFormatOption,
+)
+from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.formatters import Column, format_output, check_output_columns_with_format
+from nemo_platform.cli.core.help_formatter import create_typer_app
 from nemo_platform.cli.commands.skills.base import Scope, Skill
 from nemo_platform.cli.commands.skills.registry import (
     DuplicateSkillError,
     UnsupportedAgentError,
+    load_skills,
     get_installer,
     list_agent_names,
-    load_skills,
 )
-from nemo_platform.cli.core.context import CLIContext
-from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
-from nemo_platform.cli.core.help_formatter import create_typer_app
-from nemo_platform.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
 
 _AGENT_NAMES = ", ".join(list_agent_names())
 
@@ -125,6 +131,7 @@ def list_skills(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     source: Annotated[
         list[str] | None,
         typer.Option(
@@ -162,8 +169,9 @@ def list_skills(
         Column("source", "Source"),
         Column("description", "Description"),
     ]
+    output_columns: str | list[Column] | None = columns
     if not columns_explicit:
-        columns = default_columns
+        output_columns = default_columns
 
     try:
         skills = load_skills()
@@ -195,10 +203,11 @@ def list_skills(
         items,
         is_list=True,
         output_format=output_format,
-        output_columns=columns,
+        output_columns=output_columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
         wrap=True,
+        stream=stream,
     )
 
 

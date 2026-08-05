@@ -3,23 +3,26 @@
 
 """Tests for output formatters."""
 
-import json
 import re
+import json
 from unittest.mock import Mock, patch
 
-import pytest
 import yaml
+import click
+import pytest
+
 from nemo_platform.cli.core.formatters import (
     Column,
-    _extract_items_from_response,
     format_csv,
     format_json,
-    format_markdown_table,
-    format_output,
-    format_stream_event,
-    format_table,
     format_yaml,
+    format_table,
+    format_output,
     model_to_dict,
+    iter_json_lines,
+    format_stream_event,
+    format_markdown_table,
+    _extract_items_from_response,
 )
 
 
@@ -98,6 +101,37 @@ def test_format_json_nested_data():
     result = format_json(data, indent=2, syntax_highlight=False)
     parsed = json.loads(result)
     assert parsed == data
+
+
+def test_iter_json_lines_extracts_list_items():
+    """JSON Lines output should emit one compact JSON object per list item."""
+    mock_response = Mock()
+    mock_response.data = [
+        {"id": "1", "name": "Alice"},
+        {"id": "2", "name": "Bob"},
+    ]
+
+    assert iter_json_lines(mock_response, is_list=True) == [
+        '{"id":"1","name":"Alice"}',
+        '{"id":"2","name":"Bob"}',
+    ]
+
+
+def test_format_output_streams_json_lines(capsys):
+    """format_output should print list items as newline-delimited JSON when streaming."""
+    mock_response = Mock()
+    mock_response.data = [{"id": "1"}, {"id": "2"}]
+
+    format_output(mock_response, is_list=True, output_format="json", stream=True)
+
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == ['{"id":"1"}', '{"id":"2"}']
+
+
+def test_format_output_stream_requires_json_compatible_format():
+    """--stream is only valid for JSON-compatible formats."""
+    with pytest.raises(click.UsageError, match="--stream requires --output json or --output raw"):
+        format_output([{"id": "1"}], is_list=True, output_format="table", stream=True)
 
 
 @patch("nemo_platform.cli.core.formatters.is_tty")

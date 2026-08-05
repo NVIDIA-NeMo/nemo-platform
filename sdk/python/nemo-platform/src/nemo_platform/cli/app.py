@@ -6,29 +6,30 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING, Annotated, cast
 from importlib.metadata import EntryPoint
-from typing import TYPE_CHECKING, Annotated
 
 import typer
 
-from nemo_platform.cli.commands.api import API_TOP_LEVEL_ENTRIES
-from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
-from nemo_platform.cli.core.help_formatter import HELP_OPTION_NAMES
-from nemo_platform.cli.core.lazy_load import (
-    ManifestBackedNmpGroup,
-    attach_lazy_entries,
-)
-from nemo_platform.cli.core.logging import configure_logging
-from nemo_platform.cli.core.types import ListOutputFormat, TimestampFormat
 from nemo_platform.cli.manifest import (
     TopLevelEntry,
     build_top_level_entries,
 )
+from nemo_platform.config.types import OutputFormat as ConfigOutputFormat
+from nemo_platform.cli.core.types import TimestampFormat, ListOutputFormat
+from nemo_platform.cli.commands.api import API_TOP_LEVEL_ENTRIES
+from nemo_platform.cli.core.logging import configure_logging
+from nemo_platform.cli.core.lazy_load import (
+    ManifestBackedNmpGroup,
+    attach_lazy_entries,
+)
+from nemo_platform.cli.core.help_formatter import HELP_OPTION_NAMES
+from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
 
 if TYPE_CHECKING:
     from nemo_platform_plugin.cli import NemoCLI
-    from nemo_platform_plugin.function import NemoFunction
     from nemo_platform_plugin.job import NemoJob
+    from nemo_platform_plugin.function import NemoFunction
 
     from nemo_platform.config.models import ConfigParams
 
@@ -173,6 +174,7 @@ def main(
         ListOutputFormat | None,
         typer.Option(
             "--output-format",
+            "--output",
             "-f",
             help="Output format for how results are printed.",
             rich_help_panel="Global Options",
@@ -242,10 +244,16 @@ def main(
     [green]Examples:[/]
     nemo workspaces list --output-format markdown
     nemo workspaces get default -f json
+
+    [green]Exit codes:[/]
+    - 0: Success
+    - 1: Local or unexpected error
+    - 2: Command usage error
+    - 3: Remote/API error
     """
     # Lazy imports for performance (avoid loading pydantic_settings for --help)
-    from nemo_platform.cli.core.context import CLIContext
     from nemo_platform.quickstart import QuickstartConfig
+    from nemo_platform.cli.core.context import CLIContext
 
     # Configure logging (always call to silence httpx in non-verbose mode)
     configure_logging(1 if verbose else 0)
@@ -274,7 +282,7 @@ def main(
     if base_url is not None:
         overrides["base_url"] = base_url
     if output_format is not None:
-        overrides["output_format"] = output_format
+        overrides["output_format"] = cast(ConfigOutputFormat, output_format)
     elif agent_mode:
         overrides["output_format"] = "markdown"
     if timestamp_format is not None:

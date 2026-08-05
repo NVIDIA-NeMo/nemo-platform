@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-import functools
-import logging
 import sys
-import traceback
 import typing
+import logging
+import functools
+import traceback
 
 import click
 import httpx
@@ -15,6 +15,8 @@ import typer
 
 if typing.TYPE_CHECKING:
     from nemo_platform import APIError
+
+REMOTE_ERROR_EXIT_CODE = 3
 
 
 class MissingRequiredFieldsError(Exception):
@@ -148,7 +150,7 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
     """
     Handle all CLI errors and exit with appropriate error code.
 
-    Exit codes: 0 = Success, 1 = General error, 2 = Usage error
+    Exit codes: 0 = Success, 1 = Local/unexpected error, 2 = Usage error, 3 = Remote/API error
     """
 
     from rich.console import Console
@@ -156,18 +158,19 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
     console = Console(stderr=True)
 
     import click.exceptions
+
     from nemo_platform import (
-        APIConnectionError,
         APIError,
-        APIStatusError,
-        APITimeoutError,
-        AuthenticationError,
-        BadRequestError,
         ConflictError,
-        InternalServerError,
         NotFoundError,
-        PermissionDeniedError,
+        APIStatusError,
         RateLimitError,
+        APITimeoutError,
+        BadRequestError,
+        APIConnectionError,
+        AuthenticationError,
+        InternalServerError,
+        PermissionDeniedError,
     )
 
     prog = "nemo"
@@ -239,33 +242,33 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
             "[yellow]Hint:[/] Run [cyan]'nemo auth login'[/] or set the token manually "
             "with [cyan]nemo config set --access-token <token>[/], or use [cyan]NMP_ACCESS_TOKEN[/]."
         )
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, PermissionDeniedError):
         console.print(f"[bold red]Permission denied:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print(
             "[yellow]Hint:[/] Your current credentials do not have access to perform this operation. "
             "Contact your administrator to request access."
         )
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, NotFoundError):
         console.print(f"[bold red]Not found:[/] ({error.status_code}) {_format_api_error(error)}")
         _print_api_request_context(console, error)
         console.print(f"[yellow]Hint:[/] {_format_not_found_hint(ctx, prog)}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, BadRequestError):
         console.print(f"[bold red]Bad request:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print("[yellow]Hint:[/] Check your input values. Run with [cyan]--help[/] to see required options.")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, ConflictError):
         console.print(f"[bold red]Conflict:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print(
             "[yellow]Hint:[/] A resource with this name already exists. Try a different name or delete the existing one."
         )
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, RateLimitError):
         console.print(f"[bold red]Rate limit exceeded:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print("[yellow]Hint:[/] Too many requests. Wait a moment and try again.")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, InternalServerError):
         formatted = _format_api_error(error)
         console.print(f"[bold red]Server error:[/] ({error.status_code}) {formatted}")
@@ -274,27 +277,27 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
             console.print(f"[yellow]Hint:[/] {_format_not_found_hint(ctx, prog)}")
         else:
             console.print("[yellow]Hint:[/] This is a server-side issue. Try again later or contact support.")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
+    elif isinstance(error, APITimeoutError):
+        console.print(f"[bold red]Timeout error:[/] {_format_api_error(error)}")
+        _print_api_request_context(console, error)
+        console.print("[yellow]Hint:[/] The request timed out. The server may be busy - try again later.")
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, APIConnectionError):
         console.print(f"[bold red]Connection error:[/] {_format_api_error(error)}")
         _print_api_request_context(console, error)
         console.print(
             "[yellow]Hint:[/] Check your network connection and verify that [cyan]base-url[/] you configured is correct."
         )
-        raise typer.Exit(code=1)
-    elif isinstance(error, APITimeoutError):
-        console.print(f"[bold red]Timeout error:[/] {_format_api_error(error)}")
-        _print_api_request_context(console, error)
-        console.print("[yellow]Hint:[/] The request timed out. The server may be busy - try again later.")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, APIStatusError):
         console.print(f"[bold red]API error:[/] ({error.status_code}) {_format_api_error(error)}")
         _print_api_request_context(console, error)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, APIError):
         console.print(f"[bold red]API error:[/] {_format_api_error(error)}")
         _print_api_request_context(console, error)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=REMOTE_ERROR_EXIT_CODE)
     elif isinstance(error, ValueError) and "Missing workspace argument" in str(error):
         console.print("[bold red]Missing workspace:[/] No workspace configured for this command.")
         console.print(

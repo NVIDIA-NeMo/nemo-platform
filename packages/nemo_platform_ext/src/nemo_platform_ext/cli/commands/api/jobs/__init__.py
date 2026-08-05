@@ -22,6 +22,7 @@ from nemo_platform_ext.cli.core.types import (
     ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
+    StreamOutputOption,
 )
 
 _cli_child_results = _importlib_import_module("nemo_platform_ext.cli.commands.api.jobs.results")
@@ -200,6 +201,7 @@ def get_logs_jobs(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """Get paginated logs for a platform job."""
@@ -247,6 +249,7 @@ def get_logs_jobs(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)
@@ -318,6 +321,7 @@ def list_jobs(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """List platform jobs with filtering and pagination."""
@@ -373,6 +377,7 @@ def list_jobs(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)
@@ -386,6 +391,7 @@ def list_execution_profiles_jobs(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
 ) -> None:
     """Get all currently configured execution profiles."""
     state: CLIContext = ctx.obj
@@ -418,6 +424,7 @@ def list_execution_profiles_jobs(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
 
 
