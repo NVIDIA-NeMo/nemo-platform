@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// OpenTelemetry patches certain libraries to collect telemetry data, so ensure
-// we import this file before the remaining dependencies.
-import '@studio/telemetry/telemetry';
-
 import '@studio/index.css';
 
 import { App } from '@studio/App';
 import { UI_THEME } from '@studio/util/localStorage';
 import ReactDOM from 'react-dom/client';
+
+// OpenTelemetry patches fetch/XHR globally, so this must settle before React
+// renders and issues the first requests.
+const telemetryReady = import('@studio/telemetry/telemetry');
 
 const storedTheme = window.localStorage.getItem(UI_THEME);
 const theme = storedTheme ? JSON.parse(storedTheme) : 'dark';
@@ -34,7 +34,7 @@ function waitForThemeStylesheet(): Promise<void> {
 
 const rootElement = document.getElementById('app')!;
 if (!rootElement.innerHTML) {
-  waitForThemeStylesheet().then(() => {
+  Promise.all([waitForThemeStylesheet(), telemetryReady]).then(() => {
     rootElement.removeAttribute('aria-busy');
     const root = ReactDOM.createRoot(rootElement);
     root.render(<App />);

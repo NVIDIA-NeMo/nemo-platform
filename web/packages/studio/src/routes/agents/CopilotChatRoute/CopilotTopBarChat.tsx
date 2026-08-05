@@ -1,17 +1,33 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button, Flex, Popover, Stack, Tooltip } from '@nvidia/foundations-react-core';
+import { Button, Flex, Popover, Spinner, Stack, Tooltip } from '@nvidia/foundations-react-core';
 import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { useCopilotChatContext } from '@studio/routes/agents/CopilotChatRoute/context/useCopilotChatContext';
-import { CopilotChatThread } from '@studio/routes/agents/CopilotChatRoute/CopilotChatThread';
 import { getCopilotChatRouteForSession } from '@studio/routes/agents/CopilotChatRoute/util';
 import { getCopilotChatRoute } from '@studio/routes/utils';
 import { Maximize2, Plus, Terminal, X } from 'lucide-react';
-import { type FC, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  type FC,
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router';
+
+// Static import would pull the whole chat surface into the entry chunk, since
+// the trigger renders in the global nav on every route.
+const CopilotChatThread = lazy(() =>
+  import('@studio/routes/agents/CopilotChatRoute/CopilotChatThread').then((m) => ({
+    default: m.CopilotChatThread,
+  }))
+);
 
 const OPEN_LABEL = 'Open NeMo Copilot chat';
 const CLOSE_LABEL = 'Close NeMo Copilot chat';
@@ -30,6 +46,7 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hasUnreadResponse, setHasUnreadResponse] = useState(false);
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0);
+  const [hasOpened, setHasOpened] = useState(false);
 
   // While the agent is blocked on a permission/input request the stream stays
   // open (isRunning is still true), but it is waiting on the user rather than
@@ -71,6 +88,7 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
         return;
       }
       setIsOpen(true);
+      setHasOpened(true);
       setScrollToBottomSignal((signal) => signal + 1);
     },
     [isOpen]
@@ -149,11 +167,21 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
               </Flex>
             </Flex>
             <Stack className="min-h-0 flex-1 overflow-hidden">
-              <CopilotChatThread
-                chat={chat}
-                mode="compact"
-                scrollToBottomSignal={scrollToBottomSignal}
-              />
+              {hasOpened ? (
+                <Suspense
+                  fallback={
+                    <Flex align="center" justify="center" className="h-full">
+                      <Spinner size="medium" aria-label="Loading chat..." />
+                    </Flex>
+                  }
+                >
+                  <CopilotChatThread
+                    chat={chat}
+                    mode="compact"
+                    scrollToBottomSignal={scrollToBottomSignal}
+                  />
+                </Suspense>
+              ) : null}
             </Stack>
           </Stack>
         }
