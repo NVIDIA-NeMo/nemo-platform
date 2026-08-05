@@ -9,4 +9,5 @@ export interface ClaudeCodeHistoryPanelProps {
   hideArtifacts?: boolean;
   onNewChat: () => void;
   onSelectSession: (sessionId: string) => void;
+  workspace?: string;
 }

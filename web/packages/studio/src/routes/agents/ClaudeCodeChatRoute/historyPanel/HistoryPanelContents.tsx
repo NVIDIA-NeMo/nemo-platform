@@ -2,32 +2,50 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Banner, Button, Flex, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { Empty } from '@studio/components/Empty';
 import {
-  CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY,
+  deleteClaudeCodeSessionHistory,
+  getClaudeCodeHistorySessionsQueryKey,
   listClaudeCodeHistorySessions,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
+import { getHistorySessionTitle } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/helpers';
 import { HistoryPanelSkeleton } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/HistoryPanelSkeletons';
 import { HistorySessionButton } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/HistorySessionButton';
 import type { ClaudeCodeHistoryPanelProps } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/types';
-import { useQuery } from '@tanstack/react-query';
+import type { ClaudeCodeHistorySession } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MessageSquarePlus, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 
 export const HistoryPanelContents = ({
   activeSessionId,
   onNewChat,
   onSelectSession,
+  workspace = 'default',
 }: ClaudeCodeHistoryPanelProps) => {
+  const queryClient = useQueryClient();
+  const [sessionToDelete, setSessionToDelete] = useState<ClaudeCodeHistorySession | null>(null);
+  const historyQueryKey = getClaudeCodeHistorySessionsQueryKey(workspace);
   const {
     data: sessions = [],
     error,
     isLoading,
     refetch,
   } = useQuery({
-    queryKey: CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY,
-    queryFn: listClaudeCodeHistorySessions,
+    queryKey: historyQueryKey,
+    queryFn: () => listClaudeCodeHistorySessions(workspace),
     refetchOnMount: 'always',
   });
+
+  const handleDelete = async (): Promise<boolean> => {
+    if (!sessionToDelete) return false;
+    const deletedSessionId = sessionToDelete.session_id;
+    await deleteClaudeCodeSessionHistory(deletedSessionId, workspace);
+    await queryClient.invalidateQueries({ queryKey: historyQueryKey });
+    if (deletedSessionId === activeSessionId) onNewChat();
+    return true;
+  };
 
   return (
     <>
@@ -74,6 +92,7 @@ export const HistoryPanelContents = ({
               key={session.session_id}
               active={session.session_id === activeSessionId}
               session={session}
+              onDelete={() => setSessionToDelete(session)}
               onSelect={() => onSelectSession(session.session_id)}
             />
           ))}
@@ -83,6 +102,17 @@ export const HistoryPanelContents = ({
           <Empty title="No chats yet" description="NeMo Copilot sessions will appear here." />
         </Flex>
       ) : null}
+      {sessionToDelete && (
+        <DeleteConfirmationModal
+          open
+          title="Delete chat?"
+          description={`Delete “${getHistorySessionTitle(sessionToDelete)}”? This chat cannot be recovered.`}
+          successText="Chat deleted."
+          errorText="Could not delete this chat."
+          onClose={() => setSessionToDelete(null)}
+          onDelete={handleDelete}
+        />
+      )}
     </>
   );
 };

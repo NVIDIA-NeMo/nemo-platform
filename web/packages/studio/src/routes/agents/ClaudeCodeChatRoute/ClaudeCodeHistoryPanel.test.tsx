@@ -3,16 +3,24 @@
 
 import { ClaudeCodeHistoryPanel } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeHistoryPanel';
 import { render, screen } from '@studio/tests/util/render';
+import { waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const mocks = vi.hoisted(() => ({
+  deleteClaudeCodeSessionHistory: vi.fn(),
   listClaudeCodeHistorySessions: vi.fn(),
   listClaudeCodeSkills: vi.fn(),
 }));
 
 vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', () => ({
-  CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY: ['claude-code', 'history', 'sessions'],
   CLAUDE_CODE_SKILLS_QUERY_KEY: ['claude-code', 'skills'],
+  deleteClaudeCodeSessionHistory: mocks.deleteClaudeCodeSessionHistory,
+  getClaudeCodeHistorySessionsQueryKey: (workspace: string) => [
+    'claude-code',
+    'history',
+    'sessions',
+    workspace,
+  ],
   listClaudeCodeHistorySessions: mocks.listClaudeCodeHistorySessions,
   listClaudeCodeSkills: mocks.listClaudeCodeSkills,
 }));
@@ -22,6 +30,7 @@ describe('ClaudeCodeHistoryPanel', () => {
     localStorage.clear();
     vi.clearAllMocks();
     mocks.listClaudeCodeHistorySessions.mockResolvedValue([]);
+    mocks.deleteClaudeCodeSessionHistory.mockResolvedValue(undefined);
     mocks.listClaudeCodeSkills.mockResolvedValue([
       {
         name: 'inference',
@@ -114,7 +123,9 @@ describe('ClaudeCodeHistoryPanel', () => {
     await user.click(screen.getByRole('button', { name: 'New chat' }));
     expect(onNewChat).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole('button', { name: /Review the latest agent work/ }));
+    await user.click(
+      screen.getByRole('button', { name: 'Open chat Review the latest agent work' })
+    );
     expect(onSelectSession).toHaveBeenCalledWith('session-1');
 
     unmount();
@@ -166,11 +177,57 @@ describe('ClaudeCodeHistoryPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Expand All Chats' }));
 
     const sessionButton = await screen.findByRole('button', {
-      name: 'Create Spam Detector Agent now',
+      name: 'Open chat Create Spam Detector Agent',
     });
 
     expect(sessionButton).toHaveAttribute('title', expect.stringContaining(firstPrompt));
     expect(screen.queryByText(firstPrompt)).not.toBeInTheDocument();
+  });
+
+  it('confirms deletion and starts a new chat when deleting the active session', async () => {
+    const user = userEvent.setup();
+    const onNewChat = vi.fn();
+    mocks.listClaudeCodeHistorySessions.mockResolvedValue([
+      {
+        session_id: 'session-1',
+        mtime: Date.now() / 1000,
+        title: 'Private agent work',
+        first_prompt: 'Help me with private agent work',
+        message_count: 1,
+        token_count: 0,
+        tool_call_count: 0,
+        tool_calls: [],
+        chat_artifacts: {
+          selections: [],
+          files: [],
+          links: [],
+          jobs: [],
+          tools: [],
+        },
+      },
+    ]);
+
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        workspace="team-a"
+        onNewChat={onNewChat}
+        onSelectSession={vi.fn()}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: 'Expand All Chats' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Delete chat Private agent work' })
+    );
+
+    expect(screen.getByRole('dialog', { name: 'Delete chat?' })).toBeInTheDocument();
+    expect(screen.getByText('Delete “Private agent work”? This chat cannot be recovered.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() =>
+      expect(mocks.deleteClaudeCodeSessionHistory).toHaveBeenCalledWith('session-1', 'team-a')
+    );
+    expect(onNewChat).toHaveBeenCalledTimes(1);
   });
 
   it('renders job artifacts as Studio links', () => {

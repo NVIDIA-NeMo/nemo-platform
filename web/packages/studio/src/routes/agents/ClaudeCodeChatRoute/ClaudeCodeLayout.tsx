@@ -51,6 +51,7 @@ export const ClaudeCodeLayout: FC<ClaudeCodeLayoutProps> = ({
         hideArtifacts={hideArtifacts}
         onNewChat={handleNewChat}
         onSelectSession={handleSelectSession}
+        workspace={workspace}
       />
     </Flex>
   );

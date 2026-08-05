@@ -9,7 +9,6 @@ import logging
 import os
 import re
 import shutil
-import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Mapping
 from dataclasses import dataclass
@@ -19,9 +18,11 @@ from typing import Any
 from urllib.parse import quote, urlencode, urlparse
 
 import httpx
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError, EntityStoreError
 from nmp.common.entities.constants import NAME_PATTERN
+from nmp.common.service.dependencies import get_entity_client
 from nmp.studio import studio_links
 from nmp.studio.copilot_artifacts import (
     ChatArtifactsResponse,
@@ -51,6 +52,7 @@ from nmp.studio.copilot_mcp_tools import (
     permission_prompt_tool,
 )
 from nmp.studio.copilot_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
+from nmp.studio.entities import CopilotConversation, CopilotMessage
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import NoMatchFound
 
@@ -113,7 +115,7 @@ class AgentInputDecision(BaseModel):
 
 
 class HistorySessionResponse(BaseModel):
-    """Summary of a Claude session stored on disk."""
+    """Summary of a persisted Copilot or legacy Claude session."""
 
     session_id: str
     mtime: float
@@ -127,7 +129,7 @@ class HistorySessionResponse(BaseModel):
 
 
 class SessionHistoryResponse(BaseModel):
-    """Claude session history normalized for Studio chat replay."""
+    """Copilot session history normalized for Studio chat replay."""
 
     session_id: str
     items: list[dict[str, Any]]
@@ -138,35 +140,13 @@ _initialized_sessions: set[str] = set()
 _session_streams: dict[str, asyncio.Queue[tuple[str, Any]]] = {}
 _pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _pending_agent_inputs: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
-_session_conversations: dict[str, list[dict[str, str]]] = {}
-_session_mtimes: dict[str, float] = {}
 _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 
 
-def _evict_oldest_sessions(*, protected_session_ids: set[str] | None = None) -> None:
-    """Evict least-recently-updated inactive sessions from in-memory history."""
-    protected = (protected_session_ids or set()) | set(_session_streams)
-    while len(_session_conversations) > MAX_RETAINED_SESSIONS:
-        candidates = set(_session_conversations) - protected
-        if not candidates:
-            break
-        oldest_session_id = min(
-            candidates,
-            key=lambda session_id: (_session_mtimes.get(session_id, 0), session_id),
-        )
-        _session_conversations.pop(oldest_session_id, None)
-        _session_mtimes.pop(oldest_session_id, None)
-        _initialized_sessions.discard(oldest_session_id)
-
-    for session_id in set(_session_mtimes) - set(_session_conversations):
-        _session_mtimes.pop(session_id, None)
-
-
-def _retain_recent_turns(conversation: list[dict[str, str]]) -> None:
-    """Keep only the most recent complete user/assistant turns."""
+def _recent_conversation_messages(conversation: list[CopilotMessage]) -> list[CopilotMessage]:
+    """Bound model context without truncating the persisted chat history."""
     max_messages = MAX_RETAINED_TURNS_PER_SESSION * 2
-    if len(conversation) > max_messages:
-        del conversation[:-max_messages]
+    return conversation[-max_messages:]
 
 
 @dataclass
@@ -219,6 +199,40 @@ def _validate_session_id(session_id: str) -> str:
         return str(uuid.UUID(session_id))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="session_id must be a UUID") from exc
+
+
+def _conversation_name(session_id: str) -> str:
+    """Return the Entity Store name for a Studio session UUID."""
+    return f"copilot-{session_id}"
+
+
+def _request_principal_id(request: Request) -> str:
+    """Return the end-user principal, including service-on-behalf-of requests."""
+    return (
+        request.headers.get("x-nmp-principal-on-behalf-of") or request.headers.get("x-nmp-principal-id") or "local-user"
+    )
+
+
+async def _get_owned_conversation(
+    entity_store: EntityClient,
+    *,
+    session_id: str,
+    workspace: str,
+    owner_id: str,
+) -> CopilotConversation:
+    """Load a conversation and enforce per-user ownership within a workspace."""
+    try:
+        conversation = await entity_store.get(
+            CopilotConversation,
+            _conversation_name(session_id),
+            workspace=workspace,
+        )
+    except EntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="no such session history") from exc
+    if conversation.owner_id != owner_id:
+        # Do not reveal whether another user's conversation exists.
+        raise HTTPException(status_code=404, detail="no such session history")
+    return conversation
 
 
 def _trimmed_string(value: Any) -> str | None:
@@ -684,36 +698,59 @@ def _extract_assistant_parts(content: Any) -> list[dict[str, Any]]:
 
 
 @router.post("/sessions", response_model=NewSessionResponse)
-def create_session() -> NewSessionResponse:
-    """Create a new local copilot session."""
+async def create_session(
+    request: Request,
+    workspace: str = "default",
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> NewSessionResponse:
+    """Create a durable, user-owned Copilot session."""
+    workspace = _validated_workspace_or_default(workspace)
     session_id = str(uuid.uuid4())
-    _session_conversations[session_id] = []
-    _session_mtimes[session_id] = time.time()
-    _evict_oldest_sessions(protected_session_ids={session_id})
+    await entity_store.create(
+        CopilotConversation(
+            name=_conversation_name(session_id),
+            workspace=workspace,
+            session_id=session_id,
+            owner_id=_request_principal_id(request),
+        )
+    )
     return NewSessionResponse(session_id=session_id)
 
 
 @router.get("/history/sessions", response_model=list[HistorySessionResponse])
-def list_history_sessions() -> list[HistorySessionResponse]:
-    """List active retained NeMo Copilot sessions."""
-    _evict_oldest_sessions()
+async def list_history_sessions(
+    request: Request,
+    workspace: str = "default",
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> list[HistorySessionResponse]:
+    """List the current user's durable NeMo Copilot sessions."""
+    workspace = _validated_workspace_or_default(workspace)
+    owner_id = _request_principal_id(request)
+    result = await entity_store.list(
+        CopilotConversation,
+        workspace=workspace,
+        filter_obj={"owner_id": owner_id},
+        sort="-updated_at",
+        page_size=MAX_RETAINED_SESSIONS,
+    )
     sessions: list[HistorySessionResponse] = []
-    for session_id, messages in _session_conversations.items():
-        user_messages = [item["content"] for item in messages if item.get("role") == "user"]
+    for conversation in result.data:
+        user_messages = [message.content for message in conversation.messages if message.role == "user"]
         if not user_messages:
             continue
         first_prompt = user_messages[0]
+        modified_at = conversation.updated_at or conversation.created_at
         sessions.append(
             HistorySessionResponse(
-                session_id=session_id,
-                mtime=_session_mtimes.get(session_id, 0),
+                session_id=conversation.session_id,
+                mtime=modified_at.timestamp() if modified_at else 0,
                 title=first_prompt.splitlines()[0][:80],
                 first_prompt=first_prompt,
                 message_count=len(user_messages),
                 token_count=0,
                 tool_call_count=0,
                 tool_calls=[],
-                chat_artifacts=ChatArtifactsResponse(),
+                chat_artifacts=conversation.chat_artifacts,
             )
         )
     sessions.sort(key=lambda session: session.mtime, reverse=True)
@@ -795,27 +832,41 @@ def _history_user_interaction_texts(
 
 
 @router.get("/history/sessions/{session_id}", response_model=SessionHistoryResponse)
-def get_session_history(session_id: str) -> SessionHistoryResponse:
+async def get_session_history(
+    session_id: str,
+    request: Request,
+    workspace: str = "default",
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> SessionHistoryResponse:
     """Load a NeMo Copilot session or legacy Claude history for replay."""
     sid = _validate_session_id(session_id)
-    conversation = _session_conversations.get(sid)
+    workspace = _validated_workspace_or_default(workspace)
+    try:
+        conversation = await entity_store.get(
+            CopilotConversation,
+            _conversation_name(sid),
+            workspace=workspace,
+        )
+    except EntityNotFoundError:
+        conversation = None
     if conversation is not None:
+        if conversation.owner_id != _request_principal_id(request):
+            raise HTTPException(status_code=404, detail="no such session history")
         items: list[dict[str, Any]] = []
-        for message in conversation:
-            if message.get("role") == "user":
-                items.append({"kind": "user", "text": message["content"]})
-            elif message.get("role") == "assistant":
+        for message in conversation.messages:
+            if message.role == "user":
+                items.append({"kind": "user", "text": message.content})
+            elif message.role == "assistant":
                 items.append(
                     {
                         "kind": "assistant",
-                        "parts": [{"type": "text", "text": message["content"]}],
+                        "parts": [{"type": "text", "text": message.content}],
                     }
                 )
-        _initialized_sessions.add(sid)
         return SessionHistoryResponse(
             session_id=sid,
             items=items,
-            chat_artifacts=ChatArtifactsResponse(),
+            chat_artifacts=conversation.chat_artifacts,
         )
 
     path = _project_history_dir() / f"{sid}.jsonl"
@@ -868,6 +919,38 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
 
     _initialized_sessions.add(sid)
     return SessionHistoryResponse(session_id=sid, items=items, chat_artifacts=summary.chat_artifacts)
+
+
+@router.delete("/history/sessions/{session_id}", status_code=204)
+async def delete_session_history(
+    session_id: str,
+    request: Request,
+    workspace: str = "default",
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> Response:
+    """Delete the current user's persisted Copilot conversation."""
+    sid = _validate_session_id(session_id)
+    workspace = _validated_workspace_or_default(workspace)
+    if sid in _session_streams:
+        raise HTTPException(status_code=409, detail="cannot delete a session while it is running")
+    conversation = await _get_owned_conversation(
+        entity_store,
+        session_id=sid,
+        workspace=workspace,
+        owner_id=_request_principal_id(request),
+    )
+    try:
+        await entity_store.delete(
+            CopilotConversation,
+            conversation.name,
+            workspace=workspace,
+            expected_db_version=conversation.db_version,
+        )
+    except EntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="no such session history") from exc
+    except EntityConflictError as exc:
+        raise HTTPException(status_code=409, detail="session changed; refresh history and try again") from exc
+    return Response(status_code=204)
 
 
 @router.get("/skills", response_model=list[ClaudeSkillResponse])
@@ -1337,6 +1420,8 @@ async def _stream_copilot(
     agent_url: str,
     headers: Mapping[str, str],
     studio_system_prompt: str,
+    conversation: CopilotConversation,
+    entity_store: EntityClient,
 ) -> AsyncIterator[str]:
     """Invoke the deployed NeMo Copilot while preserving Studio's blocking UI event protocol."""
     if session_id in _session_streams:
@@ -1348,7 +1433,6 @@ async def _stream_copilot(
 
     queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
     _session_streams[session_id] = queue
-    conversation = _session_conversations.setdefault(session_id, [])
     contextual_message = "\n\n".join(
         [
             "<nemo_studio_context>",
@@ -1358,7 +1442,10 @@ async def _stream_copilot(
             message,
         ]
     )
-    request_messages = [*conversation, {"role": "user", "content": contextual_message}]
+    request_messages = [
+        *(persisted_message.model_dump() for persisted_message in _recent_conversation_messages(conversation.messages)),
+        {"role": "user", "content": contextual_message},
+    ]
     invocation = asyncio.create_task(
         _invoke_copilot(
             agent_url,
@@ -1394,15 +1481,14 @@ async def _stream_copilot(
                 queued_event = asyncio.create_task(queue.get())
 
         assistant_text, model = await invocation
-        conversation.extend(
+        conversation.messages.extend(
             [
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": assistant_text},
+                CopilotMessage(role="user", content=message),
+                CopilotMessage(role="assistant", content=assistant_text),
             ]
         )
-        _retain_recent_turns(conversation)
-        _session_mtimes[session_id] = time.time()
-        _initialized_sessions.add(session_id)
+        record_copilot_model(conversation.chat_artifacts, model)
+        await entity_store.update(conversation)
         yield _sse(
             json.dumps(
                 {
@@ -1425,20 +1511,36 @@ async def _stream_copilot(
             json.dumps({"message": _copilot_error_detail(exc)}),
             event="error",
         )
+    except EntityStoreError:
+        logger.exception("Failed to persist NeMo Copilot session %s", session_id)
+        yield _sse(
+            json.dumps({"message": "NeMo Copilot could not save this conversation."}),
+            event="error",
+        )
     finally:
         _session_streams.pop(session_id, None)
         if not invocation.done():
             invocation.cancel()
         if not queued_event.done():
             queued_event.cancel()
-        _evict_oldest_sessions()
 
 
 @router.post("/sessions/{session_id}/messages")
-async def send_message(session_id: str, body: MessageRequest, request: Request) -> StreamingResponse:
+async def send_message(
+    session_id: str,
+    body: MessageRequest,
+    request: Request,
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> StreamingResponse:
     """Send a message to the deployed NeMo Copilot and stream Studio events."""
     sid = _validate_session_id(session_id)
     workspace = _validated_workspace_or_default(body.workspace)
+    conversation = await _get_owned_conversation(
+        entity_store,
+        session_id=sid,
+        workspace=workspace,
+        owner_id=_request_principal_id(request),
+    )
     agent_url = _studio_copilot_url(workspace)
     studio_base_url = _studio_base_url_from_request(body, request)
     studio_pathname = _studio_pathname_from_request(body, request)
@@ -1457,6 +1559,8 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
             agent_url,
             _copilot_request_headers(request, agent_url),
             system_prompt,
+            conversation,
+            entity_store,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-store"},

@@ -6,7 +6,10 @@ import {
   readStoredActiveSessionId,
   writeStoredActiveSessionId,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/activeSessionStorage';
-import { getClaudeCodeSessionHistory } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
+import {
+  ClaudeCodeSessionNotFoundError,
+  getClaudeCodeSessionHistory,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import {
   ClaudeCodeChatContext,
   type ClaudeCodeChatLoadStatus,
@@ -53,7 +56,7 @@ export const ClaudeCodeChatProvider: FC<ClaudeCodeChatProviderProps> = ({
   const { handleReset, loadSession: applySession, sessionId } = chat;
 
   const loadSession = useCallback(
-    async (nextSessionId: string) => {
+    async (nextSessionId: string, forgetIfMissing = false) => {
       const trimmedSessionId = nextSessionId.trim();
       if (!trimmedSessionId || trimmedSessionId === sessionId) return;
 
@@ -61,7 +64,7 @@ export const ClaudeCodeChatProvider: FC<ClaudeCodeChatProviderProps> = ({
       setLoadStatus('loading');
 
       try {
-        const history = await getClaudeCodeSessionHistory(trimmedSessionId);
+        const history = await getClaudeCodeSessionHistory(trimmedSessionId, workspace);
         // Ignore a stale fetch if a newer session was requested meanwhile.
         if (requestedSessionIdRef.current !== trimmedSessionId) return;
 
@@ -73,13 +76,19 @@ export const ClaudeCodeChatProvider: FC<ClaudeCodeChatProviderProps> = ({
         setLoadStatus('idle');
       } catch (error: unknown) {
         if (requestedSessionIdRef.current !== trimmedSessionId) return;
+        if (forgetIfMissing && error instanceof ClaudeCodeSessionNotFoundError) {
+          requestedSessionIdRef.current = null;
+          writeStoredActiveSessionId(workspace, null);
+          setLoadStatus('idle');
+          return;
+        }
         setLoadStatus('error');
         toast.error(
           error instanceof Error ? error.message : 'Could not load NeMo Copilot session.'
         );
       }
     },
-    [applySession, sessionId, toast]
+    [applySession, sessionId, toast, workspace]
   );
 
   // Starting a new chat must cancel any in-flight session load, otherwise a
@@ -97,7 +106,7 @@ export const ClaudeCodeChatProvider: FC<ClaudeCodeChatProviderProps> = ({
     hasHydratedRef.current = true;
 
     const storedSessionId = readStoredActiveSessionId(workspace);
-    if (storedSessionId) void loadSession(storedSessionId);
+    if (storedSessionId) void loadSession(storedSessionId, true);
   }, [loadSession, workspace]);
 
   const value = useMemo(

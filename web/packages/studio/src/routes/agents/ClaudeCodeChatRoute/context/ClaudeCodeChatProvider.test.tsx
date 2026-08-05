@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getClaudeCodeActiveSessionStorageKey } from '@studio/routes/agents/ClaudeCodeChatRoute/activeSessionStorage';
+import { ClaudeCodeSessionNotFoundError } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { ClaudeCodeChatProvider } from '@studio/routes/agents/ClaudeCodeChatRoute/context/ClaudeCodeChatProvider';
 import { useClaudeCodeChatContext } from '@studio/routes/agents/ClaudeCodeChatRoute/context/useClaudeCodeChatContext';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -14,13 +15,15 @@ const mocks = vi.hoisted(() => ({
   handleReset: vi.fn(),
   getClaudeCodeSessionHistory: vi.fn(),
   sessionId: null as string | null,
+  toastError: vi.fn(),
 }));
 
 vi.mock('@nemo/common/src/providers/toast/useToast', () => ({
-  useToast: () => ({ error: vi.fn() }),
+  useToast: () => ({ error: mocks.toastError }),
 }));
 
-vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', () => ({
+vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', async (importOriginal) => ({
+  ...(await importOriginal()),
   getClaudeCodeSessionHistory: mocks.getClaudeCodeSessionHistory,
 }));
 
@@ -123,5 +126,19 @@ describe('ClaudeCodeChatProvider', () => {
         expect.objectContaining({ sessionId: 'session-1' })
       )
     );
+  });
+
+  it('forgets a stored active session when its history no longer exists', async () => {
+    const storageKey = getClaudeCodeActiveSessionStorageKey(WORKSPACE);
+    localStorage.setItem(storageKey, 'missing-session');
+    mocks.getClaudeCodeSessionHistory.mockRejectedValue(
+      new ClaudeCodeSessionNotFoundError('no such session history')
+    );
+
+    renderProvider(<div />);
+
+    await waitFor(() => expect(localStorage.getItem(storageKey)).toBeNull());
+    expect(mocks.applySession).not.toHaveBeenCalled();
+    expect(mocks.toastError).not.toHaveBeenCalled();
   });
 });

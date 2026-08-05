@@ -184,6 +184,21 @@ class TestNemoApiTool:
             workspace="developer-workspace",
         )
 
+    def test_sdk_prefers_agent_base_url_override(self, monkeypatch):
+        monkeypatch.setenv("NMP_BASE_URL", "http://platform-gateway:8080")
+        monkeypatch.setenv("NEMO_BASE_URL", "http://127.0.0.1:8090")
+
+        with (
+            patch("nemo_studio_copilot.register._client", None),
+            patch("nemo_studio_copilot.register.NeMoPlatform") as platform_client,
+        ):
+            _get_client()
+
+        platform_client.assert_called_once_with(
+            base_url="http://127.0.0.1:8090",
+            workspace="default",
+        )
+
     def test_sdk_defaults_to_default_workspace(self, monkeypatch):
         monkeypatch.delenv("NMP_WORKSPACE", raising=False)
 

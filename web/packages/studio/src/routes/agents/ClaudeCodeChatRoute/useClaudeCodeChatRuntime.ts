@@ -13,8 +13,8 @@ import type {
   AgentDecisionSubmission,
 } from '@studio/components/agents/AgentDecisionInput';
 import {
-  CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY,
   createClaudeCodeSession,
+  getClaudeCodeHistorySessionsQueryKey,
   resolveClaudeCodeInput,
   resolveClaudeCodePermission,
   streamClaudeCodeMessage,
@@ -448,12 +448,12 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     if (sessionId) return sessionId;
     // Only one run is active at a time (UI prevents concurrent submissions),
     // so no race between concurrent callers here.
-    const nextSessionId = await createClaudeCodeSession();
+    const nextSessionId = await createClaudeCodeSession(workspace);
     sessionIdRef.current = nextSessionId;
     setSessionId(nextSessionId);
     onSessionIdChange?.(nextSessionId);
     return nextSessionId;
-  }, [sessionId, onSessionIdChange]);
+  }, [sessionId, onSessionIdChange, workspace]);
 
   // Accepts an optional decision to cancel a pending navigation promise before
   // clearing, avoiding a spurious 'submitting' status on programmatic cancels.
@@ -592,7 +592,9 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
             },
           },
         });
-        void queryClient.invalidateQueries({ queryKey: CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY });
+        void queryClient.invalidateQueries({
+          queryKey: getClaudeCodeHistorySessionsQueryKey(workspace ?? 'default'),
+        });
         if (!doneReceived && !signal.aborted) {
           throw new Error(
             'Connection to NeMo Copilot was interrupted. Your response may still be processing — check History to see the result.'

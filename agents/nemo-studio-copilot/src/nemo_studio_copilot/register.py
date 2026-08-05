@@ -221,7 +221,7 @@ def _delete_fileset(name: str) -> str:
 def _get_client() -> NeMoPlatform:
     global _client
     if _client is None:
-        base_url = os.environ.get("NMP_BASE_URL") or os.environ.get("NEMO_BASE_URL")
+        base_url = os.environ.get("NEMO_BASE_URL") or os.environ.get("NMP_BASE_URL")
         kwargs: dict[str, Any] = {}
         if base_url:
             kwargs["base_url"] = base_url

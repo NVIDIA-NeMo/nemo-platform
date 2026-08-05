@@ -17,8 +17,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', () => ({
-  CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY: ['claude-code', 'history', 'sessions'],
   createClaudeCodeSession: mocks.createClaudeCodeSession,
+  getClaudeCodeHistorySessionsQueryKey: (workspace: string) => [
+    'claude-code',
+    'history',
+    'sessions',
+    workspace,
+  ],
   resolveClaudeCodeInput: mocks.resolveClaudeCodeInput,
   resolveClaudeCodePermission: mocks.resolveClaudeCodePermission,
   streamClaudeCodeMessage: mocks.streamClaudeCodeMessage,

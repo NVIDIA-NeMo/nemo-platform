@@ -29,6 +29,13 @@ import type {
 
 const COPILOT_API_BASE_PATH = '/apis/studio/v2/copilot';
 
+export class ClaudeCodeSessionNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ClaudeCodeSessionNotFoundError';
+  }
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
@@ -48,11 +55,8 @@ const getStudioPathname = (): string | undefined => {
   return window.location.pathname;
 };
 
-export const CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY = [
-  'claude-code',
-  'history',
-  'sessions',
-] as const;
+export const getClaudeCodeHistorySessionsQueryKey = (workspace: string) =>
+  ['claude-code', 'history', 'sessions', workspace] as const;
 
 export const CLAUDE_CODE_SKILLS_QUERY_KEY = ['claude-code', 'skills'] as const;
 
@@ -73,8 +77,9 @@ const getResponseErrorMessage = async (response: Response, fallback: string): Pr
   return text;
 };
 
-export const createClaudeCodeSession = async (): Promise<string> => {
-  const response = await fetch(claudeCodeApiUrl('/sessions'), {
+export const createClaudeCodeSession = async (workspace = 'default'): Promise<string> => {
+  const params = new URLSearchParams({ workspace });
+  const response = await fetch(claudeCodeApiUrl(`/sessions?${params.toString()}`), {
     method: 'POST',
   });
 
@@ -254,8 +259,11 @@ const parseSessionHistoryItem = (value: unknown): ClaudeCodeSessionHistoryItem |
   return undefined;
 };
 
-export const listClaudeCodeHistorySessions = async (): Promise<ClaudeCodeHistorySession[]> => {
-  const response = await fetch(claudeCodeApiUrl('/history/sessions'));
+export const listClaudeCodeHistorySessions = async (
+  workspace = 'default'
+): Promise<ClaudeCodeHistorySession[]> => {
+  const params = new URLSearchParams({ workspace });
+  const response = await fetch(claudeCodeApiUrl(`/history/sessions?${params.toString()}`));
 
   if (!response.ok) {
     throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Copilot history'));
@@ -285,14 +293,20 @@ export const listClaudeCodeSkills = async (): Promise<ClaudeCodeSkill[]> => {
 };
 
 export const getClaudeCodeSessionHistory = async (
-  sessionId: string
+  sessionId: string,
+  workspace = 'default'
 ): Promise<ClaudeCodeSessionHistory> => {
+  const params = new URLSearchParams({ workspace });
   const response = await fetch(
-    claudeCodeApiUrl(`/history/sessions/${encodeURIComponent(sessionId)}`)
+    claudeCodeApiUrl(`/history/sessions/${encodeURIComponent(sessionId)}?${params.toString()}`)
   );
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Copilot session'));
+    const message = await getResponseErrorMessage(response, 'Failed to load NeMo Copilot session');
+    if (response.status === 404) {
+      throw new ClaudeCodeSessionNotFoundError(message);
+    }
+    throw new Error(message);
   }
 
   const body = (await response.json()) as unknown;
@@ -314,6 +328,23 @@ export const getClaudeCodeSessionHistory = async (
       items
     ),
   };
+};
+
+export const deleteClaudeCodeSessionHistory = async (
+  sessionId: string,
+  workspace = 'default'
+): Promise<void> => {
+  const params = new URLSearchParams({ workspace });
+  const response = await fetch(
+    claudeCodeApiUrl(`/history/sessions/${encodeURIComponent(sessionId)}?${params.toString()}`),
+    { method: 'DELETE' }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getResponseErrorMessage(response, 'Failed to delete NeMo Copilot session')
+    );
+  }
 };
 
 const getStreamErrorMessage = (payload: unknown): string => {

@@ -8,16 +8,85 @@ import json
 import logging
 import re
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
+from nmp.common.entities.client import EntityNotFoundError
+from nmp.common.service.dependencies import get_entity_client
 from nmp.studio import copilot, copilot_artifacts, copilot_skills, studio_links
 from nmp.studio.config import StudioConfig
+from nmp.studio.entities import CopilotConversation, CopilotMessage
 from nmp.studio.service import StudioService
+
+
+class FakeEntityStore:
+    """Small async EntityClient fake for Copilot route tests."""
+
+    def __init__(self) -> None:
+        self.entities: dict[tuple[str, str], CopilotConversation] = {}
+
+    async def create(self, entity: CopilotConversation) -> CopilotConversation:
+        now = datetime.now(UTC)
+        entity._created_at = now
+        entity._updated_at = now
+        self.entities[(entity.workspace, entity.name)] = entity
+        return entity
+
+    async def get(
+        self,
+        entity_type: type[CopilotConversation],
+        name: str,
+        *,
+        workspace: str | None = None,
+    ) -> CopilotConversation:
+        del entity_type
+        try:
+            return self.entities[(workspace or "default", name)]
+        except KeyError as exc:
+            raise EntityNotFoundError(name) from exc
+
+    async def list(
+        self,
+        entity_type: type[CopilotConversation],
+        *,
+        workspace: str = "default",
+        filter_obj: dict[str, Any] | None = None,
+        **_: Any,
+    ) -> SimpleNamespace:
+        del entity_type
+        owner_id = filter_obj.get("owner_id") if filter_obj else None
+        data = [
+            entity
+            for (entity_workspace, _), entity in self.entities.items()
+            if entity_workspace == workspace and (owner_id is None or entity.owner_id == owner_id)
+        ]
+        data.sort(key=lambda entity: entity.updated_at or datetime.min.replace(tzinfo=UTC), reverse=True)
+        return SimpleNamespace(data=data)
+
+    async def update(self, entity: CopilotConversation) -> CopilotConversation:
+        entity._updated_at = datetime.now(UTC)
+        self.entities[(entity.workspace, entity.name)] = entity
+        return entity
+
+    async def delete(
+        self,
+        entity_type: type[CopilotConversation],
+        name: str,
+        *,
+        workspace: str | None = None,
+        expected_db_version: int | None = None,
+    ) -> None:
+        del entity_type, expected_db_version
+        try:
+            del self.entities[(workspace or "default", name)]
+        except KeyError as exc:
+            raise EntityNotFoundError(name) from exc
 
 
 @pytest.fixture(autouse=True)
@@ -27,20 +96,22 @@ def reset_copilot_state():
     copilot._session_streams.clear()
     copilot._pending_permissions.clear()
     copilot._pending_agent_inputs.clear()
-    copilot._session_conversations.clear()
-    copilot._session_mtimes.clear()
     yield
     copilot._initialized_sessions.clear()
     copilot._session_streams.clear()
     copilot._pending_permissions.clear()
     copilot._pending_agent_inputs.clear()
-    copilot._session_conversations.clear()
-    copilot._session_mtimes.clear()
 
 
 @pytest.fixture
-def service_client() -> TestClient:
+def entity_store() -> FakeEntityStore:
+    return FakeEntityStore()
+
+
+@pytest.fixture
+def service_client(entity_store: FakeEntityStore) -> TestClient:
     service = StudioService()
+    service.app.dependency_overrides[get_entity_client] = lambda: entity_store
     return TestClient(service.app)
 
 
@@ -232,43 +303,58 @@ def test_create_session_returns_uuid(service_client: TestClient):
     uuid.UUID(response.json()["session_id"])
 
 
-def test_create_session_evicts_least_recently_updated_session(
+def test_create_session_persists_workspace_and_owner(
     service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
+    response = service_client.post(
+        "/v2/copilot/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    )
+
+    session_id = response.json()["session_id"]
+    persisted = entity_store.entities[("team-a", f"copilot-{session_id}")]
+    assert persisted.owner_id == "alice@example.com"
+    assert persisted.messages == []
+
+
+def test_recent_conversation_messages_caps_model_context_without_mutating_history(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(copilot, "MAX_RETAINED_SESSIONS", 2)
-    first_session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
-    copilot._session_mtimes[first_session_id] = 1
-    second_session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
-    copilot._session_mtimes[second_session_id] = 2
-
-    third_session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
-
-    assert set(copilot._session_conversations) == {second_session_id, third_session_id}
-    assert set(copilot._session_mtimes) == {second_session_id, third_session_id}
-
-
-def test_retain_recent_turns_caps_complete_user_assistant_pairs(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(copilot, "MAX_RETAINED_TURNS_PER_SESSION", 2)
-    conversation = [{"role": role, "content": f"{role}-{turn}"} for turn in range(3) for role in ("user", "assistant")]
+    conversation = [
+        CopilotMessage(role=role, content=f"{role}-{turn}") for turn in range(3) for role in ("user", "assistant")
+    ]
 
-    copilot._retain_recent_turns(conversation)
+    recent = copilot._recent_conversation_messages(conversation)
 
-    assert conversation == [
+    assert [message.model_dump() for message in recent] == [
         {"role": "user", "content": "user-1"},
         {"role": "assistant", "content": "assistant-1"},
         {"role": "user", "content": "user-2"},
         {"role": "assistant", "content": "assistant-2"},
     ]
+    assert len(conversation) == 6
 
 
-def test_list_history_sessions_includes_retained_conversation(service_client: TestClient):
+def test_list_history_sessions_includes_persisted_conversation(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
     session_id = str(uuid.uuid4())
-    copilot._session_conversations[session_id] = [
-        {"role": "user", "content": "Help me build an agent"},
-        {"role": "assistant", "content": "What should it do?"},
-    ]
-    copilot._session_mtimes[session_id] = 42
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+        messages=[
+            CopilotMessage(role="user", content="Help me build an agent"),
+            CopilotMessage(role="assistant", content="What should it do?"),
+        ],
+    )
+    conversation._created_at = datetime.fromtimestamp(40, UTC)
+    conversation._updated_at = datetime.fromtimestamp(42, UTC)
+    entity_store.entities[("default", conversation.name)] = conversation
 
     response = service_client.get("/v2/copilot/history/sessions")
 
@@ -296,6 +382,132 @@ def test_list_history_sessions_includes_retained_conversation(service_client: Te
                 "tools": [],
             },
         }
+    ]
+
+
+def test_history_is_scoped_to_workspace_and_owner(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
+    alice_id = service_client.post(
+        "/v2/copilot/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    ).json()["session_id"]
+    bob_id = service_client.post(
+        "/v2/copilot/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "bob@example.com"},
+    ).json()["session_id"]
+    entity_store.entities[("team-a", f"copilot-{alice_id}")].messages = [
+        CopilotMessage(role="user", content="Alice's private prompt"),
+        CopilotMessage(role="assistant", content="Alice's answer"),
+    ]
+    entity_store.entities[("team-a", f"copilot-{bob_id}")].messages = [
+        CopilotMessage(role="user", content="Bob's private prompt"),
+        CopilotMessage(role="assistant", content="Bob's answer"),
+    ]
+
+    response = service_client.get(
+        "/v2/copilot/history/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    )
+
+    assert response.status_code == 200
+    assert [session["session_id"] for session in response.json()] == [alice_id]
+    forbidden = service_client.get(
+        f"/v2/copilot/history/sessions/{bob_id}?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    )
+    assert forbidden.status_code == 404
+
+
+def test_delete_history_enforces_owner_and_removes_conversation(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
+    session_id = service_client.post(
+        "/v2/copilot/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    ).json()["session_id"]
+
+    forbidden = service_client.delete(
+        f"/v2/copilot/history/sessions/{session_id}?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "bob@example.com"},
+    )
+    assert forbidden.status_code == 404
+    assert ("team-a", f"copilot-{session_id}") in entity_store.entities
+
+    deleted = service_client.delete(
+        f"/v2/copilot/history/sessions/{session_id}?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    )
+    assert deleted.status_code == 204
+    assert ("team-a", f"copilot-{session_id}") not in entity_store.entities
+
+
+def test_delete_history_rejects_active_session(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
+    session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
+    copilot._session_streams[session_id] = asyncio.Queue()
+
+    response = service_client.delete(f"/v2/copilot/history/sessions/{session_id}")
+
+    assert response.status_code == 409
+    assert ("default", f"copilot-{session_id}") in entity_store.entities
+
+
+def test_copilot_turn_is_persisted_and_reused_as_context(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
+    invocations: list[list[dict[str, str]]] = []
+
+    async def fake_invoke(
+        agent_url: str,
+        headers: dict[str, str],
+        messages: list[dict[str, str]],
+        studio_session_id: str,
+    ) -> tuple[str, str]:
+        del agent_url, headers
+        assert studio_session_id == session_id
+        invocations.append(messages)
+        return f"answer-{len(invocations)}", "nvidia/copilot-model"
+
+    monkeypatch.setattr(copilot, "_invoke_copilot", fake_invoke)
+
+    first = service_client.post(
+        f"/v2/copilot/sessions/{session_id}/messages",
+        json={"message": "first question", "workspace": "default"},
+    )
+    second = service_client.post(
+        f"/v2/copilot/sessions/{session_id}/messages",
+        json={"message": "second question", "workspace": "default"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert "event: done" in first.text
+    assert "event: done" in second.text
+    persisted = entity_store.entities[("default", f"copilot-{session_id}")]
+    assert [message.model_dump() for message in persisted.messages] == [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "answer-1"},
+        {"role": "user", "content": "second question"},
+        {"role": "assistant", "content": "answer-2"},
+    ]
+    assert invocations[1][:2] == [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "answer-1"},
+    ]
+    history = service_client.get(f"/v2/copilot/history/sessions/{session_id}")
+    assert [item["kind"] for item in history.json()["items"]] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
     ]
 
 
@@ -1684,8 +1896,17 @@ def test_platform_route_stream_uses_deployed_copilot(monkeypatch: pytest.MonkeyP
     app = FastAPI()
     app.include_router(service.app.router, prefix="/apis/studio")
     service.configure_app(app)
-    client = TestClient(app)
     session_id = str(uuid.uuid4())
+    entity_store = FakeEntityStore()
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+    )
+    entity_store.entities[("default", conversation.name)] = conversation
+    app.dependency_overrides[get_entity_client] = lambda: entity_store
+    client = TestClient(app)
     captured: dict[str, Any] = {}
 
     async def fake_stream(
@@ -1694,7 +1915,10 @@ def test_platform_route_stream_uses_deployed_copilot(monkeypatch: pytest.MonkeyP
         agent_url: str,
         headers: dict[str, str],
         studio_system_prompt: str,
+        conversation: CopilotConversation,
+        entity_store: FakeEntityStore,
     ):
+        del conversation, entity_store
         captured.update(
             {
                 "session_id": session_id,
@@ -1776,8 +2000,17 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
     app = FastAPI()
     app.include_router(service.app.router, prefix="/apis/studio")
     service.configure_app(app)
-    client = TestClient(app)
     session_id = str(uuid.uuid4())
+    entity_store = FakeEntityStore()
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+    )
+    entity_store.entities[("default", conversation.name)] = conversation
+    app.dependency_overrides[get_entity_client] = lambda: entity_store
+    client = TestClient(app)
     captured: dict[str, Any] = {}
 
     async def fake_stream(
@@ -1786,7 +2019,10 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
         agent_url: str,
         headers: dict[str, str],
         studio_system_prompt: str,
+        conversation: CopilotConversation,
+        entity_store: FakeEntityStore,
     ):
+        del conversation, entity_store
         captured.update(
             {
                 "session_id": session_id,

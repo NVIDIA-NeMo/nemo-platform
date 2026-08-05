@@ -3,6 +3,9 @@
 
 import { BASE_URL } from '@studio/constants/environment';
 import {
+  ClaudeCodeSessionNotFoundError,
+  createClaudeCodeSession,
+  deleteClaudeCodeSessionHistory,
   getClaudeCodeSessionHistory,
   listClaudeCodeHistorySessions,
   listClaudeCodeSkills,
@@ -20,6 +23,50 @@ const getExpectedStudioBaseUrl = (): string => {
 describe('Claude Code API helpers', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('scopes session creation and history requests to the active workspace', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ session_id: 'session-1' }), { status: 200 })
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ session_id: 'session-1', items: [], chat_artifacts: {} }), {
+          status: 200,
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createClaudeCodeSession('team-a');
+    await listClaudeCodeHistorySessions('team-a');
+    await getClaudeCodeSessionHistory('session-1', 'team-a');
+    await deleteClaudeCodeSessionHistory('session-1', 'team-a');
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      expect.stringContaining('/sessions?workspace=team-a'),
+      expect.stringContaining('/history/sessions?workspace=team-a'),
+      expect.stringContaining('/history/sessions/session-1?workspace=team-a'),
+      expect.stringContaining('/history/sessions/session-1?workspace=team-a'),
+    ]);
+    expect(fetchMock.mock.calls[3]?.[1]).toEqual({ method: 'DELETE' });
+  });
+
+  it('identifies a missing session history response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ detail: 'no such session history' }), { status: 404 })
+        )
+    );
+
+    await expect(getClaudeCodeSessionHistory('missing-session')).rejects.toBeInstanceOf(
+      ClaudeCodeSessionNotFoundError
+    );
   });
 
   it('reads model-generated titles from history sessions', async () => {

@@ -55,6 +55,12 @@ LABEL org.opencontainers.image.title="nemo-studio-copilot" \
 
 ENV NAT_CONFIG_FILE=/workspace/src/nemo_studio_copilot/nemo-studio-copilot.yml
 
+# Authenticated Kubernetes deployments inject a loopback auth-proxy sidecar on
+# this port. NMP_BASE_URL is supplied by the deployment runtime, so use the
+# agent-specific legacy override for SDK calls and allow local runtimes to
+# replace it when needed.
+ENV NEMO_BASE_URL=http://127.0.0.1:8090
+
 ENV PATH="/workspace/.venv/bin:$PATH"
 
 # Some modern base images (notably Ubuntu 24.04 "noble" and the NVIDIA base
