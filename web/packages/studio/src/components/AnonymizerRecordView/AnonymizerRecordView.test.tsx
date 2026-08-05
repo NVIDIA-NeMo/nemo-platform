@@ -4,7 +4,7 @@
 import { AnonymizerRecordView } from '@studio/components/AnonymizerRecordView/AnonymizerRecordView';
 import { buildAnonymizerRecord } from '@studio/components/AnonymizerRecordView/parse';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 const traceRow = {
   biography: 'Bobby, a 40-year-old veterinarian.',
