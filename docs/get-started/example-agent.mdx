@@ -117,6 +117,7 @@ into the repository.
 
 ```bash
 gh auth login
+# Choose SSH when prompted for the preferred Git protocol.
 export GITHUB_OWNER="your-github-user-or-org"
 mkdir -p "$HOME/src"
 cd "$HOME/src"
@@ -128,7 +129,8 @@ git -C "$EXAMPLE_AGENT_REPO" checkout -b main
 git -C "$EXAMPLE_AGENT_REPO" add .
 git -C "$EXAMPLE_AGENT_REPO" commit -m "Add the tau3 NOOA example agent"
 git -C "$EXAMPLE_AGENT_REPO" push -u origin main
-export AGENT_REPO_URL="$(gh repo view "$GITHUB_OWNER/tau3-nooa-agent" --json url --jq .url)"
+export AGENT_REPO_URL="$(git -C "$EXAMPLE_AGENT_REPO" remote get-url origin)"
+export AGENT_REPO_HTTPS_URL="$(gh repo view "$GITHUB_OWNER/tau3-nooa-agent" --json url --jq .url)"
 ```
 
 Run the Experimentalist against the Git repository inside a Docker Sandbox. The
@@ -145,7 +147,7 @@ gh auth token | sbx exec -i --workdir "$repo" nemo-experimentalist-git \
   gh auth login --with-token
 sbx exec --workdir "$repo" nemo-experimentalist-git gh auth setup-git
 sbx exec --workdir "$repo" nemo-experimentalist-git \
-  git clone "$AGENT_REPO_URL" /tmp/tau3-nooa-agent
+  git clone "$AGENT_REPO_HTTPS_URL" /tmp/tau3-nooa-agent
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
   --env INFERENCE_API_KEY \
