@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from nmp.platform_runner import registry
 from nmp.platform_runner.config import (
     DEFAULT_PLATFORM_BIND_HOST,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
     PlatformAppConfig,
     ResolvedRunConfiguration,
     apply_run_environment,
@@ -86,6 +88,18 @@ def test_platform_app_config_uses_explicit_log_path(tmp_path: Path):
     assert config.log_file_path() == tmp_path / "logs" / "nemo.log"
 
 
+def test_platform_app_config_defaults_keep_alive_timeout():
+    config = PlatformAppConfig()
+
+    assert config.keep_alive_timeout_seconds == DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
+
+
+@pytest.mark.parametrize("timeout_seconds", [0, -1, 1.5, True])
+def test_platform_app_config_rejects_invalid_keep_alive_timeout(timeout_seconds: Any):
+    with pytest.raises(ValueError, match="keep_alive_timeout_seconds must be greater than 0"):
+        PlatformAppConfig(keep_alive_timeout_seconds=timeout_seconds)
+
+
 def test_platform_app_config_rejects_relative_socket_path():
     with pytest.raises(ValueError, match="UDS socket path must be absolute"):
         PlatformAppConfig(socket_path="relative/path")
@@ -120,6 +134,13 @@ def test_resolve_run_configuration_accepts_platform_app_config():
     assert resolved.controllers == set()
     assert resolved.host == "127.0.0.1"
     assert resolved.port == 9090
+    assert resolved.keep_alive_timeout_seconds == DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
+
+
+def test_resolve_run_configuration_preserves_keep_alive_timeout():
+    resolved = resolve(keep_alive_timeout_seconds=12)
+
+    assert resolved.keep_alive_timeout_seconds == 12
 
 
 def test_no_arguments_defaults_to_all_services_and_default_controllers():

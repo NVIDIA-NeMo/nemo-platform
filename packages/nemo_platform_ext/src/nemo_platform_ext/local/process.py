@@ -827,6 +827,7 @@ def start_background(
     if config.config_path:
         args += ["--config", config.config_path]
     args += ["--host", config.host, "--port", str(config.port)]
+    args += ["--keep-alive-timeout-seconds", str(config.keep_alive_timeout_seconds)]
     args += ["--instance", config.scope]
 
     env = os.environ.copy()

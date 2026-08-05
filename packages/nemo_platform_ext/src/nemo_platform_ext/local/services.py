@@ -35,9 +35,11 @@ from nemo_platform_ext.local.transport import (
 )
 from nmp.platform_runner.config import (
     DEFAULT_SCOPE,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
     PlatformAppConfig,
     default_runtime_root,
     default_state_root,
+    validate_keep_alive_timeout_seconds,
     validate_scope,
 )
 
@@ -151,6 +153,7 @@ class ServiceRunConfig:
     data_dir: str | Path | None = None
     readiness_timeout: float = 60.0
     readiness_poll_interval: float = 0.5
+    keep_alive_timeout_seconds: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
     mode: ServiceMode | str = ServiceMode.DAEMON
 
     def __post_init__(self) -> None:
@@ -176,6 +179,7 @@ class ServiceRunConfig:
             raise ValueError("readiness_timeout must be greater than 0")
         if self.readiness_poll_interval <= 0:
             raise ValueError("readiness_poll_interval must be greater than 0")
+        self.keep_alive_timeout_seconds = validate_keep_alive_timeout_seconds(self.keep_alive_timeout_seconds)
         self.scope = validate_scope(self.scope)
 
     @property
@@ -215,6 +219,7 @@ class ServiceRunConfig:
             socket_path=_optional_str(self.resolved_socket_path),
             state_root=_optional_str(self.state_root),
             runtime_root=_optional_str(self.runtime_dir),
+            keep_alive_timeout_seconds=self.keep_alive_timeout_seconds,
         )
 
     def to_child_payload(self) -> dict[str, object]:
@@ -239,6 +244,7 @@ class ServiceRunConfig:
             "data_dir": _optional_str(self.data_dir),
             "readiness_timeout": self.readiness_timeout,
             "readiness_poll_interval": self.readiness_poll_interval,
+            "keep_alive_timeout_seconds": self.keep_alive_timeout_seconds,
         }
 
 
@@ -486,9 +492,21 @@ def serve_embedded_app(app: Any, cfg: ServiceRunConfig, socket_path: Path | None
     if socket_path is not None:
         from nmp.platform_runner.server import _run_server_on_bound_sockets
 
-        _run_server_on_bound_sockets(app, host=cfg.host, port=cfg.port, socket_path=str(socket_path))
+        _run_server_on_bound_sockets(
+            app,
+            host=cfg.host,
+            port=cfg.port,
+            socket_path=str(socket_path),
+            keep_alive_timeout_seconds=cfg.keep_alive_timeout_seconds,
+        )
     else:
-        uvicorn.run(app, host=cfg.host, port=cfg.port, log_config=None)
+        uvicorn.run(
+            app,
+            host=cfg.host,
+            port=cfg.port,
+            log_config=None,
+            timeout_keep_alive=cfg.keep_alive_timeout_seconds,
+        )
 
 
 def run_services(

@@ -98,6 +98,7 @@ def test_authentik_compose_uses_liveness_for_container_health_and_routes_status_
 
     http_manager = envoy["static_resources"]["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
     routes = http_manager["route_config"]["virtual_hosts"][0]["routes"]
+    clusters = envoy["static_resources"]["clusters"]
     route_matches = [route["match"] for route in routes if route.get("route", {}).get("cluster") == "nemo"]
     forwarded_proto_header = [
         {
@@ -105,6 +106,12 @@ def test_authentik_compose_uses_liveness_for_container_health_and_routes_status_
             "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
         }
     ]
+    nemo_cluster = next(cluster for cluster in clusters if cluster["name"] == "nemo")
+    http_options = nemo_cluster["typed_extension_protocol_options"][
+        "envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
+    ]
+    assert http_options["common_http_protocol_options"] == {"idle_timeout": "4s"}
+    assert http_options["explicit_http_config"] == {"http_protocol_options": {}}
     gateway_ready_route = next(route for route in routes if route["match"] == {"path": "/health/gateway/ready"})
     health_route = next(route for route in routes if route["match"] == {"prefix": "/health/"})
     assert routes.index(gateway_ready_route) < routes.index(health_route)

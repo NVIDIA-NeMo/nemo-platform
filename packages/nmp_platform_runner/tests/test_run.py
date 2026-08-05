@@ -62,6 +62,7 @@ def test_run_platform_marks_loaded_services_local_before_starting_controllers(mo
         host="127.0.0.1",
         port=8080,
         config_path="",
+        keep_alive_timeout_seconds=12,
     )
     services = [_StubService("jobs"), _StubService("entities")]
 
@@ -76,7 +77,13 @@ def test_run_platform_marks_loaded_services_local_before_starting_controllers(mo
         lambda names, registry, kind: {"jobs": lambda stop_signal: None} if kind == "controller" else {},
     )
     monkeypatch.setattr(runner, "_display_banner", lambda **_: None)
-    monkeypatch.setattr(runner, "run_server", lambda services, host, port, socket_path=None: None)
+    monkeypatch.setattr(
+        runner,
+        "run_server",
+        lambda services, host, port, socket_path=None, keep_alive_timeout_seconds=None: captured.update(
+            {"keep_alive_timeout_seconds": str(keep_alive_timeout_seconds)}
+        ),
+    )
     monkeypatch.setattr(runner.signal, "signal", lambda *args: None)
 
     def capture_controller_start(
@@ -94,3 +101,4 @@ def test_run_platform_marks_loaded_services_local_before_starting_controllers(mo
         Configuration.clear_cache()
 
     assert captured["services"] == "entities,jobs"
+    assert captured["keep_alive_timeout_seconds"] == "12"
