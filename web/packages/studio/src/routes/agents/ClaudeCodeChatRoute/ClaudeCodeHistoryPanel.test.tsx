@@ -216,12 +216,12 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
     await user.click(screen.getByRole('button', { name: 'Expand All Chats' }));
-    await user.click(
-      await screen.findByRole('button', { name: 'Delete chat Private agent work' })
-    );
+    await user.click(await screen.findByRole('button', { name: 'Delete chat Private agent work' }));
 
     expect(screen.getByRole('dialog', { name: 'Delete chat?' })).toBeInTheDocument();
-    expect(screen.getByText('Delete “Private agent work”? This chat cannot be recovered.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Delete “Private agent work”? This chat cannot be recovered.')
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Delete' }));
 
     await waitFor(() =>
