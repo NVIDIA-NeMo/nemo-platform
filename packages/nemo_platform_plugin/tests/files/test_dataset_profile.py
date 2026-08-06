@@ -170,7 +170,6 @@ def _build_profile() -> DatasetProfile:
             files_read=2,
             files_present=2,
             row_budget=1024,
-            seed=7,
         ),
         partitions=[
             PartitionProfile(
@@ -322,8 +321,8 @@ def test_container_shape_is_not_pinned_to_known_dtypes():
     profiler still loads on an older reader, which is what the open vocabulary buys."""
     future_map = FeatureSchema(name="attrs", dtype="map", fields=[FeatureSchema(name="k", dtype="string")])
     assert [field.name for field in future_map.fields or []] == ["k"]
-    future_tensor = FeatureSchema(name="embedding", dtype="tensor", fixed_length=768)
-    assert future_tensor.fixed_length == 768
+    future_tensor = FeatureSchema(name="embedding", dtype="tensor", items=FeatureSchema(dtype="float32"))
+    assert future_tensor.items is not None and future_tensor.items.dtype == "float32"
 
 
 def test_unknown_fields_are_ignored_for_forward_compat():

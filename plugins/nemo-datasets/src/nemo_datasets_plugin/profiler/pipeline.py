@@ -132,7 +132,6 @@ def profile(
         # than a bare count. Non-data files (a README, a LICENSE) are not data and are counted nowhere.
         files_present=len(data_entries) + sum(1 for e in file_errors if detect_format(e.path) is None),
         row_budget=row_budget,
-        seed=None,  # head sampling makes no random choices; a seed would be theatre
     )
     return DatasetProfile(
         created_at=created_at,

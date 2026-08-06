@@ -25,19 +25,14 @@ def test_from_arrow_list_of_role_content_structs_is_messages():
     assert [f.name for f in feature.items.fields] == ["role", "content"]
 
 
-def test_from_arrow_fixed_size_list_records_length():
-    schema = pa.schema([("embedding", pa.list_(pa.float32(), 768))])
-    feature = derive_features([], schema)[0]
-    assert feature.dtype == "list"
-    assert feature.fixed_length == 768
-    assert feature.items.dtype == "float32"
+def test_from_arrow_fixed_and_variable_lists_agree_on_shape():
+    # A fixed-size list is still a list of its element type. The constant length itself is no longer
+    # recorded, so the two cases must be indistinguishable rather than one silently losing `items`.
+    fixed = derive_features([], pa.schema([("embedding", pa.list_(pa.float32(), 768))]))[0]
+    assert (fixed.dtype, fixed.items.dtype) == ("list", "float32")
 
-
-def test_from_arrow_variable_list_has_no_fixed_length():
-    feature = derive_features([], pa.schema([("tags", pa.list_(pa.string()))]))[0]
-    assert feature.dtype == "list"
-    assert feature.fixed_length is None
-    assert feature.items.dtype == "string"
+    variable = derive_features([], pa.schema([("tags", pa.list_(pa.string()))]))[0]
+    assert (variable.dtype, variable.items.dtype) == ("list", "string")
 
 
 # --- inferred from sampled rows (jsonl) ----------------------------------------------------------
@@ -70,17 +65,12 @@ def test_from_arrow_sharegpt_from_value_is_messages():
     assert derive_features([], schema)[0].dtype == "messages"
 
 
-def test_from_rows_constant_length_list_records_fixed_length():
-    feature = derive_features([{"e": [0.1, 0.2, 0.3]}, {"e": [0.4, 0.5, 0.6]}])[0]
-    assert feature.dtype == "list"
-    assert feature.fixed_length == 3
-    assert feature.items.dtype == "float64"
+def test_from_rows_lists_infer_their_element_type():
+    constant = derive_features([{"e": [0.1, 0.2, 0.3]}, {"e": [0.4, 0.5, 0.6]}])[0]
+    assert (constant.dtype, constant.items.dtype) == ("list", "float64")
 
-
-def test_from_rows_variable_length_list_has_no_fixed_length():
-    feature = derive_features([{"e": [1, 2]}, {"e": [1, 2, 3]}])[0]
-    assert feature.dtype == "list"
-    assert feature.fixed_length is None
+    variable = derive_features([{"e": [1, 2]}, {"e": [1, 2, 3]}])[0]
+    assert (variable.dtype, variable.items.dtype) == ("list", "int64")
 
 
 def test_from_rows_nested_struct():

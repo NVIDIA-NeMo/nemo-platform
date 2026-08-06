@@ -7,7 +7,7 @@ Derive the ``features`` tree (a list of :class:`FeatureSchema`) de novo from the
 carries a declared schema, so it is converted directly; formats without one (jsonl) are inferred
 from the sampled rows by resolving each column's dtype. A list of ``{role, content}`` structs — or
 ShareGPT's ``{from, value}`` spelling of the same thing — is recognized as the ``messages`` dtype,
-and a list whose elements are all the same length records that length as ``fixed_length``.
+and a list of ``{role, content}`` structs is recognized as the ``messages`` dtype.
 """
 
 from __future__ import annotations
@@ -75,10 +75,7 @@ def _feature_from_arrow(name: str, arrow_type: pa.DataType) -> FeatureSchema:
             for i in range(arrow_type.num_fields)
         ]
         return FeatureSchema(name=name, dtype="struct", fields=fields)
-    if pa.types.is_fixed_size_list(arrow_type):
-        item = _feature_from_arrow("", arrow_type.value_type)
-        return FeatureSchema(name=name, dtype="list", items=item, fixed_length=arrow_type.list_size)
-    if pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type):
+    if pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type) or pa.types.is_fixed_size_list(arrow_type):
         item = _feature_from_arrow("", arrow_type.value_type)
         dtype = "messages" if _is_message_struct(item) else "list"
         return FeatureSchema(name=name, dtype=dtype, items=item)
@@ -119,9 +116,7 @@ def _infer_feature(name: str, values: list[Any]) -> FeatureSchema:
         item = _infer_feature("", [element for value in present for element in value])
         if _is_message_struct(item):
             return FeatureSchema(name=name, dtype="messages", items=item)
-        lengths = {len(value) for value in present}
-        fixed_length = lengths.pop() if len(lengths) == 1 else None
-        return FeatureSchema(name=name, dtype="list", items=item, fixed_length=fixed_length)
+        return FeatureSchema(name=name, dtype="list", items=item)
 
     return FeatureSchema(name=name, dtype=_scalar_dtype(present))
 
