@@ -6,20 +6,21 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { ENTITY_NAME_HELP, entityNameSchema } from '@nemo/common/src/utils/entityName';
 import { useGuardrailsCreateConfig } from '@nemo/sdk/generated/platform/api';
+import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getGuardrailDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { type FC } from 'react';
+import { type FC, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
 
-const schema = z.object({
+const createGuardrailFormSchema = z.object({
   name: entityNameSchema(),
 });
 
-type FormData = z.infer<typeof schema>;
+type FormData = z.infer<typeof createGuardrailFormSchema>;
 
 interface Props {
   open: boolean;
@@ -37,7 +38,7 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose }) => {
     reset,
     formState: { isValid },
   } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(createGuardrailFormSchema),
     defaultValues: { name: '' },
     mode: 'onChange',
   });
@@ -49,6 +50,18 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose }) => {
     reset: resetMutation,
   } = useGuardrailsCreateConfig();
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // setTimeout 0 lets the dialog's built-in focus management run first (it would otherwise
+    // focus the slotInfo icon button, which appears before the input in DOM order).
+    const id = setTimeout(() => {
+      containerRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+    }, 0);
+    return () => clearTimeout(id);
+  }, [open]);
+
   const handleClose = () => {
     reset();
     resetMutation();
@@ -56,7 +69,13 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose }) => {
   };
 
   const onSubmit = async (data: FormData) => {
-    const config = await createConfig({ workspace, data: { name: data.name } });
+    let config: GuardrailConfig;
+    try {
+      config = await createConfig({ workspace, data: { name: data.name } });
+    } catch {
+      // The modal stays open and surfaces the failure via `errorText` below.
+      return;
+    }
     await queryClient.invalidateQueries({
       queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
     });
@@ -76,21 +95,22 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose }) => {
       onSubmit={handleSubmit(onSubmit)}
       onClose={handleClose}
     >
-      <ControlledTextInput
-        label="Name"
-        autoFocus
-        disabled={isPending}
-        useControllerProps={{ name: 'name', control }}
-        formFieldProps={{ slotInfo: ENTITY_NAME_HELP }}
-        attributes={{
-          Input: {
-            autoComplete: 'off',
-            autoCapitalize: 'none',
-            autoCorrect: 'off',
-            spellCheck: false,
-          },
-        }}
-      />
+      <div ref={containerRef}>
+        <ControlledTextInput
+          label="Name"
+          disabled={isPending}
+          useControllerProps={{ name: 'name', control }}
+          formFieldProps={{ slotInfo: ENTITY_NAME_HELP }}
+          attributes={{
+            Input: {
+              autoComplete: 'off',
+              autoCapitalize: 'none',
+              autoCorrect: 'off',
+              spellCheck: false,
+            },
+          }}
+        />
+      </div>
     </FormModal>
   );
 };
