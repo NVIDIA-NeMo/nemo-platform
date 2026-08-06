@@ -147,6 +147,17 @@ _TOKEN_PROVIDER_CACHE: dict[_ProviderCacheKey, OIDCTokenProvider] = {}
 # OIDC discovery
 # ---------------------------------------------------------------------------
 
+# Fallback returned when discovery fails. auth_enabled=False ensures downstream
+# code treats the cluster as non-OIDC; empty endpoint means no refresh is
+# attempted against a real token endpoint.
+_OIDC_DISCOVERY_FALLBACK = NMPOIDCConfig(
+    auth_enabled=False,
+    client_id="",
+    token_endpoint="",
+    default_scopes="openid profile email",
+    scope_prefix=None,
+)
+
 
 def _discover_oidc_client_settings(base_url: str) -> NMPOIDCConfig:
     """Fetch OIDC config from the NeMo Platform cluster's discovery endpoint.
@@ -159,13 +170,7 @@ def _discover_oidc_client_settings(base_url: str) -> NMPOIDCConfig:
         return discover_nmp_config(base_url)
     except Exception:
         logger.debug("Could not discover OIDC settings from %s", base_url, exc_info=True)
-        return NMPOIDCConfig(
-            auth_enabled=False,
-            client_id="",
-            token_endpoint="",
-            default_scopes="openid profile email",
-            scope_prefix=None,
-        )
+        return _OIDC_DISCOVERY_FALLBACK
 
 
 def _workload_identity_token_file_from_env() -> Path | None:
@@ -522,15 +527,18 @@ def _resolve_bootstrap(
         return _ResolvedBootstrap(base_url, resolved.workspace, headers, None)
 
     # --- OAuth path: set up transparent token refresh ---
-    oidc_config = _discover_oidc_client_settings(base_url)
-
-    if not oidc_config.auth_enabled and access_token is None:
-        # The context's user is an OAuthUser, but this cluster has no OIDC
-        # configured (this can happen if the context was previously authenticated
-        # against a different cluster). There's no token endpoint to refresh
-        # against, so fall back to no-auth instead of attempting a refresh_token
-        # grant against an empty endpoint, which would fail.
-        return _ResolvedBootstrap(base_url, resolved.workspace, headers, None)
+    try:
+        oidc_config = discover_nmp_config(base_url)
+        if not oidc_config.auth_enabled and access_token is None:
+            # Discovery succeeded and confirmed the cluster has no OIDC. The
+            # stored OAuthUser token can't be refreshed here (no endpoint), so
+            # fall back to no-auth. This guard only fires on a successful
+            # discovery response — not on discovery failures, where the stored
+            # token may still be valid and should be used as-is.
+            return _ResolvedBootstrap(base_url, resolved.workspace, headers, None)
+    except Exception:
+        logger.debug("Could not discover OIDC settings from %s", base_url, exc_info=True)
+        oidc_config = _OIDC_DISCOVERY_FALLBACK
 
     tokens = TokenSet.from_access_token(
         resolved.user.token.get_secret_value(),

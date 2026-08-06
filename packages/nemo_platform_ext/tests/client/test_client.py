@@ -237,6 +237,22 @@ class TestCreateClientOAuthUserAuthDisabledCluster:
         assert "Authorization" not in client._custom_headers
         assert client._client._event_hooks["request"] == []
 
+    @patch(
+        "nemo_platform_ext.client.factory.discover_nmp_config",
+        side_effect=Exception("network error"),
+    )
+    def test_discovery_failure_preserves_stored_token(self, _mock_discover, tmp_path):
+        # A discovery failure must not strip auth — the stored token may still
+        # be valid and should be used as-is without attempting a refresh.
+        token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "user1"})
+        config_path = _write_config(tmp_path, token=token, refresh_token="refresh_abc")
+
+        client = create_client(config_path=config_path)
+
+        request = client._client.build_request("GET", "http://localhost:8080/test")
+        client._client._event_hooks["request"][0](request)
+        assert request.headers["Authorization"] == f"Bearer {token}"
+
 
 class TestCreateClientWorkloadIdentity:
     @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_WORKLOAD_NMP_CONFIG)
