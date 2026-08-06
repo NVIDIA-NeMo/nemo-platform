@@ -49,4 +49,4 @@ class AnalystDeps:
     backend: AnalystBackend | None = None  # set by the CLI per run
     since: datetime | None = None
     evaluation_id: str | None = None  # run scope; AND-pinned onto every span read
-    max_results: int = 200
+    max_results: int = 600

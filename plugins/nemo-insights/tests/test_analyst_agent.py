@@ -39,14 +39,14 @@ def _exec_response(code: str) -> LLMResponse:
     )
 
 
-def test_smart_model_uses_opus_through_openai_compatible_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_smart_model_uses_gpt_through_openai_compatible_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("INFERENCE_API_KEY", "test-key")
     model_config.get_smart_model.cache_clear()
     model_config._completion_client.cache_clear()
 
     client = model_config.get_smart_model()
     try:
-        assert client.model == "openai/aws/anthropic/bedrock-claude-opus-4-8"
+        assert client.model == "openai/openai/openai/gpt-5.5"
         assert client.config == {
             "api_base": "https://inference-api.nvidia.com/v1",
             "api_key": "test-key",

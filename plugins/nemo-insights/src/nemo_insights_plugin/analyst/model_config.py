@@ -11,7 +11,10 @@ from nooa.unifiedllm import CompletionClient
 _API_BASE = "https://inference-api.nvidia.com/v1"
 # The leading ``openai/`` selects LiteLLM's OpenAI-compatible transport. The
 # remaining value is the model alias sent unchanged to NVIDIA's gateway.
-_SMART_MODEL = "openai/aws/anthropic/bedrock-claude-opus-4-8"
+# Prefer a non-Bedrock smart model: Bedrock Opus via the gateway currently
+# rejects Nooa's tool_choice=auto + parallel_tool_calls=false as a duplicate
+# toolChoice / tool_choice field conflict.
+_SMART_MODEL = "openai/openai/openai/gpt-5.5"
 _FAST_MODEL = "openai/openai/openai/gpt-5-mini"
 
 

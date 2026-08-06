@@ -43,7 +43,7 @@ from nooa.unifiedllm import UnifiedLLM
 # Safety cap on model requests per run so a misbehaving loop cannot spin
 # forever. Each tool-calling round is one request, so this bounds the analyst
 # to roughly this many tool-use steps.
-MAX_REQUESTS = 50
+MAX_REQUESTS = 75
 MAX_SUMMARY_TOKENS = 80_000
 
 # ---------------------------------------------------------------------------
