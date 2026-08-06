@@ -31,11 +31,10 @@ User-facing skills in `packages/nemo_platform_ext/src/nemo_platform_ext/skills/`
 - `nemo-spec`: writes an agent spec at `agents/<name>-spec/AGENT-SPEC.md` from the explore output.
 - `nemo-build-agent`: scaffolds NAT workflow YAML from the spec and deploys.
 - `nemo-try-agent`: test a deployed agent or chat with a model.
-- `nemo-experimentalist`: improve an existing agent's source or harness from an Insight or evaluation datasets.
 - `nemo-status`: read-only health dashboard. Run this before assuming the platform is up.
 - `nemo-teardown`: guided shutdown with confirmation.
 
-Plugin-owned skills live under `plugins/*/src/*/skills/` and handle their own routing for customization, guardrails, evaluations, optimization, data designer, anonymizer, and auditor.
+Plugin-owned skills live under `plugins/*/src/*/skills/` and handle their own routing for customization, guardrails, evaluations, optimization, data designer, anonymizer, auditor, and Experimentalist source/harness improvement.
 
 ### Working in a sandboxed coding-agent environment
 

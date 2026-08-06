@@ -19,7 +19,7 @@ not-for:
   - nemo-insights / agents analyst (use to generate the Insight before optimizing from it)
   - nemo-eval-author (use to author an evaluation outside an Experimentalist run)
   - agents-optimize (use to tune routing, cost, or latency for a deployed agent)
-compatibility: nemo-platform >= 0.1.0; requires the Experimentalist plugin, Docker for Harbor evaluation, a running local platform, and an isolated environment suitable for LLM-authored code.
+compatibility: requires the enabled `nemo-experimentalist-plugin`, Docker for Harbor evaluation, a running local platform, and an isolated environment suitable for LLM-authored code.
 maturity: beta
 license: Apache-2.0
 user-invocable: true

@@ -19,7 +19,7 @@
     },
     {
       "type": "implicit",
-      "prompt": "I want to improve my agent on a benchmark dataset.",
+      "prompt": "I want to improve my agent on a benchmark dataset or Harbor suite.",
       "expected_skill": "nemo-experimentalist"
     },
     {
