@@ -38,6 +38,7 @@ from nemo_evaluator.jobs.agent_spec import (
     Target,
 )
 from nemo_evaluator.jobs.metric_resolution import resolve_metrics_to_inline, to_runtime_bundle
+from nemo_evaluator.jobs.publication import publish_agent_eval_result
 from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator.task_refs import resolve_agent_eval_tasks
@@ -197,6 +198,7 @@ class AgentEvalJob(NemoJob):
             max_concurrent_tasks=submit_spec.max_concurrent_tasks,
             fail_fast=submit_spec.fail_fast,
             labels=submit_spec.labels,
+            publication=submit_spec.publication,
         )
 
     @classmethod
@@ -418,4 +420,20 @@ class AgentEvalJob(NemoJob):
                 exc_info=True,
             )
 
-        return {"status": "completed", "artifact": artifact.model_dump()}
+        output = {"status": "completed", "artifact": artifact.model_dump()}
+
+        # Publication runs last, after the bundle and the queryable record are both durable, so a
+        # failed publish costs a re-publish rather than a re-run. It is also the only step here that
+        # can fail the job (when `required`), which is why nothing depends on its result.
+        intake = spec.publication.intake if spec.publication is not None else None
+        if intake is not None:
+            outcome = publish_agent_eval_result(
+                result,
+                spec=intake,
+                target=spec.target,
+                workspace=ctx.workspace,
+                async_sdk=async_sdk,
+            )
+            output["publication"] = outcome.model_dump(exclude_none=True)
+
+        return output

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import math
+from datetime import UTC, datetime
 
 import pytest
 from nemo_evaluator.intake.mapping import (
@@ -31,6 +32,8 @@ from nemo_evaluator_sdk.metrics.protocol import (
     MetricOutput,
 )
 from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
+
+STARTED_AT = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 
 
 def _trial(*, trial_id: str = "trial-1", task_id: str = "task-1", output_text: str | None = "hello") -> AgentEvalTrial:
@@ -89,25 +92,28 @@ def test_trial_to_atif_ingest_shape() -> None:
         run_id="run-1",
         experiment_id="exp-1",
         agent_name="my-agent",
+        started_at=STARTED_AT,
         model_name="gpt-4o",
     )
     assert body["schema_version"] == ATIF_SCHEMA_VERSION
     assert body["session_id"] == "run-1:t-1"
     assert body["agent"] == {"name": "my-agent", "version": DEFAULT_AGENT_VERSION, "model_name": "gpt-4o"}
-    assert body["steps"] == [{"source": "agent", "step_id": 1, "message": "final answer"}]
+    assert body["steps"] == [{"source": "agent", "step_id": 1, "message": "final answer", "timestamp": STARTED_AT}]
     assert body["evaluation_context"] == {"evaluation_id": "exp-1", "test_case_id": "task-1"}
     assert "final_metrics" not in body
 
 
 def test_trial_to_atif_ingest_defaults_version_and_omits_model_name() -> None:
-    body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a")
+    body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT)
     assert body["agent"] == {"name": "a", "version": "unknown"}
     assert "model_name" not in body["agent"]
 
 
 def test_trial_to_atif_ingest_handles_missing_output() -> None:
-    body = trial_to_atif_ingest(_trial(output_text=None), run_id="run-1", experiment_id="exp-1", agent_name="a")
-    assert body["steps"] == [{"source": "agent", "step_id": 1, "message": ""}]
+    body = trial_to_atif_ingest(
+        _trial(output_text=None), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT
+    )
+    assert body["steps"] == [{"source": "agent", "step_id": 1, "message": "", "timestamp": STARTED_AT}]
 
 
 def test_trial_to_atif_ingest_includes_final_metrics_when_given() -> None:
@@ -116,6 +122,7 @@ def test_trial_to_atif_ingest_includes_final_metrics_when_given() -> None:
         run_id="run-1",
         experiment_id="exp-1",
         agent_name="a",
+        started_at=STARTED_AT,
         final_metrics={"total_prompt_tokens": 10},
     )
     assert body["final_metrics"] == {"total_prompt_tokens": 10}

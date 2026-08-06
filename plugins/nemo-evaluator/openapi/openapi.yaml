@@ -2132,6 +2132,11 @@ components:
           title: Labels
           description: Caller-supplied tags recorded on the run's metadata (e.g. benchmark,
             mode, backend).
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/PublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result bundle. Omit to publish nowhere.
         tasks:
           anyOf:
           - $ref: '#/components/schemas/TasksetRef'
@@ -2298,6 +2303,11 @@ components:
           title: Labels
           description: Caller-supplied tags recorded on the run's metadata (e.g. benchmark,
             mode, backend).
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/PublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result bundle. Omit to publish nowhere.
         tasks:
           items:
             $ref: '#/components/schemas/AgentEvalTaskSpec'
@@ -3736,6 +3746,48 @@ components:
         so no code is shipped or executed on load. Used for platform-recognized
 
         built-in metric types.'
+    IntakePublicationSpec:
+      properties:
+        evaluation_id:
+          type: string
+          minLength: 1
+          title: Evaluation Id
+          description: Name of the existing Evaluation to publish under. Must already
+            exist; the job does not create it.
+        agent_name:
+          title: Agent Name
+          description: Agent name recorded on each published trajectory. Derived from
+            the target when it names one; required otherwise.
+          type: string
+        agent_version:
+          type: string
+          title: Agent Version
+          description: Agent version recorded on each published trajectory. Neither
+            a Model nor an Agent carries a version, so this defaults to 'unknown'
+            unless the submitter supplies one.
+          default: unknown
+        required:
+          type: boolean
+          title: Required
+          description: Fail the job when publication fails. Defaults to True so a
+            run that asked to publish does not report success with nothing in Experiments.
+            The result bundle is saved before publication runs, so a failed job still
+            leaves the results intact to re-publish. Set False to keep the job successful
+            and report the failure in its output instead.
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - evaluation_id
+      title: IntakePublicationSpec
+      description: "Publish this run's trials and scores to Intake, under an Evaluation\
+        \ that already exists.\n\n``evaluation_id`` is the *name* of a ``client.evaluations``\
+        \ record. Intake stores that record as\nits ``Experiment`` entity and the\
+        \ SDK's ``publish_to_intake`` calls the argument\n``experiment_id``, but the\
+        \ value is the same one either way \u2014 the parent ``client.experiments``\n\
+        group is a different resource and is not what goes here. The job never creates\
+        \ the Evaluation: a\nmissing one is an error, because nothing in an eval spec\
+        \ can supply the dataset identity\n``evaluations.create`` requires."
     JsonValue:
       title: JsonValue
     MetadataItem:
@@ -4483,6 +4535,17 @@ components:
       - created_at
       - updated_at
       title: PlatformJobTaskStatusResponse
+    PublicationSpec:
+      properties:
+        intake:
+          allOf:
+          - $ref: '#/components/schemas/IntakePublicationSpec'
+          description: Publish trials and scores to Intake. Omit to publish nowhere.
+      additionalProperties: false
+      type: object
+      title: PublicationSpec
+      description: Where a completed run publishes its results, beyond its own result
+        bundle.
     ReasoningParams:
       properties:
         end_token:

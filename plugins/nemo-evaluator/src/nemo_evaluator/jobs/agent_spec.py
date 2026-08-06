@@ -19,6 +19,7 @@ from typing import Any, Literal, Self, TypeAlias
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList, TasksetRef
+from nemo_evaluator.intake.mapping import DEFAULT_AGENT_VERSION
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
@@ -152,6 +153,74 @@ AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget | HarborRu
 Target: TypeAlias = ModelTarget | AgentTarget | AgentRunnerTarget
 
 
+def target_agent_identity(target: Target | None) -> tuple[str | None, str | None]:
+    """``(agent_name, model_name)`` derivable from a target, for publishing to Intake.
+
+    Only targets that carry a real name yield one — nothing here invents an identity, because a
+    made-up agent name is worse than an explicit one the submitter had to supply. A ``ModelTarget``
+    has a model but no agent; the runners other than Harbor name a harness, not an agent. Those
+    cases return ``None`` and the spec must carry ``publication.intake.agent_name``.
+
+    Distinct from ``result_persistence._agent_target_fields``, which flattens the same targets to
+    ``(kind, name, url)`` filter traits and folds runner *models* into its ``name`` slot.
+    """
+    if isinstance(target, AgentTarget):
+        return getattr(target.agent, "name", None), None
+    if isinstance(target, HarborRunnerTarget):
+        return target.agent_import_path or target.agent_name, target.agent_model_name
+    if isinstance(target, ModelTarget):
+        return None, target.model.name
+    if isinstance(target, CodexRunnerTarget | FabricRunnerTarget):
+        return None, target.model
+    return None, None
+
+
+class IntakePublicationSpec(BaseModel):
+    """Publish this run's trials and scores to Intake, under an Evaluation that already exists.
+
+    ``evaluation_id`` is the *name* of a ``client.evaluations`` record. Intake stores that record as
+    its ``Experiment`` entity and the SDK's ``publish_to_intake`` calls the argument
+    ``experiment_id``, but the value is the same one either way — the parent ``client.experiments``
+    group is a different resource and is not what goes here. The job never creates the Evaluation: a
+    missing one is an error, because nothing in an eval spec can supply the dataset identity
+    ``evaluations.create`` requires.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_id: str = Field(
+        min_length=1,
+        description="Name of the existing Evaluation to publish under. Must already exist; the job does not create it.",
+    )
+    agent_name: str | None = Field(
+        default=None,
+        description="Agent name recorded on each published trajectory. Derived from the target when "
+        "it names one; required otherwise.",
+    )
+    agent_version: str = Field(
+        default=DEFAULT_AGENT_VERSION,
+        description="Agent version recorded on each published trajectory. Neither a Model nor an "
+        "Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.",
+    )
+    required: bool = Field(
+        default=True,
+        description="Fail the job when publication fails. Defaults to True so a run that asked to "
+        "publish does not report success with nothing in Experiments. The result bundle is saved "
+        "before publication runs, so a failed job still leaves the results intact to re-publish. "
+        "Set False to keep the job successful and report the failure in its output instead.",
+    )
+
+
+class PublicationSpec(BaseModel):
+    """Where a completed run publishes its results, beyond its own result bundle."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    intake: IntakePublicationSpec | None = Field(
+        default=None, description="Publish trials and scores to Intake. Omit to publish nowhere."
+    )
+
+
 class _AgentEvalTaskCommon(BaseModel):
     """Fields shared by the submitter and canonical task DTOs (everything but ``metrics``).
 
@@ -236,6 +305,26 @@ class _AgentEvalSpecCommon(BaseModel):
         default_factory=dict,
         description="Caller-supplied tags recorded on the run's metadata (e.g. benchmark, mode, backend).",
     )
+    publication: PublicationSpec | None = Field(
+        default=None,
+        description="Where the completed run publishes its results, beyond its own result bundle. "
+        "Omit to publish nowhere.",
+    )
+
+    @model_validator(mode="after")
+    def _require_resolvable_publication_identity(self) -> Self:
+        # Publishing needs an agent name, and only some targets carry one. Rejecting here makes it a
+        # 422 on submit rather than a failure discovered after the evaluation has already run.
+        intake = self.publication.intake if self.publication is not None else None
+        if intake is None or intake.agent_name is not None:
+            return self
+        if target_agent_identity(self.target)[0] is None:
+            source = "the precomputed `trials`" if self.target is None else f"a `{self.target.kind}` target"
+            raise ValueError(
+                f"`publication.intake.agent_name` is required: it cannot be derived from {source}. "
+                "Supply the name the published trajectories should be recorded under."
+            )
+        return self
 
     @model_validator(mode="after")
     def _require_exactly_one_trial_source(self) -> Self:
