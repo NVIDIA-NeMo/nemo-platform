@@ -295,16 +295,14 @@ async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
         "Python verifier files are statically checked by await dataset.validate(); test.sh is checked as Bash. "
         "Preserve the existing verifier's intended behavior and repair every validation error."
     )
-    verifier_bundle_dir = tmp_path / "verifier-bundle" / "files"
-    verifier_bundle_dir.mkdir(parents=True)
-
     summary = await asyncio.wait_for(
         eval_author.author_insight_metrics(
             insight,
             [],
             insight_suite,
+            insight_suite,
+            insight_suite,
             runner_conventions,
-            verifier_bundle_dir,
             validation_feedback=validation_feedback,
         ),
         timeout=300,
@@ -377,16 +375,14 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
         "insight_suite.validate() once after editing, then return the metric summary as soon as validation passes; "
         "do not inspect unrelated files."
     )
-    verifier_bundle_dir = tmp_path / "verifier-bundle" / "files"
-    verifier_bundle_dir.mkdir(parents=True)
-
     summary = await asyncio.wait_for(
         eval_author.author_insight_metrics(
             insight,
             [("known-failing-trace", diagnostic)],
             insight_suite,
+            insight_suite,
+            insight_suite,
             runner_conventions,
-            verifier_bundle_dir,
         ),
         timeout=600,
     )
@@ -508,16 +504,14 @@ async def test_eval_author_metric_discriminates_controlled_harbor_tool_evidence(
         "error instead of writing a fabricated 0.0 metric. Use a Python standard-library checker, avoid "
         "unguarded grep under set -e, make the minimal verifier-only edit, validate the dataset once, then stop."
     )
-    verifier_bundle_dir = tmp_path / "verifier-bundle" / "files"
-    verifier_bundle_dir.mkdir(parents=True)
-
     summary = await asyncio.wait_for(
         eval_author.author_insight_metrics(
             insight,
             [("controlled-tool-violation", diagnostic)],
             insight_suite,
+            insight_suite,
+            insight_suite,
             runner_conventions,
-            verifier_bundle_dir,
         ),
         timeout=600,
     )

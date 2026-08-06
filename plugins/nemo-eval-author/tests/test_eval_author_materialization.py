@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 from nemo_eval_author_plugin.eval_author import materialization as materialization_module
-from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
-from nemo_experimentalist_plugin.entities import Task
+from nemo_eval_author_plugin.eval_author.materialization import InsightSuite, describe_dataset_artifact
+from nemo_experimentalist_plugin.entities import Dataset, ResourceRef, Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 
 
@@ -44,6 +44,25 @@ build_timeout_sec = 60.0
     tests.mkdir()
     (tests / "test.sh").write_text("#!/bin/sh\nmkdir -p /logs/verifier\necho 1 > /logs/verifier/reward.txt\n")
     return Task(id="task-template", uri=root.as_uri())
+
+
+def test_dataset_artifact_describes_current_directory_content(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "train"
+    dataset_dir.mkdir()
+    file_path = dataset_dir / "metric.py"
+    file_path.write_text("score = 1.0\n", encoding="utf-8")
+    dataset = Dataset(
+        id="train",
+        source=ResourceRef(uri=dataset_dir.as_uri()),
+    )
+
+    first = describe_dataset_artifact(dataset)
+    file_path.write_text("score = 0.5\n", encoding="utf-8")
+    second = describe_dataset_artifact(dataset)
+
+    assert first.uri == dataset_dir.resolve().as_uri()
+    assert first.identity.startswith("sha256:")
+    assert first.identity != second.identity
 
 
 def test_insight_suite_materializes_discoverable_tasks_with_provenance(tmp_path: Path) -> None:
