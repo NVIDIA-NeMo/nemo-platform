@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, Literal, cast
 from urllib.parse import urlsplit
 
 import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'fileset' workspace-seed handler
@@ -75,6 +75,7 @@ SUMMARY_FILE_NAME = "summary.json"
 _HARBOR_BACKEND_REQUIREMENT = (
     "Harbor targets currently require local execution or the subprocess backend with access to the host Docker daemon."
 )
+_SUBPROCESS_PROVIDER: Literal["subprocess"] = "subprocess"
 
 
 def _harbor_backend_error(reason: str) -> PlatformJobCompilationError:
@@ -238,25 +239,18 @@ class AgentEvalJob(NemoJob):
         except (NemoTransportError, NemoResponseValidationError, InternalServerError) as exc:
             raise _harbor_dependency_unavailable(profile) from exc
 
-        # The concrete profile type fixes both provider and backend to "subprocess".
-        subprocess_profile = next(
-            (
-                execution_profile
-                for execution_profile in profiles
-                if isinstance(execution_profile, SubprocessJobExecutionProfile) and execution_profile.profile == profile
-            ),
-            None,
-        )
-        if subprocess_profile is not None:
+        # The concrete profile type fixes the backend to "subprocess".
+        if any(
+            isinstance(execution_profile, SubprocessJobExecutionProfile) and execution_profile.profile == profile
+            for execution_profile in profiles
+        ):
             container = cast(dict[str, Any], executor["container"])
             command = [*(container.get("entrypoint") or []), *(container.get("command") or [])]
             if not command:
                 raise _harbor_backend_error(
                     f"Unable to compile execution profile '{profile}' for subprocess execution: the step command is empty."
                 )
-            return SubprocessExecutionProviderSpec(
-                provider=subprocess_profile.provider, profile=profile, command=command
-            )
+            return SubprocessExecutionProviderSpec(provider=_SUBPROCESS_PROVIDER, profile=profile, command=command)
 
         # Jobs keys execution profiles by (provider, profile), so at most one backend can match.
         resolved_backend = next(
