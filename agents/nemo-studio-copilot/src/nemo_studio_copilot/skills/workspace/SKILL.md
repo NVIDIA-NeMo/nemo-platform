@@ -4,11 +4,11 @@ description: NeMo Platform workspace CRUD playbook through `nemo_api(resource='w
 ---
 Workspace tasks
 
-- Some instructions mention MCP workspace tools (`create_workspace`, `list_workspaces`).
-  In AUT mode, complete the same intent with `nemo_api`.
+- If instructions mention MCP workspace tools (`create_workspace`, `list_workspaces`),
+  complete the same intent with the corresponding `nemo_api` workspace operation below.
 - SDK/API operations:
-  - `nemo_api(resource="workspaces", action="create", params='{"name":"...", "description":"..."}')`
+  - `nemo_api(resource="workspaces", action="create", params='{"name":"...", "description":"..."}', studio_session_id="<active Studio session UUID>", workspace="<active request workspace>")`
   - `nemo_api(resource="workspaces", action="list")`
   - `nemo_api(resource="workspaces", action="retrieve", params='{"name":"..."}')`
-  - `nemo_api(resource="workspaces", action="delete", params='{"name":"..."}')`
+  - `nemo_api(resource="workspaces", action="delete", params='{"name":"..."}', studio_session_id="<active Studio session UUID>", workspace="<active request workspace>")`
 - Complete all numbered requirements before stopping.

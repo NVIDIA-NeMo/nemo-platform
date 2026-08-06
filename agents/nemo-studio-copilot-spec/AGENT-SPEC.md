@@ -88,7 +88,7 @@ Unit coverage lives in `agents/nemo-studio-copilot/tests/test_nemo_studio_copilo
 uv run --frozen pytest agents/nemo-studio-copilot/tests/test_nemo_studio_copilot.py -v
 ```
 
-The prior NAT evaluation YAML was removed because it depended on NAT's custom workflow and `/generate/full` endpoint. The existing cases remain in `nemo-studio-copilot-eval-data.json`; restoring automated evaluation requires a Fabric-compatible driver for `/v1/chat/completions`.
+The prior NAT evaluation YAML was removed because it depended on NAT's custom workflow and `/generate/full` endpoint. Each retained case in `nemo-studio-copilot-eval-data.json` now has deterministic unit coverage for its required `nemo_api` tool path, collected by the root CI test suite.
 
 Manual Studio validation is documented in `agents/nemo-studio-copilot/tests/smoke_test.md`. Current coverage gaps include fileset listing, missing-workspace clarification, fast-path failure containment, destructive-action ambiguity, iteration limits, retry limits, cancellation, and end-to-end latency thresholds.
 

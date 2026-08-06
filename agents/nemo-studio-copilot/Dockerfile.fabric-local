@@ -1,11 +1,12 @@
 # Managed by `nemo agents package` — safe to delete if you take ownership.
 ARG BASE_IMAGE_URL=nvcr.io/nvidia/base/ubuntu
 ARG BASE_IMAGE_TAG=noble-20260217
+ARG BASE_IMAGE_DIGEST=sha256:57a7daab5579d4b4cfbe25b59dc9d22d0c4cec24e5608523e77fd5f12e9da51a
 ARG PYTHON_VERSION=3.13
-FROM ${BASE_IMAGE_URL}:${BASE_IMAGE_TAG}
+FROM ${BASE_IMAGE_URL}:${BASE_IMAGE_TAG}@${BASE_IMAGE_DIGEST}
 ARG PYTHON_VERSION
 
-COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.9.14@sha256:fef8e5fb8809f4b57069e919ffcd1529c92b432a2c8d8ad1768087b0b018d840 /uv /uvx /bin/
 
 ENV PYTHONDONTWRITEBYTECODE=1
 
@@ -40,7 +41,9 @@ COPY ./ /workspace
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \
     . /workspace/.venv/bin/activate && \
-    uv pip install "/workspace/wheelhouse/nemo_platform-0.3.0.post122.dev0+ca85d0feb-py3-none-any.whl[nemo-agents-plugin]" . && \
+    uv pip install --constraint /workspace/constraints.fabric-local.txt \
+      "/workspace/wheelhouse/nemo_platform-0.3.0.post145.dev0+55876bbd3-py3-none-any.whl[nemo-agents-plugin]" \
+      "nemo-fabric==0.1.0" . && \
     chmod -R a+rX /opt/uv /workspace/.venv
 
 

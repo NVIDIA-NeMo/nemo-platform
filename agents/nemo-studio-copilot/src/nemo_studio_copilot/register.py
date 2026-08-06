@@ -18,22 +18,24 @@ STUDIO_CALLBACK_PATH = "/studio/api/copilot/mcp/{session_id}"
 STUDIO_CALLBACK_TIMEOUT_SECONDS = 3600.0
 _READ_ONLY_SDK_ACTIONS = frozenset({"get", "get_logs", "get_status", "list", "read", "retrieve", "search"})
 
-_client: NeMoPlatform | None = None
+_clients: dict[str, NeMoPlatform] = {}
 
 
 def _active_workspace() -> str:
     return os.environ.get("NMP_WORKSPACE") or DEFAULT_WORKSPACE
 
 
-def _get_client() -> NeMoPlatform:
-    global _client
-    if _client is None:
+def _get_client(workspace: str) -> NeMoPlatform:
+    request_workspace = workspace.strip()
+    if not request_workspace:
+        raise ValueError("workspace is required")
+    if request_workspace not in _clients:
         base_url = os.environ.get("NEMO_BASE_URL") or os.environ.get("NMP_BASE_URL")
-        kwargs: dict[str, Any] = {"workspace": _active_workspace()}
+        kwargs: dict[str, Any] = {"workspace": request_workspace}
         if base_url:
             kwargs["base_url"] = base_url
-        _client = NeMoPlatform(**kwargs)
-    return _client
+        _clients[request_workspace] = NeMoPlatform(**kwargs)
+    return _clients[request_workspace]
 
 
 def _serialize(obj: Any) -> Any:
@@ -153,17 +155,24 @@ def _request_mutation_approval(
     *,
     tool_name: str,
     tool_input: dict[str, Any],
-) -> str | None:
+    workspace: str,
+) -> dict[str, Any] | str:
     if studio_session_id is None:
         return "Denied: mutating operations require a Studio session id and explicit approval"
     try:
         session_id = _validated_session_id(studio_session_id)
     except ValueError:
         return "Denied: mutating operations require a valid Studio session id and explicit approval"
-    approval = _call_studio_tool(session_id, "approval_prompt", {"tool_name": tool_name, "input": tool_input})
+    approval = _call_studio_tool(
+        session_id,
+        "approval_prompt",
+        {"tool_name": tool_name, "input": tool_input},
+        workspace=workspace,
+    )
     if approval.get("behavior") != "allow":
         return f"Denied by user: {approval.get('message') or 'operation was not approved'}"
-    return None
+    updated_input = approval.get("updatedInput")
+    return updated_input if isinstance(updated_input, dict) else tool_input
 
 
 def nemo_api(
@@ -171,6 +180,7 @@ def nemo_api(
     action: str,
     params: str | None = None,
     studio_session_id: str | None = None,
+    workspace: str | None = None,
 ) -> str:
     """Call a NeMo Platform SDK method; writes require explicit Studio approval.
 
@@ -178,23 +188,37 @@ def nemo_api(
     ``inference.providers``, ``files.filesets``, ``evaluation.metric_jobs``,
     ``guardrail``, ``secrets``, ``models`` or ``datasets``. ``action`` is the
     SDK method name. ``params`` is an optional JSON object string containing
-    keyword arguments. Pass the Studio session id from the user context for
-    create, update, delete, submit, upload, cancel, or other mutating actions.
+    keyword arguments. Pass the active request workspace for every operation.
+    Pass the Studio session id from the user context for create, update, delete,
+    submit, upload, cancel, or other mutating actions.
     """
     try:
-        normalized_action = action.strip().lower()
-        if normalized_action not in _READ_ONLY_SDK_ACTIONS:
-            denial = _request_mutation_approval(
-                studio_session_id,
-                tool_name="nemo_api",
-                tool_input={"resource": resource, "action": action, "params": params},
-            )
-            if denial is not None:
-                return denial
+        if workspace is None or not workspace.strip():
+            return "Clarification required: which workspace should this operation use?"
         parsed_params = json.loads(params) if params else None
         if parsed_params is not None and not isinstance(parsed_params, dict):
             raise ValueError("params must decode to a JSON object")
-        result = _call_sdk_method(_resolve_resource(_get_client(), resource), action, parsed_params)
+        normalized_action = action.strip().lower()
+        if normalized_action not in _READ_ONLY_SDK_ACTIONS:
+            approved_input = _request_mutation_approval(
+                studio_session_id,
+                tool_name="nemo_api",
+                tool_input={"resource": resource, "action": action, "params": params, "workspace": workspace},
+                workspace=workspace,
+            )
+            if isinstance(approved_input, str):
+                return approved_input
+            resource = approved_input.get("resource", resource)
+            action = approved_input.get("action", action)
+            approved_params = approved_input.get("params", params)
+            if approved_params != params:
+                params = approved_params
+                parsed_params = json.loads(params) if params else None
+                if parsed_params is not None and not isinstance(parsed_params, dict):
+                    raise ValueError("params must decode to a JSON object")
+            workspace = approved_input.get("workspace", workspace)
+            normalized_action = action.strip().lower()
+        result = _call_sdk_method(_resolve_resource(_get_client(workspace), resource), normalized_action, parsed_params)
         return json.dumps(_serialize(result), indent=2, default=str)
     except Exception as exc:
         return f"Error: {type(exc).__name__}: {exc}"
@@ -345,10 +369,12 @@ def ask_user_question(studio_session_id: str, questions: str) -> str:
     return json.dumps(approval.get("updatedInput") or {})
 
 
-def check_status(service: str, job_name: str) -> str:
+def check_status(service: str, job_name: str, workspace: str | None = None) -> str:
     """Check an evaluation, customization, audit, or Data Designer job."""
     try:
-        svc = getattr(_get_client(), service)
+        if workspace is None or not workspace.strip():
+            return "Clarification required: which workspace should this status check use?"
+        svc = getattr(_get_client(workspace), service)
         last_error: Exception | None = None
         for sub_resource in ("metric_jobs", "benchmark_jobs", "jobs"):
             resource = getattr(svc, sub_resource, None)

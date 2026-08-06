@@ -5,8 +5,8 @@ description: NeMo Platform evaluator playbook covering metrics, synchronous metr
 Evaluator tasks
 
 - Typical flow for simple metric jobs:
-  1) Create workspace
-  2) Create/upload dataset fileset
+  1) Use the active request workspace; create a new workspace only when the task explicitly requires it
+  2) Create/upload the dataset fileset in the selected workspace
   3) Create metric (often `string-check`)
   4) Run synchronous metric evaluation with inline rows
   5) Create async metric job

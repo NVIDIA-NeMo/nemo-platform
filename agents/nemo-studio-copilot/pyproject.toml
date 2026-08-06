@@ -9,7 +9,7 @@ build-backend = "hatchling.build"
 name = "nemo-studio-copilot"
 version = "0.1.0"
 description = "NeMo Studio Copilot — a Fabric Deep Agents assistant for NeMo Platform tasks."
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "nemo-platform",
     "fastmcp>=3.2.0",
@@ -21,3 +21,12 @@ nemo-studio-copilot-mcp = "nemo_studio_copilot.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nemo_studio_copilot"]
+
+[tool.uv.sources]
+nemo-agents-plugin = { path = "../../plugins/nemo-agents", editable = true }
+
+[dependency-groups]
+test = [
+    "nemo-agents-plugin",
+    "pytest>=9.0.3",
+]
