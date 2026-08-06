@@ -6,11 +6,12 @@ dependencies = [
     "nemo-platform",
     "nemo-platform-plugin",
     "nemo-deployments-plugin",
+    "nemo-optimization-plugin",
     "nemo-agents-example-calculator",
     "nemo-agents-example-email-phishing",
+    "nemo-agents-example-email-security",
     "nvidia-nat-core>=1.8.0,<1.9",
     "nvidia-nat-langchain>=1.8.0,<1.9",
-    "nvidia-nat-config-optimizer>=1.8.0,<1.9",
     # ASTD-164: tight pins avoid pip ResolutionTooDeep via aioboto3/langchain-aws.
     "langchain-aws==1.1.0",
     "boto3>=1.40.46,<1.40.62",
@@ -20,11 +21,13 @@ dependencies = [
     # improvement/ subpackage — agent-improvement workflow (POC).
     "anthropic>=0.88.0",
     "rich>=13.7.1",
-    "nemo-fabric[claude,codex,deepagents,relay]>=0.1.0,<0.2.0",
+    # Floor stays at 0.1.0 so published wheels remain PyPI-resolvable (wheelcheck / consumers).
+    # Workspace uv.sources pins the mid-Aug main SHA (0.2.0 content) until PyPI ships 0.2.0.
+    "nemo-fabric[claude,codex,deepagents,relay]>=0.1.0,<0.3.0",
     # TODO(AIRCORE-952): Switch to the metapackage's `hermes-agent` extra once hermes-agent
     # relaxes its vulnerable exact dependency pins — that extra applies [harness], which
     # pins requests==2.33.0.
-    "nemo-fabric-adapters-hermes>=0.1.0,<0.2.0; python_version < '3.14'",
+    "nemo-fabric-adapters-hermes>=0.1.0,<0.3.0; python_version < '3.14'",
 ]
 version = "0.0.0"
 
@@ -42,10 +45,10 @@ agents = "nemo_agents_plugin.skills:skills_dir"
 
 [project.entry-points."nemo.jobs"]
 "agents.evaluate" = "nemo_agents_plugin.jobs.evaluate_agent:EvaluateAgentJob"
-"agents.optimize" = "nemo_agents_plugin.jobs.optimize_agent:OptimizeAgentJob"
 # POC: agent-improvement workflow
 "agents.evaluate-suite" = "nemo_agents_plugin.jobs.evaluate_suite:EvaluateSuiteJob"
 "agents.analyze" = "nemo_agents_plugin.jobs.analyze_batch:AnalyzeBatchJob"
+"agents.optimize" = "nemo_optimization.jobs.optimize:OptimizeJob"
 "agents.optimize-skills" = "nemo_agents_plugin.jobs.optimize_skills:OptimizeSkillsJob"
 
 [project.entry-points."nemo.controllers"]
@@ -64,10 +67,7 @@ nat_hermes_agent_adapter = "nat_hermes_agent_adapter.register"
 nat_openclaw_agent_adapter = "nat_openclaw_agent_adapter.register"
 
 [project.optional-dependencies]
-container = [
-    "jinja2>=3.1",
-    "python-on-whales>=0.60",
-]
+container = ["jinja2>=3.1", "python-on-whales>=0.60"]
 test = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -92,11 +92,15 @@ packages = [
 
 
 [tool.uv.sources]
+
+nemo-deployments-plugin = { workspace = true }
 nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
-nemo-deployments-plugin = { workspace = true }
+nemo-optimization-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
 nemo-agents-example-email-phishing = { workspace = true }
+nemo-agents-example-email-security = { workspace = true }
+nemo-agent-config-example-calculator = {workspace = true}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

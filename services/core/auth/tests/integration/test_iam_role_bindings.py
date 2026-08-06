@@ -5,6 +5,7 @@
 
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
 # Default workspace for tests
@@ -14,6 +15,7 @@ SERVICE_PRINCIPAL = "service:integration-test"
 
 # Platform mounts auth at /apis/auth
 IAM_ROLE_BINDINGS_PATH = "/apis/auth/v2/iam/role-bindings"
+WORKSPACES_PATH = "/apis/entities/v2/workspaces"
 
 
 class TestIAMRoleBindings:
@@ -85,6 +87,78 @@ class TestIAMRoleBindings:
         assert response.status_code == 200
         revoked = response.json()
         assert revoked["revoked_at"] is not None
+
+    @pytest.mark.parametrize(
+        ("workspace_name", "create_workspace"),
+        [
+            pytest.param("system", False, id="system"),
+            pytest.param("custom-ws", True, id="custom"),
+        ],
+    )
+    def test_role_binding_crud_lifecycle_non_default_workspace(
+        self,
+        http_client: TestClient,
+        workspace_name: str,
+        create_workspace: bool,
+    ):
+        """Test role binding CRUD by name outside the default workspace."""
+        headers = {"X-NMP-Principal-Id": SERVICE_PRINCIPAL}
+        test_principal = f"{workspace_name}-user-{uuid.uuid4().hex[:8]}@example.com"
+        test_workspace = workspace_name
+        test_role = "Viewer"
+
+        if create_workspace:
+            test_workspace = f"{workspace_name}-{uuid.uuid4().hex[:8]}"
+            response = http_client.post(
+                WORKSPACES_PATH,
+                json={"name": test_workspace, "description": "Role binding lookup regression test"},
+                headers=headers,
+            )
+            assert response.status_code in {200, 201}, f"Create workspace failed: {response.text}"
+
+        try:
+            binding_data = {
+                "principal": test_principal,
+                "workspace": test_workspace,
+                "role": test_role,
+            }
+            response = http_client.post(
+                "/apis/auth/v2/iam/role-bindings?wait_role_propagation=false",
+                json=binding_data,
+                headers=headers,
+            )
+            assert response.status_code == 200, f"Create failed: {response.text}"
+            created = response.json()
+            assert created["principal"] == test_principal
+            assert created["workspace"] == test_workspace
+            assert created["role"] == test_role
+            binding_id = created["id"]
+            binding_name = created["name"]
+
+            response = http_client.get(f"/apis/auth/v2/iam/role-bindings/{binding_name}", headers=headers)
+            assert response.status_code == 200, f"Get failed: {response.text}"
+            fetched = response.json()
+            assert fetched["id"] == binding_id
+            assert fetched["principal"] == test_principal
+            assert fetched["workspace"] == test_workspace
+
+            response = http_client.delete(
+                f"/apis/auth/v2/iam/role-bindings/{binding_name}?wait_role_propagation=false",
+                headers=headers,
+            )
+            assert response.status_code == 200, f"Delete failed: {response.text}"
+            deleted = response.json()
+            assert deleted["id"] == binding_id
+
+            response = http_client.get(f"/apis/auth/v2/iam/role-bindings/{binding_name}", headers=headers)
+            assert response.status_code == 200
+            revoked = response.json()
+            assert revoked["workspace"] == test_workspace
+            assert revoked["revoked_at"] is not None
+        finally:
+            if create_workspace:
+                response = http_client.delete(f"{WORKSPACES_PATH}/{test_workspace}", headers=headers)
+                assert 200 <= response.status_code < 300, f"Delete workspace failed: {response.text}"
 
     def test_create_duplicate_role_binding_fails(self, http_client: TestClient):
         """Test that creating a duplicate active role binding returns 409."""

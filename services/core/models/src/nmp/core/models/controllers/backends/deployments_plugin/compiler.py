@@ -8,6 +8,7 @@ mapping of ``k8s_nim_operator_config`` → plugin ``K8sDeploymentConfig``.
 """
 
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from nemo_deployments_plugin.entities import (
     Container,
@@ -24,7 +25,11 @@ from nemo_deployments_plugin.entities import (
     VolumeMount,
 )
 from nemo_deployments_plugin.secrets import platform_ngc_secret_ref
-from nemo_platform_plugin.config import get_platform_config
+from nemo_platform_plugin.config import (
+    LOOPBACK_ADDRESSES,
+    determine_loopback_override,
+    get_platform_config,
+)
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
@@ -147,6 +152,30 @@ def _apply_gpu_resources(container: Container, gpu: int) -> None:
     )
 
 
+def _container_reachable_platform_base_url(*, runtime: Runtime) -> str:
+    """Rewrite ``platform.base_url`` so a Docker container can reach the host API.
+
+    Mirrors jobs (``get_job_runtime_shared_envvars`` / ``_replace_loopback_address``)
+    and the deployments auth-proxy (``_upstream_base_url``): when the configured
+    base URL is a loopback host, substitute ``platform.loopback_address``, then
+    ``determine_loopback_override()``, then ``host.docker.internal`` (agents docker
+    path). Non-loopback URLs and non-Docker runtimes are returned unchanged.
+    """
+    platform = get_platform_config()
+    base_url = platform.base_url.rstrip("/")
+    if runtime != Runtime.DOCKER:
+        return base_url
+
+    parts = urlsplit(base_url)
+    hostname = (parts.hostname or "").lower()
+    if hostname not in LOOPBACK_ADDRESSES:
+        return base_url
+
+    override = platform.loopback_address or determine_loopback_override() or "host.docker.internal"
+    netloc = override if parts.port is None else f"{override}:{parts.port}"
+    return parts._replace(netloc=netloc).geturl()
+
+
 def _lora_sidecar(
     resolved: ResolvedPluginDeployment,
     *,
@@ -157,19 +186,18 @@ def _lora_sidecar(
 ) -> Container:
     """Build the adapters sidecar with the same env contract as existing backends.
 
-    ``NMP_BASE_URL`` must point at the platform API (not the sidecar's own listen
-    address). ``nemo services run --sidecars adapters`` binds localhost:8080 inside
-    the sidecar, so an unset base URL makes the SDK call itself and 404.
+    ``NMP_BASE_URL`` must reach the host platform API from inside the container
+    netns. Loopback ``platform.base_url`` values are rewritten for Docker the same
+    way jobs rewrite shared env URLs.
     """
     entity_workspace = resolved.model_entity.workspace if resolved.model_entity else resolved.deployment.workspace
     entity_name = resolved.model_entity.name if resolved.model_entity else resolved.deployment.name
-    platform = get_platform_config()
     sidecar_env = {
         "NIM_PEFT_SOURCE": _LORA_MOUNT,
         "NIM_PEFT_REFRESH_INTERVAL": str(config.peft_refresh_interval),
         "NMP_MODEL_ENTITY_WORKSPACE": entity_workspace,
         "NMP_MODEL_ENTITY_NAME": entity_name,
-        "NMP_BASE_URL": platform.base_url,
+        "NMP_BASE_URL": _container_reachable_platform_base_url(runtime=resolved.runtime),
         "XDG_STATE_HOME": _LORA_SIDECAR_XDG_HOME,
         "XDG_DATA_HOME": _LORA_SIDECAR_XDG_HOME,
     }

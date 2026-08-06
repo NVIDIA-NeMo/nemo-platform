@@ -54,7 +54,10 @@ class AnalyzeSpec(BaseModel):
     )
     insights_output: str | None = Field(
         default=None,
-        description="Optional local JSON output path for Insight writes.",
+        description=(
+            "Optional local YAML path mirroring the Insights the platform stored. "
+            "Container-local unless it points at mounted storage."
+        ),
     )
     since: datetime | None = Field(
         default=None,

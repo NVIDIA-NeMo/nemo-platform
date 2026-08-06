@@ -4,7 +4,7 @@
 import { ModelChatPanel } from '@studio/components/ModelChatPanel';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 // Capture the props that ModelChat receives so we can assert on workspace/model
 // routing without spinning up a real chat flow.

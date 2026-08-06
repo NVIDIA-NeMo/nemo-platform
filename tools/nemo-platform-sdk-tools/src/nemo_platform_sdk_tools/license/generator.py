@@ -16,7 +16,7 @@ import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 from urllib.parse import urlparse
 
 import requests
@@ -296,14 +296,11 @@ def run_osv_scanner(lockfile: Path, output_file: Path, cwd: Optional[Path] = Non
         raise LicenseGenerationError("osv-scanner command not found")
 
 
-def _get_requirements_with_overrides(
-    requirements_file: Path, overrides: dict[str, str], local_packages: set[str]
-) -> list[dict[str, str]]:
-    """Return exported requirements that can be licensed from reviewed overrides."""
+def _iter_exported_requirements(requirements_file: Path) -> Iterator[Requirement]:
+    """Yield parsed top-level entries from a uv-exported requirements file."""
     if not requirements_file.exists():
-        return []
+        return
 
-    packages = []
     with open(requirements_file, encoding="utf-8") as f:
         for line in f:
             stripped = line.strip()
@@ -319,21 +316,35 @@ def _get_requirements_with_overrides(
                 logger.warning("Could not parse exported requirement: %s", requirement_text)
                 continue
 
-            name = requirement.name
-            if normalize_package_name(name) in local_packages:
-                continue
+            yield requirement
 
-            version = ""
-            for specifier in requirement.specifier:
-                if specifier.operator == "==":
-                    version = specifier.version
-                    break
 
-            override_key = get_override_key_for_package(name, version)
-            if override_key not in overrides:
-                continue
+def _get_exported_requirement_names(requirements_file: Path) -> set[str]:
+    """Return normalized package names present in an exported requirements file."""
+    return {normalize_package_name(requirement.name) for requirement in _iter_exported_requirements(requirements_file)}
 
-            packages.append({"name": name, "version": version, "license": overrides[override_key].upper()})
+
+def _get_requirements_with_overrides(
+    requirements_file: Path, overrides: dict[str, str], local_packages: set[str]
+) -> list[dict[str, str]]:
+    """Return exported requirements that can be licensed from reviewed overrides."""
+    packages = []
+    for requirement in _iter_exported_requirements(requirements_file):
+        name = requirement.name
+        if normalize_package_name(name) in local_packages:
+            continue
+
+        version = ""
+        for specifier in requirement.specifier:
+            if specifier.operator == "==":
+                version = specifier.version
+                break
+
+        override_key = get_override_key_for_package(name, version)
+        if override_key not in overrides:
+            continue
+
+        packages.append({"name": name, "version": version, "license": overrides[override_key].upper()})
 
     return packages
 
@@ -383,6 +394,9 @@ def format_licenses(
             # Use new formatter
             formatter = get_formatter(format_type)
 
+            requirements_file = osv_json.parent / "requirements-main.txt"
+            exported_requirement_names = _get_exported_requirement_names(requirements_file)
+
             # Extract package info from OSV data
             packages = []
             if "results" in data and len(data["results"]) > 0:
@@ -391,9 +405,15 @@ def format_licenses(
                     name = pkg.get("name", "")
                     version = pkg.get("version", "")
                     licenses = pkg_data.get("licenses", [])
+                    normalized_name = normalize_package_name(name)
 
                     # Skip local packages
-                    if normalize_package_name(name) in local_packages:
+                    if normalized_name in local_packages:
+                        continue
+
+                    # OSV can include conditional transitive dependencies that
+                    # uv did not export for this environment.
+                    if exported_requirement_names and normalized_name not in exported_requirement_names:
                         continue
 
                     # Check overrides (use base name so +cu129 variants match)
@@ -411,7 +431,6 @@ def format_licenses(
             # OSV can emit a partial package list when the service is degraded.
             # Keep output stable for reviewed licenses by filling only packages
             # that are present in the exported requirements and overrides.yaml.
-            requirements_file = osv_json.parent / "requirements-main.txt"
             packages.extend(_get_requirements_with_overrides(requirements_file, overrides, local_packages))
 
             # Deduplicate by name (keep first occurrence)

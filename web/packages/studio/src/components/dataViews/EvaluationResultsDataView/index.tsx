@@ -24,7 +24,7 @@ import { getEvaluationResultDetailsRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { ListChecks } from 'lucide-react';
 import { ComponentProps } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const STATUS_OPTIONS_WITH_ALL = [{ value: '', label: 'All' }, ...STATUS_FILTER_OPTIONS];
 

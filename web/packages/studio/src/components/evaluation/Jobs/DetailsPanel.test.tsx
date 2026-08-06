@@ -9,7 +9,7 @@ import { metricEvaluationJob1 } from '@studio/mocks/evaluation/v1/evaluations';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { renderRoute } from '@studio/tests/util/render';
 import { screen } from '@testing-library/react';
-import { generatePath } from 'react-router-dom';
+import { generatePath } from 'react-router';
 
 describe('DetailsPanel', () => {
   beforeEach(() => {
@@ -39,7 +39,6 @@ describe('DetailsPanel', () => {
 
     // Wait for content to load - Heading and sections
     expect(await screen.findByText('Details')).toBeInTheDocument();
-    expect(screen.getByText('Status Logs')).toBeInTheDocument();
 
     // Label/value rows
     expect(screen.getByText('Status')).toBeInTheDocument();

@@ -121,13 +121,13 @@ describe('comparison score helpers', () => {
         name: 'baseline-run',
         workspace: 'default',
         created_at: '2026-01-01T00:00:00Z',
-        spec: { benchmark: { eval_config_fileset: 'support-eval' } },
+        spec: { labels: { eval_config_fileset: 'support-eval' } },
       },
       {
         id: 'two',
         name: 'other-run',
         workspace: 'default',
-        spec: { benchmark: { eval_config_fileset: 'other-eval' } },
+        spec: { labels: { eval_config_fileset: 'other-eval' } },
       },
     ] as unknown as AgentEvaluateJob[];
 

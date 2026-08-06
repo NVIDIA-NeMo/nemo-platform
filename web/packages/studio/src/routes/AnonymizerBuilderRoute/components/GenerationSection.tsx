@@ -6,6 +6,7 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { StrategyParamsSection } from '@studio/routes/AnonymizerBuilderRoute/components/StrategyParamsSection';
 import {
+  MAX_PREVIEW_ROWS,
   STRATEGY_DESCRIPTIONS,
   STRATEGY_OPTIONS,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
@@ -31,6 +32,7 @@ export const GenerationSection: FC = () => {
       <ControlledTextInput
         type="number"
         min={1}
+        max={MAX_PREVIEW_ROWS}
         useControllerProps={{ name: 'previewRows', control }}
         formFieldProps={{
           slotLabel: 'Preview Rows',

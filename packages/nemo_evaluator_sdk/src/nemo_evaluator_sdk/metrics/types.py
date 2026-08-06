@@ -28,6 +28,7 @@ from nemo_evaluator_sdk.metrics.remote import NemoAgentToolkitRemoteMetric, Remo
 from nemo_evaluator_sdk.metrics.rouge import ROUGEMetric
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
+from nemo_evaluator_sdk.metrics.tunable_rag_evaluator import TunableRagEvaluatorMetric
 from pydantic import Field
 
 MetricVariants: TypeAlias = (
@@ -41,6 +42,7 @@ MetricVariants: TypeAlias = (
     | ROUGEMetric
     | StringCheckMetric
     | ToolCallingMetric
+    | TunableRagEvaluatorMetric
     | TopicAdherenceMetric
     | ToolCallAccuracyMetric
     | AgentGoalAccuracyMetric

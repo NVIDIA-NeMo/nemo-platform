@@ -10,7 +10,7 @@ This exercises the whole loop against *real* services and *real* LLM APIs:
 3. Clear all spans for the test project.
 4. Run the research agent on three questions (concurrently) so it logs
    traces to Intake.
-5. Run the analyst agent (``nemo insights analyze``).
+5. Run the analyst agent (``nemo agents analyst run``).
 6. Assert the analyst created at least one Insight.
 
 Required setup (the test is **opt-in** because it costs real tokens and needs
@@ -20,10 +20,9 @@ Docker):
 - ``NVIDIA_API_KEY`` and ``TAVILY_API_KEY`` — for the research agent's NIM
   model + Tavily search. Read from the example's ``.env`` (or the shell).
 - ``INFERENCE_API_KEY`` — the ``sk-...`` NVIDIA Inference Gateway virtual key
-  for the analyst's Claude Opus (served over the Anthropic wire format). The
-  analyst's LLM ``base_url`` is pinned in
-  :mod:`nemo_insights_plugin.analyst.agent`, so no base-url override is
-  required.
+  for the analyst's Claude Opus. Nooa routes it through LiteLLM using the
+  gateway's OpenAI-compatible API. The model and base URL are pinned in
+  :mod:`nemo_insights_plugin.analyst.model_config`, so no override is required.
 - Docker — required to auto-start ClickHouse if one isn't already at
   ``NMP_INTAKE_CLICKHOUSE_URL`` (default ``http://localhost:8123``). A missing
   Docker daemon fails the test.
@@ -439,8 +438,9 @@ def test_analyst_creates_insight_end_to_end(platform_server: str) -> None:  # no
     result = subprocess.run(
         _cli_cmd(
             "nemo",
-            "insights",
-            "analyze",
+            "agents",
+            "analyst",
+            "run",
             "--agent",
             TEST_AGENT,
             "--workspace",
@@ -463,7 +463,7 @@ def test_analyst_creates_insight_end_to_end(platform_server: str) -> None:  # no
         f"--- analyst stdout ---\n{result.stdout}\n--- analyst stderr ---\n{result.stderr}"
     )
 
-    # 6. The analyst's own Pydantic AI spans should be queryable in Intake.
+    # 6. The analyst's own Nooa spans should be queryable in Intake.
     analyst_spans = _wait_for_analyst_spans(SPAN_VISIBLE_TIMEOUT_S)
     assert analyst_spans, (
         f"expected Intake spans for {ANALYST_OBSERVABILITY_AGENT_NAME}; "

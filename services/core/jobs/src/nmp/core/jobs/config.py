@@ -70,11 +70,13 @@ class JobsServiceConfig(create_service_config_class("jobs")):  # type: ignore
 
 # Module-level singleton instances
 config = get_service_config(JobsServiceConfig)
+platform_runtime = get_platform_config().runtime
 profiles = merge_executor_profiles(
     config.executors,
     get_default_executor_profiles_for_runtime(
-        runtime=get_platform_config().runtime,
+        runtime=platform_runtime,
         defaults=config.executor_defaults,
         enable_subprocess_executor=config.resolved_enable_subprocess_executor(),
     ),
+    runtime=platform_runtime,
 )

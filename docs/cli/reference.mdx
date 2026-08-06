@@ -30,6 +30,7 @@ nemo [GLOBAL OPTIONS] COMMAND [ARGS]...
 * `--timestamp-format <CHOICE>`: Timestamp format for table/markdown/csv output [possible values: relative, iso8601]
 * `--verbose, -v`: Enable verbose messaging. This only impacts logs that are visible, it doesn't change any data outputs.
 * `--agent-mode, -A`: Enable agent-friendly output mode with extra context for coding agents.
+* `--no-telemetry`: Disable anonymous usage telemetry for this invocation.
 
 **Help:**
 
@@ -109,7 +110,7 @@ Manage authentication for NeMo Platform.
 **Usage:**
 
 ```shell
-nemo auth [OPTIONS] COMMAND [ARGS]...
+nemo auth [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**
@@ -296,7 +297,7 @@ Run platform services locally.
 **Usage:**
 
 ```shell
-nemo services [OPTIONS] COMMAND [ARGS]...
+nemo services [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**
@@ -606,7 +607,7 @@ nemo skills install --agent claude --skill inference
 **Usage:**
 
 ```shell
-nemo skills [OPTIONS] COMMAND [ARGS]...
+nemo skills [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**
@@ -953,7 +954,7 @@ nemo agent commands
 **Usage:**
 
 ```shell
-nemo agent [OPTIONS] COMMAND [ARGS]...
+nemo agent [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**
@@ -1026,7 +1027,7 @@ nemo plugins list
 **Usage:**
 
 ```shell
-nemo plugins [OPTIONS] COMMAND [ARGS]...
+nemo plugins [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**
@@ -1362,7 +1363,7 @@ nemo files filesets list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**
@@ -3184,7 +3185,7 @@ nemo inference prompts list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**
@@ -4689,7 +4690,7 @@ nemo models list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--verbose`: Whether to include full spec details
 * `--all-pages`: Fetch all pages
 
@@ -5338,7 +5339,7 @@ nemo workspaces list [OPTIONS]
 - Object (JSON): `{"name":{"$like":"value"}}` with operators `$eq`, `$like`, `$lt`, `$lte`, `$gt`, `$gte`, `$in`, `$nin`, `$and`, `$or`, `$not`
 * `--page <INTEGER>`: Page number
 * `--page-size <INTEGER>`: Items per page
-* `--sort <CHOICE>`: Sort field [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: Sort field [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--all-pages`: Fetch all pages
 
 **Help:**
@@ -5815,7 +5816,7 @@ nemo guardrail configs list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, name, -name]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**
@@ -5906,6 +5907,1133 @@ nemo guardrail configs update [OPTIONS] NAME
 
 * `--input-file`: Path to JSON file (use '-' for stdin)
 * `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+### nemo experiments
+
+Manage experiments.
+
+**Usage:**
+
+```shell
+nemo experiments [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create Experiment
+* `delete`: Delete Experiment
+* `list`: List Experiments
+* `get`: Get Experiment
+* `update`: Update Experiment
+
+#### nemo experiments create
+
+Create Experiment
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo experiments create <name> --input-file config.json
+nemo experiments create <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo experiments create <name> --input-file -
+nemo experiments create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo experiments create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Workspace-unique experiment name.
+
+**Options:**
+
+* `--workspace`
+* `--default-sort`: Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.
+* `--description`: Human-readable purpose of the experiment.
+* `--insight-id`: Reference to an external insight that seeded this experiment, if any.
+* `--metadata`: Free-form producer metadata for the experiment. (JSON string)
+* `--pareto`: Default X/Y metrics for a group's cost-vs-accuracy Pareto view. Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)
+* `--summary`: Human- or agent-authored summary of the experiment's findings.
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo experiments delete
+
+Delete Experiment
+
+**Usage:**
+
+```shell
+nemo experiments delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo experiments list
+
+List Experiments
+
+**Usage:**
+
+```shell
+nemo experiments list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: Sort field; prefix with '-' for descending. [possible values: -created_at, created_at, -updated_at, updated_at, -name, name]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  metadata: dict[str, str]
+
+Filter experiments by name, insight_id, is_deleted, or a metadata key/value (filter[metadata.\<key>]=\<value>). Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones.
+* `--filter.insight-id`
+* `--filter.is-deleted`
+* `--filter.name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo experiments get
+
+Get Experiment
+
+**Usage:**
+
+```shell
+nemo experiments get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo experiments update
+
+Update Experiment
+
+**Required fields:** body_name
+
+**Examples:**
+
+```shell
+nemo experiments update <path_name> --input-file config.json
+nemo experiments update <path_name> --input-data '{"body_name": "value"}'
+echo '{"json": "data"}' | nemo experiments update <path_name> --input-file -
+nemo experiments update <path_name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo experiments update [OPTIONS] PATH_NAME
+```
+
+**Arguments:**
+
+* `<PATH_NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--body-name`: Workspace-unique experiment name.
+* `--default-sort`: Default sort for this experiment's evaluations list, as a `sort`-param string: a comma-separated, ordered list of fields where the first is the primary sort and the rest break ties (leading '-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as the list `sort` param.
+* `--description`: Human-readable purpose of the experiment.
+* `--insight-id`: Reference to an external insight that seeded this experiment, if any.
+* `--metadata`: Free-form producer metadata for the experiment. (JSON string)
+* `--pareto`: Default X/Y metrics for a group's cost-vs-accuracy Pareto view. Metric ids use the same vocabulary as the evaluations list sort/filter fields — `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs latency (y): both exist for every group, so the chart always has something to render before anyone customizes it. (JSON string)
+* `--summary`: Human- or agent-authored summary of the experiment's findings.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+### nemo intake
+
+Intake operations.
+
+**Usage:**
+
+```shell
+nemo intake [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `annotations`: Manage annotations
+* `evaluator-results`: Manage evaluator_results
+* `ingest`: Ingest operations
+* `sessions`: Manage sessions
+* `spans`: Manage spans
+* `traces`: Manage traces
+
+#### nemo intake annotations
+
+Manage annotations
+
+**Usage:**
+
+```shell
+nemo intake annotations [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create annotations.
+* `delete`: Delete Annotation
+* `list`: List Annotations
+* `get`: Get Annotation
+
+##### nemo intake annotations create
+
+Create annotations.
+
+**Required fields:** kind, session_id
+
+**Examples:**
+
+```shell
+nemo intake annotations create <name> --input-file config.json
+nemo intake annotations create <name> --input-data '{"kind": "value", "session_id": "value"}'
+echo '{"json": "data"}' | nemo intake annotations create <name> --input-file -
+nemo intake annotations create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo intake annotations create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--kind <CHOICE>`: (required) [possible values: feedback, note, metadata, label]
+* `--session-id`: (required)
+* `--value`
+* `--span-id`
+* `--text`
+* `--metadata`: JSON string
+* `--value-type <CHOICE>`: [possible values: text, numeric]
+* `--exist-ok`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo intake annotations delete
+
+Delete Annotation
+
+**Usage:**
+
+```shell
+nemo intake annotations delete [OPTIONS] ANNOTATION_ID
+```
+
+**Arguments:**
+
+* `<ANNOTATION_ID>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo intake annotations list
+
+List Annotations
+
+**Usage:**
+
+```shell
+nemo intake annotations list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: [possible values: created_at, -created_at]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: \{gte: str, lte: str}
+  value_numeric: \{gte: float, lte: float}
+
+Filter annotations by span_id, session_id, kind, name, created_by, and created_at range.
+* `--filter.created-by`
+* `--filter.kind`
+* `--filter.name`
+* `--filter.session-id`
+* `--filter.span-id`
+* `--filter.value-text`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo intake annotations get
+
+Get Annotation
+
+**Usage:**
+
+```shell
+nemo intake annotations get [OPTIONS] ANNOTATION_ID
+```
+
+**Arguments:**
+
+* `<ANNOTATION_ID>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo intake evaluator-results
+
+Manage evaluator_results
+
+**Usage:**
+
+```shell
+nemo intake evaluator-results [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create Evaluator Result
+* `list`: List Evaluator Results
+* `get`: Get Evaluator Result
+
+##### nemo intake evaluator-results create
+
+Create Evaluator Result
+
+**Required fields:** data_type, name, session_id, span_id
+
+**Examples:**
+
+```shell
+nemo intake evaluator-results create <name> --input-file config.json
+nemo intake evaluator-results create <name> --input-data '{"data_type": "value", "name": "value", "session_id": "value", "span_id": "value"}'
+echo '{"json": "data"}' | nemo intake evaluator-results create <name> --input-file -
+nemo intake evaluator-results create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo intake evaluator-results create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Evaluator / metric identity (e.g. 'faithfulness/v1').
+
+**Options:**
+
+* `--workspace`
+* `--data-type <CHOICE>`: Discriminator for which of value / string_value carries the payload.  [possible values: NUMERIC, CATEGORICAL, BOOLEAN, TEXT]
+* `--session-id`: Session id the target span belongs to. Denormalized so session-scoped reads stay fast.
+* `--span-id`: Target span id. Not validated against existing spans (loose target policy).
+* `--comment`: Free-text rationale or explanation.
+* `--string-value`: String value. Required when data_type is CATEGORICAL or TEXT.
+* `--value <FLOAT>`: Numeric value. Required when data_type is NUMERIC or BOOLEAN (0|1).
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo intake evaluator-results list
+
+List Evaluator Results
+
+**Usage:**
+
+```shell
+nemo intake evaluator-results list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: [possible values: created_at, -created_at, value, -value]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: \{gte: str, lte: str}
+  value: \{gte: float, lte: float}
+
+Filter evaluator results by span_id, session_id, name, data_type, created_by, value range, and created_at range.
+* `--filter.created-by`
+* `--filter.data-type`
+* `--filter.name`
+* `--filter.session-id`
+* `--filter.span-id`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo intake evaluator-results get
+
+Get Evaluator Result
+
+**Usage:**
+
+```shell
+nemo intake evaluator-results get [OPTIONS] EVALUATOR_RESULT_ID
+```
+
+**Arguments:**
+
+* `<EVALUATOR_RESULT_ID>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo intake ingest
+
+Ingest operations
+
+**Usage:**
+
+```shell
+nemo intake ingest [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `atif`: Manage atif
+* `chat-completions`: Manage chat_completions
+* `otlp`: Otlp operations
+
+##### nemo intake ingest atif
+
+Manage atif
+
+**Usage:**
+
+```shell
+nemo intake ingest atif [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Ingest Atif
+
+###### nemo intake ingest atif create
+
+Ingest Atif
+
+**Required fields:** agent, schema_version
+
+**Examples:**
+
+```shell
+nemo intake ingest atif create --input-file config.json
+nemo intake ingest atif create --input-data '{"agent": {}, "schema_version": "value"}'
+echo '{"json": "data"}' | nemo intake ingest atif create --input-file -
+nemo intake ingest atif create --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo intake ingest atif create [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--agent`: JSON string
+* `--schema-version <CHOICE>`: (required) [possible values: ATIF-v1.0, ATIF-v1.1, ATIF-v1.2, ATIF-v1.3, ATIF-v1.4, ATIF-v1.5, ATIF-v1.6, ATIF-v1.7]
+* `--continued-trajectory-ref`
+* `--evaluation-context`: Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)
+* `--extra`: JSON string
+* `--final-metrics`: JSON string
+* `--notes`
+* `--session-id`
+* `--steps`: JSON string
+* `--subagent-trajectories`: JSON string
+* `--trajectory-id`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo intake ingest chat-completions
+
+Manage chat_completions
+
+**Usage:**
+
+```shell
+nemo intake ingest chat-completions [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Ingest Chat Completion
+
+###### nemo intake ingest chat-completions create
+
+Ingest Chat Completion
+
+**Required fields:** request, response
+
+**Examples:**
+
+```shell
+nemo intake ingest chat-completions create --input-file config.json
+nemo intake ingest chat-completions create --input-data '{"request": {}, "response": {}}'
+echo '{"json": "data"}' | nemo intake ingest chat-completions create --input-file -
+nemo intake ingest chat-completions create --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo intake ingest chat-completions create [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--request`: Flexible captured chat-completions request. (JSON string)
+* `--response`: Flexible captured chat-completions response. (JSON string)
+* `--cost-details`: Additional estimated cost breakdown fields in USD. (JSON string)
+* `--cost-input-usd <FLOAT>`: Estimated input-token cost of this model call in USD.
+* `--cost-output-usd <FLOAT>`: Estimated output-token cost of this model call in USD.
+* `--cost-usd <FLOAT>`: Total estimated cost of this model call in USD. This matches ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.
+* `--evaluation-context`: Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)
+* `--provider`
+* `--session-id`: Groups related chat-completions calls without forcing them into the same trace.
+* `--trace-id`: Opt into joining an existing trace built via OTel or ATIF. This is not a grouping mechanism for chat-completions calls; use session_id to group related calls.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo intake ingest otlp
+
+Otlp operations
+
+**Usage:**
+
+```shell
+nemo intake ingest otlp [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `v1`: V1 operations
+
+###### nemo intake ingest otlp v1
+
+V1 operations
+
+**Usage:**
+
+```shell
+nemo intake ingest otlp v1 [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `traces`: Manage traces
+
+**nemo intake ingest otlp v1 traces**
+
+Manage traces
+
+**Usage:**
+
+```shell
+nemo intake ingest otlp v1 traces [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Ingest Otlp Traces
+
+**nemo intake ingest otlp v1 traces create**
+
+Ingest Otlp Traces
+
+**Examples:**
+
+```shell
+nemo intake ingest otlp v1 traces create --input-file config.json
+nemo intake ingest otlp v1 traces create --input-data '{"field": "value"}'
+echo '{"json": "data"}' | nemo intake ingest otlp v1 traces create --input-file -
+nemo intake ingest otlp v1 traces create --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo intake ingest otlp v1 traces create [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo intake sessions
+
+Manage sessions
+
+**Usage:**
+
+```shell
+nemo intake sessions [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `get`: Get Session
+
+##### nemo intake sessions get
+
+Get Session
+
+**Usage:**
+
+```shell
+nemo intake sessions get [OPTIONS] ID
+```
+
+**Arguments:**
+
+* `<ID>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo intake spans
+
+Manage spans
+
+**Usage:**
+
+```shell
+nemo intake spans [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List Spans
+* `get`: Get Span
+* `evaluator-results`: Manage evaluator_results
+* `groups`: Manage groups
+
+##### nemo intake spans list
+
+List Spans
+
+**Usage:**
+
+```shell
+nemo intake spans list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--mode <CHOICE>`: Response mode. summary omits payloads and raw attributes; preview includes input and output truncated to 300 characters; detailed returns full payloads and raw attributes. [possible values: summary, preview, detailed]
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: [possible values: started_at, -started_at]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  started_at: \{gte: str, lte: str}
+
+Filter spans by session_id, trace_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.
+* `--filter.agent-id`
+* `--filter.agent-name`
+* `--filter.dataset-id`
+* `--filter.dataset-name`
+* `--filter.dataset-version`
+* `--filter.evaluation-id`
+* `--filter.kind`
+* `--filter.model`
+* `--filter.parent-span-id`
+* `--filter.project`
+* `--filter.prompt-name`
+* `--filter.prompt-version`
+* `--filter.provider`
+* `--filter.session-id`
+* `--filter.source`
+* `--filter.status`
+* `--filter.test-case-id`
+* `--filter.tool-name`
+* `--filter.trace-id`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo intake spans get
+
+Get Span
+
+**Usage:**
+
+```shell
+nemo intake spans get [OPTIONS] SPAN_ID
+```
+
+**Arguments:**
+
+* `<SPAN_ID>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo intake spans evaluator-results
+
+Manage evaluator_results
+
+**Usage:**
+
+```shell
+nemo intake spans evaluator-results [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List Evaluator Results For Span
+
+###### nemo intake spans evaluator-results list
+
+List Evaluator Results For Span
+
+**Usage:**
+
+```shell
+nemo intake spans evaluator-results list [OPTIONS] SPAN_ID
+```
+
+**Arguments:**
+
+* `<SPAN_ID>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo intake spans groups
+
+Manage groups
+
+**Usage:**
+
+```shell
+nemo intake spans groups [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List Span Groups
+
+###### nemo intake spans groups list
+
+List Span Groups
+
+**Usage:**
+
+```shell
+nemo intake spans groups list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--by`: Comma-separated span fields to group by, e.g.
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: [possible values: span_count, -span_count]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  started_at: \{gte: str, lte: str}
+
+Filter spans by the same fields as the span list endpoint, then group matching spans by the comma-separated fields in the by query parameter.
+* `--filter.agent-id`
+* `--filter.agent-name`
+* `--filter.dataset-id`
+* `--filter.dataset-name`
+* `--filter.dataset-version`
+* `--filter.evaluation-id`
+* `--filter.kind`
+* `--filter.model`
+* `--filter.parent-span-id`
+* `--filter.project`
+* `--filter.prompt-name`
+* `--filter.prompt-version`
+* `--filter.provider`
+* `--filter.session-id`
+* `--filter.source`
+* `--filter.status`
+* `--filter.test-case-id`
+* `--filter.tool-name`
+* `--filter.trace-id`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo intake traces
+
+Manage traces
+
+**Usage:**
+
+```shell
+nemo intake traces [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List Traces
+* `get`: Get Trace
+
+##### nemo intake traces list
+
+List Traces
+
+**Usage:**
+
+```shell
+nemo intake traces list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--mode <CHOICE>`: Response mode. summary returns root-span fields without payloads or rollups; preview adds token, cost, and span-count rollups plus 300-character input/output previews; detailed returns rollups and full payloads. [possible values: summary, preview, detailed]
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: [possible values: started_at, -started_at]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  started_at: \{gte: str, lte: str}
+
+Filter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_id, and test_case_id.
+* `--filter.id`
+* `--filter.evaluation-id`
+* `--filter.session-id`
+* `--filter.status`
+* `--filter.test-case-id`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo intake traces get
+
+Get Trace
+
+**Usage:**
+
+```shell
+nemo intake traces get [OPTIONS] ID
+```
+
+**Arguments:**
+
+* `<ID>`
+
+**Options:**
+
+* `--workspace`
+* `--mode <CHOICE>`: Response mode. [possible values: summary, preview, detailed]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
 
 **Output Options:**
 

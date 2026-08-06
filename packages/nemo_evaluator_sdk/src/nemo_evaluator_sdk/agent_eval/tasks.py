@@ -229,8 +229,10 @@ class AgentEvalRunConfig(BaseModel):
     )
     parallelism: int = Field(default=4, ge=1, description="Maximum number of tasks scored concurrently.")
     write_dashboard: bool = Field(default=True, description="Whether to render an HTML dashboard for the run.")
-    benchmark: dict[str, Any] = Field(
+    labels: dict[str, str] = Field(
         default_factory=dict,
-        description="Benchmark metadata recorded alongside the run.",
+        description="Caller-supplied tags recorded on the run's metadata (e.g. benchmark, mode, backend, "
+        "scenario). Free-form by design and never derived: nothing is inferred from task metadata, so a "
+        "label is present only if the caller set it.",
     )
     fail_fast: bool = Field(default=False, description="Stop the run on the first scoring failure when True.")

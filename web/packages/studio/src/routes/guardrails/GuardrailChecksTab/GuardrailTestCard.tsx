@@ -22,6 +22,8 @@ interface GuardrailTestCardProps {
   check: GuardrailCheckEntity;
   index: number;
   workspace: string;
+  /** Registers this card's flusher with the editor; called with `null` on unmount. */
+  registerFlush: (name: string, flush: (() => Promise<GuardrailCheckEntity>) | null) => void;
 }
 
 type ViewMode = 'chat' | 'json';
@@ -30,6 +32,11 @@ const emptyMessageRow = (): GuardrailMessageFormRow => ({
   role: 'user',
   content: '',
 });
+
+/** Whether the user has typed since a save was dispatched. */
+const isSameRows = (a: GuardrailMessageFormRow[], b: GuardrailMessageFormRow[]): boolean =>
+  a.length === b.length &&
+  a.every((row, i) => row.role === b[i]?.role && row.content === b[i]?.content);
 
 /** Server messages -> RHF rows. Non-string content is coerced to '' (the editor is text-only). */
 const toFormRows = (messages: GuardrailCheckMessage[]): GuardrailMessageFormRow[] => {
@@ -44,13 +51,20 @@ const toFormRows = (messages: GuardrailCheckMessage[]): GuardrailMessageFormRow[
 const toCheckMessages = (rows: GuardrailMessageFormRow[]): GuardrailCheckMessage[] =>
   rows.map(({ role, content }) => ({ role, content }) as GuardrailCheckMessage);
 
-export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({ check, index, workspace }) => {
+export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({
+  check,
+  index,
+  workspace,
+  registerFlush,
+}) => {
   const toast = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>('chat');
 
   const form = useForm<GuardrailCheckFormValues>({
     defaultValues: { messages: toFormRows(check.data.messages) },
   });
+  // Read during render so RHF's formState proxy subscribes to dirty transitions.
+  const { isDirty } = form.formState;
   const { fields, append, insert, move, remove } = useFieldArray({
     control: form.control,
     name: 'messages',
@@ -71,20 +85,51 @@ export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({ check, index, wo
     },
   });
 
+  // "Run Tests" awaits this so a run never executes against an already-edited-past snapshot.
+  const pendingSaveRef = useRef<Promise<GuardrailCheckEntity> | null>(null);
+
   const persist = useCallback(
-    (rows: GuardrailMessageFormRow[]) => {
-      updateMutation.mutate({
-        workspace,
-        name: check.name,
-        patch: {
-          data: { ...check.data, messages: toCheckMessages(rows) },
-          expected_db_version: check.db_version,
-          parent: check.parent,
-        },
-      });
+    (rows: GuardrailMessageFormRow[]): Promise<GuardrailCheckEntity> => {
+      const saved = updateMutation
+        .mutateAsync({
+          workspace,
+          name: check.name,
+          patch: {
+            data: { ...check.data, messages: toCheckMessages(rows) },
+            expected_db_version: check.db_version,
+            parent: check.parent,
+          },
+        })
+        .then((entity) => {
+          // Clear dirty only if nothing was typed since dispatch.
+          if (isSameRows(form.getValues('messages'), rows)) {
+            form.reset({ messages: rows });
+          }
+          return entity;
+        })
+        // onError already toasts; don't abort the run. Stays dirty, so the next flush retries.
+        .catch(() => check)
+        .finally(() => {
+          if (pendingSaveRef.current === saved) pendingSaveRef.current = null;
+        });
+
+      pendingSaveRef.current = saved;
+      return saved;
     },
-    [updateMutation, workspace, check]
+    [check, form, updateMutation, workspace]
   );
+
+  /** What a run executes against: the in-flight save, a fresh save if dirty, else `check`. */
+  const flush = useCallback((): Promise<GuardrailCheckEntity> => {
+    if (pendingSaveRef.current) return pendingSaveRef.current;
+    if (!isDirty) return Promise.resolve(check);
+    return persist(form.getValues('messages'));
+  }, [check, form, isDirty, persist]);
+
+  useEffect(() => {
+    registerFlush(check.name, flush);
+    return () => registerFlush(check.name, null);
+  }, [check.name, flush, registerFlush]);
 
   const handleMove = (from: number, to: number) => {
     const rows = form.getValues('messages');
@@ -116,9 +161,10 @@ export const GuardrailTestCard: FC<GuardrailTestCardProps> = ({ check, index, wo
   };
 
   // Persist content edits only when focus leaves the message list entirely; moves/duplicates/
-  // removes persist explicitly, so keeping focus inside avoids a redundant stale-order save.
+  // removes persist explicitly. Skip clean cards — every write bumps db_version.
   const handleContainerBlur = (event: FocusEvent<HTMLDivElement>) => {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    if (!isDirty) return;
     persist(form.getValues('messages'));
   };
 

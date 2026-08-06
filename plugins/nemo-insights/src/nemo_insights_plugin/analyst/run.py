@@ -3,15 +3,16 @@
 
 """Reusable insights analyst run orchestration."""
 
+import importlib
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Protocol, cast
 
 from nemo_insights_plugin.analyst.agent import (
     KICKOFF,
-    MAX_REQUESTS,
+    Analyst,
     build_analyst_agent,
 )
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
@@ -22,12 +23,16 @@ from nemo_insights_plugin.analyst.observability import (
 )
 from nemo_insights_plugin.analyst.result import AnalystResult
 from nemo_platform import AsyncNeMoPlatform
-from pydantic_ai import Agent, UsageLimits
-from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
+from nooa.context_blocks import EventBase
+from nooa.events import LLMComplete, PythonOutput
 
 # Truncate long tool inputs/outputs when echoing the verbose trace so a single
 # span dump doesn't flood the terminal.
 _VERBOSE_TRUNCATE = 2000
+
+
+class _LiteLLMModule(Protocol):
+    drop_params: bool
 
 
 class ClientConstructionError(Exception):
@@ -42,6 +47,7 @@ async def run_analyst(
     base_url: str | None,
     client: AsyncNeMoPlatform,
     insights_output: str | Path | None = None,
+    local_only: bool = False,
     verbose: bool = False,
     since: datetime | None = None,
     evaluation_id: str | None = None,
@@ -58,7 +64,11 @@ async def run_analyst(
         workspace: Platform workspace.
         base_url: Platform base URL. ``None`` uses the active platform context.
         client: Platform client to use. This function closes it before returning.
-        insights_output: Optional local YAML output path for Insight writes.
+        insights_output: Optional local YAML path. Receives a mirror of the
+            insights the platform stored, or the only copy under *local_only*.
+        local_only: Skip the platform and persist insights to *insights_output*
+            alone. Reserved for the insights testbed — no CLI flag sets it.
+            Requires *insights_output*.
         verbose: Whether to stream model/tool events to stderr.
         since: Optional incremental lower bound enforced on trace/span reads.
         evaluation_id: Optional run scope; AND-pinned onto every span read.
@@ -68,9 +78,11 @@ async def run_analyst(
     observability = None
     insights_output_path = str(insights_output) if insights_output else None
     try:
+        _enable_litellm_drop_params()
         backend = make_analyst_backend(
             client=client,
             insights_output=insights_output_path,
+            local_only=local_only,
         )
         deps = AnalystDeps(
             agent=agent,
@@ -88,12 +100,12 @@ async def run_analyst(
                 target_agent=agent,
             )
         analyst = build_analyst_agent(
+            deps=deps,
             agent=agent,
             agent_spec=agent_spec,
-            observability=observability,
             seeded_findings=seeded_findings,
         )
-        result = await _run_agent(analyst, deps, verbose=verbose)
+        result = await _run_agent(analyst, verbose=verbose)
         return await backend.persist_result(workspace=workspace, agent=agent, result=result)
     finally:
         try:
@@ -109,43 +121,49 @@ def _analyst_observability_enabled() -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _enable_litellm_drop_params() -> None:
+    """Let LiteLLM omit parameters unsupported by the configured model."""
+    litellm = cast(_LiteLLMModule, importlib.import_module("litellm"))
+    litellm.drop_params = True
+
+
 async def _run_agent(
-    analyst: Agent[AnalystDeps, AnalystResult],
-    deps: AnalystDeps,
+    analyst: Analyst,
     *,
     verbose: bool,
 ) -> AnalystResult:
-    """Run *analyst*, optionally streaming its tool calls to stderr."""
-    usage_limits = UsageLimits(request_limit=MAX_REQUESTS)
+    """Run *analyst*, optionally streaming Nooa reasoning and execution events."""
     if not verbose:
-        result = await analyst.run(KICKOFF, deps=deps, usage_limits=usage_limits)
-        return result.output
+        return await analyst.analyze(KICKOFF)
 
-    async with analyst.iter(KICKOFF, deps=deps, usage_limits=usage_limits) as run:
-        async for node in run:
-            _echo_node(node)
-    assert run.result is not None
-    return run.result.output
+    unsubscribers = [
+        analyst.event_manager.on("LLMComplete", _echo_event),
+        analyst.event_manager.on("PythonOutput", _echo_event),
+    ]
+    try:
+        return await analyst.analyze(KICKOFF)
+    finally:
+        for unsubscribe in unsubscribers:
+            unsubscribe()
 
 
-def _echo_node(node: Any) -> None:
-    """Print tool calls, model text, and tool returns for one graph node."""
-    if Agent.is_call_tools_node(node):
-        for part in node.model_response.parts:
-            if isinstance(part, ToolCallPart):
-                print(
-                    f"[tool] {part.tool_name}({_truncate(str(part.args))})",
-                    file=sys.stderr,
-                )
-            elif isinstance(part, TextPart) and part.content.strip():
-                print(f"[thought] {part.content.strip()}", file=sys.stderr)
-    elif Agent.is_model_request_node(node):
-        for part in node.request.parts:
-            if isinstance(part, ToolReturnPart):
-                print(
-                    f"[result] {part.tool_name} -> {_truncate(str(part.content))}",
-                    file=sys.stderr,
-                )
+def _echo_event(event: EventBase) -> None:
+    """Print one useful Nooa event in the legacy verbose CLI format."""
+    if isinstance(event, LLMComplete):
+        if event.reasoning_content.strip():
+            print(f"[thought] {_truncate(event.reasoning_content.strip())}", file=sys.stderr)
+        for tool_call in event.tool_calls:
+            name = str(tool_call.get("function_name", "tool"))
+            arguments = tool_call.get("arguments", "")
+            print(f"[tool] {name}({_truncate(str(arguments))})", file=sys.stderr)
+        return
+
+    if isinstance(event, PythonOutput):
+        parts = [part.rstrip() for part in (event.stdout, event.stderr, event.error) if part.rstrip()]
+        if event.value is not None:
+            parts.append(repr(event.value))
+        detail = "\n".join(parts) or event.execution_status.value
+        print(f"[result] execute_python -> {_truncate(detail)}", file=sys.stderr)
 
 
 def _truncate(text: str, limit: int = _VERBOSE_TRUNCATE) -> str:

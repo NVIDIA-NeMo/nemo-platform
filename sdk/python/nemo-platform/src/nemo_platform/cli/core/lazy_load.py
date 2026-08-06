@@ -34,6 +34,8 @@ def attach_lazy_entries(
 class ManifestBackedNmpGroup(NmpGroup):
     """Group that renders lazy child metadata and loads real children on demand."""
 
+    _nmp_emit_command_invoked = True
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._lazy_entries: dict[str, TopLevelEntry] = {}

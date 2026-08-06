@@ -40,7 +40,7 @@ Choose the invocation mode from the user's target:
 - **Local one-shot:** the user provides an `agent.yaml` or legacy NAT workflow
   YAML path. Read the config format and model settings before deciding whether
   Platform readiness is required:
-  - A Platform-owned `nemo-agents-spec-v1` config invokes Fabric directly and
+  - A Platform-managed `nemo-agents-spec-v1` config invokes Fabric directly and
     does not require Platform readiness.
   - A legacy NAT config requires Platform readiness when any `openai` or `nim`
     LLM omits `base_url`; local invocation injects the Platform IGW URL for
@@ -60,7 +60,7 @@ context for the current shell and add local process and health checks before
 listing deployments:
 
 ```bash
-export NMP_BASE_URL=http://127.0.0.1:8080
+export NMP_BASE_URL=http://localhost:8080
 lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 || { echo "PLATFORM_DOWN"; exit 1; }
 curl -sS --connect-timeout 2 --max-time 5 "$NMP_BASE_URL/health/ready" -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -q "^200$" || { echo "PLATFORM_WEDGED"; exit 1; }
 .venv/bin/nemo agents deployments list 2>/dev/null
@@ -72,7 +72,7 @@ stale "running" state from held locks after the process has died.
 Require these checks for a deployed invocation and for a local NAT invocation
 that depends on injected Platform IGW routing. If `PLATFORM_UNREACHABLE` or
 `PLATFORM_DOWN`, route to `nemo-setup` and stop. If `PLATFORM_WEDGED`, route to
-`nemo-status` and stop. Do not require the checks for Platform-owned Fabric
+`nemo-status` and stop. Do not require the checks for Platform-managed Fabric
 local invocation or a NAT config with directly usable explicit endpoints.
 
 ## What you do
@@ -99,11 +99,11 @@ local invocation or a NAT config with directly usable explicit endpoints.
 if [ "$INVOCATION_MODE" = "local" ]; then
   RESP=$(.venv/bin/nemo agents invoke \
     --agent-config "$AGENT_CONFIG_PATH" \
-    --input "<user query>")
+    --input "$USER_QUERY")
 else
   RESP=$(.venv/bin/nemo agents invoke \
     --agent-deployment "$DEPLOYMENT_NAME" \
-    --input "<user query>")
+    --input "$USER_QUERY")
 fi
 RC=$?
 ```

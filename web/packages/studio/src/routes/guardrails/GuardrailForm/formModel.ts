@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import {
   getGeneralInstruction,
   setGeneralInstruction,
@@ -28,7 +28,7 @@ export interface StoredDraft {
 }
 
 /** Extract the form model from the API config. */
-export const mapConfigToForm = (data: RailsConfigOutput | undefined): GuardrailFormValues => ({
+export const mapConfigToForm = (data: RailsConfig | undefined): GuardrailFormValues => ({
   generalInstruction: getGeneralInstruction(data?.instructions),
   sampleConversation: data?.sample_conversation ?? '',
 });
@@ -39,9 +39,9 @@ export const mapConfigToForm = (data: RailsConfigOutput | undefined): GuardrailF
  * {@link mapConfigToForm} and the single place each editable field is written back.
  */
 export const applyFormToConfig = (
-  data: RailsConfigOutput | undefined,
+  data: RailsConfig | undefined,
   values: GuardrailFormValues
-): RailsConfigOutput => {
+): RailsConfig => {
   const base = data ?? {};
   return {
     ...base,

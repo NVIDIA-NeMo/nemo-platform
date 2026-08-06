@@ -2,18 +2,16 @@
 name = "nemo-insights-plugin"
 version = "0.1.0"
 description = "Agent telemetry analysis and persistent insights for NeMo Platform."
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.14"
 dependencies = [
   "fastapi>=0.115",
-  "genai-prices==0.0.62",
   "httpx",
   "nemo-platform",
   "nemo-platform-plugin",
+  "nooa",
   "opentelemetry-exporter-otlp>=1.42.1",
   "opentelemetry-sdk>=1.42.1",
   "pydantic>=2.10.6",
-  "pydantic-ai-harness[code-mode]==0.3.0",
-  "pydantic-ai-slim[anthropic]==1.105.0",
   "pyyaml>=6.0.3",
   "typer>=0.20.0",
   "tzdata==2026.2",

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 
 export const INTAKE_DEFAULT_LOOKBACK_DAYS = 30;
 
@@ -43,10 +43,15 @@ export const isDefaultStartedAtFilter = (
  */
 export const useSeededStartedAtFilter = (defaultFilter: StartedAtFilterEntry | null): boolean => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [seeded, setSeeded] = useState(() => defaultFilter === null || searchParams.has('filters'));
+  const urlHasFilters = searchParams.has('filters');
+  const [seeded, setSeeded] = useState(() => defaultFilter === null || urlHasFilters);
 
   useEffect(() => {
-    if (seeded || defaultFilter === null) return;
+    if (seeded) return;
+    if (urlHasFilters) {
+      setSeeded(true);
+      return;
+    }
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -59,8 +64,7 @@ export const useSeededStartedAtFilter = (defaultFilter: StartedAtFilterEntry | n
       },
       { replace: true }
     );
-    setSeeded(true);
-  }, [seeded, defaultFilter, setSearchParams]);
+  }, [seeded, urlHasFilters, defaultFilter, setSearchParams]);
 
   return seeded;
 };

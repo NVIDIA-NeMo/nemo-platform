@@ -14,7 +14,7 @@ import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { FlaskConical } from 'lucide-react';
 import { type ComponentProps, type FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const makeColumns: ComponentProps<typeof DataView.Root<ExperimentResponse>>['makeColumns'] = ({
   accessor,

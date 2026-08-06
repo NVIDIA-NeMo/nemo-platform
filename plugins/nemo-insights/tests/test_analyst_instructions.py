@@ -9,25 +9,28 @@ from nemo_insights_plugin.analyst.agent import (
     SEEDED_FINDINGS_HEADER,
     build_analyst_agent,
 )
+from nemo_insights_plugin.analyst.deps import AnalystDeps
+from nooa.unifiedllm import FakeLLMClient
 
 
 @pytest.fixture(autouse=True)
-def inference_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``build_analyst_agent`` constructs a provider, which reads this key."""
-    monkeypatch.setenv("INFERENCE_API_KEY", "test-key")
+def _use_fake_summarizer_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "nemo_insights_plugin.analyst.agent.get_fast_model",
+        FakeLLMClient,
+    )
 
 
 def _instructions(agent_spec: str | None = None, seeded_findings: str | None = None) -> str:
-    """The agent's assembled system prompt, which Pydantic AI holds as a sequence."""
+    """The analyst's assembled instructions, held in Nooa context."""
     built = build_analyst_agent(
+        deps=AnalystDeps(agent="flight-planner"),
         agent="flight-planner",
         agent_spec=agent_spec,
         seeded_findings=seeded_findings,
+        llm=FakeLLMClient(),
     )
-    raw = built._instructions
-    if isinstance(raw, str):
-        return raw
-    return "".join(str(part) for part in raw or [])
+    return str(built.context["analyst_instructions"])
 
 
 def test_seeded_findings_are_appended_under_their_own_header() -> None:

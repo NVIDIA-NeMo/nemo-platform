@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Run-time dependencies shared by the analyst agent and its tools.
+"""Run-time dependencies shared by the analyst agent and its read methods.
 
-A single :class:`AnalystDeps` instance is threaded through every tool call via
-Pydantic AI's :class:`~pydantic_ai.RunContext`, replacing the per-function NAT
-config classes. The CLI builds it from its flags; tools read it off
-``ctx.deps``. Keeping it in its own module avoids an import cycle between the
-agent definition and the tool modules it registers.
+The CLI builds one :class:`AnalystDeps` for each run. The Nooa agent keeps it
+hidden from generated code and injects it into every scoped backend method.
+Keeping it in its own module avoids an import cycle between the agent and the
+read-method implementations.
 """
 
 from dataclasses import dataclass
@@ -18,7 +17,7 @@ from nemo_insights_plugin.analyst.analyst_backend import AnalystBackend
 
 @dataclass
 class AnalystDeps:
-    """Per-run configuration injected into every analyst tool.
+    """Per-run configuration injected into every analyst read method.
 
     Every tool talks to the platform through a single :class:`AnalystBackend`
     built once by the CLI and shared here, rather than constructing an SDK
@@ -31,8 +30,9 @@ class AnalystDeps:
         workspace: NMP workspace the analyst operates in.
         base_url: Base URL of the running NMP instance (run metadata; tools go
             through ``backend``).
-        insights_output: When set, the backend persists insights to this local
-            YAML file instead of the Insights plugin API (run metadata).
+        insights_output: When set, the backend also persists insights to this
+            local YAML file, mirroring the rows the platform stored (run
+            metadata).
         backend: Shared data-access backend used by every tool.
         since: Optional lower bound for scheduled incremental analysis. Backend
             reads enforce this even if the model omits a time filter.
@@ -49,8 +49,4 @@ class AnalystDeps:
     backend: AnalystBackend | None = None  # set by the CLI per run
     since: datetime | None = None
     evaluation_id: str | None = None  # run scope; AND-pinned onto every span read
-    # Raised from 200 to give the deep drill-down pass room to read a long
-    # session's full round/LLM/tool content in one scoped fetch. Keep detailed
-    # (input/output-bearing) fetches scoped to a session so this ceiling buys
-    # depth without flooding context.
-    max_results: int = 600
+    max_results: int = 200

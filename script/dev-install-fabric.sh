@@ -5,21 +5,25 @@
 # Dev-only: install the `nemo-relay` GATEWAY BINARY, the one Fabric eval dependency that cannot come
 # from a wheel. It is required for live ATIF trajectory capture on out-of-process harnesses (codex).
 #
-# Everything else is in the lock — `uv sync --extra fabric` installs the nemo-fabric SDK, the
-# codex/claude/deepagents adapters, and the nemo-relay Python bindings. The pip `nemo-relay` package
-# is bindings-only (its wheel declares no console script and contains no executable), so the daemon is
-# published solely as a GitHub release asset.
+# Everything else is in the lock —
+# `uv sync --frozen --package nemo-evaluator-sdk --extra fabric --inexact` installs the nemo-fabric
+# SDK, the codex/claude/hermes adapters, and the nemo-relay Python bindings without removing the
+# existing workspace environment. The pip `nemo-relay` package is bindings-only (its wheel declares
+# no console script and contains no executable), so the daemon is published solely as a GitHub
+# release asset.
 #
 # The version defaults to the `nemo-relay` bindings installed in the venv, so the daemon and the
 # bindings cannot drift apart when the lock moves.
 #
 # To run against an unreleased Fabric instead of the locked wheels, install the checkout directly:
 #   uv pip install --python .venv/bin/python "/path/to/NeMo-Fabric[codex,relay,runtime]"
-# and `uv sync --extra fabric` to get back to the locked state. (That needs cargo — Fabric builds a
-# Rust/pyo3 extension from source.)
+# and use the package-scoped command above to restore the locked project dependencies without
+# pruning unrelated installed packages. (That needs cargo — Fabric builds a Rust/pyo3 extension
+# from source.)
 #
 # A live codex run additionally needs the `codex` CLI + `codex login` auth.
-# See plugins/nemo-evaluator/docs/design/fabric-runner-integration.md.
+# See skills/nemo-evaluator-plugin/references/agent-evaluation.md and
+# packages/nemo_evaluator_sdk/tests/agent_eval/test_fabric_integration.py.
 #
 # Usage:
 #   script/dev-install-fabric.sh                                # version matching the installed bindings
@@ -38,7 +42,8 @@ if [ -z "${NEMO_RELAY_VERSION:-}" ]; then
   bindings_version="$("$VENV_PY" -c 'import importlib.metadata as m; print(m.version("nemo-relay"))' 2>/dev/null || true)"
   if [ -z "$bindings_version" ]; then
     echo "nemo-relay is not installed in $VENV_PY, so the gateway version cannot be derived." >&2
-    echo "Run 'uv sync --extra fabric' first, or pass NEMO_RELAY_VERSION=<release> explicitly." >&2
+    echo "Run 'uv sync --frozen --package nemo-evaluator-sdk --extra fabric --inexact' first," >&2
+    echo "or pass NEMO_RELAY_VERSION=<release> explicitly." >&2
     exit 1
   fi
   NEMO_RELAY_VERSION="$(printf '%s' "$bindings_version" | sed -E 's/([0-9])(a|b|rc)\.?([0-9]+)$/\1-\2.\3/')"

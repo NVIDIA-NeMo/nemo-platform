@@ -37,7 +37,7 @@ import { InsightExperiments } from '@studio/routes/optimizer/OptimizerInsightRou
 import { getOptimizerRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 
 export const OptimizerInsightRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

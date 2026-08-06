@@ -10,7 +10,7 @@ import type { SuggestionTileProps } from '@studio/routes/agents/AgentSuggestions
 import { formatActions, severityColor } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
 import { Check, FlaskConical } from 'lucide-react';
 import { type FC, memo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 export const SuggestionTile: FC<SuggestionTileProps> = memo(
   ({ suggestion, onApply, isApplying, isApplied: isAppliedProp, applyError, evalState }) => {

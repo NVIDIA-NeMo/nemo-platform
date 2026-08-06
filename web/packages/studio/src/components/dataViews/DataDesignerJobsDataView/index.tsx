@@ -33,7 +33,7 @@ import { getDataDesignerJobDetailsRoute, getNewDataDesignerJobRoute } from '@stu
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 type DataDesignerJobWithId = DataDesignerJob & { id: string };
 

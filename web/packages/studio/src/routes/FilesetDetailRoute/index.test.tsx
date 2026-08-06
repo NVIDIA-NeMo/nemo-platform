@@ -7,7 +7,7 @@ import { render } from '@studio/tests/util/render';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render as rtlRender, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 // The fileset returned by the route's fetch. Mutated per-test to exercise the
 // purpose-dependent branches (Dataset Card vs Model Card).

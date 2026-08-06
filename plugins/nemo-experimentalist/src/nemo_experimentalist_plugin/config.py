@@ -43,7 +43,7 @@ class CandidateStorageConfig(BaseModel):
 
     archive_candidates: bool = False
     candidate_branch_prefix: str = "optimizer"
-    publish_winner: bool = False
+    publish_winner: bool = True
     pr_draft: bool = True
     pr_base_branch: str | None = None
     pr_title: str | None = None

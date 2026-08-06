@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { GlobalNav } from '@studio/components/Layouts/GlobalNav';
-import { CODING_AGENT_STUDIO_ENABLED } from '@studio/constants/environment';
+import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { useAuthAutoLogin } from '@studio/providers/auth';
 import { useAuthTokenStatus } from '@studio/providers/auth/useAuthTokenStatus';
 import { useSelectedWorkspace } from '@studio/providers/workspace';
-import { ClaudeCodeChatProvider } from '@studio/routes/agents/ClaudeCodeChatRoute/context/ClaudeCodeChatProvider';
+import { CopilotChatProvider } from '@studio/routes/agents/CopilotChatRoute/context/CopilotChatProvider';
 import { WorkspaceGuard } from '@studio/routes/RootLayout/WorkspaceGuard';
 import { ReactNode } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 
 export const PageLayout = ({ sideNav }: { sideNav?: (collapsed: boolean) => ReactNode }) => {
   const { isAuthPending } = useAuthAutoLogin();
@@ -47,10 +47,10 @@ export const PageLayout = ({ sideNav }: { sideNav?: (collapsed: boolean) => Reac
     <div
       className={`min-h-screen relative grid size-full text-primary grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_1fr] ${gridAreas}`}
     >
-      {CODING_AGENT_STUDIO_ENABLED && workspace ? (
-        <ClaudeCodeChatProvider key={workspace} workspace={workspace}>
+      {COPILOT_STUDIO_ENABLED && workspace ? (
+        <CopilotChatProvider key={workspace} workspace={workspace}>
           {layout}
-        </ClaudeCodeChatProvider>
+        </CopilotChatProvider>
       ) : (
         layout
       )}

@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from nemo_platform.beta.evaluator.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalTask, SemanticReducer, ViewSignal
-from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial
+from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial, RunnerInfo
 from nemo_platform.beta.evaluator.metrics.protocol import MetricOutput
 from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
 from nemo_platform.beta.evaluator.values.results import AggregatedMetricResult, AggregateRangeScore, AggregateScore
@@ -68,6 +68,30 @@ class AgentEvalSummary(BaseModel):
         )
 
 
+class RunMetadata(BaseModel):
+    """Provenance for a run: what was evaluated, by what, and when.
+
+    Answers "what produced this result?" — previously improvised by callers inside an untyped
+    ``benchmark`` dict. ``labels`` remains free-form for caller-specific tags, but the fields that
+    every run has are typed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    labels: dict[str, str] = Field(
+        default_factory=dict,
+        description="Caller-supplied tags for this run (e.g. benchmark, mode, backend). Free-form by design.",
+    )
+    target: RunnerInfo | None = Field(
+        default=None,
+        description="Identity of the runner/model/agent that produced the trials; None for imported trials.",
+    )
+    started_at: datetime | None = Field(default=None, description="UTC timestamp when the run began.")
+    finished_at: datetime | None = Field(default=None, description="UTC timestamp when scoring completed.")
+    duration_sec: float | None = Field(default=None, description="Wall-clock seconds from start to finish.")
+    sdk_version: str | None = Field(default=None, description="nemo-evaluator-sdk version that produced the run.")
+
+
 class AgentEvalResult(BaseModel):
     """Root result for a completed agent evaluation: tasks, trials, scores, summary, and bundle metadata."""
 
@@ -78,9 +102,9 @@ class AgentEvalResult(BaseModel):
     trials: list[AgentEvalTrial] = Field(description="Trials produced or imported for the run.")
     scores: list[AgentEvalTaskScore] = Field(description="Metric scores computed for the trials.")
     summary: AgentEvalSummary = Field(description="Derived rollups and coverage computed for the run.")
-    benchmark: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Benchmark metadata recorded for the run.",
+    metadata: RunMetadata = Field(
+        default_factory=RunMetadata,
+        description="Run provenance: labels, target identity, timings, SDK version.",
     )
     output_dir: Path | None = Field(default=None, description="Directory the run bundle was written to, if any.")
     dashboard_path: Path | None = Field(default=None, description="Path to the rendered dashboard, if written.")

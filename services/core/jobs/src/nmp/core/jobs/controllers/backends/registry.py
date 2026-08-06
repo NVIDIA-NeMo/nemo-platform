@@ -1,10 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from dataclasses import dataclass
 from typing import Self, Sequence
 
+from docker.errors import DockerException
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.config import validate_docker_available
 from nmp.core.jobs.app.profiles import ExecutionProfileT
 from nmp.core.jobs.app.schemas import BackendRef, ProfileRef, ProviderRef
 from nmp.core.jobs.controllers.backends.base import DEFAULT_PROFILE, DEFAULT_PROVIDER, JobBackend
@@ -16,6 +19,14 @@ from nmp.core.jobs.controllers.backends.kubernetes import (
 )
 from nmp.core.jobs.controllers.backends.subprocess import SubprocessJobBackend
 from nmp.core.jobs.controllers.backends.test import TestE2ECPUJobBackend, TestE2EGPUJobBackend
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import Timeout as RequestsTimeout
+
+logger = logging.getLogger(__name__)
+
+# Skip Docker backends only for daemon/connection failures after validate_docker_available()
+# was True. ValidationError and other programming/config errors must still fail startup.
+_DOCKER_BACKEND_INIT_SKIPPABLE_ERRORS = (DockerException, RequestsConnectionError, RequestsTimeout, OSError)
 
 
 @dataclass(frozen=True)
@@ -107,19 +118,70 @@ class BackendRegistry:
             ValidationError: If a profile's configuration is invalid for its backend type
         """
         registry: dict[RegistryKey, JobBackend] = {}
+        docker_available: bool | None = None
 
         for executor in profiles:
             # Execution profiles are unique with respect to the provider
             # and profile combination
             registry_key = RegistryKey(executor.provider, executor.profile)
             backend_key = BackendKey(executor.provider, executor.backend)
+            if backend_key not in backends:
+                raise KeyError(
+                    f"No backend registered for provider '{executor.provider}' and backend '{executor.backend}'"
+                )
             backend = backends[backend_key]
+
+            if executor.backend == "docker":
+                if docker_available is None:
+                    docker_available = validate_docker_available()
+                if not docker_available:
+                    logger.warning(
+                        "Skipping job executor profile %s/%s using backend 'docker' because Docker is unavailable.",
+                        executor.provider,
+                        executor.profile,
+                    )
+                    continue
 
             # The config from the execution profile hasn't been validated
             # yet. Calling the backend constructor will serialize the raw
             # config into the backend's expected format and validate it
-            registry[registry_key] = backend(nmp_sdk, executor.config, executor.profile)
+            try:
+                registry[registry_key] = backend(nmp_sdk, executor.config, executor.profile)
+            except _DOCKER_BACKEND_INIT_SKIPPABLE_ERRORS as exc:
+                if executor.backend != "docker":
+                    raise
+                logger.warning(
+                    "Skipping job executor profile %s/%s using backend 'docker' "
+                    "because Docker backend initialization failed (%s).",
+                    executor.provider,
+                    executor.profile,
+                    exc,
+                )
+
+        # Keep GET /v2/execution-profiles aligned with backends that registered.
+        # ``profiles`` is built at import time and shared with the jobs API in local
+        # standalone, so prune the list in place when callers pass a mutable list.
+        if isinstance(profiles, list):
+            registered = frozenset((key.provider, key.profile) for key in registry)
+            kept = []
+            for profile in profiles:
+                if (profile.provider, profile.profile) in registered:
+                    kept.append(profile)
+            skipped = len(profiles) - len(kept)
+            if skipped:
+                logger.warning(
+                    "Removed %s execution profile(s) that failed backend registration so advertised "
+                    "profiles match the jobs controller registry.",
+                    skipped,
+                )
+                profiles.clear()
+                profiles.extend(kept)
+
         return cls(registry)
+
+    def registered_profile_keys(self) -> frozenset[tuple[str, str]]:
+        """Return (provider, profile) keys for backends that successfully registered."""
+        return frozenset((key.provider, key.profile) for key in self._registry)
 
     def get_backend(self, *, provider: str | None = None, profile: str | None = None) -> JobBackend:
         """Retrieve a configured backend for the specified provider and profile.
