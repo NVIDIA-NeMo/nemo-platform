@@ -6,11 +6,13 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from nemo_experimentalist_plugin.entities import DatasetRef
+from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
 from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import (
+    distribute_insight_suite_tasks,
     stage_eval_author_inputs,
     stage_task_template,
 )
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 from nemo_platform import AsyncNeMoPlatform
 
 
@@ -18,6 +20,49 @@ def _write_tree(root: Path, content: str) -> None:
     tests = root / "task-1" / "tests"
     tests.mkdir(parents=True)
     (tests / "test.sh").write_text(content, encoding="utf-8")
+
+
+class _MemoryDataset(Dataset):
+    def add_tasks(self, tasks: list[Task]) -> None:
+        self.tasks.extend(tasks)
+
+
+def test_distribute_insight_suite_tasks_uses_a_30_70_validation_train_split() -> None:
+    insight_suite = _MemoryDataset(id="insight", tasks=[Task(id=f"task-{index}") for index in range(10)])
+    train_dataset = _MemoryDataset(id="train")
+    validation_dataset = _MemoryDataset(id="validation")
+
+    distribute_insight_suite_tasks(insight_suite, train_dataset, validation_dataset)
+
+    assert [task.id for task in validation_dataset.list_tasks()] == ["task-0", "task-1", "task-2"]
+    assert [task.id for task in train_dataset.list_tasks()] == [
+        "task-3",
+        "task-4",
+        "task-5",
+        "task-6",
+        "task-7",
+        "task-8",
+        "task-9",
+    ]
+
+
+def test_harbor_dataset_add_tasks_copies_task_directories(tmp_path: Path) -> None:
+    source_root = tmp_path / "insight-suite"
+    destination_root = tmp_path / "train"
+    (source_root / "insight-task" / "task.toml").parent.mkdir(parents=True)
+    (source_root / "insight-task" / "task.toml").write_text("", encoding="utf-8")
+    (destination_root / "insight-task" / "task.toml").parent.mkdir(parents=True)
+    (destination_root / "insight-task" / "stale.txt").write_text("old", encoding="utf-8")
+    (destination_root / "insight-task" / "task.toml").write_text("", encoding="utf-8")
+    insight_suite = HarborDataset.from_path(source_root)
+    train_dataset = HarborDataset.from_path(destination_root)
+
+    train_dataset.add_tasks(list(insight_suite.list_tasks()))
+
+    assert (destination_root / "insight-task" / "task.toml").is_file()
+    assert not (destination_root / "insight-task" / "stale.txt").exists()
+    assert [task.id for task in train_dataset.list_tasks()] == ["insight-task"]
+    assert Path(train_dataset.get_task("insight-task").uri.removeprefix("file://")) == destination_root / "insight-task"
 
 
 @pytest.mark.asyncio

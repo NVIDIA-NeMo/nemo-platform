@@ -108,18 +108,38 @@ class _SelectTrials:
     def __init__(self, trials: list[Any]) -> None:
         self._trials = trials
 
-    async def __call__(self, agent_id: str, dataset: Any, evaluation: Any) -> list[Any]:
+    async def __call__(
+        self,
+        agent_id: str,
+        dataset: Any,
+        evaluation: Any,
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
+    ) -> list[Any]:
         return self._trials
 
 
 class _ClassifyFailures:
-    async def __call__(self, agent_id: str, diagnoses: Any, trials: Any) -> FailureClassification:
+    async def __call__(
+        self,
+        agent_id: str,
+        diagnoses: Any,
+        trials: Any,
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
+    ) -> FailureClassification:
         return FailureClassification(systematic=[], mechanical=[])
 
 
 class _CompareWithPeers:
     async def __call__(
-        self, agent_id: str, evaluation: Any, diagnoses: Any, peer_evaluations: Any = None
+        self,
+        agent_id: str,
+        evaluation: Any,
+        diagnoses: Any,
+        peer_evaluations: Any = None,
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
     ) -> PeerComparison:
         return PeerComparison(divergent_trials=[], complementary_patterns=[])
 
