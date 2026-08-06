@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -110,7 +111,9 @@ def _wait_for_healthy(
 
 
 def _warn_bind_all(host: str) -> None:
-    if host in ("0.0.0.0", "::"):  # noqa: S104
+    # Only meaningful at an interactive terminal. In a container, binding to all interfaces is
+    # the intended configuration, and this would emit unstructured text into the log stream.
+    if host in ("0.0.0.0", "::") and sys.stderr.isatty():  # noqa: S104
         typer.echo(
             f"Warning: binding to {host} makes the service reachable on all network interfaces.",
             err=True,
