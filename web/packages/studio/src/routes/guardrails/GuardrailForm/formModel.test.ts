@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { applyFormToConfig } from '@studio/routes/guardrails/GuardrailForm/formModel';
 
 describe('applyFormToConfig', () => {
   it('persists removal of the sole general instruction as an empty list', () => {
-    const data: RailsConfigOutput = {
+    const data: RailsConfig = {
       instructions: [{ type: 'general', content: 'Be helpful.' }],
     };
     const result = applyFormToConfig(data, { generalInstruction: '', sampleConversation: '' });
@@ -14,7 +14,7 @@ describe('applyFormToConfig', () => {
   });
 
   it('keeps other instructions when the general one is cleared', () => {
-    const data: RailsConfigOutput = {
+    const data: RailsConfig = {
       instructions: [
         { type: 'general', content: 'Be helpful.' },
         { type: 'sample_conversation', content: 'user: hi' },
@@ -28,7 +28,7 @@ describe('applyFormToConfig', () => {
     const data = {
       instructions: [{ type: 'general', content: 'Old.' }],
       models: [{ type: 'main', engine: 'openai', model: 'gpt-4' }],
-    } as RailsConfigOutput;
+    } as RailsConfig;
     const result = applyFormToConfig(data, { generalInstruction: 'New.', sampleConversation: '' });
     expect(result.instructions).toEqual([{ type: 'general', content: 'New.' }]);
     expect(result.models).toEqual(data.models);

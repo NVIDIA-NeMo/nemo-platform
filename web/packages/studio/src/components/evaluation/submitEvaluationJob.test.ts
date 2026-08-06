@@ -103,19 +103,19 @@ describe('buildAgentEvalRequestBody', () => {
     expect(body.spec.tasks[0].metrics[0].payload.metric.model).toBe('ws-a/judge');
   });
 
-  it('sets benchmark and a fileset-prefixed job name when provided', () => {
+  it('sets labels and a fileset-prefixed job name when provided', () => {
     const body = buildAgentEvalRequestBody(persisted(), {
       workspace: 'ws-a',
       agent: 'a',
       filesetName: 'wise-blue',
     });
-    expect(body.spec.benchmark).toEqual({ eval_config_fileset: 'wise-blue' });
+    expect(body.spec.labels).toEqual({ eval_config_fileset: 'wise-blue' });
     expect(body.name).toMatch(/^wise-blue-[a-z0-9]{8}$/);
   });
 
-  it('omits benchmark and name when no fileset name is provided', () => {
+  it('omits labels and name when no fileset name is provided', () => {
     const body = buildAgentEvalRequestBody(persisted(), { workspace: 'ws-a', agent: 'a' });
-    expect(body.spec.benchmark).toBeUndefined();
+    expect(body.spec.labels).toBeUndefined();
     expect(body.name).toBeUndefined();
   });
 });

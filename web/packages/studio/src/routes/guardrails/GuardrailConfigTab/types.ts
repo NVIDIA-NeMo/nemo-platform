@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigDataOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfigData } from '@nemo/sdk/generated/platform/schema';
 
 /** A provider key under `rails.config.*` (e.g. `content_safety`, `gliner`). */
-export type DetectorKey = keyof RailsConfigDataOutput;
+export type DetectorKey = keyof RailsConfigData;
 
 /** A lifecycle stage in the guardrail pipeline, in execution order. */
 export type StageKey =

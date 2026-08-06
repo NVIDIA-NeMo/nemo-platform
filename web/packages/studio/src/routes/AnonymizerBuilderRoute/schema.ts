@@ -3,7 +3,7 @@
 
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import type {
-  AnonymizerConfigInput,
+  AnonymizerConfig,
   ModelConfig,
   PreviewRequest,
   Rewrite,
@@ -137,7 +137,7 @@ const withTemplate = <T extends object>(base: T, template: string): T => {
   return trimmed ? { ...base, format_template: trimmed } : base;
 };
 
-const buildReplaceConfig = (form: AnonymizerFormData): AnonymizerConfigInput['replace'] => {
+const buildReplaceConfig = (form: AnonymizerFormData): AnonymizerConfig['replace'] => {
   const replace = ((): object => {
     switch (form.strategy) {
       case STRATEGY_REDACT:
@@ -160,7 +160,7 @@ const buildReplaceConfig = (form: AnonymizerFormData): AnonymizerConfigInput['re
         return { kind: STRATEGY_SUBSTITUTE };
     }
   })();
-  return replace as AnonymizerConfigInput['replace'];
+  return replace as AnonymizerConfig['replace'];
 };
 
 const buildRewriteConfig = (form: AnonymizerFormData): Rewrite => {
@@ -192,7 +192,7 @@ const buildRewriteConfig = (form: AnonymizerFormData): Rewrite => {
 const buildDetectConfig = (
   form: AnonymizerFormData,
   defaultEntityLabels: string[]
-): AnonymizerConfigInput['detect'] => {
+): AnonymizerConfig['detect'] => {
   if (form.entityMode !== ENTITY_MODE_CUSTOM) return undefined;
 
   const labels = form.includeDefaultEntities
@@ -211,7 +211,7 @@ export const buildAnonymizerJobRequest = (
   form: AnonymizerFormData,
   defaultEntityLabels: string[] = []
 ): RunJobRequest => {
-  const config: AnonymizerConfigInput =
+  const config: AnonymizerConfig =
     form.strategy === REWRITE_STRATEGY
       ? { rewrite: buildRewriteConfig(form) }
       : { replace: buildReplaceConfig(form) };

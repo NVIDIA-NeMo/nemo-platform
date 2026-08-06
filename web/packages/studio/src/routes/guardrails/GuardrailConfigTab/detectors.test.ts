@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsOutput } from '@nemo/sdk/generated/platform/schema';
+import type { Rails } from '@nemo/sdk/generated/platform/schema';
 import {
   deriveScopes,
   detectorMeta,
@@ -11,7 +11,7 @@ import {
 
 describe('listConfiguredDetectors', () => {
   it('returns configured detectors in canonical (first-party first) order', () => {
-    const rails: RailsOutput = {
+    const rails: Rails = {
       config: {
         clavata: { server_endpoint: 'https://example.com' },
         content_safety: { reasoning: { enabled: true } },
@@ -26,7 +26,7 @@ describe('listConfiguredDetectors', () => {
   });
 
   it('appends unknown detector keys so nothing is dropped', () => {
-    const rails = { config: { future_detector: { foo: 'bar' } } } as unknown as RailsOutput;
+    const rails = { config: { future_detector: { foo: 'bar' } } } as unknown as Rails;
     expect(listConfiguredDetectors(rails)).toEqual(['future_detector']);
   });
 
@@ -38,14 +38,14 @@ describe('listConfiguredDetectors', () => {
 
 describe('deriveScopes', () => {
   it('derives scope from the detector own input/output sub-config', () => {
-    const rails: RailsOutput = {
+    const rails: Rails = {
       config: { gliner: { input: { entities: ['email'] }, output: { entities: ['ssn'] } } },
     };
     expect(deriveScopes(rails, 'gliner')).toEqual(['input', 'output']);
   });
 
   it('derives scope from flows that reference the detector', () => {
-    const rails: RailsOutput = {
+    const rails: Rails = {
       config: { content_safety: { reasoning: { enabled: true } } },
       input: { flows: ['content safety check input $model=content_safety'] },
       output: { flows: ['content safety check output $model=content_safety'] },
@@ -54,7 +54,7 @@ describe('deriveScopes', () => {
   });
 
   it('unions both signals and orders scopes canonically', () => {
-    const rails: RailsOutput = {
+    const rails: Rails = {
       config: { sensitive_data_detection: { output: { entities: ['PERSON'] } } },
       input: { flows: ['mask sensitive data on input'] },
     };

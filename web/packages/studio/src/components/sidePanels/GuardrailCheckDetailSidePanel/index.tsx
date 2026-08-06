@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, SidePanel, Text } from '@nvidia/foundations-react-core';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
 import { ConversationPane } from '@studio/components/sidePanels/GuardrailCheckDetailSidePanel/ConversationPane';
@@ -14,7 +14,7 @@ export interface GuardrailCheckDetailSidePanelProps {
   readonly onClose: () => void;
   readonly check: GuardrailCheckEntity;
   /** The parent config's rails, used to list declared guardrail coverage. */
-  readonly configData: RailsConfigOutput | undefined;
+  readonly configData: RailsConfig | undefined;
   /** The check's stable number in the full test list, as the Tests sub-tab numbers its cards. */
   readonly checkIndex: number;
   /**

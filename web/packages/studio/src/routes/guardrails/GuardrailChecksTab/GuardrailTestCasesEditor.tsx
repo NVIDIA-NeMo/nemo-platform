@@ -3,7 +3,7 @@
 
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
@@ -24,7 +24,7 @@ interface GuardrailTestCasesEditorProps {
   readonly workspace: string;
   readonly configId: string;
   /** The config's rails, used by the result panel to list guardrail coverage. */
-  readonly configData: RailsConfigOutput | undefined;
+  readonly configData: RailsConfig | undefined;
   readonly checks: GuardrailCheckEntity[];
   /** Which sub-tab to show. The route owns this; an unknown segment redirects upstream. */
   readonly subTab: GuardrailChecksSubTab;
