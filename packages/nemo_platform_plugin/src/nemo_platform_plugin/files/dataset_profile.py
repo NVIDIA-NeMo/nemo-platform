@@ -19,8 +19,20 @@ documented canonical sets, not closed enums: only known values are emitted, but 
 tolerate unknown ones so the vocabulary can grow without a breaking change. Pydantic's default
 ``extra="ignore"`` gives the same forward-compatibility for unknown *fields*.
 
-This module is pydantic-only — no platform dependencies — so the profiler can import it as a
-standalone contract and ``DatasetMetadataContent`` can later carry it as a typed field.
+**Why this lives in a shared package rather than with the profiler that writes it.** The Files
+service is a first-class consumer, not a bystander: it stores a profile as its own entity and serves
+it, so its entities, endpoints and schemas all need this type. Were the contract to live in the
+datasets plugin, a core service would depend on an optional plugin to deserialize rows in its own
+database — a deployment that installs no profiler still holds stored profiles and still answers
+``GET .../filesets/{name}/profile``. Keeping it here means neither side depends on the other: the
+module is pydantic-only, with no platform dependencies, so the profiler imports it standalone while
+Files imports it as the type it persists.
+
+It sits under ``files/`` because Files is what stores and serves it, alongside the rest of that
+service's shared contract — including ``metadata.py``, which houses the equally dataset-shaped
+``DatasetMetadataContent``. Note that a profile is *not* carried inside fileset metadata: it is a
+separate entity, so writing one cannot clobber an unrelated metadata edit that lands between a read
+and a write.
 """
 
 from __future__ import annotations
