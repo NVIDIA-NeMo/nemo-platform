@@ -580,7 +580,7 @@ async def delete_manifest(
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> None:
-    """Delete a saved manifest by name, along with the victim bundle it owns."""
+    """Delete a saved manifest by name, along with the victim bundle the service created for it."""
     existing = await _get_manifest_or_404(entity_client, workspace, name)
     try:
         await entity_client.delete(IronSwarmManifest, name=name, workspace=workspace)
@@ -590,7 +590,10 @@ async def delete_manifest(
 
     # Only after the entity is gone: a bundle with no manifest is garbage, but a manifest whose
     # bundle we deleted early would be unrunnable if the delete above had failed.
+    #
+    # `agent_fileset` only — the service uploads that one itself. `project_fileset` is supplied by
+    # the caller and nothing stops two manifests naming the same bundle, so deleting it here would
+    # break the other one. The uploader owns it and removes it.
     sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
-    for ref in (existing.agent_fileset, existing.project_fileset):
-        if ref:
-            await run_in_threadpool(delete_fileset, sdk, ref)
+    if existing.agent_fileset:
+        await run_in_threadpool(delete_fileset, sdk, existing.agent_fileset)
