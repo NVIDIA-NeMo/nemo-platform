@@ -223,6 +223,7 @@ describe('AdvancedParameters', () => {
 
       await user.clear(numberInput);
       await user.type(numberInput, '3');
+      await user.tab();
 
       await waitFor(() => {
         expect(Number(numberInput.value)).toBeLessThanOrEqual(2);
@@ -302,6 +303,7 @@ describe('AdvancedParameters', () => {
 
       await user.clear(numberInput);
       await user.type(numberInput, '-0.5');
+      await user.tab();
 
       await waitFor(() => {
         expect(Number(numberInput.value)).toBeGreaterThanOrEqual(0);
@@ -323,6 +325,7 @@ describe('AdvancedParameters', () => {
 
       await user.clear(numberInput);
       await user.type(numberInput, '1.5');
+      await user.tab();
 
       await waitFor(() => {
         expect(Number(numberInput.value)).toBeLessThanOrEqual(1);
@@ -428,6 +431,7 @@ describe('AdvancedParameters', () => {
 
       await user.clear(numberInput);
       await user.type(numberInput, '0.5');
+      await user.tab();
 
       await waitFor(() => {
         expect(Number(numberInput.value)).toBeGreaterThanOrEqual(1);
@@ -452,6 +456,7 @@ describe('AdvancedParameters', () => {
 
       await user.clear(numberInput);
       await user.type(numberInput, '3');
+      await user.tab();
 
       await waitFor(() => {
         expect(Number(numberInput.value)).toBeLessThanOrEqual(2);
@@ -742,6 +747,7 @@ describe('AdvancedParameters', () => {
 
       await user.clear(numberInput);
       await user.type(numberInput, '0');
+      await user.tab();
 
       await waitFor(() => {
         expect(Number(numberInput.value)).toBeGreaterThanOrEqual(1);
@@ -775,6 +781,7 @@ describe('AdvancedParameters', () => {
 
       await user.clear(numberInput);
       await user.type(numberInput, '10');
+      await user.tab();
 
       await waitFor(() => {
         expect(Number(numberInput.value)).toBeLessThanOrEqual(6);
