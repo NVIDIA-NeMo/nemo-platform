@@ -1,7 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Provision the ClickHouse instance owned by a local Intake service."""
+"""Reconcile the persistent ClickHouse container owned by local Intake.
+
+Lifecycle contract:
+- Intake startup reconciles one container owned by the resolved data directory.
+- Matching running containers are reused; matching stopped containers are started.
+- Containers for an earlier incarnation of the data directory are replaced.
+- Unsafe image, credential, mount, or ownership mismatches fail closed.
+- Intake shutdown leaves the detached container running.
+- Explicit removal stops/removes the container but never deletes its data.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +21,8 @@ import logging
 import os
 import sys
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Final, cast
 from uuid import UUID, uuid4
@@ -58,107 +68,109 @@ _DOCKER_UNAVAILABLE_GUIDANCE = (
 
 
 class LocalClickHouseProvisioningError(RuntimeError):
-    """Raised when Intake cannot safely provision its local ClickHouse."""
+    """Raised when Intake cannot safely reconcile or remove its local ClickHouse."""
 
 
 class DockerUnavailableError(LocalClickHouseProvisioningError):
     """Raised when local ClickHouse cannot start because Docker is unavailable."""
 
 
-class DataDirectoryIdentityMismatchError(LocalClickHouseProvisioningError):
-    """Raised when a managed container points at an earlier data-directory incarnation."""
+class ProvisioningMode(Enum):
+    """Container layout selected by the normal or compatibility entry point."""
+
+    MANAGED = auto()
+    LEGACY_COMPATIBILITY = auto()
 
 
-async def provision_local_clickhouse(
+class ContainerKind(Enum):
+    """Ownership model of a discovered container candidate."""
+
+    MANAGED = auto()
+    LEGACY_COMPATIBILITY = auto()
+
+
+class ContainerDisposition(Enum):
+    """Safe reconciliation outcome for an existing container."""
+
+    REUSABLE = auto()
+    STALE_DATA_INSTANCE = auto()
+
+
+@dataclass(frozen=True)
+class LocalClickHouseDesiredState:
+    """Container configuration and data identity Intake wants to be running."""
+
+    settings: ClickHouseSettings
+    image: str
+    data_dir: Path
+    data_instance_id: str
+    mode: ProvisioningMode
+
+    @property
+    def container_name(self) -> str:
+        if self.mode is ProvisioningMode.LEGACY_COMPATIBILITY:
+            return LEGACY_CONTAINER_NAME
+        return _managed_container_name(self.data_dir)
+
+    @property
+    def container_kind(self) -> ContainerKind:
+        if self.mode is ProvisioningMode.LEGACY_COMPATIBILITY:
+            return ContainerKind.LEGACY_COMPATIBILITY
+        return ContainerKind.MANAGED
+
+
+@dataclass(frozen=True)
+class ContainerCandidate:
+    """An existing container and the compatibility rules that apply to it."""
+
+    container: Container
+    kind: ContainerKind
+
+
+async def reconcile_local_clickhouse(
     settings: ClickHouseSettings,
     *,
     image: str = DEFAULT_CLICKHOUSE_IMAGE,
     data_dir: Path | None = None,
 ) -> str:
-    """Ensure Intake's data-directory-owned ClickHouse is running and return its HTTP URL."""
+    """Reconcile Intake's data-directory-owned ClickHouse and return its HTTP URL."""
 
     return await asyncio.to_thread(
-        _provision_local_clickhouse,
+        _reconcile_local_clickhouse,
         settings,
         image=image,
         data_dir=data_dir,
     )
 
 
-def _provision_local_clickhouse(
+def _reconcile_local_clickhouse(
     settings: ClickHouseSettings,
     *,
     image: str = DEFAULT_CLICKHOUSE_IMAGE,
     data_dir: Path | None = None,
-    legacy_script_mode: bool = False,
+    mode: ProvisioningMode = ProvisioningMode.MANAGED,
 ) -> str:
     resolved_data_dir = _resolve_data_dir(data_dir)
-    container_name = LEGACY_CONTAINER_NAME if legacy_script_mode else _managed_container_name(resolved_data_dir)
     client = _connect_docker()
     try:
-        data_instance_id = _prepare_data_dir(
+        data_instance_id = _ensure_data_directory_identity(
             resolved_data_dir,
             manage_permissions=data_dir is None,
         )
-        container = _get_container(client, container_name)
-        legacy = legacy_script_mode
-        if container is None and not legacy_script_mode:
-            legacy_container = _get_container(client, LEGACY_CONTAINER_NAME)
-            if legacy_container is not None:
-                legacy_container.reload()
-                legacy_attrs = cast(dict[str, Any], legacy_container.attrs or {})
-                if _mounted_clickhouse_data_dir(legacy_attrs) == resolved_data_dir:
-                    container = legacy_container
-                    legacy = True
-
-        if container is None:
-            container = _create_container(
-                client,
-                name=container_name,
-                image=image,
-                data_dir=resolved_data_dir,
-                data_instance_id=data_instance_id,
-                settings=settings,
-                legacy_script_mode=legacy_script_mode,
-            )
-        else:
-            try:
-                _validate_container(
-                    container,
-                    expected_name=LEGACY_CONTAINER_NAME if legacy else container_name,
-                    image=image,
-                    data_dir=resolved_data_dir,
-                    data_instance_id=None if legacy else data_instance_id,
-                    settings=settings,
-                )
-            except DataDirectoryIdentityMismatchError:
-                logger.warning(
-                    "Replacing stale managed ClickHouse container %s after its data directory was recreated",
-                    container_name,
-                )
-                _remove_container(container)
-                container = _create_container(
-                    client,
-                    name=container_name,
-                    image=image,
-                    data_dir=resolved_data_dir,
-                    data_instance_id=data_instance_id,
-                    settings=settings,
-                    legacy_script_mode=False,
-                )
-            container.reload()
-            if container.status != "running":
-                container.start()
-
-        _ensure_clickhouse_tmp_dir(container)
-        url = _container_http_url(container)
-        _wait_until_ready(replace(settings, url=url))
-        logger.info("Local ClickHouse is ready at %s", url, extra={"container": container.name})
-        return url
+        desired = LocalClickHouseDesiredState(
+            settings=settings,
+            image=image,
+            data_dir=resolved_data_dir,
+            data_instance_id=data_instance_id,
+            mode=mode,
+        )
+        candidate = _find_container_candidate(client, desired)
+        container = _reconcile_container(client, desired, candidate)
+        return _prepare_and_wait_until_ready(container, settings)
     except LocalClickHouseProvisioningError:
         raise
     except Exception as exc:
-        raise LocalClickHouseProvisioningError(f"Failed to provision local ClickHouse: {exc}") from exc
+        raise LocalClickHouseProvisioningError(f"Failed to reconcile local ClickHouse: {exc}") from exc
     finally:
         client.close()
 
@@ -185,7 +197,7 @@ def remove_local_clickhouse(
         if not containers:
             return False
         for container_name, container in containers:
-            _validate_cleanup_target(
+            _validate_removal_target(
                 container,
                 expected_name=container_name,
                 data_dir=resolved_data_dir,
@@ -194,7 +206,7 @@ def remove_local_clickhouse(
         for container_name, container in containers:
             if restore_data_ownership:
                 _restore_data_dir_ownership(container)
-            _remove_container(container)
+            _stop_and_remove_container(container)
             logger.info("Removed managed local ClickHouse container %s", container_name)
         return True
     except LocalClickHouseProvisioningError:
@@ -228,34 +240,72 @@ def _get_container(client: DockerClient, name: str) -> Container | None:
         return None
 
 
+def _find_container_candidate(
+    client: DockerClient,
+    desired: LocalClickHouseDesiredState,
+) -> ContainerCandidate | None:
+    container = _get_container(client, desired.container_name)
+    if container is not None:
+        return ContainerCandidate(container=container, kind=desired.container_kind)
+
+    if desired.mode is ProvisioningMode.LEGACY_COMPATIBILITY:
+        return None
+
+    legacy_container = _get_container(client, LEGACY_CONTAINER_NAME)
+    if legacy_container is None:
+        return None
+    legacy_container.reload()
+    legacy_attrs = cast(dict[str, Any], legacy_container.attrs or {})
+    if _mounted_clickhouse_data_dir(legacy_attrs) != desired.data_dir:
+        return None
+    return ContainerCandidate(container=legacy_container, kind=ContainerKind.LEGACY_COMPATIBILITY)
+
+
+def _reconcile_container(
+    client: DockerClient,
+    desired: LocalClickHouseDesiredState,
+    candidate: ContainerCandidate | None,
+) -> Container:
+    if candidate is None:
+        return _create_container(client, desired)
+
+    disposition = _classify_existing_container(candidate, desired)
+    if disposition is ContainerDisposition.STALE_DATA_INSTANCE:
+        logger.warning(
+            "Replacing stale managed ClickHouse container %s after its data directory was recreated",
+            candidate.container.name,
+        )
+        _stop_and_remove_container(candidate.container)
+        return _create_container(client, desired)
+
+    candidate.container.reload()
+    if candidate.container.status != "running":
+        candidate.container.start()
+    return candidate.container
+
+
 def _create_container(
     client: DockerClient,
-    *,
-    name: str,
-    image: str,
-    data_dir: Path,
-    data_instance_id: str,
-    settings: ClickHouseSettings,
-    legacy_script_mode: bool,
+    desired: LocalClickHouseDesiredState,
 ) -> Container:
     try:
-        client.images.get(image)
+        client.images.get(desired.image)
     except ImageNotFound:
         logger.warning(
             "Local ClickHouse image %s is not installed; pulling it before Intake starts. "
             "The first pull may take several minutes.",
-            image,
+            desired.image,
         )
-        client.images.pull(image)
-        logger.info("Finished pulling local ClickHouse image %s", image)
+        client.images.pull(desired.image)
+        logger.info("Finished pulling local ClickHouse image %s", desired.image)
 
     run_kwargs = {
-        "image": image,
-        "name": name,
+        "image": desired.image,
+        "name": desired.container_name,
         "detach": True,
         "environment": {
-            "CLICKHOUSE_USER": settings.user,
-            "CLICKHOUSE_PASSWORD": settings.password,
+            "CLICKHOUSE_USER": desired.settings.user,
+            "CLICKHOUSE_PASSWORD": desired.settings.password,
             "CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT": "1",
             "CLICKHOUSE_SKIP_USER_SETUP": "1",
         },
@@ -264,11 +314,11 @@ def _create_container(
                 CLICKHOUSE_HTTP_PORT_KEY: ("127.0.0.1", CLICKHOUSE_HTTP_PORT),
                 CLICKHOUSE_NATIVE_PORT_KEY: ("127.0.0.1", CLICKHOUSE_NATIVE_PORT),
             }
-            if legacy_script_mode
+            if desired.mode is ProvisioningMode.LEGACY_COMPATIBILITY
             else {CLICKHOUSE_HTTP_PORT_KEY: ("127.0.0.1", 0)}
         ),
-        "volumes": {str(data_dir): {"bind": CLICKHOUSE_DATA_PATH, "mode": "rw"}},
-        "labels": _expected_labels(data_dir, data_instance_id),
+        "volumes": {str(desired.data_dir): {"bind": CLICKHOUSE_DATA_PATH, "mode": "rw"}},
+        "labels": _expected_labels(desired.data_dir, desired.data_instance_id),
         "restart_policy": {"Name": "unless-stopped"},
     }
     try:
@@ -276,55 +326,50 @@ def _create_container(
     except APIError as exc:
         if exc.status_code != 409:
             raise
-        container = _get_container(client, name)
+        container = _get_container(client, desired.container_name)
         if container is None:
             raise
-        _validate_container(
-            container,
-            expected_name=name,
-            image=image,
-            data_dir=data_dir,
-            data_instance_id=None if legacy_script_mode else data_instance_id,
-            settings=settings,
+        return _reconcile_container(
+            client,
+            desired,
+            ContainerCandidate(container=container, kind=desired.container_kind),
         )
-        return container
 
 
-def _validate_container(
-    container: Container,
-    *,
-    expected_name: str,
-    image: str,
-    data_dir: Path,
-    data_instance_id: str | None,
-    settings: ClickHouseSettings,
-) -> None:
+def _classify_existing_container(
+    candidate: ContainerCandidate,
+    desired: LocalClickHouseDesiredState,
+) -> ContainerDisposition:
+    container = candidate.container
+    expected_name = container.name
     container.reload()
     attrs = cast(dict[str, Any], container.attrs or {})
     container_config = cast(dict[str, Any], attrs.get("Config") or {})
     actual_image = str(container_config.get("Image", ""))
-    if actual_image != image:
+    if actual_image != desired.image:
         raise LocalClickHouseProvisioningError(
-            f"Container {expected_name} uses {actual_image or 'an unknown image'}, but Intake requires {image}. "
+            f"Container {expected_name} uses {actual_image or 'an unknown image'}, but Intake requires {desired.image}. "
             "Preserve any data you need and remove or rename the container before retrying."
         )
 
-    if data_instance_id is not None:
+    if _mounted_clickhouse_data_dir(attrs) != desired.data_dir:
+        raise LocalClickHouseProvisioningError(
+            f"Container {expected_name} does not use the expected data directory {desired.data_dir}"
+        )
+
+    if candidate.kind is ContainerKind.MANAGED:
         labels = container.labels or {}
         identity_labels = {
             _MANAGED_BY_LABEL: _MANAGED_BY_VALUE,
             _COMPONENT_LABEL: _COMPONENT_VALUE,
-            _DATA_DIR_LABEL: _data_dir_identity(data_dir),
+            _DATA_DIR_LABEL: _data_dir_identity(desired.data_dir),
         }
         if any(labels.get(key) != value for key, value in identity_labels.items()):
             raise LocalClickHouseProvisioningError(
                 f"Container name collision: {expected_name} is not the matching Intake-managed ClickHouse"
             )
-        if labels.get(_DATA_INSTANCE_LABEL) != data_instance_id:
-            raise DataDirectoryIdentityMismatchError(
-                f"Container {expected_name} belongs to an earlier incarnation of data directory {data_dir}. "
-                "The stale container can be replaced without deleting data from the current directory."
-            )
+        if labels.get(_DATA_INSTANCE_LABEL) != desired.data_instance_id:
+            return ContainerDisposition.STALE_DATA_INSTANCE
     environment = _container_environment(attrs)
     missing_credential_keys = [key for key in ("CLICKHOUSE_USER", "CLICKHOUSE_PASSWORD") if key not in environment]
     if missing_credential_keys:
@@ -333,21 +378,18 @@ def _validate_container(
             f"(missing {', '.join(missing_credential_keys)}). Remove or rename the container before retrying."
         )
     if (
-        environment.get("CLICKHOUSE_USER") != settings.user
-        or environment.get("CLICKHOUSE_PASSWORD") != settings.password
+        environment.get("CLICKHOUSE_USER") != desired.settings.user
+        or environment.get("CLICKHOUSE_PASSWORD") != desired.settings.password
     ):
         raise LocalClickHouseProvisioningError(
             f"ClickHouse credentials changed for container {expected_name}. Remove the container to re-provision "
             "it with NMP_INTAKE_CLICKHOUSE_USER and NMP_INTAKE_CLICKHOUSE_PASSWORD, or restore the previous values."
         )
 
-    if _mounted_clickhouse_data_dir(attrs) != data_dir:
-        raise LocalClickHouseProvisioningError(
-            f"Container {expected_name} does not use the expected data directory {data_dir}"
-        )
+    return ContainerDisposition.REUSABLE
 
 
-def _validate_cleanup_target(
+def _validate_removal_target(
     container: Container,
     *,
     expected_name: str,
@@ -375,7 +417,7 @@ def _validate_cleanup_target(
         )
 
 
-def _remove_container(container: Container) -> None:
+def _stop_and_remove_container(container: Container) -> None:
     container.reload()
     if container.status == "running":
         container.stop(timeout=30)
@@ -432,7 +474,7 @@ def _expected_labels(data_dir: Path, data_instance_id: str) -> dict[str, str]:
     }
 
 
-def _prepare_data_dir(data_dir: Path, *, manage_permissions: bool) -> str:
+def _ensure_data_directory_identity(data_dir: Path, *, manage_permissions: bool) -> str:
     data_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = data_dir / "tmp"
     tmp_dir.mkdir(exist_ok=True)
@@ -491,6 +533,14 @@ def _ensure_clickhouse_tmp_dir(container: Container) -> None:
         raise LocalClickHouseProvisioningError(
             f"Could not prepare ClickHouse temporary storage in {container.name}: {output.strip()}"
         )
+
+
+def _prepare_and_wait_until_ready(container: Container, settings: ClickHouseSettings) -> str:
+    _ensure_clickhouse_tmp_dir(container)
+    url = _container_http_url(container)
+    _wait_until_ready(replace(settings, url=url))
+    logger.info("Local ClickHouse is ready at %s", url, extra={"container": container.name})
+    return url
 
 
 def _container_http_url(container: Container) -> str:
@@ -568,11 +618,12 @@ def main() -> int:
                 else "No managed local ClickHouse container found"
             )
             return 0
-        url = _provision_local_clickhouse(
+        mode = ProvisioningMode.LEGACY_COMPATIBILITY if args.legacy_script_mode else ProvisioningMode.MANAGED
+        url = _reconcile_local_clickhouse(
             settings,
             image=config.clickhouse_config.image,
             data_dir=clickhouse_data_dir,
-            legacy_script_mode=args.legacy_script_mode,
+            mode=mode,
         )
     except LocalClickHouseProvisioningError as exc:
         print(str(exc), file=sys.stderr)

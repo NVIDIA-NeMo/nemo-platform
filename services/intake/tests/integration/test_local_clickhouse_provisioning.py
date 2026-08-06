@@ -14,7 +14,7 @@ from docker.errors import DockerException, NotFound
 from nmp.intake.local_clickhouse import (
     CLICKHOUSE_HTTP_PORT_KEY,
     _managed_container_name,
-    _provision_local_clickhouse,
+    _reconcile_local_clickhouse,
     remove_local_clickhouse,
 )
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings
@@ -54,7 +54,7 @@ def test_data_directory_owned_container_uses_dynamic_loopback_port_and_is_reused
     )
     client = docker.from_env(timeout=10)
     try:
-        first_url = _provision_local_clickhouse(settings, data_dir=data_dir)
+        first_url = _reconcile_local_clickhouse(settings, data_dir=data_dir)
         container = client.containers.get(container_name)
         first_id = container.id
         container.reload()
@@ -63,7 +63,7 @@ def test_data_directory_owned_container_uses_dynamic_loopback_port_and_is_reused
         assert first_url == f"http://127.0.0.1:{binding['HostPort']}"
         assert binding["HostIp"] == "127.0.0.1"
 
-        second_url = _provision_local_clickhouse(settings, data_dir=data_dir)
+        second_url = _reconcile_local_clickhouse(settings, data_dir=data_dir)
         reused = client.containers.get(container_name)
 
         assert second_url == first_url

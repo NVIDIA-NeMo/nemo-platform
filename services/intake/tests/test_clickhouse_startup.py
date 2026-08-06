@@ -41,10 +41,10 @@ def test_intake_ready_with_explicit_external_clickhouse_without_startup_warning(
     assert not [record for record in caplog.records if record.name == "nmp.intake.service"]
 
 
-def test_intake_uses_provisioned_clickhouse_url(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_intake_uses_reconciled_clickhouse_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NMP_INTAKE_CLICKHOUSE_URL", raising=False)
-    provision = AsyncMock(return_value="http://127.0.0.1:55123")
-    monkeypatch.setattr("nmp.intake.service.provision_local_clickhouse", provision)
+    reconcile = AsyncMock(return_value="http://127.0.0.1:55123")
+    monkeypatch.setattr("nmp.intake.service.reconcile_local_clickhouse", reconcile)
     intake_config = IntakeConfig(clickhouse_config=ClickHouseConfig())
     service = IntakeService().with_config(intake_config)
 
@@ -57,9 +57,9 @@ def test_intake_uses_provisioned_clickhouse_url(monkeypatch: pytest.MonkeyPatch)
             await service.on_shutdown()
 
     asyncio.run(start_and_stop())
-    provision.assert_awaited_once()
-    assert provision.await_args is not None
-    assert provision.await_args.kwargs == {
+    reconcile.assert_awaited_once()
+    assert reconcile.await_args is not None
+    assert reconcile.await_args.kwargs == {
         "image": intake_config.clickhouse_config.image,
         "data_dir": intake_config.clickhouse_config.data_dir,
     }
@@ -74,8 +74,8 @@ def test_intake_stays_ready_and_logs_docker_recovery_guidance(
         "Docker daemon is unavailable. Start Docker Desktop on macOS/Windows or the Docker service on Linux, "
         "then rerun `nemo setup` or restart `nemo services run`."
     )
-    provision = AsyncMock(side_effect=DockerUnavailableError(message))
-    monkeypatch.setattr("nmp.intake.service.provision_local_clickhouse", provision)
+    reconcile = AsyncMock(side_effect=DockerUnavailableError(message))
+    monkeypatch.setattr("nmp.intake.service.reconcile_local_clickhouse", reconcile)
     caplog.set_level(logging.WARNING, logger="nmp.intake.service")
     service = IntakeService().with_config(IntakeConfig(clickhouse_config=ClickHouseConfig()))
 
@@ -90,13 +90,13 @@ def test_intake_stays_ready_and_logs_docker_recovery_guidance(
     assert any(message in record.message for record in caplog.records)
 
 
-def test_intake_stays_ready_for_non_docker_provisioning_errors(
+def test_intake_stays_ready_for_non_docker_reconciliation_errors(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("NMP_INTAKE_CLICKHOUSE_URL", raising=False)
-    provision = AsyncMock(side_effect=LocalClickHouseProvisioningError("container name collision"))
-    monkeypatch.setattr("nmp.intake.service.provision_local_clickhouse", provision)
+    reconcile = AsyncMock(side_effect=LocalClickHouseProvisioningError("container name collision"))
+    monkeypatch.setattr("nmp.intake.service.reconcile_local_clickhouse", reconcile)
     caplog.set_level(logging.ERROR, logger="nmp.intake.service")
     service = IntakeService().with_config(IntakeConfig(clickhouse_config=ClickHouseConfig()))
 

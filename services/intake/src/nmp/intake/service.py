@@ -13,7 +13,7 @@ from nmp.intake.config import IntakeConfig, should_provision_local_clickhouse
 from nmp.intake.local_clickhouse import (
     DockerUnavailableError,
     LocalClickHouseProvisioningError,
-    provision_local_clickhouse,
+    reconcile_local_clickhouse,
 )
 from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
@@ -79,7 +79,7 @@ class IntakeService(Service[IntakeConfig]):
         settings = ClickHouseSettings.from_config(cfg)
         if should_provision_local_clickhouse(cfg.clickhouse_config):
             try:
-                local_url = await provision_local_clickhouse(
+                local_url = await reconcile_local_clickhouse(
                     settings,
                     image=cfg.clickhouse_config.image,
                     data_dir=cfg.clickhouse_config.data_dir,
@@ -87,14 +87,14 @@ class IntakeService(Service[IntakeConfig]):
                 settings = replace(settings, url=local_url)
             except DockerUnavailableError as exc:
                 logger.warning(
-                    "Skipping local ClickHouse provisioning: %s ClickHouse-backed endpoints will return 503 until "
+                    "Skipping local ClickHouse reconciliation: %s ClickHouse-backed endpoints will return 503 until "
                     "ClickHouse is reachable.",
                     exc,
                     extra={"service": self.name, "clickhouse_url": settings.url},
                 )
             except LocalClickHouseProvisioningError as exc:
                 logger.error(
-                    "Local ClickHouse provisioning failed: %s Intake will continue starting; ClickHouse-backed "
+                    "Local ClickHouse reconciliation failed: %s Intake will continue starting; ClickHouse-backed "
                     "endpoints will return 503 until ClickHouse is reachable.",
                     exc,
                     extra={"service": self.name, "clickhouse_url": settings.url},

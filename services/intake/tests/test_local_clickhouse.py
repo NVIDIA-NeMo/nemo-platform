@@ -23,10 +23,11 @@ from nmp.intake.local_clickhouse import (
     LEGACY_CONTAINER_NAME,
     DockerUnavailableError,
     LocalClickHouseProvisioningError,
+    ProvisioningMode,
+    _ensure_data_directory_identity,
     _expected_labels,
     _managed_container_name,
-    _prepare_data_dir,
-    _provision_local_clickhouse,
+    _reconcile_local_clickhouse,
     main,
     remove_local_clickhouse,
 )
@@ -156,7 +157,7 @@ def settings() -> ClickHouseSettings:
     )
 
 
-def _patch_provisioning(monkeypatch: pytest.MonkeyPatch, client: FakeDockerClient, tmp_path: Path) -> None:
+def _patch_reconciliation(monkeypatch: pytest.MonkeyPatch, client: FakeDockerClient, tmp_path: Path) -> None:
     monkeypatch.setenv("NMP_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("nmp.intake.local_clickhouse._wait_until_ready", lambda _settings: None)
     monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", lambda **_kwargs: client)
@@ -192,15 +193,15 @@ def test_managed_container_config_uses_namespaced_environment(monkeypatch: pytes
     assert config.data_dir == tmp_path / "configured"
 
 
-def test_provision_creates_data_directory_owned_container_with_dynamic_loopback_port(
+def test_reconcile_creates_data_directory_owned_container_with_dynamic_loopback_port(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     settings: ClickHouseSettings,
 ) -> None:
     client = FakeDockerClient()
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
-    url = _provision_local_clickhouse(settings)
+    url = _reconcile_local_clickhouse(settings)
 
     assert url == "http://127.0.0.1:55123"
     assert client.pinged is True
@@ -213,7 +214,7 @@ def test_provision_creates_data_directory_owned_container_with_dynamic_loopback_
     assert run["restart_policy"] == {"Name": "unless-stopped"}
 
 
-def test_provision_reuses_matching_container(
+def test_reconcile_reuses_matching_container(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     settings: ClickHouseSettings,
@@ -221,7 +222,7 @@ def test_provision_reuses_matching_container(
     data_dir = (tmp_path / "intake-clickhouse").resolve()
     name = _managed_container_name(data_dir)
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
-    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     container = FakeContainer(
         name=name,
         image=image,
@@ -230,15 +231,15 @@ def test_provision_reuses_matching_container(
         host_port=55234,
     )
     client = FakeDockerClient({name: container})
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
-    url = _provision_local_clickhouse(settings)
+    url = _reconcile_local_clickhouse(settings)
 
     assert url == "http://127.0.0.1:55234"
     assert client.containers.run_calls == []
 
 
-def test_provision_restarts_stopped_matching_container(
+def test_reconcile_restarts_stopped_matching_container(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     settings: ClickHouseSettings,
@@ -246,7 +247,7 @@ def test_provision_restarts_stopped_matching_container(
     data_dir = (tmp_path / "intake-clickhouse").resolve()
     name = _managed_container_name(data_dir)
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
-    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     container = FakeContainer(
         name=name,
         image=image,
@@ -255,14 +256,14 @@ def test_provision_restarts_stopped_matching_container(
         status="exited",
     )
     client = FakeDockerClient({name: container})
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
-    _provision_local_clickhouse(settings)
+    _reconcile_local_clickhouse(settings)
 
     assert container.started is True
 
 
-def test_provision_rejects_container_identity_collision(
+def test_reconcile_rejects_container_identity_collision(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     settings: ClickHouseSettings,
@@ -272,15 +273,15 @@ def test_provision_rejects_container_identity_collision(
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
     container = FakeContainer(name=name, image=image, labels={}, data_dir=data_dir)
     client = FakeDockerClient({name: container})
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
     with pytest.raises(LocalClickHouseProvisioningError, match="Container name collision"):
-        _provision_local_clickhouse(settings)
+        _reconcile_local_clickhouse(settings)
 
     assert client.closed is True
 
 
-def test_provision_adopts_legacy_container(
+def test_reconcile_adopts_legacy_container(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     settings: ClickHouseSettings,
@@ -289,9 +290,9 @@ def test_provision_adopts_legacy_container(
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
     legacy = FakeContainer(name=LEGACY_CONTAINER_NAME, image=image, data_dir=data_dir, host_port=8123)
     client = FakeDockerClient({LEGACY_CONTAINER_NAME: legacy})
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
-    url = _provision_local_clickhouse(settings)
+    url = _reconcile_local_clickhouse(settings)
 
     assert url == "http://127.0.0.1:8123"
     assert client.containers.run_calls == []
@@ -300,7 +301,7 @@ def test_provision_adopts_legacy_container(
     assert legacy.removed is True
 
 
-def test_provision_does_not_adopt_legacy_container_without_expected_data_mount(
+def test_reconcile_does_not_adopt_legacy_container_without_expected_data_mount(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     settings: ClickHouseSettings,
@@ -308,23 +309,23 @@ def test_provision_does_not_adopt_legacy_container_without_expected_data_mount(
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
     legacy = FakeContainer(name=LEGACY_CONTAINER_NAME, image=image, host_port=8123)
     client = FakeDockerClient({LEGACY_CONTAINER_NAME: legacy})
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
-    assert _provision_local_clickhouse(settings) == "http://127.0.0.1:55123"
+    assert _reconcile_local_clickhouse(settings) == "http://127.0.0.1:55123"
     assert len(client.containers.run_calls) == 1
     assert client.containers.run_calls[0]["name"] == _managed_container_name((tmp_path / "intake-clickhouse").resolve())
     assert legacy.removed is False
 
 
-def test_legacy_script_mode_preserves_container_name_and_ports(
+def test_legacy_compatibility_mode_preserves_container_name_and_ports(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     settings: ClickHouseSettings,
 ) -> None:
     client = FakeDockerClient()
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
-    url = _provision_local_clickhouse(settings, legacy_script_mode=True)
+    url = _reconcile_local_clickhouse(settings, mode=ProvisioningMode.LEGACY_COMPATIBILITY)
 
     assert url == "http://127.0.0.1:8123"
     run = client.containers.run_calls[0]
@@ -335,7 +336,7 @@ def test_legacy_script_mode_preserves_container_name_and_ports(
     }
 
 
-def test_provision_reports_docker_daemon_unavailable(
+def test_reconcile_reports_docker_daemon_unavailable(
     monkeypatch: pytest.MonkeyPatch,
     settings: ClickHouseSettings,
 ) -> None:
@@ -343,7 +344,7 @@ def test_provision_reports_docker_daemon_unavailable(
     monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", docker_factory)
 
     with pytest.raises(DockerUnavailableError, match="Docker daemon is unavailable") as error:
-        _provision_local_clickhouse(settings)
+        _reconcile_local_clickhouse(settings)
 
     assert "Start Docker Desktop on macOS/Windows or the Docker service on Linux" in str(error.value)
     assert "rerun `nemo setup` or restart `nemo services run`" in str(error.value)
@@ -351,7 +352,7 @@ def test_provision_reports_docker_daemon_unavailable(
     docker_factory.assert_called_once_with(timeout=10)
 
 
-def test_provision_closes_client_when_docker_ping_fails(
+def test_reconcile_closes_client_when_docker_ping_fails(
     monkeypatch: pytest.MonkeyPatch,
     settings: ClickHouseSettings,
 ) -> None:
@@ -360,7 +361,7 @@ def test_provision_closes_client_when_docker_ping_fails(
     monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", lambda **_kwargs: client)
 
     with pytest.raises(DockerUnavailableError, match="Docker daemon is unavailable"):
-        _provision_local_clickhouse(settings)
+        _reconcile_local_clickhouse(settings)
 
     assert client.closed is True
 
@@ -373,20 +374,20 @@ def test_prepare_operator_data_dir_does_not_change_permissions(
     monkeypatch.setattr(Path, "chmod", chmod)
 
     data_dir = tmp_path / "operator-clickhouse"
-    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=False)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=False)
 
     assert data_instance_id
     assert (data_dir / ".nmp-clickhouse-identity").stat().st_mode & 0o777 == 0o600
     chmod.assert_not_called()
 
 
-def test_prepare_data_dir_reuses_unreadable_identity_marker(tmp_path: Path) -> None:
+def test_ensure_data_directory_identity_reuses_unreadable_marker(tmp_path: Path) -> None:
     data_dir = tmp_path / "intake-clickhouse"
-    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     identity_path = data_dir / ".nmp-clickhouse-identity"
     identity_path.chmod(0)
 
-    assert _prepare_data_dir(data_dir, manage_permissions=True) == data_instance_id
+    assert _ensure_data_directory_identity(data_dir, manage_permissions=True) == data_instance_id
 
 
 def test_data_directory_permission_failure_is_wrapped(
@@ -395,14 +396,14 @@ def test_data_directory_permission_failure_is_wrapped(
     settings: ClickHouseSettings,
 ) -> None:
     client = FakeDockerClient()
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
     monkeypatch.setattr(
-        "nmp.intake.local_clickhouse._prepare_data_dir",
+        "nmp.intake.local_clickhouse._ensure_data_directory_identity",
         MagicMock(side_effect=PermissionError("read-only directory")),
     )
 
-    with pytest.raises(LocalClickHouseProvisioningError, match="Failed to provision local ClickHouse") as error:
-        _provision_local_clickhouse(settings)
+    with pytest.raises(LocalClickHouseProvisioningError, match="Failed to reconcile local ClickHouse") as error:
+        _reconcile_local_clickhouse(settings)
 
     assert isinstance(error.value.__cause__, PermissionError)
     assert client.closed is True
@@ -416,7 +417,7 @@ def test_changed_credentials_report_actionable_remediation(
     data_dir = (tmp_path / "intake-clickhouse").resolve()
     name = _managed_container_name(data_dir)
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
-    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     container = FakeContainer(
         name=name,
         image=image,
@@ -425,10 +426,10 @@ def test_changed_credentials_report_actionable_remediation(
         password="old-password",
     )
     client = FakeDockerClient({name: container})
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
     with pytest.raises(LocalClickHouseProvisioningError, match="credentials changed") as error:
-        _provision_local_clickhouse(settings)
+        _reconcile_local_clickhouse(settings)
 
     assert "Remove the container to re-provision" in str(error.value)
     assert "NMP_INTAKE_CLICKHOUSE_PASSWORD" in str(error.value)
@@ -442,7 +443,7 @@ def test_missing_container_credentials_report_unmanaged_container(
     data_dir = (tmp_path / "intake-clickhouse").resolve()
     name = _managed_container_name(data_dir)
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
-    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     container = FakeContainer(
         name=name,
         image=image,
@@ -451,10 +452,10 @@ def test_missing_container_credentials_report_unmanaged_container(
     )
     container.attrs["Config"]["Env"] = []
     client = FakeDockerClient({name: container})
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
     with pytest.raises(LocalClickHouseProvisioningError, match="not provisioned by Intake") as error:
-        _provision_local_clickhouse(settings)
+        _reconcile_local_clickhouse(settings)
 
     assert "missing CLICKHOUSE_USER, CLICKHOUSE_PASSWORD" in str(error.value)
     assert "credentials changed" not in str(error.value)
@@ -468,7 +469,7 @@ def test_recreated_data_directory_replaces_stale_container(
     data_dir = (tmp_path / "intake-clickhouse").resolve()
     name = _managed_container_name(data_dir)
     image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
-    original_data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    original_data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     container = FakeContainer(
         name=name,
         image=image,
@@ -478,7 +479,7 @@ def test_recreated_data_directory_replaces_stale_container(
     original_identity_stat = (data_dir / ".nmp-clickhouse-identity").stat()
     for identity_path in data_dir.glob(".nmp-clickhouse-identity*"):
         identity_path.unlink()
-    new_data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    new_data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     assert new_data_instance_id != original_data_instance_id
 
     real_stat = Path.stat
@@ -493,12 +494,12 @@ def test_recreated_data_directory_replaces_stale_container(
         return real_stat(path, follow_symlinks=follow_symlinks)
 
     monkeypatch.setattr(Path, "stat", stat_with_reused_identity_metadata)
-    assert _prepare_data_dir(data_dir, manage_permissions=True) == new_data_instance_id
+    assert _ensure_data_directory_identity(data_dir, manage_permissions=True) == new_data_instance_id
 
     client = FakeDockerClient({name: container})
-    _patch_provisioning(monkeypatch, client, tmp_path)
+    _patch_reconciliation(monkeypatch, client, tmp_path)
 
-    assert _provision_local_clickhouse(settings) == "http://127.0.0.1:55123"
+    assert _reconcile_local_clickhouse(settings) == "http://127.0.0.1:55123"
     assert container.stopped is True
     assert container.removed is True
     assert len(client.containers.run_calls) == 1
@@ -511,7 +512,7 @@ def test_remove_local_clickhouse_validates_and_removes_owned_container(
 ) -> None:
     data_dir = (tmp_path / "intake-clickhouse").resolve()
     name = _managed_container_name(data_dir)
-    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     container = FakeContainer(
         name=name,
         image=f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
@@ -533,7 +534,7 @@ def test_remove_local_clickhouse_restores_host_ownership_before_removal(
 ) -> None:
     data_dir = (tmp_path / "intake-clickhouse").resolve()
     name = _managed_container_name(data_dir)
-    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     container = FakeContainer(
         name=name,
         image=f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
@@ -594,20 +595,20 @@ def test_remove_command_accepts_explicit_data_directory(
     remove_clickhouse.assert_called_once_with(data_dir=data_dir, restore_data_ownership=False)
 
 
-def test_main_provisions_managed_mode_by_default(
+def test_main_reconciles_managed_mode_by_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     data_dir = tmp_path / "managed-clickhouse"
-    provision_clickhouse = MagicMock(return_value="http://127.0.0.1:55123")
+    reconcile_clickhouse = MagicMock(return_value="http://127.0.0.1:55123")
     monkeypatch.setenv("NMP_INTAKE_CLICKHOUSE_DATA_DIR", str(data_dir))
-    monkeypatch.setattr("nmp.intake.local_clickhouse._provision_local_clickhouse", provision_clickhouse)
+    monkeypatch.setattr("nmp.intake.local_clickhouse._reconcile_local_clickhouse", reconcile_clickhouse)
     monkeypatch.setattr("nmp.intake.local_clickhouse.sys.argv", ["local_clickhouse"])
 
     assert main() == 0
-    provision_clickhouse.assert_called_once()
-    assert provision_clickhouse.call_args.kwargs["data_dir"] == data_dir
-    assert provision_clickhouse.call_args.kwargs["legacy_script_mode"] is False
+    reconcile_clickhouse.assert_called_once()
+    assert reconcile_clickhouse.call_args.kwargs["data_dir"] == data_dir
+    assert reconcile_clickhouse.call_args.kwargs["mode"] is ProvisioningMode.MANAGED
 
 
 def test_compatibility_script_selects_legacy_mode_and_forwards_arguments() -> None:
@@ -642,7 +643,7 @@ def test_remove_local_clickhouse_removes_owned_legacy_container(
     tmp_path: Path,
 ) -> None:
     data_dir = (tmp_path / "intake-clickhouse").resolve()
-    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
     container = FakeContainer(
         name=LEGACY_CONTAINER_NAME,
         image=f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
