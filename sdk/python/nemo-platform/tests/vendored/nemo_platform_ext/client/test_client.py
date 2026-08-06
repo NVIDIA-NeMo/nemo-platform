@@ -206,9 +206,7 @@ class TestCreateClientOAuthUserAuthDisabledCluster:
         return_value=NMPOIDCConfig(auth_enabled=False, client_id="", token_endpoint=""),
     )
     @patch("nemo_platform.auth.token_provider.httpx.post")
-    def test_expired_token_on_auth_disabled_cluster_does_not_attempt_refresh(
-        self, mock_post, _mock_discover, tmp_path
-    ):
+    def test_expired_token_on_auth_disabled_cluster_does_not_attempt_refresh(self, mock_post, _mock_discover, tmp_path):
         expired_token = _make_jwt({"exp": int(time.time()) - 100, "sub": "user1"})
         config_path = _write_config(
             tmp_path,

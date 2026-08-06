@@ -530,8 +530,6 @@ def _resolve_bootstrap(
         # against a different cluster). There's no token endpoint to refresh
         # against, so fall back to no-auth instead of attempting a refresh_token
         # grant against an empty endpoint, which would fail.
-        # Note: when access_token is provided explicitly (e.g. NMP_ACCESS_TOKEN),
-        # we skip this guard and let the caller's token flow through as-is.
         return _ResolvedBootstrap(base_url, resolved.workspace, headers, None)
 
     tokens = TokenSet.from_access_token(
