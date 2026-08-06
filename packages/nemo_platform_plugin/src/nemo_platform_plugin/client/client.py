@@ -228,8 +228,13 @@ def _is_replayable(content: bytes | Iterable[bytes] | AsyncIterable[bytes] | Non
     the first time. Such a body may only be re-sent while it is still untouched;
     once it has been read, the retry has to happen a level up, where the caller
     can build a fresh iterator over the source.
+
+    ``bytearray`` and ``memoryview`` are deliberately absent: httpx treats
+    anything that is not ``bytes``/``str`` as an iterable of chunks, and
+    iterating either of those yields ``int``, so it rejects them on the first
+    attempt regardless of what this returns.
     """
-    return content is None or isinstance(content, (bytes, bytearray, memoryview, str, list, tuple))
+    return content is None or isinstance(content, (bytes, str, list, tuple))
 
 
 def _should_retry_request(
@@ -242,7 +247,11 @@ def _should_retry_request(
     """:func:`_should_retry` for a prepared request, logging one-shot-body declines."""
     replayable = _is_replayable(request.content)
     backoff = _should_retry(response, exc, attempt, policy, replayable=replayable)
-    if backoff is None and not replayable and attempt < policy.max_retries:
+    # Only speak up when the body is the one thing standing between this attempt
+    # and another one. Asking again as if it were replayable separates that from
+    # every other reason to stop — a success, a 404, an exhausted attempt budget —
+    # none of which are worth a line in the log.
+    if backoff is None and not replayable and _should_retry(response, exc, attempt, policy) is not None:
         logger.info(
             "Not retrying %s %s: the request body is a one-shot stream that has already been read, "
             "so it cannot be sent again. Retry at a level that can rebuild it.",

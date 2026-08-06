@@ -15,13 +15,14 @@ the connection leaves the iterator untouched, so those attempts are still retrie
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterable, AsyncIterator, Iterable
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
-from nemo_platform_plugin.client.errors import InternalServerError, NemoTransportError
+from nemo_platform_plugin.client.errors import InternalServerError, NemoTransportError, NotFoundError
 from nemo_platform_plugin.client.types import PreparedRequest, RetryPolicy
 
 BASE = "http://test:8000"
@@ -29,6 +30,17 @@ PAYLOAD = 256 * 1024
 # Long enough to outlast the client's read timeout; the handler task is cancelled
 # on teardown so the test never actually waits this out.
 STALL_SECONDS = 30
+CLIENT_LOGGER = "nemo_platform_plugin.client.client"
+# What ``client_from_platform`` builds for every typed client in production, and
+# the only policy under which the response-header branches below are reachable.
+ADAPTER_POLICY = RetryPolicy(
+    max_retries=3,
+    backoff_base=0.0,
+    retryable_status_codes=(408, 409, 429),
+    retry_all_server_errors=True,
+    respect_retry_decision_headers=True,
+    respect_retry_after_headers=True,
+)
 
 
 def _upload_request(content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None) -> PreparedRequest:
@@ -225,6 +237,115 @@ def test_streaming_body_is_not_retried_on_a_retryable_status() -> None:
         client.with_headers({"Content-Length": str(PAYLOAD)}).send(_upload_request(_sync_chunks()))
 
     assert mock_http.request.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# The same, under the retry policy the SDK adapter actually installs
+# ---------------------------------------------------------------------------
+
+
+def _retry_me(status: int = 503) -> httpx.Response:
+    return httpx.Response(
+        status,
+        headers={"x-should-retry": "true"},
+        request=httpx.Request("PUT", f"{BASE}/apis/test/v2/upload"),
+        json={"detail": "down"},
+    )
+
+
+def test_one_shot_body_is_not_replayed_even_when_the_server_asks_for_a_retry() -> None:
+    """``x-should-retry: true`` cannot conjure back a body that is already spent.
+
+    The spent-body check has to come before the header branches, not after, or a
+    server that sets this header would still get an exhausted iterator replayed
+    under the original Content-Length.
+    """
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.side_effect = [
+        _retry_me(),
+        httpx.Response(200, request=httpx.Request("PUT", f"{BASE}/apis/test/v2/upload")),
+    ]
+
+    client = NemoClient(base_url=BASE, http_client=mock_http, retry=ADAPTER_POLICY)
+
+    with pytest.raises(InternalServerError):
+        client.with_headers({"Content-Length": str(PAYLOAD)}).send(_upload_request(_sync_chunks()))
+
+    assert mock_http.request.call_count == 1
+
+
+def test_replayable_body_still_honors_the_server_retry_header() -> None:
+    """The spent-body check must not have swallowed header-driven retries wholesale."""
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.side_effect = [
+        _retry_me(),
+        httpx.Response(200, request=httpx.Request("PUT", f"{BASE}/apis/test/v2/upload")),
+    ]
+
+    client = NemoClient(base_url=BASE, http_client=mock_http, retry=ADAPTER_POLICY)
+    resp = client.send(_upload_request(b"x" * PAYLOAD))
+
+    assert resp.http_response.status_code == 200
+    assert mock_http.request.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Declining a retry is worth a log line; everything else is not
+# ---------------------------------------------------------------------------
+
+
+def test_declined_retry_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.side_effect = httpx.ReadTimeout("timed out")
+
+    client = NemoClient(
+        base_url=BASE,
+        http_client=mock_http,
+        retry=RetryPolicy(max_retries=3, backoff_base=0.0),
+    )
+
+    with caplog.at_level(logging.INFO, logger=CLIENT_LOGGER), pytest.raises(NemoTransportError):
+        client.with_headers({"Content-Length": str(PAYLOAD)}).send(_upload_request(_sync_chunks()))
+
+    assert "one-shot stream" in caplog.text
+    assert "PUT /apis/test/v2/upload" in caplog.text
+
+
+def test_successful_upload_does_not_log_a_retry_decline(caplog: pytest.LogCaptureFixture) -> None:
+    """Nothing failed, so there was no retry to decline."""
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(200, request=httpx.Request("PUT", f"{BASE}/apis/test/v2/upload"))
+
+    client = NemoClient(
+        base_url=BASE,
+        http_client=mock_http,
+        retry=RetryPolicy(max_retries=3, backoff_base=0.0),
+    )
+
+    with caplog.at_level(logging.INFO, logger=CLIENT_LOGGER):
+        resp = client.with_headers({"Content-Length": str(PAYLOAD)}).send(_upload_request(_sync_chunks()))
+
+    assert resp.http_response.status_code == 200
+    assert caplog.records == []
+
+
+def test_non_retryable_status_does_not_log_a_retry_decline(caplog: pytest.LogCaptureFixture) -> None:
+    """A 404 stops the retry loop on its own merits — the body never came into it."""
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        404, request=httpx.Request("PUT", f"{BASE}/apis/test/v2/upload"), json={"detail": "no such fileset"}
+    )
+
+    client = NemoClient(
+        base_url=BASE,
+        http_client=mock_http,
+        retry=RetryPolicy(max_retries=3, backoff_base=0.0),
+    )
+
+    with caplog.at_level(logging.INFO, logger=CLIENT_LOGGER), pytest.raises(NotFoundError):
+        client.with_headers({"Content-Length": str(PAYLOAD)}).send(_upload_request(_sync_chunks()))
+
+    assert caplog.records == []
 
 
 # ---------------------------------------------------------------------------

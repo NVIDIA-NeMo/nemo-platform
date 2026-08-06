@@ -284,6 +284,7 @@ class FileIORunner:
         wait=wait_exponential(multiplier=2, min=INITIAL_BACKOFF_SECONDS, max=MAX_BACKOFF_SECONDS),
         retry=retry_if_exception_type(TRANSIENT_FILESYSTEM_EXCEPTIONS),
         reraise=True,
+        before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def _create_fileset_with_retry(self, fileset: FileSetRef, metadata: dict | None = None) -> None:
         """Internal method with retry logic for creating a FileSet."""
@@ -296,7 +297,7 @@ class FileIORunner:
                 "custom_fields": {"service_source": self.service_source},
             }
             if metadata is not None:
-                body_kwargs["metadata"] = metadata
+                body_kwargs["metadata"] = FilesetMetadata.model_validate(metadata)
             result = files.create_fileset(workspace=fileset.workspace, body=CreateFilesetRequest(**body_kwargs)).data()
             logger.info(f"Created FileSet: {result.workspace}/{result.name}")
         except ConflictError:

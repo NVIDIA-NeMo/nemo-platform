@@ -103,6 +103,4 @@ def client_from_platform(
         # reads None as "leave unchanged". Say the same thing in the form httpx
         # itself uses, so the override survives.
         timeout = httpx.Timeout(None)
-    if isinstance(timeout, (httpx.Timeout, int, float)):
-        client = client.with_options(timeout=timeout)
-    return client
+    return client.with_options(timeout=timeout)

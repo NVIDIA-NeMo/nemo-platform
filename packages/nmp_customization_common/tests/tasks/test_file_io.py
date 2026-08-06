@@ -9,6 +9,7 @@ import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 
@@ -214,7 +215,6 @@ class TestCreateFilesetRetry:
 
     @patch("nmp.customization_common.tasks.file_io.run.client_from_platform")
     def test_retries_transport_error_wrapped_by_the_client(self, mock_cfp, no_retry_backoff) -> None:
-        import httpx
         from nemo_platform_plugin.client.errors import NemoTransportError
         from nmp.customization_common.schemas.file_io import FileSetRef
 
@@ -230,7 +230,6 @@ class TestCreateFilesetRetry:
 
     @patch("nmp.customization_common.tasks.file_io.run.client_from_platform")
     def test_retries_rate_limit_wrapped_by_the_client(self, mock_cfp, no_retry_backoff) -> None:
-        import httpx
         from nemo_platform_plugin.client.errors import RateLimitError
         from nmp.customization_common.schemas.file_io import FileSetRef
 
@@ -256,7 +255,6 @@ class TestUploadRetry:
     """
 
     def test_retries_transport_error_wrapped_by_the_client(self, tmp_path: Path, no_retry_backoff) -> None:
-        import httpx
         from nemo_platform_plugin.client.errors import NemoTransportError
         from nmp.customization_common.schemas.file_io import FileSetRef
 
@@ -270,7 +268,6 @@ class TestUploadRetry:
         assert sdk.files.upload.call_count == 2
 
     def test_retries_server_error_wrapped_by_the_client(self, tmp_path: Path, no_retry_backoff) -> None:
-        import httpx
         from nemo_platform_plugin.client.errors import InternalServerError
         from nmp.customization_common.schemas.file_io import FileSetRef
 
@@ -286,7 +283,6 @@ class TestUploadRetry:
 
     def test_retries_rate_limit_wrapped_by_the_client(self, tmp_path: Path, no_retry_backoff) -> None:
         """429 is in the client's retryable statuses, but it cannot act on it here."""
-        import httpx
         from nemo_platform_plugin.client.errors import RateLimitError
         from nmp.customization_common.schemas.file_io import FileSetRef
 
@@ -301,7 +297,6 @@ class TestUploadRetry:
         assert sdk.files.upload.call_count == 2
 
     def test_gives_up_as_a_file_upload_error(self, tmp_path: Path, no_retry_backoff) -> None:
-        import httpx
         from nemo_platform_plugin.client.errors import NemoTransportError
         from nmp.customization_common.schemas.file_io import FileSetRef, FileUploadError
 
