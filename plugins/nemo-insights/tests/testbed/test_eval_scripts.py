@@ -12,7 +12,14 @@ DEFAULT_LLM_EVAL_USER_SIMULATOR = "claude-opus-4-5"
 """
 
 
-def test_stack_resolves_labeled_clickhouse_on_configured_port(monkeypatch):
+@pytest.mark.parametrize(
+    ("clickhouse_url", "expected_port"),
+    [
+        (stack.CLICKHOUSE_URL, 8123),
+        ("http://localhost:55123", 55123),
+    ],
+)
+def test_stack_resolves_labeled_clickhouse_on_configured_port(monkeypatch, clickhouse_url, expected_port):
     commands: list[list[str]] = []
 
     def fake_run(command, **kwargs):
@@ -21,10 +28,33 @@ def test_stack_resolves_labeled_clickhouse_on_configured_port(monkeypatch):
 
     monkeypatch.setattr(stack.subprocess, "run", fake_run)
 
-    assert stack._intake_clickhouse_container() == "nmp-intake-clickhouse-managed"
+    assert stack._intake_clickhouse_container(clickhouse_url) == "nmp-intake-clickhouse-managed"
     assert "label=nmp.nvidia.com/managed-by=nemo-platform" in commands[0]
     assert "label=nmp.nvidia.com/component=intake-clickhouse" in commands[0]
-    assert "publish=8123" in commands[0]
+    assert f"publish={expected_port}" in commands[0]
+
+
+def test_stack_rejects_nonlocal_clickhouse_url(monkeypatch):
+    monkeypatch.setattr(stack.subprocess, "run", lambda *_args, **_kwargs: pytest.fail("docker must not run"))
+
+    with pytest.raises(RuntimeError, match="ClickHouse URL is not local"):
+        stack._intake_clickhouse_container("https://clickhouse.example.internal:8443")
+
+
+def test_stack_rejects_multiple_matching_clickhouse_containers(monkeypatch):
+    monkeypatch.setattr(
+        stack.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="nmp-intake-clickhouse-one\nnmp-intake-clickhouse-two\n",
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="expected one labeled Intake ClickHouse container.*found.*one.*two"):
+        stack._intake_clickhouse_container("http://localhost:55123")
 
 
 def test_stack_does_not_select_unlabeled_same_name_container(monkeypatch):

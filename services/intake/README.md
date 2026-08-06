@@ -72,9 +72,11 @@ uv run nemo services run \
 The container is owned by the resolved NeMo data directory, publishes ClickHouse
 on a Docker-assigned loopback port, and is reused by platform processes sharing
 that data directory. Its data is stored below `$NMP_DATA_DIR/intake-clickhouse/`
-(or the normal NeMo data directory when `NMP_DATA_DIR` is unset). Platform
-shutdown leaves the container running so later startups can reuse it. The data
-directory contains a durable identity marker; Intake replaces rather than
+(or the normal NeMo data directory when `NMP_DATA_DIR` is unset). Graceful
+platform shutdown stops the container without removing it or its data; later
+startups restart and reuse it. A hard process termination can leave it running.
+The managed lifecycle assumes only one active local platform runner uses a given
+data directory. The data directory contains a durable identity marker; Intake replaces rather than
 reattaches a stale container after that directory has been deleted and
 recreated. Replacing a container does not delete the current directory. Only an
 explicitly confirmed full data teardown deletes the default storage under the

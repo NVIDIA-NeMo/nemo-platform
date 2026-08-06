@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,8 +30,10 @@ from nmp.intake.local_clickhouse import (
     _expected_labels,
     _managed_container_name,
     _reconcile_local_clickhouse,
+    _wait_until_ready,
     main,
     remove_local_clickhouse,
+    stop_local_clickhouse,
 )
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings
 
@@ -69,6 +73,7 @@ class FakeContainer:
         self.started = False
         self.stopped = False
         self.removed = False
+        self.restart_policy_updates: list[dict[str, str]] = []
         self.exec_calls: list[tuple[list[str], str | None]] = []
 
     def reload(self) -> None:
@@ -82,6 +87,9 @@ class FakeContainer:
         assert timeout == 30
         self.stopped = True
         self.status = "exited"
+
+    def update(self, *, restart_policy: dict[str, str]) -> None:
+        self.restart_policy_updates.append(restart_policy)
 
     def exec_run(self, command: list[str], *, user: str | None = None) -> FakeExecResult:
         self.exec_calls.append((command, user))
@@ -211,7 +219,7 @@ def test_reconcile_creates_data_directory_owned_container_with_dynamic_loopback_
     data_dir = (tmp_path / "intake-clickhouse").resolve()
     assert run["name"] == _managed_container_name(data_dir)
     assert run["ports"] == {CLICKHOUSE_HTTP_PORT_KEY: ("127.0.0.1", 0)}
-    assert run["restart_policy"] == {"Name": "unless-stopped"}
+    assert run["restart_policy"] == {"Name": "no"}
 
 
 def test_reconcile_reuses_matching_container(
@@ -237,6 +245,7 @@ def test_reconcile_reuses_matching_container(
 
     assert url == "http://127.0.0.1:55234"
     assert client.containers.run_calls == []
+    assert container.restart_policy_updates == [{"Name": "no"}]
 
 
 def test_reconcile_restarts_stopped_matching_container(
@@ -364,6 +373,36 @@ def test_reconcile_closes_client_when_docker_ping_fails(
         _reconcile_local_clickhouse(settings)
 
     assert client.closed is True
+
+
+def test_readiness_poll_suppresses_only_transient_driver_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    settings: ClickHouseSettings,
+) -> None:
+    driver_logger = logging.getLogger("clickhouse_connect.driver.httpclient")
+    attempts = 0
+
+    def ping(_settings: ClickHouseSettings) -> None:
+        nonlocal attempts
+        attempts += 1
+        driver_logger.warning("Unexpected Http Driver Exception")
+        if attempts == 1:
+            driver_logger.warning("Useful ClickHouse driver warning")
+            raise ConnectionError("ClickHouse is still starting")
+
+    monkeypatch.setattr("nmp.intake.local_clickhouse._ping_clickhouse", ping)
+    monkeypatch.setattr("nmp.intake.local_clickhouse.time.sleep", lambda _seconds: None)
+    caplog.set_level(logging.WARNING, logger=driver_logger.name)
+
+    _wait_until_ready(settings)
+    driver_logger.warning("Unexpected Http Driver Exception")
+
+    assert attempts == 2
+    assert [record.getMessage() for record in caplog.records if record.name == driver_logger.name] == [
+        "Useful ClickHouse driver warning",
+        "Unexpected Http Driver Exception",
+    ]
 
 
 def test_prepare_operator_data_dir_does_not_change_permissions(
@@ -525,6 +564,29 @@ def test_remove_local_clickhouse_validates_and_removes_owned_container(
     assert remove_local_clickhouse(data_dir=data_dir) is True
     assert container.stopped is True
     assert container.removed is True
+    assert client.closed is True
+
+
+def test_stop_local_clickhouse_preserves_container_and_data(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    data_dir = (tmp_path / "intake-clickhouse").resolve()
+    name = _managed_container_name(data_dir)
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
+    container = FakeContainer(
+        name=name,
+        image=f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
+        labels=_expected_labels(data_dir, data_instance_id),
+        data_dir=data_dir,
+    )
+    client = FakeDockerClient({name: container})
+    monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", lambda **_kwargs: client)
+
+    assert asyncio.run(stop_local_clickhouse(data_dir=data_dir)) is True
+    assert container.stopped is True
+    assert container.removed is False
+    assert data_dir.exists()
     assert client.closed is True
 
 

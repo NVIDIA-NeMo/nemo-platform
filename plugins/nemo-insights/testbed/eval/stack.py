@@ -78,7 +78,11 @@ def main() -> None:
     subprocess.run(
         [str(PLATFORM_ROOT / "services/intake/scripts/spans/run_clickhouse.sh")],
         check=True,
-        env={**os.environ, "CLICKHOUSE_DATA_DIR": str(state / "clickhouse")},
+        env={
+            **os.environ,
+            "CLICKHOUSE_DATA_DIR": str(state / "clickhouse"),
+            "NMP_INTAKE_CLICKHOUSE_URL": CLICKHOUSE_URL,
+        },
     )
     if not _wait(f"{CLICKHOUSE_URL}/ping", attempts=30, delay=2):
         sys.exit("ClickHouse never became ready")

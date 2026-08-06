@@ -5,6 +5,7 @@
 
 import logging
 from dataclasses import replace
+from pathlib import Path
 from typing import ClassVar, List
 
 from nmp.common.service import RouterConfig, Service
@@ -14,6 +15,7 @@ from nmp.intake.local_clickhouse import (
     DockerUnavailableError,
     LocalClickHouseProvisioningError,
     reconcile_local_clickhouse,
+    stop_local_clickhouse,
 )
 from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
@@ -32,6 +34,8 @@ class IntakeService(Service[IntakeConfig]):
         super().__init__(name="intake", module_name="nmp.intake")
         # The client is owned by the service lifecycle; it is absent before startup and after shutdown.
         self.clickhouse_client: ClickHouseSpanClient | None = None
+        self._local_clickhouse_data_dir: Path | None = None
+        self._owns_local_clickhouse = False
         self._ready = False
 
     @property
@@ -75,6 +79,8 @@ class IntakeService(Service[IntakeConfig]):
     async def on_startup(self) -> None:
         """Create the trace storage client without requiring ClickHouse to be online."""
 
+        self._local_clickhouse_data_dir = None
+        self._owns_local_clickhouse = False
         cfg = self.service_config or IntakeConfig()
         settings = ClickHouseSettings.from_config(cfg)
         if should_provision_local_clickhouse(cfg.clickhouse_config):
@@ -85,6 +91,8 @@ class IntakeService(Service[IntakeConfig]):
                     data_dir=cfg.clickhouse_config.data_dir,
                 )
                 settings = replace(settings, url=local_url)
+                self._local_clickhouse_data_dir = cfg.clickhouse_config.data_dir
+                self._owns_local_clickhouse = True
             except DockerUnavailableError as exc:
                 logger.warning(
                     "Skipping local ClickHouse reconciliation: %s ClickHouse-backed endpoints will return 503 until "
@@ -104,13 +112,20 @@ class IntakeService(Service[IntakeConfig]):
         self._ready = True
 
     async def on_shutdown(self) -> None:
-        """Close the service-owned ClickHouse client."""
+        """Close the client and stop the managed local ClickHouse container."""
 
         self._ready = False
-        if self.clickhouse_client is not None:
-            await self.clickhouse_client.close()
+        try:
+            if self.clickhouse_client is not None:
+                await self.clickhouse_client.close()
+        finally:
             self.clickhouse_client = None
-        await super().on_shutdown()
+            try:
+                if self._owns_local_clickhouse:
+                    await stop_local_clickhouse(data_dir=self._local_clickhouse_data_dir)
+            finally:
+                self._owns_local_clickhouse = False
+                await super().on_shutdown()
 
     async def is_ready(self) -> bool:
         return self._ready

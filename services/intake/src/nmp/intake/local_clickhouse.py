@@ -5,10 +5,12 @@
 
 Lifecycle contract:
 - Intake startup reconciles one container owned by the resolved data directory.
+- Managed lifecycle assumes one active Intake platform runner per data directory.
 - Matching running containers are reused; matching stopped containers are started.
 - Containers for an earlier incarnation of the data directory are replaced.
 - Unsafe image, credential, mount, or ownership mismatches fail closed.
-- Intake shutdown leaves the detached container running.
+- Graceful Intake shutdown stops the container; the next startup restarts it.
+- Hard process termination can leave the detached container running.
 - Explicit removal stops/removes the container but never deletes its data.
 """
 
@@ -60,6 +62,8 @@ _DATA_IDENTITY_FILE = ".nmp-clickhouse-identity"
 _DATA_INSTANCE_FILE_PREFIX = f"{_DATA_IDENTITY_FILE}-"
 _READINESS_TIMEOUT_SECONDS = 60.0
 _READINESS_POLL_SECONDS = 0.5
+_CLICKHOUSE_HTTP_LOGGER_NAME = "clickhouse_connect.driver.httpclient"
+_TRANSIENT_HTTP_WARNING = "Unexpected Http Driver Exception"
 _DOCKER_UNAVAILABLE_GUIDANCE = (
     "Docker daemon is unavailable. Start Docker Desktop on macOS/Windows or the Docker service on Linux, "
     "then rerun `nemo setup` or restart `nemo services run`. To use an externally managed ClickHouse instead, "
@@ -73,6 +77,13 @@ class LocalClickHouseProvisioningError(RuntimeError):
 
 class DockerUnavailableError(LocalClickHouseProvisioningError):
     """Raised when local ClickHouse cannot start because Docker is unavailable."""
+
+
+class _TransientClickHouseStartupFilter(logging.Filter):
+    """Hide the driver's expected connection warning while readiness is polling."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.getMessage() != _TRANSIENT_HTTP_WARNING
 
 
 class ProvisioningMode(Enum):
@@ -143,6 +154,12 @@ async def reconcile_local_clickhouse(
     )
 
 
+async def stop_local_clickhouse(*, data_dir: Path | None = None) -> bool:
+    """Stop Intake's data-directory-owned ClickHouse without removing it or its data."""
+
+    return await asyncio.to_thread(_stop_local_clickhouse, data_dir=data_dir)
+
+
 def _reconcile_local_clickhouse(
     settings: ClickHouseSettings,
     *,
@@ -175,6 +192,54 @@ def _reconcile_local_clickhouse(
         client.close()
 
 
+def _container_targets(client: DockerClient, data_dir: Path) -> list[tuple[str, Container]]:
+    targets: list[tuple[str, Container]] = []
+    managed_container_name = _managed_container_name(data_dir)
+    if (managed_container := _get_container(client, managed_container_name)) is not None:
+        targets.append((managed_container_name, managed_container))
+    if (legacy_container := _get_container(client, LEGACY_CONTAINER_NAME)) is not None:
+        legacy_container.reload()
+        legacy_attrs = cast(dict[str, Any], legacy_container.attrs or {})
+        if _mounted_clickhouse_data_dir(legacy_attrs) == data_dir:
+            targets.append((LEGACY_CONTAINER_NAME, legacy_container))
+    return targets
+
+
+def _validated_container_targets(
+    client: DockerClient,
+    data_dir: Path,
+    *,
+    action: str,
+) -> list[tuple[str, Container]]:
+    targets = _container_targets(client, data_dir)
+    for container_name, container in targets:
+        _validate_lifecycle_target(
+            container,
+            expected_name=container_name,
+            data_dir=data_dir,
+            action=action,
+            allow_unlabeled_legacy=container_name == LEGACY_CONTAINER_NAME,
+        )
+    return targets
+
+
+def _stop_local_clickhouse(*, data_dir: Path | None = None) -> bool:
+    resolved_data_dir = _resolve_data_dir(data_dir)
+    client = _connect_docker()
+    try:
+        containers = _validated_container_targets(client, resolved_data_dir, action="stop")
+        for container_name, container in containers:
+            _stop_container(container)
+            logger.info("Stopped managed local ClickHouse container %s", container_name)
+        return bool(containers)
+    except LocalClickHouseProvisioningError:
+        raise
+    except Exception as exc:
+        raise LocalClickHouseProvisioningError(f"Failed to stop local ClickHouse: {exc}") from exc
+    finally:
+        client.close()
+
+
 def remove_local_clickhouse(
     *,
     data_dir: Path | None = None,
@@ -183,32 +248,15 @@ def remove_local_clickhouse(
     """Remove managed ClickHouse containers for a local NeMo data directory."""
 
     resolved_data_dir = _resolve_data_dir(data_dir)
-    managed_container_name = _managed_container_name(resolved_data_dir)
     client = _connect_docker()
     try:
-        containers: list[tuple[str, Container]] = []
-        if (managed_container := _get_container(client, managed_container_name)) is not None:
-            containers.append((managed_container_name, managed_container))
-        if (legacy_container := _get_container(client, LEGACY_CONTAINER_NAME)) is not None:
-            legacy_container.reload()
-            legacy_attrs = cast(dict[str, Any], legacy_container.attrs or {})
-            if _mounted_clickhouse_data_dir(legacy_attrs) == resolved_data_dir:
-                containers.append((LEGACY_CONTAINER_NAME, legacy_container))
-        if not containers:
-            return False
-        for container_name, container in containers:
-            _validate_removal_target(
-                container,
-                expected_name=container_name,
-                data_dir=resolved_data_dir,
-                allow_unlabeled_legacy=container_name == LEGACY_CONTAINER_NAME,
-            )
+        containers = _validated_container_targets(client, resolved_data_dir, action="remove")
         for container_name, container in containers:
             if restore_data_ownership:
                 _restore_data_dir_ownership(container)
             _stop_and_remove_container(container)
             logger.info("Removed managed local ClickHouse container %s", container_name)
-        return True
+        return bool(containers)
     except LocalClickHouseProvisioningError:
         raise
     except Exception as exc:
@@ -278,6 +326,7 @@ def _reconcile_container(
         _stop_and_remove_container(candidate.container)
         return _create_container(client, desired)
 
+    _disable_automatic_restart(candidate.container)
     candidate.container.reload()
     if candidate.container.status != "running":
         candidate.container.start()
@@ -319,7 +368,7 @@ def _create_container(
         ),
         "volumes": {str(desired.data_dir): {"bind": CLICKHOUSE_DATA_PATH, "mode": "rw"}},
         "labels": _expected_labels(desired.data_dir, desired.data_instance_id),
-        "restart_policy": {"Name": "unless-stopped"},
+        "restart_policy": {"Name": "no"},
     }
     try:
         return client.containers.run(**run_kwargs)
@@ -389,18 +438,19 @@ def _classify_existing_container(
     return ContainerDisposition.REUSABLE
 
 
-def _validate_removal_target(
+def _validate_lifecycle_target(
     container: Container,
     *,
     expected_name: str,
     data_dir: Path,
+    action: str,
     allow_unlabeled_legacy: bool = False,
 ) -> None:
     container.reload()
     attrs = cast(dict[str, Any], container.attrs or {})
     if _mounted_clickhouse_data_dir(attrs) != data_dir:
         raise LocalClickHouseProvisioningError(
-            f"Refusing to remove container {expected_name}: it does not mount {data_dir}"
+            f"Refusing to {action} container {expected_name}: it does not mount {data_dir}"
         )
 
     labels = container.labels or {}
@@ -413,14 +463,27 @@ def _validate_removal_target(
         return
     if any(labels.get(key) != value for key, value in expected_labels.items()):
         raise LocalClickHouseProvisioningError(
-            f"Refusing to remove container {expected_name}: it is not owned by Intake for {data_dir}"
+            f"Refusing to {action} container {expected_name}: it is not owned by Intake for {data_dir}"
         )
 
 
-def _stop_and_remove_container(container: Container) -> None:
+def _stop_container(container: Container) -> None:
     container.reload()
     if container.status == "running":
         container.stop(timeout=30)
+
+
+def _disable_automatic_restart(container: Container) -> None:
+    container.reload()
+    attrs = cast(dict[str, Any], container.attrs or {})
+    host_config = cast(dict[str, Any], attrs.get("HostConfig") or {})
+    restart_policy = cast(dict[str, Any], host_config.get("RestartPolicy") or {})
+    if restart_policy.get("Name") != "no":
+        container.update(restart_policy={"Name": "no"})
+
+
+def _stop_and_remove_container(container: Container) -> None:
+    _stop_container(container)
     container.remove()
 
 
@@ -559,13 +622,19 @@ def _container_http_url(container: Container) -> str:
 def _wait_until_ready(settings: ClickHouseSettings) -> None:
     deadline = time.monotonic() + _READINESS_TIMEOUT_SECONDS
     last_error: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            _ping_clickhouse(settings)
-            return
-        except Exception as exc:
-            last_error = exc
-            time.sleep(_READINESS_POLL_SECONDS)
+    driver_logger = logging.getLogger(_CLICKHOUSE_HTTP_LOGGER_NAME)
+    transient_warning_filter = _TransientClickHouseStartupFilter()
+    driver_logger.addFilter(transient_warning_filter)
+    try:
+        while time.monotonic() < deadline:
+            try:
+                _ping_clickhouse(settings)
+                return
+            except Exception as exc:
+                last_error = exc
+                time.sleep(_READINESS_POLL_SECONDS)
+    finally:
+        driver_logger.removeFilter(transient_warning_filter)
     raise LocalClickHouseProvisioningError(
         f"ClickHouse at {settings.url} did not become ready within {_READINESS_TIMEOUT_SECONDS:g} seconds"
     ) from last_error

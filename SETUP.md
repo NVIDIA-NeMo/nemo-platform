@@ -156,10 +156,12 @@ LOG_LEVEL=DEBUG uv run nemo services run \
 
 When the `intake` service is selected and `NMP_INTAKE_CLICKHOUSE_URL` is unset, Intake automatically
 provisions a ClickHouse container owned by the resolved NeMo data directory, with a Docker-assigned
-loopback port. Platform processes using that data directory reuse the same container; shutdown does
-not remove it. Only the explicitly confirmed reset in Question 3 or teardown options 2/3 delete its
+loopback port. A platform process reuses the container for that data directory; graceful shutdown
+stops it without removing it, while hard process termination can leave it running. Only the explicitly
+confirmed reset in Question 3 or teardown options 2/3 delete its
 default data under the NeMo data directory, after removing the managed container. A separately
-configured `NMP_INTAKE_CLICKHOUSE_DATA_DIR` is preserved.
+configured `NMP_INTAKE_CLICKHOUSE_DATA_DIR` is preserved. Run only one active local platform instance
+per data directory; stopping it also stops that directory's managed ClickHouse container.
 
 Docker must already be running. If startup logs report `Docker daemon is unavailable`, start Docker
 Desktop on macOS/Windows or the Docker service on Linux, then rerun `nemo setup` or restart

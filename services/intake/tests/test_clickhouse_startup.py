@@ -27,6 +27,8 @@ def test_intake_ready_with_explicit_external_clickhouse_without_startup_warning(
         )
     )
     caplog.set_level(logging.WARNING, logger="nmp.intake.service")
+    stop = AsyncMock(return_value=True)
+    monkeypatch.setattr("nmp.intake.service.stop_local_clickhouse", stop)
     service = IntakeService().with_config(intake_config)
 
     async def check_readiness() -> bool:
@@ -38,13 +40,16 @@ def test_intake_ready_with_explicit_external_clickhouse_without_startup_warning(
             await service.on_shutdown()
 
     assert asyncio.run(check_readiness()) is True
+    stop.assert_not_awaited()
     assert not [record for record in caplog.records if record.name == "nmp.intake.service"]
 
 
 def test_intake_uses_reconciled_clickhouse_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NMP_INTAKE_CLICKHOUSE_URL", raising=False)
     reconcile = AsyncMock(return_value="http://127.0.0.1:55123")
+    stop = AsyncMock(return_value=True)
     monkeypatch.setattr("nmp.intake.service.reconcile_local_clickhouse", reconcile)
+    monkeypatch.setattr("nmp.intake.service.stop_local_clickhouse", stop)
     intake_config = IntakeConfig(clickhouse_config=ClickHouseConfig())
     service = IntakeService().with_config(intake_config)
 
@@ -63,6 +68,7 @@ def test_intake_uses_reconciled_clickhouse_url(monkeypatch: pytest.MonkeyPatch) 
         "image": intake_config.clickhouse_config.image,
         "data_dir": intake_config.clickhouse_config.data_dir,
     }
+    stop.assert_awaited_once_with(data_dir=intake_config.clickhouse_config.data_dir)
 
 
 def test_intake_stays_ready_and_logs_docker_recovery_guidance(

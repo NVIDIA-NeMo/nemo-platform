@@ -62,6 +62,7 @@ def test_data_directory_owned_container_uses_dynamic_loopback_port_and_is_reused
 
         assert first_url == f"http://127.0.0.1:{binding['HostPort']}"
         assert binding["HostIp"] == "127.0.0.1"
+        assert container.attrs["HostConfig"]["RestartPolicy"]["Name"] == "no"
 
         second_url = _reconcile_local_clickhouse(settings, data_dir=data_dir)
         reused = client.containers.get(container_name)
