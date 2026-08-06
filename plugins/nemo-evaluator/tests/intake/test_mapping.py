@@ -76,7 +76,7 @@ def test_session_id_is_stable_per_trial() -> None:
 
 
 def test_evaluation_context_is_lean() -> None:
-    context = run_task_to_evaluation_context(_trial(task_id="task-42"), experiment_id="bench-x-variant")
+    context = run_task_to_evaluation_context(_trial(task_id="task-42"), evaluation_name="bench-x-variant")
     assert context == {"evaluation_id": "bench-x-variant", "test_case_id": "task-42"}
 
 
@@ -87,7 +87,7 @@ def test_trial_to_atif_ingest_shape() -> None:
     body = trial_to_atif_ingest(
         _trial(trial_id="t-1", task_id="task-1", output_text="final answer"),
         run_id="run-1",
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         agent_name="my-agent",
         model_name="gpt-4o",
     )
@@ -100,13 +100,13 @@ def test_trial_to_atif_ingest_shape() -> None:
 
 
 def test_trial_to_atif_ingest_defaults_version_and_omits_model_name() -> None:
-    body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a")
+    body = trial_to_atif_ingest(_trial(), run_id="run-1", evaluation_name="exp-1", agent_name="a")
     assert body["agent"] == {"name": "a", "version": "unknown"}
     assert "model_name" not in body["agent"]
 
 
 def test_trial_to_atif_ingest_handles_missing_output() -> None:
-    body = trial_to_atif_ingest(_trial(output_text=None), run_id="run-1", experiment_id="exp-1", agent_name="a")
+    body = trial_to_atif_ingest(_trial(output_text=None), run_id="run-1", evaluation_name="exp-1", agent_name="a")
     assert body["steps"] == [{"source": "agent", "step_id": 1, "message": ""}]
 
 
@@ -114,7 +114,7 @@ def test_trial_to_atif_ingest_includes_final_metrics_when_given() -> None:
     body = trial_to_atif_ingest(
         _trial(),
         run_id="run-1",
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         agent_name="a",
         final_metrics={"total_prompt_tokens": 10},
     )

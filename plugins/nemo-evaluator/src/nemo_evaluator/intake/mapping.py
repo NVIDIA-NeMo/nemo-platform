@@ -69,21 +69,23 @@ def session_id_for(run_id: str, trial_id: str) -> str:
     return f"{run_id}:{trial_id}"
 
 
-def run_task_to_evaluation_context(trial: AgentEvalTrial, *, experiment_id: str) -> EvaluationContextParam:
+def run_task_to_evaluation_context(trial: AgentEvalTrial, *, evaluation_name: str) -> EvaluationContextParam:
     """Build the lean ingest ``evaluation_context`` for a trial.
 
-    Only ``evaluation_id`` (the Evaluation's name — ``experiment_id`` holds it) and
-    ``test_case_id`` live here. Dataset, group, and free-form metadata belong on the
-    Evaluation entity (created separately via the platform SDK), not on the per-ingest context.
+    Only ``evaluation_id`` and ``test_case_id`` live here. Despite the ``_id`` suffix,
+    the wire field ``evaluation_id`` carries the Evaluation's *name* — that is what Intake
+    resolves the entity by — so ``evaluation_name`` maps straight onto it. Dataset, group,
+    and free-form metadata belong on the Evaluation entity (created separately via the
+    platform SDK), not on the per-ingest context.
     """
-    return {"evaluation_id": experiment_id, "test_case_id": trial.task_id}
+    return {"evaluation_id": evaluation_name, "test_case_id": trial.task_id}
 
 
 def trial_to_atif_ingest(
     trial: AgentEvalTrial,
     *,
     run_id: str,
-    experiment_id: str,
+    evaluation_name: str,
     agent_name: str,
     agent_version: str = DEFAULT_AGENT_VERSION,
     model_name: str | None = None,
@@ -107,7 +109,7 @@ def trial_to_atif_ingest(
         "session_id": session_id_for(run_id, trial.id),
         "agent": agent,
         "steps": [step],
-        "evaluation_context": run_task_to_evaluation_context(trial, experiment_id=experiment_id),
+        "evaluation_context": run_task_to_evaluation_context(trial, evaluation_name=evaluation_name),
     }
     if final_metrics is not None:
         body["final_metrics"] = final_metrics

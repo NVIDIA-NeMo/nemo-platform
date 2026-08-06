@@ -8,8 +8,8 @@
 there is no feature flag — optionality is structural: you make the call or you
 don't, and the platform client is a required argument.
 
-It references an **existing** Experiment (created by the caller via the platform
-Experiments SDK) and never creates one. Per Trial it: POSTs the ATIF trajectory,
+It references an **existing** Evaluation (created by the caller via the platform
+Evaluations SDK) and never creates one. Per Trial it: POSTs the ATIF trajectory,
 resolves the trajectory's root span, then POSTs one evaluator-result per metric
 output. All request shapes come from :mod:`nemo_evaluator.intake.mapping`; the
 HTTP calls go through the generated platform SDK's ``intake`` resources.
@@ -71,7 +71,7 @@ class PublishReport(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    experiment_id: str = Field(description="Experiment the results were published under.")
+    evaluation_name: str = Field(description="Name of the Evaluation the results were published under.")
     workspace: str = Field(description="Workspace the writes targeted.")
     run_id: str = Field(description="Source AgentEvalResult run id.")
     published_trials: list[PublishedTrial] = Field(
@@ -97,14 +97,14 @@ async def publish_to_intake(
     result: AgentEvalResult,
     *,
     platform: AsyncNeMoPlatform,
-    experiment_id: str,
+    evaluation_name: str,
     workspace: str | None = None,
     agent_name: str = "agent",
     agent_version: str = mapping.DEFAULT_AGENT_VERSION,
     model_name: str | None = None,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
 ) -> PublishReport:
-    """Publish a completed ``AgentEvalResult`` to Intake under an existing Experiment.
+    """Publish a completed ``AgentEvalResult`` to Intake under an existing Evaluation.
 
     For each trial: POST the ATIF trajectory, resolve its root span, then POST one
     evaluator-result per metric output. Trials are published concurrently up to
@@ -117,9 +117,10 @@ async def publish_to_intake(
     touched, so the caller can re-run ``publish_to_intake`` once the issue is fixed
     to publish the remaining trials. (Re-publish is not yet idempotent — see ask X1.)
 
-    ``experiment_id`` must reference an Experiment that already exists — ATIF ingest
-    rejects unknown experiments with HTTP 400. Creating the Experiment/group is a
-    separate, caller-side step via the platform Experiments SDK.
+    ``evaluation_name`` must name an Evaluation that already exists in ``workspace`` —
+    Intake resolves the Evaluation entity by name and ATIF ingest rejects an unknown or
+    deleted one with HTTP 400. Creating the Evaluation (and the Experiment group it
+    belongs to) is a separate, caller-side step via the platform SDK.
 
     Agent identity (``agent_name``/``agent_version``/``model_name``) is taken as
     arguments because it lives on the run *target*, which ``AgentEvalResult`` does
@@ -139,7 +140,7 @@ async def publish_to_intake(
             body = mapping.trial_to_atif_ingest(
                 trial,
                 run_id=result.run_id,
-                experiment_id=experiment_id,
+                evaluation_name=evaluation_name,
                 agent_name=agent_name,
                 agent_version=agent_version,
                 model_name=model_name,
@@ -177,7 +178,7 @@ async def publish_to_intake(
             failures.append((trial.id, outcome))
 
     report = PublishReport(
-        experiment_id=experiment_id,
+        evaluation_name=evaluation_name,
         workspace=resolved_workspace,
         run_id=result.run_id,
         published_trials=published,

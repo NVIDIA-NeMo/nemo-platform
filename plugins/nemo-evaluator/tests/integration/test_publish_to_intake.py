@@ -42,9 +42,9 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 BASE_URL = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
 WORKSPACE = "default"
 GROUP_NAME = "intake-it-group"
-EXPERIMENT_NAME = "intake-it-exp"
+EVALUATION_NAME = "intake-it-eval"
 RUN_ID = "intake-it-run"
-NAN_EXPERIMENT_NAME = "intake-it-nan-exp"
+NAN_EVALUATION_NAME = "intake-it-nan-eval"
 NAN_RUN_ID = "intake-it-nan-run"
 CLICKHOUSE_CONTAINER = "nmp-intake-clickhouse"
 
@@ -174,13 +174,13 @@ def _result() -> AgentEvalResult:
 
 async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
     async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
-        # Precondition: the Experiment must exist before ingest.
+        # Precondition: the Evaluation (and its Experiment group) must exist before ingest.
         group = await client.experiments.create(
             workspace=WORKSPACE, name=GROUP_NAME, description="Intake IT", exist_ok=True
         )
         await client.evaluations.create(
             workspace=WORKSPACE,
-            name=EXPERIMENT_NAME,
+            name=EVALUATION_NAME,
             experiment_ids=[group.id],
             dataset_name="intake-it-dataset",
             dataset_version="v1",
@@ -190,7 +190,7 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
         report = await publish_to_intake(
             _result(),
             platform=client,
-            experiment_id=EXPERIMENT_NAME,
+            evaluation_name=EVALUATION_NAME,
             workspace=WORKSPACE,
             agent_name="intake-it-agent",
             model_name="intake-it-model",
@@ -200,7 +200,7 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
         assert report.evaluator_result_count == 5
         published = {trial.trial_id: trial for trial in report.published_trials}
 
-        # --- trial-1: trajectory + experiment-context propagation, read back via the Intake API.
+        # --- trial-1: trajectory + evaluation-context propagation, read back via the Intake API.
         t1 = published["trial-1"]
         trace_filter: TraceFilterParam = {"session_id": t1.session_id}
         traces = [trace async for trace in client.intake.traces.list(workspace=WORKSPACE, filter=trace_filter)]
@@ -209,7 +209,7 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
         assert trace.session_id == t1.session_id
         assert trace.root_span_id == t1.span_id
         assert trace.evaluation_context is not None
-        assert trace.evaluation_context.evaluation_id == EXPERIMENT_NAME
+        assert trace.evaluation_context.evaluation_id == EVALUATION_NAME
         assert trace.evaluation_context.test_case_id == "task-1"
 
         # --- trial-1 scores: every field, every data_type coercion.
@@ -277,7 +277,7 @@ async def test_publish_skips_nan_and_failed_scores(platform_base_url: str) -> No
         group = await client.experiments.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
         await client.evaluations.create(
             workspace=WORKSPACE,
-            name=NAN_EXPERIMENT_NAME,
+            name=NAN_EVALUATION_NAME,
             experiment_ids=[group.id],
             dataset_name="intake-it-nan-dataset",
             dataset_version="v1",
@@ -287,7 +287,7 @@ async def test_publish_skips_nan_and_failed_scores(platform_base_url: str) -> No
         report = await publish_to_intake(
             _nan_result(),
             platform=client,
-            experiment_id=NAN_EXPERIMENT_NAME,
+            evaluation_name=NAN_EVALUATION_NAME,
             workspace=WORKSPACE,
             agent_name="intake-it-agent",
         )
