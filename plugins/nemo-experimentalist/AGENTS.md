@@ -82,9 +82,10 @@ breaking rename with no compatibility aliases:
 Two names deliberately did **not** change. `optimizer.yaml` and the
 `.nemo-optimizer/` state directory are a shared contract with
 `nemo-insights-plugin`: `PROFILE_FILENAME` and `discover_profile()` live in
-`nemo_insights_plugin.contracts.profile`, and `nemo agents analyst run` writes
-`<profile-dir>/.nemo-optimizer/insights.yaml`, which this plugin reads as the
-default insight. Rename them only in lockstep with a Platform change to that
+`nemo_insights_plugin.contracts.profile`, and `nemo agents analyst run` can
+mirror the Platform rows it wrote into `<profile-dir>/.nemo-optimizer/insights.yaml`
+via `--insights-file-output`, which this plugin reads as the default insight when
+the file exists. Rename them only in lockstep with a Platform change to that
 contract. `EvolutionaryOptimizer` and `EvolutionaryOptimizerConfig` also keep
 their names — they describe the optimization algorithm, not the product.
 

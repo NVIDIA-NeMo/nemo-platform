@@ -479,4 +479,4 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | Gated HF model auth (`hf-token`, fileset `token_secret`) | `references/troubleshooting.md` § **Gated HuggingFace models** |
 | Post-training eval (base vs LoRA, CHAT format parity) | `references/post-training-eval.md`, `references/eval_helpers.py` |
 
-Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-rl/README.md`, `docs/customizer/nemo-rl-dpo-plugin-design.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**, **`nemo-secrets`**.
+Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-rl/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**, **`nemo-secrets`**.

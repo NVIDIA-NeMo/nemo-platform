@@ -232,6 +232,8 @@ export const entityTagColor = (label: string): EntityTagColor =>
   COLOR_BY_LABEL.get(label) ?? ENTITY_CUSTOM_TAG_COLOR;
 
 export const DEFAULT_PREVIEW_ROWS = 1;
+/** Mirrors the plugin's `preview_num_records.max`, which 422s rather than clamping. */
+export const MAX_PREVIEW_ROWS = 10;
 
 export const MAX_COLUMN_INTROSPECTION_BYTES = 50 * 1024 * 1024;
 
@@ -279,3 +281,13 @@ export const activeRolesForStrategy = (strategy: Strategy): string[] => {
   if (strategy === STRATEGY_SUBSTITUTE) return [...DETECTION_ROLES, REPLACE_ROLE];
   return [...DETECTION_ROLES];
 };
+
+export const TAB_SOURCE = 'source';
+export const TAB_MODEL_SETTINGS = 'model-settings';
+
+export type BuilderTab = typeof TAB_SOURCE | typeof TAB_MODEL_SETTINGS;
+
+export const PANEL_TABS: { value: BuilderTab; children: string }[] = [
+  { value: TAB_SOURCE, children: 'Source' },
+  { value: TAB_MODEL_SETTINGS, children: 'Model Settings' },
+];

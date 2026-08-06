@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigDataOutput, RailsOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfigData, Rails } from '@nemo/sdk/generated/platform/schema';
 import {
   AccordionContent,
   AccordionItem,
@@ -27,9 +27,9 @@ import type { DetectorKey } from '@studio/routes/guardrails/GuardrailConfigTab/t
 import { ScanSearch } from 'lucide-react';
 import type { FC } from 'react';
 
-export const DetectorsSection: FC<{ rails: RailsOutput | undefined }> = ({ rails }) => {
+export const DetectorsSection: FC<{ rails: Rails | undefined }> = ({ rails }) => {
   const detectors = listConfiguredDetectors(rails);
-  const config: RailsConfigDataOutput = rails?.config ?? {};
+  const config: RailsConfigData = rails?.config ?? {};
 
   return (
     <Panel slotHeading="Detectors" slotIcon={<ScanSearch />} elevation="high" density="compact">

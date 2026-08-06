@@ -87,6 +87,8 @@ class McpServerConfig(BaseModel):
 
     transport: str
     url: str
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
     exposure: Literal["harness_native", "fabric_managed"] = "harness_native"
 
 

@@ -6,3 +6,9 @@ class PlatformJobCompilationError(Exception):
     """Exception raised for errors in the platform job compilation process."""
 
     pass
+
+
+class PlatformJobDependencyUnavailableError(Exception):
+    """A dependency required to compile a platform job is temporarily unavailable."""
+
+    pass

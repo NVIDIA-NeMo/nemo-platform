@@ -38,10 +38,11 @@ nemo agents analyst run → .nemo-optimizer/insights.yaml or Platform Insight ID
 ```
 
 Run `nemo agents analyst run` using the Platform Insights plugin and its
-documented trace, workspace, and output options. The producer may write the
-local profile default, `.nemo-optimizer/insights.yaml`, or persist an Insight
-on Platform and report its ID. The Experimentalist does not analyze traces,
-schedule analysis, or host an Insight API.
+documented trace, workspace, and output options. It always persists an Insight
+on Platform and reports its ID; `--insights-file-output` additionally mirrors
+those rows into a local file, which this plugin can consume in place of an ID.
+The Experimentalist does not analyze traces, schedule analysis, or host an
+Insight API.
 
 From an agent directory with an `optimizer.yaml` profile, validate the
 effective inputs:

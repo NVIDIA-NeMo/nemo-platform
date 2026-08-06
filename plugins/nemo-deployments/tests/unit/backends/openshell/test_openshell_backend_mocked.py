@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import grpc
+import httpx
 import pytest
 from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
@@ -35,6 +36,8 @@ from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, ContainerPort, DeploymentConfig, EnvVar
 from nemo_deployments_plugin.secrets import SecretResolutionError
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 pytest.importorskip("openshell")  # platform-restricted extra; skip where not installed (e.g. CI)
 
@@ -124,6 +127,34 @@ def _config_with_env(env: list[EnvVar]) -> DeploymentConfig:
 
 def test_registry_contains_openshell() -> None:
     assert BACKEND_CLASSES["openshell"] is OpenShellDeploymentBackend
+
+
+async def test_load_deployment_config_wraps_an_entities_client_that_accepts_query_params() -> None:
+    """init() must adapt the SDK with client_from_platform(AsyncEntitiesClient), not wrap the
+    raw generated AsyncEntitiesResource (AIRCORE-977).
+
+    NemoEntitiesClient.get() forwards a ``query_params`` kwarg. The generated resource does not
+    accept it, so wrapping the resource made every first reconcile die with
+    ``TypeError: ... unexpected keyword argument 'query_params'`` before any request left the box.
+    Drive the real contract with a live entities client over a mock transport: a 404 must surface
+    as NemoEntityNotFoundError, which is only reachable once ``get_entity_by_name(query_params=...)``
+    is accepted and the request actually goes out.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"detail": "not found"}, request=request)
+
+    sdk = AsyncNeMoPlatform(
+        base_url="http://entities.test",
+        workspace="default",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    with patch("grpc.insecure_channel", return_value=MagicMock()):
+        backend = OpenShellDeploymentBackend(sdk, {"gateway_endpoint": "http://127.0.0.1:17670"})
+
+    # Old (buggy) wrapping raised TypeError about query_params here; the fix reaches the 404.
+    with pytest.raises(NemoEntityNotFoundError):
+        await backend._load_deployment_config("default", "missing-config")
 
 
 def test_sandbox_name_within_limit_and_deterministic() -> None:

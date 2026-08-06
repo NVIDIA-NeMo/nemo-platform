@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import type { RailsStatus } from '@studio/api/guardrail-checks/types';
 import {
   describeRailKey,
@@ -60,7 +60,7 @@ describe('describeRailKey', () => {
 });
 
 describe('getActivatedGuardrails', () => {
-  const config: RailsConfigOutput = {
+  const config: RailsConfig = {
     rails: {
       input: { flows: ['content safety check input', 'jailbreak detection'] },
       output: { flows: ['content safety check output'] },
@@ -103,12 +103,12 @@ describe('getActivatedGuardrails', () => {
   it('lists a rails.config detector no flow references', () => {
     // The Config tab surfaces these; before, a detector without a matching flow
     // was invisible here, so the two tabs disagreed about what the config covers.
-    const withDetectors: RailsConfigOutput = {
+    const withDetectors: RailsConfig = {
       rails: {
         ...config.rails,
         config: { gliner: { server_endpoint: 'http://gliner' } },
       },
-    } as RailsConfigOutput;
+    } as RailsConfig;
 
     expect(getActivatedGuardrails(withDetectors, {}).map((g) => g.label)).toContain('PII — GLiNER');
   });
@@ -116,12 +116,12 @@ describe('getActivatedGuardrails', () => {
   it('collapses a guardrail declared as both a detector and a flow', () => {
     // The two sources label content safety differently; deduping on the detector
     // key rather than the label is what keeps this one row instead of two.
-    const both: RailsConfigOutput = {
+    const both: RailsConfig = {
       rails: {
         ...config.rails,
         config: { content_safety: { server_endpoint: 'http://cs' } },
       },
-    } as RailsConfigOutput;
+    } as RailsConfig;
 
     const contentSafety = getActivatedGuardrails(both, {}).filter((g) =>
       g.label.startsWith('Content Safety')
@@ -139,12 +139,12 @@ describe('getActivatedGuardrails', () => {
   it('gives same-labelled guardrails distinct ids', () => {
     // An unrecognized detector key and an unrecognized flow can humanize alike.
     // Deduping keeps both, so only the id is safe to use as a React key.
-    const collidingLabels: RailsConfigOutput = {
+    const collidingLabels: RailsConfig = {
       rails: {
         input: { flows: ['Acme Guard'] },
         config: { acme_guard: {} },
       },
-    } as unknown as RailsConfigOutput;
+    } as unknown as RailsConfig;
 
     const result = getActivatedGuardrails(collidingLabels, {});
     expect(result.map((g) => g.label)).toEqual(['Acme Guard', 'Acme Guard']);

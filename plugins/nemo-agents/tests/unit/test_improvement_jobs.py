@@ -17,6 +17,7 @@ def test_jobs_discovered_via_entry_points() -> None:
     jobs = discover_jobs()
     assert "agents.evaluate-suite" in jobs
     assert "agents.analyze" in jobs
+    assert "agents.optimize" in jobs
     assert "agents.optimize-skills" in jobs
 
 
@@ -260,7 +261,7 @@ async def test_optimize_skills_compile_rejects_analyze_only_without_initial_batc
 
 
 # ---------------------------------------------------------------------------
-# AnalyzeBatchJob + OptimizeAgentJob — newly added compile() paths
+# AnalyzeBatchJob — newly added compile() paths
 # ---------------------------------------------------------------------------
 
 
@@ -305,41 +306,6 @@ async def test_analyze_compile_rejects_relative_batch_path() -> None:
     spec = AnalyzeBatchConfig(batch="./my-batch", mechanical_only=True)
     with pytest.raises(PlatformJobCompilationError, match="'batch' must be an absolute path"):
         await AnalyzeBatchJob.compile(
-            workspace="default",
-            spec=spec,
-            entity_client=MagicMock(),
-            job_name=None,
-            async_sdk=MagicMock(),
-        )
-
-
-@pytest.mark.asyncio
-async def test_optimize_agent_compile_produces_single_subprocess_step() -> None:
-    from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob, OptimizeAgentSpec
-
-    spec = OptimizeAgentSpec(agent=None, optimize_config="/abs/optimize.yml")
-    platform_spec = await OptimizeAgentJob.compile(
-        workspace="staging",
-        spec=spec,
-        entity_client=MagicMock(),
-        job_name=None,
-        async_sdk=MagicMock(),
-    )
-    step = next(iter(platform_spec["steps"]))
-    assert step["name"] == "optimize-agent"
-    executor = step["executor"]
-    assert executor.get("provider") == "subprocess"
-    assert executor.get("command") == ["python", "-m", "nemo_agents_plugin.tasks.optimize"]
-    assert step["config"]["workspace"] == "staging"
-
-
-@pytest.mark.asyncio
-async def test_optimize_agent_compile_rejects_relative_optimize_config() -> None:
-    from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob, OptimizeAgentSpec
-
-    spec = OptimizeAgentSpec(agent=None, optimize_config="./relative.yml")
-    with pytest.raises(PlatformJobCompilationError, match="'optimize_config' must be an absolute path"):
-        await OptimizeAgentJob.compile(
             workspace="default",
             spec=spec,
             entity_client=MagicMock(),

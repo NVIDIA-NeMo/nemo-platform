@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsOutput } from '@nemo/sdk/generated/platform/schema';
+import type { Rails } from '@nemo/sdk/generated/platform/schema';
 import { recognizeFlow } from '@studio/routes/guardrails/GuardrailConfigTab/flowRegistry';
 import type { DetectorKey, Field, Scope } from '@studio/routes/guardrails/GuardrailConfigTab/types';
 
@@ -58,7 +58,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
  * Enumerate the detectors actually present in a `rails.config` object, in
  * canonical order, with any unknown keys appended so nothing is dropped.
  */
-export const listConfiguredDetectors = (rails: RailsOutput | undefined): string[] => {
+export const listConfiguredDetectors = (rails: Rails | undefined): string[] => {
   const config = rails?.config;
   if (!config) return [];
   const present = Object.entries(config)
@@ -69,7 +69,7 @@ export const listConfiguredDetectors = (rails: RailsOutput | undefined): string[
   return [...known, ...unknown];
 };
 
-const stageFlows = (rails: RailsOutput | undefined, scope: Scope): string[] => {
+const stageFlows = (rails: Rails | undefined, scope: Scope): string[] => {
   switch (scope) {
     case 'input':
       return rails?.input?.flows ?? [];
@@ -91,7 +91,7 @@ const SCOPE_ORDER: Scope[] = ['input', 'output', 'retrieval', 'tool_input', 'too
  *  1. the detector's own `input`/`output`/`retrieval` sub-config (structural), and
  *  2. flows that reference it, matched via the flow recognition registry.
  */
-export const deriveScopes = (rails: RailsOutput | undefined, key: string): Scope[] => {
+export const deriveScopes = (rails: Rails | undefined, key: string): Scope[] => {
   const scopes = new Set<Scope>();
 
   const detector = rails?.config?.[key as DetectorKey];

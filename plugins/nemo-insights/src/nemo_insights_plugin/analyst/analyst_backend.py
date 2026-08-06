@@ -14,14 +14,26 @@ raw SDK client around. The backend owns the SDK client and exposes:
   :class:`~nemo_insights_plugin.analyst.result.AnalystResult` and stores it.
 
 Intake reads (spans, span groups, annotations, session count) always hit the
-live platform. Insight listing and result persistence vary by backend, because the
-target deployment may not have the Insights plugin installed.
-:class:`RemoteAnalystBackend` lists insights via the plugin API and persists the
-result as Insight rows via the plugin API.
-:class:`LocalAnalystBackend` lists from and persists to a local YAML file
-(``--insights-file-output``), merging each run's change-set into the file rather
-than overwriting it. :func:`make_analyst_backend` picks one. The client's
-lifecycle is owned by the caller (the CLI), so the backend never closes it.
+live platform.
+
+Insights always go to the platform. :class:`RemoteAnalystBackend` lists them via
+the plugin API and persists the result as Insight rows through it. Given an
+:class:`InsightsFileStore`, it then mirrors what the platform stored — platform
+ids included — into a local YAML file (``--insights-file-output``), so the two
+stores speak the same identifiers and a later run's updates land in both. The
+platform is the source of truth: it is written first and the file follows, and a
+file that cannot be written degrades to a warning on the run report rather than
+failing a run whose platform writes already succeeded.
+
+:class:`LocalAnalystBackend` never touches the plugin API, listing from and
+persisting to the file alone. It is **maintainer tooling, not a user-facing
+mode**: the insights testbed treats the YAML as the artifact under test and runs
+against subjects that expose Intake but not the Insights plugin (see
+``testbed/README.md``). There is no CLI flag for it; only ``make_analyst_backend``'s
+``local_only`` argument selects it.
+
+:func:`make_analyst_backend` picks one. The client's lifecycle is owned by the
+caller (the CLI), so the backend never closes it.
 """
 
 import uuid
@@ -147,7 +159,7 @@ class AnalystBackend(ABC):
     The read surface is a thin, uniform pass-through over the Intake SDK: every
     list method takes the raw Intake ``filter`` dict and ``sort`` field and
     drains pages up to ``limit``, and there are get-by-id and evaluator-score
-    primitives. The analyst composes these in ``run_code`` rather than relying
+    primitives. The analyst composes these in Nooa CodeAct rather than relying
     on a wide catalog of narrow tools. Reads always hit the live platform, even
     in local insights mode.
     """
@@ -317,13 +329,102 @@ class AnalystBackend(ABC):
         ...
 
 
+def _generate_local_insight_id() -> str:
+    """Mint a path-safe, unique insight id for offline mode.
+
+    Mirrors the remote store's ``insight-<suffix>`` shape so file records look
+    like what the platform would assign; the suffix is a uuid4 hex rather than
+    the store's base58 encoding (no extra dependency), which is still unique.
+    """
+    return f"insight-{uuid.uuid4().hex}"
+
+
+def _record_to_insight(record: dict) -> Insight:
+    """Rebuild an :class:`Insight` (id/timestamps included) from a file record.
+
+    A record is an :class:`Insight` JSON-able dump; any keys not on the entity
+    are ignored by Pydantic during validation.
+    """
+    insight = Insight.model_validate(record)
+    insight._id = record.get("id") or None
+    for attr, key in (("_created_at", "created_at"), ("_updated_at", "updated_at")):
+        raw = record.get(key)
+        setattr(insight, attr, datetime.fromisoformat(raw) if raw else None)
+    return insight
+
+
+def _insight_to_record(insight: Insight, *, workspace: str) -> dict:
+    """Flatten a stored :class:`Insight` into a file record.
+
+    Keeps the platform's id and timestamps rather than minting local ones: the
+    mirror is only useful if its records can be matched against the platform
+    rows they came from on the next run.
+    """
+    return {
+        "id": insight.id,
+        "workspace": workspace,
+        "name": insight.name,
+        "title": insight.title,
+        "agent": insight.agent,
+        "description": insight.description,
+        "status": insight.status.value,
+        "trace_refs": list(insight.trace_refs),
+        "created_at": insight.created_at.isoformat() if insight.created_at else None,
+        "updated_at": insight.updated_at.isoformat() if insight.updated_at else None,
+    }
+
+
+class InsightsFileStore:
+    """The local Insights YAML document: ``{"insights": [<record>, ...]}``.
+
+    Shared by the local backend (as its store) and the remote backend (as its
+    mirror). Writes preserve any other top-level keys the document carries, so
+    a hand-maintained file keeps its own metadata across analyst runs.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def read_records(self) -> list[dict]:
+        if not self.path.exists():
+            return []
+        raw = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
+        return list(raw.get("insights", []))
+
+    def write_records(self, records: list[dict]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        document = yaml.safe_load(self.path.read_text(encoding="utf-8")) if self.path.exists() else None
+        if not isinstance(document, dict):
+            document = {}
+        document["insights"] = records
+        self.path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    def merge(self, records: list[dict]) -> None:
+        """Upsert *records* by ``(workspace, id)`` into the existing document."""
+        existing = self.read_records()
+        index = {(r.get("workspace"), r.get("id")): position for position, r in enumerate(existing)}
+        for record in records:
+            key = (record.get("workspace"), record.get("id"))
+            position = index.get(key)
+            if position is None:
+                index[key] = len(existing)
+                existing.append(record)
+            else:
+                existing[position] = record
+        self.write_records(existing)
+
+
 class RemoteAnalystBackend(AnalystBackend):
-    """Persist insights via the Insights plugin API.
+    """Persist insights via the Insights plugin API, optionally mirroring to a file.
 
     Translates the SDK's HTTP 404 on an update into the backend-neutral
     not-found error so the persistence logic doesn't depend on ``httpx``
     semantics.
     """
+
+    def __init__(self, client: AsyncNeMoPlatform, mirror: InsightsFileStore | None = None) -> None:
+        super().__init__(client)
+        self.mirror = mirror
 
     @property
     def _insights(self):
@@ -347,13 +448,15 @@ class RemoteAnalystBackend(AnalystBackend):
         )
 
     async def persist_result(self, *, workspace: str, agent: str, result: AnalystResult) -> str:
-        """Replay the change-set: insights into the DB.
+        """Replay the change-set: insights into the DB, then into the mirror.
 
         New insights are created with their evidence; the store auto-assigns a
         unique slug name and an id. Existing insights are referenced by id —
-        only trace refs are appended.
+        only trace refs are appended. Whatever the platform stored is then
+        mirrored to the local file, if one is configured.
         """
         lines: list[str] = []
+        stored: list[Insight] = []
 
         for new in result.new_insights:
             created = await self._create(
@@ -364,27 +467,47 @@ class RemoteAnalystBackend(AnalystBackend):
                 status=new.status,
                 trace_refs=new.trace_refs or None,
             )
+            stored.append(created)
             lines.append(f"- created: {new.title} [{created.id}] ({len(new.trace_refs)} trace refs)")
 
         for upd in result.updated_insights:
             try:
                 if upd.trace_refs:
-                    await self._add_trace_refs(
+                    updated = await self._add_trace_refs(
                         workspace=workspace,
                         insight_id=upd.id,
                         trace_refs=upd.trace_refs,
                     )
                 else:
-                    await self._get(workspace=workspace, insight_id=upd.id)
+                    updated = await self._get(workspace=workspace, insight_id=upd.id)
             except InsightNotFoundError:
                 lines.append(f"- skipped (insight not found): {upd.id}")
                 continue
+            stored.append(updated)
             lines.append(f"- updated: {upd.id} ({len(upd.trace_refs)} trace refs)")
 
         if not lines:
             lines.append("- no insights created or updated")
 
+        lines.extend(self._mirror(workspace=workspace, stored=stored))
         return f"{result.summary}\n\n" + "\n".join(lines)
+
+    def _mirror(self, *, workspace: str, stored: list[Insight]) -> list[str]:
+        """Write what the platform stored to the mirror file; report the outcome.
+
+        The platform writes have already landed by the time this runs, so a
+        file that cannot be written is reported as a warning instead of raising
+        — failing here would claim the whole run failed when the source of
+        truth is up to date.
+        """
+        if self.mirror is None:
+            return []
+        try:
+            self.mirror.merge([_insight_to_record(insight, workspace=workspace) for insight in stored])
+        except (OSError, UnicodeError, yaml.YAMLError) as exc:
+            detail = " ".join(str(exc).split())
+            return [f"- warning: platform updated, but mirror {self.mirror.path} could not be written: {detail}"]
+        return [f"- mirrored {len(stored)} insight(s) to {self.mirror.path}"]
 
     async def _create(
         self,
@@ -427,37 +550,21 @@ class RemoteAnalystBackend(AnalystBackend):
             raise
 
 
-def _generate_local_insight_id() -> str:
-    """Mint a path-safe, unique insight id for offline mode.
-
-    Mirrors the remote store's ``insight-<suffix>`` shape so file records look
-    like what the platform would assign; the suffix is a uuid4 hex rather than
-    the store's base58 encoding (no extra dependency), which is still unique.
-    """
-    return f"insight-{uuid.uuid4().hex}"
-
-
-def _record_to_insight(record: dict) -> Insight:
-    """Rebuild an :class:`Insight` (id/timestamps included) from a file record.
-
-    A record is an :class:`Insight` JSON-able dump; any keys not on the entity
-    are ignored by Pydantic during validation.
-    """
-    insight = Insight.model_validate(record)
-    insight._id = record.get("id") or None
-    for attr, key in (("_created_at", "created_at"), ("_updated_at", "updated_at")):
-        raw = record.get(key)
-        setattr(insight, attr, datetime.fromisoformat(raw) if raw else None)
-    return insight
-
-
 class LocalAnalystBackend(AnalystBackend):
-    """Persist the analyst's result to a local YAML file (offline mode).
+    """Persist the analyst's result to a local YAML file only.
 
-    For running against a deployment that hosts observability data but does not
-    have the Insights plugin installed: reads of traces/spans/annotations still
-    hit the live platform, but insights are both listed from and written to the
-    file. The file accumulates across runs — ``persist_result`` merges the new
+    Maintainer tooling for the insights testbed, not a user-facing mode — no CLI
+    flag reaches it. The testbed treats the YAML as the artifact under test
+    (checked in, hashed, diffed across runs) and analyzes subjects that expose
+    Intake but not the Insights plugin, so its runs must neither require nor
+    touch platform Insight rows.
+
+    Reads of traces/spans/annotations still hit the live platform, but insights
+    are both listed from and written to the file. Ids are minted locally, so a
+    file written this way is an independent store rather than a mirror of
+    platform rows.
+
+    The file accumulates across runs — ``persist_result`` merges the new
     change-set into whatever the file already holds rather than overwriting it,
     so re-running the analyst against the same file folds new evidence into
     existing insights instead of dropping prior work.
@@ -468,24 +575,14 @@ class LocalAnalystBackend(AnalystBackend):
 
     def __init__(self, *, client: AsyncNeMoPlatform, path: Path) -> None:
         super().__init__(client)
-        self.path = path
+        self.store = InsightsFileStore(path)
 
-    def _read_records(self) -> list[dict]:
-        if not self.path.exists():
-            return []
-        raw = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
-        return list(raw.get("insights", []))
-
-    def _write_records(self, records: list[dict]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        document = yaml.safe_load(self.path.read_text(encoding="utf-8")) if self.path.exists() else None
-        if not isinstance(document, dict):
-            document = {}
-        document["insights"] = records
-        self.path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    @property
+    def path(self) -> Path:
+        return self.store.path
 
     async def persist_result(self, *, workspace: str, agent: str, result: AnalystResult) -> str:
-        records = self._read_records()
+        records = self.store.read_records()
         by_id = {(r.get("workspace"), r.get("id")): r for r in records}
         now = datetime.now(timezone.utc).isoformat()
         lines: list[str] = []
@@ -519,7 +616,7 @@ class LocalAnalystBackend(AnalystBackend):
         if not lines:
             lines.append("- no insights created or updated")
 
-        self._write_records(records)
+        self.store.write_records(records)
         return f"{result.summary}\n\nWrote analyst result to {self.path}\n" + "\n".join(lines)
 
     async def list_insights(
@@ -531,7 +628,7 @@ class LocalAnalystBackend(AnalystBackend):
         agent: str | None,
         status: InsightStatus | None,
     ) -> InsightPage:
-        items = [_record_to_insight(r) for r in self._read_records() if r.get("workspace") == workspace]
+        items = [_record_to_insight(r) for r in self.store.read_records() if r.get("workspace") == workspace]
         if agent:
             items = [i for i in items if i.agent == agent]
         if status is not None:
@@ -552,13 +649,23 @@ class LocalAnalystBackend(AnalystBackend):
         return InsightPage(data=page_items, pagination=pagination)
 
 
-def make_analyst_backend(*, client: AsyncNeMoPlatform, insights_output: str | None) -> AnalystBackend:
-    """Select the analyst backend based on *insights_output*.
+def make_analyst_backend(
+    *,
+    client: AsyncNeMoPlatform,
+    insights_output: str | None,
+    local_only: bool = False,
+) -> AnalystBackend:
+    """Select the analyst backend.
 
-    When set, the analyst's result is written to that local YAML file (offline
-    mode); otherwise the Insights plugin API and platform filesets on *client*
-    are used. Reads always go through *client* either way.
+    Results are written through the Insights plugin API on *client*, and
+    *insights_output* (when set) additionally receives a mirror of what the
+    platform stored. *local_only* is reserved for the insights testbed: it skips
+    the platform and makes *insights_output* the sole store, so a path is
+    required. No CLI flag sets it. Reads always go through *client*.
     """
-    if insights_output:
+    if local_only:
+        if not insights_output:
+            raise ValueError("local-only analysis requires an insights output path")
         return LocalAnalystBackend(client=client, path=Path(insights_output))
-    return RemoteAnalystBackend(client)
+    mirror = InsightsFileStore(Path(insights_output)) if insights_output else None
+    return RemoteAnalystBackend(client, mirror=mirror)
