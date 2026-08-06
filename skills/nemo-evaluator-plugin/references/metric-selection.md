@@ -11,7 +11,7 @@ derivable from them by string substitution. Run
 
 The supported set is exactly: `bleu`, `exact-match`, `f1`, `llm-judge`,
 `nemo-agent-toolkit-remote`, `number-check`, `remote`, `rouge`,
-`string-check`, `tool-calling`, and `tunable-rag-evaluator`.
+`string-check`, and `tool-calling`.
 
 | Goal | Prefer |
 | --- | --- |
@@ -20,7 +20,6 @@ The supported set is exactly: `bleu`, `exact-match`, `f1`, `llm-judge`,
 | Numeric value or threshold | `NumberCheckMetric` |
 | Text overlap | `F1Metric`, `BLEUMetric`, or `ROUGEMetric` |
 | Semantic quality or a written rubric | `LLMJudgeMetric` |
-| Weighted coverage / correctness / relevance | `TunableRagEvaluatorMetric` |
 | Retrieval smoke test | A deterministic context assertion or `LLMJudgeMetric` |
 | Tool-call correctness | `ToolCallingMetric` |
 | Existing scoring service | `RemoteMetric` or `NemoAgentToolkitRemoteMetric` |
