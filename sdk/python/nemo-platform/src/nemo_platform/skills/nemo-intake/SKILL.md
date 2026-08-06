@@ -110,7 +110,10 @@ tool, token, cost, input/output, and session fields needed for useful Intake tel
    ```
 
 5. Emit a root agent/chain span plus granular model, tool, retrieval, guardrail, and error spans.
-   Preserve parent-child IDs and set a stable `session.id` for related traces.
+   Preserve parent-child IDs and set a stable `session.id` for related traces. If NeMo Insights will
+   analyze the telemetry, also set `gen_ai.agent.name` (preferred), `llm.agent.name`, or `agent.name`
+   to the analyst's configured agent. Without a normalized `agent_name`, the spans can ingest but
+   are excluded from the analyst's scoped queries.
 6. Run one representative interaction, then verify it through the spans query below.
 
 Intake maps OpenInference and OTel GenAI semantic attributes into queryable model, provider, tool,
@@ -146,5 +149,7 @@ curl -g "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/spans?filter[session
 ```
 
 Confirm the response contains the expected session, trace/span hierarchy, inputs and outputs,
-status/errors, and any evaluator results. If the goal is to create named evaluation runs and compare
-them in a leaderboard, hand off to `nemo-experiments-upload`.
+status/errors, and any evaluator results. For NeMo Insights, also query with
+`filter[agent_name]=<agent-name>` and confirm the returned `agent_name` matches the analyst's `agent`
+or `--agent` value. If the goal is to create named evaluation runs and compare them in a leaderboard,
+hand off to `nemo-experiments-upload`.

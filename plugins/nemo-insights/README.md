@@ -43,6 +43,15 @@ explicit command-line flags, then profile values (for `agent`, `agent_spec`,
 and `workspace`) or `NMP_BASE_URL` (for the base URL), then the built-in
 defaults. `--base-url` takes precedence over `NMP_BASE_URL`.
 
+### Telemetry requirement
+
+The analyst scopes Intake span queries to the configured `agent`; it does not
+fall back to another attribute. The normalized `agent_name` on each span must
+therefore match `agent` in `optimizer.yaml` or `--agent`. For OTLP, set
+`gen_ai.agent.name` (preferred), `llm.agent.name`, or `agent.name`; ATIF maps
+its required `agent.name` automatically. Spans without an agent name can
+ingest successfully, but the analyst cannot retrieve or group them.
+
 ### Where insights are written
 
 Insights always go to the platform, through the Insights plugin API. There is no
