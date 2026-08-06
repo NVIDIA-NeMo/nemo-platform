@@ -23,6 +23,16 @@
       "expected_skill": "nemo-experimentalist"
     },
     {
+      "type": "implicit",
+      "prompt": "Use my train and validation splits to propose candidate code changes to my agent harness.",
+      "expected_skill": "nemo-experimentalist"
+    },
+    {
+      "type": "contextual",
+      "prompt": "My deployed agent costs too much; tune its routing and reduce latency without changing its implementation.",
+      "expected_skill_not": "nemo-experimentalist"
+    },
+    {
       "type": "negative-control",
       "prompt": "Design a new customer-support agent and write its specification.",
       "expected_skill_not": "nemo-experimentalist"

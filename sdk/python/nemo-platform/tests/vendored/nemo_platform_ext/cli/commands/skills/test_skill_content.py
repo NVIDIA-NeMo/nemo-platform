@@ -65,7 +65,7 @@ class TestLoadPlatformSkills:
     def test_contains_expected_skills(self):
         skills = load_skills()
         # Canonical platform skills must remain present — adding new ones is free.
-        expected = {"inference"}
+        expected = {"inference", "nemo-experimentalist"}
         assert expected <= skills.keys()
 
     def test_each_skill_has_valid_fields(self):

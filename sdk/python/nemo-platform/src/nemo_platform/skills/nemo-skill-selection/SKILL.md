@@ -58,11 +58,12 @@ Match the user's intent to one downstream skill. Pick exactly one.
 | "status", "what is running", "platform health", "is the platform up", "what's deployed", "show me what's running" | `nemo-status` | Read-only dashboard: platform, agents, providers, models |
 | "shut down", "stop NeMo", "tear down", "clean up" | `nemo-teardown` | Stop the cluster (keep data, delete platform data, or full cleanup) |
 | "fine-tune", "customize the model", "train on my data", "SFT", "LoRA" | `nemo-customizer` | Model customization via installed customization contributor plugins (`nemo-customizer-plugin`). Requires plugin skills to be installed (`nemo skills install` / enabled-plugins). |
+| "improve the agent's own code", "fix my agent harness", "candidate code change", "optimize from an Insight", "improve on train and validation datasets" | `nemo-experimentalist` | Source/harness optimization: generate and validate candidate code changes against Harbor-compatible evaluation data. Use after `agents analyst` has created an Insight, or with explicit datasets. |
 | "optimize my agent", "make it cheaper", "reduce latency", "smaller model", "switchyard", "routing split", "compare against a newer model" | `agents-optimize` (plugin-owned, in `plugins/nemo-agents`) | Cost / latency / quality optimization for a **deployed** agent. Routing splits, skill tuning, prompt tuning, new-model scans. |
 | "secure my agent", "harden my agent", "check for PII", "leaked secrets", "guardrail coverage" | `agents-secure` (plugin-owned, in `plugins/nemo-agents`) | Safety and security audit for a **deployed** agent. Guardrails, PII, secrets scan. |
 | "evaluate my agent", "run a benchmark", "eval suite" | `nemo-evaluator` (plugin-owned, in `plugins/nemo-evaluator`) | Evaluation metrics, LLM-judge, benchmark jobs against a deployed agent or model. |
 
-**Optimize vs build:** Do NOT route optimize asks to `nemo-build-agent`. Build is for creating new agents from a spec; optimize is for tuning **already deployed** agents. If the user says "make my agent faster" or "use a cheaper model," that is `agents-optimize`, not `nemo-build-agent`.
+**Optimize vs build:** Do NOT route optimize asks to `nemo-build-agent`. Build is for creating new agents from a spec. Use `agents-optimize` for a deployed agent's routing, prompts, skills, cost, or latency; use `nemo-experimentalist` when the requested improvement changes the agent's own source or harness and is evaluated with candidate code changes. If the user says "make my agent faster" or "use a cheaper model," that is `agents-optimize`, not `nemo-build-agent`.
 
 If a request includes both config authoring and deployment, choose
 `nemo-build-agent`; it delegates the config portion to `nemo-agent-config`.
@@ -119,6 +120,7 @@ NeMo Platform skills I can route to:
   nemo-try-agent  invoke a named deployment or local agent YAML config
   nemo-status     read-only platform health dashboard
   nemo-teardown   guided shutdown
+  nemo-experimentalist  source/harness optimization from Insights or evaluation datasets
 
 Plugin-owned skills:
   agents-optimize   cost / latency / quality optimization for a deployed agent
