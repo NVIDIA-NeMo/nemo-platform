@@ -347,9 +347,9 @@ async def test_persist_result_preserves_generated_optimization_report(tmp_path: 
 
     backend = _local_backend(tmp_path)
     report_path = backend._eo / "OPTIMIZATION.md"
-    report_path.write_text("# Full optimization report\n\nInsight Suite Metrics")
+    report_path.write_text("# Full optimization report\n\nAdditional Metrics")
 
     result = ExperimentalistResult(summary="compact run summary", run_id="run-1", rounds_completed=2, winner=None)
     await backend.persist_result(workspace="w", result=result)
 
-    assert report_path.read_text() == "# Full optimization report\n\nInsight Suite Metrics"
+    assert report_path.read_text() == "# Full optimization report\n\nAdditional Metrics"

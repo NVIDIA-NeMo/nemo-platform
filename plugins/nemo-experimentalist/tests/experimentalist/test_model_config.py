@@ -221,12 +221,12 @@ def test_record_reward_merges_rather_than_replaces() -> None:
     from nemo_experimentalist_plugin.entities import Candidate
 
     candidate = Candidate(run_id="run-1", label="agent-0", round=0, optimization="baseline")
-    candidate.record_reward("insight", metrics={"reward": 0.5})
-    candidate.record_reward("insight", metadata={"suite_identity": "sha256:abc"})
+    candidate.record_reward("custom", metrics={"reward": 0.5})
+    candidate.record_reward("custom", metadata={"source": "external"})
 
-    record = candidate.reward("insight")
+    record = candidate.reward("custom")
     assert record.metrics == {"reward": 0.5}
-    assert record.metadata == {"suite_identity": "sha256:abc"}
+    assert record.metadata == {"source": "external"}
 
 
 def test_an_unmeasured_channel_is_distinguishable_from_an_empty_one() -> None:
