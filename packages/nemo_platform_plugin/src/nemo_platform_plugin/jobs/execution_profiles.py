@@ -35,7 +35,7 @@ from nemo_platform_plugin.jobs.constants import (
     TASK_CONFIG_ENVVAR,
 )
 from nemo_platform_plugin.jobs.providers import ComputeResources
-from nemo_platform_plugin.jobs.spec import BaseExecutionProfile, ProviderRef
+from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Default image used to set filesystem permissions on job storage volumes.
@@ -402,7 +402,7 @@ class SubprocessJobExecutionProfileConfig(JobExecutionProfileConfig):
 
 
 class SubprocessJobExecutionProfile(BaseExecutionProfile):
-    provider: ProviderRef = Field(default="subprocess")
+    provider: Literal["subprocess"] = "subprocess"
     backend: Literal["subprocess"] = "subprocess"
     config: SubprocessJobExecutionProfileConfig = Field(
         default_factory=SubprocessJobExecutionProfileConfig,
