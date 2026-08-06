@@ -3,16 +3,28 @@
 
 """Base types and protocol for agent skill installers."""
 
-from dataclasses import dataclass, field
+import re
 from enum import Enum
-from pathlib import Path
 from typing import Protocol
+from pathlib import Path
+from dataclasses import field, dataclass
 
 INSTALLED_SKILL_PREFIX = "nemo-"
+SAFE_SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def validate_skill_name(skill_name: str) -> None:
+    """Reject skill names that cannot be used as a single safe path component."""
+    if not SAFE_SKILL_NAME_PATTERN.fullmatch(skill_name):
+        raise ValueError(
+            f"Invalid skill name {skill_name!r}: expected a single path component "
+            "containing only letters, numbers, dots, underscores, and dashes"
+        )
 
 
 def installed_skill_name(skill_name: str) -> str:
     """Return the skill name exposed to downstream coding agents."""
+    validate_skill_name(skill_name)
     if skill_name.startswith(INSTALLED_SKILL_PREFIX):
         return skill_name
     return f"{INSTALLED_SKILL_PREFIX}{skill_name}"
@@ -25,7 +37,6 @@ class Skill:
     version: str
     content: str
     raw: str
-    preconditions: list[str] = field(default_factory=list)
     source_dir: Path | None = None
     # Entry-point name under ``nemo.skills`` (e.g. ``"agents"``, ``"platform"``).
     # Useful for programmatic filtering; the human-friendly label is built from
@@ -37,6 +48,7 @@ class Skill:
     # they ``uv add``'d, and is what the ``Source`` column in
     # ``nemo skills list`` renders.
     source_dist: str | None = None
+    preconditions: list[str] = field(default_factory=list)
 
 
 class Scope(str, Enum):

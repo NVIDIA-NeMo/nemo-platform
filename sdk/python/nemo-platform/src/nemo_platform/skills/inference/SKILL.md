@@ -14,9 +14,6 @@ description: >
   (`SETUP.md` at the repo root).
 preconditions:
   - nemo_setup_complete
-  - workspace_exists
-  - provider_registered
-  - secrets_configured
 user-invocable: true
 allowed-tools: Bash, Read, Grep
 ---
@@ -555,9 +552,21 @@ nemo inference providers get nvidia-inference --workspace my-workspace \
 ## Cleanup
 
 ```bash
-# Delete all switchyard test VMs
-for vm in $(nemo inference virtual-models list --workspace my-workspace --output-format json \
-  | jq -r '.data[].name' | grep vm-); do
+# Delete only the VirtualModels created by the examples in this skill.
+created_vms=(
+  vm-random-strong
+  vm-random-cross
+  vm-translate-cross
+  vm-guarded
+  vm-guarded-full
+  vm-guarded-translate
+)
+
+printf 'Delete example VirtualModels in my-workspace? Type DELETE to continue: '
+read -r confirmation
+test "$confirmation" = "DELETE"
+
+for vm in "${created_vms[@]}"; do
   nemo inference virtual-models delete "$vm" --workspace my-workspace
 done
 

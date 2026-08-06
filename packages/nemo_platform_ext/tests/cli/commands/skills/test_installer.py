@@ -5,6 +5,7 @@
 
 from pathlib import Path
 
+import pytest
 from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
 from nemo_platform_ext.cli.commands.skills.installer import BaseAgentInstaller
 
@@ -25,7 +26,7 @@ class FakeInstaller(BaseAgentInstaller):
     display_name = "Fake Agent"
     supported_scopes = [Scope.PROJECT, Scope.USER]
 
-    def get_install_path(self, scope: Scope, project_root: Path, skill_name: str) -> Path:
+    def get_install_path(self, _scope: Scope, project_root: Path, skill_name: str) -> Path:
         return project_root / ".fake" / f"{skill_name}.md"
 
     def format_content(self, skill: Skill) -> str:
@@ -62,6 +63,14 @@ def test_install_returns_correct_paths(tmp_path: Path):
     skills = {"alpha": _make_skill("alpha")}
     paths = installer.install(Scope.PROJECT, tmp_path, skills)
     assert paths[0] == tmp_path / ".fake" / "alpha.md"
+
+
+def test_install_rejects_path_like_skill_names(tmp_path: Path):
+    installer = FakeInstaller()
+    skills = {"../escape": _make_skill("../escape")}
+
+    with pytest.raises(ValueError, match="Invalid skill name"):
+        installer.install(Scope.PROJECT, tmp_path, skills)
 
 
 def test_install_copies_companion_files(tmp_path: Path):

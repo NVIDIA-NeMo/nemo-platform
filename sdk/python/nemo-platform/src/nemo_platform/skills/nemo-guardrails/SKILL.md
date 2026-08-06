@@ -11,7 +11,6 @@ description: >
 preconditions:
   - nemo_setup_complete
   - workspace_exists
-  - provider_registered
   - guardrails_plugin_available
 user-invocable: true
 allowed-tools: Bash, Read, Grep

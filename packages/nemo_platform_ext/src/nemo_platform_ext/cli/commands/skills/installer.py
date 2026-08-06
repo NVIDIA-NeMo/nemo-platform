@@ -6,7 +6,7 @@
 import shutil
 from pathlib import Path
 
-from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
+from nemo_platform_ext.cli.commands.skills.base import Scope, Skill, validate_skill_name
 
 
 class BaseAgentInstaller:
@@ -27,6 +27,7 @@ class BaseAgentInstaller:
         """Install all skills. Returns list of paths written."""
         paths: list[Path] = []
         for skill_name, skill in skills.items():
+            validate_skill_name(skill_name)
             path = self.get_install_path(scope, project_root, skill_name)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(self.format_content(skill))

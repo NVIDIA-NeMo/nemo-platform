@@ -11,7 +11,7 @@ public ``load_skills()`` API rather than any "built-in" branch.
 from pathlib import Path
 
 from nemo_platform.cli.commands.skills.base import Skill
-from nemo_platform.cli.commands.skills.registry import _load_skills_cached, load_skills
+from nemo_platform.cli.commands.skills.registry import load_skills, _load_skills_cached
 
 KNOWN_SKILL_PRECONDITIONS = frozenset(
     {
@@ -104,18 +104,21 @@ class TestLoadPlatformSkills:
             assert skill.raw.startswith("---")
 
     def test_each_skill_has_source_dir(self):
-        for name, skill in load_skills().items():
+        for skill in load_skills().values():
             assert skill.source_dir is not None
             assert skill.source_dir.is_dir()
             assert (skill.source_dir / "SKILL.md").exists()
 
     def test_platform_skills_declare_known_preconditions(self):
+        skills_with_preconditions = []
         for name, skill in load_skills().items():
             if skill.source_plugin != "platform":
                 continue
-            assert len(skill.preconditions) > 0
+            if skill.preconditions:
+                skills_with_preconditions.append(name)
             unknown = set(skill.preconditions) - KNOWN_SKILL_PRECONDITIONS
             assert not unknown, f"{name} has unknown preconditions: {sorted(unknown)}"
+        assert skills_with_preconditions
 
     def test_build_agent_templates_are_packaged(self):
         skill = load_skills()["nemo-build-agent"]

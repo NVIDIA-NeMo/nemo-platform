@@ -632,7 +632,7 @@ def format_output(
         stream: Emit newline-delimited JSON records. List responses emit one
                 record per item; entity responses emit one record.
     """
-    from nemo_platform.cli.core.table_config import resolve_and_validate_columns, validate_output_columns
+    from nemo_platform.cli.core.table_config import validate_output_columns, resolve_and_validate_columns
 
     timestamp_format = timestamp_format or "iso"
 
@@ -695,7 +695,8 @@ def format_output(
     elif output_format == "table":
         # Table format. When wrapping is on and --no-truncate is set, drop the
         # per-column cap so wrapping uses the full terminal width.
-        assert isinstance(output_columns, list)
+        if not isinstance(output_columns, list):
+            raise ValueError("output columns must resolve to a list before formatting table output")
         effective_wrap_max_width = None if (wrap and not truncate) else wrap_max_width
         output = format_table(
             data,
@@ -708,14 +709,16 @@ def format_output(
         print(output)
     elif output_format == "markdown":
         # Markdown table format
-        assert isinstance(output_columns, list)
+        if not isinstance(output_columns, list):
+            raise ValueError("output columns must resolve to a list before formatting markdown output")
         output = format_markdown_table(
             data, columns=output_columns, truncate=truncate, timestamp_format=timestamp_format
         )
         print(output)
     elif output_format == "csv":
         # CSV format
-        assert isinstance(output_columns, list)
+        if not isinstance(output_columns, list):
+            raise ValueError("output columns must resolve to a list before formatting CSV output")
         output = format_csv(data, columns=output_columns, truncate=truncate, timestamp_format=timestamp_format)
         print(output, end="")  # CSV already includes newlines
     elif output_format == "raw":
