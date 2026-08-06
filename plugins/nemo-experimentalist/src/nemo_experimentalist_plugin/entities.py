@@ -489,10 +489,9 @@ class Candidate(NemoEntity, entity_type="candidate"):
     rewards: dict[str, RewardRecord] = Field(
         default_factory=dict,
         description=(
-            "Measurements keyed by reward channel. An open set: 'train', 'validation', "
-            "'insight' and 'validation-trajectory' today. A channel is a measurement, not a "
-            "dataset split — trajectory scoring is a second measurement of the validation "
-            "split — so adding one costs no entity change."
+            "Measurements keyed by reward channel. This is an open set that includes "
+            "'train', 'validation', and 'validation-trajectory'. A channel is a measurement, "
+            "not a dataset split, so adding one costs no entity change."
         ),
     )
     trajectory_detail: dict[str, Any] | None = Field(
