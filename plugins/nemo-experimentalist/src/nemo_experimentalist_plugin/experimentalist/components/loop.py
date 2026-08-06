@@ -906,13 +906,16 @@ class EvolutionaryOptimizer(Agent):
         agent_ids: list[Candidate],
         round: int,
         per_agent_analyses: list[str],  # noqa: A002
+        objective_metrics: list[MetricTarget],
+        regression_metrics: list[MetricTarget],
     ) -> str:  # pyright: ignore[reportReturnType]
         """Merge per-agent analyses, compare agents, and write the round analysis file.
 
         ## Step 1: Compare agents at reward level
 
-        Read ``self.config.optimization_policy()`` for the active metric contract.
-        Explain objective improvements and any regression risk in those terms.
+        Active objectives: ``objective_metrics``. Active regression guardrails:
+        ``regression_metrics``. Analyze objective improvements and shortfalls first;
+        discuss regression only as a constraint on objective improvement.
         Treat evaluator metrics (including aggregate metrics) as authoritative;
         do not derive a scalar score or prescribe a selection algorithm.
 
@@ -929,7 +932,10 @@ class EvolutionaryOptimizer(Agent):
 
         Using the per-dimension rewards above, identify where agents diverge (one
         leads, another trails on a dimension) and where their strengths are
-        complementary. Ground observations in the per-agent analyses passed in.
+        complementary. Prioritize divergences on objective metrics. A regression
+        metric can identify a guardrail risk, but must not become the primary
+        failure pattern or root cause. Ground observations in the per-agent
+        analyses passed in.
 
         ## Step 3: Build the round analysis markdown
 
@@ -945,6 +951,9 @@ class EvolutionaryOptimizer(Agent):
         Mechanical/Infrastructure Errors).
 
         Fill in every included section with real data. No placeholders.
+        Every Failure Pattern and Root Cause must explain a failing or
+        underperforming objective metric. Do not write a root-cause narrative
+        solely about a regression metric; record it as a regression risk instead.
         Return the complete markdown content as a string.
         """
         ...
@@ -1540,7 +1549,13 @@ class EvolutionaryOptimizer(Agent):
                 for s in survivors
             ]
         )
-        analysis = await self.merge_analysis(survivors, round_num, [str(a) for a in per_agent])
+        analysis = await self.merge_analysis(
+            survivors,
+            round_num,
+            [str(a) for a in per_agent],
+            config.objective_function,
+            config.regression_metrics,
+        )
         analysis_path.parent.mkdir(parents=True, exist_ok=True)
         analysis_path.write_text(analysis)
         return analysis

@@ -310,11 +310,15 @@ class AgentAnalyzer(Agent):
         Regression metrics: {regression_metrics}
 
         Prefer trials where:
+        - an objective metric is low relative to the other trials or is the
+          clearest evidence of why that objective is not improving
         - status/error indicates the evaluator did not complete cleanly
-        - one or more numeric metric values are below the task's expected passing
-          value
         - the trace reference is missing or unloadable
         - outputs/resources suggest repeated failures across task ids
+
+        Regression metrics are guardrails. Do not select a trial solely because
+        a regression metric is low unless it exposes why an objective-focused
+        change would violate that guardrail.
 
         Metric names are evaluator-defined. Do not assume particular metric
         names, result directories, private checks, or split paths.
@@ -332,8 +336,9 @@ class AgentAnalyzer(Agent):
         ```
 
         Every ``trial_id`` must identify a trial from ``evaluation.trials``.
-        State the concrete objective shortfall, regression risk, evaluator error,
-        or representative failure pattern that makes each selected trial useful.
+        State the concrete objective shortfall that makes each selected trial
+        useful. Mention a regression risk only as a constraint on that
+        objective-focused analysis.
         """
         ...
 
@@ -364,9 +369,11 @@ class AgentAnalyzer(Agent):
         an agent logic error (optimizable) or a mechanical error (needs an infra
         fix). Do not penalise the agent for mechanical errors.
 
-        Use `objective_metrics` and `regression_metrics` to call out objective
-        shortfalls and regression risks. Do not invent formulas or weights for
-        evaluator metrics.
+        Center systematic failures and root causes on `objective_metrics`: explain
+        how the trace behavior causes an objective metric to underperform.
+        `regression_metrics` are guardrails; report their risks separately and do
+        not classify a regression-only shortfall as the primary failure pattern.
+        Do not invent formulas or weights for evaluator metrics.
 
         Return a FailureClassification with:
         - `systematic`: list of SystematicFailure (root_cause, affected_tasks, pattern)
