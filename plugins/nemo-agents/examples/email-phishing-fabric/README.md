@@ -41,22 +41,56 @@ orchestrator (deepagents)  ── delegates ──▶  phishing-analyzer subagen
 
 ## Run
 
-`extract_iocs` must be importable in the deploy venv, so install this example
-first (its console script is referenced by `agent.yaml`):
+`extract_iocs` runs as a **stdio MCP server that Fabric launches as a parallel
+child process** of the agent: the deepagents adapter expands and `shlex`-splits
+the `url`, then spawns it, resolving the command on `PATH`. So the console
+script must exist in the environment the agent actually runs in — which differs
+by deployment mode. (deepagents adapter + `NVIDIA_API_KEY` required either way.)
 
-```bash
-uv pip install plugins/nemo-agents/examples/email-phishing-fabric
-```
+### Local (`--mode subprocess`, the default)
 
-Then create / deploy / invoke (deepagents adapter + `NVIDIA_API_KEY` required):
+This example is a uv workspace member, so `uv sync --all-packages` already
+installed `email-phishing-iocs-mcp` into the repo `.venv`. The subprocess
+deployment runs from that same venv (`sys.executable`) and inherits its `PATH`,
+so Fabric can spawn the tool — no extra install and no image needed:
 
 ```bash
 nemo agents create  --name email-phishing-fabric \
   --agent-config plugins/nemo-agents/examples/email-phishing-fabric/agent.yaml
 nemo agents deploy  --agent email-phishing-fabric --name email-phishing-fabric-deployment
 nemo agents invoke  --agent-deployment email-phishing-fabric-deployment \
-  --input "From: it-support@paypa1-secure.example\nSubject: Verify your account\n\nYour account is locked. Confirm your password at http://paypa1-secure.example/login"
+  --input "From: it-support@paypa1-secure.example
+Subject: Verify your account
+
+Your account is locked. Confirm your password at http://paypa1-secure.example/login"
 ```
+
+### Container (`--mode docker` / `k8s`)
+
+A deployment container does **not** have this example installed, so a local
+`uv pip install` cannot reach it. Bake the package into an image with
+`nemo agents package` — project mode (`--pyproject`) runs `uv pip install .`,
+which provides the `email-phishing-iocs-mcp` console script — then deploy that
+image:
+
+```bash
+nemo agents package \
+  --agent plugins/nemo-agents/examples/email-phishing-fabric/agent.yaml \
+  --pyproject plugins/nemo-agents/examples/email-phishing-fabric/pyproject.toml \
+  --tag email-phishing-fabric:local
+
+nemo agents create  --name email-phishing-fabric \
+  --agent-config plugins/nemo-agents/examples/email-phishing-fabric/agent.yaml
+nemo agents deploy \
+  --agent email-phishing-fabric \
+  --name email-phishing-fabric-deployment \
+  --mode docker \
+  --image email-phishing-fabric:local
+```
+
+For Kubernetes, publish the image
+(`nemo agents package ... --publish --registry <registry>`) and pass the
+published image to `nemo agents deploy --mode k8s --image <image>`.
 
 Evaluate against the sender-inclusive dataset:
 

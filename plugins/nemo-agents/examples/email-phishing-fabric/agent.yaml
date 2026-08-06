@@ -66,9 +66,12 @@ skills:
   paths: []
 
 # extract_iocs is shipped by this example's package as the console script
-# `email-phishing-iocs-mcp` (see pyproject.toml). `uv pip install .` places it on
-# the deploy venv PATH; Fabric launches it as a stdio MCP server and exposes its
-# tool to the deepagents orchestrator and subagent.
+# `email-phishing-iocs-mcp` (see pyproject.toml). Fabric launches it as a stdio
+# MCP server — a parallel child process — resolving this command on PATH. It is
+# on PATH for local `--mode subprocess` runs (installed into .venv by
+# `uv sync --all-packages` as a workspace member) and baked into the image by
+# `nemo agents package` for `--mode docker`/`k8s` deploys. Fabric then exposes
+# its tool to the deepagents orchestrator and subagent.
 mcp:
   servers:
     iocs:
