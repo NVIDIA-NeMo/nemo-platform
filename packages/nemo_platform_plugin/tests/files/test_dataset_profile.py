@@ -19,7 +19,7 @@ from nemo_platform_plugin.files.dataset_profile import (
     DatasetProfile,
     Evidence,
     FeatureSchema,
-    FileRecord,
+    FileError,
     MessageStats,
     PartitionClassification,
     PartitionProfile,
@@ -42,12 +42,8 @@ partitions:
     file_formats: [parquet]
     stats_complete: false
     splits:
-      - {name: train, canonical: train, num_examples: 3200861,
-         files: [{path: train-00000-of-00032.parquet, size_bytes: 193777041,
-                  checksum: sha256:9c1e..., num_rows: 100027, file_format: parquet, read_strategy: head, row_cap: 512}]}
-      - {name: test, canonical: test, num_examples: 200,
-         files: [{path: test-00000-of-00001.parquet, size_bytes: 411552,
-                  checksum: sha256:02af..., num_rows: 200, file_format: parquet, read_strategy: head, row_cap: 512}]}
+      - {name: train, canonical: train, num_examples: 3200861, num_files: 32}
+      - {name: test, canonical: test, num_examples: 200, num_files: 1}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -85,12 +81,8 @@ partitions:
     file_formats: [parquet]
     stats_complete: false
     splits:
-      - {name: train, canonical: train, num_examples: 43835,
-         files: [{path: train-00000-of-00001.parquet, size_bytes: 22105331,
-                  checksum: sha256:77b0..., num_rows: 43835, file_format: parquet, read_strategy: head, row_cap: 512}]}
-      - {name: test, canonical: test, num_examples: 2354,
-         files: [{path: test-00000-of-00001.parquet, size_bytes: 1198422,
-                  checksum: sha256:5c1d..., num_rows: 2354, file_format: parquet, read_strategy: head, row_cap: 512}]}
+      - {name: train, canonical: train, num_examples: 43835, num_files: 1}
+      - {name: test, canonical: test, num_examples: 2354, num_files: 1}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -128,12 +120,8 @@ partitions:
     file_formats: [parquet]
     stats_complete: false
     splits:
-      - {name: train, canonical: train, num_examples: 20324,
-         files: [{path: train-00000-of-00001.parquet, size_bytes: 44201991,
-                  checksum: sha256:e410..., num_rows: 20324, file_format: parquet, read_strategy: head, row_cap: 512}]}
-      - {name: validation, canonical: validation, num_examples: 1038,
-         files: [{path: validation-00000-of-00001.parquet, size_bytes: 2311008,
-                  checksum: sha256:8bd2..., num_rows: 1038, file_format: parquet, read_strategy: head, row_cap: 512}]}
+      - {name: train, canonical: train, num_examples: 20324, num_files: 1}
+      - {name: validation, canonical: validation, num_examples: 1038, num_files: 1}
     features:
       - {name: prompt,      dtype: string, semantic_role: prompt, semantic_role_source: detected}
       - {name: response,    dtype: string, semantic_role: completion, semantic_role_source: detected}
@@ -193,17 +181,7 @@ def _build_profile() -> DatasetProfile:
                         name="train",
                         canonical="train",
                         num_examples=2048,
-                        files=[
-                            FileRecord(
-                                path="train-00000.parquet",
-                                size_bytes=123,
-                                checksum="sha256:ab",
-                                file_format="parquet",
-                                read_strategy="head",
-                                row_cap=512,
-                                num_rows=2048,
-                            )
-                        ],
+                        num_files=1,
                     )
                 ],
                 features=[
@@ -357,24 +335,28 @@ def test_unknown_fields_are_ignored_for_forward_compat():
     assert profile.partitions[0].classification.dataset_type == "scored_response"
 
 
-def test_file_formats_must_not_omit_a_format_its_files_carry():
-    # The partition summary is derived from the records, so the two can drift. A summary claiming
-    # one format while a file says otherwise would report the partition as homogeneous when it is
-    # not -- the very assumption that made format a partition dimension and cost names their
-    # stability. Subset, not equality, so a profile written before per-file formats still loads.
+def test_file_errors_are_the_only_channel_for_trouble():
+    # Healthy files are counted, never listed, so a reader asking "did anything go wrong?" reads one
+    # list whose length is the number of problems -- not one that grows with the shard count and is
+    # 95% success records at scale.
     doc = yaml.safe_load(HELPSTEER2)
-    doc["partitions"][0]["splits"][0]["files"][0]["file_format"] = "jsonl"
-    with pytest.raises(ValueError, match="file_formats omits"):
-        DatasetProfile.model_validate(doc)
-
-
-def test_a_partition_written_before_per_file_formats_still_loads():
-    doc = yaml.safe_load(HELPSTEER2)
-    for split in doc["partitions"][0]["splits"]:
-        for file in split["files"]:
-            del file["file_format"]
+    doc["file_errors"] = [
+        {"path": "train-00007-of-00032.parquet", "error": "ArrowInvalid: not a parquet file"},
+        {"path": "notes.csv", "error": "no reader for '.csv' files"},
+    ]
     profile = DatasetProfile.model_validate(doc)
-    assert profile.partitions[0].splits[0].files[0].file_format is None
+
+    assert [e.path for e in profile.file_errors] == ["train-00007-of-00032.parquet", "notes.csv"]
+    # A shard the profiler could not read and a format it has no reader for are the same finding,
+    # and land in the same place whether or not a partition managed to group the file first.
+    assert all(isinstance(e, FileError) and e.error for e in profile.file_errors)
+    assert DatasetProfile.model_validate_json(profile.model_dump_json()) == profile
+
+
+def test_a_clean_profile_names_no_files_at_all():
+    profile = DatasetProfile.model_validate(yaml.safe_load(HELPSTEER2))
+    assert profile.file_errors == []
+    assert [s.num_files for s in profile.partitions[0].splits] == [1, 1]
 
 
 def test_a_profile_written_before_the_digest_was_dropped_still_loads():

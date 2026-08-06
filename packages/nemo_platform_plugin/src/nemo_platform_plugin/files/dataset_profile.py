@@ -298,62 +298,21 @@ class ColumnStats(BaseModel):
     quality: TextQuality | None = Field(default=None, description="dtype == string: corruption signals")
 
 
-class FileRecord(BaseModel):
-    """One physical file, measured.
+class FileError(BaseModel):
+    """A file the profiler could not fully use, and why.
 
-    Stores the file's identity as the listing reported it — path, size, checksum — plus what the
-    reader learned cheaply. Concatenating ``files`` across a partition's splits reproduces that
-    partition's input list exactly, which is what lets a consumer compare a stored profile against a
-    fresh listing to see what changed.
+    Only failures are enumerated. Healthy files are counted (``SplitProfile.num_files``), because a
+    per-file record for each of them scaled the profile with shard count while telling a reader
+    nothing: at 512 shards those records were 95% of the payload and every one of them said "this
+    file was fine". Problems are the part worth naming, and there are few.
     """
 
     path: str = Field(description="Relative path within the fileset.")
-    size_bytes: int
-    checksum: str | None = Field(
-        default=None,
+    error: str = Field(
         description=(
-            'As the Files service reports it (e.g. "sha256:..."), when it reports one at all — no backend '
-            "does today. Without it, (path, size) is all there is to compare against a fresh listing: enough "
-            "to catch files added, removed, renamed or resized, but not a same-size in-place edit."
-        ),
-    )
-    file_format: str | None = Field(
-        default=None,
-        description=(
-            "The format this file was read as (jsonl | parquet). A property of the file, not of the "
-            "partition holding it — which is why a partition may hold more than one. None only on a "
-            "profile written before formats were recorded per file."
-        ),
-    )
-    read_strategy: str | None = Field(
-        default=None,
-        description=(
-            "How this file's rows were sampled: full | head. The *policy* applied, not the outcome — "
-            "a head-capped read of a file smaller than the cap still says head, and whether it ended "
-            "up complete is `num_rows` versus what was scanned. Per file because it follows format, "
-            "which is also per file: a parquet shard can be sampled by row group where a jsonl file "
-            "in the same partition can only be read from the top."
-        ),
-    )
-    row_cap: int | None = Field(
-        default=None,
-        description=(
-            "Rows this file's read was bounded to, None when unbounded. Derived from "
-            "`SamplingInfo.row_budget` divided across the partition's files, so it is per file rather "
-            "than a global setting: the same budget yields 1000 rows each across ten shards and ten "
-            "each across a thousand, which is what keeps peak memory flat as a dataset is resharded."
-        ),
-    )
-    num_rows: int | None = Field(
-        default=None,
-        description="Exact only (parquet footer / exhaustive scan), else None.",
-    )
-    error: str | None = Field(
-        default=None,
-        description=(
-            "Why this file was not fully read, when it wasn't — unreadable, corrupt, or partially "
-            "parsed. None means a clean read. Without it a missing `num_rows` is indistinguishable "
-            "from a profiler bug, and a consumer cannot tell corrupt input from unsupported input."
+            "Why this file was not fully read: unreadable, corrupt, partially parsed, or in a format "
+            "with no reader. A file that was read cleanly never appears here, so the absence of a path "
+            "is itself the claim that it was fine."
         ),
     )
 
@@ -383,11 +342,13 @@ class SplitProfile(BaseModel):
             "train, with the variant's intent kept in `name`."
         ),
     )
-    files: list[FileRecord] = Field(
+    num_files: int = Field(
+        default=0,
         description=(
-            "Every file resolved into this split, measured. Partitioning is exhaustive and disjoint: each "
-            "file of the partition lands in exactly one split, so concatenating `files` across splits "
-            "reconstructs the partition's file list with no gaps or repeats."
+            "How many files resolved into this split. Partitioning is exhaustive and disjoint — each file "
+            "of the partition lands in exactly one split — so these sum to the partition's file count. "
+            "A count rather than a list: the paths of healthy shards are the one part of a profile that "
+            "grows without bound and informs no decision."
         ),
     )
     num_examples: int | None = Field(
@@ -424,11 +385,11 @@ class PartitionProfile(BaseModel):
     file_formats: list[str] = Field(
         default_factory=list,
         description=(
-            "The distinct formats among this partition's files, sorted — normally exactly one. "
-            "Format is a property of a file (see `FileRecord.file_format`), never a partition "
-            "dimension: a stray .jsonl beside .parquet shards is noise, not a second dataset, so it "
-            "stays in this partition and shows up here. jsonl | parquet are read today; csv | arrow "
-            "are reserved vocabulary the profiler cannot read yet and reports as unsupported."
+            "The distinct formats this partition's files are in, sorted — normally exactly one, and "
+            "more than one when a stray .jsonl sits beside .parquet shards. That is noise, not a "
+            "second dataset, so it stays in this partition and shows up here rather than splitting it. "
+            "jsonl | parquet are read today; csv | arrow are reserved vocabulary the profiler cannot "
+            "read yet and reports on `DatasetProfile.file_errors` instead."
         ),
     )
     splits: list[SplitProfile] = Field(description="card-declared > path-detected > single 'default' split.")
@@ -463,20 +424,6 @@ class PartitionProfile(BaseModel):
             raise ValueError(f"stats keys must name top-level features; unknown columns: {sorted(unknown)}")
         return self
 
-    @model_validator(mode="after")
-    def _file_formats_cover_the_records(self) -> PartitionProfile:
-        """Every format recorded on a file must appear in the partition's summary.
-
-        A subset check rather than equality, so the two cannot drift in the direction that matters:
-        a summary omitting a format that demonstrably exists is wrong, while a profile written
-        before formats were recorded per file has nothing on its records and nothing to check.
-        """
-        recorded = {file.file_format for split in self.splits for file in split.files if file.file_format}
-        missing = recorded - set(self.file_formats)
-        if missing:
-            raise ValueError(f"file_formats omits formats present on this partition's files: {sorted(missing)}")
-        return self
-
 
 # ---- envelope ----------------------------------------------------------------------------------
 
@@ -493,7 +440,7 @@ class SamplingInfo(BaseModel):
 
     The dataset-wide question is still one expression away, and now says which half failed::
 
-        all(p.stats_complete for p in profile.partitions) and not profile.unreadable_files
+        all(p.stats_complete for p in profile.partitions) and not profile.file_errors
     """
 
     rows_scanned: int = Field(description="Total rows actually parsed across all files.")
@@ -514,7 +461,7 @@ class SamplingInfo(BaseModel):
         description=(
             "Data files the fileset holds, whether or not this run could read them — the denominator "
             "`files_read` is a fraction of. Includes files in formats with no reader, since those are "
-            "data that went unprofiled (they are listed in `DatasetProfile.unreadable_files`). A README "
+            "data that went unprofiled (they are named on `DatasetProfile.file_errors`). A README "
             "is not data and is counted nowhere. Every readable file should be opened, since "
             "head-sampling a *subset of files* hides columns that appear only in later shards, so expect "
             "these two to match until scale forces file-level sampling."
@@ -526,9 +473,9 @@ class SamplingInfo(BaseModel):
             "Rows the caller allowed per partition, None for an unbounded read. A budget rather than a "
             "per-file cap because the cost is per partition: a per-file cap made peak memory scale with "
             "shard count, so the same dataset resharded from 100 files to 10,000 went from megabytes to "
-            "gigabytes without holding any more data. The per-file cap this produced is on each "
-            "`FileRecord.row_cap`. Not a hard ceiling: every file is still read at least a few rows, "
-            "since a file sampled too thinly cannot contribute the columns it alone witnesses."
+            "gigabytes without holding any more data. Not a hard ceiling: every file is still read at "
+            "least a few rows, since one sampled too thinly cannot contribute the columns it alone "
+            "witnesses, so a partition with very many files may exceed its budget."
         ),
     )
     seed: int | None = Field(default=None, description="RNG seed used for row selection, for reproducibility.")
@@ -537,13 +484,16 @@ class SamplingInfo(BaseModel):
 class DatasetProfile(BaseModel):
     """The machine-owned dataset profile — the root of the stored contract.
 
-    Deliberately carries no staleness marker. A stored digest would freeze "which files count as
-    inputs" into the data at write time, and that judgment moves: once card front-matter drives
-    split declaration, ``README.md`` becomes an input. Changing the rule would then invalidate every
-    stored profile at once, with no way to tell a real change from a definition change. The
-    ``FileRecord``s already describe the inputs, so a consumer that needs to know whether a profile
-    is current compares them against a fresh listing — same cost, and it learns *what* changed
-    rather than merely *that* something did.
+    Deliberately carries no staleness marker, and no per-file manifest to reconstruct one from. A
+    stored digest would freeze "which files count as inputs" into the data at write time, and that
+    judgment moves: once card front-matter drives split declaration, ``README.md`` becomes an input.
+    Changing the rule would then invalidate every stored profile at once, with no way to tell a real
+    change from a definition change.
+
+    So a profile says when it was made and nothing about whether it still holds. ``created_at`` is
+    the whole of it. That is deliberate while profiling is user-triggered and nothing consumes
+    freshness; when something does, the cheap primitive is a fileset version token from the storage
+    backend, which costs no listing and freezes no policy — not a manifest reconstructed here.
     """
 
     profile_schema_version: str = Field(
@@ -559,15 +509,15 @@ class DatasetProfile(BaseModel):
     partitions: list[PartitionProfile] = Field(
         description="Single partition in the common homogeneous case; there is no fileset-level rollup.",
     )
-    unreadable_files: list[FileRecord] = Field(
+    file_errors: list[FileError] = Field(
         default_factory=list,
         description=(
-            "Files that plainly hold dataset records but that no partition could take, because the "
-            "profiler has no reader for their format; each carries the reason on `error`. Reporting "
-            "them is what keeps a directory of .csv shards from profiling as an exhaustively scanned "
-            "*empty* dataset, indistinguishable from one that really is empty. A file whose format is "
-            "known but whose read failed keeps its FileRecord inside its split instead — it was "
-            "grouped and attempted, these never were."
+            "Every file the profiler could not fully use, from anywhere in the fileset: a format with "
+            "no reader, a corrupt shard, a partially parsed one. Reporting them is what keeps a "
+            "directory of .csv shards from profiling as an exhaustively scanned *empty* dataset, "
+            "indistinguishable from one that really is empty. One list rather than two, because "
+            '"a file I could not use" is the same finding whether or not a partition managed to group '
+            'it first, and a reader asking "did anything go wrong?" should not have to look twice.'
         ),
     )
 

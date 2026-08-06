@@ -34,7 +34,7 @@ from nemo_platform_plugin.files.dataset_profile import (
     DatasetProfile,
     Evidence,
     FeatureSchema,
-    FileRecord,
+    FileError,
     PartitionClassification,
     PartitionProfile,
     SamplingInfo,
@@ -96,11 +96,9 @@ def profile(
     # scanned, empty dataset — indistinguishable from a dataset that really is empty. They get real
     # FileRecords like any other file the profiler could not read, just at the envelope, since no
     # partition ever grouped them.
-    unreadable_files = [
-        FileRecord(
+    file_errors = [
+        FileError(
             path=entry.path,
-            size_bytes=entry.size_bytes,
-            checksum=entry.checksum,
             error=f"no reader for '{PurePosixPath(entry.path).suffix.lower()}' files",
         )
         for entry in sorted(all_entries, key=lambda entry: entry.path)
@@ -119,10 +117,11 @@ def profile(
         rows_scanned += outcome.rows_scanned
         files_read += outcome.files_read
         rows_present = _add_known(rows_present, outcome.rows_present)
+        file_errors.extend(outcome.file_errors)
 
-    # A format with no reader holds an unknown number of rows, so it makes the fileset total unknown
-    # in exactly the way an unread file does.
-    if unreadable_files:
+    # A file the profiler could not use holds an unknown number of rows, so it makes the fileset
+    # total unknown — whether it was skipped for want of a reader or failed mid-read.
+    if file_errors:
         rows_present = None
 
     sampling = SamplingInfo(
@@ -131,7 +130,7 @@ def profile(
         files_read=files_read,  # files actually opened and read, not files merely listed
         # Every data file, readable or not: the denominator that makes `files_read` a fraction rather
         # than a bare count. Non-data files (a README, a LICENSE) are not data and are counted nowhere.
-        files_present=len(data_entries) + len(unreadable_files),
+        files_present=len(data_entries) + sum(1 for e in file_errors if detect_format(e.path) is None),
         row_budget=row_budget,
         seed=None,  # head sampling makes no random choices; a seed would be theatre
     )
@@ -140,7 +139,9 @@ def profile(
         profiler_info={"name": PROFILER_NAME, "version": PROFILER_VERSION},
         sampling=sampling,
         partitions=partitions,
-        unreadable_files=unreadable_files,
+        # Sorted so a reader scanning for trouble sees it in a stable order, whatever partition it
+        # came from; partitions contribute theirs as they are profiled.
+        file_errors=sorted(file_errors, key=lambda error: error.path),
     )
 
 
@@ -240,6 +241,7 @@ class _PartitionOutcome:
     rows_scanned: int
     files_read: int  # files actually opened and read, so `files_read` can exclude failures
     rows_present: int | None  # rows known to exist here, or None once any file's count is unknown
+    file_errors: list[FileError]  # files this partition grouped but could not fully read
 
 
 def _profile_partition(
@@ -257,9 +259,9 @@ def _profile_partition(
     instead flow through to ``_measure``, which infers the schema from rows when not every file
     declared one.
 
-    An unreadable file (or a format with no registered reader) is isolated: it keeps its FileRecord,
-    records *why* on ``FileRecord.error``, contributes no rows, and flips ``scanned_all`` off — it
-    never aborts the profile.
+    An unreadable file (or a format with no registered reader) is isolated: it is named on a
+    :class:`FileError` the envelope collects, contributes no rows, and flips ``scanned_all`` off — it
+    never aborts the profile. Files that read cleanly are counted, not listed.
     """
     partition_rows: list[dict] = []
     arrow_schemas: list[pa.Schema] = []
@@ -269,18 +271,18 @@ def _profile_partition(
     rows_present: int | None = 0
     partition_scanned = True
     row_cap = _per_file_cap(row_budget, len(entries))
-    read_strategy = "full" if row_cap is None else "head"
+    file_errors: list[FileError] = []
+    file_formats: set[str] = set()
     split_profiles: list[SplitProfile] = []
     for split in resolve_splits(entries):
-        file_records: list[FileRecord] = []
         split_examples = 0
         split_counts_known = True  # every file's exact total row count is known (footer or full scan)
         split_scanned = True  # every row of every file was actually parsed
         for entry in split.entries:
-            file_format = _format_of(entry.path)
+            file_formats.add(_format_of(entry.path))
             error: str | None = None
             try:
-                result = get_reader(file_format).read(source, entry, row_cap=row_cap)
+                result = get_reader(_format_of(entry.path)).read(source, entry, row_cap=row_cap)
             except Exception as exc:
                 # Failure isolation: an unreadable file (or missing reader) keeps its identity,
                 # skips its rows, and does not abort the profile. The reason is recorded rather than
@@ -305,18 +307,8 @@ def _profile_partition(
                 # Exhaustive requires parsing every row; a known footer count alone is not enough, and
                 # a partial read (corrupt lines skipped) is not exhaustive however many rows it got.
                 scanned_all = num_rows is not None and result.rows_scanned >= num_rows and error is None
-            file_records.append(
-                FileRecord(
-                    path=entry.path,
-                    size_bytes=entry.size_bytes,
-                    checksum=entry.checksum,
-                    file_format=file_format,
-                    read_strategy=read_strategy,
-                    row_cap=row_cap,
-                    num_rows=num_rows,
-                    error=error,
-                )
-            )
+            if error is not None:
+                file_errors.append(FileError(path=entry.path, error=error))
             rows_present = _add_known(rows_present, num_rows)
             if num_rows is None:
                 split_counts_known = False
@@ -329,7 +321,7 @@ def _profile_partition(
             SplitProfile(
                 name=split.name,
                 canonical=split.canonical,
-                files=file_records,
+                num_files=len(split.entries),
                 num_examples=split_examples if split_counts_known else None,
             )
         )
@@ -338,9 +330,9 @@ def _profile_partition(
     )
     partition = PartitionProfile(
         name=name,
-        # Summarized from the records rather than assumed: the partition no longer picks a format,
-        # it reports the ones its files turned out to be in.
-        file_formats=sorted({file.file_format for split in split_profiles for file in split.files if file.file_format}),
+        # Observed, not chosen: the partition reports the formats its files turned out to be in
+        # rather than picking one and splitting to keep that true.
+        file_formats=sorted(file_formats),
         splits=split_profiles,
         features=features,
         stats=stats,
@@ -350,5 +342,9 @@ def _profile_partition(
         classification=classification,
     )
     return _PartitionOutcome(
-        partition=partition, rows_scanned=rows_scanned, files_read=files_read, rows_present=rows_present
+        partition=partition,
+        rows_scanned=rows_scanned,
+        files_read=files_read,
+        rows_present=rows_present,
+        file_errors=file_errors,
     )

@@ -126,7 +126,7 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
     assert splits["train"].canonical == "train"
     assert splits["train"].num_examples == 2
     assert splits["validation"].num_examples == 1
-    assert splits["train"].files[0].num_rows == 2
+    assert splits["train"].num_files == 1
 
     # Row schema, stats, and classification are all derived now.
     assert [f.name for f in partition.features] == ["prompt"]
@@ -135,14 +135,10 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
     assert partition.stats["prompt"].text is not None
     assert partition.classification.dataset_type == "prompt_only"  # a lone prompt column, no target
 
-    # read_strategy is the policy, stats_complete is the outcome: a capped run over files that all
-    # fit under the cap is still a complete scan, which is why the two live apart -- and now at the
-    # levels where each is decided, per file and per partition.
-    assert {f.read_strategy for s in partition.splits for f in s.files} == {"head"}
+    # A budgeted run over files that all fit under their share is still a complete scan, which is
+    # why the budget and the outcome are separate fields.
     assert partition.stats_complete is True
     assert result.sampling.row_budget == 10_000
-    # The budget is split across the partition's two files, and each file records its own share.
-    assert {f.row_cap for s in partition.splits for f in s.files} == {5_000}
     assert result.sampling.rows_scanned == 3
     assert result.sampling.rows_present == 3
     assert result.sampling.files_read == result.sampling.files_present == 2
@@ -212,10 +208,6 @@ def test_profile_keeps_a_mixed_format_directory_as_one_partition(tmp_path):
     partition = result.partitions[0]
     assert partition.name == "data"
     assert partition.file_formats == ["jsonl", "parquet"]
-    assert {f.path.rsplit("/", 1)[-1]: f.file_format for s in partition.splits for f in s.files} == {
-        "train-00000-of-00001.parquet": "parquet",
-        "extra.jsonl": "jsonl",
-    }
     # Both formats' columns reach features. Trusting the declared parquet schema would have erased
     # `question`, which only the schemaless file witnesses -- the defect the split worked around.
     assert sorted(f.name for f in partition.features) == ["prompt", "question"]
@@ -298,8 +290,8 @@ def test_profile_isolates_unreadable_files(tmp_path):
     splits = {s.name: s for s in result.partitions[0].splits}
     assert splits["train"].num_examples == 1
     assert splits["test"].num_examples is None  # unreadable -> count unknown, not a crash
-    assert splits["test"].files[0].num_rows is None
-    assert splits["test"].files[0].error is not None  # ...and the profile says why
+    assert [e.path for e in result.file_errors] == ["test-00000-of-00001.parquet"]  # named, with a reason
+    assert result.file_errors[0].error
     assert result.partitions[0].stats_complete is False  # a file could not be fully parsed
     assert result.sampling.rows_present is None
     assert result.sampling.files_read == 1  # one file was actually read; the other never opened
@@ -325,9 +317,7 @@ def test_profile_uncapped_read_is_a_full_scan(tmp_path):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=None)
 
-    assert {f.read_strategy for s in result.partitions[0].splits for f in s.files} == {"full"}
     assert result.sampling.row_budget is None
-    assert {f.row_cap for s in result.partitions[0].splits for f in s.files} == {None}
     assert result.partitions[0].stats_complete is True
     assert result.sampling.rows_scanned == result.sampling.rows_present == 10
 
@@ -357,8 +347,8 @@ def test_profile_reports_unsupported_data_files(tmp_path):
     assert result.sampling.files_read == 0
     assert result.sampling.files_present == 2  # both are data; neither could be read
     # Typed records now, each saying why -- not bare paths tucked into a free-form dict.
-    assert [f.path for f in result.unreadable_files] == ["test.arrow", "train.csv"]
-    assert all("no reader" in f.error for f in result.unreadable_files)
+    assert [e.path for e in result.file_errors] == ["test.arrow", "train.csv"]
+    assert all("no reader" in e.error for e in result.file_errors)
 
 
 def test_profile_ignores_non_data_files_without_penalty(tmp_path):
@@ -370,7 +360,7 @@ def test_profile_ignores_non_data_files_without_penalty(tmp_path):
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
     assert result.partitions[0].stats_complete is True
-    assert result.unreadable_files == []
+    assert result.file_errors == []
     assert result.sampling.files_present == 1  # the README and LICENSE are not data, counted nowhere
 
 
@@ -381,9 +371,9 @@ def test_profile_records_a_partial_jsonl_read(tmp_path):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
-    record = result.partitions[0].splits[0].files[0]
-    assert record.num_rows == 2  # the readable rows survived
-    assert record.error is not None and "line 2" in record.error
+    assert result.partitions[0].splits[0].num_examples == 2  # the readable rows survived
+    assert [e.path for e in result.file_errors] == ["train.jsonl"]
+    assert "line 2" in result.file_errors[0].error
     assert result.partitions[0].stats_complete is False  # a line was lost, so not a full scan
 
 
@@ -472,11 +462,13 @@ def test_profile_survives_a_hostile_directory(tmp_path):
     # Nothing here is exhaustive, and the profile says so rather than looking clean.
     assert result.partitions[0].stats_complete is False
     assert result.sampling.rows_present is None
-    assert [f.path for f in result.unreadable_files] == ["leftovers.csv"]
-
-    records = {f.path: f for p in result.partitions for s in p.splits for f in s.files}
-    assert records["train-00001-of-00002.parquet"].error is not None  # corrupt file, named and explained
-    assert records["extra.jsonl"].error is not None  # partial parse, named and explained
+    # One channel for every file the profiler could not use, whether or not a partition grouped it:
+    # the .csv it never read, the corrupt shard, and the jsonl it only partly parsed.
+    assert [e.path for e in result.file_errors] == [
+        "extra.jsonl",
+        "leftovers.csv",
+        "train-00001-of-00002.parquet",
+    ]
 
     # One partition, not one per format: the stray .jsonl is noise, not a second dataset.
     assert len(result.partitions) == 1
@@ -491,11 +483,10 @@ def test_profile_survives_a_hostile_directory(tmp_path):
     assert DatasetProfile.model_validate_json(result.model_dump_json()) == result
 
 
-def test_stored_file_records_reproduce_the_input_list(tmp_path):
-    # The contract promises split membership is exhaustive and disjoint, which is what lets a
-    # consumer compare a stored profile against a fresh listing to decide whether it is current.
-    # That comparison is the whole reason the records carry path/size/checksum, so the invariant is
-    # worth asserting directly rather than through a digest that happened to depend on it.
+def test_split_file_counts_account_for_every_data_file(tmp_path):
+    # The contract promises split membership is exhaustive and disjoint. With per-file records gone
+    # the counts are all that carries it, so the invariant is worth asserting on them directly --
+    # a count that silently dropped a file would look exactly like a smaller dataset.
     _write_parquet(tmp_path / "train-00000-of-00002.parquet", [{"a": 1}])
     _write_parquet(tmp_path / "train-00001-of-00002.parquet", [{"a": 2}])
     _write_parquet(tmp_path / "test-00000-of-00001.parquet", [{"a": 3}])
@@ -504,10 +495,9 @@ def test_stored_file_records_reproduce_the_input_list(tmp_path):
     source = LocalFileSource(tmp_path)
     result = profile(source, created_at=FIXED_TIME)
 
-    stored = [f.path for partition in result.partitions for split in partition.splits for f in split.files]
+    counted = sum(split.num_files for partition in result.partitions for split in partition.splits)
     listed = [e.path for e in source.list_files() if e.path.endswith(".parquet")]
-    assert sorted(stored) == sorted(listed)  # exhaustive
-    assert len(stored) == len(set(stored))  # and disjoint
+    assert counted == len(listed)  # exhaustive and disjoint: each file lands in exactly one split
 
 
 def test_profile_isolates_detected_format_with_no_reader(tmp_path, monkeypatch):
@@ -521,8 +511,7 @@ def test_profile_isolates_detected_format_with_no_reader(tmp_path, monkeypatch):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)  # must not raise
 
-    records = {f.path: f for p in result.partitions for s in p.splits for f in s.files}
-    assert records["extra.xyz"].num_rows is None  # kept, but unreadable
+    assert "extra.xyz" in {e.path for e in result.file_errors}  # named, not silently dropped
     assert result.partitions[0].stats_complete is False
 
 
@@ -567,12 +556,12 @@ def test_dataset_wide_completeness_is_one_expression(tmp_path):
     # says *which* half failed, which the single bit could not.
     _write_parquet(tmp_path / "train.parquet", [{"a": 1}])
     clean = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
-    assert all(p.stats_complete for p in clean.partitions) and not clean.unreadable_files
+    assert all(p.stats_complete for p in clean.partitions) and not clean.file_errors
 
     (tmp_path / "extra.csv").write_text("a,b\n1,2\n")
     with_csv = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
     assert all(p.stats_complete for p in with_csv.partitions)  # the parquet rows are still complete
-    assert with_csv.unreadable_files  # but there is data here that went unprofiled
+    assert with_csv.file_errors  # but there is data here that went unprofiled
     assert with_csv.sampling.files_read == 1 and with_csv.sampling.files_present == 2
 
 
@@ -582,8 +571,7 @@ def test_row_budget_is_divided_across_a_partitions_files(tmp_path):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=400)
 
-    assert {f.row_cap for s in result.partitions[0].splits for f in s.files} == {100}  # 400 / 4 files
-    assert result.sampling.rows_scanned == 400
+    assert result.sampling.rows_scanned == 400  # 400 / 4 files = 100 rows each
     assert result.sampling.row_budget == 400
 
 
@@ -602,11 +590,10 @@ def test_rows_read_do_not_grow_when_a_dataset_is_resharded(tmp_path_factory):
 def test_row_budget_keeps_a_floor_under_very_thin_shards(tmp_path):
     # Below the floor a file cannot witness the columns only it holds, which is the reason every file
     # is opened rather than a subset sampled. Overshooting the budget there is the right trade, and
-    # the profile says so: row_cap is 10, not the 1 the arithmetic asked for.
+    # the arithmetic share would be 1, so the floor holds and the budget is deliberately exceeded.
     for shard in range(10):
         _write_parquet(tmp_path / f"train-{shard:05d}-of-00010.parquet", [{"a": i} for i in range(50)])
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=10)
 
-    assert {f.row_cap for s in result.partitions[0].splits for f in s.files} == {10}
-    assert result.sampling.rows_scanned == 100  # deliberately over the budget
+    assert result.sampling.rows_scanned == 100  # 10 files x the 10-row floor, over the budget of 10
