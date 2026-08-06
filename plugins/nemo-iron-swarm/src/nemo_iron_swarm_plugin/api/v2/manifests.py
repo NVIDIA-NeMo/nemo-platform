@@ -58,6 +58,7 @@ from nemo_platform_plugin.entity_client import (
     get_entity_client,
 )
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.sdk_provider import get_platform_sdk
 from starlette.concurrency import run_in_threadpool
 
@@ -122,7 +123,7 @@ async def list_manifests(
             filter_obj=filter_dict or None,
         )
     except Exception as exc:
-        logger.exception("Failed to list iron-swarm manifests in workspace '%s'", workspace)
+        logger.exception("Failed to list iron-swarm manifests in workspace '%s'", sanitize_for_log(workspace))
         raise HTTPException(status_code=500, detail="Failed to list iron-swarm manifests.") from exc
     return {
         "data": [manifest.model_dump(mode="json") for manifest in result.data],
@@ -148,7 +149,7 @@ async def get_manifest(
             status_code=404, detail=f"IronSwarmManifest '{name}' not found in workspace '{workspace}'."
         ) from exc
     except Exception as exc:
-        logger.exception("Failed to get iron-swarm manifest '%s'", name)
+        logger.exception("Failed to get iron-swarm manifest '%s'", sanitize_for_log(name))
         raise HTTPException(status_code=500, detail="Failed to get iron-swarm manifest.") from exc
 
 
@@ -260,7 +261,7 @@ async def create_manifest(
             status_code=409, detail=f"Manifest '{body.name}' already exists in workspace '{workspace}'."
         ) from exc
     except Exception as exc:
-        logger.exception("Failed to persist iron-swarm manifest '%s'", body.name)
+        logger.exception("Failed to persist iron-swarm manifest '%s'", sanitize_for_log(body.name))
         raise HTTPException(status_code=500, detail="Failed to create iron-swarm manifest.") from exc
 
 
@@ -381,7 +382,12 @@ async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwa
             if body.secrets:
                 cmd += ["--secrets", ",".join(body.secrets)]
             if body.secrets_file:
-                cmd += ["--secrets-file", body.secrets_file]
+                # Client-supplied, and `init` reads it on the platform host: without this it could
+                # name any readable file (e.g. /proc/self/environ) and fold it into the manifest.
+                candidate = (project_dir / body.secrets_file).resolve()
+                if not candidate.is_relative_to(project_dir.resolve()):
+                    raise ValueError("'secrets_file' must be inside the uploaded project.")
+                cmd += ["--secrets-file", str(candidate)]
             for host in body.egress or []:
                 cmd += ["--egress", host]
             for spec in body.backends or []:
@@ -579,7 +585,7 @@ async def delete_manifest(
     try:
         await entity_client.delete(IronSwarmManifest, name=name, workspace=workspace)
     except Exception as exc:
-        logger.exception("Failed to delete iron-swarm manifest '%s'", name)
+        logger.exception("Failed to delete iron-swarm manifest '%s'", sanitize_for_log(name))
         raise HTTPException(status_code=500, detail="Failed to delete iron-swarm manifest.") from exc
 
     # Only after the entity is gone: a bundle with no manifest is garbage, but a manifest whose

@@ -37,6 +37,7 @@ from nemo_platform_plugin.entity_client import (
     get_entity_client,
 )
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.log_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ async def list_runs(
             filter_obj=filter_dict or None,
         )
     except Exception as exc:
-        logger.exception("Failed to list iron-swarm runs in workspace '%s'", workspace)
+        logger.exception("Failed to list iron-swarm runs in workspace '%s'", sanitize_for_log(workspace))
         raise HTTPException(status_code=500, detail="Failed to list iron-swarm runs.") from exc
     return {
         "data": [run.model_dump(mode="json") for run in result.data],
@@ -99,7 +100,7 @@ async def get_run(
             detail=f"IronSwarmRun '{name}' not found in workspace '{workspace}'.",
         ) from exc
     except Exception as exc:
-        logger.exception("Failed to get iron-swarm run '%s'", name)
+        logger.exception("Failed to get iron-swarm run '%s'", sanitize_for_log(name))
         raise HTTPException(status_code=500, detail="Failed to get iron-swarm run.") from exc
 
 
@@ -154,7 +155,7 @@ async def apply_mitigation(
     try:
         await entity_client.update(agent)
     except Exception as exc:
-        logger.exception("Failed to apply mitigation to agent '%s'", agent_name)
+        logger.exception("Failed to apply mitigation to agent '%s'", sanitize_for_log(agent_name))
         raise HTTPException(status_code=500, detail="Failed to update the agent config.") from exc
 
     # Manifests are frozen targets, so the agent edit we just made would not reach the next run.
@@ -184,7 +185,7 @@ async def _refresh_source_manifest(entity_client: NemoEntitiesClient, workspace:
         await refresh_manifest(workspace=workspace, name=manifest_id, entity_client=entity_client)
         return True
     except Exception:
-        logger.warning("could not refresh manifest '%s' after apply-mitigation", manifest_id, exc_info=True)
+        logger.warning("could not refresh manifest '%s' after apply-mitigation", sanitize_for_log(manifest_id), exc_info=True)
         return False
 
 
@@ -228,5 +229,5 @@ async def delete_run(
             status_code=404, detail=f"IronSwarmRun '{name}' not found in workspace '{workspace}'."
         ) from exc
     except Exception as exc:
-        logger.exception("Failed to delete iron-swarm run '%s'", name)
+        logger.exception("Failed to delete iron-swarm run '%s'", sanitize_for_log(name))
         raise HTTPException(status_code=500, detail="Failed to delete iron-swarm run.") from exc
