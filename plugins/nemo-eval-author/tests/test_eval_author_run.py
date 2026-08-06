@@ -16,7 +16,7 @@ from nemo_eval_author_plugin.eval_author.models import (
     EvalAuthorConfig,
     EvalAuthorResult,
 )
-from nemo_experimentalist_plugin.entities import DatasetRef, Task
+from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, ResourceRef, Task
 from nemo_insights_plugin.entities import Insight
 
 
@@ -46,34 +46,48 @@ class FakeBackend:
 class FakeDatasetFactory:
     def __init__(self) -> None:
         self.template = Task(id="template", uri="file:///template")
-        self.calls: list[tuple[str, DatasetRef]] = []
+        self.template_calls: list[tuple[str, DatasetRef]] = []
+        self.dataset_calls: list[tuple[str, DatasetRef]] = []
+        self.datasets: list[Dataset] = []
 
     def build_task_template(self, evaluator_type: str, template_ref: DatasetRef) -> Task:
-        self.calls.append((evaluator_type, template_ref))
+        self.template_calls.append((evaluator_type, template_ref))
         return self.template
+
+    def build_dataset(self, evaluator_type: str, dataset_ref: DatasetRef) -> Dataset:
+        self.dataset_calls.append((evaluator_type, dataset_ref))
+        dataset = Dataset(id=Path(dataset_ref.uri).name, source=ResourceRef(uri=Path(dataset_ref.uri).as_uri()))
+        self.datasets.append(dataset)
+        return dataset
 
 
 class FakeEvalAuthor:
     def __init__(self) -> None:
-        self.call: tuple[Insight, Path, Task, ClosingClient] | None = None
+        self.call: tuple[Insight, Path, Task, Dataset, Dataset, ClosingClient] | None = None
 
     async def run(
         self,
         insight: Insight,
         agent_path: Path,
         task_template: Task,
+        train_dataset: Dataset,
+        validation_dataset: Dataset,
         *,
         client: ClosingClient,
     ) -> EvalAuthorResult:
-        self.call = (insight, agent_path, task_template, client)
+        self.call = (insight, agent_path, task_template, train_dataset, validation_dataset, client)
         return EvalAuthorResult(
+            train_dataset=ArtifactDescriptor(
+                uri="file:///artifacts/train",
+                identity=f"sha256:{'c' * 64}",
+            ),
+            validation_dataset=ArtifactDescriptor(
+                uri="file:///artifacts/validation",
+                identity=f"sha256:{'d' * 64}",
+            ),
             task_set=ArtifactDescriptor(
                 uri="file:///artifacts/task-set",
                 identity=f"sha256:{'a' * 64}",
-            ),
-            verifier_bundle=ArtifactDescriptor(
-                uri="file:///artifacts/verifier-bundle",
-                identity=f"sha256:{'b' * 64}",
             ),
             metric_keys=("uses_correct_tool",),
             summary="Eval Author complete.",
@@ -104,9 +118,15 @@ async def test_run_eval_author_resolves_inputs_and_returns_artifact_refs(
     template = tmp_path / "template"
     template.mkdir()
     (template / "task.toml").write_text("template\n", encoding="utf-8")
+    train = tmp_path / "train"
+    validation = tmp_path / "validation"
+    train.mkdir()
+    validation.mkdir()
 
     result = await eval_author_run.run_eval_author(
         insight="insight-123",
+        train_dataset=DatasetRef(uri=str(train)),
+        validation_dataset=DatasetRef(uri=str(validation)),
         task_template=DatasetRef(uri=str(template)),
         experiment_dir=tmp_path / "experiment",
         workspace="workspace-a",
@@ -115,38 +135,48 @@ async def test_run_eval_author_resolves_inputs_and_returns_artifact_refs(
     )
 
     experiment_dir = (tmp_path / "experiment").resolve()
+    assert result.train_dataset.uri == "file:///artifacts/train"
+    assert result.validation_dataset.uri == "file:///artifacts/validation"
     assert result.task_set == ArtifactDescriptor(
         uri="file:///artifacts/task-set",
         identity=f"sha256:{'a' * 64}",
-    )
-    assert result.verifier_bundle == ArtifactDescriptor(
-        uri="file:///artifacts/verifier-bundle",
-        identity=f"sha256:{'b' * 64}",
     )
     assert result.metric_keys == ("uses_correct_tool",)
     assert backend.insight_calls == [("workspace-a", "insight-123")]
     assert backend.agent_calls == [
         ("workspace-a", "insight-agent", experiment_dir / "eval_author" / "source-agent"),
     ]
-    assert dataset_factory.calls[0][0] == "harbor"
+    assert [call[0] for call in dataset_factory.dataset_calls] == ["harbor", "harbor"]
+    assert dataset_factory.template_calls[0][0] == "harbor"
     assert eval_author.call == (
         insight,
         experiment_dir / "eval_author" / "source-agent",
         dataset_factory.template,
+        dataset_factory.datasets[0],
+        dataset_factory.datasets[1],
         client,
     )
     assert client.closed
 
 
-def test_public_apis_have_no_request_inventory_or_dataset_splits() -> None:
+def test_public_apis_accept_train_validation_and_generated_task_inputs() -> None:
     orchestration = inspect.signature(eval_author_run.run_eval_author).parameters
     agent_run = inspect.signature(EvalAuthor.run).parameters
     agent_private_run = inspect.signature(EvalAuthor._run).parameters
 
-    assert {"insight", "task_template"} <= set(orchestration)
-    assert {"request", "train_dataset", "validation_dataset", "reference_task_sets"}.isdisjoint(orchestration)
-    assert set(agent_run) == {"self", "insight", "agent_path", "task_template", "client"}
-    assert set(agent_private_run) == {"self", "insight", "agent_path", "task_template", "client"}
+    assert {"insight", "task_template", "train_dataset", "validation_dataset"} <= set(orchestration)
+    assert {"request", "reference_task_sets"}.isdisjoint(orchestration)
+    expected = {
+        "self",
+        "insight",
+        "agent_path",
+        "task_template",
+        "train_dataset",
+        "validation_dataset",
+        "client",
+    }
+    assert set(agent_run) == expected
+    assert set(agent_private_run) == expected
 
 
 @pytest.mark.asyncio
@@ -174,9 +204,15 @@ async def test_run_eval_author_hydrates_fileset_task_template(
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: FakeEvalAuthor())
     monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: None)
     template_ref = DatasetRef(uri="fileset://workspace-a/template")
+    train = tmp_path / "train"
+    validation = tmp_path / "validation"
+    train.mkdir()
+    validation.mkdir()
 
     await eval_author_run.run_eval_author(
         insight="insight-123",
+        train_dataset=DatasetRef(uri=str(train)),
+        validation_dataset=DatasetRef(uri=str(validation)),
         task_template=template_ref,
         experiment_dir=tmp_path / "experiment",
         workspace="workspace-a",
@@ -186,7 +222,8 @@ async def test_run_eval_author_hydrates_fileset_task_template(
 
     staged = (tmp_path / "experiment").resolve() / "dataset" / "task-template"
     assert downloads == [(template_ref.uri, str(staged), "workspace-a")]
-    assert dataset_factory.calls == [("harbor", template_ref.model_copy(update={"uri": str(staged)}))]
+    assert dataset_factory.template_calls == [("harbor", template_ref.model_copy(update={"uri": str(staged)}))]
+    assert [Path(ref.uri).name for _, ref in dataset_factory.dataset_calls] == ["train", "validation"]
     assert client.closed
 
 
@@ -206,6 +243,8 @@ async def test_run_eval_author_closes_client_on_failure(
     with pytest.raises(RuntimeError, match="backend failed"):
         await eval_author_run.run_eval_author(
             insight="insight-123",
+            train_dataset=DatasetRef(uri="train"),
+            validation_dataset=DatasetRef(uri="validation"),
             task_template=DatasetRef(uri="template"),
             experiment_dir=tmp_path,
             workspace="workspace-a",

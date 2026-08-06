@@ -9,8 +9,8 @@ from typing import Protocol, cast
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.client import make_client
-from nemo_experimentalist_plugin.entities import DatasetRef, Task
-from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
+from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
@@ -31,6 +31,8 @@ class _EvalAuthorAgent(Protocol):
         insight: Insight,
         agent_path: Path,
         task_template: Task,
+        train_dataset: Dataset,
+        validation_dataset: Dataset,
         *,
         client: AsyncNeMoPlatform,
     ) -> EvalAuthorResult: ...
@@ -39,6 +41,8 @@ class _EvalAuthorAgent(Protocol):
 async def run_eval_author(
     *,
     insight: Path | str,
+    train_dataset: DatasetRef,
+    validation_dataset: DatasetRef,
     task_template: DatasetRef,
     experiment_dir: Path,
     workspace: str,
@@ -47,10 +51,12 @@ async def run_eval_author(
     agent: Path | str | None = None,
     evaluator_type: EvaluatorType = "harbor",
 ) -> EvalAuthorResult:
-    """Resolve one Insight and task template, then run Eval Author.
+    """Stage evaluation inputs, resolve one Insight, then run Eval Author.
 
     Args:
         insight: Local Insight path or platform Insight id.
+        train_dataset: Training dataset to stage and augment.
+        validation_dataset: Validation dataset to stage and augment.
         task_template: Local or Fileset-backed evaluator task template.
         experiment_dir: Working directory for authored artifacts.
         workspace: Platform workspace.
@@ -82,15 +88,26 @@ async def run_eval_author(
             dest=agent_path,
         )
 
-        staged_template = await stage_task_template(
+        staged_inputs = await stage_eval_author_inputs(
             experiment_dir,
-            task_template,
+            train_dataset=train_dataset,
+            validation_dataset=validation_dataset,
+            task_template=task_template,
             client=client,
             workspace=workspace,
         )
-        parsed_template = DatasetFactory().build_task_template(
+        dataset_factory = DatasetFactory()
+        parsed_train = dataset_factory.build_dataset(
             evaluator_type,
-            staged_template,
+            staged_inputs.train_dataset,
+        )
+        parsed_validation = dataset_factory.build_dataset(
+            evaluator_type,
+            staged_inputs.validation_dataset,
+        )
+        parsed_template = dataset_factory.build_task_template(
+            evaluator_type,
+            staged_inputs.task_template,
         )
         eval_author = build_eval_author_agent(
             experiment_dir=experiment_dir,
@@ -100,6 +117,8 @@ async def run_eval_author(
             insight=resolved_insight,
             agent_path=agent_path,
             task_template=parsed_template,
+            train_dataset=parsed_train,
+            validation_dataset=parsed_validation,
             client=client,
         )
     finally:

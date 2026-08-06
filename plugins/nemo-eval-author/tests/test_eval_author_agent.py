@@ -19,8 +19,7 @@ from nemo_eval_author_plugin.eval_author.models import (
     EvalAuthorConfig,
     MetricAuthoringResult,
 )
-from nemo_eval_author_plugin.eval_author.verifier_bundle import VerifierBundleValidationError
-from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, Task, TrialResult
+from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, ResourceRef, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
     TraceAnalyzerConfig,
@@ -43,18 +42,27 @@ class _Calls:
     analyzed_refs: list[str]
     diagnostics: list[tuple[str, Diagnostic]]
     author_feedback: list[str | None]
-    bundle_finalizations: int = 0
+    train_dataset: Dataset
+    validation_dataset: Dataset
     suite_discards: int = 0
 
 
 class _MaterializedDataset(Dataset):
-    def __init__(self, events: list[str], validation_errors: list[str] | None = None) -> None:
-        super().__init__(id="insight-suite")
+    def __init__(
+        self,
+        dataset_id: str,
+        root: Path,
+        events: list[str],
+        validation_errors: list[str] | None = None,
+    ) -> None:
+        root.mkdir(parents=True)
+        (root / "dataset.txt").write_text(dataset_id, encoding="utf-8")
+        super().__init__(id=dataset_id, source=ResourceRef(uri=root.as_uri()))
         self.events = events
         self.validation_errors = validation_errors or []
 
     async def validate(self) -> None:
-        self.events.append("validate")
+        self.events.append(f"validate:{self.id}")
         if self.validation_errors:
             raise DatasetValidationError(self.validation_errors.pop(0))
 
@@ -98,13 +106,38 @@ def _install_pipeline(
     eval_author: EvalAuthor,
     outcomes: Sequence[Diagnostic | BaseException],
     *,
-    validation_errors: list[str] | None = None,
-    bundle_failures: int = 0,
+    validation_errors: dict[str, list[str]] | None = None,
 ) -> _Calls:
-    calls = _Calls(events=[], filled_refs=[], analyzed_refs=[], diagnostics=[], author_feedback=[])
-    materialized = _MaterializedDataset(calls.events, validation_errors)
+    events: list[str] = []
+    failures = validation_errors or {}
+    train_dataset = _MaterializedDataset(
+        "train",
+        eval_author.experiment_dir / "datasets" / "train",
+        events,
+        failures.get("train"),
+    )
+    validation_dataset = _MaterializedDataset(
+        "validation",
+        eval_author.experiment_dir / "datasets" / "validation",
+        events,
+        failures.get("validation"),
+    )
+    materialized = _MaterializedDataset(
+        "insight-suite",
+        eval_author.experiment_dir / "insight-root" / "insight-suite",
+        events,
+        failures.get("insight"),
+    )
+    calls = _Calls(
+        events=events,
+        filled_refs=[],
+        analyzed_refs=[],
+        diagnostics=[],
+        author_feedback=[],
+        train_dataset=train_dataset,
+        validation_dataset=validation_dataset,
+    )
     analyzer_index = 0
-    bundle_attempt = 0
 
     class FakeInsightSuite:
         def __init__(self, *, task_template: Task, **_: Any) -> None:
@@ -178,7 +211,7 @@ def _install_pipeline(
 
     class DiscoverRunner:
         async def __call__(self, dataset: Dataset) -> str:
-            assert dataset is materialized
+            assert dataset is train_dataset
             calls.events.append("discover")
             return "runner conventions"
 
@@ -187,13 +220,16 @@ def _install_pipeline(
             self,
             insight: Insight,
             diagnostics: list[tuple[str, Diagnostic]],
+            authored_train_dataset: Dataset,
+            authored_validation_dataset: Dataset,
             insight_suite: Dataset,
             runner_conventions: str,
-            verifier_bundle_dir: Path,
             validation_feedback: str | None = None,
         ) -> MetricAuthoringResult:
-            del insight, insight_suite, runner_conventions
-            assert verifier_bundle_dir == eval_author.experiment_dir / "insight-root" / "verifier-bundle" / "files"
+            del insight, runner_conventions
+            assert authored_train_dataset is train_dataset
+            assert authored_validation_dataset is validation_dataset
+            assert insight_suite is materialized
             calls.events.append("author")
             calls.diagnostics = diagnostics
             calls.author_feedback.append(validation_feedback)
@@ -202,31 +238,11 @@ def _install_pipeline(
                 summary="Authored tool-use metric.",
             )
 
-    def finalize_verifier_bundle(
-        bundle_root: Path,
-        dataset: Dataset,
-        *,
-        metric_keys: tuple[str, ...],
-    ) -> ArtifactDescriptor:
-        nonlocal bundle_attempt
-        assert dataset is materialized
-        assert metric_keys == ("uses_correct_tool",)
-        calls.events.append("bundle")
-        bundle_attempt += 1
-        if bundle_attempt <= bundle_failures:
-            raise VerifierBundleValidationError("bundle file is not installed in every task")
-        calls.bundle_finalizations += 1
-        return ArtifactDescriptor(
-            uri=bundle_root.resolve().as_uri(),
-            identity=f"sha256:{'b' * 64}",
-        )
-
     eval_author.fill_task_template = cast(Any, FillTaskTemplate())
     eval_author.discover_runner = cast(Any, DiscoverRunner())
     eval_author.author_insight_metrics = cast(Any, AuthorInsightMetrics())
     monkeypatch.setattr(eval_author_module, "InsightSuite", FakeInsightSuite)
     monkeypatch.setattr(eval_author_module, "TraceAnalyzer", FakeTraceAnalyzer)
-    monkeypatch.setattr(eval_author_module, "finalize_verifier_bundle", finalize_verifier_bundle, raising=False)
     monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
     monkeypatch.setattr(eval_author_module, "doc", lambda *_args, **_kwargs: "dataset docs")
     return calls
@@ -235,35 +251,40 @@ def _install_pipeline(
 def test_metric_authoring_prompt_limits_edits_and_result_shape() -> None:
     prompt = " ".join((inspect.getdoc(EvalAuthor.author_insight_metrics) or "").split())
 
-    assert "Only edit verifier files in the materialized Insight suite" in prompt
-    assert "Add at least one new Insight-specific metric key to every task" in prompt
+    assert "every task in ``train_dataset``, ``validation_dataset``, and ``insight_suite``" in prompt
+    assert "task-specific verifier edits" in prompt.lower()
     assert "Do not hard-code scores for the production traces" in prompt
-    assert "verifier_bundle_dir" in prompt
-    assert "one reusable copy" in prompt
     assert "MetricAuthoringResult" in prompt
     assert "metric_keys" in prompt
-    assert "reference inventory" not in prompt.lower()
+    assert "verifier_bundle" not in prompt
 
 
 @pytest.mark.asyncio
-async def test_run_returns_explicit_no_artifacts_without_trace_refs(tmp_path: Path) -> None:
+async def test_run_returns_input_dataset_artifacts_without_trace_refs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     eval_author = _eval_author(tmp_path)
+    calls = _install_pipeline(monkeypatch, eval_author, [])
 
     result = await eval_author.run(
         _insight([]),
         Path("agent"),
         Task(id="template"),
+        calls.train_dataset,
+        calls.validation_dataset,
         client=cast(Any, object()),
     )
 
+    assert result.train_dataset.uri.endswith("/datasets/train")
+    assert result.validation_dataset.uri.endswith("/datasets/validation")
     assert result.task_set is None
-    assert result.verifier_bundle is None
     assert result.metric_keys == ()
     assert cast(_ClosingShell, eval_author.shell).close_calls == 1
 
 
 @pytest.mark.asyncio
-async def test_run_materializes_authors_validates_extracts_and_returns_refs(
+async def test_run_materializes_authors_validates_and_returns_artifacts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -275,58 +296,30 @@ async def test_run_materializes_authors_validates_extracts_and_returns_refs(
         _insight(["trace-1", "trace-2", "ignored"]),
         Path("agent"),
         Task(id="template"),
+        calls.train_dataset,
+        calls.validation_dataset,
         client=cast(Any, object()),
     )
 
     assert calls.filled_refs == ["trace-1", "trace-2"]
     assert calls.analyzed_refs == ["trace-1", "trace-2"]
     assert calls.diagnostics == [("trace-1", diagnostic), ("trace-2", diagnostic)]
-    assert calls.events == ["discover", "author", "validate", "bundle", "finalize"]
+    assert calls.events == [
+        "discover",
+        "author",
+        "validate:train",
+        "validate:validation",
+        "validate:insight-suite",
+        "finalize",
+    ]
+    assert result.train_dataset.uri.endswith("/datasets/train")
+    assert result.validation_dataset.uri.endswith("/datasets/validation")
     assert result.task_set == ArtifactDescriptor(
         uri=(tmp_path / "insight-root" / "insight-suite").resolve().as_uri(),
         identity=f"sha256:{'a' * 64}",
     )
-    assert result.verifier_bundle == ArtifactDescriptor(
-        uri=(tmp_path / "insight-root" / "verifier-bundle").resolve().as_uri(),
-        identity=f"sha256:{'b' * 64}",
-    )
     assert result.metric_keys == ("uses_correct_tool",)
     assert result.summary == "Authored tool-use metric."
-
-
-@pytest.mark.asyncio
-async def test_bundle_validation_failure_uses_repair_loop(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    eval_author = _eval_author(tmp_path, max_validation_repair_attempts=1)
-    calls = _install_pipeline(
-        monkeypatch,
-        eval_author,
-        [_diagnostic()],
-        bundle_failures=1,
-    )
-
-    result = await eval_author.run(
-        _insight(["trace-1"]),
-        Path("agent"),
-        Task(id="template"),
-        client=cast(Any, object()),
-    )
-
-    assert result.verifier_bundle is not None
-    assert calls.events == [
-        "discover",
-        "author",
-        "validate",
-        "bundle",
-        "author",
-        "validate",
-        "bundle",
-        "finalize",
-    ]
-    assert calls.author_feedback == [None, "bundle file is not installed in every task"]
-    assert calls.bundle_finalizations == 1
 
 
 @pytest.mark.asyncio
@@ -339,21 +332,25 @@ async def test_static_validation_failure_uses_same_repair_loop(
         monkeypatch,
         eval_author,
         [_diagnostic()],
-        validation_errors=["task 'task-a': tests/check.py: invalid syntax"],
+        validation_errors={"validation": ["task 'task-a': tests/check.py: invalid syntax"]},
     )
 
     await eval_author.run(
         _insight(["trace-1"]),
         Path("agent"),
         Task(id="template"),
+        calls.train_dataset,
+        calls.validation_dataset,
         client=cast(Any, object()),
     )
 
     assert calls.author_feedback[0] is None
+    assert "validation" in cast(str, calls.author_feedback[1])
     assert "invalid syntax" in cast(str, calls.author_feedback[1])
     assert calls.events.count("author") == 2
-    assert calls.events.count("bundle") == 1
-    assert calls.bundle_finalizations == 1
+    assert calls.events.count("validate:train") == 2
+    assert calls.events.count("validate:validation") == 2
+    assert calls.events.count("validate:insight-suite") == 2
 
 
 @pytest.mark.asyncio
@@ -374,6 +371,8 @@ async def test_run_discards_staged_tasks_and_closes_shell_when_fill_fails(
             _insight(["trace-1"]),
             Path("agent"),
             Task(id="template"),
+            calls.train_dataset,
+            calls.validation_dataset,
             client=cast(Any, object()),
         )
 
@@ -394,6 +393,8 @@ async def test_run_propagates_trace_analysis_cancellation(
             _insight(["trace-1"]),
             Path("agent"),
             Task(id="template"),
+            calls.train_dataset,
+            calls.validation_dataset,
             client=cast(Any, object()),
         )
 

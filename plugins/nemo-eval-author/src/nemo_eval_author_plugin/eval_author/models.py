@@ -86,12 +86,13 @@ class EvalAuthorConfig(BaseModel):
 
 
 class EvalAuthorResult(BaseModel):
-    """The two authored artifacts, their metric keys, and a summary."""
+    """Modified evaluation artifacts, their metric keys, and a summary."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    train_dataset: ArtifactDescriptor
+    validation_dataset: ArtifactDescriptor
     task_set: ArtifactDescriptor | None = None
-    verifier_bundle: ArtifactDescriptor | None = None
     metric_keys: tuple[str, ...] = ()
     summary: str
 
@@ -101,17 +102,10 @@ class EvalAuthorResult(BaseModel):
         return _non_empty(value, label="Eval Author result summary")
 
     @model_validator(mode="after")
-    def _artifacts_are_all_or_none(self) -> Self:
-        if self.task_set is None and self.verifier_bundle is None:
+    def _authored_tasks_require_metrics(self) -> Self:
+        if self.task_set is None:
             if self.metric_keys:
-                raise ValueError("metric keys require authored artifacts")
+                raise ValueError("metric keys require an authored task set")
             return self
-        if self.task_set is None or self.verifier_bundle is None:
-            raise ValueError("task_set and verifier_bundle must be returned together")
         _validate_metric_keys(self.metric_keys)
         return self
-
-    @classmethod
-    def no_artifacts(cls, summary: str) -> Self:
-        """Return a successful outcome that produced no artifacts."""
-        return cls(summary=summary)
