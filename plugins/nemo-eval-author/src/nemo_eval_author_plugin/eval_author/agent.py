@@ -9,10 +9,10 @@ before beginning insight-driven optimization.
 
 import asyncio
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
-from nemo_eval_author_plugin.eval_author.inventory import ReferenceTaskSetInventory
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
 from nemo_eval_author_plugin.eval_author.models import (
     ArtifactDescriptor,
@@ -20,6 +20,7 @@ from nemo_eval_author_plugin.eval_author.models import (
     EvalAuthorResult,
     MetricAuthoringResult,
 )
+from nemo_eval_author_plugin.eval_author.verifier_bundle import finalize_verifier_bundle
 from nemo_eval_author_plugin.model_config import (
     bridge_author_env_to_experimentalist,
     get_fast_model,
@@ -128,8 +129,8 @@ class EvalAuthor(Agent):
         insight: Insight,
         diagnostics: list[tuple[str, Diagnostic]],
         insight_suite: Dataset,
-        reference_inventory: ReferenceTaskSetInventory,
         runner_conventions: str,
+        verifier_bundle_dir: Path,
         validation_feedback: str | None = None,
     ) -> MetricAuthoringResult:
         """Author verifier metrics for the materialized tasks that capture the insight.
@@ -138,13 +139,12 @@ class EvalAuthor(Agent):
             insight: The insight whose failure mode the tasks should detect.
             diagnostics: Per-trace ``(trace_ref, Diagnostic)`` pairs for concrete evidence.
             insight_suite: The materialized tasks recreated from the Insight's production traces.
-            reference_inventory: Immutable, content-addressed facts about existing
-                reference tasks, duplicate provenance/fingerprints, verifier families,
-                and metric contracts. Use it for compatibility and collision avoidance.
-                It contains no mutable source Dataset and must not be modified.
             runner_conventions: Summary of how this dataset's runner works (from ``discover_runner``).
                 Use this as the authoritative reference for what artifacts exist at
                 evaluation runtime, how tasks are structured, and how to add metrics.
+            verifier_bundle_dir: Directory where you must write one reusable copy of
+                every new verifier file. Install byte-identical copies at the same
+                relative path beneath every generated task's ``tests/`` directory.
             validation_feedback: Actionable failures from mandatory validation of
                 the previous metric-authoring attempt. If provided, repair every reported
                 file before returning.
@@ -160,10 +160,10 @@ class EvalAuthor(Agent):
         ``reward`` or ``score``; append the Insight signal instead of replacing the
         task's original notion of success.
 
-        Only edit verifier files in the materialized Insight suite. Do not modify the
-        user's train or validation datasets, and do not change task instructions,
-        environments, solutions, or other agent-visible inputs. This work adds new
-        grades to the new rows; it does not add new agent output to old benchmark rows.
+        Only edit verifier files in the materialized Insight suite and
+        ``verifier_bundle_dir``. Do not modify task instructions, environments,
+        solutions, or other agent-visible inputs. The bundle contains one reusable copy
+        of the common verifier files; do not put task-specific configuration in it.
 
         Name each new metric after the root-cause behavior, not a trace id or surface
         symptom. Measure the current Harbor run from runtime artifacts such as OTLP
@@ -204,12 +204,9 @@ class EvalAuthor(Agent):
         objects for Y, so X is missing from its context.  Measure whether the agent retrieves
         all required objects, not merely whether X appears in the final answer.
 
-        Return ``MetricAuthoringResult`` with a unique, non-empty metric declaration for
-        every new key plus a concise summary. Each declaration must describe the behavior
-        measured and name the runtime evidence it requires. Keep the fixed
-        ``unit_interval`` scale and ``higher_is_better`` direction. Do not return free
-        text alone. The caller retains the materialized suite; the reference inventory
-        cannot expose or mutate the user's source task sets.
+        Return ``MetricAuthoringResult`` with the unique, non-empty ``metric_keys`` added
+        by the verifier edits plus a concise summary. Include at least one
+        Insight-specific key beyond generic ``reward`` or ``score``.
         """  # noqa: D413
         ...
 
@@ -268,7 +265,6 @@ class EvalAuthor(Agent):
         insight: Insight,
         agent_path: Path,
         task_template: Task,
-        reference_inventory: ReferenceTaskSetInventory,
         *,
         client: AsyncNeMoPlatform,
     ) -> EvalAuthorResult:
@@ -278,7 +274,6 @@ class EvalAuthor(Agent):
                 insight=insight,
                 agent_path=agent_path,
                 task_template=task_template,
-                reference_inventory=reference_inventory,
                 client=client,
             )
         finally:
@@ -289,7 +284,6 @@ class EvalAuthor(Agent):
         insight: Insight,
         agent_path: Path,
         task_template: Task,
-        reference_inventory: ReferenceTaskSetInventory,
         *,
         client: AsyncNeMoPlatform,
     ) -> EvalAuthorResult:
@@ -299,8 +293,6 @@ class EvalAuthor(Agent):
             insight: The Insight to investigate with relevant traces.
             agent_path: Agent root, relative to ``experiment_dir`` or absolute.
             task_template: Parsed evaluator task containing explicit placeholders.
-            reference_inventory: Immutable, split-agnostic context constructed from
-                the request's reference task-set descriptors.
             client: Existing NeMo Platform client used for Intake requests.
         """
         reporter = self._reporter
@@ -409,16 +401,29 @@ class EvalAuthor(Agent):
         runner_conventions = await self.discover_runner(materialized_dataset)
         if reporter is not None:
             reporter.progress(phase="eval author · authoring metrics")
-        authoring_result = await self.author_insight_metrics(
-            insight,
-            diagnostics,
-            materialized_dataset,
-            reference_inventory,
-            runner_conventions,
-        )
+
+        verifier_bundle_root = insight_suite.root / "verifier-bundle"
+        if verifier_bundle_root.exists():
+            shutil.rmtree(verifier_bundle_root)
+        verifier_bundle_dir = verifier_bundle_root / "files"
+        verifier_bundle_dir.mkdir(parents=True)
+        validation_feedback: str | None = None
         for repair_attempt in range(self._config.max_validation_repair_attempts + 1):
+            authoring_result = await self.author_insight_metrics(
+                insight,
+                diagnostics,
+                materialized_dataset,
+                runner_conventions,
+                verifier_bundle_dir,
+                validation_feedback=validation_feedback,
+            )
             try:
                 await materialized_dataset.validate()
+                verifier_bundle_descriptor = finalize_verifier_bundle(
+                    verifier_bundle_root,
+                    materialized_dataset,
+                    metric_keys=authoring_result.metric_keys,
+                )
             except DatasetValidationError as exc:
                 if repair_attempt >= self._config.max_validation_repair_attempts:
                     raise
@@ -435,27 +440,21 @@ class EvalAuthor(Agent):
                         total=self._config.max_validation_repair_attempts,
                         unit="attempt",
                     )
-                authoring_result = await self.author_insight_metrics(
-                    insight,
-                    diagnostics,
-                    materialized_dataset,
-                    reference_inventory,
-                    runner_conventions,
-                    validation_feedback=str(exc),
-                )
-            else:
-                finalized_suite = insight_suite.finalize()
-                if reporter is not None:
-                    reporter.progress(phase="eval author · complete")
-                return EvalAuthorResult(
-                    task_set=ArtifactDescriptor(
-                        uri=finalized_suite.path.resolve().as_uri(),
-                        identity=finalized_suite.identity,
-                    ),
-                    verifier_patch=None,
-                    metric_contract=authoring_result.metric_contract,
-                    summary=authoring_result.summary,
-                )
+                validation_feedback = str(exc)
+                continue
+
+            finalized_suite = insight_suite.finalize()
+            if reporter is not None:
+                reporter.progress(phase="eval author · complete")
+            return EvalAuthorResult(
+                task_set=ArtifactDescriptor(
+                    uri=finalized_suite.path.resolve().as_uri(),
+                    identity=finalized_suite.identity,
+                ),
+                verifier_bundle=verifier_bundle_descriptor,
+                metric_keys=authoring_result.metric_keys,
+                summary=authoring_result.summary,
+            )
 
         raise AssertionError("unreachable")
 
