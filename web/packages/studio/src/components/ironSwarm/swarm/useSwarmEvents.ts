@@ -40,14 +40,19 @@ export const useSwarmEvents = (
 
   useEffect(() => {
     if (!data?.events?.length) return;
-    const next: SwarmEvent[] = data.events.map((e: Record<string, unknown>) => ({
-      id: typeof e['id'] === 'number' ? e['id'] : Date.now(),
-      event: typeof e['event'] === 'string' ? e['event'] : '',
-      payload: (e['payload'] ?? {}) as Record<string, unknown>,
-      ts: Date.now(),
-    }));
+    // An event with no numeric id cannot advance the cursor: any stand-in value would sit far above
+    // real ids, so `after` would match nothing and the feed would stop for the rest of the run.
+    const next: SwarmEvent[] = data.events
+      .filter((e: Record<string, unknown>) => typeof e['id'] === 'number')
+      .map((e: Record<string, unknown>) => ({
+        id: e['id'] as number,
+        event: typeof e['event'] === 'string' ? e['event'] : '',
+        payload: (e['payload'] ?? {}) as Record<string, unknown>,
+        ts: Date.now(),
+      }));
+    if (!next.length) return;
     setAllEvents((prev) => [...prev, ...next]);
-    setAfterId(next[next.length - 1].id);
+    setAfterId((prev) => Math.max(prev, ...next.map((e) => e.id)));
   }, [data]);
 
   useEffect(() => {
