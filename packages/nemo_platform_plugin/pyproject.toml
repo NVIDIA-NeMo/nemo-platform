@@ -22,7 +22,9 @@ dependencies = [
     "lark>=1.1.0",
     "nemo-platform-sdk",
     "openai>=1.109.1",
-    "pydantic>=2.10.3",
+    # 2.12.0 introduced `model_dump(exclude_computed_fields=...)`, which
+    # `entities/base.py` relies on to project an entity's stored payload.
+    "pydantic>=2.12.0",
     "pydantic-settings>=2.8.1",
     "pyyaml>=6.0.2",
     # Upper bound: typer 0.26.x has a regression where Click sentinel defaults

@@ -277,7 +277,7 @@ nemo-evaluator-plugin = [
   "nemo-evaluator-sdk",
   "nemo-platform-plugin",
   "nemo-platform-sdk",
-  "pydantic>=2.10.6",
+  "pydantic>=2.12.0",
   "typer>=0.20.0",
 ]
 
@@ -330,7 +330,7 @@ nemo-platform-plugin = [
   "lark>=1.1.0",
   "nemo-platform-sdk",
   "openai>=1.109.1",
-  "pydantic>=2.10.3",
+  "pydantic>=2.12.0",
   "pydantic-settings>=2.8.1",
   "pyyaml>=6.0.2",
   "typer>=0.20.0,<0.26",

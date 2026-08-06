@@ -8,7 +8,9 @@ dependencies = [
     "nemo-evaluator-sdk",
     "nemo-platform-plugin",
     "nemo-platform-sdk",
-    "pydantic>=2.10.6",
+    # 2.12.0 introduced `model_dump(exclude_computed_fields=...)`, which this
+    # plugin's entity projections rely on.
+    "pydantic>=2.12.0",
     "typer>=0.20.0",
 ]
 version = "0.0.0"

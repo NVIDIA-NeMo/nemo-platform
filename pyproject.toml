@@ -34,7 +34,7 @@ dependencies = [
   "h11>=0.16.0",
   "protobuf<7.0.dev0,>=6.33.5", # fix for GHSA OOS
   "pyyaml>=6.0.2",
-  "pydantic>=2.10.6",
+  "pydantic>=2.12.0", # `model_dump(exclude_computed_fields=...)` — see nemo_platform_plugin
   "mypy-extensions==1.0.0",
   "tornado>=6.5.7",             # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
   "tomlkit>=0.13.3",
