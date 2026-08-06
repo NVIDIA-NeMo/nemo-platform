@@ -6,6 +6,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import {
   useCustomizationCreateAutomodelJob,
+  useCustomizationCreateRlJob,
   useCustomizationCreateUnslothJob,
 } from '@nemo/sdk/generated/customizer/api';
 import {
@@ -22,6 +23,7 @@ import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { CustomizationFilesetSelect } from '@studio/components/customizer/CustomizationFilesetSelect';
 import { BackendSelectionSection } from '@studio/components/NewCustomizationForm/BackendSelectionSection';
 import { ComputeResourcesSection } from '@studio/components/NewCustomizationForm/ComputeResourcesSection';
+import { DpoParametersSection } from '@studio/components/NewCustomizationForm/DpoParametersSection';
 import { GeneralParametersSection } from '@studio/components/NewCustomizationForm/GeneralParametersSection';
 import { LoraParametersSection } from '@studio/components/NewCustomizationForm/LoraParametersSection';
 import { ModelSelectionSection } from '@studio/components/NewCustomizationForm/ModelSelectionSection';
@@ -31,6 +33,7 @@ import {
   FORM_DEFAULTS,
   customizationFormSchema,
   formToAutomodelCreate,
+  formToRlCreate,
   formToUnslothCreate,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
@@ -64,6 +67,7 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
         ...FORM_DEFAULTS.unsloth,
         model: { ...FORM_DEFAULTS.unsloth.model, name: initialModel ?? '' },
       },
+      rl: { ...FORM_DEFAULTS.rl, model: initialModel ?? '' },
     };
   }, [initialModel, initialValues]);
 
@@ -84,7 +88,9 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
     name: 'unsloth.training.finetuning_type',
   });
   const finetuningType = backend === 'automodel' ? automodelFinetuningType : unslothFinetuningType;
-  const isLora = finetuningType === 'lora' || finetuningType === 'lora_merged';
+  const isLora =
+    backend !== 'rl' && (finetuningType === 'lora' || finetuningType === 'lora_merged');
+  const isDpo = backend === 'rl';
 
   const { mutateAsync: createAutomodel, isPending: isPendingAutomodel } =
     useCustomizationCreateAutomodelJob({
@@ -112,7 +118,19 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
       },
     });
 
-  const isPending = isPendingAutomodel || isPendingUnsloth;
+  const { mutateAsync: createRl, isPending: isPendingRl } = useCustomizationCreateRlJob({
+    mutation: {
+      onSuccess: (job) => {
+        toast.success('Fine-tuning job started');
+        navigate(getWorkspaceCustomizationJobDetailsRoute(workspace, job.name));
+      },
+      onError: (error: Error) => {
+        toast.error(getErrorMessage(error, 'Failed to create fine-tuning job'));
+      },
+    },
+  });
+
+  const isPending = isPendingAutomodel || isPendingUnsloth || isPendingRl;
 
   const onSubmit = async (fields: CustomizationFormFields) => {
     setValidationErrors([]);
@@ -120,6 +138,8 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
       await createAutomodel({ workspace, data: formToAutomodelCreate(fields) }).catch(
         () => undefined
       );
+    } else if (fields.backend === 'rl') {
+      await createRl({ workspace, data: formToRlCreate(fields) }).catch(() => undefined);
     } else {
       await createUnsloth({ workspace, data: formToUnslothCreate(fields) }).catch(() => undefined);
     }
@@ -189,6 +209,12 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
                       <>
                         <Divider />
                         <LoraParametersSection />
+                      </>
+                    )}
+                    {isDpo && (
+                      <>
+                        <Divider />
+                        <DpoParametersSection />
                       </>
                     )}
                     <Divider />

@@ -22,6 +22,89 @@ export const GeneralParametersSection = () => {
   const backend = watch('backend');
   const disabled = formState.isSubmitting;
 
+  if (backend === 'rl') {
+    return (
+      <FormSection title="Training Parameters">
+        <Stack gap="density-lg">
+          <ControlledSliderWithTextInput
+            useControllerProps={{ name: 'rl.training.epochs', control }}
+            formFieldProps={{ slotLabel: 'Epochs' }}
+            defaultValue={1}
+            min={1}
+            max={100}
+            step={1}
+            disabled={disabled}
+          />
+          <ControlledSliderWithTextInput
+            useControllerProps={{ name: 'rl.training.learning_rate', control }}
+            formFieldProps={{ slotLabel: 'Learning Rate' }}
+            defaultValue={1e-4}
+            min={1e-6}
+            max={1e-3}
+            step={1e-6}
+            disabled={disabled}
+          />
+          <ControlledSliderWithTextInput
+            useControllerProps={{ name: 'rl.training.batch_size', control }}
+            formFieldProps={{ slotLabel: 'Global Batch Size' }}
+            defaultValue={8}
+            min={1}
+            max={256}
+            step={1}
+            disabled={disabled}
+          />
+          <ControlledSliderWithTextInput
+            useControllerProps={{ name: 'rl.training.max_seq_length', control }}
+            formFieldProps={{ slotLabel: 'Max Sequence Length' }}
+            defaultValue={2048}
+            min={128}
+            max={131072}
+            step={128}
+            disabled={disabled}
+          />
+          <AccordionRoot multiple>
+            <AccordionItem value="advanced" className="border-b-0">
+              <AccordionTrigger>
+                <Text kind="label/bold/md">Advanced</Text>
+              </AccordionTrigger>
+              <AccordionContent>
+                <Stack gap="density-md" className="pt-density-md">
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'rl.training.micro_batch_size', control }}
+                    formFieldProps={{ slotLabel: 'Micro Batch Size' }}
+                    defaultValue={1}
+                    min={1}
+                    max={64}
+                    step={1}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'rl.training.warmup_steps', control }}
+                    formFieldProps={{ slotLabel: 'Warmup Steps' }}
+                    defaultValue={0}
+                    min={0}
+                    max={1000}
+                    step={1}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'rl.training.weight_decay', control }}
+                    formFieldProps={{ slotLabel: 'Weight Decay' }}
+                    defaultValue={0.01}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    disabled={disabled}
+                  />
+                </Stack>
+              </AccordionContent>
+            </AccordionItem>
+          </AccordionRoot>
+        </Stack>
+      </FormSection>
+    );
+  }
+
   if (backend === 'automodel') {
     return (
       <FormSection title="Training Parameters">

@@ -17,7 +17,8 @@ export const ModelSelectionSection = () => {
   const backend = watch('backend');
   const disabled = formState.isSubmitting;
 
-  const modelFieldName = backend === 'automodel' ? 'automodel.model' : 'unsloth.model.name';
+  const modelFieldName =
+    backend === 'automodel' ? 'automodel.model' : backend === 'rl' ? 'rl.model' : 'unsloth.model.name';
 
   const { field: modelField, fieldState: modelFieldState } = useController({
     control,

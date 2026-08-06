@@ -3,7 +3,7 @@
 
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { RadioCard } from '@nemo/common/src/components/RadioCard';
-import { RadioGroupRoot, Stack, Text } from '@nvidia/foundations-react-core';
+import { Block, RadioGroupRoot, Stack, Text } from '@nvidia/foundations-react-core';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import { useFormContext } from 'react-hook-form';
@@ -40,6 +40,20 @@ export const TrainingMethodSection = () => {
   const { watch, setValue, control, formState } = useFormContext<CustomizationFormFields>();
   const backend = watch('backend');
   const disabled = formState.isSubmitting;
+
+  if (backend === 'rl') {
+    return (
+      <FormSection title="Training Method">
+        <Block>
+          <Text kind="body/bold/md">Direct Preference Optimization (DPO)</Text>
+          <Text kind="body/regular/md" color="secondary">
+            Full-weight fine-tuning on preference data (chosen / rejected pairs). PEFT adapters are
+            not supported by the RL backend.
+          </Text>
+        </Block>
+      </FormSection>
+    );
+  }
 
   const finetuningType =
     backend === 'automodel'

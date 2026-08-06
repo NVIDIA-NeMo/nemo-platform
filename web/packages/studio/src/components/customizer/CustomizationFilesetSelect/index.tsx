@@ -46,7 +46,7 @@ import { useController, useFormContext, useWatch } from 'react-hook-form';
 
 const NEW_DATASET_VALUE = '__new_dataset__';
 
-type DatasetFieldName = 'automodel.dataset.training' | 'unsloth.dataset.path';
+type DatasetFieldName = 'automodel.dataset.training' | 'unsloth.dataset.path' | 'rl.dataset';
 
 export interface CustomizationFilesetSelectProps {
   disabled?: boolean;
@@ -60,10 +60,14 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
   const backend = useWatch({ control, name: 'backend' });
 
   const fieldName: DatasetFieldName =
-    backend === 'automodel' ? 'automodel.dataset.training' : 'unsloth.dataset.path';
+    backend === 'automodel'
+      ? 'automodel.dataset.training'
+      : backend === 'rl'
+        ? 'rl.dataset'
+        : 'unsloth.dataset.path';
   const automodelTrainingType = useWatch({ control, name: 'automodel.training.training_type' });
   const trainingType: TrainingType =
-    backend === 'automodel' ? (automodelTrainingType ?? 'sft') : 'sft';
+    backend === 'rl' ? 'dpo' : backend === 'automodel' ? (automodelTrainingType ?? 'sft') : 'sft';
 
   const {
     field: { value: selectedRef, onChange: setSelectedRef, onBlur },
@@ -110,6 +114,8 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
       shouldValidate: false,
     });
   }, [backend, detectedVariant, setValue]);
+
+  const isRlBackend = backend === 'rl';
 
   const onCreate = (createdFileset: Fileset) => {
     setSelectedRef(getEntityReference(createdFileset));
@@ -220,6 +226,13 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
           }}
           disabled={disabled}
         />
+      )}
+      {isRlBackend && (
+        <Text kind="body/regular/md" color="secondary">
+          Dataset must contain <strong>training.jsonl</strong> and{' '}
+          <strong>validation.jsonl</strong> in a preference format (chosen / rejected pairs,
+          BinaryPreference, Tulu3, HelpSteer3, or native Preference).
+        </Text>
       )}
 
       {fetchFilesetStatus === 'pending' && selectedParts?.name && (

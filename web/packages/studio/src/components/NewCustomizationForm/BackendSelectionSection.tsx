@@ -20,6 +20,12 @@ const BACKENDS = [
     description:
       'Single-GPU, memory-efficient training via 4-bit quantization. Ideal for smaller hardware with fast iteration.',
   },
+  {
+    value: 'rl' as const,
+    title: 'RL (DPO)',
+    description:
+      'Reinforcement learning from human feedback via Direct Preference Optimization. Trains on preference datasets (chosen / rejected pairs) with full-weight fine-tuning.',
+  },
 ];
 
 export const BackendSelectionSection = () => {

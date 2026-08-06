@@ -92,6 +92,84 @@ const AutomodelParallelism = ({ disabled }: { disabled: boolean }) => {
   );
 };
 
+const RlParallelism = ({ disabled }: { disabled: boolean }) => {
+  const { control } = useFormContext<CustomizationFormFields>();
+  return (
+    <Stack gap="density-lg">
+      <ControlledSliderWithTextInput
+        useControllerProps={{ name: 'rl.training.parallelism.num_nodes', control }}
+        formFieldProps={{ slotLabel: 'Nodes' }}
+        defaultValue={1}
+        min={1}
+        max={16}
+        step={1}
+        disabled={disabled}
+      />
+      <ControlledSliderWithTextInput
+        useControllerProps={{ name: 'rl.training.parallelism.num_gpus_per_node', control }}
+        formFieldProps={{ slotLabel: 'GPUs per Node' }}
+        defaultValue={1}
+        min={1}
+        max={8}
+        step={1}
+        disabled={disabled}
+      />
+      <AccordionRoot multiple>
+        <AccordionItem value="advanced-parallelism" className="border-b-0">
+          <AccordionTrigger>
+            <Text kind="label/bold/md">Advanced Parallelism</Text>
+          </AccordionTrigger>
+          <AccordionContent>
+            <Stack gap="density-md" className="pt-density-md">
+              <ControlledSliderWithTextInput
+                useControllerProps={{
+                  name: 'rl.training.parallelism.tensor_parallel_size',
+                  control,
+                }}
+                formFieldProps={{ slotLabel: 'Tensor Parallel Size' }}
+                defaultValue={1}
+                min={1}
+                max={8}
+                step={1}
+                disabled={disabled}
+              />
+              <ControlledSliderWithTextInput
+                useControllerProps={{
+                  name: 'rl.training.parallelism.pipeline_parallel_size',
+                  control,
+                }}
+                formFieldProps={{ slotLabel: 'Pipeline Parallel Size' }}
+                defaultValue={1}
+                min={1}
+                max={8}
+                step={1}
+                disabled={disabled}
+              />
+              <ControlledSliderWithTextInput
+                useControllerProps={{
+                  name: 'rl.training.parallelism.context_parallel_size',
+                  control,
+                }}
+                formFieldProps={{ slotLabel: 'Context Parallel Size' }}
+                defaultValue={1}
+                min={1}
+                max={8}
+                step={1}
+                disabled={disabled}
+              />
+              <ControlledSwitch
+                useControllerProps={{ name: 'rl.training.parallelism.sequence_parallel', control }}
+                formFieldProps={{ slotLabel: 'Sequence Parallel', labelPosition: 'left' }}
+                disabled={disabled}
+              />
+            </Stack>
+          </AccordionContent>
+        </AccordionItem>
+      </AccordionRoot>
+    </Stack>
+  );
+};
+
 const UnslothHardware = ({ disabled }: { disabled: boolean }) => {
   const { control } = useFormContext<CustomizationFormFields>();
   return (
@@ -121,6 +199,8 @@ export const ComputeResourcesSection = () => {
     <FormSection title="Compute Resources">
       {backend === 'automodel' ? (
         <AutomodelParallelism disabled={disabled} />
+      ) : backend === 'rl' ? (
+        <RlParallelism disabled={disabled} />
       ) : (
         <UnslothHardware disabled={disabled} />
       )}
