@@ -26,7 +26,7 @@ export const WALKTHROUGH_COPY: Record<WalkthroughStep, { title: string; body: st
   },
   'switch-to-chat': {
     title: 'Open the chat',
-    body: 'Your deployment is starting. Switch to the Chat Playground tab to watch it come up and talk to your agent.',
+    body: 'Your deployment is starting. Switch to the Chat tab to watch it come up and talk to your agent.',
   },
   wait: {
     title: 'Deployment starting',
