@@ -4,11 +4,24 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
 
 ## Getting Started
 
-1. Install the latest [Node.js 22](https://nodejs.org/en/download) (LTS).
-2. Install pnpm, install workspace deps, and copy `.env` files:
+1. Get Node.js and pnpm satisfying the `engines` in `package.json` onto your PATH. Either let [mise](https://mise.jdx.dev/) manage them from the versions pinned in `mise.toml` at the repo root:
 
    ```bash
-   npm install -g pnpm
+   make verify-mise   # from the repo root, installs mise + the pinned versions
+   ```
+
+   then add the matching line for your shell to its startup file:
+
+   ```bash
+   eval "$(mise activate bash)"   # ~/.bashrc
+   eval "$(mise activate zsh)"    # ~/.zshrc
+   ```
+
+   or install Node.js and pnpm yourself. `make bootstrap-studio` and the other `make` targets always use the mise-managed versions regardless of what you pick here.
+
+2. Install workspace deps and copy `.env` files, from `web/`:
+
+   ```bash
    pnpm install
    cp packages/studio/env/.env.dev.local.sample packages/studio/env/.env.dev.local && \
      cp packages/studio/env/.env.e2e packages/studio/env/.env.e2e.local
@@ -16,7 +29,7 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
 
 ## Running Studio Locally
 
-Run the following script from the root of the repo:
+Run the following script from `web/`:
 
 ```bash
 pnpm dev

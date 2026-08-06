@@ -32,6 +32,7 @@ Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for
 
 - Use **pnpm** exclusively — never npm or yarn
 - Run frontend commands from `web/`, not from repo root
+- Node.js and pnpm come from mise (`mise.toml` at the repo root). If mise isn't activated in the shell, prefix commands with `mise exec --`, or run `make verify-mise` from the repo root to install the pinned versions
 - Install dependencies: `pnpm add <package>`
 - Run scripts: `pnpm <script-name>`
 

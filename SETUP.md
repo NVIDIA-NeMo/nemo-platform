@@ -108,7 +108,8 @@ mise exec -- pnpm dev
 or activate mise once so every shell picks up the pinned versions:
 
 ```bash
-eval "$(mise activate zsh)"   # add to ~/.zshrc; bash and fish are also supported
+eval "$(mise activate bash)"   # ~/.bashrc
+eval "$(mise activate zsh)"    # ~/.zshrc
 ```
 
 Without one of those, a system or nvm-managed Node.js takes precedence and may not satisfy `engines`. To bootstrap against your own toolchain instead of mise, use `make bootstrap-studio NMP_SKIP_MISE=1`.
