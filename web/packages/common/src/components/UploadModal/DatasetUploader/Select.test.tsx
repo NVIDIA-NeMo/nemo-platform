@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { UploadModalProvider } from '@nemo/common/src/components/UploadModal/Context/UploadModalProvider';
 import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/Context/useUploadModalContext';
 import {
@@ -8,7 +9,7 @@ import {
   UploadModalState,
 } from '@nemo/common/src/components/UploadModal/Context/useUploadModalReducer';
 import { DatasetSelect } from '@nemo/common/src/components/UploadModal/DatasetUploader/Select';
-import { filesListFilesetFiles, useFilesListFilesets } from '@nemo/sdk/generated/platform/api';
+import { filesListFilesetFiles, filesListFilesets } from '@nemo/sdk/generated/platform/api';
 import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -16,38 +17,31 @@ import userEvent from '@testing-library/user-event';
 
 // Mock the SDK hooks
 vi.mock('@nemo/sdk/generated/platform/api', () => ({
-  useFilesListFilesets: vi.fn(),
+  filesListFilesets: vi.fn(),
+  getFilesListFilesetsQueryKey: vi.fn((workspace: string) => ['filesets', workspace]),
   filesListFilesetFiles: vi.fn(),
 }));
 
-const mockFilesets: FilesetOutput[] = [
-  {
-    id: 'default/dataset1',
-    name: 'dataset1',
-    workspace: 'default',
-    description: '',
-    purpose: 'dataset',
-    storage: { type: 'local', path: '/data' } as const,
-    metadata: {},
-    custom_fields: {},
-    project: 'default',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-  },
-  {
-    id: 'default/dataset2',
-    name: 'dataset2',
-    workspace: 'default',
-    description: '',
-    purpose: 'dataset',
-    storage: { type: 'local', path: '/data' } as const,
-    metadata: {},
-    custom_fields: {},
-    project: 'default',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-  },
-];
+const fileset = (name: string): FilesetOutput => ({
+  id: `default/${name}`,
+  name,
+  workspace: 'default',
+  description: '',
+  purpose: 'dataset',
+  storage: { type: 'local', path: '/data' } as const,
+  metadata: {},
+  custom_fields: {},
+  project: 'default',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+});
+
+const mockFilesets: FilesetOutput[] = [fileset('dataset1'), fileset('dataset2')];
+
+const page = (data: FilesetOutput[], pageNumber = 1, totalPages = 1) =>
+  ({ data, pagination: { page: pageNumber, total_pages: totalPages } }) as Awaited<
+    ReturnType<typeof filesListFilesets>
+  >;
 
 // Helper component to access context in tests
 const ContextReader = ({
@@ -82,11 +76,7 @@ describe('DatasetSelect', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useFilesListFilesets).mockReturnValue({
-      data: { data: mockFilesets },
-      isLoading: false,
-      isError: false,
-    } as ReturnType<typeof useFilesListFilesets>);
+    vi.mocked(filesListFilesets).mockResolvedValue(page(mockFilesets));
     vi.mocked(filesListFilesetFiles).mockResolvedValue({ data: [] });
   });
 
@@ -98,55 +88,62 @@ describe('DatasetSelect', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument();
   });
 
-  it('queries filesets with purpose filter set to dataset', () => {
+  it('queries filesets paginated, newest first, filtered by purpose', async () => {
     render(<DatasetSelect project="test-project" />, {
       wrapper: createWrapper(),
     });
 
-    expect(useFilesListFilesets).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        filter: { purpose: 'dataset' },
-      })
-    );
+    await waitFor(() => {
+      expect(filesListFilesets).toHaveBeenCalledWith(
+        'test-project',
+        expect.objectContaining({
+          page: 1,
+          page_size: 20,
+          sort: '-created_at',
+          filter: withOperators({ purpose: 'dataset' }),
+        }),
+        expect.anything()
+      );
+    });
+  });
+
+  it('searches filesets server-side', async () => {
+    render(<DatasetSelect project="test-project" />, { wrapper: createWrapper() });
+
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByTestId('dataset-search'), 'data');
+
+    await waitFor(() => {
+      expect(filesListFilesets).toHaveBeenCalledWith(
+        'test-project',
+        expect.objectContaining({
+          filter: withOperators({ name: { $like: '%data%' }, purpose: 'dataset' }),
+        }),
+        expect.anything()
+      );
+    });
   });
 
   it('shows loading state', async () => {
-    vi.mocked(useFilesListFilesets).mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      isError: false,
-    } as ReturnType<typeof useFilesListFilesets>);
+    vi.mocked(filesListFilesets).mockReturnValue(new Promise(() => {}));
 
     render(<DatasetSelect project="test-project" />, {
-      wrapper: createWrapper(),
+      wrapper: createWrapper({ allowNewDataset: false }),
     });
 
-    const select = screen.getByRole('combobox');
-    expect(select).toBeInTheDocument();
-
-    // Open the dropdown to see the loading state
-    await user.click(select);
-    expect(screen.getByText('Loading datasets...')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox'));
+    expect(await screen.findByLabelText('Loading options')).toBeInTheDocument();
   });
 
-  it('shows error state', async () => {
-    vi.mocked(useFilesListFilesets).mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: true,
-    } as ReturnType<typeof useFilesListFilesets>);
+  it('shows an empty state when the query fails', async () => {
+    vi.mocked(filesListFilesets).mockRejectedValue(new Error('boom'));
 
     render(<DatasetSelect project="test-project" />, {
-      wrapper: createWrapper(),
+      wrapper: createWrapper({ allowNewDataset: false }),
     });
 
-    const select = screen.getByRole('combobox');
-    expect(select).toBeInTheDocument();
-
-    // Open the dropdown to see the error state
-    await user.click(select);
-    expect(screen.getByText('Error loading datasets...')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox'));
+    expect(await screen.findByText('No filesets found')).toBeInTheDocument();
   });
 
   it('updates context when dataset is selected', async () => {
@@ -162,22 +159,8 @@ describe('DatasetSelect', () => {
       }
     );
 
-    const select = screen.getByRole('combobox');
-    await user.click(select);
-
-    await waitFor(() => {
-      const options = screen.getAllByRole('option');
-      // Filter to only enabled options (the dataset options, not loading/error)
-      const enabledOptions = options.filter(
-        (option) =>
-          !option.hasAttribute('aria-disabled') || option.getAttribute('aria-disabled') === 'false'
-      );
-      expect(enabledOptions.length).toBeGreaterThan(0);
-    });
-
-    // Find an existing dataset option (not "New Dataset", which is now first)
-    const datasetOption = screen.getByRole('option', { name: 'dataset1' });
-    await user.click(datasetOption);
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'dataset1' }));
 
     await waitFor(() => {
       expect(contextState?.dataset).toBeDefined();
@@ -242,10 +225,11 @@ describe('DatasetSelect', () => {
       wrapper: createWrapper(),
     });
 
-    const select = screen.getByRole('combobox');
-    await user.click(select);
+    await user.click(screen.getByRole('combobox'));
 
-    expect(await screen.findByText('New Dataset')).toBeInTheDocument();
+    // Queried by role, not text: a hidden native <option value="new"> carries the same
+    // label, and only the menu item is exposed in the accessibility tree.
+    expect(await screen.findByRole('option', { name: 'New Dataset' })).toBeInTheDocument();
   });
 
   it('updates context with new dataset type when New Dataset is selected', async () => {
@@ -261,12 +245,11 @@ describe('DatasetSelect', () => {
       }
     );
 
-    const select = screen.getByRole('combobox');
-    await user.click(select);
+    await user.click(screen.getByRole('combobox'));
 
-    expect(await screen.findByText('New Dataset')).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: 'New Dataset' })).toBeInTheDocument();
 
-    await user.click(screen.getByText('New Dataset'));
+    await user.click(screen.getByRole('option', { name: 'New Dataset' }));
 
     await waitFor(() => {
       expect(contextState?.dataset).toBeDefined();
