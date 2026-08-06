@@ -228,13 +228,6 @@ class FeatureSchema(BaseModel):
             "as a suggestion to correct."
         ),
     )
-    fixed_length: int | None = Field(
-        default=None,
-        description=(
-            "dtype == list: constant observed element count (e.g. an embedding vector's 768), None when "
-            "variable. Multi-dimensional shapes compose via nesting."
-        ),
-    )
     fields: list[FeatureSchema] | None = Field(default=None, description="dtype == struct: named child fields.")
     items: FeatureSchema | None = Field(default=None, description="dtype in {list, messages}: element schema.")
 
@@ -243,9 +236,9 @@ class FeatureSchema(BaseModel):
         """A node is either a named-field container or has a single element schema, never both.
 
         Deliberately the only structural check here: it holds for *any* dtype, so it costs no
-        forward compatibility. Tying `fields` / `items` / `fixed_length` to specific dtype values
-        would instead reject a profile written by a newer profiler that added a container dtype,
-        which is exactly what the open vocabulary exists to prevent.
+        forward compatibility. Tying `fields` / `items` to specific dtype values would instead
+        reject a profile written by a newer profiler that added a container dtype, which is exactly
+        what the open vocabulary exists to prevent.
         """
         if self.fields is not None and self.items is not None:
             raise ValueError(f"feature {self.name!r}: `fields` and `items` are mutually exclusive")
@@ -478,7 +471,6 @@ class SamplingInfo(BaseModel):
             "witnesses, so a partition with very many files may exceed its budget."
         ),
     )
-    seed: int | None = Field(default=None, description="RNG seed used for row selection, for reproducibility.")
 
 
 class DatasetProfile(BaseModel):
