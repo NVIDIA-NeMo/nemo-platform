@@ -151,9 +151,9 @@ REF_FRAGMENT_CHARSET = r"[\w\-.]+"
 # (``#latest``, ``#candidate``) or a full 64-char content digest.
 #
 # Deliberately a sibling of ``_ENTITY_REF_PATTERN`` rather than a widening of it: that constant is
-# shared by ``MetricRef`` and ``TasksetRef``, neither of which has revisions yet, and admitting a
-# fragment there would accept input nothing is built to resolve. ``TasksetRef`` moves onto this
-# pattern when taskset revisions are addressable; ``MetricRef`` when (if) metrics gain revisions.
+# still shared by ``MetricRef``, which has no revisions, and admitting a fragment there would accept
+# input nothing is built to resolve. ``TaskRef`` and ``TasksetRef`` both use this pattern, since both
+# name revisioned records; ``MetricRef`` joins them when (if) metrics gain revisions.
 _SUBENTITY_REF_PATTERN = rf"^[\w\-.]+(/[\w\-.]+)?(#{REF_FRAGMENT_CHARSET})?$"
 
 #: The fragment separator for sub-entity references. Matches the fileset/job ref convention.
@@ -229,15 +229,21 @@ class TaskRef(RootModel[str]):
 
 
 class TasksetRef(RootModel[str]):
-    """Reference to a persisted taskset (format: ``workspace/name`` or ``name``).
+    """Reference to a persisted taskset (format: ``workspace/name`` or ``name``, optionally ``#rev``).
 
     Same shape and charset as :class:`TaskRef`. Lets an evaluation reference a stored taskset in place
     of an inline task list; the taskset's member tasks are loaded and expanded during spec resolution.
+
+    An optional ``#`` fragment pins the taskset revision to expand — a tag or a full content digest,
+    with an absent fragment meaning ``latest``. Membership is digest-pinned within a revision, so a
+    bare ref already grades identical task *content* across re-runs; pinning the taskset as well is
+    what fixes the *membership* too, across a ``replace`` that adds or drops a member.
     """
 
     root: str = Field(
-        pattern=_ENTITY_REF_PATTERN,
-        description="Reference to a stored taskset (format: workspace/taskset-name, or taskset-name in the job workspace).",
+        pattern=_SUBENTITY_REF_PATTERN,
+        description="Reference to a stored taskset (format: workspace/taskset-name, or taskset-name in the "
+        "job workspace), optionally pinned to a revision with '#<tag-or-digest>'.",
     )
 
 

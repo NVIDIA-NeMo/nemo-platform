@@ -290,7 +290,10 @@ input_spec = AgentEvalInputSpec(
 
 When the job runs, the taskset reference is resolved like this:
 
-- Each member is loaded at the **revision pinned in the taskset**, not the task's current tip.
+- The **taskset revision** the ref names is loaded — the current one unless the ref pins a revision
+  (see [Pin the taskset itself](#pin-the-taskset-itself)).
+- Each member of that revision is loaded at the **revision pinned in the taskset**, not the task's
+  current tip.
 - Metric references on those members are hydrated into runnable metrics, the same as for inline tasks.
 - Re-running the same taskset therefore evaluates the same content, even if a member has been
   republished since.
@@ -320,11 +323,39 @@ results flow.
 The inline form remains available for one-off tasks — swap `tasks=TasksetRef(...)` for
 `tasks=[AgentEvalTaskInput(...), ...]`.
 
-<Note>
-A `TasksetRef` names the taskset's current revision; it cannot yet carry a `#<tag-or-digest>`
-fragment of its own. Member content is pinned, so a re-run always grades the same task content — but
-if the taskset itself is replaced, a re-submitted spec expands the new membership.
-</Note>
+### Pin the taskset itself
+
+A bare `TasksetRef` expands the taskset's current revision, so it follows the suite forward as
+members are added or removed. Add a `#<tag-or-digest>` fragment to pin the grouping too:
+
+```python
+# The digest lives on the revision, not on the taskset record — revisions come back newest first.
+current = tasksets.list_revisions("geography-suite").data[0]
+
+# Follows the suite forward — new members are picked up on the next run.
+tracking = TasksetRef("default/geography-suite")
+
+# Frozen: this exact membership, regardless of later `replace` calls.
+pinned = TasksetRef(f"default/geography-suite#{current.content_hash}")
+
+# A tag works the same way, and can be moved deliberately when you bless a new suite.
+blessed = TasksetRef("default/geography-suite#blessed")
+```
+
+The two pins compose, and they cover different things:
+
+| | Member content | Which members |
+|---|---|---|
+| `TasksetRef("suite")` | pinned | current revision |
+| `TasksetRef("suite#<digest>")` | pinned | pinned |
+
+Member content is digest-pinned inside every revision, so even a bare ref grades the same task
+content across re-runs. Pinning the taskset is what additionally holds *membership* still across a
+`replace` that adds or drops a task — which is what you want when a benchmark number has to stay
+comparable.
+
+A fragment that no longer resolves fails the evaluation rather than falling back to the current
+revision.
 
 <Note>
 Stored tasks carry no grader-only `reference` (held-out ground truth): that field lives only on inline
@@ -401,6 +432,7 @@ The SDK resources are a thin client over the Evaluator plugin REST API, mounted 
 | Missing or duplicate task reference (taskset) | `422` | Members must exist, and must resolve to distinct tasks. |
 | Reserved or malformed tag name | `422` | `latest` cannot be moved by hand; a digest-shaped tag is refused. |
 | Retrieving or deleting an unknown name or revision | `404` | Applies to both records and revisions. |
+| `TasksetRef` pinning a revision that no longer resolves | job fails | Expansion refuses rather than falling back to the current revision. |
 | `DELETE` on a task a taskset pins | `204` | Not prevented; the taskset's reference dangles and fails on read. |
 
 ## Related Topics

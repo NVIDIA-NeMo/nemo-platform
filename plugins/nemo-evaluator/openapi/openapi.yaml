@@ -5158,17 +5158,18 @@ components:
         \ fields (id, name, workspace,\ntimestamps)."
     TasksetRef:
       type: string
-      pattern: ^[\w\-.]+(/[\w\-.]+)?$
+      pattern: ^[\w\-.]+(/[\w\-.]+)?(#[\w\-.]+)?$
       title: TasksetRef
-      description: 'Reference to a persisted taskset (format: ``workspace/name`` or
-        ``name``).
-
-
-        Same shape and charset as :class:`TaskRef`. Lets an evaluation reference a
-        stored taskset in place
-
-        of an inline task list; the taskset''s member tasks are loaded and expanded
-        during spec resolution.'
+      description: "Reference to a persisted taskset (format: ``workspace/name`` or\
+        \ ``name``, optionally ``#rev``).\n\nSame shape and charset as :class:`TaskRef`.\
+        \ Lets an evaluation reference a stored taskset in place\nof an inline task\
+        \ list; the taskset's member tasks are loaded and expanded during spec resolution.\n\
+        \nAn optional ``#`` fragment pins the taskset revision to expand \u2014 a\
+        \ tag or a full content digest,\nwith an absent fragment meaning ``latest``.\
+        \ Membership is digest-pinned within a revision, so a\nbare ref already grades\
+        \ identical task *content* across re-runs; pinning the taskset as well is\n\
+        what fixes the *membership* too, across a ``replace`` that adds or drops a\
+        \ member."
     TasksetSort:
       type: string
       enum:
