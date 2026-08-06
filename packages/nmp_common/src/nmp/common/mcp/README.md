@@ -44,7 +44,8 @@ Converts exceptions into standardized error responses with automatic logging.
     "error": {
         "code": "ConnectionError",
         "message": "Connection refused to localhost:8080",
-        "hint": "Check the MCP server logs for details, then retry after fixing the request or platform state."
+        "hint": "Check the MCP server logs for details, then retry after fixing the request or platform state.",
+        "retryable": True
     }
 }
 ```
@@ -71,7 +72,7 @@ async def deploy_model(model_id: str) -> dict[str, Any]:
 **Why Use This Pattern**:
 
 - AI agents can reliably check `success` field
-- Consistent structured `error.code`, `error.message`, and `error.hint` across all tools
+- Consistent structured `error.code`, `error.message`, `error.hint`, and `error.retryable` across all tools
 - Automatic error logging with stack traces
 - Easy to add richer retry hints or sanitization
 - Success responses manually constructed with explicit fields
@@ -199,7 +200,7 @@ def format_error_response(error: Exception) -> dict[str, Any]:
             "code": type(error).__name__,
             "message": str(error),
             "hint": "Check the MCP server logs for details, then retry after fixing the request or platform state.",
-            "retryable": isinstance(error, (ConnectionError, TimeoutError))
+            "retryable": isinstance(error, (ConnectionError, TimeoutError)),
         }
     }
 ```

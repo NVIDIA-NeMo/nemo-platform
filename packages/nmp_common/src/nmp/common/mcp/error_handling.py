@@ -39,5 +39,6 @@ def format_error_response(error: Exception) -> dict[str, Any]:
             "code": type(error).__name__,
             "message": message,
             "hint": _DEFAULT_ERROR_HINT,
+            "retryable": isinstance(error, (ConnectionError, TimeoutError)),
         },
     }

@@ -129,10 +129,12 @@ class TestEntitiesMCPServerSmoke:
 
         result = json.loads(_text_content(tool_result))
 
-        assert isinstance(result, dict)
-        assert result["success"] is False, "Should indicate failure"
-        assert "error_type" not in result
-        assert isinstance(result["error"], dict), "Should contain structured error details"
-        assert result["error"]["code"], "Should contain stable error code"
-        assert result["error"]["message"], "Should contain error message"
-        assert result["error"]["hint"], "Should contain remediation hint"
+        assert result == {
+            "success": False,
+            "error": {
+                "code": "RuntimeError",
+                "message": "platform unavailable",
+                "hint": "Check the MCP server logs for details, then retry after fixing the request or platform state.",
+                "retryable": False,
+            },
+        }

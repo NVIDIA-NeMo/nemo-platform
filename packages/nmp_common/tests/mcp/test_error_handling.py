@@ -16,6 +16,7 @@ def test_format_error_response_returns_structured_error() -> None:
         "code": "ValueError",
         "message": "bad input",
         "hint": "Check the MCP server logs for details, then retry after fixing the request or platform state.",
+        "retryable": False,
     }
     assert "error_type" not in response
 
@@ -28,3 +29,15 @@ def test_format_error_response_uses_exception_type_when_message_empty() -> None:
 
     assert response["error"]["code"] == "EmptyMessageError"
     assert response["error"]["message"] == "EmptyMessageError"
+
+
+def test_format_error_response_marks_connection_failures_retryable() -> None:
+    response = format_error_response(ConnectionError("connection reset"))
+
+    assert response["error"]["retryable"] is True
+
+
+def test_format_error_response_marks_timeouts_retryable() -> None:
+    response = format_error_response(TimeoutError("request timed out"))
+
+    assert response["error"]["retryable"] is True
