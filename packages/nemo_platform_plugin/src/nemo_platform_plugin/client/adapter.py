@@ -69,38 +69,40 @@ def client_from_platform(
         respect_retry_after_headers=True,
     )
     url_resolver = _url_resolver_from_platform(platform)
+
+    # Carry the platform's timeout across as a per-request override. The shared
+    # httpx client keeps whatever timeout it was built with, so a caller's
+    # ``platform.with_options(timeout=...)`` would otherwise be silently dropped
+    # on the way to the typed client — the httpx client it hands over is the
+    # *same* object, with the *original* timeout still on it.
+    timeout = platform.timeout
+    if timeout is None:
+        # ``None`` on the platform means "no timeout at all", but the typed
+        # client reads None as "defer to the transport". Say the same thing in
+        # the form httpx itself uses, so the override survives.
+        timeout = httpx.Timeout(None)
+
     if isinstance(platform, AsyncNeMoPlatform):
         if not issubclass(client_cls, AsyncNemoClient):
             raise TypeError("AsyncNeMoPlatform requires an AsyncNemoClient class")
-        client: NemoClient | AsyncNemoClient = client_cls(
+        return client_cls(
             base_url=str(platform.base_url).rstrip("/"),
             workspace=platform.workspace,
             default_headers=headers or None,
-            retry=retry,
-            http_client=platform._client,
-            url_resolver=url_resolver,
-        )
-    else:
-        if not issubclass(client_cls, NemoClient):
-            raise TypeError("NeMoPlatform requires a NemoClient class")
-        client = client_cls(
-            base_url=str(platform.base_url).rstrip("/"),
-            workspace=platform.workspace,
-            default_headers=headers or None,
+            timeout=timeout,
             retry=retry,
             http_client=platform._client,
             url_resolver=url_resolver,
         )
 
-    # Carry the platform's timeout across as a per-request override. The shared
-    # httpx client keeps whatever timeout it was built with, so a caller's
-    # ``platform.with_options(timeout=...)`` would otherwise be silently dropped
-    # on the way to the typed client — the httpx client it copies is the *same*
-    # object, with the *original* timeout still on it.
-    timeout = platform.timeout
-    if timeout is None:
-        # ``None`` on the platform means "no timeout at all", but ``with_options``
-        # reads None as "leave unchanged". Say the same thing in the form httpx
-        # itself uses, so the override survives.
-        timeout = httpx.Timeout(None)
-    return client.with_options(timeout=timeout)
+    if not issubclass(client_cls, NemoClient):
+        raise TypeError("NeMoPlatform requires a NemoClient class")
+    return client_cls(
+        base_url=str(platform.base_url).rstrip("/"),
+        workspace=platform.workspace,
+        default_headers=headers or None,
+        timeout=timeout,
+        retry=retry,
+        http_client=platform._client,
+        url_resolver=url_resolver,
+    )

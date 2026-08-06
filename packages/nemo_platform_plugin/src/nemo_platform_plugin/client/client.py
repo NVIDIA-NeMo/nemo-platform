@@ -278,6 +278,7 @@ class BaseNemoClient:
         auth: TokenProvider | AsyncTokenProvider | str | None = None,
         retry: RetryPolicy | None = None,
         default_headers: Mapping[str, str] | None = None,
+        timeout: float | httpx.Timeout | None = None,
         url_resolver: Callable[[str], str | httpx.URL] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
@@ -286,7 +287,7 @@ class BaseNemoClient:
         self._retry = retry
         self._default_headers = dict(default_headers) if default_headers else {}
         self._url_resolver = url_resolver
-        self._timeout: float | httpx.Timeout | None = None
+        self._timeout: float | httpx.Timeout | None = timeout
 
     @property
     def base_url(self) -> str:
@@ -406,22 +407,31 @@ class NemoClient(BaseNemoClient):
         workspace: str | None = None,
         auth: TokenProvider | str | None = None,
         default_headers: Mapping[str, str] | None = None,
-        timeout: float = DEFAULT_TIMEOUT,
+        timeout: float | httpx.Timeout | None = None,
         retry: RetryPolicy | None = None,
         http_client: httpx.Client | None = None,
         url_resolver: Callable[[str], str | httpx.URL] | None = None,
     ) -> None:
+        """Create a client.
+
+        *timeout* is applied per request, so it holds even when *http_client* is
+        supplied and shared with another caller — an httpx client's own timeout
+        is fixed when it is built and cannot be changed afterwards. ``None``
+        defers to the transport's timeout, giving one we build ourselves
+        :data:`DEFAULT_TIMEOUT`; ``httpx.Timeout(None)`` waits indefinitely.
+        """
         super().__init__(
             base_url=base_url,
             workspace=workspace,
             auth=auth,
             retry=retry,
             default_headers=default_headers,
+            timeout=timeout,
             url_resolver=url_resolver,
         )
         self._http = http_client or httpx.Client(
             headers=dict(default_headers) if default_headers else None,
-            timeout=timeout,
+            timeout=timeout if timeout is not None else DEFAULT_TIMEOUT,
         )
 
     @classmethod
@@ -432,6 +442,7 @@ class NemoClient(BaseNemoClient):
             workspace=client.workspace,
             auth=client._auth,
             default_headers=client._default_headers or None,
+            timeout=client._timeout,
             retry=client._retry,
             http_client=client._http,
             url_resolver=client._url_resolver,
@@ -654,22 +665,24 @@ class AsyncNemoClient(BaseNemoClient):
         workspace: str | None = None,
         auth: TokenProvider | AsyncTokenProvider | str | None = None,
         default_headers: Mapping[str, str] | None = None,
-        timeout: float = DEFAULT_TIMEOUT,
+        timeout: float | httpx.Timeout | None = None,
         retry: RetryPolicy | None = None,
         http_client: httpx.AsyncClient | None = None,
         url_resolver: Callable[[str], str | httpx.URL] | None = None,
     ) -> None:
+        """Create a client. See :meth:`NemoClient.__init__` for *timeout*."""
         super().__init__(
             base_url=base_url,
             workspace=workspace,
             auth=auth,
             retry=retry,
             default_headers=default_headers,
+            timeout=timeout,
             url_resolver=url_resolver,
         )
         self._http = http_client or httpx.AsyncClient(
             headers=dict(default_headers) if default_headers else None,
-            timeout=timeout,
+            timeout=timeout if timeout is not None else DEFAULT_TIMEOUT,
         )
 
     @classmethod
@@ -680,6 +693,7 @@ class AsyncNemoClient(BaseNemoClient):
             workspace=client.workspace,
             auth=client._auth,
             default_headers=client._default_headers or None,
+            timeout=client._timeout,
             retry=client._retry,
             http_client=client._http,
             url_resolver=client._url_resolver,
