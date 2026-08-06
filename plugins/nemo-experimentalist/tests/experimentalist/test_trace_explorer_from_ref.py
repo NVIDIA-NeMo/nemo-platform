@@ -175,6 +175,20 @@ def test_intake_tool_row_reads_the_preserved_tool_call_id():
     assert span.tool_call_id == "c1"
 
 
+def test_intake_otlp_tool_row_keeps_its_attribute_tool_call_id():
+    # tool_call_id has no Intake column, so OTLP rows carry it in raw_attributes.
+    from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import _span_from_intake_row
+
+    row = _intake_llm_row(
+        source="otlp",
+        kind="TOOL",
+        tool_name="Bash",
+        raw_attributes=json.dumps({"tool_call.id": "call_otlp_1"}),
+    )
+    span = _span_from_intake_row(row)
+    assert span.tool_call_id == "call_otlp_1"
+
+
 def test_intake_row_reads_error_fields_from_columns():
     from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import _span_from_intake_row
 

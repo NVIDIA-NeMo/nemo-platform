@@ -60,10 +60,10 @@ To use an ATIF-emitting agent:
 
 1. Have the agent write its trajectory under its trace directory (`/app/traces`
    in the Harbor task container) with a `.atif.json` suffix.
-2. Select the format on the evaluator:
+2. Select the format on the evaluator, in the profile's `experiment_config`:
 
    ```yaml
-   optimizer:
+   experiment_config:
      evaluator:
        trace_format: atif   # otlp (default) | atif
    ```

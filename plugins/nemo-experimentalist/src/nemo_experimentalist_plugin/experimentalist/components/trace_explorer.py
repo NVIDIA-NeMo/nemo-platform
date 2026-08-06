@@ -892,7 +892,12 @@ def _span_from_intake_row(row: dict[str, Any]) -> TraceSpan:
         return ToolSpan(
             **base,
             tool_name=str(row.get("tool_name") or row.get("name") or ""),
-            tool_call_id=_atif_tool_call_id(attrs) if is_atif else "",
+            # Intake has no tool_call_id column, so these keys survive in raw_attributes
+            # for OTLP rows. ATIF preserves the id inside its tool_call payload instead.
+            tool_call_id=str(
+                _attr(attrs, "tool_call.id", "tool.id", "tool_call_id")
+                or (_atif_tool_call_id(attrs) if is_atif else "")
+            ),
             input_value=_json_text(input_value) if input_value is not None else None,
             input_mime_type=_attr(attrs, "input.mime_type"),
             output_value=_json_text(output_value) if output_value is not None else None,
