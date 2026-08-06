@@ -47,10 +47,11 @@ defaults. `--base-url` takes precedence over `NMP_BASE_URL`.
 
 The analyst scopes Intake span queries to the configured `agent`; it does not
 fall back to another attribute. The normalized `agent_name` on each span must
-therefore match `agent` in `optimizer.yaml` or `--agent`. For OTLP, set
-`gen_ai.agent.name` (preferred), `llm.agent.name`, or `agent.name`; ATIF maps
-its required `agent.name` automatically. Spans without an agent name can
-ingest successfully, but the analyst cannot retrieve or group them.
+therefore match `agent` in `optimizer.yaml` or `--agent`. For OTLP, always set
+`gen_ai.agent.name` on every span; Intake also normalizes `llm.agent.name` and
+`agent.name` from instrumentation that emits those conventions. ATIF maps its
+required `agent.name` automatically. Spans without an agent name can ingest
+successfully, but the analyst cannot retrieve or group them later.
 
 ### Where insights are written
 
