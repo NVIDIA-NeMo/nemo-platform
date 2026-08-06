@@ -179,7 +179,7 @@ def workload_jwks_url(request: Request | None = None) -> str:
     return f"{_platform_base_url_from_request(request)}{WORKLOAD_JWKS_PATH}"
 
 
-def _workload_token_issuer(config: AuthConfig, request: Request | None) -> str:
+def workload_token_issuer(config: AuthConfig, request: Request | None) -> str:
     return (
         config.oidc.workload_token_issuer
         or config.token_signing.issuer
@@ -404,13 +404,13 @@ def _default_workload_audience(config: AuthConfig) -> str:
     return config.oidc.workload_audience or config.oidc.audience or DEFAULT_WORKLOAD_AUDIENCE
 
 
-def _allowed_audiences(config: AuthConfig) -> set[str]:
+def allowed_audiences(config: AuthConfig) -> set[str]:
     return {_default_workload_audience(config), *config.oidc.workload_allowed_audiences}
 
 
 def _validated_audience(config: AuthConfig, requested_audience: Any) -> str:
     audience = str(requested_audience or _default_workload_audience(config))
-    if audience not in _allowed_audiences(config):
+    if audience not in allowed_audiences(config):
         raise jwt.InvalidAudienceError(f"unexpected requested audience: {audience!r}")
     return audience
 
@@ -572,7 +572,7 @@ async def token_exchange(
     now = int(time.time())
     scope = str(form.get("scope") or config.oidc.workload_scope or DEFAULT_WORKLOAD_SCOPE)
     exchanged_claims: dict[str, Any] = {
-        "iss": _workload_token_issuer(config, request),
+        "iss": workload_token_issuer(config, request),
         "sub": subject,
         "aud": audience,
         "iat": now,

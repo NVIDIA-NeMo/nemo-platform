@@ -93,7 +93,7 @@ class AccessKeyRevokeResponse(BaseModel):
     """Response returned after a Scoped Access Key revoke request."""
 
     jti: str = Field(description="Stable JWT ID for this Scoped Access Key.")
-    revoked: bool = Field(description="True when this request changed the key from active to revoked.")
+    revoked: bool = Field(description="True when this request newly recorded the key's revocation.")
 
 
 class AccessKeyNotImplementedErrorResponse(BaseModel):

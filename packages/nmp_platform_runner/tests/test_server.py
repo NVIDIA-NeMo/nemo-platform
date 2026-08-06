@@ -221,6 +221,20 @@ def test_create_app_openapi_registers_rebased_query_param_schemas(monkeypatch):
         clear_query_param_schemas()
 
 
+def test_create_app_injects_http_client_for_auth_callouts(monkeypatch):
+    platform_cfg = _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+    platform_cfg.services = ""
+    http_client = MagicMock()
+
+    app = server.create_app(services=[PluginService()], http_client=http_client)
+
+    auth_middleware = next(
+        middleware for middleware in app.user_middleware if middleware.cls is server.AuthorizationMiddleware
+    )
+    assert auth_middleware.kwargs["http_client"] is http_client
+    assert auth_middleware.kwargs["access_key_lifecycle_http_client"] is http_client
+
+
 def test_create_app_mounted_services_drive_sdk_local_routing_without_services_env(monkeypatch):
     monkeypatch.delenv("NMP_SERVICES", raising=False)
     monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")

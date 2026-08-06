@@ -851,7 +851,7 @@ def create_access_key(
         ),
     ] = None,
 ) -> None:
-    """Create a Scoped Access Key for the current authenticated user."""
+    """Create a Scoped Access Key for the currently authenticated user."""
     expires_in_was_set, parsed_expires_in = _parse_access_key_expires_in(expires_in)
     request = AccessKeyCreateRequest(
         name=name,
@@ -877,7 +877,7 @@ def list_access_keys(
         typer.Option("--page-size", min=1, max=100, help="Number of keys to retrieve per page."),
     ] = 100,
 ) -> None:
-    """List Scoped Access Keys owned by the current authenticated user."""
+    """List Scoped Access Keys owned by the currently authenticated user."""
     try:
         listed = _access_key_issuer(ctx).list(page=page, page_size=page_size)
     except AccessKeyFeatureDisabledError as exc:
@@ -912,7 +912,7 @@ def revoke_access_key(
     ctx: typer.Context,
     jti: Annotated[str, typer.Argument(help="Stable ID of the Scoped Access Key to revoke.")],
 ) -> None:
-    """Revoke a Scoped Access Key owned by the current authenticated user."""
+    """Revoke a Scoped Access Key owned by the currently authenticated user."""
     try:
         result = _access_key_issuer(ctx).revoke(jti)
     except AccessKeyFeatureDisabledError as exc:

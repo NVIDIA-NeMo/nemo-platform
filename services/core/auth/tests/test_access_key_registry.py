@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateResponse
 from nmp.common.auth.jwt import TokenClaims
-from nmp.common.entities import EntityNotFoundError
+from nmp.common.entities import EntityConflictError, EntityNotFoundError
 from nmp.core.auth.app.access_keys import AccessKeyNotFoundError, AccessKeyRegistry
 from nmp.core.auth.entities import AccessKeyEntity
 
@@ -31,7 +31,10 @@ def _record(*, jti: str = "ak_example", principal: str = "alice@example.com", re
 
 
 def _expired_record() -> AccessKeyEntity:
-    return _record(jti="ak_expired").model_copy(update={"expires_at": datetime(2026, 8, 3, 18, 0, tzinfo=UTC)})
+    # Use a far-past date so the result is clock-independent.
+    # AccessKeyRegistry._status applies a 30s leeway, so expires_at must be
+    # well before now to reliably return "EXPIRED".
+    return _record(jti="ak_expired").model_copy(update={"expires_at": datetime(2000, 1, 1, tzinfo=UTC)})
 
 
 @pytest.mark.asyncio
@@ -65,8 +68,9 @@ async def test_registry_persists_created_key_metadata() -> None:
 @pytest.mark.asyncio
 async def test_registry_lists_principals_keys_with_status_across_pages() -> None:
     entity_client = AsyncMock()
+    active_record = _record().model_copy(update={"audiences": ["nemo-platform-access-key", "nemo-platform-access-key"]})
     entity_client.list.return_value = SimpleNamespace(
-        data=[_record(), _record(jti="ak_revoked", revoked=True)], pagination=SimpleNamespace(total_pages=2)
+        data=[active_record, _record(jti="ak_revoked", revoked=True)], pagination=SimpleNamespace(total_pages=2)
     )
     registry = AccessKeyRegistry(entity_client)
 
@@ -74,6 +78,7 @@ async def test_registry_lists_principals_keys_with_status_across_pages() -> None
 
     assert [key.jti for key in result.data] == ["ak_example", "ak_revoked"]
     assert [key.status for key in result.data] == ["ACTIVE", "REVOKED"]
+    assert result.data[0].audiences == ["nemo-platform-access-key"]
     assert result.has_more
     entity_client.list.assert_awaited_once()
     assert entity_client.list.await_args.kwargs["page"] == 1
@@ -127,6 +132,44 @@ async def test_registry_revokes_owned_key_without_deleting_audit_record() -> Non
 
 
 @pytest.mark.asyncio
+async def test_registry_concurrent_revoke_reports_existing_revocation() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = [_record(), _record(revoked=True)]
+    entity_client.update.side_effect = EntityConflictError("entity version changed")
+    registry = AccessKeyRegistry(entity_client)
+
+    assert not await registry.revoke("ak_example", "alice@example.com")
+
+    assert entity_client.get.await_count == 2
+    entity_client.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_registry_concurrent_revoke_with_hard_delete_treats_as_already_revoked() -> None:
+    entity_client = AsyncMock()
+    # First get succeeds; update conflicts; second get raises not-found (key deleted).
+    entity_client.get.side_effect = [_record(), EntityNotFoundError("gone")]
+    entity_client.update.side_effect = EntityConflictError("entity version changed")
+    registry = AccessKeyRegistry(entity_client)
+
+    assert not await registry.revoke("ak_example", "alice@example.com")
+
+    assert entity_client.get.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_registry_can_newly_revoke_expired_key() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _expired_record()
+    registry = AccessKeyRegistry(entity_client)
+
+    assert await registry.revoke("ak_expired", "alice@example.com")
+
+    updated = entity_client.update.await_args.args[0]
+    assert updated.revoked_at is not None
+
+
+@pytest.mark.asyncio
 async def test_registry_reports_revoked_key_as_inactive() -> None:
     entity_client = AsyncMock()
     entity_client.get.return_value = _record(revoked=True)
@@ -160,7 +203,7 @@ async def test_registry_backfills_missing_legacy_access_key_from_validated_claim
         scopes=[],
         raw_claims={
             "iss": "https://platform.example.com/apis/auth",
-            "aud": ["nemo-platform-access-key"],
+            "aud": ["nemo-platform-access-key", "nemo-platform-access-key"],
             "sub": "alice@example.com",
             "iat": 1_785_280_000,
             "nbf": 1_785_280_000,

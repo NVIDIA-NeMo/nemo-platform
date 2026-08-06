@@ -233,7 +233,12 @@ def create_app(
 
     auth_config = get_auth_config()
     logger.info("Adding AuthorizationMiddleware", extra={"auth_enabled": auth_config.enabled})
-    app.add_middleware(AuthorizationMiddleware, service_name="platform", http_client=http_client)
+    app.add_middleware(
+        AuthorizationMiddleware,
+        service_name="platform",
+        http_client=http_client,
+        access_key_lifecycle_http_client=http_client,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

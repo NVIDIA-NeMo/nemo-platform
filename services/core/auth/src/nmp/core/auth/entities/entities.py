@@ -4,7 +4,6 @@
 """Auth service entities."""
 
 from datetime import datetime
-from typing import Optional
 
 from nmp.common.entities import EntityBase
 
@@ -29,11 +28,15 @@ class RoleBindingEntity(EntityBase):
     role: str
     granted_by: str
     granted_at: datetime
-    revoked_at: Optional[datetime] = None
+    revoked_at: datetime | None = None
 
 
 class AccessKeyEntity(EntityBase):
-    """Persistent lifecycle record for a Scoped Access Key."""
+    """Persistent lifecycle record for a Scoped Access Key.
+
+    The inherited ``name`` field stores the JWT ID (jti) as the stable entity key.
+    ``key_name`` is the optional human-readable label supplied at creation time.
+    """
 
     __entity_type__ = "access_key"
 

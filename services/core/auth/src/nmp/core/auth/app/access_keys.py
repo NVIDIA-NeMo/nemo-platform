@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends
 from nemo_platform_plugin.auth.access_keys.issuer import AccessKeyFeatureDisabledError
@@ -72,10 +72,21 @@ class AccessKeyRegistry:
         record = await self._get_owned(jti, principal)
         if record.revoked_at is not None:
             return False
-        # Entity storage does not expose compare-and-swap here. Concurrent revokes may both write a timestamp,
-        # but revocation is idempotent and the final lifecycle state is still correct.
         updated = record.model_copy(update={"revoked_at": datetime.now(tz=UTC)})
-        await self._entity_client.update(updated)
+        try:
+            await self._entity_client.update(updated)
+        except EntityConflictError:
+            # EntityClient.update uses db_version optimistic locking. Re-read to
+            # determine whether a concurrent revoke won the race.
+            try:
+                current = await self._get_owned(jti, principal)
+            except AccessKeyNotFoundError:
+                # The key was concurrently hard-deleted between our update and this
+                # read. Treat as already-revoked (idempotent outcome).
+                return False
+            if current.revoked_at is not None:
+                return False
+            raise
         return True
 
     async def is_active(self, jti: str, principal: str, *, claims: TokenClaims | None = None) -> bool:
@@ -111,7 +122,7 @@ class AccessKeyRegistry:
             principal=record.principal,
             status=AccessKeyRegistry._status(record),
             issuer=record.issuer,
-            audiences=record.audiences,
+            audiences=list(dict.fromkeys(record.audiences)),
             created_at=record.issued_at,
             expires_at=record.expires_at,
         )
@@ -120,7 +131,7 @@ class AccessKeyRegistry:
     def _status(record: AccessKeyEntity) -> AccessKeyStatus:
         if record.revoked_at is not None:
             return "REVOKED"
-        if record.expires_at is not None and record.expires_at <= datetime.now(tz=UTC):
+        if record.expires_at is not None and record.expires_at <= datetime.now(tz=UTC) - timedelta(seconds=30):
             return "EXPIRED"
         return "ACTIVE"
 
@@ -148,6 +159,10 @@ class AccessKeyRegistry:
                 "access_key_jti": jti,
             },
         )
+        # Return the locally-constructed record rather than re-fetching. The
+        # immediate caller (is_active) only reads revoked_at and expires_at,
+        # both of which are set locally. If this method is extended to use
+        # server-assigned fields (e.g. db_version), re-fetch here instead.
         return record
 
     @classmethod
@@ -174,12 +189,12 @@ class AccessKeyRegistry:
         if not isinstance(metadata, dict) or metadata.get("version") != LEGACY_ACCESS_KEY_METADATA_VERSION:
             return None
         key_name = metadata.get("name")
-        description = metadata.get("description")
         return AccessKeyEntity(
             name=jti,
             workspace=ACCESS_KEY_WORKSPACE,
             key_name=key_name if isinstance(key_name, str) else None,
-            description=description if isinstance(description, str) else None,
+            # description is not embedded in JWT claims for any version; always None on backfill
+            description=None,
             principal=principal,
             issuer=issuer,
             audiences=audiences,
@@ -192,7 +207,7 @@ class AccessKeyRegistry:
         if isinstance(value, str):
             return [value]
         if isinstance(value, list):
-            return [audience for audience in value if isinstance(audience, str)]
+            return list(dict.fromkeys(audience for audience in value if isinstance(audience, str)))
         return []
 
     @staticmethod
@@ -220,7 +235,15 @@ class PersistentAccessKeyIssuer:
     async def create_async(self, request: AccessKeyCreateRequest) -> AccessKeyCreateResponse:
         self._ensure_enabled()
         key = await self._issuer.create_async(request)
-        await self._registry.add(key)
+        try:
+            await self._registry.add(key)
+        except Exception:
+            logger.warning(
+                "Failed to persist Scoped Access Key lifecycle record; the signed JWT will not be returned to the caller",
+                extra={"access_key_jti": key.jti, "actor_principal": self.principal},
+                exc_info=True,
+            )
+            raise
         logger.info(
             "Scoped Access Key created",
             extra={

@@ -14,7 +14,6 @@ import pytest
 import yaml
 from nemo_platform.auth.helpers import decode_jwt_claims, generate_unsigned_jwt
 from nemo_platform.cli.app import app
-from nemo_platform_plugin.auth.access_keys.issuer import AccessKeyFeatureDisabledError
 from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
@@ -466,10 +465,18 @@ def test_auth_access_keys_create_rejects_invalid_expiration(monkeypatch: pytest.
 
 
 def test_auth_access_keys_create_reports_disabled_feature(monkeypatch: pytest.MonkeyPatch):
+    from nemo_platform_plugin.client.errors import NemoHTTPError
+
     fake_platform_client = MagicMock()
     fake_access_keys_client = MagicMock()
-    fake_access_keys_client.create_access_key.side_effect = AccessKeyFeatureDisabledError(
-        "Scoped Access Keys are not enabled"
+    # Simulate the real 404 response the server sends when the feature is disabled,
+    # to exercise the NemoHTTPError → AccessKeyFeatureDisabledError translation path.
+    fake_access_keys_client.create_access_key.side_effect = NemoHTTPError(
+        httpx.Response(
+            404,
+            json={"detail": "Scoped Access Keys are not enabled", "code": "access_keys_disabled"},
+            request=httpx.Request("POST", "https://platform.example.com/apis/auth/v2/access-keys"),
+        )
     )
     monkeypatch.setattr("nemo_platform.cli.core.context.CLIContext.get_client", lambda self: fake_platform_client)
     monkeypatch.setattr(
@@ -618,7 +625,7 @@ def test_auth_access_keys_revoke_reports_missing_key(monkeypatch: pytest.MonkeyP
 
     result = runner.invoke(app, ["auth", "access-keys", "revoke", "ak_unknown"])
 
-    assert_exit_code(result, 1)
+    assert_exit_code(result, 3)
     assert "Not found: (404) Scoped Access Key ak_unknown was not found" in result.output
     fake_access_keys_client.revoke_access_key.assert_called_once_with(jti="ak_unknown")
 

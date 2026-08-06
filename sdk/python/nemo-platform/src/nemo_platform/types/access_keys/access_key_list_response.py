@@ -29,7 +29,4 @@ class AccessKeyListResponse(BaseModel):
     data: List[AccessKeyMetadataResponse]
 
     has_more: Optional[bool] = None
-    """
-    True when the response was capped and more keys are available than this response
-    includes.
-    """
+    """True when another page of keys is available."""

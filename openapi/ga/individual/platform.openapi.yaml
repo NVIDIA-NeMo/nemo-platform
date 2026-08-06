@@ -269,7 +269,10 @@ paths:
         required: true
         schema:
           type: string
+          pattern: ^ak_[0-9a-f]{32}$
+          description: Stable JWT ID of the Scoped Access Key to revoke.
           title: Jti
+        description: Stable JWT ID of the Scoped Access Key to revoke.
       responses:
         '200':
           description: Successful Response
@@ -8049,6 +8052,13 @@ components:
         detail:
           type: string
           title: Detail
+        code:
+          title: Code
+          description: Set to access_keys_disabled when the Scoped Access Key feature
+            is disabled.
+          nullable: true
+          type: string
+          const: access_keys_disabled
       type: object
       required:
       - detail
@@ -8147,7 +8157,7 @@ components:
         revoked:
           type: boolean
           title: Revoked
-          description: True when this request changed the key from active to revoked.
+          description: True when this request newly recorded the key's revocation.
       type: object
       required:
       - jti

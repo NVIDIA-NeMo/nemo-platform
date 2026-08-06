@@ -27,4 +27,4 @@ class AccessKeyRevokeResponse(BaseModel):
     """Stable JWT ID for this Scoped Access Key."""
 
     revoked: bool
-    """True when this request changed the key from active to revoked."""
+    """True when this request newly recorded the key's revocation."""

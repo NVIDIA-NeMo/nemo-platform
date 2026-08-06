@@ -90,10 +90,18 @@ def test_access_key_issuer_client_translates_http_501_to_domain_error() -> None:
         issuer.list()
 
 
-def test_access_key_issuer_client_translates_disabled_feature_to_domain_error() -> None:
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"detail": "Scoped Access Keys are not enabled", "code": "access_keys_disabled"},
+        {"detail": "Scoped Access Keys are not enabled"},
+    ],
+    ids=["structured-code", "legacy-detail"],
+)
+def test_access_key_issuer_client_translates_disabled_feature_to_domain_error(body: dict[str, str]) -> None:
     response = httpx.Response(
         404,
-        json={"detail": "Scoped Access Keys are not enabled"},
+        json=body,
         request=httpx.Request("POST", "https://cluster.example.com/apis/auth/v2/access-keys"),
     )
     client = _AccessKeysClientStub()
@@ -103,3 +111,21 @@ def test_access_key_issuer_client_translates_disabled_feature_to_domain_error() 
 
     with pytest.raises(AccessKeyFeatureDisabledError, match="not enabled"):
         issuer.create(AccessKeyCreateRequest())
+
+
+def test_access_key_issuer_client_propagates_not_found_as_http_error() -> None:
+    """Plain 404 (key not found) propagates as NemoHTTPError so @handle_errors renders it correctly."""
+    response = httpx.Response(
+        404,
+        json={"detail": "Scoped Access Key ak_" + "0" * 32 + " was not found"},
+        request=httpx.Request("DELETE", "https://cluster.example.com/apis/auth/v2/access-keys/ak_" + "0" * 32),
+    )
+    client = _AccessKeysClientStub()
+    client.revoke_access_key.side_effect = NemoHTTPError(response)
+
+    issuer = AccessKeyIssuerClient(client.as_client())
+
+    with pytest.raises(NemoHTTPError) as exc_info:
+        issuer.revoke("ak_" + "0" * 32)
+    assert exc_info.value.status_code == 404
+    assert "was not found" in exc_info.value.detail

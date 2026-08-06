@@ -65,5 +65,8 @@ class AccessKeyIssuerClient(AccessKeyIssuer):
 def _raise_domain_error_from_http(exc: NemoHTTPError) -> None:
     if exc.status_code == 501:
         raise AccessKeyOperationNotImplementedError(exc.detail) from exc
-    if exc.status_code == 404 and "not enabled" in exc.detail and "Scoped Access Keys" in exc.detail:
-        raise AccessKeyFeatureDisabledError(exc.detail) from exc
+    if exc.status_code == 404:
+        disabled_code = isinstance(exc.body, dict) and exc.body.get("code") == "access_keys_disabled"
+        legacy_disabled_detail = exc.detail == "Scoped Access Keys are not enabled"
+        if disabled_code or legacy_disabled_detail:
+            raise AccessKeyFeatureDisabledError(exc.detail) from exc

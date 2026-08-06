@@ -18,6 +18,7 @@ from nmp.common import http_clients
 from nmp.common.auth.access_keys import (
     ACCESS_KEY_TOKEN_TYPE,
     AccessKeyIssuerService,
+    AccessKeyValidationError,
     access_key_jwks_uri,
     clear_access_key_signing_key_cache,
     public_jwk_from_private_key_pem,
@@ -354,7 +355,7 @@ def test_access_key_issuer_service_rejects_expiration_above_configured_max(tmp_p
         now=lambda: 1785280000,
     )
 
-    with pytest.raises(RuntimeError, match="max_expires_in_seconds"):
+    with pytest.raises(AccessKeyValidationError, match="max_expires_in_seconds"):
         issuer.create(AccessKeyCreateRequest(name="too-long", expires_in_seconds=61))
 
 
@@ -382,7 +383,7 @@ def test_access_key_issuer_service_rejects_explicit_null_expiration_when_max_con
         now=lambda: 1785280000,
     )
 
-    with pytest.raises(RuntimeError, match="expires_in_seconds=null requires"):
+    with pytest.raises(AccessKeyValidationError, match="expires_in_seconds=null requires"):
         issuer.create(AccessKeyCreateRequest(name="unlimited", expires_in_seconds=None))
 
 
@@ -438,7 +439,7 @@ def test_access_key_issuer_service_requires_expiration_when_default_disabled_and
         now=lambda: 1785280000,
     )
 
-    with pytest.raises(RuntimeError, match="expires_in_seconds is required"):
+    with pytest.raises(AccessKeyValidationError, match="expires_in_seconds is required"):
         issuer.create(AccessKeyCreateRequest(name="must-set-expiry"))
 
     created = issuer.create(AccessKeyCreateRequest(name="finite-expiry", expires_in_seconds=60))
@@ -612,7 +613,7 @@ async def test_validate_access_key_token_rejects_service_principal_subject(tmp_p
     config = _access_key_config(tmp_path)
     issuer = AccessKeyIssuerService(config=config, principal=Principal(id="service:jobs"), now=lambda: 1785280000)
 
-    with pytest.raises(RuntimeError, match="service principals"):
+    with pytest.raises(AccessKeyValidationError, match="service principals"):
         await issuer.create_async(AccessKeyCreateRequest(name="bad-service-key", expires_in_seconds=600))
 
 
@@ -628,3 +629,41 @@ async def test_validate_access_key_token_rejects_expired_key(tmp_path):
 
     assert created.expires_at == datetime.fromtimestamp(1785280060, tz=UTC)
     assert await validate_access_key_token(config, created.token, jwks_override=jwks, now=1785280061) is None
+
+
+@pytest.mark.asyncio
+async def test_validate_access_key_token_returns_none_when_feature_disabled() -> None:
+    disabled_config = AuthConfig(access_keys=AccessKeyConfig(enabled=False))
+
+    result = await validate_access_key_token(disabled_config, "not-a-token")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_validate_access_key_token_parses_list_scp_claim(tmp_path) -> None:
+    config = _access_key_config(tmp_path, max_expires_in_seconds=None)
+    now = 1_785_280_000
+    signing_key = await access_keys_mod._access_key_signing_key_async(config)
+    jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
+    token = jwt.encode(
+        {
+            "iss": access_keys_mod.access_key_issuer(config),
+            "aud": config.access_keys.audience,
+            "sub": "alice@example.com",
+            "iat": now,
+            "nbf": now,
+            "jti": "ak_" + "a" * 32,
+            "nmp_token_type": ACCESS_KEY_TOKEN_TYPE,
+            "nmp_access_key": {"version": 2},
+            "scp": ["read", "write"],
+        },
+        signing_key.private_key,
+        algorithm="RS256",
+        headers={"kid": config.token_signing.key_id},
+    )
+
+    claims = await validate_access_key_token(config, token, jwks_override=jwks)
+
+    assert claims is not None
+    assert claims.scopes == ["read", "write"]

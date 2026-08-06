@@ -13,7 +13,7 @@ import httpx
 from fastapi import Request, Response
 from nmp.common.config import AuthConfig, get_auth_config, get_platform_config
 from nmp.common.observability.context import get_app_ctx
-from nmp.common.platform_endpoint import parse_platform_endpoint
+from nmp.common.platform_endpoint import PlatformEndpoint, parse_platform_endpoint, resolve_service_endpoint
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
@@ -154,10 +154,13 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             )
 
     @cached_property
+    def _access_key_lifecycle_endpoint(self) -> PlatformEndpoint:
+        """Resolve the auth-service lifecycle endpoint through service discovery."""
+        return resolve_service_endpoint("auth", get_platform_config())
+
+    @cached_property
     def _access_key_lifecycle_url(self) -> str:
-        """Resolve the auth-service access-key lifecycle callout URL from current platform config."""
-        platform_endpoint = parse_platform_endpoint(str(get_platform_config().base_url))
-        return f"{platform_endpoint.connect_base_url}/apis/auth/authenticate"
+        return f"{self._access_key_lifecycle_endpoint.connect_base_url}/apis/auth/authenticate"
 
     @staticmethod
     def _principal_from_headers(headers_dict: dict) -> tuple[Principal, None] | tuple[None, JSONResponse]:
@@ -200,10 +203,12 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         return self._client
 
     def _get_access_key_lifecycle_client(self) -> httpx.AsyncClient:
-        """Get a client bound to the platform endpoint transport."""
+        """Get a client bound to the discovered auth-service transport.
+
+        Reuses policy_decision_point_request_timeout_seconds as the callout timeout.
+        """
         if self._access_key_lifecycle_client is None:
-            endpoint = parse_platform_endpoint(str(get_platform_config().base_url))
-            self._access_key_lifecycle_client = endpoint.async_http_client(
+            self._access_key_lifecycle_client = self._access_key_lifecycle_endpoint.async_http_client(
                 timeout=self.config.policy_decision_point_request_timeout_seconds
             )
         return self._access_key_lifecycle_client
@@ -494,7 +499,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             from .access_keys import is_access_key_token_candidate
 
             if is_access_key_token_candidate(token):
-                resolved_or_error = await self._authenticate_access_key_lifecycle(request, token)
+                resolved_or_error = await self._authenticate_access_key_lifecycle(token)
                 if isinstance(resolved_or_error, Response):
                     return resolved_or_error
                 return await self._handle_resolved_bearer_token(request, call_next, resolved_or_error)
@@ -518,6 +523,12 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             )
 
         if resolved is None:
+            if jwt_validator is None:
+                logger.warning(
+                    "Bearer token rejected: access keys enabled but token was not a valid Scoped Access Key "
+                    "(service: %s)",
+                    self.service_name or "unknown",
+                )
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid or expired token"},
@@ -563,7 +574,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             return self._access_key_lifecycle_retry_after()
         return None
 
-    async def _call_access_key_lifecycle(self, request: Request, token: str) -> httpx.Response | JSONResponse:
+    async def _call_access_key_lifecycle(self, token: str) -> httpx.Response | JSONResponse:
         """Call the auth-service access-key validator and map transport failures.
 
         The callout uses the platform endpoint transport and the configured PDP
@@ -602,10 +613,8 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             )
 
         if response.status_code == 200:
-            self._record_access_key_lifecycle_success()
             return response
         if response.status_code == 401:
-            self._record_access_key_lifecycle_success()
             return response
 
         logger.error(
@@ -633,9 +642,12 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         groups = body.get("groups")
         scopes = body.get("scopes")
         jti = body.get("jti")
-        raw_claims: dict[str, object] = {"nmp_token_type": "access_key"}
-        if isinstance(jti, str) and jti:
-            raw_claims["jti"] = jti
+        if not isinstance(jti, str) or not jti:
+            return None
+        raw_claims: dict[str, object] = {
+            "nmp_token_type": "access_key",
+            "jti": jti,
+        }
         return ResolvedBearerToken(
             claims=TokenClaims(
                 subject=principal,
@@ -649,19 +661,24 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
     async def _authenticate_access_key_lifecycle(
         self,
-        request: Request,
         token: str,
     ) -> ResolvedBearerToken | Response:
-        response_or_error = await self._call_access_key_lifecycle(request, token)
+        response_or_error = await self._call_access_key_lifecycle(token)
         if isinstance(response_or_error, Response):
             return response_or_error
         if response_or_error.status_code == 401:
+            self._record_access_key_lifecycle_success()
             return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
 
         resolved = self._resolved_access_key_from_lifecycle_response(response_or_error)
         if resolved is None:
             logger.error("Access-key lifecycle validator returned an invalid success response")
-            return self._access_key_lifecycle_error_response(503, "Access-key lifecycle validation unavailable")
+            return self._access_key_lifecycle_error_response(
+                503,
+                "Access-key lifecycle validation unavailable",
+                retry_after=self._record_access_key_lifecycle_failure(),
+            )
+        self._record_access_key_lifecycle_success()
         return resolved
 
     async def _handle_resolved_bearer_token(

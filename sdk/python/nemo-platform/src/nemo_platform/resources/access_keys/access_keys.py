@@ -168,6 +168,8 @@ class AccessKeysResource(SyncAPIResource):
         Revoke Access Key
 
         Args:
+          jti: Stable JWT ID of the Scoped Access Key to revoke.
+
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request
@@ -315,6 +317,8 @@ class AsyncAccessKeysResource(AsyncAPIResource):
         Revoke Access Key
 
         Args:
+          jti: Stable JWT ID of the Scoped Access Key to revoke.
+
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request

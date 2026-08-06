@@ -167,6 +167,48 @@ paths:
               schema:
                 $ref: '#/components/schemas/WorkloadTokenExchangeErrorResponse'
   /apis/auth/v2/access-keys:
+    post:
+      tags:
+      - Scoped Access Keys
+      summary: Create Access Key
+      operationId: create_access_key_apis_auth_v2_access_keys_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessKeyCreateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyCreateResponse'
+        '400':
+          description: Scoped Access Key creation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '404':
+          description: Scoped Access Keys are not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '501':
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     get:
       tags:
       - Scoped Access Keys
@@ -209,42 +251,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
-    post:
-      tags:
-      - Scoped Access Keys
-      summary: Create Access Key
-      operationId: create_access_key_apis_auth_v2_access_keys_post
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AccessKeyCreateRequest'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccessKeyCreateResponse'
-        '400':
-          description: Scoped Access Key creation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccessKeyErrorResponse'
-        '404':
-          description: Scoped Access Keys are not enabled
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccessKeyErrorResponse'
-        '501':
-          description: Not Implemented
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
         '422':
           description: Validation Error
           content:
@@ -261,8 +267,11 @@ paths:
       - name: jti
         in: path
         required: true
+        description: Stable JWT ID of the Scoped Access Key to revoke.
         schema:
           type: string
+          pattern: ^ak_[0-9a-f]{32}$
+          description: Stable JWT ID of the Scoped Access Key to revoke.
           title: Jti
       responses:
         '200':
@@ -8043,6 +8052,13 @@ components:
         detail:
           type: string
           title: Detail
+        code:
+          title: Code
+          description: Set to access_keys_disabled when the Scoped Access Key feature
+            is disabled.
+          nullable: true
+          type: string
+          const: access_keys_disabled
       type: object
       required:
       - detail
@@ -8141,7 +8157,7 @@ components:
         revoked:
           type: boolean
           title: Revoked
-          description: True when this request changed the key from active to revoked.
+          description: True when this request newly recorded the key's revocation.
       type: object
       required:
       - jti

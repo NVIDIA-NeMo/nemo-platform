@@ -30,14 +30,18 @@ class InMemoryAccessKeyRegistry:
     def _status(self, jti, key):
         if jti in self.revoked:
             return "REVOKED"
-        if key.expires_at is not None and key.expires_at <= datetime.now(tz=UTC):
+        if key.expires_at is not None and key.expires_at <= datetime.now(tz=UTC) - timedelta(seconds=30):
             return "EXPIRED"
         return key.status
 
     async def list_for_principal(self, principal, *, page, page_size):
         from nemo_platform_plugin.auth.access_keys.types import AccessKeyListResponse, AccessKeyMetadataResponse
 
-        owned = [(jti, key) for jti, key in self.keys.items() if key.principal == principal]
+        # Sort newest-first then by jti to match the real registry's `sort="-issued_at"`.
+        owned = sorted(
+            [(jti, key) for jti, key in self.keys.items() if key.principal == principal],
+            key=lambda item: (-item[1].created_at.timestamp(), item[0]),
+        )
         start = (page - 1) * page_size
         selected = owned[start : start + page_size]
         return AccessKeyListResponse(
@@ -235,7 +239,9 @@ def test_create_access_key_is_disabled_by_default(disabled_client):
     response = disabled_client.post("/v2/access-keys", json={})
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Scoped Access Keys are not enabled"
+    body = response.json()
+    assert body["detail"] == "Scoped Access Keys are not enabled"
+    assert body["code"] == "access_keys_disabled"
 
 
 def test_create_access_key_is_explicitly_not_implemented(client):
@@ -253,21 +259,38 @@ def test_create_access_key_is_explicitly_not_implemented(client):
     assert response.json()["detail"] == "Scoped Access Key creation is not implemented"
 
 
+def test_create_access_key_does_not_misclassify_unexpected_runtime_error(client):
+    class BrokenIssuer:
+        async def create_async(self, request):
+            raise RuntimeError("entity storage unavailable")
+
+    client.app.dependency_overrides[get_access_key_issuer] = lambda: BrokenIssuer()
+    try:
+        with pytest.raises(RuntimeError, match="entity storage unavailable"):
+            client.post("/v2/access-keys", json={})
+    finally:
+        client.app.dependency_overrides.clear()
+
+
 def test_list_access_keys_is_disabled_by_default(disabled_client):
     response = disabled_client.get("/v2/access-keys")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Scoped Access Keys are not enabled"
+    body = response.json()
+    assert body["detail"] == "Scoped Access Keys are not enabled"
+    assert body["code"] == "access_keys_disabled"
 
 
 def test_revoke_access_key_is_disabled_by_default(disabled_client):
-    response = disabled_client.delete("/v2/access-keys/ak_example")
+    response = disabled_client.delete("/v2/access-keys/ak_" + "a" * 32)
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Scoped Access Keys are not enabled"
+    body = response.json()
+    assert body["detail"] == "Scoped Access Keys are not enabled"
+    assert body["code"] == "access_keys_disabled"
 
 
-def test_access_key_specific_jwks_route_is_removed(client):
+def test_access_key_specific_jwks_route_does_not_accept_get(client):
     response = client.get("/v2/access-keys/jwks")
 
     assert response.status_code == 405
@@ -312,6 +335,12 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
     assert list_schema["properties"]["has_more"]["default"] is False
     revoke_schema = openapi["components"]["schemas"]["AccessKeyRevokeResponse"]
     assert set(revoke_schema["required"]) == {"jti", "revoked"}
+    error_code_schema = openapi["components"]["schemas"]["AccessKeyErrorResponse"]["properties"]["code"]
+    assert error_code_schema["nullable"] is True
+    assert error_code_schema["anyOf"][0]["const"] == "access_keys_disabled"
+    assert error_code_schema["description"] == (
+        "Set to access_keys_disabled when the Scoped Access Key feature is disabled."
+    )
 
     list_operation = openapi["paths"]["/v2/access-keys"]["get"]
     list_parameters = {parameter["name"]: parameter for parameter in list_operation["parameters"]}
@@ -336,7 +365,11 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
         "$ref": "#/components/schemas/AccessKeyNotImplementedErrorResponse"
     }
 
-    revoke_responses = openapi["paths"]["/v2/access-keys/{jti}"]["delete"]["responses"]
+    revoke_operation = openapi["paths"]["/v2/access-keys/{jti}"]["delete"]
+    jti_parameter = next(parameter for parameter in revoke_operation["parameters"] if parameter["name"] == "jti")
+    assert jti_parameter["schema"]["pattern"] == "^ak_[0-9a-f]{32}$"
+    assert jti_parameter["description"] == "Stable JWT ID of the Scoped Access Key to revoke."
+    revoke_responses = revoke_operation["responses"]
     assert revoke_responses["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccessKeyRevokeResponse"
     }
@@ -383,11 +416,16 @@ def test_list_access_keys_supports_pagination(client):
     second_page = client.get("/v2/access-keys", params={"page": 2, "page_size": 1})
 
     assert first_page.status_code == 200
-    assert [key["jti"] for key in first_page.json()["data"]] == [first["jti"]]
+    assert len(first_page.json()["data"]) == 1
     assert first_page.json()["has_more"] is True
     assert second_page.status_code == 200
-    assert [key["jti"] for key in second_page.json()["data"]] == [second["jti"]]
+    assert len(second_page.json()["data"]) == 1
     assert second_page.json()["has_more"] is False
+    # Both keys appear exactly once across the two pages (order depends on issued_at).
+    all_jtis = {
+        key["jti"] for page_data in [first_page.json()["data"], second_page.json()["data"]] for key in page_data
+    }
+    assert all_jtis == {first["jti"], second["jti"]}
 
 
 def test_revoke_access_key_marks_key_revoked_in_listing(client):
@@ -409,7 +447,17 @@ def test_revoke_access_key_marks_key_revoked_in_listing(client):
 
 
 def test_revoke_access_key_returns_not_found_for_unknown_key(client):
-    response = client.delete("/v2/access-keys/ak_unknown")
+    unknown_jti = "ak_" + "0" * 32
+    response = client.delete(f"/v2/access-keys/{unknown_jti}")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Scoped Access Key ak_unknown was not found"
+    assert response.json()["detail"] == f"Scoped Access Key {unknown_jti} was not found"
+
+
+def test_revoke_access_key_rejects_malformed_jti(client):
+    response = client.delete("/v2/access-keys/ak_tooshort")
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    assert detail[0]["type"] == "string_pattern_mismatch"
