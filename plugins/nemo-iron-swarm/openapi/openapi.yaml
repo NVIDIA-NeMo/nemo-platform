@@ -1876,6 +1876,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -1886,6 +1891,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: IronSwarmManifest
       description: 'A named, reusable war-game target scaffolded via `init` (its ``name``
         is the user-defined id).
@@ -2034,6 +2040,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -2044,6 +2055,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: IronSwarmRun
       description: A record of one Iron Swarm war-game run.
     ManifestFilter:
@@ -2644,6 +2656,9 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        output_location:
+          title: Output Location
+          type: string
       type: object
       required:
       - spec
@@ -2842,7 +2857,7 @@ components:
           type: string
           format: date-time
         spec:
-          $ref: '#/components/schemas/WarGameSpecOutput'
+          $ref: '#/components/schemas/WarGameSpec'
         status:
           $ref: '#/components/schemas/PlatformJobStatus'
         status_details:
@@ -2878,7 +2893,7 @@ components:
           title: Project
           type: string
         spec:
-          $ref: '#/components/schemas/WarGameSpecInput'
+          $ref: '#/components/schemas/WarGameSpec'
         ownership:
           title: Ownership
           additionalProperties: true
@@ -2887,6 +2902,9 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        output_location:
+          title: Output Location
+          type: string
       type: object
       required:
       - spec
@@ -2973,7 +2991,7 @@ components:
       title: WarGameModels
       description: The three model groups for a war-game. An unset group uses iron-swarm's
         built-in default.
-    WarGameSpecInput:
+    WarGameSpec:
       properties:
         config:
           title: Config
@@ -3027,66 +3045,7 @@ components:
           title: Source Run
           type: string
       type: object
-      title: WarGameSpecInput
-      description: "Canonical war-game inputs \u2014 the shape ``run()`` and ``compile()``\
-        \ see.\n\nSupply either a saved ``manifest_id`` (the Studio path \u2014 materialized\
-        \ on the host from the stored\nagent ref) or a ready ``config`` manifest path\
-        \ (the CLI path)."
-    WarGameSpecOutput:
-      properties:
-        config:
-          title: Config
-          type: string
-        manifest_id:
-          title: Manifest Id
-          type: string
-        env_file:
-          title: Env File
-          type: string
-        driver:
-          title: Driver
-          type: string
-        stop_after_synth:
-          type: boolean
-          title: Stop After Synth
-          default: false
-        replay_hitlog_fileset:
-          title: Replay Hitlog Fileset
-          type: string
-        benign_suite_fileset:
-          title: Benign Suite Fileset
-          type: string
-        port:
-          title: Port
-          type: integer
-        defenders:
-          title: Defenders
-          items:
-            type: string
-          type: array
-        attack_intensity:
-          title: Attack Intensity
-          type: string
-        rounds:
-          title: Rounds
-          type: integer
-        validate_only:
-          type: boolean
-          title: Validate Only
-          default: false
-        defense_workflow:
-          title: Defense Workflow
-          type: string
-        defense_policy:
-          title: Defense Policy
-          type: string
-        models:
-          $ref: '#/components/schemas/WarGameModels'
-        source_run:
-          title: Source Run
-          type: string
-      type: object
-      title: WarGameSpecOutput
+      title: WarGameSpec
       description: "Canonical war-game inputs \u2014 the shape ``run()`` and ``compile()``\
         \ see.\n\nSupply either a saved ``manifest_id`` (the Studio path \u2014 materialized\
         \ on the host from the stored\nagent ref) or a ready ``config`` manifest path\
