@@ -477,7 +477,7 @@ members = [
   "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-agents/examples/email-security-analyst",
   "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent",
-  "plugins/nemo-agents/examples/email-phishing-fabric",
+  "plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
   "plugins/nemo-optimization",

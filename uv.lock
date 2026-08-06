@@ -22,9 +22,9 @@ members = [
     "garak-api",
     "models",
     "nemo-agent-config-example-calculator",
+    "nemo-agent-config-example-email-phishing",
     "nemo-agents-example-calculator",
     "nemo-agents-example-email-phishing",
-    "nemo-agents-example-email-phishing-fabric",
     "nemo-agents-example-email-security",
     "nemo-agents-plugin",
     "nemo-anonymizer-plugin",
@@ -4033,6 +4033,17 @@ dependencies = [
 requires-dist = [{ name = "mcp", specifier = ">=1.28.1,<2" }]
 
 [[package]]
+name = "nemo-agent-config-example-email-phishing"
+version = "0.1.0"
+source = { editable = "plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent" }
+dependencies = [
+    { name = "mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "mcp", specifier = ">=1.28.1,<2" }]
+
+[[package]]
 name = "nemo-agents-example-calculator"
 version = "0.0.0"
 source = { editable = "plugins/nemo-agents/examples/calculator-agent" }
@@ -4057,17 +4068,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "nvidia-nat-core", specifier = ">=1.8.0,<1.9" }]
-
-[[package]]
-name = "nemo-agents-example-email-phishing-fabric"
-version = "0.1.0"
-source = { editable = "plugins/nemo-agents/examples/email-phishing-fabric" }
-dependencies = [
-    { name = "mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "mcp", specifier = ">=1.2.0" }]
 
 [[package]]
 name = "nemo-agents-example-email-security"

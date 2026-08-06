@@ -34,7 +34,7 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 # Source of truth: the sibling NAT example's dataset.
 _SOURCE = (
-    _HERE.parents[1] / "email-phishing-analyzer" / "src" / "nat_email_phishing_analyzer" / "data" / "smaller_test.csv"
+    _HERE.parents[2] / "email-phishing-analyzer" / "src" / "nat_email_phishing_analyzer" / "data" / "smaller_test.csv"
 )
 _DEST = _HERE / "smaller_test.csv"
 

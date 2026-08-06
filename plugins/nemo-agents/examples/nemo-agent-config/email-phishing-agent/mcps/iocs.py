@@ -13,15 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Deterministic IOC extraction, ported from the email-security-analyst example.
+"""Deterministic IOC extraction exposed as an MCP stdio server.
 
-Pure standard-library regex; no NAT, no LLM, no network. Exposed to the agent as
-an MCP tool so the phishing subagent's judgement stays visible while the
-mechanical URL/domain harvesting is a traced tool call.
+Pure standard-library regex (ported from the email-security-analyst example);
+no NAT, no LLM, no network. The phishing subagent's judgement stays visible
+while the mechanical URL/domain harvesting is a traced tool call.
 """
+
+from __future__ import annotations
 
 import re
 from urllib.parse import urlsplit
+
+from mcp.server.fastmcp import FastMCP
 
 # Stop at whitespace and at the characters that usually wrap a URL in prose.
 _URL_RE = re.compile(r"https?://[^\s<>\"'()\[\]]+")
@@ -51,3 +55,17 @@ def extract_iocs(text: str) -> dict[str, list[str]]:
     domains.update(match.lower() for match in _DOMAIN_RE.findall(text))
 
     return {"urls": sorted(urls), "domains": sorted(domains)}
+
+
+mcp = FastMCP("email-phishing-iocs")
+
+
+@mcp.tool(name="extract_iocs")
+def _extract_iocs_tool(text: str) -> dict[str, list[str]]:
+    """Extract URLs and domains (IOCs) from email text, including the From: line."""
+    return extract_iocs(text)
+
+
+def main() -> None:
+    """Run the IOC-extraction MCP server over stdio."""
+    mcp.run(transport="stdio")

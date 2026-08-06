@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from email_phishing_fabric.iocs import extract_iocs
+from mcps.iocs import extract_iocs
 
 
 def test_url_and_its_host_are_both_reported():

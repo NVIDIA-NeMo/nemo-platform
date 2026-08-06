@@ -1,10 +1,10 @@
 config_format: nemo-agents-spec-v1
-name: email-phishing-fabric
+name: email-phishing-agent
 description: >-
   Email phishing analyzer as a Fabric deepagents orchestrator that delegates
   classification to a phishing subagent and calls a deterministic extract_iocs
   MCP tool. The classification prompt, model, and hyperparameters live in this
-  config (tunable), and every step emits a trace span.
+  config (tunable), and each step emits a trace span.
 
 # The orchestrator receives a full email (From/Subject/body). It delegates the
 # verdict to the phishing-analyzer subagent and may call extract_iocs to harvest
@@ -66,9 +66,9 @@ skills:
   paths: []
 
 # extract_iocs is shipped by this example's package as the console script
-# `email-phishing-iocs-mcp` (see pyproject.toml). Fabric launches it as a stdio
-# MCP server — a parallel child process — resolving this command on PATH. It is
-# on PATH for local `--mode subprocess` runs (installed into .venv by
+# `email-phishing-iocs` (see pyproject.toml). Fabric launches it as a stdio MCP
+# server — a parallel child process — resolving this command on PATH. It is on
+# PATH for local `--mode subprocess` runs (installed into .venv by
 # `uv sync --all-packages` as a workspace member) and baked into the image by
 # `nemo agents package` for `--mode docker`/`k8s` deploys. Fabric then exposes
 # its tool to the deepagents orchestrator and subagent.
@@ -76,8 +76,7 @@ mcp:
   servers:
     iocs:
       transport: stdio
-      url: email-phishing-iocs-mcp
-      exposure: harness_native
+      url: email-phishing-iocs
 
 tools:
   blocked: []
@@ -90,4 +89,8 @@ telemetry:
   enabled: true
   provider: relay
   output_dir: ./artifacts/relay
-  project: email-phishing-fabric
+  project: email-phishing-agent
+  atof:
+    enabled: true
+    filename: events.atof.jsonl
+    mode: append
