@@ -1177,6 +1177,51 @@ class HarborDataset(Dataset):
                 return task
         raise ValueError(f"Task id not found in Harbor dataset {self.id!r}: {task_id}")
 
+    def add_tasks(self, tasks: list[Task]) -> None:
+        """Copy Harbor task directories into this dataset and register them.
+
+        The destination dataset owns independent copies, so an Insight-suite
+        task can be evaluated through train or validation without depending on
+        the suite's original directory.
+        """
+        if not tasks:
+            return
+        if self.source is None:
+            raise ValueError(f"Harbor dataset {self.id!r} has no source directory")
+        destination_root = local_path_from_uri(self.source.uri, context="Harbor dataset source").resolve()
+        if not destination_root.is_dir():
+            raise ValueError(f"Harbor dataset source is not a directory: {destination_root}")
+
+        imported: dict[str, Task] = {}
+        for task in tasks:
+            if task.uri is None:
+                raise ValueError(f"Harbor task {task.id!r} has no source directory")
+            source_dir = local_path_from_uri(task.uri, context=f"Harbor task {task.id!r}").resolve()
+            if not source_dir.is_dir() or not (source_dir / _HARBOR_CONFIG_FILENAME["name"]).is_file():
+                raise ValueError(f"Harbor task {task.id!r} is not a task directory: {source_dir}")
+            destination = destination_root / task.id
+            staging = destination_root / f".{task.id}.staging-{uuid4().hex}"
+            backup = destination_root / f".{task.id}.backup-{uuid4().hex}"
+            shutil.copytree(source_dir, staging)
+            try:
+                if destination.exists():
+                    logger.warning("Replacing existing Harbor task %s in dataset %s", task.id, self.id)
+                    destination.rename(backup)
+                staging.rename(destination)
+            except BaseException:
+                if staging.exists():
+                    shutil.rmtree(staging)
+                if backup.exists() and not destination.exists():
+                    backup.rename(destination)
+                raise
+            else:
+                if backup.exists():
+                    shutil.rmtree(backup)
+            imported[task.id] = self._from_task_dir(destination)
+
+        self.tasks = [imported.pop(task.id, task) for task in self.tasks]
+        self.tasks.extend(imported.values())
+
     async def validate(self) -> None:
         """Validate selected task verifier syntax without executing verifier code."""
         failures: list[HarborVerifierValidationFailure] = []

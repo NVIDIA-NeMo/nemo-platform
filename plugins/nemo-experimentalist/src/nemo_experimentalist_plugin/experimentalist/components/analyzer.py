@@ -261,6 +261,8 @@ class AgentAnalyzer(Agent):
         agent_id: str,
         dataset: Dataset,
         evaluation: EvaluationResult,
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
     ) -> Sequence[TrialResult]:
         """Pick which trials to analyze in depth. Return their TrialResult objects.
 
@@ -268,6 +270,8 @@ class AgentAnalyzer(Agent):
             agent_id: The agent to analyze.
             dataset: The dataset to analyze.
             evaluation: The evaluation result to analyze.
+            objective_metrics: Metrics the optimization run should improve.
+            regression_metrics: Metrics that must not worsen.
 
         Returns:
             Sequence[TrialResult]: The selected trials.
@@ -289,6 +293,9 @@ class AgentAnalyzer(Agent):
         ```
 
         ## Step 3: Triage — pick up to {self._config.max_trials} trials
+
+        Objective metrics: {objective_metrics}
+        Regression metrics: {regression_metrics}
 
         Prefer trials where:
         - status/error indicates the evaluator did not complete cleanly
@@ -317,6 +324,8 @@ class AgentAnalyzer(Agent):
         agent_id: str,
         diagnoses: list[Diagnostic],
         trials: Sequence[TrialResult],
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
     ) -> FailureClassification:
         """Classify diagnoses into systematic vs. one-off and agent vs. mechanical failures.
 
@@ -333,6 +342,10 @@ class AgentAnalyzer(Agent):
         an agent logic error (optimizable) or a mechanical error (needs an infra
         fix). Do not penalise the agent for mechanical errors.
 
+        Use `objective_metrics` and `regression_metrics` to call out objective
+        shortfalls and regression risks. Do not invent formulas or weights for
+        evaluator metrics.
+
         Return a FailureClassification with:
         - `systematic`: list of SystematicFailure (root_cause, affected_tasks, pattern)
         - `mechanical`: list of MechanicalError (task_id, issue_type, description)
@@ -346,6 +359,8 @@ class AgentAnalyzer(Agent):
         evaluation: EvaluationResult,
         diagnoses: list[Diagnostic],
         peer_evaluations: dict[str, EvaluationResult] | None = None,
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
     ) -> PeerComparison:
         """Compare this agent to peers and return divergent trials and complementary patterns.
 
@@ -370,7 +385,14 @@ class AgentAnalyzer(Agent):
         )
         complementary_raw = self._find_complementary_failures(agent_id, evaluation, peer_evaluations)
 
-        return await self._narrate_peer_comparison(agent_id, top_divergent, complementary_raw, diagnoses)
+        return await self._narrate_peer_comparison(
+            agent_id,
+            top_divergent,
+            complementary_raw,
+            diagnoses,
+            objective_metrics or [],
+            regression_metrics or [],
+        )
 
     def _select_divergent_pairs(
         self,
@@ -498,6 +520,8 @@ class AgentAnalyzer(Agent):
         top_divergent: list[dict[str, Any]],
         complementary_raw: dict[str, dict[str, dict[str, list[str]]]],
         diagnoses: list[Diagnostic],
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
     ) -> PeerComparison:
         """Write the DivergentTrial and ComplementaryPattern narratives from pre-computed data.
 
@@ -515,6 +539,11 @@ class AgentAnalyzer(Agent):
         `complementary_raw` is
         `{task_id: {metric: {"leaders": [agents], "trailers": [agents]}}}`
         — per-metric splits between the best-scoring agents and the rest.
+
+        `objective_metrics` identifies metrics to improve and
+        `regression_metrics` identifies metrics to preserve. Use them to explain
+        whether a divergence is desirable or a regression risk; do not create a
+        scalar ranking.
 
         ## For each divergent pair
 
@@ -571,6 +600,8 @@ class AgentAnalyzer(Agent):
         client: AsyncNeMoPlatform | None = None,
         nmp_workspace: str | None = None,
         agent_spec: Path | None = None,
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
     ) -> AgentAnalysis:
         """Run the full analysis pipeline for one agent in one optimization round.
 
@@ -585,6 +616,8 @@ class AgentAnalyzer(Agent):
             nmp_workspace: NeMo Platform (Intake) workspace *name* — the request
                 context for ``intake://`` trace lookups. Distinct from the
                 constructor's ``workspace: Path`` (the filesystem eval dir).
+            objective_metrics: Active metrics to improve.
+            regression_metrics: Active metrics to preserve.
 
         Returns:
             AgentAnalysis: per-trial diagnostics, failure classification, and peer
@@ -598,12 +631,17 @@ class AgentAnalyzer(Agent):
         # trace-starved. Keying on availability prevents such a degraded result
         # from being replayed on a later run that *can* load those traces.
         intake_key = ":intake:1" if client is not None and nmp_workspace is not None else ":intake:0"
-        cache_key = cache.agent_hash(f"{agent_id}:evaluation:{evaluation.id}{round_key}{intake_key}")
+        objective_metrics = objective_metrics or []
+        regression_metrics = regression_metrics or []
+        cache_key = cache.agent_hash(
+            f"{agent_id}:evaluation:{evaluation.id}{round_key}{intake_key}:"
+            f"objective-metrics:{objective_metrics}:regression-metrics:{regression_metrics}"
+        )
         cached = cache.load(self._workspace_path, cache_key, AgentAnalysis)
         if cached is not None:
             return cached
 
-        trials = await self.select_trials(agent_id, dataset, evaluation)
+        trials = await self.select_trials(agent_id, dataset, evaluation, objective_metrics, regression_metrics)
         tasks_by_id = self._tasks_by_id(dataset)
 
         missing_task_diagnostics: dict[str, Diagnostic] = {}
@@ -692,8 +730,15 @@ class AgentAnalyzer(Agent):
         diagnoses = [analysis.diagnostic for analysis in trial_analyses]
 
         classification, comparison = await asyncio.gather(
-            self.classify_failures(agent_id, diagnoses, trials),
-            self.compare_with_peers(agent_id, evaluation, diagnoses, peer_evaluations),
+            self.classify_failures(agent_id, diagnoses, trials, objective_metrics, regression_metrics),
+            self.compare_with_peers(
+                agent_id,
+                evaluation,
+                diagnoses,
+                peer_evaluations,
+                objective_metrics,
+                regression_metrics,
+            ),
         )
 
         analysis_out = AgentAnalysis(

@@ -19,7 +19,12 @@ from pathlib import Path
 from typing import Any, Literal, cast, get_args
 
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
-from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.config import (
+    EvolutionaryOptimizerConfig,
+    MetricTarget,
+    is_eligible_for_metric_contract,
+    pareto_objectives,
+)
 from nemo_experimentalist_plugin.entities import (
     Candidate,
     Dataset,
@@ -29,7 +34,10 @@ from nemo_experimentalist_plugin.entities import (
 )
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
-from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import (
+    distribute_insight_suite_tasks,
+    stage_eval_author_inputs,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory, EvaluatorFactory
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import (
@@ -54,6 +62,7 @@ from nemo_experimentalist_plugin.experimentalist.components.models import (
     pareto_sort,
 )
 from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer
+from nemo_experimentalist_plugin.experimentalist.components.selector import SurvivorSelector
 from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
 from nemo_experimentalist_plugin.experimentalist.components.tools import (
     GuardedShellTools,
@@ -123,6 +132,28 @@ def _coerce_optimization_type(optimization_type: str | None) -> OptimizationType
     if optimization_type in get_args(OptimizationType):
         return cast(OptimizationType, optimization_type)
     return None
+
+
+def _with_insight_objective(
+    config: EvolutionaryOptimizerConfig, metric_keys: tuple[str, ...]
+) -> EvolutionaryOptimizerConfig:
+    """Make insight metrics objectives and preserve all configured targets as guardrails."""
+    if not metric_keys:
+        return config
+    insight_metric_names = set(metric_keys)
+    objective = [MetricTarget(name=metric_key, direction="maximize") for metric_key in metric_keys]
+    regression_by_name = {
+        target.name: target
+        for target in [*config.objective_function, *config.regression_metrics]
+        if target.name not in insight_metric_names
+    }
+    return EvolutionaryOptimizerConfig.model_validate(
+        config.model_dump(mode="python")
+        | {
+            "objective_function": [target.model_dump(mode="python") for target in objective],
+            "regression_metrics": [target.model_dump(mode="python") for target in regression_by_name.values()],
+        }
+    )
 
 
 def _trajectory_detail_from_reward(value: Any) -> dict[str, Any]:
@@ -315,6 +346,7 @@ class EvolutionaryOptimizer(Agent):
         self._workspace_path = self.working_dir
         self._framework_skills_dirs: list[Path] = framework_skills_dirs or []
         self.terminator = Terminator()
+        self.selector = SurvivorSelector(workspace=self.working_dir)
         self.shell = GuardedShellTools(cwd=self.working_dir)
         self.workspace = WorkspaceTool(workspace=self.working_dir)
         self.context["file_match"] = doc(Match)
@@ -363,6 +395,7 @@ class EvolutionaryOptimizer(Agent):
         backend = deps.backend
         workspace = deps.workspace
         config = deps.config if deps.config is not None else self.config
+        self.config = config
         reporter = getattr(deps, "reporter", None)
 
         # ---- Preflight: fail fast when persistence is enabled but git is missing.
@@ -462,8 +495,21 @@ class EvolutionaryOptimizer(Agent):
                 validation_dataset=validation_eval_dataset,
                 client=backend.client,
             )
+            config = _with_insight_objective(config, eval_author_result.metric_keys)
+            self.config = config
+            logger.info("[METRICS] Insight objective: %s", config.optimization_policy())
             train_eval_dataset = eval_author_result.train_dataset
             validation_eval_dataset = eval_author_result.validation_dataset
+            if eval_author_result.insight_suite is not None:
+                restore_heldout_splits(self.working_dir)
+                try:
+                    distribute_insight_suite_tasks(
+                        eval_author_result.insight_suite,
+                        train_eval_dataset,
+                        validation_eval_dataset,
+                    )
+                finally:
+                    ensure_heldout_hidden(self.working_dir)
         else:
             # Mode 2: local agent directory as baseline, no insight required.
             insight = None
@@ -593,7 +639,11 @@ class EvolutionaryOptimizer(Agent):
                     break
 
                 survivors = (
-                    await self._select_survivors([c.slim() for c in candidates], k=config.max_survivors)
+                    await self._select_survivors(
+                        [c.slim() for c in candidates],
+                        k=config.max_survivors,
+                        baseline_metrics=self._baseline_validation_metrics(evolution_tree),
+                    )
                     if len(candidates) > 1
                     else list(candidates)
                 )
@@ -838,36 +888,15 @@ class EvolutionaryOptimizer(Agent):
                 _warn_persistence_failure("publish", winner_entity.label, exc)
         return result
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, cell_timeout=3600.0)))
-    async def select_diverse_survivors(self, ranked: list[Candidate], k: int) -> list[Candidate]:  # pyright: ignore[reportReturnType]
-        """Choose up to k survivors from Pareto-ranked candidates.
-
-        ``ranked`` is already Pareto-sorted using outcome and trajectory scores:
-        front 0 (non-dominated) first, then front 1, etc. Inside a front,
-        candidates are incomparable, so prefer agents with distinct architecture
-        changes, complementary task coverage, and different trajectory strengths.
-
-        To avoid getting stuck on the same agents round after round:
-        1. Always include at least 1 candidate that was newly created this round. Look up
-           `self.workspace.get_metadata(c.name)["round"]` for each candidate; new candidates
-           are the ones whose round equals the max round across `ranked`.
-        2. Prefer candidates with different optimization_type values or that address different root causes.
-        3. If all new candidates sit on a worse Pareto front, still include the best new candidate.
-
-        ## MANDATORY: Prefer agents with complementary strengths
-
-        Read each candidate's per-dimension validation rewards from metadata and
-        prefer a set whose strong dimensions cover each other (one agent leads on
-        dimensions where another trails):
-
-        ```python
-        rewards = {c.id: self.workspace.get_metadata(c.name).reward("validation").metrics or {} for c in ranked}
-        ```
-
-        Between 1 to 3 survivors per round.
-        Return the selected subset, preserving the input's Pareto-front order.
-        """
-        ...
+    async def select_diverse_survivors(
+        self,
+        ranked: list[Candidate],
+        k: int,
+        objective_metrics: list[MetricTarget],
+        regression_metrics: list[MetricTarget],
+    ) -> list[Candidate]:  # pyright: ignore[reportReturnType]
+        """Backward-compatible delegate for :class:`SurvivorSelector`."""
+        return await self.selector.select(ranked, k, objective_metrics, regression_metrics)
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, cell_timeout=3600.0)))
     async def merge_analysis(
@@ -879,6 +908,11 @@ class EvolutionaryOptimizer(Agent):
         """Merge per-agent analyses, compare agents, and write the round analysis file.
 
         ## Step 1: Compare agents at reward level
+
+        Read ``self.config.optimization_policy()`` for the active metric contract.
+        Explain objective improvements and any regression risk in those terms.
+        Treat evaluator metrics (including aggregate metrics) as authoritative;
+        do not derive a scalar score or prescribe a selection algorithm.
 
         Read each agent's per-dimension train rewards from metadata:
 
@@ -1367,10 +1401,42 @@ class EvolutionaryOptimizer(Agent):
         self,
         candidates: list[Candidate],
         k: int,
+        baseline_metrics: dict[str, float],
     ) -> list[Candidate]:
-        """Return the top-k Pareto-optimal and architecturally diverse candidates."""
-        ranked = pareto_sort(candidates, lambda c: c.reward("validation").metrics or {})
-        return await self.select_diverse_survivors(ranked, k)
+        """Return diverse Pareto survivors that meet the complete metric contract."""
+        eligible = [
+            candidate
+            for candidate in candidates
+            if is_eligible_for_metric_contract(
+                candidate.reward("validation").metrics or {},
+                objective_function=self.config.objective_function,
+                regression_metrics=self.config.regression_metrics,
+                baseline_metrics=baseline_metrics,
+            )
+        ]
+        excluded = [candidate.label for candidate in candidates if candidate not in eligible]
+        if excluded:
+            logger.warning("[METRICS] Excluding candidates that violate the metric contract: %s", excluded)
+        ranked = pareto_sort(
+            eligible,
+            lambda candidate: pareto_objectives(
+                candidate.reward("validation").metrics or {}, self.config.objective_function
+            ),
+        )
+        return await self.select_diverse_survivors(
+            ranked,
+            k,
+            self.config.objective_function,
+            self.config.regression_metrics,
+        )
+
+    @staticmethod
+    def _baseline_validation_metrics(evolution_tree: EvolutionTree) -> dict[str, float]:
+        """Return the round-0 validation metrics used by regression guardrails."""
+        baseline = next((node for node in evolution_tree.nodes.values() if node.round == 0), None)
+        if baseline is None:
+            raise ValueError("Cannot enforce regression metrics without a round-0 baseline candidate")
+        return baseline.val_reward
 
     async def _evaluate_train_candidates(
         self,
@@ -1466,6 +1532,8 @@ class EvolutionaryOptimizer(Agent):
                     client=client,
                     nmp_workspace=nmp_workspace,
                     agent_spec=agent_spec_path,
+                    objective_metrics=[target.model_dump() for target in config.objective_function],
+                    regression_metrics=[target.model_dump() for target in config.regression_metrics],
                 )
                 for s in survivors
             ]
@@ -1715,7 +1783,25 @@ class EvolutionaryOptimizer(Agent):
         """Select the winner, copy to workspace root, write final report."""
         # Only survivors that actually have a validation reward are eligible winners.
         scored = [n for n in evolution_tree.nodes.values() if n.is_survivor and n.val_reward]
-        front = pareto_front(scored, lambda n: n.val_reward) if scored else []
+        baseline_metrics = self._baseline_validation_metrics(evolution_tree)
+        eligible = [
+            node
+            for node in scored
+            if is_eligible_for_metric_contract(
+                node.val_reward,
+                objective_function=self.config.objective_function,
+                regression_metrics=self.config.regression_metrics,
+                baseline_metrics=baseline_metrics,
+            )
+        ]
+        front = (
+            pareto_front(
+                eligible,
+                lambda node: pareto_objectives(node.val_reward, self.config.objective_function),
+            )
+            if eligible
+            else []
+        )
         best_id = front[0].label if front else None
 
         restore_heldout_splits(self.working_dir)

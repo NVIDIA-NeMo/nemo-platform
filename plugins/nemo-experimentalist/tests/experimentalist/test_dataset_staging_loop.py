@@ -39,10 +39,8 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
         def __init__(self, train_dataset: SimpleNamespace, validation_dataset: SimpleNamespace) -> None:
             self.train_dataset = train_dataset
             self.validation_dataset = validation_dataset
-
-        @property
-        def insight_suite(self) -> None:
-            raise AssertionError("Experimentalist must not consume the authored Insight suite yet")
+            self.insight_suite = None
+            self.metric_keys = ("reward",)
 
     class RecordingDatasetFactory:
         def build_dataset(self, evaluator_type: str, ref: DatasetRef) -> SimpleNamespace:
