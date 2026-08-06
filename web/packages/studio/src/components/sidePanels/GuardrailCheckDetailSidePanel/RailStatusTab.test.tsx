@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { RailStatusTab } from '@studio/components/sidePanels/GuardrailCheckDetailSidePanel/RailStatusTab';
 import { render, screen } from '@testing-library/react';
 
@@ -14,7 +14,7 @@ const COLLIDING_LABELS = {
     input: { flows: ['Acme Guard'] },
     config: { acme_guard: {} },
   },
-} as unknown as RailsConfigOutput;
+} as unknown as RailsConfig;
 
 describe('RailStatusTab', () => {
   afterEach(() => {

@@ -63,6 +63,7 @@ from nemo_evaluator_sdk.values.metrics import (
     ToolCallAccuracy,
     ToolCalling,
     TopicAdherence,
+    TunableRagEvaluator,
 )
 from nemo_evaluator_sdk.values.models import Model, ModelRef, ReasoningParams
 from nemo_evaluator_sdk.values.params import (
@@ -214,4 +215,5 @@ __all__ = [
     "ToolCallAccuracy",
     "ToolCalling",
     "TopicAdherence",
+    "TunableRagEvaluator",
 ]

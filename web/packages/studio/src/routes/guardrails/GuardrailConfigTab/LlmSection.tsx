@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import {
   AccordionContent,
   AccordionItem,
@@ -22,7 +22,7 @@ import { Bot } from 'lucide-react';
 import { Fragment, type FC } from 'react';
 
 /** The general instruction has its own editable field; exclude it here. */
-const nonGeneralInstructions = (data: RailsConfigOutput | undefined) =>
+const nonGeneralInstructions = (data: RailsConfig | undefined) =>
   (data?.instructions ?? []).filter((instruction) => instruction.type !== GENERAL_INSTRUCTION_TYPE);
 
 /** A read-only multi-line text block (instructions). */
@@ -38,7 +38,7 @@ const TextBlock: FC<{ label: string; content: string }> = ({ label, content }) =
   </Stack>
 );
 
-const hasLlmContent = (data: RailsConfigOutput | undefined): boolean =>
+const hasLlmContent = (data: RailsConfig | undefined): boolean =>
   Boolean(
     data?.models?.length ||
     nonGeneralInstructions(data).length ||
@@ -48,7 +48,7 @@ const hasLlmContent = (data: RailsConfigOutput | undefined): boolean =>
     data?.enable_multi_step_generation != null
   );
 
-export const LlmSection: FC<{ data: RailsConfigOutput | undefined }> = ({ data }) => {
+export const LlmSection: FC<{ data: RailsConfig | undefined }> = ({ data }) => {
   if (!hasLlmContent(data)) return null;
 
   const models = data?.models ?? [];

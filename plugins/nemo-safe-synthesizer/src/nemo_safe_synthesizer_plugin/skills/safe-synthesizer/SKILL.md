@@ -41,14 +41,14 @@ Task router for agents helping a person use the NeMo Safe Synthesizer NMP plugin
 ## Answer Contract
 
 - Start with the direct command, diagnosis, or file path.
-- Cite relevant repo docs paths when useful, especially `plugins/nemo-safe-synthesizer/README.md` and `docs/safe-synthesizer/getting-started.md`.
+- Cite relevant repo docs paths when useful, especially `plugins/nemo-safe-synthesizer/README.md` and `docs/safe-synthesizer/getting-started.mdx`.
 - Include one concrete next action unless the user asks for a full walkthrough.
 - If the user asks to change CLI, config, job compilation, or task source code, inspect the plugin code before answering.
 
 ## Next Steps
 
 - Start local usage from `plugins/nemo-safe-synthesizer/README.md`.
-- For product docs, use `docs/safe-synthesizer/getting-started.md`.
+- For product docs, use `docs/safe-synthesizer/getting-started.mdx`.
 - For commands, read `workflows/run.md`.
 - For configuration, read `workflows/config.md`, then `workflows/config-runs.md` for examples.
 - For failures, read `workflows/diagnose.md`.

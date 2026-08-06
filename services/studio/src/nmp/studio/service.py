@@ -86,7 +86,7 @@ class StudioService(Service[StudioConfig]):
     - env_replacements: Runtime values to inject into the UI bundle (cached)
     """
 
-    dependencies: ClassVar[list[str]] = []
+    dependencies: ClassVar[list[str]] = ["entities", "auth"]
 
     def __init__(self):
         """Initialize the studio service."""

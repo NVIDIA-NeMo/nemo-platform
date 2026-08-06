@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { isDefined } from '@nemo/common/src/utils/isDefined';
-import { assertUnreachable, debounceAsyncRequest, isPowerOf } from '@studio/util/functions';
+import {
+  assertUnreachable,
+  debounceAsyncRequest,
+  isNaNScore,
+  isPlainObject,
+  isPowerOf,
+  isScalar,
+} from '@studio/util/functions';
 
 describe('isDefined', () => {
   it('should return true if the value is defined', () => {
@@ -85,5 +92,53 @@ describe('assertUnreachable', () => {
 
   it('should throw with custom message', () => {
     expect(() => assertUnreachable('unexpected' as never, 'Custom error')).toThrow('Custom error');
+  });
+});
+
+describe('isPlainObject', () => {
+  it('accepts keyed objects', () => {
+    expect(isPlainObject({})).toBe(true);
+    expect(isPlainObject({ a: 1 })).toBe(true);
+  });
+
+  it('rejects null, arrays and primitives', () => {
+    expect(isPlainObject(null)).toBe(false);
+    expect(isPlainObject([1, 2])).toBe(false);
+    expect(isPlainObject('a')).toBe(false);
+    expect(isPlainObject(undefined)).toBe(false);
+  });
+});
+
+describe('isScalar', () => {
+  it('accepts strings, numbers and booleans', () => {
+    expect(isScalar('a')).toBe(true);
+    expect(isScalar(0)).toBe(true);
+    expect(isScalar(false)).toBe(true);
+  });
+
+  it('rejects null, undefined, objects and arrays', () => {
+    expect(isScalar(null)).toBe(false);
+    expect(isScalar(undefined)).toBe(false);
+    expect(isScalar({})).toBe(false);
+    expect(isScalar([])).toBe(false);
+  });
+});
+
+describe('isNaNScore', () => {
+  it("detects the evaluator's string NaN in any casing", () => {
+    expect(isNaNScore('NaN')).toBe(true);
+    expect(isNaNScore('nan')).toBe(true);
+  });
+
+  it('detects non-finite numbers', () => {
+    expect(isNaNScore(Number.NaN)).toBe(true);
+    expect(isNaNScore(Infinity)).toBe(true);
+  });
+
+  it('leaves real scores and other strings alone', () => {
+    expect(isNaNScore(0)).toBe(false);
+    expect(isNaNScore(1)).toBe(false);
+    expect(isNaNScore('phishing')).toBe(false);
+    expect(isNaNScore(null)).toBe(false);
   });
 });

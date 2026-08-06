@@ -43,6 +43,7 @@ export const LINK_GITHUB_ISSUES = `${GITHUB_REPO_URL}/issues`;
 
 // Evaluation documentation links
 export const LINK_EVAL_DOCS_METRICS = `${DOCS_BASE_URL}evaluate-models/metrics`;
+export const LINK_EVAL_DOCS_APPROACHES = `${DOCS_BASE_URL}evaluate-models/dataset-driven-vs-task-driven-evaluation`;
 export const LINK_EVAL_DOCS_BENCHMARKS = `${DOCS_BASE_URL}evaluate-models`;
 export const LINK_EVAL_DOCS_BENCHMARKS_INDUSTRY = `${DOCS_BASE_URL}evaluate-models`;
 

@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { FieldList } from '@studio/routes/guardrails/GuardrailConfigTab/configPrimitives';
 import type { Field } from '@studio/routes/guardrails/GuardrailConfigTab/types';
 import { SlidersHorizontal } from 'lucide-react';
 import type { FC } from 'react';
 
-const behaviorFields = (data: RailsConfigOutput | undefined): Field[] => {
+const behaviorFields = (data: RailsConfig | undefined): Field[] => {
   const fields: Field[] = [];
   if (data?.passthrough != null) {
     fields.push({ label: 'Passthrough', value: data.passthrough ? 'On' : 'Off' });
@@ -26,7 +26,7 @@ const behaviorFields = (data: RailsConfigOutput | undefined): Field[] => {
   return fields;
 };
 
-const tracingFields = (data: RailsConfigOutput | undefined): Field[] => {
+const tracingFields = (data: RailsConfig | undefined): Field[] => {
   const tracing = data?.tracing;
   if (!tracing) return [];
   const fields: Field[] = [];
@@ -43,13 +43,13 @@ const tracingFields = (data: RailsConfigOutput | undefined): Field[] => {
   return fields;
 };
 
-const captureIsEnabled = (data: RailsConfigOutput | undefined): boolean =>
+const captureIsEnabled = (data: RailsConfig | undefined): boolean =>
   data?.tracing?.enable_content_capture === true;
 
-const hasBehaviorContent = (data: RailsConfigOutput | undefined): boolean =>
+const hasBehaviorContent = (data: RailsConfig | undefined): boolean =>
   behaviorFields(data).length > 0 || tracingFields(data).length > 0 || captureIsEnabled(data);
 
-export const BehaviorSection: FC<{ data: RailsConfigOutput | undefined }> = ({ data }) => {
+export const BehaviorSection: FC<{ data: RailsConfig | undefined }> = ({ data }) => {
   if (!hasBehaviorContent(data)) return null;
 
   const captureEnabled = captureIsEnabled(data);

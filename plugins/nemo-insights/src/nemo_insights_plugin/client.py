@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared NeMo Platform SDK client construction for analyst NAT functions.
+"""Shared NeMo Platform SDK client construction for analyst read methods.
 
 Auth lives in the active ``nemo auth login`` context in
 ``~/.config/nmp/config.yaml``. The SDK only wires up that context (and the
@@ -13,8 +13,8 @@ deployment. To authenticate against a remote URL we must trigger the bootstrap
 (by also passing ``config_path``) so the explicit ``base_url`` is combined with
 the context's credentials.
 
-Every analyst function takes ``base_url`` from its workflow context, so this
-helper is the one place that branch lives.
+The analyst run takes ``base_url`` from its CLI/job context, so this helper is
+the one place that branch lives.
 """
 
 from urllib.parse import urlparse

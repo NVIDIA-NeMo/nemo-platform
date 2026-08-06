@@ -8,12 +8,13 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from nemo_evaluator.api.dependencies import get_task_service
-from nemo_evaluator.api.schemas import Task, TaskFilter, TaskInput, TaskSort
+from nemo_evaluator.api.schemas import Revision, Task, TaskFilter, TaskInput, TaskSort
 from nemo_evaluator.api.service.task_service import MetricRefNotFoundError, TaskService
 from nemo_evaluator.authz import scope
 from nemo_evaluator.entities import MAX_NAME_LENGTH, NAME_PATTERN
+from nemo_evaluator.revisions import RevisionConflictError, RevisionNotFoundError
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
 from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, perm
 from nemo_platform_plugin.entities import EntityValidationError
@@ -94,12 +95,17 @@ async def create_task(
     project: str | None = Query(default=None, description="Optional project to associate with the task."),
     service: TaskService = Depends(get_task_service),
 ) -> Task:
-    """Store a new task, addressed by workspace/name."""
+    """Store a new task, addressed by workspace/name, and publish it as revision 1.
+
+    Strict create — 409 if the name is taken. Use ``PUT`` to publish a further revision of an
+    existing task.
+    """
     safe_workspace = sanitize_for_log(workspace)
     safe_name = sanitize_for_log(name)
     logger.info(f"Creating task: {safe_workspace}/{safe_name}")
     try:
-        return await service.create_task(name, task, workspace=workspace, project=project)
+        created, _ = await service.create_task(name, task, workspace=workspace, project=project)
+        return created
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during task creation: {e}")
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
@@ -122,6 +128,169 @@ async def create_task(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
+@router.put(
+    "/tasks/{name}",
+    summary="Replace Task",
+    response_description="Publish a revision of the task",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_200_OK: {"description": "Content already published; no new revision was cut"},
+        status.HTTP_201_CREATED: {"model": Task, "description": "A new revision was published"},
+        status.HTTP_409_CONFLICT: {"description": "Concurrent write; refresh and retry"},
+    },
+)
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[TaskPerms.CREATE])
+async def replace_task(
+    workspace: str,
+    name: Annotated[str, Path(max_length=MAX_NAME_LENGTH, pattern=NAME_PATTERN)],
+    task: TaskInput,
+    response: Response,
+    project: str | None = Query(default=None, description="Optional project to associate with the task."),
+    service: TaskService = Depends(get_task_service),
+) -> Task:
+    """Replace a task's content and publish the result, creating the task if it does not exist.
+
+    Upsert rather than 404-on-missing so a publisher can issue one idempotent call without first
+    checking existence — that check is both an extra round trip and a race between two publishers.
+
+    Idempotent in the strict sense: submitting content that matches the current revision publishes
+    nothing and returns **200**, while a genuine change returns **201**. Tags in the body are
+    applied either way, so re-PUTting unchanged content is how you tag an existing revision.
+    """
+    safe_workspace = sanitize_for_log(workspace)
+    safe_name = sanitize_for_log(name)
+    logger.info(f"Replacing task: {safe_workspace}/{safe_name}")
+    try:
+        replaced, published = await service.replace_task(name, task, workspace=workspace, project=project)
+    except EntityValidationError as e:
+        logger.warning(f"Entity store validation error during task replace: {e}")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except MetricRefNotFoundError as e:
+        logger.warning(f"Task has an invalid metric reference: {e}")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except RevisionConflictError as e:
+        logger.warning(f"Task revision allocation contended: {e}")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except NemoEntityConflictError as e:
+        # Another request updated this record between our read and our write. A retry against the
+        # current state is the caller's move; a 500 would wrongly suggest a server fault.
+        logger.warning(f"Task modified concurrently during replace: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Task was modified by another request: {workspace}/{name}. Refresh and try again.",
+        )
+    except ValueError as e:
+        logger.warning(f"Task replace validation error: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid task data")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to replace task")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    response.status_code = status.HTTP_201_CREATED if published else status.HTTP_200_OK
+    return replaced
+
+
+@router.get(
+    "/tasks/{name}/revisions",
+    summary="List Task Revisions",
+    response_description="Return the task's published revisions, newest first",
+    status_code=status.HTTP_200_OK,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Task not found"}},
+)
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[TaskPerms.READ])
+async def list_task_revisions(
+    workspace: str,
+    name: Annotated[str, Path(max_length=MAX_NAME_LENGTH, pattern=NAME_PATTERN)],
+    page: int = Query(default=1, ge=1, description="Page number."),
+    page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
+    service: TaskService = Depends(get_task_service),
+) -> Page[Revision]:
+    """List a task's published revisions.
+
+    This is how a caller discovers what it can pin to: each entry carries the ``content_hash`` that
+    goes in a reference's ``#fragment``.
+    """
+    try:
+        revisions = await service.list_revisions(workspace, name, page=page, page_size=page_size)
+    except Exception:
+        logger.exception("Failed to list task revisions")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    if revisions is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task '{name}' not found")
+    return revisions
+
+
+@router.get(
+    "/tasks/{name}/revisions/{revision}",
+    summary="Get Task Revision",
+    response_description="Return the task's content as of a published revision",
+    status_code=status.HTTP_200_OK,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Task or revision not found"}},
+)
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[TaskPerms.READ])
+async def get_task_revision(
+    workspace: str,
+    name: Annotated[str, Path(max_length=MAX_NAME_LENGTH, pattern=NAME_PATTERN)],
+    revision: Annotated[str, Path(max_length=MAX_NAME_LENGTH, pattern=NAME_PATTERN)],
+    service: TaskService = Depends(get_task_service),
+) -> Task:
+    """Get a task's content as of a published revision.
+
+    ``revision`` is a content digest or a tag — exactly what a reference's ``#fragment`` carries,
+    so a consumer holding ``workspace/task-a#<digest>`` reads what was published rather than
+    whatever is current. Returns the full task DTO; the collection route above is a thin index of
+    what can be pinned to.
+    """
+    try:
+        task = await service.get_task(workspace, name, revision)
+    except RevisionNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task not found: {workspace}/{name}")
+    return task
+
+
+@router.put(
+    "/tasks/{name}/tags/{tag}",
+    summary="Tag Task Revision",
+    response_description="Point a tag at an existing revision",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Task or revision not found"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Tag is reserved"},
+    },
+)
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[TaskPerms.CREATE])
+async def tag_task_revision(
+    workspace: str,
+    name: Annotated[str, Path(max_length=MAX_NAME_LENGTH, pattern=NAME_PATTERN)],
+    tag: Annotated[str, Path(max_length=MAX_NAME_LENGTH, pattern=NAME_PATTERN)],
+    revision: str = Query(description="Revision to tag — a content digest, or another tag."),
+    service: TaskService = Depends(get_task_service),
+) -> Task:
+    """Point a tag at an already-published revision.
+
+    Separate from publishing because blessing a revision usually happens *after* it has been
+    evaluated. ``latest`` is reserved: it is machine-managed, always names the most recent publish,
+    and moving it by hand would break the forward-only guarantee that keeps concurrent publishes
+    consistent.
+    """
+    try:
+        tagged = await service.tag_revision(workspace, name, tag, revision)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except RevisionNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    if tagged is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task '{name}' not found")
+    return tagged
+
+
 @router.get(
     "/tasks/{name}",
     summary="Get Task",
@@ -136,7 +305,10 @@ async def get_task(
     name: str,
     service: TaskService = Depends(get_task_service),
 ) -> Task:
-    """Get a stored task by workspace and name."""
+    """Get a stored task's current content.
+
+    Use ``GET /tasks/{name}/revisions/{revision}`` to read it as of a specific published revision.
+    """
     logger.debug(f"Getting task: {sanitize_for_log(workspace)}/{sanitize_for_log(name)}")
     try:
         task = await service.get_task(workspace, name)

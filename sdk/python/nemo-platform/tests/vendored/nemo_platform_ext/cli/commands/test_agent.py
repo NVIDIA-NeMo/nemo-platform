@@ -193,4 +193,6 @@ class TestAgentCommands:
             "| nemo data-designer | Functional plugins | Plugin commands for data-designer. |",
             "| nemo guardrail | Functional plugins | Manage guardrails. |",
             "| nemo anonymizer | Functional plugins | Plugin commands for anonymizer. |",
+            "| nemo experiments | Functional plugins | Manage experiments. |",
+            "| nemo intake | Functional plugins | Intake operations. |",
         ]

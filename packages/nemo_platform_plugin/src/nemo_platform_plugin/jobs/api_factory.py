@@ -54,7 +54,7 @@ from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
-from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
 from nemo_platform_plugin.jobs.result_manager import download_from_result_info
 from nemo_platform_plugin.jobs.schemas import (
@@ -670,6 +670,7 @@ async def _compile_platform_spec(
 
     Raises:
         HTTPException(422): If the compiler raises PlatformJobCompilationError.
+        HTTPException(503): If the compiler raises PlatformJobDependencyUnavailableError.
         PermissionError: If the compiler raises a PermissionError.
     """
     try:
@@ -687,6 +688,11 @@ async def _compile_platform_spec(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e),
+        ) from e
+    except PlatformJobDependencyUnavailableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Temporarily unable to compile {service_name} job spec: {str(e)}",
         ) from e
     except PlatformJobCompilationError as e:
         raise HTTPException(

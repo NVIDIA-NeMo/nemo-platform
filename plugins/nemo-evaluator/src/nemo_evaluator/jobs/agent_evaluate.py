@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, Literal, cast
 from urllib.parse import urlsplit
 
 import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'fileset' workspace-seed handler
@@ -52,10 +52,15 @@ from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import RunConfigOnline, RunConfigOnlineModel
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
-from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec, SubprocessExecutionProviderSpec
+from nemo_platform_plugin.jobs.client import AsyncJobsClient
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
+from nemo_platform_plugin.jobs.execution_profiles import SubprocessJobExecutionProfile
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -65,6 +70,26 @@ DEFAULT_RESULT_NAME = "agent-eval-results"
 SUMMARY_RESULT_NAME = "summary"
 AGENT_BUNDLE_DIR = "agent-eval"
 SUMMARY_FILE_NAME = "summary.json"
+
+# Shared tail for every Harbor backend-compatibility rejection
+_HARBOR_BACKEND_REQUIREMENT = (
+    "Harbor targets currently require local execution or the subprocess backend with access to the host Docker daemon."
+)
+_SUBPROCESS_PROVIDER: Literal["subprocess"] = "subprocess"
+
+
+def _harbor_backend_error(reason: str) -> PlatformJobCompilationError:
+    """A Harbor backend rejection: the specific cause followed by the shared requirement."""
+    return PlatformJobCompilationError(f"{reason} {_HARBOR_BACKEND_REQUIREMENT}")
+
+
+def _harbor_dependency_unavailable(profile: str) -> PlatformJobDependencyUnavailableError:
+    """A retryable failure while resolving the backend for a Harbor profile."""
+    return PlatformJobDependencyUnavailableError(
+        f"Unable to resolve execution profile '{profile}': the Jobs service is temporarily unavailable. "
+        "Retry the submission."
+    )
+
 
 #: Identity headers forwarded from the job's platform SDK to online inference so a platform-routed
 #: target authenticates as the job's principal (``get_task_sdk`` emits these). An explicit allowlist
@@ -187,9 +212,60 @@ class AgentEvalJob(NemoJob):
         options: dict | None = None,
     ) -> PlatformJobSpec:
         """Compile the canonical spec into a plugin-native agent-evaluation job."""
-        del workspace, entity_client, job_name, async_sdk, options
+        del workspace, entity_client, job_name, options
         canonical_spec = spec if isinstance(spec, AgentEvalSpec) else AgentEvalSpec.model_validate(spec.model_dump())
-        return compile_agent_eval_job(canonical_spec, profile=profile)
+        platform_spec = compile_agent_eval_job(canonical_spec, profile=profile)
+        if isinstance(canonical_spec.target, HarborRunnerTarget):
+            step = next(iter(platform_spec["steps"]))
+            executor = cast(dict[str, Any], step["executor"])
+            step["executor"] = await cls._resolve_harbor_subprocess_executor(
+                executor=executor,
+                async_sdk=async_sdk,
+            )
+        return platform_spec
+
+    @staticmethod
+    async def _resolve_harbor_subprocess_executor(
+        *, executor: dict[str, Any], async_sdk: AsyncNeMoPlatform | None
+    ) -> SubprocessExecutionProviderSpec:
+        """Resolve Harbor's selected profile to an explicit host subprocess executor."""
+        profile = cast(str, executor["profile"])
+        provider = cast(str, executor["provider"])
+        if async_sdk is None:
+            raise _harbor_dependency_unavailable(profile)
+
+        try:
+            profiles = (await client_from_platform(async_sdk, AsyncJobsClient).get_execution_profiles()).data()
+        except (NemoTransportError, NemoResponseValidationError, InternalServerError) as exc:
+            raise _harbor_dependency_unavailable(profile) from exc
+
+        # The concrete profile type fixes the backend to "subprocess".
+        if any(
+            isinstance(execution_profile, SubprocessJobExecutionProfile) and execution_profile.profile == profile
+            for execution_profile in profiles
+        ):
+            container = cast(dict[str, Any], executor["container"])
+            command = [*(container.get("entrypoint") or []), *(container.get("command") or [])]
+            if not command:
+                raise _harbor_backend_error(
+                    f"Unable to compile execution profile '{profile}' for subprocess execution: the step command is empty."
+                )
+            return SubprocessExecutionProviderSpec(provider=_SUBPROCESS_PROVIDER, profile=profile, command=command)
+
+        # Jobs keys execution profiles by (provider, profile), so at most one backend can match.
+        resolved_backend = next(
+            (
+                execution_profile.backend
+                for execution_profile in profiles
+                if execution_profile.profile == profile and execution_profile.provider == provider
+            ),
+            None,
+        )
+        raise _harbor_backend_error(
+            f"Execution profile '{profile}' resolves to backend '{resolved_backend}'."
+            if resolved_backend is not None
+            else f"Execution profile '{profile}' does not resolve to a subprocess backend."
+        )
 
     @staticmethod
     def _endpoint_url(target: Target | None) -> str | None:
