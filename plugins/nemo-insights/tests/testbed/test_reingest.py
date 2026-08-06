@@ -1206,6 +1206,32 @@ def test_stale_remote_restore_warns_but_never_touches_docker(tmp_path, quiet_pla
     assert "SYSTEM STOP TTL MERGES" in capsys.readouterr().err  # existing warning still shown
 
 
+def test_stale_loopback_restore_with_external_clickhouse_never_touches_docker(
+    tmp_path,
+    monkeypatch,
+    quiet_platform,
+    fake_docker,
+    capsys,
+):
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, LLM_DOC])
+    monkeypatch.setenv("NMP_INTAKE_CLICKHOUSE_URL", "https://clickhouse.example.internal:8443")
+    quiet_platform["span_counts"] = [0, 2]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+
+    reingest.ingest_bundle(
+        "http://127.0.0.1:8080",
+        export_dir,
+        _stale_manifest("ws-a", 2),
+        workspace_map={"ws-a": "ws-b"},
+        catalog=CATALOG,
+        sleep=lambda s: None,
+    )
+
+    assert fake_docker == []
+    assert "points to external ClickHouse" in capsys.readouterr().err
+
+
 def test_fresh_bundle_never_touches_ttl_merges(tmp_path, quiet_platform, fake_docker):
     export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, LLM_DOC])
     quiet_platform["span_counts"] = [0, 2]
@@ -1229,15 +1255,18 @@ def test_local_clickhouse_container_resolves_managed_name_by_label(monkeypatch):
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="nmp-intake-clickhouse-a1b2c3d4e5f6\n", stderr="")
 
+    monkeypatch.setenv("NMP_INTAKE_CLICKHOUSE_URL", "http://localhost:55123")
     monkeypatch.setattr(reingest.shutil, "which", lambda name: "/usr/bin/docker")
     monkeypatch.setattr(reingest.subprocess, "run", fake_run)
 
     assert reingest._local_clickhouse_container() == "nmp-intake-clickhouse-a1b2c3d4e5f6"
     assert "label=nmp.nvidia.com/managed-by=nemo-platform" in commands[0]
     assert "label=nmp.nvidia.com/component=intake-clickhouse" in commands[0]
+    assert "publish=55123" in commands[0]
 
 
 def test_local_clickhouse_container_rejects_multiple_managed_instances(monkeypatch):
+    monkeypatch.setenv("NMP_INTAKE_CLICKHOUSE_URL", "http://127.0.0.1:55123")
     monkeypatch.setattr(reingest.shutil, "which", lambda name: "/usr/bin/docker")
     monkeypatch.setattr(
         reingest.subprocess,
@@ -1476,6 +1505,52 @@ def test_cleanup_scratch_keeps_workspace_record_when_container_is_ambiguous(monk
     reingest.cleanup_scratch("http://127.0.0.1:8080", ["scratch-rt-abc12345-ws-a"])
 
     assert "rows and workspace records left intact" in capsys.readouterr().err
+
+
+def test_cleanup_scratch_ignores_unlabeled_legacy_name_collision(monkeypatch, capsys):
+    commands: list[list[str]] = []
+
+    class _NoHTTP:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("unowned container cleanup must not delete workspace records")
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        # An unrelated running nmp-intake-clickhouse exists, but it does not
+        # carry the durable Intake ownership labels selected by this query.
+        stdout = "nmp-intake-clickhouse\n" if any(part.startswith("name=") for part in command) else ""
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setenv("NMP_INTAKE_CLICKHOUSE_URL", "http://localhost:8123")
+    monkeypatch.setattr(reingest.httpx, "Client", _NoHTTP)
+    monkeypatch.setattr(reingest.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(reingest.subprocess, "run", fake_run)
+
+    reingest.cleanup_scratch("http://127.0.0.1:8080", ["scratch-rt-abc12345-ws-a"])
+
+    assert len(commands) == 1
+    assert not any(command_part.startswith("name=") for command_part in commands[0])
+    assert "rows and workspace records left intact" in capsys.readouterr().err
+
+
+def test_cleanup_scratch_loopback_with_external_clickhouse_preserves_all_state(monkeypatch, capsys):
+    class _NoHTTP:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("unverified cleanup must not delete workspace records")
+
+    monkeypatch.setenv("NMP_INTAKE_CLICKHOUSE_URL", "https://clickhouse.example.internal:8443")
+    monkeypatch.setattr(reingest.httpx, "Client", _NoHTTP)
+
+    def fail_docker_lookup(name: str) -> str:
+        raise AssertionError("external ClickHouse must not inspect Docker")
+
+    monkeypatch.setattr(reingest.shutil, "which", fail_docker_lookup)
+
+    reingest.cleanup_scratch("http://127.0.0.1:8080", ["scratch-rt-abc12345-ws-a"])
+
+    err = capsys.readouterr().err
+    assert "points to external ClickHouse" in err
+    assert "rows and workspace records left intact" in err
 
 
 def test_roundtrip_diff_rejects_non_scratch_prefix(tmp_path):

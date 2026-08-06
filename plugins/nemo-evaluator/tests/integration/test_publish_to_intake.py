@@ -98,19 +98,19 @@ def _clickhouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
         **os.environ,
         "CLICKHOUSE_DATA_DIR": str(tmp_path_factory.mktemp("evaluator-intake-clickhouse")),
     }
-    subprocess.run(
-        ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh")],
-        check=True,
-        cwd=REPO_ROOT,
-        env=clickhouse_env,
-    )
     try:
+        subprocess.run(
+            ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh")],
+            check=True,
+            cwd=REPO_ROOT,
+            env=clickhouse_env,
+        )
         _wait_for_tcp("localhost", 8123, timeout=60)
         yield
     finally:
         subprocess.run(
             ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh"), "--remove"],
-            check=False,
+            check=True,
             cwd=REPO_ROOT,
             env=clickhouse_env,
         )
