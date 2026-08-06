@@ -10,14 +10,16 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
    make verify-mise   # from the repo root, installs mise + the pinned versions
    ```
 
-   then add the matching line for your shell to its startup file:
+   mise installs to `~/.local/bin`, so make sure that's on your PATH, then add the matching line for your shell to its startup file:
 
    ```bash
+   export PATH="$HOME/.local/bin:$PATH"
+
    eval "$(mise activate bash)"   # ~/.bashrc
    eval "$(mise activate zsh)"    # ~/.zshrc
    ```
 
-   or install Node.js and pnpm yourself. `make bootstrap-studio` and the other `make` targets always use the mise-managed versions regardless of what you pick here.
+   or install Node.js and pnpm yourself. `make bootstrap-studio` and the other `make` targets use the mise-managed versions by default, whatever you pick here — pass `NMP_SKIP_MISE=1` to make them use your PATH instead.
 
 2. Install workspace deps and copy `.env` files, from `web/`:
 

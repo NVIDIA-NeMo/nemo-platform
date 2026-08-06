@@ -99,7 +99,13 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 
 `mise.toml` pins the Node.js and pnpm versions that satisfy `web/package.json` engines, and `make bootstrap-studio` installs mise on first run and invokes both through `mise exec --`. Nothing is written to your shell rc.
 
-That covers the `make` targets only. To run `pnpm` directly in `web/` — the Studio dev server, tests, lint — either prefix it:
+That covers the `make` targets only. To run `pnpm` directly in `web/` — the Studio dev server, tests, lint — you need mise on your PATH first, since it installs to `~/.local/bin`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then either prefix commands:
 
 ```bash
 mise exec -- pnpm dev
