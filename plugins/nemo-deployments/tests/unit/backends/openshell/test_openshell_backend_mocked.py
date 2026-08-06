@@ -21,6 +21,7 @@ from nemo_deployments_plugin.backends.labels import (
     MANAGED_BY_KEY,
 )
 from nemo_deployments_plugin.backends.openshell.backend import (
+    _CONFIG_DELIVERED_MARKER,
     _LAUNCH_MARKER,
     _LIVENESS_PROBE,
     _MAX_ROUTABLE_NAME_LEN,
@@ -34,7 +35,7 @@ from nemo_deployments_plugin.backends.openshell.backend import (
 )
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Container, ContainerPort, DeploymentConfig, EnvVar
+from nemo_deployments_plugin.entities import ConfigFile, Container, ContainerPort, DeploymentConfig, EnvVar
 from nemo_deployments_plugin.secrets import SecretResolutionError
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
@@ -108,6 +109,22 @@ def _exec_events(exit_code: int, *, stdout: str = "", stderr: str = "") -> list[
     return events
 
 
+def _delivery_ok() -> list[MagicMock]:
+    """A successful config-delivery exec: prints the completion marker on stdout, exits 0."""
+    return _exec_events(0, stdout=_CONFIG_DELIVERED_MARKER)
+
+
+def _stream_without_exit(stdout: str = "") -> list[MagicMock]:
+    """An ExecSandbox stream that never yields an exit event (drains to exit_code None)."""
+    events: list[MagicMock] = []
+    if stdout:
+        out = MagicMock()
+        out.HasField.side_effect = lambda field: field == "stdout"
+        out.stdout.data = stdout.encode()
+        events.append(out)
+    return events
+
+
 def _config_with_env(env: list[EnvVar]) -> DeploymentConfig:
     return DeploymentConfig(
         name="cfg1",
@@ -123,6 +140,33 @@ def _config_with_env(env: list[EnvVar]) -> DeploymentConfig:
             )
         ],
     )
+
+
+def _config_with_config_files(config_files: list[ConfigFile]) -> DeploymentConfig:
+    return DeploymentConfig(
+        name="cfg1",
+        workspace="default",
+        containers=[
+            Container(
+                name="web",
+                image="img:latest",
+                command=["python3", "-m", "http.server"],
+                args=["8000"],
+                ports=[ContainerPort(containerPort=8000, name="http")],
+            )
+        ],
+        configFiles=config_files,
+    )
+
+
+def _exec_requests(mock_stub: MagicMock) -> list[pb.ExecSandboxRequest]:
+    """Every ExecSandboxRequest the backend sent, in call order."""
+    return [call.args[0] for call in mock_stub.ExecSandbox.call_args_list]
+
+
+def _delivery_requests(mock_stub: MagicMock) -> list[pb.ExecSandboxRequest]:
+    """The subset of exec calls that are config-file writes (``cat >`` scripts)."""
+    return [req for req in _exec_requests(mock_stub) if any("cat >" in part for part in req.command)]
 
 
 def test_registry_contains_openshell() -> None:
@@ -608,3 +652,254 @@ def test_liveness_probe_is_pending_when_the_marker_is_unusable(tmp_path: Path, m
     # No usable launch time means no basis to call it dead, so stay undecided rather
     # than fail a deployment on a garbled marker.
     assert _run_probe(tmp_path, pid=None, marker=marker) == _SERVE_PENDING_EXIT
+
+
+# --- AIRCORE-999: config_files are delivered into the sandbox, or fail loudly ---
+
+
+async def test_delivers_config_file_before_launch_streaming_content_on_stdin(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # READY, marker absent -> deliver the config file, then launch. The file content must
+    # ride the exec's stdin (opaque bytes), never the argv, and delivery must precede launch.
+    content = "hello: world\nnested:\n  a: 1\n"
+    mock_entities.get.return_value = _config_with_config_files(
+        [ConfigFile(path="/home/sandbox/injected.yaml", content=content)]
+    )
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    # marker absent, delivery ok (prints completion marker), launch ok
+    mock_stub.ExecSandbox.side_effect = [_exec_events(1), _delivery_ok(), _exec_events(0)]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    deliveries = _delivery_requests(mock_stub)
+    assert len(deliveries) == 1
+    write = deliveries[0]
+    script = write.command[-1]
+    assert "cat > /home/sandbox/injected.yaml" in script
+    assert "mkdir -p /home/sandbox" in script
+    assert "chmod 644 /home/sandbox/injected.yaml" in script
+    # Content is streamed, not embedded in the command.
+    assert write.stdin == content.encode("utf-8")
+    assert content not in script
+    # Delivery happened before the serve launch (setsid) exec.
+    kinds = [
+        "deliver"
+        if any("cat >" in p for p in r.command)
+        else ("launch" if any("setsid" in p for p in r.command) else "probe")
+        for r in _exec_requests(mock_stub)
+    ]
+    assert kinds.index("deliver") < kinds.index("launch")
+
+
+async def test_delivers_multiple_config_files_each_on_its_own_stdin(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    files = [
+        ConfigFile(path="/home/sandbox/agent.yaml", content="a: 1\n"),
+        ConfigFile(path="/home/sandbox/skills/tool.yaml", content="tool: search\n"),
+    ]
+    mock_entities.get.return_value = _config_with_config_files(files)
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [_exec_events(1), _delivery_ok(), _delivery_ok(), _exec_events(0)]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    deliveries = _delivery_requests(mock_stub)
+    assert len(deliveries) == 2
+    assert deliveries[0].stdin == b"a: 1\n"
+    assert "cat > /home/sandbox/agent.yaml" in deliveries[0].command[-1]
+    assert deliveries[1].stdin == b"tool: search\n"
+    assert "mkdir -p /home/sandbox/skills" in deliveries[1].command[-1]
+
+
+@pytest.mark.parametrize(("mode", "expected"), [(0o644, "chmod 644"), (0o600, "chmod 600"), (0o755, "chmod 755")])
+async def test_config_file_mode_is_applied_as_octal(
+    openshell_backend: OpenShellDeploymentBackend,
+    mock_stub: MagicMock,
+    mock_entities: AsyncMock,
+    mode: int,
+    expected: str,
+) -> None:
+    mock_entities.get.return_value = _config_with_config_files(
+        [ConfigFile(path="/home/sandbox/x.yaml", content="k: v\n", mode=mode)]
+    )
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [_exec_events(1), _delivery_ok(), _exec_events(0)]
+
+    await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert f"{expected} /home/sandbox/x.yaml" in _delivery_requests(mock_stub)[0].command[-1]
+
+
+async def test_config_content_with_shell_metacharacters_is_not_interpreted(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # The adversarial case: content that would be catastrophic if it reached the shell.
+    # Because it is streamed on stdin, it stays opaque bytes and never appears in the argv.
+    content = 'x: "$(rm -rf /)"\ny: `reboot`\nz: ; cat /etc/shadow #\n'
+    mock_entities.get.return_value = _config_with_config_files(
+        [ConfigFile(path="/home/sandbox/evil.yaml", content=content)]
+    )
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [_exec_events(1), _delivery_ok(), _exec_events(0)]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    write = _delivery_requests(mock_stub)[0]
+    assert write.stdin == content.encode("utf-8")
+    script = write.command[-1]
+    for needle in ("rm -rf /", "reboot", "cat /etc/shadow"):
+        assert needle not in script
+
+
+async def test_config_path_with_spaces_is_quoted(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = _config_with_config_files(
+        [ConfigFile(path="/home/sandbox/my config.yaml", content="k: v\n")]
+    )
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [_exec_events(1), _delivery_ok(), _exec_events(0)]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    script = _delivery_requests(mock_stub)[0].command[-1]
+    # shlex.quote wraps the path so the space cannot split it into two arguments.
+    assert "'/home/sandbox/my config.yaml'" in script
+
+
+async def test_unwritable_config_path_fails_loudly_and_deletes_sandbox(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # The /workspace boundary: delivery runs as the sandbox user, so a target it cannot
+    # write (the image chowns /workspace to 'agent') makes cat exit non-zero. That must
+    # surface as a terminal FAILED naming the path and the shell's error -- never a silent
+    # drop that reaches READY -- and the sandbox is torn down. Launch never happens.
+    mock_entities.get.return_value = _config_with_config_files(
+        [ConfigFile(path="/workspace/injected.yaml", content="k: v\n")]
+    )
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [
+        _exec_events(1),  # marker absent
+        # the real failure is a shell redirection error (cat never runs), not a cat error
+        _exec_events(1, stderr="sh: 1: cannot create /workspace/injected.yaml: Permission denied"),
+    ]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "FAILED"
+    assert "/workspace/injected.yaml" in update.status_message
+    assert "Permission denied" in update.status_message
+    mock_stub.DeleteSandbox.assert_called_once()
+    # No launch was attempted after the failed write.
+    assert not any("setsid" in p for r in _exec_requests(mock_stub) for p in r.command)
+
+
+async def test_config_delivery_rpc_error_fails_loudly_and_deletes_sandbox(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = _config_with_config_files(
+        [ConfigFile(path="/home/sandbox/x.yaml", content="k: v\n")]
+    )
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [_exec_events(1), FakeRpcError(grpc.StatusCode.INTERNAL, "exec boom")]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "FAILED"
+    assert "/home/sandbox/x.yaml" in update.status_message
+    mock_stub.DeleteSandbox.assert_called_once()
+
+
+async def test_no_config_files_delivers_nothing(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # A deployment with no config_files must not add any delivery exec: only the marker
+    # probe and the launch. Guards the empty-list no-op that keeps every prior test valid.
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [_exec_events(1), _exec_events(0)]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    assert _delivery_requests(mock_stub) == []
+    assert mock_stub.ExecSandbox.call_count == 2
+
+
+async def test_config_files_not_redelivered_once_serve_is_launched(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # Delivery lives inside the once-only launch guard. On a later poll where the marker is
+    # present, the backend advances to expose without rewriting the files (write exactly once).
+    mock_entities.get.return_value = _config_with_config_files(
+        [ConfigFile(path="/home/sandbox/x.yaml", content="k: v\n")]
+    )
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.return_value = _exec_events(0)  # marker present, liveness alive
+    mock_stub.ExposeService.return_value = MagicMock(url="http://nmp-x--http.openshell.localhost:17670/")
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "READY"
+    assert _delivery_requests(mock_stub) == []
+
+
+@pytest.mark.parametrize(
+    "delivery_stream",
+    [_exec_events(0), _stream_without_exit(stdout="partial")],
+    ids=["zero-exit-no-marker", "stream-without-exit-event"],
+)
+async def test_config_delivery_without_completion_marker_fails_loudly(
+    openshell_backend: OpenShellDeploymentBackend,
+    mock_stub: MagicMock,
+    mock_entities: AsyncMock,
+    delivery_stream: list[MagicMock],
+) -> None:
+    # Self-attesting delivery: a write that cannot prove it happened -- a zero exit with no
+    # marker, or a stream that ends without an exit event (exit_code None) -- must fail
+    # loudly, never advance to launch. This is the residual silent-drop path the marker closes.
+    mock_entities.get.return_value = _config_with_config_files(
+        [ConfigFile(path="/home/sandbox/x.yaml", content="k: v\n")]
+    )
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [_exec_events(1), delivery_stream]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "FAILED"
+    assert "could not be confirmed" in update.status_message
+    assert "/home/sandbox/x.yaml" in update.status_message
+    mock_stub.DeleteSandbox.assert_called_once()
+    assert not any("setsid" in p for r in _exec_requests(mock_stub) for p in r.command)
+
+
+async def test_multi_file_partial_failure_aborts_and_deletes_sandbox(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # File 1 delivers, file 2 fails: the loop aborts mid-stream, the deployment fails naming
+    # the offending file, the sandbox is torn down, and serve is never launched.
+    files = [
+        ConfigFile(path="/home/sandbox/agent.yaml", content="a: 1\n"),
+        ConfigFile(path="/home/sandbox/skills/tool.yaml", content="t: 1\n"),
+    ]
+    mock_entities.get.return_value = _config_with_config_files(files)
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [
+        _exec_events(1),  # marker absent
+        _delivery_ok(),  # file 1 ok
+        _exec_events(1, stderr="sh: 1: cannot create /home/sandbox/skills/tool.yaml: Permission denied"),
+    ]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "FAILED"
+    assert "/home/sandbox/skills/tool.yaml" in update.status_message
+    assert len(_delivery_requests(mock_stub)) == 2  # both attempted; aborted after the failure
+    mock_stub.DeleteSandbox.assert_called_once()
+    assert not any("setsid" in p for r in _exec_requests(mock_stub) for p in r.command)

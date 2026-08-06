@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import posixpath
 import shlex
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -55,7 +56,7 @@ from nemo_deployments_plugin.backends.openshell.policy import (
     normalize_loaded_policy,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Container, DeploymentConfig
+from nemo_deployments_plugin.entities import ConfigFile, Container, DeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import DeploymentStatus, Endpoint
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -81,6 +82,12 @@ _SERVE_LOG = "/tmp/nemo-serve.log"
 # deciding whether a missing pidfile is a slow start or a launcher that never ran.
 _LAUNCH_MARKER = "/tmp/nemo-serve.launched"
 _SERVE_PIDFILE = "/tmp/nemo-serve.pid"
+
+# Token the config-delivery script prints on stdout only after mkdir+cat+chmod all
+# succeed (guarded by set -e). Requiring it in the drained output makes delivery
+# self-attesting: a stream that ends without an exit event (exit_code is None) or
+# otherwise cannot prove the write happened is a failed, not a silent, delivery.
+_CONFIG_DELIVERED_MARKER = "__nmp_config_delivered__"
 
 # OpenShell rejects a longer sandbox or service name with INVALID_ARGUMENT: three
 # segments plus two "--" delimiters must fit a 63-char DNS label.
@@ -497,8 +504,14 @@ class OpenShellDeploymentBackend(DeploymentBackend):
         container = config.containers[0]
 
         # Launch the serve command once; the launcher writes a marker so a later poll
-        # does not relaunch it (read_status keeps no state across calls).
+        # does not relaunch it (read_status keeps no state across calls). Config files are
+        # delivered inside this once-only guard, immediately before launch, so the serve
+        # process finds them on disk and they are written exactly once per deployment.
         if not await self._serve_launched(sandbox_id):
+            failure = await self._deliver_config_files(sandbox_id, config.config_files)
+            if failure is not None:
+                await self._delete_sandbox_best_effort(sandbox_nm)
+                return failure
             failure = await self._launch_serve(sandbox_id, list(container.command) + list(container.args))
             if failure is not None:
                 await self._delete_sandbox_best_effort(sandbox_nm)
@@ -627,10 +640,20 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             raise
         return response.sandbox
 
-    async def _exec_detached(self, sandbox_id: str, command: list[str]) -> tuple[int | None, str]:
-        """Run a command, draining its event stream. Returns (exit_code, combined output)."""
+    async def _exec_detached(
+        self, sandbox_id: str, command: list[str], *, stdin: bytes | None = None
+    ) -> tuple[int | None, str]:
+        """Run a command, draining its event stream. Returns (exit_code, combined output).
+
+        When *stdin* is given it is streamed to the command as its standard input. The
+        ExecSandboxRequest carries a first-class ``stdin`` bytes field, so config-file
+        content is piped verbatim into ``cat``: the bytes never touch the argv nor the
+        (single-line-only, size-capped) sandbox environment.
+        """
         timeout = self._executor_config.request_timeout_seconds
         request = pb.ExecSandboxRequest(sandbox_id=sandbox_id, command=command, timeout_seconds=timeout)
+        if stdin is not None:
+            request.stdin = stdin
 
         def _drain() -> tuple[int | None, str]:
             exit_code: int | None = None
@@ -645,6 +668,65 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             return exit_code, "".join(chunks)
 
         return await asyncio.to_thread(_drain)
+
+    async def _deliver_config_files(
+        self, sandbox_id: str, config_files: list[ConfigFile]
+    ) -> BackendStatusUpdate | None:
+        """Write each declared config file into the sandbox before serve launch.
+
+        Returns None on success, or a terminal FAILED update naming the file when a write
+        does not succeed. A missing config file is a deterministic config error, so it is
+        reported loudly rather than silently dropped (the historical defect) and the
+        provisioning caller tears the sandbox down.
+
+        Delivery runs through ``ExecSandbox`` as the sandbox user (the RPC has no user
+        field; the policy pins ``run_as_user`` to the non-root sandbox user). It can
+        therefore only write paths that user owns -- ``/home/sandbox``, ``/sandbox``,
+        ``/tmp`` -- and NOT ``/workspace``, which the packaged agent image chowns to its
+        own ``agent`` user even though the sandbox policy lists it read-write. A target
+        the sandbox user cannot write fails here with the path and the shell's own error,
+        instead of reaching READY with the file absent. When OpenShell grows a native
+        file-transfer RPC, swap the ``cat`` for it; callers only ever emit a first-class
+        ``ConfigFile(path, content)`` and never learn how the bytes arrived.
+        """
+        for config_file in config_files:
+            path = config_file.path
+            directory = posixpath.dirname(path) or "/"
+            # set -e aborts before cat if the directory cannot be made; content arrives on
+            # stdin so it is opaque bytes to the shell (no escaping, no argv/env limit). The
+            # trailing printf runs only if every step succeeded, so its marker on stdout is
+            # positive proof the file was written -- see the marker check below.
+            script = (
+                f"set -e; mkdir -p {shlex.quote(directory)}; "
+                f"cat > {shlex.quote(path)}; chmod {config_file.mode:o} {shlex.quote(path)}; "
+                f"printf %s {_CONFIG_DELIVERED_MARKER}"
+            )
+            try:
+                exit_code, output = await self._exec_detached(
+                    sandbox_id, ["/bin/sh", "-c", script], stdin=config_file.content.encode("utf-8")
+                )
+            except grpc.RpcError as exc:
+                return BackendStatusUpdate(
+                    status="FAILED", status_message=f"Failed to write config file {path}: {_rpc_detail(exc)}"
+                )
+            # A definitively non-zero exit is a failure (e.g. a /workspace write denied by the
+            # sandbox user's permissions); surface the shell's own error with the path.
+            if exit_code not in (None, 0):
+                detail = output.strip()
+                message = f"Failed to write config file {path} (exit {exit_code})"
+                if detail:
+                    message = f"{message}: {detail}"
+                return BackendStatusUpdate(status="FAILED", status_message=message)
+            # Self-attesting delivery: require the completion marker rather than trusting a
+            # zero/None exit. This closes the residual silent-drop hole where a stream ends
+            # without an exit event (exit_code None) yet the write never happened -- an
+            # unconfirmed delivery fails loudly instead of advancing to READY file-less.
+            if _CONFIG_DELIVERED_MARKER not in output:
+                return BackendStatusUpdate(
+                    status="FAILED",
+                    status_message=f"Config file {path} delivery could not be confirmed (no completion marker)",
+                )
+        return None
 
     async def _list_endpoints(self, sandbox_nm: str) -> list[Endpoint]:
         """Return the sandbox's currently exposed services as endpoints."""
