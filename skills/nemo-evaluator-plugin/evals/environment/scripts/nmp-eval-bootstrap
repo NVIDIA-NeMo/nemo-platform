@@ -20,13 +20,14 @@ export PATH="/app/.venv/bin:${PATH}"
 mkdir -p "${NMP_EVAL_DATA_DIR}/files" "${NMP_EVAL_DATA_DIR}/subprocess-jobs"
 
 profile_is_ready() {
-    curl --fail --silent \
+    curl --fail --silent --connect-timeout 2 --max-time 10 \
         "${NMP_EVAL_BASE_URL%/}/apis/jobs/v2/execution-profiles" \
         | jq --exit-status 'any(.[]; .provider == "subprocess" and .profile == "default")' >/dev/null
 }
 
 platform_is_ready() {
-    curl --fail --silent "${NMP_EVAL_BASE_URL%/}/health/ready" >/dev/null \
+    curl --fail --silent --connect-timeout 2 --max-time 10 \
+        "${NMP_EVAL_BASE_URL%/}/health/ready" >/dev/null \
         && profile_is_ready
 }
 
