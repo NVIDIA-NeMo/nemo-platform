@@ -26,12 +26,17 @@ export const useSwarmEvents = (
   const [afterId, setAfterId] = useState(0);
   const [allEvents, setAllEvents] = useState<SwarmEvent[]>([]);
 
-  const { data } = useIronSwarmGetEvents(workspace, runName, { after: afterId }, {
-    query: {
-      enabled: Boolean(runName),
-      refetchInterval: isTerminal ? false : POLL_INTERVAL_MS,
-    },
-  });
+  const { data } = useIronSwarmGetEvents(
+    workspace,
+    runName,
+    { after: afterId },
+    {
+      query: {
+        enabled: Boolean(runName),
+        refetchInterval: isTerminal ? false : POLL_INTERVAL_MS,
+      },
+    }
+  );
 
   useEffect(() => {
     if (!data?.events?.length) return;

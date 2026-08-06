@@ -37,7 +37,12 @@ const Empty: FC<{ children: ReactNode }> = ({ children }) => (
  * the manifest every run uses — not a preview that gets regenerated. That is what makes showing it
  * worth doing, and what makes Refresh a deliberate action rather than a reload.
  */
-export const TargetPanel: FC<TargetPanelProps> = ({ manifest, onRefresh, refreshing, onEditEnv }) => {
+export const TargetPanel: FC<TargetPanelProps> = ({
+  manifest,
+  onRefresh,
+  refreshing,
+  onEditEnv,
+}) => {
   const egress = manifest.egress ?? [];
   const secrets = manifest.secrets ?? [];
   const env = Object.entries(manifest.env ?? {});
