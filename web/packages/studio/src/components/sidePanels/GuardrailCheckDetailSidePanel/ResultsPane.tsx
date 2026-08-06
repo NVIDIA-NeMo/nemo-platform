@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import {
   Flex,
   Stack,
@@ -21,7 +21,7 @@ import type { FC } from 'react';
 
 export interface ResultsPaneProps {
   readonly check: GuardrailCheckEntity;
-  readonly configData: RailsConfigOutput | undefined;
+  readonly configData: RailsConfig | undefined;
   readonly checkIndex: number;
   readonly className?: string;
 }

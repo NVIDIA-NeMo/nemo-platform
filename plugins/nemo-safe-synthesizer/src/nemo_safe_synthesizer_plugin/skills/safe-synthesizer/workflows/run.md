@@ -49,7 +49,7 @@ Run `command -v nemo 2>/dev/null || (test -x .venv/bin/nemo && realpath .venv/bi
 
 Use platform jobs for normal Safe Synthesizer usage. The platform compiles the spec into a GPU container step that runs the configured Safe Synthesizer task image.
 
-Use the Jobs API or SDK to create the job. The plugin CLI does not expose `nemo safe-synthesizer jobs` commands. For CLI users, point them to the generated Jobs/API surface available in their installed NeMo CLI, or to the Python SDK builder documented in `docs/safe-synthesizer/tutorials/safe-synthesizer-101.md`.
+Use the Jobs API or SDK to create the job. The plugin CLI does not expose `nemo safe-synthesizer jobs` commands. For CLI users, point them to the generated Jobs/API surface available in their installed NeMo CLI, or to the Python SDK builder documented in `docs/safe-synthesizer/tutorials/safe-synthesizer-101.mdx`.
 
 Use host-local execution only when the user is iterating on a local machine with CUDA/GPU access or debugging the task process outside the Jobs backend:
 
@@ -102,7 +102,7 @@ For platform submission, pass this object as the `spec` field in the Jobs API or
 ## Next Steps
 
 - Tune job parameters with `workflows/config.md` and `workflows/config-runs.md`.
-- Reuse a prior adapter or run plugin tests: `docs/safe-synthesizer/about/host-local-development.md`.
+- Reuse a prior adapter or run plugin tests: `docs/safe-synthesizer/about/host-local-development.mdx`.
 - Retrieve job result files with `workflows/results.md`.
 - Interpret output files with `workflows/artifacts.md`.
 - Debug failed runs with `workflows/diagnose.md`.

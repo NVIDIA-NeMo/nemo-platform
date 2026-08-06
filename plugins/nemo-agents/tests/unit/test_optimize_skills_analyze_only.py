@@ -228,35 +228,60 @@ def test_optimize_skills_job_analyze_only_requires_initial_batch() -> None:
         OptimizeSkillsJob().run(cfg, ctx=MagicMock())
 
 
-def test_cli_analyze_only_requires_initial_batch_flag() -> None:
-    """The CLI handler rejects --analyze-only without --initial-batch."""
+def _agents_cli_with_jobs():
+    """Build the agents CLI with ``nemo.jobs`` subgroups mounted.
+
+    ``AgentsCLI.get_cli()`` alone does not mount job subcommands — the platform
+    CLI loader injects them via :func:`add_job_commands`.  Replicate that here so
+    the ``optimize-skills run`` verb (and its analyze-only guard) is exercised
+    through the real generated CLI surface rather than a hand-written wrapper.
+    """
     from nemo_agents_plugin.cli import AgentsCLI
-    from typer.testing import CliRunner
+    from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
+    from nemo_platform_plugin.commands import add_job_commands
 
     app = AgentsCLI().get_cli()
-    runner = CliRunner()
-    result = runner.invoke(
+    add_job_commands(app, {"optimize-skills": OptimizeSkillsJob})
+    return app
+
+
+def _guard_message(result) -> str:
+    """CLI output plus any surfaced exception message, for guard assertions."""
+    exc = "" if result.exception is None else str(result.exception)
+    return f"{result.output}\n{exc}"
+
+
+def test_cli_analyze_only_requires_initial_batch_flag() -> None:
+    """`optimize-skills run --analyze-only` without --initial-batch is rejected."""
+    from typer.testing import CliRunner
+
+    app = _agents_cli_with_jobs()
+    result = CliRunner().invoke(
         app,
         [
             "optimize-skills",
+            "run",
+            "--agent",
+            "/tmp/agent",
             "--evals",
             "/tmp/x",
             "--analyze-only",
         ],
     )
-    assert result.exit_code == 1
-    assert "initial-batch" in result.output or "initial_batch" in result.output
+    assert result.exit_code != 0
+    message = _guard_message(result)
+    assert "initial-batch" in message or "initial_batch" in message
 
 
 def test_cli_analyze_only_from_config_file_requires_initial_batch(tmp_path: Path) -> None:
-    """analyze_only=true in a --config YAML must also be guarded (not just the CLI flag)."""
-    from nemo_agents_plugin.cli import AgentsCLI
+    """analyze_only=true in a --config-file YAML must also be guarded (not just the flag)."""
     from typer.testing import CliRunner
 
     config = tmp_path / "config.yml"
-    config.write_text("analyze_only: true\nevals: /tmp/x\n")
+    config.write_text("analyze_only: true\nagent: /tmp/agent\nevals: /tmp/x\n")
 
-    app = AgentsCLI().get_cli()
-    result = CliRunner().invoke(app, ["optimize-skills", "--config", str(config)])
-    assert result.exit_code == 1
-    assert "initial-batch" in result.output or "initial_batch" in result.output
+    app = _agents_cli_with_jobs()
+    result = CliRunner().invoke(app, ["optimize-skills", "run", "--config-file", str(config)])
+    assert result.exit_code != 0
+    message = _guard_message(result)
+    assert "initial-batch" in message or "initial_batch" in message

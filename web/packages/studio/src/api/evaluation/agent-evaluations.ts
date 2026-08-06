@@ -3,7 +3,6 @@
 
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import {
-  evaluatorCancelAgentEvaluateJob,
   evaluatorCreateAgentEvaluateJob,
   evaluatorGetAgentEvalResult,
   evaluatorGetAgentEvaluateJob,
@@ -45,7 +44,9 @@ export const agentNameForJob = (job: AgentEvaluateJob): string | null => {
 };
 
 export const evalConfigName = (job: AgentEvaluateJob): string | null => {
-  const name = job.spec?.benchmark?.eval_config_fileset;
+  // Formerly ``spec.benchmark.eval_config_fileset``; AgentEvalSpec now carries
+  // free-form ``labels`` (string map) after the evaluator OpenAPI regen.
+  const name = job.spec?.labels?.eval_config_fileset;
   return typeof name === 'string' && name.length > 0 ? name : null;
 };
 
@@ -81,14 +82,6 @@ export const fetchAgentEvalJob = async (
     if (e?.response?.status === 404 || e?.status === 404) return null;
     throw err;
   }
-};
-
-export const cancelAgentEvalJob = async (
-  workspace: string,
-  name: string,
-  signal: AbortSignal
-): Promise<void> => {
-  await evaluatorCancelAgentEvaluateJob(workspace, name, signal);
 };
 
 export const submitAgentEvalJob = async (
@@ -156,7 +149,7 @@ export interface AgentEvalScoreRow {
   trial_id: string;
   metric_type: string;
   status: string;
-  outputs?: Array<{ name: string; value: number | 'NaN' | null }>;
+  outputs?: Array<{ name: string; value: number | string | null }>;
   diagnostics?: unknown[];
   metadata?: Record<string, unknown>;
 }
@@ -240,9 +233,18 @@ export interface AgentEvalTaskDetail {
   metadata?: Record<string, unknown>;
   status: string;
   responseText?: string | null;
-  scores: Array<{ name: string; value: number | null }>;
+  scores: Array<{ name: string; value: number | string | null }>;
   diagnostics: unknown[];
 }
+
+/** Keeps a metric output usable by the score chip. Numbers pass through; rubric metrics
+ *  emit a string label (e.g. `draft_quality.label` = "strong") which must survive rather
+ *  than collapse to null and render as "not scored". Only a real NaN is unscored. */
+const metricOutputValue = (value: number | string | null | undefined): number | string | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') return value.toLowerCase() === 'nan' ? null : value;
+  return null;
+};
 
 /** Join a bundle's tasks/trials/scores into one per-task row list. */
 export const joinBundleByTask = (bundle: AgentEvalBundle | null): AgentEvalTaskDetail[] => {
@@ -270,7 +272,7 @@ export const joinBundleByTask = (bundle: AgentEvalBundle | null): AgentEvalTaskD
       scores: taskScores.flatMap((s) =>
         (s.outputs ?? []).map((o) => ({
           name: `${s.metric_type}.${o.name}`,
-          value: typeof o.value === 'number' && Number.isFinite(o.value) ? o.value : null,
+          value: metricOutputValue(o.value),
         }))
       ),
       diagnostics: taskScores.flatMap((s) => s.diagnostics ?? []),

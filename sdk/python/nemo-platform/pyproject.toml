@@ -61,7 +61,7 @@ nemo-evaluator-sdk = [
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
   "nemo-relay>=0.6.0,<0.7",
-  "nemo-fabric>=0.1.0rc6,<0.2.0",
+  "nemo-fabric>=0.1.0,<0.3.0",
 ]
 
 [project.entry-points."nemo.skills"]
@@ -142,7 +142,6 @@ path = "README.md"
 # replace relative links with absolute links
 pattern = '\[(.+?)\]\(((?!https?://)\S+?)\)'
 replacement = '[\1](https://github.com/stainless-sdks/nemo-platform-python/tree/main/\g<2>)'
-
 
 [tool.hatch.version]
 source = "nmp-dynamic-versioning"

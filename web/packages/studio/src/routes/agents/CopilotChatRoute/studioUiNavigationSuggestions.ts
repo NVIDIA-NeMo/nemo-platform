@@ -10,7 +10,7 @@ import {
   getDataDesignerJobListRoute,
   getEvaluationResultsRoute,
   getGuardrailsRoute,
-  getIntakeRoute,
+  getIntakeTracesRoute,
   getModelCompareRoute,
   getNewDataDesignerJobRoute,
   getNewFilesetRoute,
@@ -258,10 +258,10 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     patterns: [/\bworkspace jobs?\b/i, /\bworkspace job history\b/i],
   },
   {
-    id: 'annotation',
-    title: 'Open Annotation',
-    description: 'Studio has a UI for inspecting intake traces and annotations.',
-    getHref: getIntakeRoute,
+    id: 'traces',
+    title: 'Open Traces',
+    description: 'Studio has a UI for inspecting intake traces and recording feedback.',
+    getHref: getIntakeTracesRoute,
     requiredFeatureFlags: ['intakeEnabled'],
     patterns: [
       /\bintake (annotation|annotations|traces?|trace review)\b/i,

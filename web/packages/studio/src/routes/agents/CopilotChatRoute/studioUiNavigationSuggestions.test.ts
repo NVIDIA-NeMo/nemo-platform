@@ -65,7 +65,7 @@ describe('getStudioUiNavigationSuggestion', () => {
       },
       {
         prompt: 'Review intake annotations',
-        id: 'annotation',
+        id: 'traces',
       },
       {
         prompt: 'Open workspace settings',
@@ -100,6 +100,14 @@ describe('getStudioUiNavigationSuggestion', () => {
     for (const { prompt, id } of cases) {
       expect(getStudioUiNavigationSuggestion(prompt, workspace)).toMatchObject({ id });
     }
+  });
+
+  it('uses the traces destination for intake review prompts', () => {
+    expect(getStudioUiNavigationSuggestion('Review intake annotations', workspace)).toMatchObject({
+      id: 'traces',
+      title: 'Open Traces',
+      href: '/workspaces/default/intake/traces',
+    });
   });
 
   it('prefers agent-specific evaluation routes over general model evaluations', () => {

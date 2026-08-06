@@ -102,7 +102,7 @@ class TestExitCodes:
         assert rc == 0
 
     def test_returns_1_for_status_failed(self, monkeypatch, tmp_path: Path) -> None:
-        # Pin the EvaluateAgentJob / OptimizeAgentJob convention: a
+        # Pin the agent-style job convention: a
         # ``{"status": "failed", "returncode": ...}`` return signals
         # task failure that propagates as a non-zero process exit.
         _setup_env(monkeypatch, tmp_path, step_config={})
