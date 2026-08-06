@@ -9,8 +9,8 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 import fsspec.asyn
+from filesets import FilesetFileSystem
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from pydantic import Field, RootModel

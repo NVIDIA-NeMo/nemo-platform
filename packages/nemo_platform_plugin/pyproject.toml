@@ -43,6 +43,25 @@ Documentation = "https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages
 
 [project.optional-dependencies]
 # Generated from [tool.bundle-package]; do not edit by hand.
+nemo-evaluator-sdk = [
+  "pydantic>=2.10.6",
+  "jinja2>=3.1.6",
+  "jsonschema>=4.23.0",
+  "jsonpath-ng>=1.7.0",
+  "pyarrow>=19.0.1",
+  "pandas>=1.5.3",
+  "openai>=1.61.0",
+  "httpx>=0.27.0,<1",
+  "sacrebleu>=2.5.1",
+  "rouge_score==0.1.2",
+  "ragas==0.4.3",
+  "langchain-openai>=1.3.5",
+  "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
+  "nemo-relay>=0.7.2,<0.8",
+  "nemo-fabric>=0.2.0,<0.3.0",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
 nemo-platform-sdk = [
   "httpx>=0.23.0, <1",
   "pydantic>=2.0.0,<3",
@@ -83,3 +102,7 @@ packages = ["src/nemo_platform_plugin"]
 
 [tool.bundle-package]
 nemo-platform-sdk = { source = "../../sdk/python/nemo-platform/src/nemo_platform", module = "nemo_platform" }
+nemo-platform-ext = { source = "../nemo_platform_ext/src/nemo_platform_ext", module = "nemo_platform_ext", deps_group = "nemo-platform-sdk", force_include = { "../../../../docs" = "nemo_platform_ext/cli/docs" } }
+models = { source = "../models/src/models", module = "models", deps_group = "nemo-platform-sdk" }
+filesets = { source = "../filesets/src/filesets", module = "filesets", deps_group = "nemo-platform-sdk" }
+nemo-evaluator-sdk = { source = "../nemo_evaluator_sdk/src/nemo_evaluator_sdk", module = "nemo_evaluator_sdk" }

@@ -21,9 +21,9 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 import fsspec.asyn
+from filesets import FilesetFileSystem
 from nemo_agents_plugin.container.template import DOCKERIGNORE_TEMPLATE
 from nemo_platform import NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 

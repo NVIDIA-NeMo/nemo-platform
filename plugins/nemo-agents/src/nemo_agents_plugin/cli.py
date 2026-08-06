@@ -74,7 +74,7 @@ from nemo_agents_plugin.entities import (
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
-from nemo_platform.cli.core.formatters import Column, format_output
+from nemo_platform_ext.cli.core.formatters import Column, format_output
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress

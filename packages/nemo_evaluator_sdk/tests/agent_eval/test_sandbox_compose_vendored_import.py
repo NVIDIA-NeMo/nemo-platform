@@ -8,20 +8,16 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-from nemo_platform.beta.evaluator.agent_eval.runtimes.sandbox.providers.compose import (
-    ComposeCleanupError,
-    ComposeCommandResult,
-    ComposeServiceTopology,
-    ComposeTeardownContext,
-    DockerComposeSandboxProvider,
-    ProgressCallback,
-    PullPolicy,
-    TeardownHook,
-)
-
 
 def test_vendored_compose_public_imports_are_constructible_without_docker(tmp_path: Path) -> None:
     """The vendored public Compose façade remains importable without Docker."""
+    compose = importlib.import_module("nemo_platform.beta.evaluator.agent_eval.runtimes.sandbox.providers.compose")
+    ComposeCleanupError = compose.ComposeCleanupError
+    ComposeCommandResult = compose.ComposeCommandResult
+    ComposeServiceTopology = compose.ComposeServiceTopology
+    ComposeTeardownContext = compose.ComposeTeardownContext
+    DockerComposeSandboxProvider = compose.DockerComposeSandboxProvider
+
     for cls in (
         ComposeCleanupError,
         ComposeCommandResult,
@@ -31,9 +27,9 @@ def test_vendored_compose_public_imports_are_constructible_without_docker(tmp_pa
     ):
         assert getattr(importlib.import_module(cls.__module__), cls.__name__) is cls
 
-    assert ProgressCallback is not None
-    assert PullPolicy is not None
-    assert TeardownHook is not None
+    assert compose.ProgressCallback is not None
+    assert compose.PullPolicy is not None
+    assert compose.TeardownHook is not None
 
     topology = ComposeServiceTopology("agent", frozenset({"agent"}))
     command_result = ComposeCommandResult(("docker", "compose", "ps"), 0, "", "")

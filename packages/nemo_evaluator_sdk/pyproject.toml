@@ -108,6 +108,7 @@ addopts = ["--import-mode=importlib"]
 [tool.vendor-package]
 package = "nemo_evaluator_sdk"
 package_root = "packages/nemo_evaluator_sdk"
+sdk_include_mode = "source-package"
 source_module = "nemo_evaluator_sdk"
 target_sdk_module = "beta.evaluator"
 sdk_optional_dependencies_name = "nemo-evaluator-sdk"

@@ -176,7 +176,7 @@ def _create_svc(
 
 def _install_asgi_files_resource(sdk: NeMoPlatform, async_http_client: httpx.AsyncClient) -> None:
     """Route sync SDK file uploads through the in-process test app."""
-    from nemo_platform.filesets.resources import FilesResource
+    from filesets.resources import FilesResource
     from nemo_platform_plugin.client.adapter import client_from_platform
     from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 

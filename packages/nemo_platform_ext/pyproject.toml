@@ -88,6 +88,7 @@ packages = ["src/nemo_platform_ext"]
 [tool.vendor-package]
 package = "nemo_platform_ext"
 package_root = "packages/nemo_platform_ext"
+sdk_include_mode = "source-package"
 # Globs are evaluated per top-level module (e.g. `skills/`, `cli/`, `quickstart/`).
 # `**/*.md` recursively includes SKILL.md plus any companion markdown files
 # skills ship under `resources/` (e.g. notes, sub-docs, prompts). Add further

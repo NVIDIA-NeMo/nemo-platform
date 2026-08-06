@@ -12,10 +12,16 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import PurePath
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from fsspec.callbacks import DEFAULT_CALLBACK, Callback
 from fsspec.core import has_magic
+from nemo_platform.resources.files.files import (
+    AsyncFilesResource as GeneratedAsyncFilesResource,
+)
+from nemo_platform.resources.files.files import (
+    FilesResource as GeneratedFilesResource,
+)
 from nemo_platform.resources.files.filesets import AsyncFilesetsResource, FilesetsResource
 from nemo_platform.resources.files.otlp.otlp import AsyncOtlpResource, OtlpResource
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
@@ -150,6 +156,7 @@ class FilesResource:
         # Retain the platform client so the generated fileset/otlp sub-resources
         # (which speak to the platform client, not the FilesClient) can be exposed.
         self._platform_client = client
+        self._generated_files = GeneratedFilesResource(client)
         self._async_client = async_files_client
         if files_client is not None:
             self._client = files_client
@@ -162,6 +169,9 @@ class FilesResource:
     def client(self) -> FilesClient:
         """Access the underlying FilesClient for direct API calls."""
         return self._client
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._generated_files, name)
 
     @cached_property
     def filesets(self) -> FilesetsResource:
@@ -255,7 +265,7 @@ class FilesResource:
             ... )
 
             # With progress callback
-            >>> from nemo_platform.filesets import RichProgressCallback
+            >>> from filesets import RichProgressCallback
             >>> with RichProgressCallback(description="Downloading") as cb:
             ...     sdk.files.download(
             ...         remote_path="my-fileset#",
@@ -693,6 +703,7 @@ class AsyncFilesResource:
         # Retain the platform client so the generated fileset/otlp sub-resources
         # (which speak to the platform client, not the FilesClient) can be exposed.
         self._platform_client = client
+        self._generated_files = GeneratedAsyncFilesResource(client)
         if files_client is not None:
             self._client = files_client
         else:
@@ -704,6 +715,9 @@ class AsyncFilesResource:
     def client(self) -> AsyncFilesClient:
         """Access the underlying AsyncFilesClient for direct API calls."""
         return self._client
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._generated_files, name)
 
     @cached_property
     def filesets(self) -> AsyncFilesetsResource:

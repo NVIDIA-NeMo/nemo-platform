@@ -16,6 +16,7 @@ from data_designer.config.dataset_metadata import DatasetMetadata
 from data_designer.config.preview_results import PreviewResults
 from data_designer.config.utils.info import InterfaceInfo
 from data_designer.logging import RandomEmoji
+from models.resources import AsyncModelsResource, ModelsResource
 from nemo_data_designer_plugin.functions._types import (
     AnalysisFrame,
     DatasetFrame,
@@ -42,7 +43,6 @@ from nemo_data_designer_plugin.sdk.validation import (
     validate_config_sync,
 )
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.models.resources import AsyncModelsResource, ModelsResource
 from nemo_platform.types.inference import ModelProvider as NMPModelProvider
 from nemo_platform_plugin.functions.frames import Done, Error, Heartbeat
 from nemo_platform_plugin.sdk import NemoPluginSDKResources

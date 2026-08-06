@@ -23,7 +23,7 @@ from typing import Any, TextIO, cast
 from urllib.parse import urlparse
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.config.config import Config
+from nemo_platform_ext.config.config import Config
 
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 PAGE_SIZE = 1000

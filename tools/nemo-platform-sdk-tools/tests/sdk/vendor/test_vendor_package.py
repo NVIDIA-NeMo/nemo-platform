@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import sys
+from importlib import import_module, resources
 from pathlib import Path
 
 import tomlkit
@@ -68,7 +70,171 @@ def test_copy_included_paths_preserves_generated_header_for_empty_init(tmp_path:
 
     vendor_package._copy_included_paths(source_path, destination_path, ["**/*.py"])
 
-    assert (destination_path / "__init__.py").read_text(encoding="utf-8") == vendor_package.GENERATED_EMPTY_INIT_HEADER
+    assert (destination_path / "__init__.py").read_text(encoding="utf-8") == vendor_package.GENERATED_FILE_HEADER
+
+
+def test_alias_package_imports_submodules_from_source_module(tmp_path: Path, monkeypatch) -> None:
+    source_package = tmp_path / "source_pkg"
+    source_package.mkdir()
+    (source_package / "__init__.py").write_text("VALUE = 'source'\n", encoding="utf-8")
+    (source_package / "child.py").write_text("VALUE = 7\n", encoding="utf-8")
+
+    alias_package = tmp_path / "alias_pkg"
+    alias_package.mkdir()
+    (alias_package / "__init__.py").write_text(
+        "from nemo_platform._alias import alias_package\n\nalias_package('source_pkg', globals())\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.syspath_prepend(str(vendor_package.NMP_ROOT_PATH / "sdk/python/nemo-platform/src"))
+    for module_name in (
+        "alias_pkg",
+        "alias_pkg.child",
+        "source_pkg",
+        "source_pkg.child",
+        "nemo_platform._alias",
+        "nemo_platform",
+    ):
+        sys.modules.pop(module_name, None)
+
+    try:
+        source_child = import_module("source_pkg.child")
+        alias = import_module("alias_pkg")
+        alias_child = import_module("alias_pkg.child")
+        fromlist_child = getattr(__import__("alias_pkg", fromlist=["child"]), "child")
+
+        assert alias.VALUE == "source"
+        assert alias_child is fromlist_child
+        assert alias_child.__name__ == "alias_pkg.child"
+        assert source_child.__name__ == "source_pkg.child"
+        assert alias_child.VALUE == source_child.VALUE == 7
+    finally:
+        for module_name in (
+            "alias_pkg",
+            "alias_pkg.child",
+            "source_pkg",
+            "source_pkg.child",
+            "nemo_platform._alias",
+            "nemo_platform",
+        ):
+            sys.modules.pop(module_name, None)
+
+
+def test_alias_package_exposes_source_resource_metadata(tmp_path: Path, monkeypatch) -> None:
+    source_package = tmp_path / "source_pkg"
+    source_package.mkdir()
+    (source_package / "__init__.py").write_text(
+        "from pathlib import Path\n\n\ndef package_dir() -> Path:\n    return Path(__file__).parent\n",
+        encoding="utf-8",
+    )
+    (source_package / "data.txt").write_text("source-data\n", encoding="utf-8")
+
+    alias_package = tmp_path / "alias_pkg"
+    alias_package.mkdir()
+    (alias_package / "__init__.py").write_text(
+        "from nemo_platform._alias import alias_package\n\nalias_package('source_pkg', globals())\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.syspath_prepend(str(vendor_package.NMP_ROOT_PATH / "sdk/python/nemo-platform/src"))
+    for module_name in ("alias_pkg", "source_pkg", "nemo_platform._alias", "nemo_platform"):
+        sys.modules.pop(module_name, None)
+
+    try:
+        alias = import_module("alias_pkg")
+
+        assert alias.__file__ == str(source_package / "__init__.py")
+        assert alias.package_dir() == source_package
+        assert resources.files(alias).joinpath("data.txt").read_text(encoding="utf-8") == "source-data\n"
+    finally:
+        for module_name in ("alias_pkg", "source_pkg", "nemo_platform._alias", "nemo_platform"):
+            sys.modules.pop(module_name, None)
+
+
+def test_vendor_package_files_source_package_mode_writes_target_alias(tmp_path: Path, monkeypatch) -> None:
+    source_path = tmp_path / "packages/models/src/models"
+    source_path.mkdir(parents=True)
+    (source_path / "resources.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    stale_target = tmp_path / "sdk/python/nemo-platform/src/nemo_platform/models"
+    stale_target.mkdir(parents=True)
+    (stale_target / "resources.py").write_text("STALE = True\n", encoding="utf-8")
+
+    monkeypatch.setattr(vendor_package, "NMP_ROOT_PATH", tmp_path)
+
+    vendor_package._vendor_package_files(
+        {
+            "package": "models",
+            "package_root": "packages/models",
+            "sdk_include_mode": "source-package",
+            "target_sdk_module": "models",
+        }
+    )
+
+    alias_init = stale_target / "__init__.py"
+    assert alias_init.read_text(encoding="utf-8") == vendor_package.GENERATED_ALIAS_INIT_TEMPLATE.format(
+        source_module="models"
+    )
+    assert not (stale_target / "resources.py").exists()
+
+
+def test_vendor_package_files_source_package_mode_writes_top_level_aliases(tmp_path: Path, monkeypatch) -> None:
+    source_path = tmp_path / "packages/nemo_platform_ext/src/nemo_platform_ext"
+    (source_path / "cli").mkdir(parents=True)
+    (source_path / "quickstart").mkdir()
+    (source_path / "__pycache__").mkdir()
+
+    sdk_path = tmp_path / "sdk/python/nemo-platform/src/nemo_platform"
+    sdk_path.mkdir(parents=True)
+    stale_tests = tmp_path / "sdk/python/nemo-platform/tests/vendored/nemo_platform_ext"
+    stale_tests.mkdir(parents=True)
+    (stale_tests / "test_stale.py").write_text("STALE = True\n", encoding="utf-8")
+
+    monkeypatch.setattr(vendor_package, "NMP_ROOT_PATH", tmp_path)
+
+    vendor_package._vendor_package_files(
+        {
+            "package": "nemo_platform_ext",
+            "package_root": "packages/nemo_platform_ext",
+            "sdk_include_mode": "source-package",
+        }
+    )
+
+    assert (sdk_path / "cli/__init__.py").read_text(encoding="utf-8") == (
+        vendor_package.GENERATED_ALIAS_INIT_TEMPLATE.format(source_module="nemo_platform_ext.cli")
+    )
+    assert (sdk_path / "quickstart/__init__.py").read_text(encoding="utf-8") == (
+        vendor_package.GENERATED_ALIAS_INIT_TEMPLATE.format(source_module="nemo_platform_ext.quickstart")
+    )
+    assert not (sdk_path / "__pycache__").exists()
+    assert not stale_tests.exists()
+
+
+def test_vendor_package_files_source_package_mode_creates_beta_parent_init(tmp_path: Path, monkeypatch) -> None:
+    source_path = tmp_path / "packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk"
+    source_path.mkdir(parents=True)
+
+    sdk_path = tmp_path / "sdk/python/nemo-platform/src/nemo_platform"
+    sdk_path.mkdir(parents=True)
+
+    monkeypatch.setattr(vendor_package, "NMP_ROOT_PATH", tmp_path)
+
+    vendor_package._vendor_package_files(
+        {
+            "package": "nemo_evaluator_sdk",
+            "package_root": "packages/nemo_evaluator_sdk",
+            "sdk_include_mode": "source-package",
+            "source_module": "nemo_evaluator_sdk",
+            "target_sdk_module": "beta.evaluator",
+        }
+    )
+
+    assert (sdk_path / "beta/__init__.py").read_text(encoding="utf-8") == vendor_package.GENERATED_FILE_HEADER
+    assert (sdk_path / "beta/evaluator/__init__.py").read_text(encoding="utf-8") == (
+        vendor_package.GENERATED_ALIAS_INIT_TEMPLATE.format(source_module="nemo_evaluator_sdk")
+    )
 
 
 def test_update_dependencies_of_sdk_pyproject_merges_optional_dependency_groups(tmp_path: Path, monkeypatch) -> None:
@@ -399,6 +565,125 @@ dependencies = ["rich>=14.1.0"]
         "pydantic>=2.10.6",
     ]
     assert list(optional["services"]) == ["rich>=14.1.0", "nemo-platform[core-service]"]
+
+
+def test_process_bundle_packages_clears_generated_group_when_dependencies_empty(tmp_path: Path, monkeypatch) -> None:
+    wrapper_path = tmp_path / "packages/nemo_platform"
+    plugin_path = tmp_path / "plugins/empty"
+    (plugin_path / "src/empty_plugin").mkdir(parents=True)
+    wrapper_path.mkdir(parents=True)
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[tool.uv.workspace]
+members = ["packages/nemo_platform"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (wrapper_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nemo-platform"
+
+[project.optional-dependencies]
+# Generated from [tool.bundle-package]; do not edit by hand.
+empty-plugin = ["stale-plugin-dep"]
+
+[tool.bundle-package]
+empty-plugin = { source = "../../plugins/empty/src/empty_plugin", module = "empty_plugin" }
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (plugin_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "empty-plugin"
+dependencies = ["nemo-platform"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(vendor_package, "NMP_ROOT_PATH", tmp_path)
+    vendor_package._process_bundle_packages()
+
+    wrapper_content = (wrapper_path / "pyproject.toml").read_text(encoding="utf-8")
+    wrapper_updated = tomlkit.parse(wrapper_content)
+    optional = wrapper_updated["project"]["optional-dependencies"]
+
+    assert list(optional["empty-plugin"]) == []
+    assert "stale-plugin-dep" not in wrapper_content
+
+
+def test_process_bundle_packages_merges_shared_generated_dependency_group(tmp_path: Path, monkeypatch) -> None:
+    wrapper_path = tmp_path / "packages/nemo_platform_plugin"
+    sdk_path = tmp_path / "sdk/python/nemo-platform"
+    ext_path = tmp_path / "packages/nemo_platform_ext"
+    models_path = tmp_path / "packages/models"
+    (sdk_path / "src/nemo_platform").mkdir(parents=True)
+    (ext_path / "src/nemo_platform_ext").mkdir(parents=True)
+    (models_path / "src/models").mkdir(parents=True)
+    wrapper_path.mkdir(parents=True)
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[tool.uv.workspace]
+members = ["packages/nemo_platform_plugin"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (wrapper_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nemo-platform-plugin"
+
+[project.optional-dependencies]
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-platform-sdk = ["stale-sdk-dep"]
+
+[tool.bundle-package]
+nemo-platform-sdk = { source = "../../sdk/python/nemo-platform/src/nemo_platform", module = "nemo_platform" }
+nemo-platform-ext = { source = "../nemo_platform_ext/src/nemo_platform_ext", module = "nemo_platform_ext", deps_group = "nemo-platform-sdk" }
+models = { source = "../models/src/models", module = "models", deps_group = "nemo-platform-sdk" }
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (sdk_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nemo-platform-sdk"
+dependencies = ["docker>=7.0.0", "httpx>=0.23.0"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (ext_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nemo-platform-ext"
+dependencies = ["nemo-platform-sdk", "rich>=13.7.1"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (models_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "models"
+dependencies = ["pydantic>=2.10.6"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(vendor_package, "NMP_ROOT_PATH", tmp_path)
+    vendor_package._process_bundle_packages()
+
+    wrapper_updated = tomlkit.parse((wrapper_path / "pyproject.toml").read_text(encoding="utf-8"))
+    optional = wrapper_updated["project"]["optional-dependencies"]
+
+    assert list(optional["nemo-platform-sdk"]) == [
+        "docker>=7.0.0",
+        "httpx>=0.23.0",
+        "rich>=13.7.1",
+        "pydantic>=2.10.6",
+    ]
 
 
 def test_process_bundle_packages_rebuilds_platform_seed_service_group(tmp_path: Path, monkeypatch) -> None:
@@ -805,15 +1090,13 @@ class AsyncNeMoPlatform:
     vendor_package._replace_client_methods(
         sdk_path=sdk_path,
         source_path=source_path,
-        source_module="nemo_platform_ext",
-        target_module="nemo_platform",
     )
 
     updated = client_path.read_text(encoding="utf-8")
 
     assert "from pathlib import Path" in updated
     assert "from nemo_platform._base_client import DefaultAsyncHttpxClient, DefaultHttpxClient" in updated
-    assert "from nemo_platform.client.tls import client_verify_from_env" in updated
+    assert "from nemo_platform_ext.client.tls import client_verify_from_env" in updated
     assert "from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR" in updated
     assert "def _should_bootstrap_config(config_path: Path | None = None) -> bool:" in updated
     assert "return config_path is not None" in updated
