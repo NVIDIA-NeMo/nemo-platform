@@ -782,9 +782,15 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             return None
         command, description, exec_timeout = probe_command
         exit_code, _ = await self._exec_detached(sandbox_id, command, timeout=exec_timeout)
-        # Match the liveness convention: an undecidable probe (no exit event) is not
-        # treated as a failure, so a flaky exec never wedges a healthy workload.
-        if exit_code in (None, 0):
+        # Readiness fails closed, unlike liveness. Liveness fails open on an undecidable
+        # probe so a flaky RPC never demotes a healthy deployment, but readiness gates
+        # admission the other way: only a probe that positively proves reachability
+        # (exit 0) may expose the port and flip to sticky READY. A rare no-exit-event
+        # (None) stays STARTING and self-heals -- the port is not exposed while pending,
+        # so the next poll re-probes; a workload that can never be probed never claims
+        # READY, which is the contract this gate exists to keep. Timeouts and RPC errors
+        # surface as RpcError -> UNKNOWN upstream, not as a None exit here.
+        if exit_code == 0:
             return None
         return BackendStatusUpdate(status="STARTING", status_message=f"Awaiting readiness: {description}")
 

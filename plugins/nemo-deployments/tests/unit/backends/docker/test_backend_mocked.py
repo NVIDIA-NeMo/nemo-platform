@@ -661,15 +661,17 @@ async def test_read_status_starting_when_running_port_not_bound(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # No declared probe, nothing yet listening on the published port -> STARTING, so
-    # READY does not race the workload's bind().
+    # READY does not race the workload's bind(). Hold the port bound-but-not-listening
+    # for the whole probe so nothing else can bind and listen on it mid-test; a
+    # connect() still gets ECONNREFUSED, the not-yet-bound state under test.
     monkeypatch.setenv("NMP_LOOPBACK_ADDRESS", "127.0.0.1")
     mock_entities.get.return_value = sample_config()
     with socket.socket() as probe_socket:
         probe_socket.bind(("127.0.0.1", 0))
         host_port = probe_socket.getsockname()[1]
-    mock_docker_client.containers.get.return_value = _running_container_with_published_port(host_port)
+        mock_docker_client.containers.get.return_value = _running_container_with_published_port(host_port)
 
-    update = await docker_backend.read_status(workspace="default", name="srv")
+        update = await docker_backend.read_status(workspace="default", name="srv")
 
     assert update.status == "STARTING"
     assert "not ready" in update.status_message

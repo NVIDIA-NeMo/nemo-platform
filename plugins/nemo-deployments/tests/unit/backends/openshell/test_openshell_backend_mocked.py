@@ -491,6 +491,31 @@ async def test_read_status_starting_until_default_tcp_probe_passes(
     mock_stub.ExposeService.assert_not_called()
 
 
+async def test_read_status_starting_when_readiness_probe_yields_no_exit(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # Readiness fails closed: a probe whose exec stream ends without an exit event cannot
+    # prove reachability, so it must not expose the port and flip to sticky READY. It
+    # stays STARTING and self-heals on the next poll. (Liveness fails open on the same
+    # undecidable signal; readiness gates admission the other way.)
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    stdout_only = MagicMock()
+    stdout_only.HasField.side_effect = lambda field: field == "stdout"
+    stdout_only.stdout.data = b"partial"
+    mock_stub.ExecSandbox.side_effect = [
+        _exec_events(0),  # marker present
+        _exec_events(0),  # liveness: alive
+        [stdout_only],  # readiness: stream ends with no exit event -> undecidable
+    ]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    assert "readiness" in update.status_message.lower()
+    mock_stub.ExposeService.assert_not_called()
+
+
 async def test_read_status_ready_when_default_tcp_probe_connects(
     openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
 ) -> None:
