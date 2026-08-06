@@ -11155,6 +11155,15 @@ components:
           - $ref: '#/components/schemas/EvaluatorAggregate'
           description: Average total tokens (input + output) per test case, aggregated
             across the evaluation.
+        end_to_end_latency_ms:
+          title: End To End Latency Ms
+          description: 'End-to-end latency in milliseconds assuming tasks run serially:
+            the sum of per-test-case latency, where a test case run more than once
+            contributes the average of its attempts. Equal to latency_ms.sum; null
+            when no session carries latency.'
+          readOnly: true
+          nullable: true
+          type: number
         experiment_group_id:
           type: string
           title: Experiment Group Id
@@ -11169,6 +11178,7 @@ components:
       - workspace
       - experiment_ids
       - dataset_name
+      - end_to_end_latency_ms
       - experiment_group_id
       title: EvaluationResponse
       description: Evaluation as served by the API, including ClickHouse-hydrated

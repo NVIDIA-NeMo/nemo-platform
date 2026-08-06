@@ -1659,11 +1659,13 @@ components:
           title: Fail Fast
           description: Stop the run on the first scoring failure when True.
           default: false
-        benchmark:
-          additionalProperties: true
+        labels:
+          additionalProperties:
+            type: string
           type: object
-          title: Benchmark
-          description: Benchmark metadata recorded with the run.
+          title: Labels
+          description: Caller-supplied tags recorded on the run's metadata (e.g. benchmark,
+            mode, backend).
         tasks:
           anyOf:
           - $ref: '#/components/schemas/TasksetRef'
@@ -1823,11 +1825,13 @@ components:
           title: Fail Fast
           description: Stop the run on the first scoring failure when True.
           default: false
-        benchmark:
-          additionalProperties: true
+        labels:
+          additionalProperties:
+            type: string
           type: object
-          title: Benchmark
-          description: Benchmark metadata recorded with the run.
+          title: Labels
+          description: Caller-supplied tags recorded on the run's metadata (e.g. benchmark,
+            mode, backend).
         tasks:
           items:
             $ref: '#/components/schemas/AgentEvalTaskSpec'

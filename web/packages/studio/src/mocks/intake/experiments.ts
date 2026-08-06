@@ -31,6 +31,7 @@ const mockEvaluation = (name: string): EvaluationResponse => ({
   experiment_ids: ['grp_my-group'],
   dataset_name: 'sample-dataset',
   experiment_group_id: 'grp_my-group',
+  end_to_end_latency_ms: null,
 });
 
 export const mockEvaluationsPage = (): EvaluationResponsesPage => ({

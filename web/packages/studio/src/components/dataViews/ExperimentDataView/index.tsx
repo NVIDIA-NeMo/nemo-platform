@@ -52,6 +52,7 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   created_at: 'created_at',
   cost_usd: 'cost_usd.mean',
   latency_ms: 'latency_ms.mean',
+  end_to_end_latency_ms: 'latency_ms.sum',
   tokens: 'tokens.mean',
   test_case_count: 'test_case_count',
 };
@@ -64,6 +65,7 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
 const sortFieldToColumnId = (field: string): string | undefined => {
   if (field === 'name' || field === 'created_at' || field === 'test_case_count') return field;
   if (field.startsWith('cost_usd.')) return 'cost_usd';
+  if (field === 'latency_ms.sum') return 'end_to_end_latency_ms';
   if (field.startsWith('latency_ms.')) return 'latency_ms';
   if (field.startsWith('tokens.')) return 'tokens';
   const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
@@ -95,6 +97,7 @@ const seedSortFromDefault = (
 const getEvaluationFilterField = (id: string): string | undefined => {
   if (id === 'cost_usd') return 'cost_usd.mean';
   if (id === 'latency_ms') return 'latency_ms.mean';
+  if (id === 'end_to_end_latency_ms') return 'latency_ms.sum';
   if (id === 'tokens') return 'tokens.mean';
   const evaluatorMatch = id.match(/^evaluator-(.+)$/);
   if (evaluatorMatch) return `evaluators.${evaluatorMatch[1]}.mean`;
@@ -433,6 +436,14 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
             </MeanValueTooltipCell>
           );
         },
+      }),
+      accessor((original) => original.end_to_end_latency_ms, {
+        id: 'end_to_end_latency_ms',
+        header: 'End-to-end latency',
+        enableSorting: true,
+        meta: { title: false, filter: numberRangeFilter('End-to-end latency') },
+        // Sum of per-task latency (a task's attempts averaged): total time to run the tasks serially.
+        cell: ({ row }) => <Text>{formatDurationMs(row.original.end_to_end_latency_ms)}</Text>,
       }),
       accessor((original) => original.tokens?.mean, {
         id: 'tokens',
