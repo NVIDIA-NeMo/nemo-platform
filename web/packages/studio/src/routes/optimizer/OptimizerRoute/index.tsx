@@ -16,7 +16,8 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { insightStatusColor } from '@studio/routes/optimizer/insightStatus';
+import { insightActions, insightStatusColor } from '@studio/routes/optimizer/insightStatus';
+import { useInsightStatusActions } from '@studio/routes/optimizer/useInsightStatusActions';
 import { getOptimizerInsightRoute, getOptimizerRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Lightbulb } from 'lucide-react';
@@ -31,6 +32,7 @@ export const OptimizerRoute: FC = () => {
   });
 
   const navigate = useNavigate();
+  const statusActions = useInsightStatusActions(workspace);
 
   const dataViewState = useStudioDataViewState({
     defaultSort: [{ id: 'created_at', desc: true }],
@@ -126,7 +128,13 @@ export const OptimizerRoute: FC = () => {
     rowActionsColumn({
       size: ROW_ACTIONS_COLUMN_SIZE,
       enableResizing: false,
-      rowActions: () => [],
+      rowActions: (insight) =>
+        insightActions(insight.status).map((action) => ({
+          children: action.label,
+          danger: action.target === 'deleted',
+          disabled: statusActions.isPending,
+          onSelect: () => statusActions.run(insight, action.target),
+        })),
     }),
   ];
 
@@ -170,6 +178,7 @@ export const OptimizerRoute: FC = () => {
           }}
         />
       </Stack>
+      {statusActions.slotModal}
     </AccessibleTitle>
   );
 };

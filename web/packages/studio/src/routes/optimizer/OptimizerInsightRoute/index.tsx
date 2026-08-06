@@ -4,7 +4,6 @@
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   Anchor,
   Button,
@@ -16,13 +15,7 @@ import {
   Tag,
   Text,
 } from '@nvidia/foundations-react-core';
-import {
-  getOptimizerGetInsightQueryKey,
-  getOptimizerListInsightsQueryKey,
-  useOptimizerGetInsight,
-  useOptimizerUpdateInsight,
-  type InsightStatus,
-} from '@studio/api/optimizer';
+import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExpandableMessage } from '@studio/components/ExpandableMessage';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
@@ -30,20 +23,18 @@ import { Loading } from '@studio/components/Layouts/Loading';
 import { LINK_DOCS_STUDIO_EVALUATION } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { InsightOpenModal } from '@studio/routes/optimizer/InsightOpenModal';
 import { insightActions, insightStatusColor } from '@studio/routes/optimizer/insightStatus';
 import { InsightTracesTable } from '@studio/routes/optimizer/InsightTracesTable';
 import { InsightExperiments } from '@studio/routes/optimizer/OptimizerInsightRoute/InsightExperiments';
+import { useInsightStatusActions } from '@studio/routes/optimizer/useInsightStatusActions';
 import { getOptimizerRoute } from '@studio/routes/utils';
-import { useQueryClient } from '@tanstack/react-query';
-import { type FC, useState } from 'react';
+import { type FC } from 'react';
 import { Link, useParams } from 'react-router';
 
 export const OptimizerInsightRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { insightId = '' } = useParams<{ insightId: string }>();
-  const queryClient = useQueryClient();
-  const toast = useToast();
+  const statusActions = useInsightStatusActions(workspace);
 
   const {
     data: insight,
@@ -51,31 +42,6 @@ export const OptimizerInsightRoute: FC = () => {
     isError,
     refetch,
   } = useOptimizerGetInsight(workspace, insightId);
-
-  const { mutate: updateInsight, isPending: isUpdating } = useOptimizerUpdateInsight({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getOptimizerGetInsightQueryKey(workspace, insightId),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getOptimizerListInsightsQueryKey(workspace),
-        });
-      },
-      onError: () => toast.error('Failed to update insight.'),
-    },
-  });
-
-  const [openModalOpen, setOpenModalOpen] = useState(false);
-
-  // The external agent changes the status after it creates the experiment.
-  const handleAction = (target: InsightStatus) => {
-    if (target === 'open') {
-      setOpenModalOpen(true);
-      return;
-    }
-    updateInsight({ workspace, insightId, data: { status: target } });
-  };
 
   useBreadcrumbs({
     items: [
@@ -139,8 +105,8 @@ export const OptimizerInsightRoute: FC = () => {
                   key={action.target}
                   kind={action.kind}
                   color={action.color}
-                  disabled={isUpdating}
-                  onClick={() => handleAction(action.target)}
+                  disabled={statusActions.isPending}
+                  onClick={() => statusActions.run(insight, action.target)}
                 >
                   {action.label}
                 </Button>
@@ -194,8 +160,8 @@ export const OptimizerInsightRoute: FC = () => {
             <InsightExperiments
               workspace={workspace}
               insightId={insightId}
-              onRunExperiment={() => handleAction('open')}
-              runExperimentDisabled={isUpdating}
+              onRunExperiment={() => statusActions.run(insight, 'open')}
+              runExperimentDisabled={statusActions.isPending}
             />
           </Card>
         </div>
@@ -205,13 +171,7 @@ export const OptimizerInsightRoute: FC = () => {
           <InsightTracesTable workspace={workspace} traceIds={traceRefs} />
         </Stack>
       </Stack>
-
-      <InsightOpenModal
-        open={openModalOpen}
-        insight={insight}
-        workspace={workspace}
-        onClose={() => setOpenModalOpen(false)}
-      />
+      {statusActions.slotModal}
     </AccessibleTitle>
   );
 };

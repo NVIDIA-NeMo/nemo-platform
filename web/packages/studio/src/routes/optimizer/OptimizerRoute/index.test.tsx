@@ -8,7 +8,8 @@ import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
 import { OptimizerRoute } from '@studio/routes/optimizer/OptimizerRoute';
 import { getOptimizerRoute } from '@studio/routes/utils';
-import { renderRoute, screen, within } from '@studio/tests/util/render';
+import { renderRoute, screen, waitFor, within } from '@studio/tests/util/render';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
 const INSIGHTS_URL = `${PLATFORM_BASE_URL}/apis/insights/v2/workspaces/:workspace/insights`;
@@ -76,11 +77,49 @@ describe('OptimizerRoute', () => {
     expect(await findCell('Positive count', 'Experiments')).toHaveTextContent('7');
     expect(await findCell('Zero count', 'Experiments')).toHaveTextContent('0');
     expect(await findCell('Null count', 'Experiments')).toHaveTextContent('—');
+    // eslint-disable-next-line testing-library/no-node-access -- <time> has no accessible role
     expect((await findCell('Positive count', 'Last Seen')).querySelector('time')).toHaveAttribute(
       'datetime',
       '2026-07-21T12:00:00Z'
     );
     expect(await findCell('Zero count', 'Last Seen')).toHaveTextContent('—');
     expect(experimentRequest).not.toHaveBeenCalled();
+  });
+
+  it('runs the status actions for a row from its row actions menu', async () => {
+    const user = userEvent.setup();
+    const patches: Array<{ insightId: string; body: unknown }> = [];
+    server.use(
+      http.get(INSIGHTS_URL, () =>
+        HttpResponse.json(
+          insightsPage([
+            makeInsight('open-insight', 'Open insight'),
+            { ...makeInsight('resolved-insight', 'Resolved insight'), status: 'resolved' },
+          ])
+        )
+      ),
+      http.patch(`${INSIGHTS_URL}/:insightId`, async ({ params, request }) => {
+        patches.push({ insightId: String(params.insightId), body: await request.json() });
+        return HttpResponse.json({});
+      })
+    );
+
+    renderList();
+
+    const openRow = await screen.findByRole('row', { name: /Open insight/ });
+    await user.click(within(openRow).getByRole('button', { name: 'Row Actions' }));
+    expect(await screen.findByText('Delete')).toBeInTheDocument();
+    await user.click(screen.getByText('Resolve'));
+
+    await waitFor(() =>
+      expect(patches).toEqual([{ insightId: 'open-insight', body: { status: 'resolved' } }])
+    );
+
+    // A resolved insight can only be re-opened by running an experiment, which the CLI does.
+    const resolvedRow = screen.getByRole('row', { name: /Resolved insight/ });
+    await user.click(within(resolvedRow).getByRole('button', { name: 'Row Actions' }));
+    await user.click(await screen.findByText('Run experiment'));
+
+    expect(await screen.findByText(/Run the following CLI command/)).toBeInTheDocument();
   });
 });
