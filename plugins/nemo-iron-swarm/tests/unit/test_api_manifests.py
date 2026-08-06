@@ -517,6 +517,23 @@ def test_delete_manifest_removes_its_bundle(client, mock_entity_client, monkeypa
     assert deleted == ["default/agent-fs-1"]
 
 
+def test_delete_manifest_keeps_a_caller_supplied_project_bundle(client, mock_entity_client, monkeypatch) -> None:
+    """Nothing stops two manifests naming one uploaded bundle, so deleting it would break the other."""
+    deleted: list[str] = []
+    monkeypatch.setattr(manifests_module, "delete_fileset", lambda _sdk, ref: deleted.append(ref))
+    mock_entity_client.get = AsyncMock(
+        return_value=IronSwarmManifest(
+            name="p1", workspace="default", source_type="project", project_fileset="default/proj-fs-1"
+        )
+    )
+    mock_entity_client.delete = AsyncMock(return_value=None)
+
+    resp = client.delete("/apis/iron-swarm/v2/workspaces/default/manifests/p1")
+
+    assert resp.status_code == 204
+    assert deleted == []
+
+
 def test_env_is_persisted_and_survives_refresh(client, mock_entity_client) -> None:
     """env is operator intent like egress — rebuilding the scaffold must not discard it."""
     mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
