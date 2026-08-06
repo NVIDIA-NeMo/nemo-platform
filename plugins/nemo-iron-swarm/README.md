@@ -444,6 +444,8 @@ JSON hitlogs out), with HTTP for live events and the human-in-the-loop interview
 Studio calls — reading the agent registry and injecting the Inference Gateway URL into its LLMs, so
 the sandboxed victim needs no raw model key. `init --project-dir` instead runs iron-swarm's own
 interactive `init` in your terminal, then uploads the project as a fileset the run re-downloads.
-Either way the manifest is stored as an entity; agent-source manifests are re-resolved from the
-agent ref on every run, so the stored settings (egress, secrets, port) are what persist — not the
-rendered YAML.
+Either way the manifest is stored as an entity and then frozen: `init` resolves once and saves the
+resulting scaffold as a fileset the run re-downloads, so two runs of one manifest hit the same
+target — which is what a "did the hardening help?" answer depends on. Edits to a registered agent
+reach an existing manifest only through `POST /manifests/{name}/refresh`, which `apply-mitigation`
+calls for you. The stored settings (egress, secrets, port) are what persist — not the rendered YAML.

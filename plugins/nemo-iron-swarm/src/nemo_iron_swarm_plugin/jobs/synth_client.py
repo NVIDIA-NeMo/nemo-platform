@@ -83,7 +83,7 @@ def launch_synth_service(
 ) -> Iterator[SynthClient]:
     """Spawn ``iron-swarm serve`` on a free localhost port, yield a connected client, tear it down.
 
-    Raises ``RuntimeError`` if the server exits early or isn't healthy within *ready_timeout*.
+    Raises ``IronSwarmRunError`` if the server exits early or isn't healthy within *ready_timeout*.
     """
     port = _free_port()
     cmd = [str(iron_swarm_bin), "serve", "--host", "127.0.0.1", "--port", str(port)]
