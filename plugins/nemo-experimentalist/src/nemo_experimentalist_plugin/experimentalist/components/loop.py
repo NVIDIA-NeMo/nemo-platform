@@ -75,7 +75,6 @@ from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
-from nemo_experimentalist_plugin.experimentalist.reporting import reward_scalar
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
@@ -529,7 +528,7 @@ class EvolutionaryOptimizer(Agent):
                     None,
                 )
                 if baseline_node is not None and baseline_node.val_reward:
-                    reporter.seed_baseline(reward_scalar(baseline_node.val_reward))
+                    reporter.seed_baseline(baseline_node.val_reward)
             run_entity = self._load_run_entity() or await self._create_experiment_run(
                 workspace=workspace,
                 backend=backend,
@@ -600,7 +599,8 @@ class EvolutionaryOptimizer(Agent):
                     reporter.candidate_evaluated(
                         label=candidates[0].label,
                         split="validation",
-                        reward=reward_scalar(validation_result.aggregate_metrics),
+                        metrics=validation_result.aggregate_metrics,
+                        objective_metrics=config.objective_function,
                         artifacts=self._results_dir(validation_result.id),
                     )
             except Exception:
@@ -689,7 +689,8 @@ class EvolutionaryOptimizer(Agent):
                             reporter.candidate_evaluated(
                                 label=survivor.label,
                                 split="train",
-                                reward=reward_scalar(train_candidate_results[survivor.label].aggregate_metrics),
+                                metrics=train_candidate_results[survivor.label].aggregate_metrics,
+                                objective_metrics=config.objective_function,
                                 artifacts=self._results_dir(train_candidate_results[survivor.label].id),
                             )
                 analysis = await self._analyze_round(
@@ -807,7 +808,8 @@ class EvolutionaryOptimizer(Agent):
                             reporter.candidate_evaluated(
                                 label=candidate.label,
                                 split="validation",
-                                reward=reward_scalar(validation_candidate_results[candidate.label].aggregate_metrics),
+                                metrics=validation_candidate_results[candidate.label].aggregate_metrics,
+                                objective_metrics=config.objective_function,
                                 artifacts=self._results_dir(validation_candidate_results[candidate.label].id),
                             )
                 if not config.disable_trajectory_scoring:
@@ -1854,6 +1856,6 @@ class EvolutionaryOptimizer(Agent):
         details: list[str] = []
         if winner:
             if winner.reward("validation").metrics:
-                details.append(f"validation_reward={winner.reward('validation').metrics}")
+                details.append(f"validation_metrics={winner.reward('validation').metrics}")
         suffix = f", {', '.join(details)}" if details else ""
         return f"Optimization complete: {rounds_completed} round(s) completed, winner={winner_str}{suffix}"
