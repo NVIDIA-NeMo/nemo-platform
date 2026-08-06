@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 from nemo_optimization.jobs.optimize import OptimizeJob
 from nemo_optimization.schemas.optimize import OptimizeSpec
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.run_dependencies import LocalRunError
@@ -33,7 +34,9 @@ async def test_compile_produces_customization_optimize_task() -> None:
     )
     step = next(iter(platform_spec["steps"]))
     assert step["name"] == "optimize"
-    assert step["executor"]["command"] == ["python", "-m", "nemo_optimization.tasks.optimize"]
+    executor = step["executor"]
+    assert executor.get("provider") == "subprocess"
+    assert executor.get("command") == ["python", "-m", "nemo_optimization.tasks.optimize"]
     assert step["config"]["workspace"] == "staging"
 
 
@@ -127,7 +130,7 @@ def test_run_resolves_platform_agent_before_dispatch(tmp_path: Path, ctx: JobCon
                 "agent": "react-agent",
             },
             ctx=ctx,
-            sdk=_StubSDK(),  # type: ignore[arg-type]
+            sdk=cast(NeMoPlatform, _StubSDK()),
         )
 
     agent_config = dispatch.call_args.kwargs["agent_config"]

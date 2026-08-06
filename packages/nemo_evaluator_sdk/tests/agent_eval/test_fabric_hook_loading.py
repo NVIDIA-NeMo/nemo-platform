@@ -3,12 +3,14 @@
 
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.hook_loading import (
     FabricTaskHookLoadError,
     load_fabric_task_hook,
 )
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.hooks import FabricTaskRunSession
 
 
 class _DemoHook:
@@ -47,7 +49,9 @@ class MyHook:
     )
     hook = load_fabric_task_hook({"path": str(module_path), "attr": "MyHook", "tag": "from-file"})
     assert hook is not None
-    assert hook.after_success() == {"tag": "from-file"}
+    assert hook.after_success(task=MagicMock(), result=None, session=FabricTaskRunSession()) == {
+        "tag": "from-file"
+    }
 
 
 def test_load_fabric_task_hook_from_ref_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -72,7 +76,7 @@ class AuthorHook:
     monkeypatch.syspath_prepend(str(tmp_path))
     hook = load_fabric_task_hook({"ref": "author_hooks.hook:AuthorHook", "n": 7})
     assert hook is not None
-    assert hook.after_success() == {"n": 7}
+    assert hook.after_success(task=MagicMock(), result=None, session=FabricTaskRunSession()) == {"n": 7}
 
 
 def test_load_fabric_task_hook_from_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
