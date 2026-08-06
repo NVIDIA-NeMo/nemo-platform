@@ -33,13 +33,15 @@ proposes code changes, and keeps only candidates that improve validation.
 
 ## Choose the optimizer
 
-Use `nemo agents optimize` for a deployed agent when the goal is to tune its
-model routing, skills, prompts, or cost/latency without changing its runtime
-implementation. Use the Experimentalist when the improvement belongs in the
-agent **harness**: the source that owns its workflow, tool use, state, and
-runtime behavior. The Experimentalist changes that source in candidate
-branches, evaluates each candidate against the agent's own harness, and can
-publish a validated winner for review.
+Use the Experimentalist when the improvement belongs in the agent **harness**:
+the source that owns its workflow, tool use, state, and runtime behavior. It
+changes that source in candidate branches, evaluates each candidate against the
+agent's own harness, and can publish a validated winner for review.
+
+Hand off to `agents-optimize` only when the request is explicitly limited to a
+deployed agent's routing, skills, prompts, or cost/latency, with no runtime
+implementation change. That workflow owns the deployment-tuning commands; do
+not substitute it for an Experimentalist source-change run.
 
 ## Prepare the agent
 
