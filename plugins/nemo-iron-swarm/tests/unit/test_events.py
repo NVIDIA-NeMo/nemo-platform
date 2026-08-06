@@ -86,11 +86,16 @@ def test_get_events_endpoint_returns_events_after_id(tmp_path: Path, monkeypatch
 
 
 def test_get_events_falls_back_to_fileset_when_local_missing(tmp_path: Path) -> None:
-    """When local events.jsonl is absent but run entity has events_fileset, download and serve."""
-    events_file = tmp_path / "source" / "events.jsonl"
+    """When the local log is absent but the run entity has events_fileset, download and serve.
+
+    The log is named per run (`_events_path` -> ``<safe-run-name>.jsonl``), and the fileset member
+    carries that same basename because `_save_events_fileset` uploads that exact file. Naming both
+    ``events.jsonl`` here would pass even if the fallback wrote somewhere the reader never looks.
+    """
+    events_file = tmp_path / "source" / "my-run.jsonl"
     _write_events(events_file, [{"event": "run_started", "payload": {}}])
 
-    missing_path = tmp_path / "missing" / "events.jsonl"
+    missing_path = tmp_path / "missing" / "my-run.jsonl"
 
     mock_sdk = MagicMock()
     # Shaped like the real entity-store record: get_entity_by_name returns a generic Entity whose
@@ -99,8 +104,9 @@ def test_get_events_falls_back_to_fileset_when_local_missing(tmp_path: Path) -> 
     mock_sdk.entities.get_entity_by_name.return_value = mock_run
 
     def fake_download(sdk, ref, dest):
+        # download_fileset preserves the member basename, so the run-named file lands in `dest`.
         dest.mkdir(parents=True, exist_ok=True)
-        (dest / "events.jsonl").write_text(events_file.read_text())
+        (dest / "my-run.jsonl").write_text(events_file.read_text())
         return dest
 
     with (
