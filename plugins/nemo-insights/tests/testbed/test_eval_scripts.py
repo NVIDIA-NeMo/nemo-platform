@@ -1,12 +1,48 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-from testbed.eval import plan, prep, run_subjects
+import subprocess
+
+import pytest
+from testbed.eval import plan, prep, run_subjects, stack
 
 TAU2_CONFIG = """DEFAULT_LLM_NL_ASSERTIONS = "gpt-4.1-2025-04-14"
 DEFAULT_LLM_NL_ASSERTIONS_ARGS = {"temperature": 0.0}
 DEFAULT_LLM_ENV_INTERFACE = "gpt-4.1-2025-04-14"
 DEFAULT_LLM_EVAL_USER_SIMULATOR = "claude-opus-4-5"
 """
+
+
+def test_stack_resolves_labeled_clickhouse_on_configured_port(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="nmp-intake-clickhouse-managed\n", stderr="")
+
+    monkeypatch.setattr(stack.subprocess, "run", fake_run)
+
+    assert stack._intake_clickhouse_container() == "nmp-intake-clickhouse-managed"
+    assert "label=nmp.nvidia.com/managed-by=nemo-platform" in commands[0]
+    assert "label=nmp.nvidia.com/component=intake-clickhouse" in commands[0]
+    assert "publish=8123" in commands[0]
+
+
+def test_stack_does_not_select_unlabeled_same_name_container(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        # An unrelated nmp-intake-clickhouse is running, but the label query
+        # intentionally excludes it.
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(stack.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="labeled Intake ClickHouse.*none found"):
+        stack._intake_clickhouse_container()
+
+    assert len(commands) == 1
+    assert "docker" == commands[0][0] and "ps" == commands[0][1]
 
 
 def test_repoint_judge_rewrites_exactly_three():
