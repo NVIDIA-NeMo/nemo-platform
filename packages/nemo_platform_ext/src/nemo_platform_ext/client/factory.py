@@ -147,9 +147,7 @@ _TOKEN_PROVIDER_CACHE: dict[_ProviderCacheKey, OIDCTokenProvider] = {}
 # OIDC discovery
 # ---------------------------------------------------------------------------
 
-# Fallback returned when discovery fails. auth_enabled=False ensures downstream
-# code treats the cluster as non-OIDC; empty endpoint means no refresh is
-# attempted against a real token endpoint.
+# Fallback returned when NMP configdiscovery fails.
 _OIDC_DISCOVERY_FALLBACK = NMPOIDCConfig(
     auth_enabled=False,
     client_id="",

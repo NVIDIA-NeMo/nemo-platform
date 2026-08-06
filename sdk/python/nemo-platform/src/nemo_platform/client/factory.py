@@ -147,7 +147,7 @@ _TOKEN_PROVIDER_CACHE: dict[_ProviderCacheKey, OIDCTokenProvider] = {}
 # OIDC discovery
 # ---------------------------------------------------------------------------
 
-# Fallback returned when NMP config discovery fails.
+# Fallback returned when NMP configdiscovery fails.
 _OIDC_DISCOVERY_FALLBACK = NMPOIDCConfig(
     auth_enabled=False,
     client_id="",
