@@ -34,6 +34,8 @@ from .rationalizer import Rationale, Rationalizer, RationalizerConfig  # noqa: F
 from .tools import GuardedShellTools
 from .util import load_framework_skills
 
+logger = logging.getLogger(__name__)
+
 
 class AnalyzerConfig(BaseModel):
     """Configure tuning parameters for AgentAnalyzer."""
@@ -170,6 +172,7 @@ class TrialAnalysis(BaseModel):
 
     task_id: str
     trial_id: str
+    selection_reason: str
     metrics: dict[str, float]
     diagnostic: Diagnostic
 
@@ -182,12 +185,20 @@ class TrialAnalysis(BaseModel):
         """
         metrics = ", ".join(f"{name}: {value:.3f}" for name, value in self.metrics.items()) or "no metrics"
         lines = [f"### {self.task_id} / {self.trial_id} ({metrics})"]
+        lines.append(f"Selected for analysis: {self.selection_reason}")
         lines.append(f"Outcome: {self.diagnostic.outcome}")
         lines.append(f"Summary: {self.diagnostic.summary}")
         if self.diagnostic.failure_point is not None:
             lines.append(f"Failure point: span {self.diagnostic.failure_point}")
         lines.append(f"Root cause: {self.diagnostic.root_cause}")
         return "\n".join(lines)
+
+
+class TrialSelection(BaseModel):
+    """One trial selected for analysis, with the reason it merits attention."""
+
+    trial_id: str = Field(description="ID of a trial from the evaluation result.")
+    reason: str = Field(description="Evidence-based reason this trial should be analyzed.")
 
 
 class AgentAnalysis(BaseModel):
@@ -263,8 +274,8 @@ class AgentAnalyzer(Agent):
         evaluation: EvaluationResult,
         objective_metrics: list[dict[str, str]],
         regression_metrics: list[dict[str, str]],
-    ) -> Sequence[TrialResult]:
-        """Pick which trials to analyze in depth. Return their TrialResult objects.
+    ) -> list[TrialSelection]:
+        """Pick which trials to analyze in depth and explain each choice.
 
         Args:
             agent_id: The agent to analyze.
@@ -274,7 +285,8 @@ class AgentAnalyzer(Agent):
             regression_metrics: Metrics that must not worsen.
 
         Returns:
-            Sequence[TrialResult]: The selected trials.
+            list[TrialSelection]: Selected evaluation trial IDs and the evidence-based
+                reason each was selected.
 
         ## Step 1: Get task and trial objects
 
@@ -307,11 +319,21 @@ class AgentAnalyzer(Agent):
         Metric names are evaluator-defined. Do not assume particular metric
         names, result directories, private checks, or split paths.
 
-        ## Step 4: Return TrialResult objects
+        ## Step 4: Return selected trial IDs and a reason for each
 
         ```python
-        return selected_trials
+        return [
+            TrialSelection(
+                trial_id=trial.id,
+                reason="Concise evidence-based reason to inspect this trace.",
+            )
+            for trial in selected_trials
+        ]
         ```
+
+        Every ``trial_id`` must identify a trial from ``evaluation.trials``.
+        State the concrete objective shortfall, regression risk, evaluator error,
+        or representative failure pattern that makes each selected trial useful.
         """
         ...
 
@@ -641,12 +663,25 @@ class AgentAnalyzer(Agent):
         if cached is not None:
             return cached
 
-        trials = await self.select_trials(agent_id, dataset, evaluation, objective_metrics, regression_metrics)
+        selections = await self.select_trials(agent_id, dataset, evaluation, objective_metrics, regression_metrics)
+        trials_by_id = {trial.id: trial for trial in evaluation.trials}
+        selected_trials: list[tuple[TrialResult, str]] = []
+        for selection in selections:
+            trial = trials_by_id.get(selection.trial_id)
+            if trial is None:
+                logger.warning(
+                    "Ignoring selected trial %s for %s because it is absent from evaluation %s",
+                    selection.trial_id,
+                    agent_id,
+                    evaluation.id,
+                )
+                continue
+            selected_trials.append((trial, selection.reason))
         tasks_by_id = self._tasks_by_id(dataset)
 
         missing_task_diagnostics: dict[str, Diagnostic] = {}
-        trial_tasks: list[tuple[TrialResult, Task]] = []
-        for trial in trials:
+        trial_tasks: list[tuple[TrialResult, Task, str]] = []
+        for trial, selection_reason in selected_trials:
             task = tasks_by_id.get(trial.task_id)
             if task is None:
                 missing_task_diagnostics[trial.id] = Diagnostic(
@@ -656,9 +691,9 @@ class AgentAnalyzer(Agent):
                     root_cause="evaluation_result_references_unknown_task",
                 )
                 continue
-            trial_tasks.append((trial, task))
+            trial_tasks.append((trial, task, selection_reason))
 
-        unique_tasks = {task.id: task for _, task in trial_tasks}
+        unique_tasks = {task.id: task for _, task, _ in trial_tasks}
         rationales_list = await asyncio.gather(
             *[
                 Rationalizer(
@@ -690,15 +725,18 @@ class AgentAnalyzer(Agent):
                     task=task,
                     agent_path=agent_path,
                     rationale=rationales.get(task.id),
+                    selection_reason=selection_reason,
+                    objective_metrics=objective_metrics,
+                    regression_metrics=regression_metrics,
                     client=client,
                     workspace=nmp_workspace,
                 )
-                for trial, task in trial_tasks
+                for trial, task, selection_reason in trial_tasks
             ],
             return_exceptions=True,
         )
         diagnostics_by_trial_id = dict(missing_task_diagnostics)
-        for (trial, _), result in zip(trial_tasks, diagnoses_list, strict=True):
+        for (trial, _, _), result in zip(trial_tasks, diagnoses_list, strict=True):
             if isinstance(result, asyncio.CancelledError):
                 raise result
             if isinstance(result, BaseException):
@@ -721,16 +759,23 @@ class AgentAnalyzer(Agent):
             TrialAnalysis(
                 task_id=trial.task_id,
                 trial_id=trial.id,
+                selection_reason=selection_reason,
                 metrics={name: float(metric.value) for name, metric in trial.metrics.items()},
                 diagnostic=diagnostics_by_trial_id[trial.id],
             )
-            for trial in trials
+            for trial, selection_reason in selected_trials
             if trial.id in diagnostics_by_trial_id
         ]
         diagnoses = [analysis.diagnostic for analysis in trial_analyses]
 
         classification, comparison = await asyncio.gather(
-            self.classify_failures(agent_id, diagnoses, trials, objective_metrics, regression_metrics),
+            self.classify_failures(
+                agent_id,
+                diagnoses,
+                [trial for trial, _ in selected_trials],
+                objective_metrics,
+                regression_metrics,
+            ),
             self.compare_with_peers(
                 agent_id,
                 evaluation,
