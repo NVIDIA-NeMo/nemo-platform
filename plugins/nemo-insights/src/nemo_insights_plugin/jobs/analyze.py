@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import datetime, timezone
 from typing import ClassVar
 
+from nemo_insights_plugin.analyst.model_config import AnalystModelRefs
 from nemo_insights_plugin.analyst.run import run_analyst
-from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.entities import AnalysisConfigStatus
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
@@ -21,7 +20,6 @@ from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
     EnvironmentVariable,
-    EnvironmentVariableFromSecret,
     PlatformJobSpec,
     PlatformJobStep,
 )
@@ -30,6 +28,7 @@ from nemo_platform_plugin.jobs.constants import (
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
 )
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.sdk_provider import get_async_task_sdk
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
@@ -67,10 +66,8 @@ class AnalyzeSpec(BaseModel):
         default=True,
         description="Update the matching AnalysisRunStatus with run metadata.",
     )
-    inference_api_key_secret_name: str | None = Field(
-        default=None,
-        description=("Optional platform secret exposed as INFERENCE_API_KEY for the current analyst model path."),
-    )
+    smart_model: str = Field(description="Workspace-qualified smart Model Entity ID selected during setup.")
+    fast_model: str = Field(description="Workspace-qualified fast Model Entity ID selected during setup.")
 
 
 class AnalyzeJob(NemoJob):
@@ -102,18 +99,6 @@ class AnalyzeJob(NemoJob):
                 value=DEFAULT_JOB_STORAGE_PATH,
             )
         ]
-        if canonical.inference_api_key_secret_name:
-            environment.append(
-                EnvironmentVariable(
-                    name="INFERENCE_API_KEY",
-                    from_secret=EnvironmentVariableFromSecret(name=canonical.inference_api_key_secret_name),
-                )
-            )
-        elif inference_api_key := os.environ.get("INFERENCE_API_KEY"):
-            # Local smoke-test fallback until FP-202 moves analyst model
-            # execution onto platform-registered models/secrets.
-            environment.append(EnvironmentVariable(name="INFERENCE_API_KEY", value=inference_api_key))
-
         return PlatformJobSpec(
             steps=[
                 PlatformJobStep(
@@ -153,15 +138,17 @@ class AnalyzeJob(NemoJob):
         )
 
         try:
+            async_client = get_async_task_sdk("insights")
             report = asyncio.run(
                 run_analyst(
                     agent=spec.agent,
                     agent_spec=spec.agent_spec,
                     workspace=ctx.workspace,
                     base_url=spec.base_url,
-                    client=make_client(spec.base_url),
+                    client=async_client,
                     insights_output=spec.insights_output,
                     since=spec.since,
+                    model_refs=AnalystModelRefs(smart=spec.smart_model, fast=spec.fast_model),
                 )
             )
         except Exception as exc:  # pragma: no cover - exercised by integration paths

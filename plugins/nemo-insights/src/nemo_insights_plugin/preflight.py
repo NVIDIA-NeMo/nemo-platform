@@ -3,13 +3,13 @@
 
 """Read-only readiness checks for Insights analysis."""
 
-import os
-from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
+from nemo_insights_plugin.analyst.model_config import configured_model_refs
 from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.contracts.checks import CheckResult, make_check_result
 from nemo_insights_plugin.profile import AnalysisProfile
@@ -53,7 +53,6 @@ async def _default_workspace_ok(base_url: str, workspace: str, agent: str) -> bo
 class AnalysisProbes:
     """Dependencies used by read-only environment checks."""
 
-    env: Mapping[str, str] = field(default_factory=lambda: os.environ)
     http_ok: Callable[[str], bool] = _default_http_ok
     workspace_ok: Callable[[str, str, str], Awaitable[bool]] = _default_workspace_ok
 
@@ -153,28 +152,28 @@ def read_agent_spec(
     ]
 
 
-def check_credentials(
-    profile_dir: Path | None,
-    probes: AnalysisProbes | None = None,
-) -> list[CheckResult]:
-    """Check that the analyst's required inference credential is present."""
-    active = probes or AnalysisProbes()
-    env_path = profile_dir / ".env" if profile_dir is not None else None
-    credential_hint = (
-        f"save it in {env_path} or export INFERENCE_API_KEY=<key>"
-        if env_path is not None
-        else "export INFERENCE_API_KEY=<key>"
-    )
-    credential = bool(active.env.get("INFERENCE_API_KEY", "").strip())
+def check_models() -> list[CheckResult]:
+    """Check that the active Platform context has a complete model pair."""
+    try:
+        refs = configured_model_refs()
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        return [
+            CheckResult(
+                name="agent-models",
+                group="models",
+                status="fail",
+                severity="required",
+                message=str(exc),
+                hint="run `nemo setup` and select smart and fast agent models",
+            )
+        ]
     return [
-        make_check_result(
-            "INFERENCE_API_KEY",
-            "credentials",
-            credential,
-            "required",
-            "INFERENCE_API_KEY set",
-            "INFERENCE_API_KEY not set",
-            hint=credential_hint,
+        CheckResult(
+            name="agent-models",
+            group="models",
+            status="pass",
+            severity="required",
+            message=f"smart={refs.smart}; fast={refs.fast}",
         )
     ]
 
@@ -187,13 +186,14 @@ async def check_environment(
     profile_dir: Path | None,
     probes: AnalysisProbes | None = None,
 ) -> list[CheckResult]:
-    """Run credential and advisory platform checks without persisting state.
+    """Run model-selection and advisory platform checks without persisting state.
 
     The workspace probe is profile-dependent and skipped when *agent* or
-    *workspace* is unknown; the credential and reachability checks always run.
+    *workspace* is unknown; model selection and reachability checks always run.
     """
     active = probes or AnalysisProbes()
-    results = check_credentials(profile_dir, active)
+    del profile_dir
+    results = check_models()
     reachable = active.http_ok(base_url)
     results.append(
         make_check_result(

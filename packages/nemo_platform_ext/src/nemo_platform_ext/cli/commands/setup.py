@@ -218,6 +218,14 @@ class KeyValidationResult:
     message: str
 
 
+@dataclass(frozen=True)
+class ModelPair:
+    """Model entities selected for quality-critical and low-latency agent work."""
+
+    smart: str
+    fast: str
+
+
 # Env vars probed during --auto mode, in priority order.
 _AUTO_ENV_VARS: tuple[tuple[str, str], ...] = (
     ("NEMO_DEFAULT_INFERENCE_KEY", "NEMO_DEFAULT_INFERENCE_BASE_URL"),
@@ -246,6 +254,7 @@ _POST_START_REACHABLE_RETRIES = 6
 _POST_START_REACHABLE_DELAY = 2.0
 
 _DEMO_AGENT_NAME = "calculator-agent"
+_LOCAL_CONTEXT_NAME = "local"
 
 
 def _pause(seconds: float) -> None:
@@ -272,8 +281,8 @@ def _bootstrap_config_if_missing(base_url: str, workspace: str) -> None:
     ``nemo setup`` can run before any config is on disk (first-time install)
     *or* with a partial config containing only ``local_services.data_dir``
     written earlier in the same setup invocation by ``_save_data_dir``.
-    Later steps — in particular ``_save_default_model`` — call
-    ``Config.write`` with *only* a ``default_model`` param. If there's no
+    Later steps — in particular ``_save_model_pair`` — call
+    ``Config.write`` with only model-selection params. If there's no
     cluster on disk at that point, ``ensure_context`` will fail with
     ``Cluster '<name>' does not exist and no base_url provided to create
     it`` because it has no ``base_url`` to attach to a new cluster.
@@ -375,6 +384,31 @@ def _configure_remote_connection(cli_context: CLIContext, base_url: str, workspa
         context_name=context_name,
     )
     cli_context.overrides["base_url"] = base_url
+    cli_context.reset_sdk_context()
+
+
+def _configure_local_connection(cli_context: CLIContext, workspace: str) -> None:
+    """Activate an isolated no-auth context for local services.
+
+    Reusing an authenticated remote context after changing only its URL leaves
+    remote OAuth credentials attached to a local cluster. The SDK then tries to
+    refresh those credentials using the local auth discovery response. Keep the
+    remote context intact and use a dedicated local context instead.
+    """
+    params: ConfigParams = {
+        "base_url": DEFAULT_BASE_URL,
+        "workspace": workspace,
+        "access_token": None,
+        "refresh_token": None,
+        "current_context": _LOCAL_CONTEXT_NAME,
+    }
+    Config.write(
+        params,
+        context_name=_LOCAL_CONTEXT_NAME,
+        set_current_on_create=True,
+    )
+    cli_context.overrides["base_url"] = DEFAULT_BASE_URL
+    cli_context.overrides["current_context"] = _LOCAL_CONTEXT_NAME
     cli_context.reset_sdk_context()
 
 
@@ -1812,24 +1846,38 @@ def _validate_api_key(
         return KeyValidationResult(passed=True, message=f"Could not validate API key ({exc}).")
 
 
-def _select_default_model(client: NeMoPlatform, workspace: str) -> str | None:
-    """Let the user pick a default model from discovered models."""
+def _select_model_pair(client: NeMoPlatform, workspace: str) -> ModelPair | None:
+    """Let the user pick smart and fast models from discovered model entities."""
     display_models = _get_all_model_choices(client, workspace)
     if not display_models:
-        console.print(f"  {WARN} No models discovered yet. You can set a default later.")
+        console.print(f"  {WARN} No models discovered yet. You can select models later.")
         return None
 
-    result = prompt_select(
-        "Choose your default model:",
+    default_smart = display_models[0][0]
+    smart = prompt_select(
+        "Choose your smart model (used by default for agent work):",
         choices=display_models,
+        default=default_smart,
+        hint="Press Enter to accept the default.",
     )
-    return result
+    fast = prompt_select(
+        "Choose your fast model (used for latency-sensitive agent work):",
+        choices=display_models,
+        default=smart,
+        hint="Press Enter to reuse the smart model.",
+    )
+    return ModelPair(smart=smart, fast=fast)
 
 
-def _save_default_model(cli_context: CLIContext, model_entity_id: str) -> None:
-    """Persist the default model to the CLI config file."""
+def _save_model_pair(cli_context: CLIContext, model_pair: ModelPair) -> None:
+    """Persist both workload roles and keep the legacy default on the smart model."""
     context = cli_context.get_sdk_context()
-    Config.write({"default_model": model_entity_id}, context_name=context.context_name)
+    params: ConfigParams = {
+        "default_model": model_pair.smart,
+        "smart_model": model_pair.smart,
+        "fast_model": model_pair.fast,
+    }
+    Config.write(params, context_name=context.context_name)
 
 
 def _check_ollama_running(host_url: str) -> bool:
@@ -2044,11 +2092,7 @@ def setup_command(
         configured_base_url = base_url
         service_result = _maybe_start_services(base_url, auto, start_services, timeout=effective_timeout)
         if service_result == "start_local":
-            context_name = cli_context.get_sdk_context().context_name
-            _bootstrap_config_if_missing(DEFAULT_BASE_URL, workspace)
-            Config.write({"base_url": DEFAULT_BASE_URL}, context_name=context_name)
-            cli_context.overrides["base_url"] = DEFAULT_BASE_URL
-            cli_context.reset_sdk_context()
+            _configure_local_connection(cli_context, workspace)
             base_url = DEFAULT_BASE_URL
             service_result = _maybe_start_services(
                 base_url,
@@ -2076,7 +2120,7 @@ def setup_command(
     # Ensure the config file exists on disk so later Config.write() calls
     # (e.g. saving the default model) can find the cluster and context.
     # Without this, a fresh install (no config.yaml) hits "Cluster
-    # 'default-cluster' does not exist" when _save_default_model runs.
+    # 'default-cluster' does not exist" when _save_model_pair runs.
     _bootstrap_config_if_missing(base_url, workspace)
     cli_context.reset_sdk_context()
 
@@ -2187,8 +2231,10 @@ def _run_auto_mode(
         default_model = entity_ids[0]
 
     if default_model:
-        _save_default_model(cli_context, default_model)
-        console.print(f"  {CHECK} Default model: {default_model}")
+        model_pair = ModelPair(smart=default_model, fast=default_model)
+        _save_model_pair(cli_context, model_pair)
+        console.print(f"  {CHECK} Smart model: {model_pair.smart}")
+        console.print(f"  {CHECK} Fast model: {model_pair.fast}")
     else:
         console.print(f"  {WARN} No default model set (no models discovered yet)")
         console.print("  Run [cyan]nemo setup[/cyan] again after models sync, or set via env var:")
@@ -2269,17 +2315,19 @@ def _run_interactive_mode(
         else:
             console.print(f"  {WARN} No models discovered yet (provider may still be syncing)")
 
-        console.print("\n[bold]Step 5: Choose default model[/bold]\n")
+        console.print("\n[bold]Step 5: Choose agent models[/bold]\n")
         fallback_model_choices = _get_all_model_choices(client, workspace) if not models else []
         if not models and fallback_model_choices:
             console.print(f"  {WARN} Models from existing providers are available, but not from '{provider_name}' yet.")
 
-        default_model = _select_default_model(client, workspace) if models else None
-        if default_model:
-            _save_default_model(cli_context, default_model)
-            console.print(f"  {CHECK} Default model set to {_display_model_name(default_model)}")
+        model_pair = _select_model_pair(client, workspace) if models else None
+        default_model = model_pair.smart if model_pair else None
+        if model_pair:
+            _save_model_pair(cli_context, model_pair)
+            console.print(f"  {CHECK} Smart model set to {_display_model_name(model_pair.smart)}")
+            console.print(f"  {CHECK} Fast model set to {_display_model_name(model_pair.fast)}")
         else:
-            console.print(f"  {WARN} No default model set for this provider yet.")
+            console.print(f"  {WARN} No agent models set for this provider yet.")
             console.print("  Run [cyan]nemo setup[/cyan] again after models sync")
 
         console.print("\n[bold]Step 6: Install skills[/bold]\n")
@@ -2301,7 +2349,14 @@ def _run_interactive_mode(
             headers=_platform_request_headers(cli_context),
         )
 
-        _print_onboarding(base_url, provider_name, default_model, demo_deployed=demo_deployed)
+        _print_onboarding(
+            base_url,
+            provider_name,
+            default_model,
+            smart_model=model_pair.smart if model_pair else None,
+            fast_model=model_pair.fast if model_pair else None,
+            demo_deployed=demo_deployed,
+        )
 
     except UserCancelled:
         console.print(f"\n{WARN} Setup cancelled.")
@@ -2368,6 +2423,8 @@ def _print_onboarding(
     provider_name: str,
     default_model: str | None,
     *,
+    smart_model: str | None = None,
+    fast_model: str | None = None,
     demo_deployed: bool = False,
 ) -> None:
     """Print setup summary, then present goal-oriented onboarding paths."""
@@ -2376,7 +2433,11 @@ def _print_onboarding(
 
     console.print(f"\n{CHECK} [green bold]Setup complete![/green bold]")
     console.print(f"  Provider: {provider_name}")
-    if default_model:
+    if smart_model:
+        console.print(f"  Smart model: {_display_model_name(smart_model)}")
+    if fast_model:
+        console.print(f"  Fast model: {_display_model_name(fast_model)}")
+    if default_model and not smart_model and not fast_model:
         console.print(f"  Default model: {_display_model_name(default_model)}")
     if demo_deployed:
         console.print(f"  Demo agent: {_DEMO_AGENT_NAME}")

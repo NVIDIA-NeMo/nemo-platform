@@ -17,6 +17,12 @@ from nemo_insights_plugin.analyst.agent import (
 )
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
 from nemo_insights_plugin.analyst.deps import AnalystDeps
+from nemo_insights_plugin.analyst.model_config import (
+    AnalystModelPair,
+    AnalystModelRefs,
+    activate_model_pair,
+    resolve_model_pair,
+)
 from nemo_insights_plugin.analyst.observability import (
     ANALYST_OBSERVABILITY_ENV,
     setup_analyst_observability,
@@ -51,6 +57,7 @@ async def run_analyst(
     verbose: bool = False,
     since: datetime | None = None,
     evaluation_id: str | None = None,
+    model_refs: AnalystModelRefs | None = None,
 ) -> str:
     """Build and run the analyst agent against an agent's telemetry.
 
@@ -71,11 +78,15 @@ async def run_analyst(
         verbose: Whether to stream model/tool events to stderr.
         since: Optional incremental lower bound enforced on trace/span reads.
         evaluation_id: Optional run scope; AND-pinned onto every span read.
+        model_refs: Optional explicit smart/fast Model Entity IDs. Unset uses
+            the active Platform CLI context.
     """
     observability = None
+    model_pair: AnalystModelPair | None = None
     insights_output_path = str(insights_output) if insights_output else None
     try:
         _enable_litellm_drop_params()
+        model_pair = await resolve_model_pair(client, model_refs)
         backend = make_analyst_backend(
             client=client,
             insights_output=insights_output_path,
@@ -96,19 +107,24 @@ async def run_analyst(
                 workspace=workspace,
                 target_agent=agent,
             )
-        analyst = build_analyst_agent(
-            deps=deps,
-            agent=agent,
-            agent_spec=agent_spec,
-        )
-        result = await _run_agent(analyst, verbose=verbose)
+        with activate_model_pair(model_pair):
+            analyst = build_analyst_agent(
+                deps=deps,
+                agent=agent,
+                agent_spec=agent_spec,
+            )
+            result = await _run_agent(analyst, verbose=verbose)
         return await backend.persist_result(workspace=workspace, agent=agent, result=result)
     finally:
         try:
             if observability is not None:
                 observability.shutdown()
         finally:
-            await client.close()
+            try:
+                if model_pair is not None:
+                    await model_pair.aclose()
+            finally:
+                await client.close()
 
 
 def _analyst_observability_enabled() -> bool:

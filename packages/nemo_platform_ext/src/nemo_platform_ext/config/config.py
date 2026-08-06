@@ -486,8 +486,11 @@ class Config(BaseModel):
         if effective_workspace is None:
             effective_workspace = DEFAULT_WORKSPACE
 
-        # Resolve default model: env var > config file
+        # Resolve the legacy default first, then let existing single-model
+        # contexts supply both agent-workload roles.
         effective_default_model = os.environ.get("NEMO_DEFAULT_MODEL") or context.default_model
+        effective_smart_model = context.smart_model or effective_default_model
+        effective_fast_model = context.fast_model or effective_default_model
 
         # Create the resolved Context (runtime model) from the ContextDefinition (config file model)
         return Context(
@@ -496,6 +499,8 @@ class Config(BaseModel):
             user=user,  # Fully resolved User with authentication credentials
             workspace=effective_workspace,
             default_model=effective_default_model,
+            smart_model=effective_smart_model,
+            fast_model=effective_fast_model,
             preferences=prefs,
         )
 
@@ -545,12 +550,15 @@ class Config(BaseModel):
             prefs.color_output = self.color_output
 
         # Return resolved Context (runtime model)
+        effective_default_model = os.environ.get("NEMO_DEFAULT_MODEL") or context_def.default_model
         return Context(
             context_name=context_name,
             cluster=cluster,
             user=user,
             workspace=context_def.workspace or DEFAULT_WORKSPACE,
-            default_model=os.environ.get("NEMO_DEFAULT_MODEL") or context_def.default_model,
+            default_model=effective_default_model,
+            smart_model=context_def.smart_model or effective_default_model,
+            fast_model=context_def.fast_model or effective_default_model,
             preferences=prefs,
         )
 

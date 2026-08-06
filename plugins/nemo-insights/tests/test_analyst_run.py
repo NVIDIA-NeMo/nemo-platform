@@ -3,11 +3,12 @@
 
 """The ``run_analyst`` client injection contract."""
 
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from nemo_insights_plugin.analyst import run as run_module
 from nemo_insights_plugin.analyst.deps import AnalystDeps
+from nemo_insights_plugin.analyst.model_config import AnalystModelPair
 from nemo_platform import AsyncNeMoPlatform
 from nooa.context_blocks import ResultStatus
 from nooa.events import LLMComplete, PythonOutput
@@ -21,12 +22,33 @@ class FakeClient:
         self.closed = True
 
 
+class FakeModelClient:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 class FakeBackend:
     async def persist_result(self, *, workspace: str, agent: str, result: object) -> str:
         return "REPORT"
 
 
 def _stub_pipeline(monkeypatch: pytest.MonkeyPatch, seen: dict[str, object]) -> None:
+    smart = FakeModelClient()
+    fast = FakeModelClient()
+    model_pair = AnalystModelPair(
+        smart=cast(Any, smart),
+        fast=cast(Any, fast),
+    )
+
+    async def fake_resolve_model_pair(client: object, refs: object) -> AnalystModelPair:
+        seen["model_client"] = client
+        seen["model_refs"] = refs
+        seen["model_pair"] = model_pair
+        return model_pair
+
     def fake_make_backend(*, client: FakeClient, insights_output: str | None, local_only: bool) -> FakeBackend:
         seen["backend_client"] = client
         seen["local_only"] = local_only
@@ -36,6 +58,7 @@ def _stub_pipeline(monkeypatch: pytest.MonkeyPatch, seen: dict[str, object]) -> 
         return object()
 
     monkeypatch.setattr(run_module, "make_analyst_backend", fake_make_backend)
+    monkeypatch.setattr(run_module, "resolve_model_pair", fake_resolve_model_pair)
 
     def fake_build_agent(**kwargs: object) -> object:
         seen["build_kwargs"] = kwargs
@@ -62,6 +85,10 @@ async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatc
     assert seen["backend_client"] is client
     build_kwargs = cast(dict[str, object], seen["build_kwargs"])
     assert cast(AnalystDeps, build_kwargs["deps"]).backend is not None
+    assert seen["model_client"] is client
+    model_pair = cast(AnalystModelPair, seen["model_pair"])
+    assert cast(FakeModelClient, model_pair.smart).closed
+    assert cast(FakeModelClient, model_pair.fast).closed
     assert client.closed
 
 
@@ -79,10 +106,19 @@ def test_litellm_compatibility_is_enabled(monkeypatch: pytest.MonkeyPatch) -> No
 
 async def test_client_closed_when_backend_construction_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeClient()
+    model = FakeModelClient()
+    pair = AnalystModelPair(
+        smart=cast(Any, model),
+        fast=cast(Any, model),
+    )
+
+    async def fake_resolve_model_pair(client: object, refs: object) -> AnalystModelPair:
+        return pair
 
     def raising_backend(*, client: FakeClient, insights_output: str | None, local_only: bool) -> FakeBackend:
         raise RuntimeError("backend failed")
 
+    monkeypatch.setattr(run_module, "resolve_model_pair", fake_resolve_model_pair)
     monkeypatch.setattr(run_module, "make_analyst_backend", raising_backend)
 
     with pytest.raises(RuntimeError, match="backend failed"):
@@ -94,6 +130,7 @@ async def test_client_closed_when_backend_construction_raises(monkeypatch: pytes
             client=cast(AsyncNeMoPlatform, client),
         )
 
+    assert model.closed
     assert client.closed
 
 

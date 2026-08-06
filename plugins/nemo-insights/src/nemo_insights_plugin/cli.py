@@ -33,8 +33,8 @@ from nemo_insights_plugin.contracts.profile import (
 )
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
-    check_credentials,
     check_environment,
+    check_models,
     check_profile,
     read_agent_spec,
 )
@@ -168,7 +168,7 @@ def _prepare_mirror(insights_output: Path | None) -> Path | None:
 
 async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
     checks = list(analysis.spec_checks)
-    checks.extend(check_credentials(analysis.profile_dir, probes=_PREFLIGHT_PROBES))
+    checks.extend(check_models())
     _preflight_or_exit(checks)
 
     insights_output = _prepare_mirror(analysis.insights_output)

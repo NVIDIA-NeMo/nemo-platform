@@ -19,6 +19,7 @@ from nemo_insights_plugin.analyst.analyst_backend import (
     _merge_since_filter,
     make_analyst_backend,
 )
+from nemo_insights_plugin.analyst.model_config import AnalystModelRefs
 from nemo_insights_plugin.analyst.result import AnalystResult, InsightUpdate, NewInsight
 from nemo_insights_plugin.config import (
     AnalystSchedulerConfig,
@@ -627,16 +628,31 @@ def _ctx(tmp_path: Path) -> JobContext:
     )
 
 
+def _analyze_spec(agent: str = "research-agent") -> AnalyzeSpec:
+    return AnalyzeSpec(
+        agent=agent,
+        smart_model="default/gpt-5",
+        fast_model="default/gpt-5-mini",
+    )
+
+
 def test_analyze_job_records_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    async def fake_run_analyst(**_: object) -> str:
+    calls: list[dict[str, object]] = []
+    async_client = object()
+
+    async def fake_run_analyst(**kwargs: object) -> str:
+        calls.append(kwargs)
         return "analysis report"
 
     monkeypatch.setattr("nemo_insights_plugin.jobs.analyze.run_analyst", fake_run_analyst)
-    monkeypatch.setattr("nemo_insights_plugin.jobs.analyze.make_client", lambda base_url: object())
+    monkeypatch.setattr(
+        "nemo_insights_plugin.jobs.analyze.get_async_task_sdk",
+        lambda plugin: async_client,
+    )
     sdk = _SyncSdk()
 
     result = AnalyzeJob().run(
-        AnalyzeSpec(agent="research-agent").model_dump(mode="json"),
+        _analyze_spec().model_dump(mode="json"),
         ctx=_ctx(tmp_path),
         sdk=sdk,
     )
@@ -653,16 +669,21 @@ def test_analyze_job_records_success(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     ]
     assert updates[-1]["last_submitted_job"] == "insights-job-1"
     assert (tmp_path / "persistent" / "analysis-report.txt").read_text() == "analysis report"
+    assert calls[0]["client"] is async_client
+    assert calls[0]["model_refs"] == AnalystModelRefs(
+        smart="default/gpt-5",
+        fast="default/gpt-5-mini",
+    )
 
 
 @pytest.mark.asyncio
-async def test_analyze_job_compile_requests_persistent_storage(
+async def test_analyze_job_compile_requests_storage_without_provider_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
+    monkeypatch.setenv("INFERENCE_API_KEY", "must-not-be-forwarded")
     platform_spec = await AnalyzeJob.compile(
         workspace="default",
-        spec=AnalyzeSpec(agent="research-agent"),
+        spec=_analyze_spec(),
         entity_client=object(),
         job_name="opt-analyze-default-research-agent-20260608204901",
         async_sdk=object(),
@@ -674,56 +695,6 @@ async def test_analyze_job_compile_requests_persistent_storage(
             "name": PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
             "value": DEFAULT_JOB_STORAGE_PATH,
         },
-    ]
-
-
-@pytest.mark.asyncio
-async def test_analyze_job_compile_can_reference_inference_secret() -> None:
-    platform_spec = await AnalyzeJob.compile(
-        workspace="default",
-        spec=AnalyzeSpec(
-            agent="calculator-agent",
-            inference_api_key_secret_name="insights-inference-api-key",
-        ),
-        entity_client=object(),
-        job_name="opt-analyze-default-calculator-agent-20260608210807",
-        async_sdk=object(),
-    )
-
-    step = platform_spec["steps"][0]
-    assert step["environment"] == [
-        {
-            "name": PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-            "value": DEFAULT_JOB_STORAGE_PATH,
-        },
-        {
-            "name": "INFERENCE_API_KEY",
-            "from_secret": {"name": "insights-inference-api-key"},
-        },
-    ]
-
-
-@pytest.mark.asyncio
-async def test_analyze_job_compile_can_forward_local_inference_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("INFERENCE_API_KEY", "test-key")
-
-    platform_spec = await AnalyzeJob.compile(
-        workspace="default",
-        spec=AnalyzeSpec(agent="calculator-agent"),
-        entity_client=object(),
-        job_name="opt-analyze-default-calculator-agent-20260608210807",
-        async_sdk=object(),
-    )
-
-    step = platform_spec["steps"][0]
-    assert step["environment"] == [
-        {
-            "name": PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-            "value": DEFAULT_JOB_STORAGE_PATH,
-        },
-        {"name": "INFERENCE_API_KEY", "value": "test-key"},
     ]
 
 
@@ -814,6 +785,10 @@ async def test_controller_submits_due_job(monkeypatch: pytest.MonkeyPatch) -> No
         return {"steps": []}
 
     monkeypatch.setattr(controller, "_compile_job_spec", fake_compile_job_spec)
+    monkeypatch.setattr(
+        "nemo_insights_plugin.controller.configured_model_refs",
+        lambda: SimpleNamespace(smart="default/gpt-5", fast="default/gpt-5-mini"),
+    )
     await controller._reconcile_config(config)
 
     assert len(controller.sdk.jobs.created) == 1
@@ -821,6 +796,8 @@ async def test_controller_submits_due_job(monkeypatch: pytest.MonkeyPatch) -> No
     assert created["source"] == "insights"
     assert created["spec"]["agent"] == "research-agent"
     assert created["spec"]["since"] is None
+    assert created["spec"]["smart_model"] == "default/gpt-5"
+    assert created["spec"]["fast_model"] == "default/gpt-5-mini"
     assert controller.entities.updated == []
 
 

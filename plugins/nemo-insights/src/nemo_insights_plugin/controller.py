@@ -12,6 +12,7 @@ from typing import Any, ClassVar, TypeVar, cast
 from zoneinfo import ZoneInfo
 
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
+from nemo_insights_plugin.analyst.model_config import configured_model_refs
 from nemo_insights_plugin.config import InsightsConfig
 from nemo_insights_plugin.entities import AnalysisConfig, AnalysisRunStatus
 from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
@@ -228,11 +229,13 @@ class InsightsAnalysisController(NemoController):
         status: AnalysisRunStatus | None,
         submitted_at: datetime,
     ) -> None:
+        model_refs = configured_model_refs()
         spec = AnalyzeSpec(
             agent=config.agent,
             base_url=self.insights_config.analyst.base_url,
             since=status.last_successful_run_at if status is not None else None,
-            inference_api_key_secret_name=(self.insights_config.analyst.inference_api_key_secret_name),
+            smart_model=model_refs.smart,
+            fast_model=model_refs.fast,
         )
         job_name = _job_name(config, submitted_at)
         platform_spec = await self._compile_job_spec(
