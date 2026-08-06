@@ -6,6 +6,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
 import { EvaluationDetailRoute } from '@studio/routes/EvaluationDetailRoute';
 import { renderRoute, screen } from '@studio/tests/util/render';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
 vi.hoisted(() => {
@@ -34,49 +35,55 @@ const group = {
   evaluation_count: 0,
 } satisfies Partial<ExperimentResponse>;
 
+const mockRoutes = (insightDescription: string) =>
+  server.use(
+    http.get('*/apis/intake/v2/workspaces/:workspace/evaluations/:name', () =>
+      HttpResponse.json(evaluation)
+    ),
+    http.get('*/apis/intake/v2/workspaces/:workspace/experiments/:name', () =>
+      HttpResponse.json(group)
+    ),
+    http.get('*/apis/intake/v2/workspaces/:workspace/evaluations/:name/sessions', () =>
+      HttpResponse.json({
+        data: [],
+        pagination: {
+          page: 1,
+          page_size: 25,
+          current_page_size: 0,
+          total_pages: 0,
+          total_results: 0,
+        },
+      })
+    ),
+    http.get('*/apis/insights/v2/workspaces/:workspace/insights/:insightId', () =>
+      HttpResponse.json({
+        id: 'insight-id',
+        name: 'insight',
+        title: 'Insight',
+        description: insightDescription,
+        agent: 'agent',
+        status: 'open',
+        trace_refs: [],
+      })
+    )
+  );
+
+const renderEvaluation = () =>
+  renderRoute(<EvaluationDetailRoute />, {
+    history: `/workspaces/${WORKSPACE}/experiment/${GROUP_NAME}/${EVALUATION_NAME}`,
+    routes: [
+      {
+        path: ROUTES.workspace.evaluationDetail,
+        element: <EvaluationDetailRoute />,
+      },
+    ],
+  });
+
 describe('EvaluationDetailRoute with Optimizer enabled', () => {
   it('renders the originating insight description instead of relabeling the evaluation description', async () => {
-    server.use(
-      http.get('*/apis/intake/v2/workspaces/:workspace/evaluations/:name', () =>
-        HttpResponse.json(evaluation)
-      ),
-      http.get('*/apis/intake/v2/workspaces/:workspace/experiments/:name', () =>
-        HttpResponse.json(group)
-      ),
-      http.get('*/apis/intake/v2/workspaces/:workspace/evaluations/:name/sessions', () =>
-        HttpResponse.json({
-          data: [],
-          pagination: {
-            page: 1,
-            page_size: 25,
-            current_page_size: 0,
-            total_pages: 0,
-            total_results: 0,
-          },
-        })
-      ),
-      http.get('*/apis/insights/v2/workspaces/:workspace/insights/:insightId', () =>
-        HttpResponse.json({
-          id: 'insight-id',
-          name: 'insight',
-          title: 'Insight',
-          description: 'Actual insight description',
-          agent: 'agent',
-          status: 'open',
-          trace_refs: [],
-        })
-      )
-    );
+    mockRoutes('Actual insight description');
 
-    renderRoute(<EvaluationDetailRoute />, {
-      history: `/workspaces/${WORKSPACE}/experiment/${GROUP_NAME}/${EVALUATION_NAME}`,
-      routes: [
-        {
-          path: ROUTES.workspace.evaluationDetail,
-          element: <EvaluationDetailRoute />,
-        },
-      ],
-    });
+    renderEvaluation();
 
     expect(await screen.findByText('Actual insight description')).toBeInTheDocument();
     expect(screen.getByText('Insight description')).toBeInTheDocument();
@@ -85,5 +92,20 @@ describe('EvaluationDetailRoute with Optimizer enabled', () => {
       'href',
       `/workspaces/${WORKSPACE}/optimizer/insight-id`
     );
+  });
+
+  it('truncates a long insight description until it is expanded', async () => {
+    const description = `${'Observed behavior. '.repeat(40)}End of description.`;
+    mockRoutes(description);
+
+    renderEvaluation();
+
+    const showMore = await screen.findByText('Show more');
+    expect(screen.queryByText(description)).not.toBeInTheDocument();
+
+    await userEvent.click(showMore);
+
+    expect(screen.getByText(description)).toBeInTheDocument();
+    expect(screen.getByText('Show less')).toBeInTheDocument();
   });
 });

@@ -6,6 +6,7 @@ import { Badge, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { EvaluationSessionsDataView } from '@studio/components/dataViews/EvaluationSessionsDataView';
+import { ExpandableMessage } from '@studio/components/ExpandableMessage';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
 import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
@@ -58,7 +59,10 @@ export const EvaluationDetailRoute: FC = () => {
                 <Text kind="label/bold/lg">Insight description</Text>
                 <OriginatingInsightLink insightId={insightId} />
               </Flex>
-              <Text kind="body/regular/md">{insight?.description}</Text>
+              <ExpandableMessage
+                message={insight?.description}
+                attributes={{ Text: { kind: 'body/regular/md' } }}
+              />
             </Stack>
           </Card>
         ) : null}

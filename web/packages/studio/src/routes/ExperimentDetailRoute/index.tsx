@@ -7,6 +7,7 @@ import { Button, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExperimentDataView } from '@studio/components/dataViews/ExperimentDataView';
+import { ExpandableMessage } from '@studio/components/ExpandableMessage';
 import { ExperimentEditModal } from '@studio/components/ExperimentEditModal';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
 import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
@@ -80,7 +81,10 @@ export const ExperimentDetailRoute: FC = () => {
                         <Text kind="label/bold/lg">Insight description</Text>
                         <OriginatingInsightLink insightId={insight.id} />
                       </Flex>
-                      <Text kind="body/regular/md">{insight.description}</Text>
+                      <ExpandableMessage
+                        message={insight.description}
+                        attributes={{ Text: { kind: 'body/regular/md' } }}
+                      />
                     </Stack>
                   </Card>
                 ) : null}
