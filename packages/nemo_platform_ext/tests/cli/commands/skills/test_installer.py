@@ -6,7 +6,7 @@
 from pathlib import Path
 
 import pytest
-from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
+from nemo_platform_ext.cli.commands.skills.base import Scope, Skill, installed_skill_name
 from nemo_platform_ext.cli.commands.skills.installer import BaseAgentInstaller
 
 
@@ -26,11 +26,18 @@ class FakeInstaller(BaseAgentInstaller):
     display_name = "Fake Agent"
     supported_scopes = [Scope.PROJECT, Scope.USER]
 
-    def get_install_path(self, _scope: Scope, project_root: Path, skill_name: str) -> Path:
+    def get_install_path(self, scope: Scope, project_root: Path, skill_name: str) -> Path:
+        del scope
         return project_root / ".fake" / f"{skill_name}.md"
 
     def format_content(self, skill: Skill) -> str:
         return skill.raw
+
+
+class NormalizingInstaller(FakeInstaller):
+    def get_install_path(self, scope: Scope, project_root: Path, skill_name: str) -> Path:
+        del scope
+        return project_root / ".fake" / f"{installed_skill_name(skill_name)}.md"
 
 
 def test_install_creates_files_for_each_skill(tmp_path: Path):
@@ -71,6 +78,19 @@ def test_install_rejects_path_like_skill_names(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid skill name"):
         installer.install(Scope.PROJECT, tmp_path, skills)
+
+
+def test_install_rejects_duplicate_normalized_destinations_before_writing(tmp_path: Path):
+    installer = NormalizingInstaller()
+    skills = {
+        "foo": _make_skill("foo"),
+        "nemo-foo": _make_skill("nemo-foo"),
+    }
+
+    with pytest.raises(ValueError, match="Multiple skills resolve to"):
+        installer.install(Scope.PROJECT, tmp_path, skills)
+
+    assert not (tmp_path / ".fake" / "nemo-foo.md").exists()
 
 
 def test_install_copies_companion_files(tmp_path: Path):

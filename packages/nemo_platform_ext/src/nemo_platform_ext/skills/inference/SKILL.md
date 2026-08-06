@@ -562,9 +562,12 @@ created_vms=(
   vm-guarded-translate
 )
 
-printf 'Delete example VirtualModels in my-workspace? Type DELETE to continue: '
+printf 'Delete example resources in my-workspace (VirtualModels: %s; provider: nvidia-inference; secret: nvidia-inference-key; workspace: my-workspace)? Type DELETE to continue: ' "${created_vms[*]}"
 read -r confirmation
-test "$confirmation" = "DELETE"
+if [ "$confirmation" != "DELETE" ]; then
+  echo "Cleanup cancelled." >&2
+  exit 1
+fi
 
 for vm in "${created_vms[@]}"; do
   nemo inference virtual-models delete "$vm" --workspace my-workspace
