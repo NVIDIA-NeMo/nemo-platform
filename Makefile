@@ -201,7 +201,7 @@ bootstrap-python: ## Bootstrap Python dependencies.
 NMP_SKIP_MISE ?=
 MISE_VERSION ?= v2026.5.7
 MISE := $(shell command -v mise 2>/dev/null || echo $(HOME)/.local/bin/mise)
-MISE_EXEC := $(if $(NMP_SKIP_MISE),,$(MISE) exec --)
+MISE_EXEC := $(if $(NMP_SKIP_MISE),,"$(MISE)" exec --)
 
 .PHONY: verify-mise
 verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
@@ -217,7 +217,7 @@ verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
 		echo "or re-run with NMP_SKIP_MISE=1 to use your own node/pnpm."; \
 		exit 1; \
 	fi; \
-	$(MISE) install --yes
+	"$(MISE)" install --yes
 
 .PHONY: verify-pnpm
 verify-pnpm: verify-mise ## Verify pnpm is available for Studio bootstrap
