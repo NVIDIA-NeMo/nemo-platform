@@ -227,6 +227,9 @@ class TraceAnalyzer(Agent):
         ``objective_metrics`` (dimensions to improve) and ``regression_metrics``
         (dimensions to preserve). Do not invent scalar formulas, weights, or
         thresholds for evaluator-defined metrics.
+        Frame decision points around the objective metric shortfall. A regression
+        metric may identify a guardrail risk, but is not by itself the failure this
+        optimization round is trying to diagnose.
 
         All TraceExplorer methods are async — always `await` them.
 
@@ -285,7 +288,9 @@ class TraceAnalyzer(Agent):
         If insight is present and the trace does not match the insight's behavior,
         set ``outcome="SUCCESS"`` with ``failure_point=None``.
         Use the metric contract to distinguish objective shortfalls from regression
-        risks. Do not invent scalar formulas, weights, or thresholds.
+        risks. The root cause must explain an objective metric's underperformance;
+        describe regression effects only as constraints. Do not invent scalar
+        formulas, weights, or thresholds.
         """  # noqa: D413
         ...
 
