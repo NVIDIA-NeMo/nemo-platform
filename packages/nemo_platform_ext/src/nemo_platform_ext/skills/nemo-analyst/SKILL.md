@@ -50,9 +50,10 @@ is the unit of work the rest of the optimization loop runs on. Each carries:
   audit the reasoning and build regression tests
 
 The Analyst targets at least three representative traces per Insight and appends
-evidence to an existing Insight rather than filing a near-duplicate. Two
-well-evidenced Insights are worth more than ten vague ones, so a run that files
-nothing is a valid outcome.
+evidence to an existing Insight rather than filing a near-duplicate. It judges
+behavior rather than status or scores, so it finds failures in sessions that
+reported success and passed their evaluations. Two well-evidenced Insights are
+worth more than ten vague ones, so a run that files nothing is a valid outcome.
 
 ## Before running
 
@@ -75,10 +76,12 @@ just outright errors.
 nemo agents analyst doctor
 ```
 
-Two failures block a run and must be fixed first: an `optimizer.yaml` that is
-missing or unparseable when no `--agent` is passed, and an unset
-`INFERENCE_API_KEY`. Platform reachability and the workspace probe are advisory
-— they warn, and the run still proceeds.
+Only two results block a run: an unset `INFERENCE_API_KEY`, and an
+`optimizer.yaml` that is missing or unparseable — the second only if you intend
+to run without `--agent`. Doctor takes no `--agent` flag, so it always checks
+for a profile and always reports a red line when there is none; when you pass
+`--agent`, that line is noise. Platform reachability and the workspace probe
+only ever warn.
 
 ## Run it
 
@@ -89,10 +92,9 @@ nemo agents analyst run \
   --base-url "$NMP_BASE_URL"
 ```
 
-Add `--agent-spec AGENT-SPEC.md` to enable divergence checking, and `--verbose`
-to stream the Analyst's tool calls and reasoning to stderr while it works.
-Expect a run to take several minutes; it surveys many sessions before drilling
-into any of them.
+Add `--agent-spec AGENT-SPEC.md` for divergence checking, and `--verbose` to
+stream the Analyst's tool calls and reasoning to stderr. Expect several minutes;
+it surveys many sessions before drilling into any of them.
 
 From an agent directory, an `optimizer.yaml` profile supplies `agent`,
 `workspace`, and `agent_spec`, so the flags above become optional:
@@ -107,18 +109,16 @@ ignored.
 
 ## Where Insights are stored
 
-Insights always go to the platform. To keep a local copy, pass
-`--insights-file-output`, which mirrors what the platform stored, platform IDs
-included, and merges into that file on each run:
+Insights always go to the platform. `--insights-file-output` additionally
+mirrors what the platform stored, platform IDs included, merging into that file
+on each run; a mirror that cannot be written warns rather than failing the run.
 
 ```bash
 nemo agents analyst run --agent <agent-name> --insights-file-output .nemo-optimizer/insights.yaml
 ```
 
-That path is the one the Experimentalist reads by default, so it is the
-conventional choice when handing off locally. A mirror that cannot be written
-degrades to a warning rather than failing the run, because the platform is the
-source of truth.
+That path is what the Experimentalist reads by default, so it is the
+conventional choice when handing off locally.
 
 ## Verify
 
@@ -131,20 +131,20 @@ curl --fail-with-body \
   "$NMP_BASE_URL/apis/insights/v2/workspaces/<workspace>/insights?agent=<agent-name>&page=1&page_size=20"
 ```
 
-Drop the `Authorization` header on a local platform with authentication
-disabled. A successful run leaves at least one Insight for the agent, each with
-a clear title, an actionable description, and non-empty `trace_refs`. Stored
-Insights also appear in Studio under the workspace's optimizer view. If you
-passed `--insights-file-output`, read the mirror back and confirm it is
-non-empty.
+On a local platform with authentication disabled, `nemo auth token` fails and
+the header can be dropped. A successful run leaves at least one Insight for the
+agent, each with a clear title, an actionable description, and non-empty
+`trace_refs`; stored Insights also appear in Studio's optimizer view for the
+workspace.
 
 ## When it finds nothing
 
-An empty result is either a real "nothing worth filing" or one of two setup
-problems. Check the agent name matches the `agent_name` on the spans exactly,
-since the Analyst scopes everything through spans, then confirm telemetry is
-actually flowing for that agent and workspace. Too few traces produces the same
-empty result as a healthy agent.
+Besides a real "nothing worth filing", three things produce an empty result.
+Scoping: the Analyst reads only what `--agent` and `--workspace` together
+select, and `agent_name` is carried on agent-level spans, not on their model and
+tool children. Volume: too few traces looks the same as a healthy agent. And
+telemetry that captures only the shape of a run, spans without the inputs and
+outputs, leaves nothing to judge however many spans there are.
 
 ## Hand off
 
