@@ -182,7 +182,7 @@ def test_sync_tag_puts_to_the_tag_url_with_the_revision() -> None:
     resource = EvaluatorTasksetsResource(_platform(http_client))
     digest = "a" * 64
 
-    resource.tag("ts-1", "blessed", revision=digest)
+    resource.tag("ts-1", tag="blessed", revision=digest)
 
     assert http_client.put.call_args.args[0] == f"{_BASE}/tasksets/ts-1/tags/blessed"
     assert http_client.put.call_args.kwargs["params"] == {"revision": digest}

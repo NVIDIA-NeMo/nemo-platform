@@ -221,6 +221,13 @@ class TasksetService:
         this taskset's membership the next time that task published, and a published grouping that
         changes underneath you is not a grouping. Same reason a lockfile records resolved versions,
         not ranges.
+
+        The resolved refs are then sorted into a **canonical order**. Membership is a set — the
+        field documents it as such and duplicates are rejected — but the digest covers the stored
+        list, so without this ``[a, b]`` and ``[b, a]`` would be the same grouping under two
+        different digests, and re-submitting a reordered request would cut a revision that changed
+        nothing. Sorting the stored content rather than only the hash input keeps the digest a hash
+        of exactly what is stored, which is what verification on read re-checks.
         """
         self._reject_duplicate_members(taskset_input.tasks, workspace=workspace)
         limit = asyncio.Semaphore(_MEMBER_RESOLUTION_CONCURRENCY)
@@ -229,11 +236,9 @@ class TasksetService:
             async with limit:
                 return await self._pin_member(ref, workspace=workspace)
 
-        # ``gather`` preserves input order, so membership order survives resolution — which matters
-        # because a taskset's digest depends on member order.
         pending = [asyncio.create_task(_bounded(ref)) for ref in taskset_input.tasks]
         try:
-            return list(await asyncio.gather(*pending))
+            return sorted(await asyncio.gather(*pending), key=lambda ref: ref.root)
         except BaseException:
             # ``gather`` propagates the first failure but leaves its siblings running. One bad
             # member in a large grouping would otherwise keep issuing reads long after the request

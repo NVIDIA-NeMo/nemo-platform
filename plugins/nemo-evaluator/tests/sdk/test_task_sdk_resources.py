@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from nemo_evaluator.api.schemas import MetricRef, Revision, Task, TaskInput
 from nemo_evaluator.sdk.task_resources import AsyncEvaluatorTasksResource, EvaluatorTasksResource
 
@@ -178,6 +179,40 @@ def test_sync_retrieve_with_revision_targets_the_revision_sub_path() -> None:
     assert http_client.get.call_args.args[0] == f"{_BASE}/tasks/task-1/revisions/{digest}"
 
 
+def test_sync_retrieve_with_tag_targets_the_same_sub_path() -> None:
+    """``tag`` and ``revision`` are two names for one route segment, resolved server-side.
+
+    Splitting them is a call-site readability change only, so a tag must reach exactly the URL a
+    digest would — a separate query parameter or route would be a behaviour change nobody asked for.
+    """
+    http_client = MagicMock()
+    http_client.get.return_value = _response(_task_payload("task-1"))
+    resource = EvaluatorTasksResource(_platform(http_client))
+
+    resource.retrieve("task-1", tag="blessed")
+
+    assert http_client.get.call_args.args[0] == f"{_BASE}/tasks/task-1/revisions/blessed"
+
+
+def test_sync_retrieve_rejects_both_selectors() -> None:
+    """Two selectors is ambiguous intent, not a precedence question — refuse rather than pick one."""
+    resource = EvaluatorTasksResource(_platform(MagicMock()))
+
+    with pytest.raises(ValueError, match="not both"):
+        resource.retrieve("task-1", revision="a" * 64, tag="blessed")
+
+
+def test_sync_retrieve_percent_encodes_a_tag() -> None:
+    """Tags admit ``/`` (``release/v1``), which would otherwise open a path segment."""
+    http_client = MagicMock()
+    http_client.get.return_value = _response(_task_payload("task-1"))
+    resource = EvaluatorTasksResource(_platform(http_client))
+
+    resource.retrieve("task-1", tag="release/v1")
+
+    assert http_client.get.call_args.args[0] == f"{_BASE}/tasks/task-1/revisions/release%2Fv1"
+
+
 def test_sync_list_revisions_parses_the_page() -> None:
     http_client = MagicMock()
     http_client.get.return_value = _response(
@@ -207,7 +242,7 @@ def test_sync_tag_puts_to_the_tag_url_with_the_revision() -> None:
     resource = EvaluatorTasksResource(_platform(http_client))
     digest = "a" * 64
 
-    resource.tag("task-1", "blessed", revision=digest)
+    resource.tag("task-1", tag="blessed", revision=digest)
 
     assert http_client.put.call_args.args[0] == f"{_BASE}/tasks/task-1/tags/blessed"
     assert http_client.put.call_args.kwargs["params"] == {"revision": digest}
@@ -219,7 +254,7 @@ def test_sync_tag_escapes_the_tag_name() -> None:
     http_client.put.return_value = _response(_task_payload("task-1"))
     resource = EvaluatorTasksResource(_platform(http_client))
 
-    resource.tag("task-1", "release/v1", revision="a" * 64)
+    resource.tag("task-1", tag="release/v1", revision="a" * 64)
 
     assert http_client.put.call_args.args[0] == f"{_BASE}/tasks/task-1/tags/release%2Fv1"
 
@@ -251,6 +286,6 @@ async def test_async_tag_puts_to_the_tag_url() -> None:
     http_client.put = AsyncMock(return_value=_response(_task_payload("task-1")))
     resource = AsyncEvaluatorTasksResource(_platform(http_client))
 
-    await resource.tag("task-1", "blessed", revision="a" * 64)
+    await resource.tag("task-1", tag="blessed", revision="a" * 64)
 
     assert http_client.put.call_args.args[0] == f"{_BASE}/tasks/task-1/tags/blessed"

@@ -225,17 +225,41 @@ async def test_members_resolve_concurrently(existing_tasks: set[tuple[str, str]]
     assert overlap["peak"] > 1, "members must resolve concurrently, not one at a time"
 
 
-async def test_member_resolution_preserves_order(existing_tasks: set[tuple[str, str]], entity_store) -> None:
-    """Concurrency must not reorder membership — `gather` preserves input order, and the digest of
-    a taskset depends on member order."""
+async def test_membership_is_stored_in_canonical_order(existing_tasks: set[tuple[str, str]], entity_store) -> None:
+    """Membership is a set, so it is stored sorted rather than in submission order.
+
+    The digest covers the stored list, so leaving order to the caller would give one grouping two
+    identities. Sorting also has to survive concurrent resolution, which completes out of order.
+    """
     members = {("default", f"task-{i}") for i in range(5)}
     service = TasksetService(entity_store, _FakeTaskService(members))
 
     created, _ = await service.create_taskset(
-        "ts-1", TasksetInput(tasks=[TaskRef(f"task-{i}") for i in range(5)]), workspace="default"
+        "ts-1", TasksetInput(tasks=[TaskRef(f"task-{i}") for i in reversed(range(5))]), workspace="default"
     )
 
     assert [t.root.split("#")[0] for t in created.tasks] == [f"default/task-{i}" for i in range(5)]
+
+
+async def test_reordering_members_publishes_no_revision(existing_tasks: set[tuple[str, str]], entity_store) -> None:
+    """Re-submitting the same members in a different order is not a content change.
+
+    This is the property canonical ordering exists for: without it the two requests hash
+    differently, and a caller that merely rebuilt its list from a set would cut a revision whose
+    content is indistinguishable from its predecessor's.
+    """
+    members = {("default", f"task-{i}") for i in range(3)}
+    service = TasksetService(entity_store, _FakeTaskService(members))
+
+    created, _ = await service.create_taskset(
+        "ts-1", TasksetInput(tasks=[TaskRef(f"task-{i}") for i in range(3)]), workspace="default"
+    )
+    replaced, published = await service.replace_taskset(
+        "ts-1", TasksetInput(tasks=[TaskRef(f"task-{i}") for i in reversed(range(3))]), workspace="default"
+    )
+
+    assert not published, "reordered membership is the same set, so nothing should be published"
+    assert replaced.revision == created.revision == 1
 
 
 async def test_tag_revision_returns_none_for_a_missing_taskset(service: TasksetService) -> None:

@@ -161,11 +161,11 @@ def test_tagging_an_older_revision_leaves_latest_alone(subprocess_platform: str)
         first_digest = client.evaluator.tasks.list_revisions(name, workspace=WORKSPACE).data[0].content_hash
         client.evaluator.tasks.replace(name, task=_task_input("Second."), workspace=WORKSPACE)
 
-        tagged = client.evaluator.tasks.tag(name, "blessed", revision=first_digest, workspace=WORKSPACE)
+        tagged = client.evaluator.tasks.tag(name, tag="blessed", revision=first_digest, workspace=WORKSPACE)
 
         assert tagged.tags["blessed"] == 1
         assert tagged.tags["latest"] == 2, "latest is machine-managed and must not follow a manual tag"
-        assert client.evaluator.tasks.retrieve(name, revision="blessed", workspace=WORKSPACE).intent == "First."
+        assert client.evaluator.tasks.retrieve(name, tag="blessed", workspace=WORKSPACE).intent == "First."
     finally:
         client.evaluator.tasks.delete(name, workspace=WORKSPACE)
 

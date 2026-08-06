@@ -5247,10 +5247,12 @@ components:
             $ref: '#/components/schemas/TaskRef'
           type: array
           title: Tasks
-          description: References to the member tasks (set semantics; duplicates rejected).
-            Each may be bare, tag-pinned ('task-a#latest'), or digest-pinned; all
-            are resolved to an exact digest when stored, so the grouping cannot change
-            underneath you when a member republishes.
+          description: 'References to the member tasks (set semantics; duplicates
+            rejected). Each may be bare, tag-pinned (''task-a#latest''), or digest-pinned;
+            all are resolved to an exact digest when stored, so the grouping cannot
+            change underneath you when a member republishes. Because membership is
+            a set, the stored order is canonical rather than the submitted order:
+            reordering the same members is not a content change and publishes no revision.'
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'

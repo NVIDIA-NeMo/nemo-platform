@@ -25,6 +25,7 @@ from nemo_evaluator.revisions import (
     apply_tag,
     get_revision,
     head_digest,
+    list_revisions,
     publish_revision,
     revision_name,
 )
@@ -47,6 +48,9 @@ class FakeStore:
         self._tick = 0
         #: Ordinals to fail the first create for, simulating a lost allocation race.
         self.contend_ordinals: set[int] = set()
+        #: Ordinals to lose to a publisher of *identical* content whose pointer write has not landed
+        #: yet — the interleaving that makes two concurrent identical requests each look novel.
+        self.contend_identically: set[int] = set()
         #: One-shot hook fired just before a *head* update, modelling a competing publisher that
         #: lands in the window between our child create and our pointer write. Lives on the fake
         #: rather than a monkeypatch so the race is expressed the same way ``contend_ordinals`` is.
@@ -64,6 +68,10 @@ class FakeStore:
             self.contend_ordinals.discard(ordinal)
             self._win_race(entity, ordinal)
             raise NemoEntityConflictError(f"{entity.name} taken by a concurrent publisher")
+        if ordinal in self.contend_identically:
+            self.contend_identically.discard(ordinal)
+            self._win_race(entity, ordinal, digest=entity.content_hash, advance_head=False)
+            raise NemoEntityConflictError(f"{entity.name} taken by a concurrent publisher")
         self._next_id += 1
         self._tick += 1
         entity._id = f"id-{self._next_id}"
@@ -71,20 +79,29 @@ class FakeStore:
         self.records[key] = entity.model_copy(deep=True)
         return entity
 
-    def _win_race(self, losing_entity, ordinal: int) -> None:
+    def _win_race(self, losing_entity, ordinal: int, *, digest: str | None = None, advance_head: bool = True) -> None:
         """Model a *complete* competing publish, not just a failed create.
 
-        The winner's record exists under the contended name and the head has advanced. Without
-        both, the loser re-reads an unchanged head and recomputes the same ordinal — which no real
-        race would do, and which would make the retry look broken when it isn't. The competitor
-        publishes *different* content (its own digest), so the loser genuinely needs a new ordinal
-        rather than discovering its content already published.
+        By default the winner's record exists under the contended name and the head has advanced.
+        Without both, the loser re-reads an unchanged head and recomputes the same ordinal — which
+        no real race would do, and which would make the retry look broken when it isn't. The
+        competitor publishes *different* content (its own digest), so the loser genuinely needs a
+        new ordinal rather than discovering its content already published.
+
+        ``digest`` and ``advance_head`` express the opposite interleaving: a winner publishing the
+        *same* content whose pointer write has not landed yet. The loser then sees a head that still
+        names the previous revision, so nothing but the contended child itself reveals that its
+        content is already published.
         """
-        winner = losing_entity.model_copy(update={"content_hash": f"{ordinal:064x}"})
+        winner = losing_entity.model_copy(update={"content_hash": digest or f"{ordinal:064x}"})
         winner._parent = losing_entity._parent
         self._next_id += 1
         winner._id = f"id-{self._next_id}"
+        self._tick += 1
+        winner._created_at = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=self._tick)
         self.records[self._key(type(winner), winner.name, winner.workspace, winner._parent)] = winner
+        if not advance_head:
+            return
         head = self.records.get(self._key(TaskEntity, "task-1", winner.workspace, None))
         if head is not None:
             head.latest_revision = max(head.latest_revision, ordinal)
@@ -311,6 +328,54 @@ async def test_contended_ordinal_is_retried() -> None:
     head.intent = "Changed."
     store.contend_ordinals = {2}
     revision, created = await _publish(store, head)
+    assert created
+    assert revision.revision == 3
+
+
+@pytest.mark.asyncio
+async def test_identical_contended_publish_adopts_the_winners_revision() -> None:
+    """Two identical publishes that overlap must still cut exactly one revision.
+
+    The dedup check reads the revision ``latest`` names, so it misses a winner whose pointer write
+    has not landed: the loser sees a head still naming ``N-1``, computes the same digest, and would
+    step past the contended ordinal onto a byte-identical ``rev.N+1``. Both callers would then
+    report a new revision for the same content, which is exactly what publishing is supposed to be
+    idempotent against.
+    """
+    store = FakeStore()
+    head = _head(store)
+    await _publish(store, head)
+
+    head.intent = "Changed."
+    store.contend_identically = {2}
+    revision, created = await _publish(store, head)
+
+    assert not created, "the loser must report the winner's revision, not a publish of its own"
+    assert revision.revision == 2, "adopt the contended ordinal rather than allocating past it"
+
+    page = await list_revisions(store, TaskRevisionEntity, head)
+    assert [entry.revision for entry in page.data] == [2, 1], "no duplicate-content revision was cut"
+
+    stored = store.records[store._key(TaskEntity, head.name, head.workspace, None)]
+    assert isinstance(stored, TaskEntity)
+    assert stored.tags[LATEST_TAG] == 2, "adopting must still point latest at the revision it adopted"
+
+
+@pytest.mark.asyncio
+async def test_contended_publish_of_different_content_still_allocates_a_new_ordinal() -> None:
+    """Adoption is keyed on the digest, not on losing the race.
+
+    The guard added for identical publishes must not swallow a genuine one: a loser whose content
+    differs from the winner's still needs its own ordinal.
+    """
+    store = FakeStore()
+    head = _head(store)
+    await _publish(store, head)
+
+    head.intent = "Changed."
+    store.contend_ordinals = {2}  # winner publishes *different* content
+    revision, created = await _publish(store, head)
+
     assert created
     assert revision.revision == 3
 

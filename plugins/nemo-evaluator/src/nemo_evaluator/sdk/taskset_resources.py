@@ -91,8 +91,12 @@ class EvaluatorTasksetsResource:
         response.raise_for_status()
         return Page[Revision].model_validate(response.json())
 
-    def tag(self, name: str, tag: str, *, revision: str, workspace: str | None = None) -> Taskset:
-        """Point a tag at an existing revision, named by digest or by another tag."""
+    def tag(self, name: str, *, tag: str, revision: str, workspace: str | None = None) -> Taskset:
+        """Point ``tag`` at an existing revision, named by digest or by another tag.
+
+        Both selectors are keyword-only: ``tag`` names the pointer being written and ``revision``
+        names what it points at, and two bare strings in a row gave no hint which was which.
+        """
         response = self._http_client.put(
             f"{self._item_url(name, workspace)}/tags/{quote(tag, safe='')}",
             params={"revision": revision},
@@ -102,11 +106,18 @@ class EvaluatorTasksetsResource:
         response.raise_for_status()
         return Taskset.model_validate(response.json())
 
-    def retrieve(self, name: str, *, revision: str | None = None, workspace: str | None = None) -> Taskset:
-        """Get a stored taskset by name, or as of a published revision (digest or tag)."""
+    def retrieve(
+        self, name: str, *, revision: str | None = None, tag: str | None = None, workspace: str | None = None
+    ) -> Taskset:
+        """Get a stored taskset by name, or as of a published revision.
+
+        Pass ``revision`` for a content digest or ``tag`` for a named pointer — not both. With
+        neither, this returns the taskset's current membership.
+        """
         url = self._item_url(name, workspace)
-        if revision is not None:
-            url = f"{url}/revisions/{quote(revision, safe='')}"
+        selector = http_utils.revision_selector(revision, tag)
+        if selector is not None:
+            url = f"{url}/revisions/{selector}"
         response = self._http_client.get(url, headers=self._headers(), timeout=self._platform.timeout)
         response.raise_for_status()
         return Taskset.model_validate(response.json())
@@ -198,8 +209,12 @@ class AsyncEvaluatorTasksetsResource:
         response.raise_for_status()
         return Page[Revision].model_validate(response.json())
 
-    async def tag(self, name: str, tag: str, *, revision: str, workspace: str | None = None) -> Taskset:
-        """Point a tag at an existing revision, named by digest or by another tag."""
+    async def tag(self, name: str, *, tag: str, revision: str, workspace: str | None = None) -> Taskset:
+        """Point ``tag`` at an existing revision, named by digest or by another tag.
+
+        Both selectors are keyword-only: ``tag`` names the pointer being written and ``revision``
+        names what it points at, and two bare strings in a row gave no hint which was which.
+        """
         response = await self._http_client.put(
             f"{self._item_url(name, workspace)}/tags/{quote(tag, safe='')}",
             params={"revision": revision},
@@ -209,11 +224,18 @@ class AsyncEvaluatorTasksetsResource:
         response.raise_for_status()
         return Taskset.model_validate(response.json())
 
-    async def retrieve(self, name: str, *, revision: str | None = None, workspace: str | None = None) -> Taskset:
-        """Get a stored taskset by name, or as of a published revision (digest or tag)."""
+    async def retrieve(
+        self, name: str, *, revision: str | None = None, tag: str | None = None, workspace: str | None = None
+    ) -> Taskset:
+        """Get a stored taskset by name, or as of a published revision.
+
+        Pass ``revision`` for a content digest or ``tag`` for a named pointer — not both. With
+        neither, this returns the taskset's current membership.
+        """
         url = self._item_url(name, workspace)
-        if revision is not None:
-            url = f"{url}/revisions/{quote(revision, safe='')}"
+        selector = http_utils.revision_selector(revision, tag)
+        if selector is not None:
+            url = f"{url}/revisions/{selector}"
         response = await self._http_client.get(url, headers=self._headers(), timeout=self._platform.timeout)
         response.raise_for_status()
         return Taskset.model_validate(response.json())

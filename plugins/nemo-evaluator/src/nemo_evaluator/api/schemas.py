@@ -561,7 +561,9 @@ class TasksetInput(BaseModel):
         default_factory=list,
         description="References to the member tasks (set semantics; duplicates rejected). Each may be "
         "bare, tag-pinned ('task-a#latest'), or digest-pinned; all are resolved to an exact digest "
-        "when stored, so the grouping cannot change underneath you when a member republishes.",
+        "when stored, so the grouping cannot change underneath you when a member republishes. "
+        "Because membership is a set, the stored order is canonical rather than the submitted order: "
+        "reordering the same members is not a content change and publishes no revision.",
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
     tags: list[str] = Field(

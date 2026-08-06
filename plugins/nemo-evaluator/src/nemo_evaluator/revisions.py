@@ -210,6 +210,25 @@ async def find_by_digest(
     return result.data[0] if result.data else None
 
 
+async def _revision_at(
+    revision_client: RevisionStoreProtocol[RevisionT],
+    revision_type: type[RevisionT],
+    head: TaskEntity | TasksetEntity,
+    ordinal: int,
+) -> RevisionT | None:
+    """This record's revision ``ordinal``, or ``None`` if no such child exists.
+
+    A direct child lookup rather than a query: a revision's identity within its parent is its
+    ordinal, so the name is already known.
+    """
+    try:
+        return await revision_client.get(
+            revision_type, name=revision_name(ordinal), workspace=head.workspace, parent=head.id
+        )
+    except NemoEntityNotFoundError:
+        return None
+
+
 async def _current_revision(
     revision_client: RevisionStoreProtocol[RevisionT],
     revision_type: type[RevisionT],
@@ -223,12 +242,7 @@ async def _current_revision(
     ordinal = head.tags.get(LATEST_TAG)
     if ordinal is None:
         return None
-    try:
-        return await revision_client.get(
-            revision_type, name=revision_name(ordinal), workspace=head.workspace, parent=head.id
-        )
-    except NemoEntityNotFoundError:
-        return None
+    return await _revision_at(revision_client, revision_type, head, ordinal)
 
 
 async def get_revision(
@@ -402,7 +416,20 @@ async def publish_revision(
                 extra={"record": f"{head.workspace}/{head.name}", "ordinal": ordinal, "attempt": attempt + 1},
             )
             _refresh_pointers(head, await head_client.get(type(head), name=head.name, workspace=head.workspace))
-            # The refresh above adopts the *stored* allocation state, which does not necessarily
+
+            # The winner may have published exactly what we are publishing. Two identical requests
+            # that overlap both compute this digest; the dedup check above missed it only because
+            # the winner's pointer write had not landed when we read ``latest``. Stepping past their
+            # ordinal here would cut a byte-identical duplicate and report ``created`` to both
+            # callers, so idempotency has to be re-checked against the revision that actually beat
+            # us rather than against a head that may still be stale.
+            contended = await _revision_at(revision_client, revision_type, head, ordinal)
+            if contended is not None and contended.content_hash == digest:
+                if any(head.tags.get(tag) != contended.revision for tag in applied):
+                    head = await _point_tags(head_client, head, applied, contended.revision)
+                return contended, head, False
+
+            # The refresh earlier adopts the *stored* allocation state, which does not necessarily
             # account for the ordinal we just lost: if the winner's own pointer write never landed,
             # the stored head still names N-1 and we would recompute N and lose again, every attempt
             # until the retries run out — and every later publish would do the same, leaving the
