@@ -66,28 +66,30 @@ def test_resolve_splits_falls_back_to_single_default():
 # --- partition grouping --------------------------------------------------------------------------
 
 
-def test_group_partitions_single_default_for_root_files():
+def test_group_partitions_names_the_root_partition_with_the_empty_prefix():
+    # "" is the path prefix root-level files share, and no directory can be named it -- which is what
+    # keeps root files distinct from a directory literally called "default".
     assert group_partitions(_entries("train.parquet", "test.parquet")) == [
-        (None, _entries("train.parquet", "test.parquet"))
+        ("", _entries("train.parquet", "test.parquet"))
     ]
 
 
 def test_group_partitions_collapses_single_container_dir():
-    # One container directory is still one partition, but its identity stays the directory. Losing
-    # "data" here is what let a partition's identity move when the surrounding layout changed.
+    # One container directory is still one partition, and it keeps that directory as its name.
+    # Reporting "default" here discarded the only thing identifying the partition.
     parts = group_partitions(_entries("data/train.parquet", "data/test.parquet"))
-    assert [source_dir for source_dir, _ in parts] == ["data"]
+    assert [name for name, _ in parts] == ["data"]
 
 
 def test_group_partitions_splits_multiple_top_dirs():
     parts = group_partitions(_entries("main/train.parquet", "socratic/train.parquet"))
-    assert [source_dir for source_dir, _ in parts] == ["main", "socratic"]
+    assert [name for name, _ in parts] == ["main", "socratic"]
 
 
 def test_group_partitions_does_not_treat_split_dirs_as_partitions():
     # train/ and test/ are one dataset's splits, not two datasets.
     parts = group_partitions(_entries("train/data.parquet", "test/data.parquet"))
-    assert [source_dir for source_dir, _ in parts] == [None]
+    assert [name for name, _ in parts] == [""]
 
 
 def test_resolve_splits_reads_the_split_directory():
@@ -116,7 +118,7 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
     assert result.profiler_info["name"] == "nemo-dataset-profiler"
     assert len(result.partitions) == 1
     partition = result.partitions[0]
-    assert partition.name == "default"
+    assert partition.name == ""  # root-level files: the empty path prefix
     assert partition.file_formats == ["parquet"]
 
     splits = {s.name: s for s in partition.splits}
@@ -165,7 +167,6 @@ def test_profile_multiple_directories_become_partitions(tmp_path):
 
     assert [p.name for p in result.partitions] == ["main", "socratic"]
     assert all(p.file_formats == ["parquet"] for p in result.partitions)
-    assert [p.source_dir for p in result.partitions] == ["main", "socratic"]
 
 
 def test_profile_top_level_split_dirs_become_one_partition(tmp_path):
@@ -176,7 +177,7 @@ def test_profile_top_level_split_dirs_become_one_partition(tmp_path):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
-    assert [p.name for p in result.partitions] == ["default"]
+    assert [p.name for p in result.partitions] == [""]
     splits = {s.name: s for s in result.partitions[0].splits}
     assert set(splits) == {"train", "test"}
     assert splits["train"].canonical == "train"
@@ -191,7 +192,7 @@ def test_profile_nested_split_dirs_keep_splits_apart(tmp_path):
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
-    assert [p.name for p in result.partitions] == ["default"]
+    assert [p.name for p in result.partitions] == ["data"]  # the container directory, not "default"
     splits = {s.name: s for s in result.partitions[0].splits}
     assert set(splits) == {"train", "test"}
     assert splits["train"].num_examples == 2
@@ -209,8 +210,7 @@ def test_profile_keeps_a_mixed_format_directory_as_one_partition(tmp_path):
 
     assert len(result.partitions) == 1
     partition = result.partitions[0]
-    assert partition.name == "default"
-    assert partition.source_dir == "data"
+    assert partition.name == "data"
     assert partition.file_formats == ["jsonl", "parquet"]
     assert {f.path.rsplit("/", 1)[-1]: f.file_format for s in partition.splits for f in s.files} == {
         "train-00000-of-00001.parquet": "parquet",
@@ -224,10 +224,10 @@ def test_profile_keeps_a_mixed_format_directory_as_one_partition(tmp_path):
 
 
 def test_root_files_and_a_directory_named_default_stay_distinct():
-    # Both label as "default"; only source_dir tells them apart. Flattening the two into one string
-    # produced two partitions with the same name and no way to reference either.
+    # The collision the empty-string sentinel exists to prevent: a derived label collapsed both to
+    # "default", leaving two partitions with one name and no way to reference either.
     parts = group_partitions(_entries("root.parquet", "default/inner.parquet"))
-    assert [source_dir for source_dir, _ in parts] == ["default", None]
+    assert [name for name, _ in parts] == ["", "default"]
 
 
 def test_an_unrelated_file_does_not_rename_a_partition(tmp_path):
@@ -235,12 +235,12 @@ def test_an_unrelated_file_does_not_rename_a_partition(tmp_path):
     # renamed, *gone*, so a stored reference resolved to nothing.
     _write_parquet(tmp_path / "main" / "train.parquet", [{"q": "a"}])
     _write_parquet(tmp_path / "socratic" / "train.parquet", [{"q": "b"}])
-    before = [(p.name, p.source_dir) for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions]
+    before = [p.name for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions]
 
     (tmp_path / "main" / "notes.jsonl").write_text('{"note": "someone dropped this here"}\n')
-    after = [(p.name, p.source_dir) for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions]
+    after = [p.name for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions]
 
-    assert before == after == [("main", "main"), ("socratic", "socratic")]
+    assert before == after == ["main", "socratic"]
 
 
 def test_profile_unions_columns_across_shards(tmp_path):
