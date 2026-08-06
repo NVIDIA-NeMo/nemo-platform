@@ -104,6 +104,7 @@ def _install_pipeline(
     outcomes: Sequence[Diagnostic | BaseException],
     *,
     validation_errors: dict[str, list[str]] | None = None,
+    contract_failures: int = 0,
 ) -> _Calls:
     events: list[str] = []
     failures = validation_errors or {}
@@ -136,6 +137,7 @@ def _install_pipeline(
         insight_suite=materialized,
     )
     analyzer_index = 0
+    contract_attempt = 0
 
     class FakeInsightSuite:
         def __init__(self, *, task_template: Task, **_: Any) -> None:
@@ -236,11 +238,29 @@ def _install_pipeline(
                 summary="Authored tool-use metric.",
             )
 
+    def validate_metric_contracts(
+        datasets: dict[str, Dataset],
+        *,
+        metric_keys: tuple[str, ...],
+    ) -> None:
+        nonlocal contract_attempt
+        assert datasets == {
+            "train": train_dataset,
+            "validation": validation_dataset,
+            "insight": materialized,
+        }
+        assert metric_keys == ("uses_correct_tool",)
+        calls.events.append("contract")
+        contract_attempt += 1
+        if contract_attempt <= contract_failures:
+            raise DatasetValidationError("validation/task-a: metric-contract.json declares the wrong keys")
+
     eval_author.fill_task_template = cast(Any, FillTaskTemplate())
     eval_author.discover_runner = cast(Any, DiscoverRunner())
     eval_author.author_insight_metrics = cast(Any, AuthorInsightMetrics())
     monkeypatch.setattr(eval_author_module, "InsightSuite", FakeInsightSuite)
     monkeypatch.setattr(eval_author_module, "TraceAnalyzer", FakeTraceAnalyzer)
+    monkeypatch.setattr(eval_author_module, "validate_metric_contracts", validate_metric_contracts, raising=False)
     monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
     monkeypatch.setattr(eval_author_module, "doc", lambda *_args, **_kwargs: "dataset docs")
     return calls
@@ -252,6 +272,7 @@ def test_metric_authoring_prompt_limits_edits_and_result_shape() -> None:
     assert "every task in ``train_dataset``, ``validation_dataset``, and ``insight_suite``" in prompt
     assert "task-specific verifier edits" in prompt.lower()
     assert "Do not hard-code scores for the production traces" in prompt
+    assert "metric-contract.json" in prompt
     assert "MetricAuthoringResult" in prompt
     assert "metric_keys" in prompt
     assert "verifier_bundle" not in prompt
@@ -309,6 +330,7 @@ async def test_run_materializes_authors_validates_and_returns_datasets(
         "validate:train",
         "validate:validation",
         "validate:insight-suite",
+        "contract",
         "finalize",
     ]
     assert result.train_dataset is calls.train_dataset
@@ -317,6 +339,36 @@ async def test_run_materializes_authors_validates_and_returns_datasets(
     assert result.insight_suite_identity == f"sha256:{'a' * 64}"
     assert result.metric_keys == ("uses_correct_tool",)
     assert result.summary == "Authored tool-use metric."
+
+
+@pytest.mark.asyncio
+async def test_metric_contract_failure_uses_repair_loop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eval_author = _eval_author(tmp_path, max_validation_repair_attempts=1)
+    calls = _install_pipeline(
+        monkeypatch,
+        eval_author,
+        [_diagnostic()],
+        contract_failures=1,
+    )
+
+    await eval_author.run(
+        _insight(["trace-1"]),
+        Path("agent"),
+        Task(id="template"),
+        calls.train_dataset,
+        calls.validation_dataset,
+        client=cast(Any, object()),
+    )
+
+    assert calls.author_feedback == [
+        None,
+        "validation/task-a: metric-contract.json declares the wrong keys",
+    ]
+    assert calls.events.count("author") == 2
+    assert calls.events.count("contract") == 2
 
 
 @pytest.mark.asyncio
@@ -348,6 +400,7 @@ async def test_static_validation_failure_uses_same_repair_loop(
     assert calls.events.count("validate:train") == 2
     assert calls.events.count("validate:validation") == 2
     assert calls.events.count("validate:insight-suite") == 2
+    assert calls.events.count("contract") == 1
 
 
 @pytest.mark.asyncio

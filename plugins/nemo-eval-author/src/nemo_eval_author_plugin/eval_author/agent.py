@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
+from nemo_eval_author_plugin.eval_author.materialization import InsightSuite, validate_metric_contracts
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult, MetricAuthoringResult
 from nemo_eval_author_plugin.model_config import (
     bridge_author_env_to_experimentalist,
@@ -160,6 +160,11 @@ class EvalAuthor(Agent):
         symptom. Measure the current Harbor run from runtime artifacts such as OTLP
         traces or agent outputs. Do not hard-code scores for the production traces that
         motivated the Insight.
+
+        In every task's configured verifier directory, write ``metric-contract.json``
+        containing exactly ``{"metric_keys": ["key_one", "key_two"]}``. The list must
+        contain the same newly authored keys for every task and must exactly match the
+        ``metric_keys`` returned in ``MetricAuthoringResult``.
 
         **Validate while authoring**
 
@@ -425,6 +430,14 @@ class EvalAuthor(Agent):
                         validation_errors.append(f"{label} dataset:\n{exc}")
                 if validation_errors:
                     raise DatasetValidationError("\n".join(validation_errors))
+                validate_metric_contracts(
+                    {
+                        "train": train_dataset,
+                        "validation": validation_dataset,
+                        "insight": materialized_dataset,
+                    },
+                    metric_keys=authoring_result.metric_keys,
+                )
             except DatasetValidationError as exc:
                 if repair_attempt >= self._config.max_validation_repair_attempts:
                     raise
