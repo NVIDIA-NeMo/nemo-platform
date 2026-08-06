@@ -11,7 +11,6 @@ ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:26.05-py3
 
 FROM causal-conv1d-wheel-image AS causal-conv1d-wheel-src
 FROM mamba-ssm-wheel-image AS mamba-ssm-wheel-src
-FROM ffmpeg-vlm-wheel-image AS ffmpeg-vlm-wheel-src
 
 FROM alpine/git AS automodel-clone
 ARG AUTOMODEL_COMMIT
@@ -42,13 +41,12 @@ RUN cd /opt/Automodel && \
     bash docker/common/update_pyproject_pytorch.sh /opt/Automodel && \
     patch -p1 < /opt/cherry-picks/3d98f6e3.diff
 
-# Sync all Automodel extras except cuda — causal-conv1d, mamba-ssm, nv-grouped-gemm,
-# and bitsandbytes are installed from prebuilt wheels / source in the steps below.
+# Sync the Automodel extras used by text training. Skip VLM/media extras so the image
+# does not carry FFmpeg-bearing av/opencv wheels.
 RUN --mount=type=cache,target=/root/.cache/uv \
     cd /opt/Automodel && \
     UV_HTTP_TIMEOUT=120 uv sync --locked \
     --extra extra \
-    --extra vlm \
     --extra delta-databricks \
     --all-groups
 
@@ -113,21 +111,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "grpcio>=1.81.1,<2" \
     "wandb>=0.28.1,<1"
 
-# Replace PyPI av/opencv (bundled FFmpeg < 8.1.2) with custom wheels from ffmpeg-vlm-wheel.
-# vlm sync pulls PyPI copies transitively; drop them before installing our manylinux wheels.
-# PyAV 17.x uses cp311-abi3 (stable ABI) — compatible with cp312, not cp312-cp312 tagged.
-RUN --mount=from=ffmpeg-vlm-wheel-src,target=/tmp/ffmpeg-vlm-wheel-src,readonly \
-    rm -rf \
-    /opt/venv/lib/python*/site-packages/av \
-    /opt/venv/lib/python*/site-packages/av-*.dist-info \
-    /opt/venv/lib/python*/site-packages/av.libs \
-    /opt/venv/lib/python*/site-packages/cv2 \
-    /opt/venv/lib/python*/site-packages/opencv_python_headless.libs \
-    /opt/venv/lib/python*/site-packages/opencv_python_headless-*.dist-info && \
-    uv pip install --no-cache-dir --no-deps \
-    /tmp/ffmpeg-vlm-wheel-src/wheels/av-*-abi3-manylinux_2_28_*.whl \
-    /tmp/ffmpeg-vlm-wheel-src/wheels/opencv_python_headless-*cp312*.whl
-
 # Published base image (same filesystem as builder).
 FROM ${PYTORCH_BASE} AS nmp-automodel-base
 ARG PYTORCH_BASE
@@ -180,8 +163,7 @@ RUN rm -rf \
 
 ENV VIRTUAL_ENV=/opt/venv \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
-    HF_HUB_ENABLE_HF_TRANSFER=1 \
-    FORCE_QWENVL_VIDEO_READER=torchcodec
+    HF_HUB_ENABLE_HF_TRANSFER=1
 ENV PATH="/bin:/opt/venv/bin:/root/.local/bin:$PATH"
 WORKDIR /opt
 

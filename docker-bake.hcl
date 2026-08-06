@@ -335,7 +335,6 @@ group "nmp-automodel-gpu-wheels" {
   targets = [
     "causal-conv1d-wheel",
     "mamba-ssm-wheel",
-    "ffmpeg-vlm-wheel",
   ]
 }
 
@@ -903,7 +902,6 @@ target "nmp-automodel-base-builder" {
   contexts = {
     causal-conv1d-wheel-image = causal_conv1d_wheel_context()
     mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
-    ffmpeg-vlm-wheel-image    = ffmpeg_vlm_wheel_context()
   }
   platforms = get_platforms()
 }
