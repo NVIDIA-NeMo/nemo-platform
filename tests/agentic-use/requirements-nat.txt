@@ -28,7 +28,9 @@
 # DOCKER CONTAINER
 # ----------------
 # Dockerfile.agentic-base installs this automatically during image build:
-#   uv pip install --prerelease=allow "nvidia-nat[most]==1.7.0" ...
+#   uv pip install --prerelease=allow "nvidia-nat[mcp,eval,langchain]==1.8.0" ...
 
-nvidia-nat[mcp,eval,langchain]
-nvidia-nat-atif
+nvidia-nat[mcp,eval,langchain]==1.8.0
+nvidia-nat-atif==1.8.0
+nvidia-nat-eval==1.8.0
+nvidia-nat-mcp==1.8.0

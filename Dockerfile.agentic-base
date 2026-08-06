@@ -96,7 +96,7 @@ ENV PYTHONPATH="/switchyard:/app/services/core/jobs/src:/app/services/core/entit
 RUN /app/.venv/bin/python -c "import nmp.core.jobs; import nmp.core.entities; print('All critical modules imported successfully')"
 
 # Install NAT and related components used by runner backends:
-# - nvidia-nat[most]: nat runtime with common plugin set.
+# - nvidia-nat[mcp,eval,langchain]: nat runtime with plugins used by these eval tasks.
 # - nvidia-nat-atif: ATIF schema models for trajectory validation.
 # - nvidia-nat-eval: nat eval / optimize support.
 # - nvidia-nat-mcp: mcp_client function type support.
@@ -105,13 +105,13 @@ RUN /app/.venv/bin/python -c "import nmp.core.jobs; import nmp.core.entities; pr
 #
 # All nvidia-nat* packages MUST be pinned to the same version. The CLI/meta
 # package historically lagged the plugin packages (e.g. nvidia-nat==1.4.3 vs
-# nvidia-nat-core/eval/langchain==1.7.0), which caused ImportErrors at plugin
+# nvidia-nat-core/eval/langchain==1.8.0), which caused ImportErrors at plugin
 # discovery (e.g. register_dataset_loader) and crashed `nat start fastapi`.
-# NAT 1.7.0 depends on prerelease transitive packages, so allow prereleases for
+# NAT 1.8.0 depends on prerelease transitive packages, so allow prereleases for
 # this isolated install step.
 RUN uv pip install --python /app/.venv/bin/python \
         --prerelease=allow \
-        "nvidia-nat[most]==1.7.0" nvidia-nat-atif==1.7.0 nvidia-nat-eval==1.7.0 nvidia-nat-mcp==1.7.0 && \
+        "nvidia-nat[mcp,eval,langchain]==1.8.0" nvidia-nat-atif==1.8.0 nvidia-nat-eval==1.8.0 nvidia-nat-mcp==1.8.0 && \
     uv pip install --python /app/.venv/bin/python -e /app/plugins/nemo-agents && \
     uv pip install --python /app/.venv/bin/python -e /app/plugins/nemo-agents/examples/calculator-agent && \
     chown -R harbor:harbor /app/.venv
