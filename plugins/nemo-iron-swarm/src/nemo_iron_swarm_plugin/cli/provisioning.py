@@ -14,6 +14,7 @@ import shutil
 import subprocess
 
 import typer
+from nemo_iron_swarm_plugin.cli.checks import redact_index_url
 from nemo_iron_swarm_plugin.config import GARAK_PYTHON_ENVVAR, IronSwarmConfig
 
 # `uv pip install` pulls torch-sized wheels; generous enough for a cold cache on a slow link, but
@@ -69,7 +70,7 @@ def provision_venv(config: IronSwarmConfig, *, force: bool) -> None:
     # against the extra index. Credentials are deliberately not handled here — uv picks them up from
     # ~/.netrc or UV_INDEX_<NAME>_* in the inherited environment.
     if config.index_url:
-        typer.echo(f"  using extra index {config.index_url}")
+        typer.echo(f"  using extra index {redact_index_url(config.index_url)}")
         install_cmd += ["--index", config.index_url]
     if config.index_strategy:
         install_cmd += ["--index-strategy", config.index_strategy]
