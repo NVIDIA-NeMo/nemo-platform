@@ -1597,6 +1597,8 @@ class EvolutionaryOptimizer(Agent):
             round_num=round_num,
             phase=phase,
             max_candidates=config.max_candidates,
+            objective_metrics=[target.model_dump(mode="json") for target in config.objective_function],
+            regression_metrics=[target.model_dump(mode="json") for target in config.regression_metrics],
         )
 
     async def _implement_candidates(
