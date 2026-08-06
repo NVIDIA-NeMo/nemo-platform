@@ -81,15 +81,16 @@ def validate_metric_contracts(
             if not task.uri:
                 failures.append(f"{dataset_name}/{task.id}: task URI is missing")
                 continue
-            task_dir = local_path_from_uri(
-                task.uri,
-                context=f"{dataset_name} dataset task {task.id!r}",
-            ).resolve()
             try:
+                task_dir = local_path_from_uri(
+                    task.uri,
+                    context=f"{dataset_name} dataset task {task.id!r}",
+                ).resolve()
                 verifier_dir = _verifier_dir(task_dir)
             except (FileNotFoundError, ValueError, tomllib.TOMLDecodeError) as exc:
                 failures.append(f"{dataset_name}/{task.id}: {exc}")
                 continue
+
             contract_path = verifier_dir / _METRIC_CONTRACT_FILENAME
             if not contract_path.is_file():
                 failures.append(f"{dataset_name}/{task.id}: missing {contract_path}")

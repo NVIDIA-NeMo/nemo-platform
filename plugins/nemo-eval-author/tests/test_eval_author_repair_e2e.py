@@ -554,17 +554,17 @@ async def test_eval_author_metric_discriminates_controlled_harbor_tool_evidence(
     assert compliant_payload["reward"] == pytest.approx(1.0)
     violating_metric_names = set(violating_payload) - {"reward"}
     compliant_metric_names = set(compliant_payload) - {"reward"}
-    assert len(violating_metric_names) == 1
+    assert violating_metric_names
     assert compliant_metric_names == violating_metric_names
-    metric_name = next(iter(violating_metric_names))
-    violating_score = violating_payload[metric_name]
-    compliant_score = compliant_payload[metric_name]
-    assert isinstance(violating_score, int | float) and not isinstance(violating_score, bool)
-    assert isinstance(compliant_score, int | float) and not isinstance(compliant_score, bool)
-    assert 0.0 <= violating_score <= 1.0
-    assert 0.0 <= compliant_score <= 1.0
-    assert compliant_score > violating_score
     assert set(summary.metric_keys) == violating_metric_names
+    for metric_name in sorted(violating_metric_names):
+        violating_score = violating_payload[metric_name]
+        compliant_score = compliant_payload[metric_name]
+        assert isinstance(violating_score, int | float) and not isinstance(violating_score, bool)
+        assert isinstance(compliant_score, int | float) and not isinstance(compliant_score, bool)
+        assert 0.0 <= violating_score <= 1.0
+        assert 0.0 <= compliant_score <= 1.0
+        assert compliant_score > violating_score
 
     assert len(unmeasurable_result.trials) == 1
     unmeasurable_trial = unmeasurable_result.trials[0]

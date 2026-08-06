@@ -90,6 +90,19 @@ def test_eval_author_result_supports_unchanged_datasets_without_authored_tasks()
     assert result.summary == "No trace refs on insight."
 
 
+def test_eval_author_result_stores_normalized_metric_keys() -> None:
+    result = EvalAuthorResult(
+        train_dataset=_dataset("train"),
+        validation_dataset=_dataset("validation"),
+        insight_suite=_dataset("insight"),
+        insight_suite_identity=f"sha256:{'a' * 64}",
+        metric_keys=("  uses_correct_tool  ",),
+        summary="Normalized keys.",
+    )
+
+    assert result.metric_keys == ("uses_correct_tool",)
+
+
 def test_eval_author_result_requires_suite_identity_and_declared_metrics_together() -> None:
     with pytest.raises(ValidationError):
         EvalAuthorResult(
@@ -114,4 +127,12 @@ def test_eval_author_result_requires_suite_identity_and_declared_metrics_togethe
             insight_suite_identity=f"sha256:{'a' * 64}",
             metric_keys=("reward",),
             summary="Generic only.",
+        )
+    with pytest.raises(ValidationError):
+        EvalAuthorResult(
+            train_dataset=_dataset("train"),
+            validation_dataset=_dataset("validation"),
+            insight_suite=_dataset("insight"),
+            insight_suite_identity=f"sha256:{'a' * 64}",
+            summary="Missing metric keys.",
         )

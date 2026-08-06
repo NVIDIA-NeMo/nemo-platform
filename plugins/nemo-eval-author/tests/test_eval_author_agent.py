@@ -260,7 +260,8 @@ def _install_pipeline(
     eval_author.author_insight_metrics = cast(Any, AuthorInsightMetrics())
     monkeypatch.setattr(eval_author_module, "InsightSuite", FakeInsightSuite)
     monkeypatch.setattr(eval_author_module, "TraceAnalyzer", FakeTraceAnalyzer)
-    monkeypatch.setattr(eval_author_module, "validate_metric_contracts", validate_metric_contracts, raising=False)
+    monkeypatch.setattr(eval_author_module, "validate_metric_contracts", validate_metric_contracts)
+
     monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
     monkeypatch.setattr(eval_author_module, "doc", lambda *_args, **_kwargs: "dataset docs")
     return calls

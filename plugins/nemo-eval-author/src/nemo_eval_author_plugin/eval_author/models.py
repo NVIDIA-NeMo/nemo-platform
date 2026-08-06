@@ -79,6 +79,13 @@ class EvalAuthorResult(BaseModel):
     metric_keys: tuple[str, ...] = ()
     summary: str
 
+    @field_validator("metric_keys")
+    @classmethod
+    def _metric_keys_are_portable(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value:
+            return ()
+        return _validate_metric_keys(value)
+
     @field_validator("summary")
     @classmethod
     def _summary_is_non_empty(cls, value: str) -> str:
@@ -93,5 +100,6 @@ class EvalAuthorResult(BaseModel):
         if self.insight_suite_identity is None:
             raise ValueError("an authored Insight suite requires its content identity")
         _non_empty(self.insight_suite_identity, label="Insight suite identity")
-        _validate_metric_keys(self.metric_keys)
+        if not self.metric_keys:
+            raise ValueError("an authored Insight suite requires declared metric keys")
         return self
