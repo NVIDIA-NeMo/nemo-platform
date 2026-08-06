@@ -16,35 +16,51 @@ so the job's ``to_spec`` stays a thin orchestration over ref-resolution helpers.
 
 from __future__ import annotations
 
-from nemo_evaluator.api.schemas import TasksetRef, parse_entity_ref
-from nemo_evaluator.entities import TaskEntity, TasksetEntity
+from typing import cast
+
+from nemo_evaluator.api.schemas import TasksetRef, parse_entity_ref, parse_subentity_ref
+from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity, TasksetEntity
 from nemo_evaluator.jobs.agent_spec import AgentEvalTaskInput
-from nemo_platform_plugin.entity_client import NemoAnyEntityGetterProtocol, NemoEntityNotFoundError
+from nemo_evaluator.revisions import RevisionNotFoundError, get_revision
+from nemo_platform_plugin.entities import EntityClientProtocol
+from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 
-def _entity_to_task_input(entity: TaskEntity) -> AgentEvalTaskInput:
-    """Project a stored task onto the submitter-facing inline task DTO.
+def _entity_to_task_input(entity: TaskEntity, revision: TaskRevisionEntity) -> AgentEvalTaskInput:
+    """Project a stored task's *published revision* onto the submitter-facing inline task DTO.
 
-    The task's stable ``id`` is its record ``name``. A stored task holds metric *references* (inline
-    metrics were normalized to derived stored metrics on create); those resolve to inline bundles in
-    the shared metric-ref pass that runs after expansion. A stored task carries no grader-only
-    ``reference`` (the entity has no such field), so taskset-driven tasks run with an empty one.
+    Identity (``id``) comes from the head record — it is the same task — while every content field
+    comes from the revision the taskset pinned. That split is what makes a taskset-driven evaluation
+    reproducible: re-running it expands to the same content even if the member task has published
+    since.
+
+    A stored task holds metric *references* (inline metrics were normalized to derived stored
+    metrics on create); those resolve to inline bundles in the shared metric-ref pass that runs
+    after expansion. A stored task carries no grader-only ``reference`` (the entity has no such
+    field), so taskset-driven tasks run with an empty one.
     """
     return AgentEvalTaskInput(
         id=entity.name,
-        intent=entity.intent,
-        inputs=entity.inputs,
-        metrics=list(entity.metrics),
-        views=entity.views,
-        metadata=entity.metadata,
+        intent=revision.intent,
+        inputs=revision.inputs,
+        metrics=list(revision.metrics),
+        views=revision.views,
+        metadata=revision.metadata,
     )
+
+
+#: Expanding a taskset reads three entity types through one client — the taskset head, each member
+#: task's head, and the pinned revision of each member. Python has no intersection types, so the
+#: parameter is annotated at one of them and the other two are taken as typed views of the same
+#: object; the concrete client's methods are generic over the entity type and satisfy all three.
+TasksetStoreProtocol = EntityClientProtocol[TasksetEntity]
 
 
 async def resolve_taskset_ref(
     ref: TasksetRef,
     *,
     workspace: str,
-    entity_client: NemoAnyEntityGetterProtocol | None,
+    entity_client: TasksetStoreProtocol | None,
 ) -> list[AgentEvalTaskInput]:
     """Load a stored taskset and expand its members into inline task DTOs.
 
@@ -56,6 +72,9 @@ async def resolve_taskset_ref(
             "A TasksetRef requires a platform connection (entity store) to resolve; it cannot be used "
             "in local execution. Pass an inline task list instead."
         )
+    task_store = cast(EntityClientProtocol[TaskEntity], entity_client)
+    revision_store = cast(EntityClientProtocol[TaskRevisionEntity], entity_client)
+
     ref_workspace, name = parse_entity_ref(ref.root, workspace)
     try:
         taskset = await entity_client.get(TasksetEntity, name=name, workspace=ref_workspace)
@@ -72,13 +91,23 @@ async def resolve_taskset_ref(
     tasks: list[AgentEvalTaskInput] = []
     seen_ids: set[str] = set()
     for task_ref in taskset.tasks:
-        task_workspace, task_name = parse_entity_ref(task_ref.root, ref_workspace)
+        task_workspace, task_name, fragment = parse_subentity_ref(task_ref.root, ref_workspace)
         try:
-            entity = await entity_client.get(TaskEntity, name=task_name, workspace=task_workspace)
+            entity = await task_store.get(TaskEntity, name=task_name, workspace=task_workspace)
         except NemoEntityNotFoundError as exc:
             raise ValueError(
                 f"Task '{task_ref.root}' referenced by taskset '{ref.root}' was not found; "
                 "the stored task may have been deleted after the taskset was created."
+            ) from exc
+        # Expand the *pinned* revision, not the task's current content. A published taskset names
+        # exact revisions; resolving to whatever is current would silently defeat the pinning and
+        # make an evaluation irreproducible the moment a member republished.
+        try:
+            revision = await get_revision(revision_store, TaskRevisionEntity, entity, fragment)
+        except RevisionNotFoundError as exc:
+            raise ValueError(
+                f"Task '{task_ref.root}' referenced by taskset '{ref.root}' names a revision that no "
+                f"longer resolves: {exc}"
             ) from exc
         # Agent-eval task ids must be unique within a run. Member refs are unique per (workspace,
         # name), but refs from different workspaces can share a name — surface that as a clear error
@@ -89,7 +118,7 @@ async def resolve_taskset_ref(
                 "task ids must be unique within an evaluation."
             )
         seen_ids.add(entity.name)
-        tasks.append(_entity_to_task_input(entity))
+        tasks.append(_entity_to_task_input(entity, revision))
     return tasks
 
 
@@ -97,7 +126,7 @@ async def resolve_agent_eval_tasks(
     tasks: TasksetRef | list[AgentEvalTaskInput],
     *,
     workspace: str,
-    entity_client: NemoAnyEntityGetterProtocol | None,
+    entity_client: TasksetStoreProtocol | None,
 ) -> list[AgentEvalTaskInput]:
     """Normalize an agent-eval ``tasks`` field to an inline task list.
 
