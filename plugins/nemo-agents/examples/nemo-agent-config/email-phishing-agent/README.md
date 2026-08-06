@@ -1,117 +1,53 @@
 # Email Phishing Agent — Fabric example (`nemo-agents-spec-v1`)
 
-A Platform-native port of the email-phishing analyzer, and a sibling to
-[`../calculator-agent`](../calculator-agent). Unlike the NAT ReAct example
-(`../../email-phishing-analyzer`), classification does **not** hide behind an
-opaque MCP server. It runs as a Fabric **deepagents orchestrator** that
-delegates the verdict to a phishing **subagent** and calls a deterministic
-`extract_iocs` **tool** — so the prompt and model are tunable in config, and each
-step (subagent task + tool call) emits a trace span.
-
-## Shape
+A DeepAgents **orchestrator** that delegates the verdict to a phishing
+**sub-agent**, which calls a deterministic **`extract_iocs`** tool. Prompt and
+model live in `agent.yaml` (tunable); every step emits a trace span.
 
 ```
-orchestrator (deepagents)  ── delegates ──▶  phishing-analyzer subagent
-      │                                            │
-      └──────────── calls ──────────────▶  extract_iocs (stdio MCP tool)
+orchestrator (deepagents) ── delegates ──▶ phishing-analyzer sub-agent
+      └───────────── calls ─────────────▶ extract_iocs (stdio MCP tool)
 ```
 
-- **`agent.yaml`** — the `nemo-agents-spec-v1` config. Orchestrator triage prompt
-  in `instructions.system`; the phishing subagent under
-  `harnesses.deepagents.settings.deepagents.subagents`, with its own
-  `system_prompt` and a loose YAML verdict (`is_likely_phishing`, `confidence`,
-  `indicators`, `explanation`) the orchestrator parses; `extract_iocs` wired as a
-  stdio MCP server.
-- **`mcps/iocs.py`** — the `extract_iocs` tool: pure-regex URL/domain extraction
-  (ported from the email-security-analyst example), served over stdio by the
-  `email-phishing-iocs` console script.
-- **`data/`** — `smaller_test.csv` plus `build_dataset.py`, which assembles a
-  sender-inclusive `email` column (`From:`/`Subject:`/body). The sender is a top
-  phishing tell and also feeds `extract_iocs`; the NAT eval dropped it by feeding
-  `body` only.
-- **`email-phishing-eval.yml`** — eval config; `question_key: email` (the
-  assembled message, not bare `body`).
+## Parts
 
-## Tune
+| Path | What | Why |
+|---|---|---|
+| `agent.yaml` | The `nemo-agents-spec-v1` config: harness, sub-agent, model, MCP server, telemetry | The single tunable surface — prompts + hyperparameters |
+| `mcps/iocs.py` | `extract_iocs` (pure regex) + FastMCP stdio server | The one real tool; URL/domain extraction incl. the sender |
+| `pyproject.toml` | Packages `mcps/`; exposes console `email-phishing-iocs` | Makes the tool resolvable at runtime |
+| `data/smaller_test.csv` | Labeled emails with an assembled `email` column (`From:`/`Subject:`/body) | Eval input; keeps the sender (a top phishing tell) |
+| `data/build_dataset.py` | Rebuilds that column from the upstream NAT dataset | Regenerate after changing the assembly |
+| `email-phishing-eval.yml` | Eval config; `question_key: email` | Scores verdicts against the `label` column |
+| `tests/test_extract_iocs.py` | Unit tests for the tool | Guards the extractor |
 
-- **Prompts:** edit `instructions.system.content` (orchestrator) or the subagent
-  `system_prompt` in `agent.yaml`.
-- **Hyperparameters:** `models.default.temperature` (and `settings`). Add a
-  per-subagent `model: <provider>:<model>` to tune the analysis step
-  independently of the orchestrator.
+## Port it (to your own agent)
 
-## Run
+1. **Copy** this directory to `nemo-agent-config/<your-agent>/`.
+2. **Rename** in `pyproject.toml` (`name`, `[project.scripts]` console), `agent.yaml` (`name`, `project`, and `mcp.servers.<n>.url` → your console), and your tool in `mcps/`.
+3. **Register** as a workspace member: add the path to root `pyproject.toml` `members`, then `uv sync --all-packages` (installs your console into `.venv` for local runs).
+4. **Point** `data/` + `email-phishing-eval.yml` at your dataset.
 
-`extract_iocs` runs as a **stdio MCP server that Fabric launches as a parallel
-child process** of the agent: the deepagents adapter expands and `shlex`-splits
-the `url`, then spawns it, resolving the command on `PATH`. So the console
-script must exist in the environment the agent actually runs in — which differs
-by deployment mode. (deepagents adapter + `NVIDIA_API_KEY` required either way.)
+## Use it in Platform (CLI)
 
-### Local (`--mode subprocess`, the default)
+Prereqs: platform up (`NMP_BASE_URL=http://localhost:8080`), `NVIDIA_API_KEY` set, `uv sync --all-packages` done.
 
-This example is a uv workspace member, so `uv sync --all-packages` already
-installed `email-phishing-iocs` into the repo `.venv`. The subprocess deployment
-runs from that same venv (`sys.executable`) and inherits its `PATH`, so Fabric
-can spawn the tool — no extra install and no image needed:
+1. **Register** — `nemo agents create --name email-phishing-agent --agent-config plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/agent.yaml`
+2. **Deploy** — `nemo agents deploy --agent email-phishing-agent --name email-phishing-agent-deployment --mode subprocess` (for `docker`/`k8s`, first `nemo agents package --pyproject <this>/pyproject.toml --tag <img>`, then deploy `--mode docker --image <img>`).
+3. **Invoke** — `nemo agents invoke --agent-deployment email-phishing-agent-deployment --input "<full email>"` → a YAML verdict.
+4. **Observe** — `nemo agents logs --agent email-phishing-agent`; the `extract_iocs` call lands in `artifacts/.../events.atof.jsonl` (`category: tool`).
+5. **Tune & evaluate** — edit `agent.yaml` (sub-agent `system_prompt`, `models.default.temperature`), re-deploy, then `nemo agents evaluate run --eval-config <this>/email-phishing-eval.yml --agent email-phishing-agent`.
 
-```bash
-nemo agents create  --name email-phishing-agent \
-  --agent-config plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/agent.yaml
-nemo agents deploy  --agent email-phishing-agent --name email-phishing-agent-deployment --mode subprocess
-nemo agents invoke  --agent-deployment email-phishing-agent-deployment \
-  --input "From: it-support@paypa1-secure.example
-Subject: Verify your account
+## Use it in Studio
 
-Your account is locked. Confirm your password at http://paypa1-secure.example/login"
-```
+Prereqs: same platform + key; Studio with Intake on (`VITE_FF_INTAKE_ENABLED=true`), at `…/studio/workspaces/default`.
 
-### Container (`--mode docker` / `k8s`)
-
-A deployment container does **not** have this example installed, so a local
-`uv pip install` cannot reach it. Bake the package into an image with
-`nemo agents package` — project mode (`--pyproject`) runs `uv pip install .`,
-which provides the `email-phishing-iocs` console script — then deploy that image:
-
-```bash
-nemo agents package \
-  --agent plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/agent.yaml \
-  --pyproject plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/pyproject.toml \
-  --tag email-phishing-agent:local
-
-nemo agents create  --name email-phishing-agent \
-  --agent-config plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/agent.yaml
-nemo agents deploy \
-  --agent email-phishing-agent \
-  --name email-phishing-agent-deployment \
-  --mode docker \
-  --image email-phishing-agent:local
-```
-
-For Kubernetes, publish the image
-(`nemo agents package ... --publish --registry <registry>`) and pass the
-published image to `nemo agents deploy --mode k8s --image <image>`.
-
-Evaluate against the sender-inclusive dataset:
-
-```bash
-nemo agents evaluate run \
-  --eval-config plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/email-phishing-eval.yml \
-  --agent email-phishing-agent
-```
-
-Regenerate the dataset from the upstream NAT example after changing the assembly:
-
-```bash
-uv run python plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/data/build_dataset.py
-```
+1. **Register** — Agents → *Create Example* → the `email-phishing-agent` tile. **Pending (ASTD‑08)**; until it lands, register via the CLI (left), then manage it here.
+2. **Deploy** — from the agent's page. **Pending the same tile**; deploy via the CLI today.
+3. **Invoke** — open the deployed agent → Chat → paste the email → read the verdict.
+4. **Observe** — Intake → Traces → open the run: orchestrator → `phishing-analyzer` → `extract_iocs` spans.
+5. **Tune & evaluate** — edit `agent.yaml` and re-deploy (CLI), then Run Evaluation → `smaller_test.csv` for the accuracy score.
 
 ## Status
 
-Structurally validated (`agent.yaml` passes `AgentConfig`, translates to a Fabric
-config; `extract_iocs` unit-tested) and **live-validated for `--mode subprocess`**
-(create/deploy/invoke returns a correct verdict; the adapter event graph +
-LangGraph checkpointer confirm the orchestrator delegates to the subagent and
-`extract_iocs` is actually called). The container (`docker`/`k8s`) package path
-and the Studio Create-Example path are not yet exercised. Eval judge
-weights/prompt are starters — tune per your evaluator plugin.
+Live-validated for `--mode subprocess` (deploy → invoke → correct verdict; trace + `extract_iocs` call confirmed). Not yet exercised: container (`docker`/`k8s`) packaging, the Studio *Create Example* tile (ASTD‑08), and eval judge tuning (weights/prompt are starters).
