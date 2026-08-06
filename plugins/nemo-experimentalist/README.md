@@ -18,7 +18,7 @@ uv sync
 export NEMO="$PWD/.venv/bin/nemo"
 ```
 
-Requires `uv >=0.9.14,<0.10.0`.
+Requires `uv >=0.9.14`.
 
 **To verify an end-to-end run, follow
 [Get started with an example agent](../../docs/get-started/example-agent.mdx).**
