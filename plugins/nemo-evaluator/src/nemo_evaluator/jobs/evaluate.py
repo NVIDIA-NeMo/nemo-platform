@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
 
@@ -17,11 +18,14 @@ import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.filesets import FilesetRef, download_dataset, download_dataset_sync
+from nemo_evaluator.jobs.agent_spec import target_agent_identity
 from nemo_evaluator.jobs.metric_resolution import (
     resolve_metrics_to_inline,
     to_runtime_bundle,
     unresolved_model_refs,
 )
+from nemo_evaluator.jobs.publication import publish_row_eval_result
+from nemo_evaluator.jobs.publication_spec import RowPublicationSpec
 from nemo_evaluator.jobs.result_persistence import persist_evaluate_result
 from nemo_evaluator.jobs.utils import run_with_isolated_async_sdk
 from nemo_evaluator.metric_refs import MetricRefOrInline
@@ -129,10 +133,31 @@ class _EvaluateSpecCommon(BaseModel):
     field_mapping: FieldMapping | None = Field(
         default=None, description="Optional mapping from canonical evaluator fields to dataset columns."
     )
+    publication: RowPublicationSpec | None = Field(
+        default=None,
+        description="Where the completed run publishes its results, beyond its own result artifacts. "
+        "Omit to publish nowhere.",
+    )
 
     @model_validator(mode="after")
     def validate_params_for_target(self) -> Self:
         self.params = resolve_params(self.params, self.target)
+        return self
+
+    @model_validator(mode="after")
+    def _require_resolvable_publication_identity(self) -> Self:
+        # Publishing needs an agent name and only some targets carry one. Rejecting here makes it a
+        # 422 on submit rather than a failure discovered after the evaluation has already run — and
+        # without it a target that names nothing publishes every trajectory under an empty name.
+        intake = self.publication.intake if self.publication is not None else None
+        if intake is None or intake.agent_name is not None:
+            return self
+        if target_agent_identity(self.target)[0] is None:
+            source = "an offline evaluation" if self.target is None else f"a {type(self.target).__name__} target"
+            raise ValueError(
+                f"`publication.intake.agent_name` is required: it cannot be derived from {source}. "
+                "Supply the name the published trajectories should be recorded under."
+            )
         return self
 
 
@@ -219,7 +244,10 @@ class EvaluateJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: AsyncNeMoPlatform | None,
+        # Widened from the base signature: `resolve_metrics_to_inline` documents that it takes
+        # either client, and the local-run path (`_executor._resolve_sync_local_spec`) forwards the
+        # sync one. Contravariant, so overriding with a wider parameter stays substitutable.
+        async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
         is_local: bool,
     ) -> BaseModel:
         """Resolve submitter-facing model and metric references into the canonical evaluation spec."""
@@ -243,6 +271,7 @@ class EvaluateJob(NemoJob):
             target=submit_spec.target,
             prompt_template=submit_spec.prompt_template,
             field_mapping=submit_spec.field_mapping,
+            publication=submit_spec.publication,
         )
 
     def run(
@@ -255,6 +284,10 @@ class EvaluateJob(NemoJob):
     ) -> dict:
         """Run the evaluator job locally and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)
+        # Stamped here because the row evaluator records no timing at all and `EvaluationResult` has
+        # nowhere to put it. Publication needs a start time that is a function of the run, not of
+        # when it was published, or re-ingest duplicates spans instead of replacing them.
+        started_at = datetime.now(UTC)
         evaluator = Evaluator()
         params = resolve_params(spec.params, spec.target)
         metrics = [unbundle_metric(to_runtime_bundle(metric)) for metric in spec.metrics]
@@ -334,7 +367,25 @@ class EvaluateJob(NemoJob):
         #     status="completed",
         # )
 
-        return {
+        output = {
             "status": "completed",
             "artifact": artifact.model_dump(),
         }
+
+        # Publication runs last, after the artifacts and the queryable record are both durable, so a
+        # failed publish costs a re-publish rather than a re-run. It is also the only step here that
+        # can fail the job (when `required`).
+        intake = spec.publication.intake if spec.publication is not None else None
+        if intake is not None:
+            outcome = publish_row_eval_result(
+                result,
+                spec=intake,
+                target=spec.target,
+                run_id=ctx.job_id,
+                started_at=started_at,
+                workspace=ctx.workspace,
+                async_sdk=async_sdk,
+            )
+            output["publication"] = outcome.model_dump(exclude_none=True)
+
+        return output

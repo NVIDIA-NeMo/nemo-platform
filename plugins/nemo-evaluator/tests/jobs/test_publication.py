@@ -14,6 +14,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
+from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
 from nemo_evaluator.jobs.agent_spec import (
     AgentEvalInputSpec,
@@ -24,21 +25,31 @@ from nemo_evaluator.jobs.agent_spec import (
     CodexRunnerTarget,
     FabricRunnerTarget,
     HarborRunnerTarget,
-    IntakePublicationSpec,
     ModelTarget,
-    PublicationSpec,
     Target,
     target_agent_identity,
 )
+from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob, EvaluateSpec
 from nemo_evaluator.jobs.publication import PublicationFailedError, publish_agent_eval_result
+from nemo_evaluator.jobs.publication_spec import (
+    IntakePublicationSpec,
+    PublicationSpec,
+    RowIntakePublicationSpec,
+    RowPublicationSpec,
+)
+from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
+from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
-from nemo_evaluator_sdk.values import Model
+from nemo_evaluator_sdk.values import Model, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.agents import NemoAgentToolkitAgent
+from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult  # noqa: F401
+from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult, RowScore
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import APIConnectionError, NotFoundError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -48,6 +59,13 @@ from pydantic import ValidationError
 from pytest_mock import MockerFixture
 
 STARTED_AT = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+_INLINE_METRIC = MetricInline.model_validate(
+    bundle_metric(
+        ExactMatchMetric(reference="{{item.question}}", candidate="{{item.question}}"),
+        CloudpickleMetricBundlePackager(),
+    ).model_dump(mode="json")
+)
 
 #: Aliased because `_FakeTraces` defines a `list` method, which shadows the builtin in class scope.
 _SessionIds = list[str]
@@ -388,7 +406,7 @@ class _FakeEvaluator:
         )
 
 
-def _job_context(tmp_path: Path) -> JobContext:
+def _job_context(tmp_path: Path, *, job_id: str | None = None) -> JobContext:
     storage = StoragePaths(ephemeral=tmp_path / "ephemeral", persistent=tmp_path / "persistent")
     storage.ephemeral.mkdir()
     storage.persistent.mkdir()
@@ -396,6 +414,7 @@ def _job_context(tmp_path: Path) -> JobContext:
         workspace="default",
         storage=storage,
         results=LocalJobResults(root=storage.persistent / "results"),
+        job_id=job_id,
     )
 
 
@@ -494,3 +513,140 @@ def test_job_publication_requires_a_run_start_time(tmp_path: Path, mocker: Mocke
 
     assert result["publication"]["status"] == PlatformJobStatus.ERROR
     assert "started_at" in result["publication"]["error"]
+
+
+# --- dataset-driven (row) eval wiring ---------------------------------------
+
+
+class _FakeRowEvaluator:
+    """Stand-in for the row Evaluator, returning one scored row."""
+
+    def run_sync(self, **kwargs: Any) -> EvaluationResult:
+        return EvaluationResult(
+            row_scores=[
+                RowScore(
+                    row_index=0,
+                    item={"question": "2+2?", "qid": "q-1"},
+                    sample={"output_text": "4", "response": {}},
+                    metrics={"exact_match": [MetricOutput(name="score", value=1.0)]},
+                    requests=[],
+                )
+            ],
+            aggregate_scores=AggregatedMetricResult(scores=[]),
+        )
+
+
+def _evaluate_spec(*, required: bool = True, **intake: Any) -> EvaluateSpec:
+    return EvaluateSpec(
+        metrics=[_INLINE_METRIC],
+        dataset=[{"question": "2+2?", "qid": "q-1"}],
+        target=Model(name="gpt-4o", url="http://model"),
+        params=RunConfigOnlineModel(),
+        publication=RowPublicationSpec(
+            intake=RowIntakePublicationSpec(evaluation_id="eval-1", agent_name="a", required=required, **intake)
+        ),
+    )
+
+
+def test_evaluate_job_does_not_publish_without_a_publication_spec(tmp_path: Path, mocker: MockerFixture) -> None:
+    mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=_FakeRowEvaluator())
+    client = _FakeClient()
+
+    spec = EvaluateSpec(metrics=[_INLINE_METRIC], dataset=[{"question": "2+2?"}])
+    result = EvaluateJob().run(
+        spec.model_dump(), ctx=_job_context(tmp_path, job_id="job-1"), async_sdk=cast(AsyncNeMoPlatform, client)
+    )
+
+    assert "publication" not in result
+    assert client.atif_calls == []
+
+
+def test_evaluate_job_publishes_rows_through_the_real_sync_bridge(tmp_path: Path, mocker: MockerFixture) -> None:
+    # `run` has already driven one event loop via `evaluator.run_sync`; publication drives another
+    # through `run_sync` on the same injected SDK. Nothing patched out, so a loop-binding regression
+    # surfaces as "Event loop is closed".
+    mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=_FakeRowEvaluator())
+    client = _FakeClient()
+
+    result = EvaluateJob().run(
+        _evaluate_spec().model_dump(),
+        ctx=_job_context(tmp_path, job_id="job-1"),
+        async_sdk=cast(AsyncNeMoPlatform, client),
+    )
+
+    assert result["publication"]["status"] == PlatformJobStatus.COMPLETED
+    assert result["publication"]["trial_count"] == 1
+    assert len(client.atif_calls) == 1
+    # The run identity is the job id, so re-publishing the same job replaces rather than duplicates.
+    assert client.atif_calls[0]["session_id"] == "job-1:row-0"
+
+
+def test_evaluate_job_uses_the_configured_test_case_id_column(tmp_path: Path, mocker: MockerFixture) -> None:
+    mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=_FakeRowEvaluator())
+    client = _FakeClient()
+
+    EvaluateJob().run(
+        _evaluate_spec(test_case_id_field="qid").model_dump(),
+        ctx=_job_context(tmp_path, job_id="job-1"),
+        async_sdk=cast(AsyncNeMoPlatform, client),
+    )
+
+    assert client.atif_calls[0]["session_id"] == "job-1:q-1"
+    assert client.atif_calls[0]["evaluation_context"]["test_case_id"] == "q-1"
+
+
+def test_evaluate_job_without_a_job_id_cannot_publish(tmp_path: Path, mocker: MockerFixture) -> None:
+    # A row result carries no run id of its own, so a platformless local run has nothing stable to
+    # key sessions on.
+    mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=_FakeRowEvaluator())
+    client = _FakeClient()
+
+    result = EvaluateJob().run(
+        _evaluate_spec(required=False).model_dump(),
+        ctx=_job_context(tmp_path, job_id=None),
+        async_sdk=cast(AsyncNeMoPlatform, client),
+    )
+
+    assert result["publication"]["status"] == PlatformJobStatus.ERROR
+    assert "job id" in result["publication"]["error"]
+    assert client.atif_calls == []
+
+
+def test_evaluate_job_reports_a_bad_test_case_id_column(tmp_path: Path, mocker: MockerFixture) -> None:
+    mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=_FakeRowEvaluator())
+    client = _FakeClient()
+
+    result = EvaluateJob().run(
+        _evaluate_spec(required=False, test_case_id_field="missing").model_dump(),
+        ctx=_job_context(tmp_path, job_id="job-1"),
+        async_sdk=cast(AsyncNeMoPlatform, client),
+    )
+
+    assert result["publication"]["status"] == PlatformJobStatus.ERROR
+    assert "missing" in result["publication"]["error"]
+    assert client.atif_calls == []
+
+
+def test_row_target_without_a_derivable_agent_name_is_rejected_at_submit() -> None:
+    # A Model target names a model, not an agent. Without this the run would publish every
+    # trajectory under an empty agent name.
+    with pytest.raises(ValidationError, match="agent_name` is required"):
+        EvaluateInputSpec(
+            metrics=[_INLINE_METRIC],
+            dataset=[{"question": "2+2?"}],
+            target=Model(name="gpt-4o", url="http://model"),
+            params=RunConfigOnlineModel(),
+            publication=RowPublicationSpec(intake=RowIntakePublicationSpec(evaluation_id="eval-1")),
+        )
+
+
+def test_row_agent_target_derives_its_name() -> None:
+    spec = EvaluateInputSpec(
+        metrics=[_INLINE_METRIC],
+        dataset=[{"question": "2+2?"}],
+        target=NemoAgentToolkitAgent(name="my-agent", url="http://agent"),
+        params=RunConfigOnline(),
+        prompt_template="{{item.question}}",
+        publication=RowPublicationSpec(intake=RowIntakePublicationSpec(evaluation_id="eval-1")),
+    )
+    assert spec.publication is not None

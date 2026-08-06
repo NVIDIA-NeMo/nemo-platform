@@ -15,11 +15,18 @@ bridge ``result_persistence`` uses for the entity write.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from nemo_evaluator.intake.publish import PublishError, PublishReport, publish_to_intake
-from nemo_evaluator.jobs.agent_spec import IntakePublicationSpec, Target, target_agent_identity
+from nemo_evaluator.intake.row_adapter import RowIdentityError, row_result_to_agent_eval_result
+from nemo_evaluator.jobs.agent_spec import Target, target_agent_identity
+from nemo_evaluator.jobs.publication_spec import IntakePublicationSpec, RowIntakePublicationSpec
 from nemo_evaluator.jobs.utils import run_with_isolated_async_sdk
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
+from nemo_evaluator_sdk.values import Model
+from nemo_evaluator_sdk.values.agents import AgentBase
+from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
+from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import NeMoPlatformError, NotFoundError
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
@@ -118,7 +125,7 @@ def publish_agent_eval_result(
     result: AgentEvalResult,
     *,
     spec: IntakePublicationSpec,
-    target: Target | None,
+    target: Target | Model | AgentBase | None,
     workspace: str,
     async_sdk: AsyncNeMoPlatform | None,
 ) -> PublicationOutcome:
@@ -188,3 +195,51 @@ def publish_agent_eval_result(
         spec.evaluation_id,
     )
     return _completed(spec.evaluation_id, report)
+
+
+def publish_row_eval_result(
+    result: EvaluationResult | BenchmarkEvaluationResult,
+    *,
+    spec: RowIntakePublicationSpec,
+    target: Model | AgentBase | None,
+    run_id: str | None,
+    started_at: datetime,
+    workspace: str,
+    async_sdk: AsyncNeMoPlatform | None,
+) -> PublicationOutcome:
+    """Publish a finished dataset-driven run to Intake and describe what happened.
+
+    Adapts the row result to the shape the publisher consumes, then hands off to
+    :func:`publish_agent_eval_result` — the failure semantics, the outcome shape, and the
+    ``required`` behaviour are all the same.
+
+    ``run_id`` is the job id and is ``None`` on a platformless local run. Unlike agent eval, whose
+    result always carries a generated run id, a row result has none, so there is nothing stable to
+    key published sessions on and the run cannot be published.
+    """
+    if run_id is None:
+        outcome = _failed(
+            spec.evaluation_id,
+            "No job id to publish under (platformless local run); a dataset-driven evaluation takes "
+            "its run identity from the job.",
+            None,
+        )
+        if spec.required:
+            raise PublicationFailedError(outcome)
+        return outcome
+
+    try:
+        adapted = row_result_to_agent_eval_result(
+            result,
+            run_id=run_id,
+            started_at=started_at,
+            test_case_id_field=spec.test_case_id_field,
+        )
+    except RowIdentityError as error:
+        outcome = _failed(spec.evaluation_id, str(error), None)
+        if spec.required:
+            raise PublicationFailedError(outcome) from error
+        logger.warning("Publication to Intake failed for evaluation %r: %s", spec.evaluation_id, error)
+        return outcome
+
+    return publish_agent_eval_result(adapted, spec=spec, target=target, workspace=workspace, async_sdk=async_sdk)

@@ -57,6 +57,17 @@ EvaluateRequestSpec: TypeAlias = EvaluateInputSpec | EvaluateSpec
 SubmitTargetSpec = TargetSpec | ModelRef
 
 
+def create_job_payload(spec: EvaluateInputSpec) -> dict[str, dict[str, Any]]:
+    """Serialize an evaluator job creation request body.
+
+    Lives here rather than in ``http_utils`` because it is the only thing there that needed
+    ``EvaluateInputSpec``, and that import made ``http_utils`` — and so everything importing it,
+    including ``intake.publish`` — pull in ``jobs.evaluate``, which cycles for any module that
+    ``jobs.evaluate`` itself imports.
+    """
+    return {"spec": spec.model_dump(mode="json")}
+
+
 def _require_metric_bundle_packager(metric_bundle_packager: MetricBundlePackager | None) -> MetricBundlePackager:
     if metric_bundle_packager is None:
         raise MetricBundlePackagerPolicyError(
@@ -212,7 +223,7 @@ class _SyncEvaluatorPluginExecutor:
         resolved_workspace = http_utils.resolve_workspace(self._platform, workspace)
         response = self._http_client.post(
             http_utils.url(self._platform, "/v2/workspaces/{workspace}/evaluate/jobs", resolved_workspace),
-            json=http_utils.create_job_payload(spec),
+            json=create_job_payload(spec),
             headers=http_utils.platform_default_headers(self._platform),
             timeout=self._platform.timeout,
         )
@@ -414,7 +425,7 @@ class _AsyncEvaluatorPluginExecutor:
         resolved_workspace = http_utils.resolve_workspace(self._platform, workspace)
         response = await self._http_client.post(
             http_utils.url(self._platform, "/v2/workspaces/{workspace}/evaluate/jobs", resolved_workspace),
-            json=http_utils.create_job_payload(spec),
+            json=create_job_payload(spec),
             headers=http_utils.platform_default_headers(self._platform),
             timeout=self._platform.timeout,
         )
