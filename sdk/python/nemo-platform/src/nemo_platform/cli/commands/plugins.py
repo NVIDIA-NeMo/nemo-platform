@@ -15,7 +15,12 @@ from nemo_platform.cli.core.types import (
 )
 from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.cli.core.context import CLIContext
-from nemo_platform.cli.core.formatters import Column, format_output, check_output_columns_with_format
+from nemo_platform.cli.core.formatters import (
+    Column,
+    format_output,
+    validate_stream_output_format,
+    check_output_columns_with_format,
+)
 from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
 
 app = create_typer_app(
@@ -56,6 +61,7 @@ def list_plugins(
     state: CLIContext = ctx.obj
     columns_explicit = columns is not None and str(columns).strip() != "default"
     output_format = state.get_output_format(output_format, apply_non_tty_default=not columns_explicit)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 

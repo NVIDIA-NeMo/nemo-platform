@@ -20,7 +20,12 @@ from nemo_platform.cli.core.types import (
 from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.waiters import wait_for_inference_deployment
-from nemo_platform.cli.core.formatters import Column, format_output, check_output_columns_with_format
+from nemo_platform.cli.core.formatters import (
+    Column,
+    format_output,
+    validate_stream_output_format,
+    check_output_columns_with_format,
+)
 from nemo_platform.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
 from nemo_platform.cli.core.stdin_utils import (
     read_payload as read_payload,
@@ -262,6 +267,7 @@ def list_deployments(
     By default, returns only the latest version of each deployment."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 
@@ -341,6 +347,7 @@ def list_models_deployments(
     TODO: Implement model entity retrieval based on deployment config."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 

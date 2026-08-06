@@ -117,10 +117,12 @@ class TestPluginsList:
         ]
 
     def test_stream_requires_json_output(self):
-        result = _invoke("plugins", "list", "--output", "table", "--stream")
+        with patch("nemo_platform_plugin.discovery.discover_manifests") as mock_discover:
+            result = _invoke("plugins", "list", "--output", "table", "--stream")
 
         assert_exit_code(result, 2)
         assert "--stream requires --output json or --output raw" in result.stderr
+        mock_discover.assert_not_called()
 
     def test_list_empty_result(self):
         with patch("nemo_platform_plugin.discovery.discover_manifests", return_value={}):

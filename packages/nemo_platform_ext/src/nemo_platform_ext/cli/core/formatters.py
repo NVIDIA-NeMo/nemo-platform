@@ -10,6 +10,7 @@ import io
 import json
 import re
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -264,10 +265,17 @@ def format_json(
         return json_str
 
 
-def iter_json_lines(data: Any, *, is_list: bool = False) -> list[str]:
+def iter_json_lines(data: Any, *, is_list: bool = False) -> Iterator[str]:
     """Return newline-delimited JSON records for streaming-style output."""
     records = _extract_items_from_response(data) if is_list else [data]
-    return [json.dumps(model_to_dict(record), ensure_ascii=False, separators=(",", ":")) for record in records]
+    for record in records:
+        yield json.dumps(model_to_dict(record), ensure_ascii=False, separators=(",", ":"))
+
+
+def validate_stream_output_format(output_format: str | None, stream: bool) -> None:
+    """Validate output format compatibility before streaming data acquisition starts."""
+    if stream and output_format not in {"json", "raw"}:
+        raise click.UsageError("--stream requires --output json or --output raw.")
 
 
 def format_yaml(
@@ -617,8 +625,7 @@ def format_output(
     timestamp_format = timestamp_format or "iso"
 
     if stream:
-        if output_format not in {"json", "raw"}:
-            raise click.UsageError("--stream requires --output json or --output raw.")
+        validate_stream_output_format(output_format, stream)
         for line in iter_json_lines(data, is_list=is_list):
             click.echo(line)
             sys.stdout.flush()

@@ -22,6 +22,7 @@ from nemo_platform_ext.cli.core.formatters import (
     format_yaml,
     iter_json_lines,
     model_to_dict,
+    validate_stream_output_format,
 )
 
 
@@ -110,7 +111,7 @@ def test_iter_json_lines_extracts_list_items():
         {"id": "2", "name": "Bob"},
     ]
 
-    assert iter_json_lines(mock_response, is_list=True) == [
+    assert list(iter_json_lines(mock_response, is_list=True)) == [
         '{"id":"1","name":"Alice"}',
         '{"id":"2","name":"Bob"}',
     ]
@@ -131,6 +132,12 @@ def test_format_output_stream_requires_json_compatible_format():
     """--stream is only valid for JSON-compatible formats."""
     with pytest.raises(click.UsageError, match="--stream requires --output json or --output raw"):
         format_output([{"id": "1"}], is_list=True, output_format="table", stream=True)
+
+
+def test_validate_stream_output_format_rejects_table_output():
+    """Command handlers can fail before loading API or discovery data."""
+    with pytest.raises(click.UsageError, match="--stream requires --output json or --output raw"):
+        validate_stream_output_format("table", True)
 
 
 @patch("nemo_platform_ext.cli.core.formatters.is_tty")

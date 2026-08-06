@@ -75,6 +75,21 @@ def test_generated_list_help_includes_stream_option():
     assert "--output-format, --output, -f" in result.stdout
 
 
+def test_generated_list_validates_stream_output_before_client_setup():
+    runner = CliRunner()
+    qs_config = QuickstartConfig(auth_enabled=False)
+
+    with (
+        patch("nemo_platform.quickstart.QuickstartConfig.load", return_value=qs_config),
+        patch("nemo_platform.cli.core.context.CLIContext.get_client") as mock_get_client,
+    ):
+        result = runner.invoke(app, ["workspaces", "list", "--output", "table", "--stream"])
+
+    assert result.exit_code == 2
+    assert "--stream requires --output json or --output raw" in result.stderr
+    mock_get_client.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("argv", "expected_text"),
     [

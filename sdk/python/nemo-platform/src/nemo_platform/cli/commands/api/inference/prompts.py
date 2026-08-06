@@ -18,7 +18,12 @@ from nemo_platform.cli.core.types import (
 )
 from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.cli.core.context import CLIContext
-from nemo_platform.cli.core.formatters import Column, format_output, check_output_columns_with_format
+from nemo_platform.cli.core.formatters import (
+    Column,
+    format_output,
+    validate_stream_output_format,
+    check_output_columns_with_format,
+)
 from nemo_platform.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
 from nemo_platform.cli.core.stdin_utils import read_payload, validate_required_fields, read_data_input_with_flags
 from nemo_platform.cli.core.code_generator import handle_code_generation
@@ -199,6 +204,7 @@ def list_prompts(
     """List prompts for a specific workspace."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 
