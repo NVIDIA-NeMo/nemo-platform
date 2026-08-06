@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
-from nemo_eval_author_plugin.eval_author.inventory import ReferenceTaskSetInventory
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_eval_author_plugin.model_config import get_fast_model
 from nemo_experimentalist_plugin.entities import DatasetValidationError, local_path_from_uri
@@ -296,14 +295,16 @@ async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
         "Python verifier files are statically checked by await dataset.validate(); test.sh is checked as Bash. "
         "Preserve the existing verifier's intended behavior and repair every validation error."
     )
+    verifier_bundle_dir = tmp_path / "verifier-bundle" / "files"
+    verifier_bundle_dir.mkdir(parents=True)
 
     summary = await asyncio.wait_for(
         eval_author.author_insight_metrics(
             insight,
             [],
             insight_suite,
-            ReferenceTaskSetInventory.empty(),
             runner_conventions,
+            verifier_bundle_dir,
             validation_feedback=validation_feedback,
         ),
         timeout=300,
@@ -376,14 +377,16 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
         "insight_suite.validate() once after editing, then return the metric summary as soon as validation passes; "
         "do not inspect unrelated files."
     )
+    verifier_bundle_dir = tmp_path / "verifier-bundle" / "files"
+    verifier_bundle_dir.mkdir(parents=True)
 
     summary = await asyncio.wait_for(
         eval_author.author_insight_metrics(
             insight,
             [("known-failing-trace", diagnostic)],
             insight_suite,
-            ReferenceTaskSetInventory.empty(),
             runner_conventions,
+            verifier_bundle_dir,
         ),
         timeout=600,
     )
@@ -425,7 +428,7 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
     assert all(0.0 <= value <= 1.0 for value in insight_metric_values.values())
     assert min(insight_metric_values.values()) <= 0.25
     assert insight_metric_names <= set(trial.metrics)
-    assert set(summary.metric_contract.keys) == insight_metric_names
+    assert set(summary.metric_keys) == insight_metric_names
     print(
         json.dumps(
             {
@@ -505,14 +508,16 @@ async def test_eval_author_metric_discriminates_controlled_harbor_tool_evidence(
         "error instead of writing a fabricated 0.0 metric. Use a Python standard-library checker, avoid "
         "unguarded grep under set -e, make the minimal verifier-only edit, validate the dataset once, then stop."
     )
+    verifier_bundle_dir = tmp_path / "verifier-bundle" / "files"
+    verifier_bundle_dir.mkdir(parents=True)
 
     summary = await asyncio.wait_for(
         eval_author.author_insight_metrics(
             insight,
             [("controlled-tool-violation", diagnostic)],
             insight_suite,
-            ReferenceTaskSetInventory.empty(),
             runner_conventions,
+            verifier_bundle_dir,
         ),
         timeout=600,
     )
@@ -565,7 +570,7 @@ async def test_eval_author_metric_discriminates_controlled_harbor_tool_evidence(
     assert 0.0 <= violating_score <= 1.0
     assert 0.0 <= compliant_score <= 1.0
     assert compliant_score > violating_score
-    assert set(summary.metric_contract.keys) == violating_metric_names
+    assert set(summary.metric_keys) == violating_metric_names
 
     assert len(unmeasurable_result.trials) == 1
     unmeasurable_trial = unmeasurable_result.trials[0]
