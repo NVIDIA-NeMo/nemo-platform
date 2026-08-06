@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { Divider, Flex, Stack, StatusIndicator, Text } from '@nvidia/foundations-react-core';
 import type { RunRecord } from '@studio/api/guardrail-checks/types';
 import {
@@ -17,7 +17,7 @@ const STATUS_COLUMN = 'w-[149px]';
 
 export interface RailStatusTabProps {
   readonly latestRun: RunRecord | undefined;
-  readonly configData: RailsConfigOutput | undefined;
+  readonly configData: RailsConfig | undefined;
 }
 
 /**

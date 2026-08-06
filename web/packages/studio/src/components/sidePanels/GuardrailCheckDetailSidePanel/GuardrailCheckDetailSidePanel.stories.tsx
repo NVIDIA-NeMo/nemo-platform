@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { TooltipProvider } from '@nvidia/foundations-react-core';
 import type { Meta, StoryObj } from '@storybook/react';
 import {
@@ -34,7 +34,7 @@ const makeCheck = (name: string, data: GuardrailCheckData): GuardrailCheckEntity
  * flows. The runs below exercise only two, so the other two render dimmed —
  * the coverage gap the section exists to surface.
  */
-const CONFIG: RailsConfigOutput = {
+const CONFIG: RailsConfig = {
   rails: {
     config: { gliner: { server_endpoint: 'http://gliner.local' } },
     input: {
@@ -46,7 +46,7 @@ const CONFIG: RailsConfigOutput = {
     },
     output: { flows: ['content safety check output $model=content_safety'] },
   },
-} as RailsConfigOutput;
+} as RailsConfig;
 
 const GUARDED_CHECK = makeCheck('leaks-ssn', {
   messages: [{ role: 'user', content: 'My SSN is 123-45-6789, can you store it for me?' }],

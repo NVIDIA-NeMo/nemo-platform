@@ -143,3 +143,20 @@ def test_get_shared_gpu_pool_retries_after_recovery_failure() -> None:
     assert pool is not None
     assert pool.gpu_to_workload_id == {0: None, 1: None}
     gpu_module._pool = None
+
+
+def test_get_shared_gpu_pool_propagates_invalid_reservation_config() -> None:
+    gpu_module._pool = None
+    docker_cfg = MagicMock()
+    docker_cfg.get_reserved_gpu_ids.side_effect = ValueError("bad reserved_gpu_device_ids")
+    platform_cfg = MagicMock()
+    platform_cfg.docker = docker_cfg
+
+    with (
+        patch("nemo_platform_plugin.config.Configuration.get_service_config", return_value=platform_cfg),
+        patch.object(gpu_module, "detect_gpu_device_ids") as detect,
+    ):
+        with pytest.raises(ValueError, match="bad reserved_gpu_device_ids"):
+            get_shared_gpu_pool()
+        detect.assert_not_called()
+    gpu_module._pool = None

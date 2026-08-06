@@ -186,6 +186,7 @@ enabled-plugins = [
   "nemo-deployments-plugin[docker,k8s]",
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
+  "nemo-optimization-plugin",
   "nemo-unsloth-plugin",
   "nemo-rl-plugin",
 ]
@@ -296,6 +297,7 @@ constraint-dependencies = [
   "pillow>=12.3.0",
   "postcss>=8.5.10",
   "pyasn1>=0.6.3",
+  "pydantic-monty==0.0.18",               # 0.0.19 dropped MontyRepl required by pydantic-ai-harness==0.3.0 CodeMode
   "python-multipart>=0.0.27",
   "regex>=2025.10.22",
   "safetensors>=0.8.0rc0",                # explicit prerelease so uv allows the rc
@@ -381,6 +383,21 @@ nemo-experimentalist-plugin = { workspace = true }
 # depends on landed after v0.0.8; move back to a tag once one ships that contains it.
 nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "6e0274dd03f883254a084cfb9f871ea580e03434" }
 
+# Temporary until Fabric 0.2.0 publishes (mid-Aug): pin the monorepo SHA that lands
+# FABRIC-167 (Hermes MCP discover + preserve mcp.servers.*.env). Override every
+# package — git subdirectory sources do not inherit Fabric's own path mappings,
+# and the metapackage pins runtime/adapters to ==0.2.0.
+# Declared dep floors stay >=0.1.0 so wheelcheck / PyPI installs of the published
+# wheel still resolve (uv.sources do not apply outside this workspace).
+# Remove these entries once PyPI has 0.2.0.
+nemo-fabric = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2" }
+nemo-fabric-runtime = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "python" }
+nemo-fabric-adapters-common = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/common" }
+nemo-fabric-adapters-claude = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/claude" }
+nemo-fabric-adapters-codex = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/codex" }
+nemo-fabric-adapters-deepagents = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/deepagents" }
+nemo-fabric-adapters-hermes = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/hermes" }
+
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
 nemo-auditor-plugin = { workspace = true }
@@ -393,6 +410,7 @@ nemo-agents-example-email-phishing = { workspace = true }
 nemo-agents-example-email-security = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
+nemo-optimization-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
 nemo-rl-plugin = { workspace = true }
 nmp-automodel = { workspace = true }
@@ -455,6 +473,7 @@ members = [
   "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
+  "plugins/nemo-optimization",
   "plugins/nemo-unsloth",
   "plugins/nemo-rl",
   "services/automodel",

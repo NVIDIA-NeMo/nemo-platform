@@ -15,8 +15,6 @@ Covers:
   injected content is correct, file is deleted on context exit, and
   ``extra_config`` agent merge works alongside gateway URL injection.
 - EvaluateAgentSpec workspace and agent field semantics.
-- OptimizeAgentJob._resolve_agent: the three-mode classifier (None,
-  EndpointURL, AgentRef) and SDK-based agent fetch.
 """
 
 from __future__ import annotations
@@ -27,7 +25,6 @@ from typing import Any
 import pytest
 import yaml
 from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob, EvaluateAgentSpec
-from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob, OptimizeAgentSpec
 from nemo_agents_plugin.refs import AgentRef
 from nemo_agents_plugin.utils import (
     get_internal_base_url,
@@ -1021,134 +1018,6 @@ class TestTempInjectedConfigWithExtraConfig:
         assert loaded["llms"]["llm"]["optimizable_params"] == ["temperature"]
         # Gateway URL still gets injected on top of the merged config.
         assert "/workspaces/default/" in loaded["llms"]["llm"]["base_url"]
-
-
-# ---------------------------------------------------------------------------
-# OptimizeAgentSpec — same union-typed agent field as evaluate, plus a
-# distinct minimum: optimize-config is required.
-# ---------------------------------------------------------------------------
-
-
-class TestOptimizeAgentSpec:
-    def test_agent_defaults_to_none(self) -> None:
-        cfg = OptimizeAgentSpec(optimize_config="/tmp/optimize.yml")
-        assert cfg.agent is None
-
-    def test_agent_accepts_bare_name(self) -> None:
-        cfg = OptimizeAgentSpec(optimize_config="/tmp/optimize.yml", agent="react-agent")  # ty: ignore[invalid-argument-type]
-        assert cfg.agent == "react-agent"
-
-    def test_agent_accepts_http_url(self) -> None:
-        cfg = OptimizeAgentSpec(
-            optimize_config="/tmp/optimize.yml",
-            agent="http://localhost:8080",  # ty: ignore[invalid-argument-type]
-        )
-        assert cfg.agent == "http://localhost:8080"
-
-    def test_workspace_defaults_to_default(self) -> None:
-        cfg = OptimizeAgentSpec(optimize_config="/tmp/optimize.yml")
-        assert cfg.workspace == "default"
-
-
-class TestOptimizeAgentResolveAgent:
-    """``OptimizeAgentJob._resolve_agent`` projects the union to (config, endpoint).
-
-    Three modes are exercised: ``None`` → no merge, no endpoint (the inline-
-    workflow path); :class:`EndpointURL` → no merge, endpoint pass-through
-    (opaque-service mode, with the inert-sweeps warning); :class:`AgentRef`
-    → SDK-based fetch and config dict for downstream merging.
-    """
-
-    def test_none_returns_none_pair(self) -> None:
-        """No agent → no merge, no endpoint."""
-        assert OptimizeAgentJob._resolve_agent(None, workspace="default", sdk=None) == (None, None)
-
-    def test_endpoint_url_returns_passthrough(self, caplog: pytest.LogCaptureFixture) -> None:
-        """URL mode is opaque-service: pass the URL through and warn that
-        local sweeps don't reach the remote agent.
-        """
-        url = EndpointURL("http://localhost:8080")
-        with caplog.at_level("WARNING"):
-            agent_config, endpoint = OptimizeAgentJob._resolve_agent(url, workspace="default", sdk=None)
-        assert agent_config is None
-        assert endpoint == "http://localhost:8080"
-        assert any("opaque" in rec.message.lower() or "remote" in rec.message.lower() for rec in caplog.records)
-
-    def test_agent_ref_without_sdk_raises_local_run_error(self) -> None:
-        """A platform-managed name with no SDK is a configuration error;
-        raise early with an actionable message instead of running.
-        """
-        ref = AgentRef("react-agent")
-        with pytest.raises(LocalRunError, match="NeMoPlatform"):
-            OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=None)
-
-    def test_agent_ref_fetches_via_sdk(self) -> None:
-        """``--agent react-agent`` calls ``sdk.agents.get(name=..., workspace=...)``."""
-
-        captured: dict[str, object] = {}
-
-        class _StubAgents:
-            def get(self, *, name: str, workspace: str) -> dict[str, Any]:
-                captured["name"] = name
-                captured["workspace"] = workspace
-                return {
-                    "name": name,
-                    "config": {
-                        "workflow": {"_type": "react_agent", "llm_name": "llm"},
-                        "llms": {"llm": {"_type": "openai", "model_name": "x"}},
-                    },
-                }
-
-        class _StubSDK:
-            def __init__(self) -> None:
-                self.agents = _StubAgents()
-
-        ref = AgentRef("react-agent")
-        agent_config, endpoint = OptimizeAgentJob._resolve_agent(
-            ref,
-            workspace="default",
-            sdk=_StubSDK(),  # type: ignore[arg-type]
-        )
-
-        assert captured == {"name": "react-agent", "workspace": "default"}
-        assert endpoint is None
-        assert agent_config is not None
-        assert agent_config["workflow"]["_type"] == "react_agent"
-
-    def test_ws_qualified_agent_ref_overrides_workspace_arg(self) -> None:
-        """``"prod/react-agent"`` wins over the spec's ``workspace`` field."""
-        captured: dict[str, object] = {}
-
-        class _StubAgents:
-            def get(self, *, name: str, workspace: str) -> dict[str, Any]:
-                captured["name"] = name
-                captured["workspace"] = workspace
-                return {"config": {"workflow": {"_type": "react_agent"}}}
-
-        class _StubSDK:
-            def __init__(self) -> None:
-                self.agents = _StubAgents()
-
-        ref = AgentRef("prod/react-agent")
-        OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=_StubSDK())  # type: ignore[arg-type]
-
-        assert captured == {"name": "react-agent", "workspace": "prod"}
-
-    def test_agent_ref_with_empty_config_raises(self) -> None:
-        """An agent stored without a usable config can't be merged — fail loudly."""
-
-        class _StubAgents:
-            def get(self, *, name: str, workspace: str) -> dict[str, Any]:
-                del name, workspace
-                return {"config": {}}
-
-        class _StubSDK:
-            def __init__(self) -> None:
-                self.agents = _StubAgents()
-
-        ref = AgentRef("react-agent")
-        with pytest.raises(RuntimeError, match="empty or invalid stored config"):
-            OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=_StubSDK())  # type: ignore[arg-type]
 
 
 class TestRebaseOptimizeOutputs:

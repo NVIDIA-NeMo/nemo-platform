@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
+import httpx
 import pytest
 from nemo_evaluator.api.schemas import MetricInline, TasksetRef
 from nemo_evaluator.jobs.agent_evaluate import (
@@ -51,10 +52,23 @@ from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform.types.jobs import SubprocessExecutionProvider
 from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
+from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerJobExecutionProfile,
+    DockerJobExecutionProfileConfig,
+    KubernetesJobExecutionProfile,
+    KubernetesJobExecutionProfileConfig,
+    SubprocessJobExecutionProfile,
+    VolcanoJobExecutionProfile,
+    VolcanoJobExecutionProfileConfig,
+)
+from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pytest_mock import MockerFixture
 
@@ -473,6 +487,27 @@ async def test_checked_fabric_spec_transforms_and_compiles() -> None:
     assert config["tasks"][0]["metrics"][0]["payload"]["kind"] == "inline"
 
 
+def _patch_execution_profiles(mocker: MockerFixture, profiles: list[BaseExecutionProfile]) -> None:
+    response = mocker.Mock()
+    response.data.return_value = profiles
+    jobs_client = mocker.Mock()
+    jobs_client.get_execution_profiles = mocker.AsyncMock(return_value=response)
+    mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
+
+
+async def _compile_harbor(*, async_sdk: AsyncNeMoPlatform | None, profile: str | None = None) -> PlatformJobSpec:
+    """Compile the minimal Harbor submission every backend-guard test makes."""
+    compiled = await AgentEvalJob.compile(
+        workspace="default",
+        spec=AgentEvalSpec(tasks=[_task_spec()], target=HarborRunnerTarget(agent_name="oracle")),
+        entity_client=object(),
+        job_name=None,
+        async_sdk=async_sdk,
+        profile=profile,
+    )
+    return PlatformJobSpec.model_validate(compiled)
+
+
 @pytest.mark.parametrize(
     ("target", "expected_kind", "expected_endpoint_name"),
     [
@@ -491,7 +526,6 @@ async def test_checked_fabric_spec_transforms_and_compiles() -> None:
             "test-model",
         ),
         (AgentTarget(agent=_agent(), params=RunConfigOnline()), "agent", "test-agent"),
-        (HarborRunnerTarget(agent_name="oracle"), "harbor", None),
     ],
 )
 async def test_compile_produces_cpu_task_step_carrying_each_target(
@@ -516,6 +550,133 @@ async def test_compile_produces_cpu_task_step_carrying_each_target(
     if expected_endpoint_name is not None:
         endpoint = config["target"].get("model") or config["target"].get("agent")
         assert endpoint["name"] == expected_endpoint_name
+
+
+async def test_compile_rejects_harbor_target_for_docker_profile(mocker: MockerFixture) -> None:
+    """The full rejection message: the resolved backend plus the standing Harbor requirement."""
+    _patch_execution_profiles(
+        mocker,
+        [DockerJobExecutionProfile(provider="cpu", profile="default", config=DockerJobExecutionProfileConfig())],
+    )
+
+    with pytest.raises(PlatformJobCompilationError) as exc_info:
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+
+    message = str(exc_info.value)
+    assert "profile 'default'" in message
+    assert "backend 'docker'" in message
+    assert "Harbor targets currently require local execution or the subprocess backend" in message
+
+
+@pytest.mark.parametrize(
+    ("execution_profile", "backend"),
+    [
+        (
+            KubernetesJobExecutionProfile(config=KubernetesJobExecutionProfileConfig()),
+            "kubernetes_job",
+        ),
+        (
+            VolcanoJobExecutionProfile(config=VolcanoJobExecutionProfileConfig()),
+            "volcano_job",
+        ),
+    ],
+)
+async def test_compile_rejects_harbor_target_for_containerized_profile(
+    execution_profile: BaseExecutionProfile,
+    backend: str,
+    mocker: MockerFixture,
+) -> None:
+    _patch_execution_profiles(mocker, [execution_profile])
+
+    with pytest.raises(PlatformJobCompilationError, match=rf"backend '{backend}'"):
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+
+
+async def test_compile_routes_harbor_directly_to_advertised_subprocess_profile(mocker: MockerFixture) -> None:
+    """An advertised default subprocess backend must be selected, not merely inferred as a translation."""
+    _patch_execution_profiles(
+        mocker,
+        [
+            DockerJobExecutionProfile(provider="cpu", profile="default", config=DockerJobExecutionProfileConfig()),
+            SubprocessJobExecutionProfile(),
+        ],
+    )
+
+    job_spec = await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+
+    executor = job_spec.steps[0].executor
+    assert isinstance(executor, SubprocessExecutionProvider)
+    assert executor.profile == "default"
+    assert executor.command == ["python", "-m", "nemo_evaluator.tasks.agent_evaluate"]
+    assert cast(dict[str, Any], job_spec.steps[0].config)["target"]["kind"] == "harbor"
+
+
+async def test_compile_rejects_harbor_when_profile_is_missing(mocker: MockerFixture) -> None:
+    _patch_execution_profiles(mocker, [SubprocessJobExecutionProfile.model_validate({"profile": "other"})])
+
+    with pytest.raises(PlatformJobCompilationError, match="profile 'default'.*does not resolve"):
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+
+
+async def test_compile_marks_missing_platform_sdk_as_dependency_unavailable() -> None:
+    with pytest.raises(PlatformJobDependencyUnavailableError, match="Jobs service is temporarily unavailable"):
+        await _compile_harbor(async_sdk=None)
+
+
+async def test_compile_marks_profile_transport_failure_as_retryable(mocker: MockerFixture) -> None:
+    request = httpx.Request("GET", "http://jobs.test/v2/execution-profiles")
+    jobs_client = mocker.Mock()
+    jobs_client.get_execution_profiles = mocker.AsyncMock(
+        side_effect=NemoTransportError(httpx.ConnectError("profiles unavailable", request=request))
+    )
+    mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
+
+    with pytest.raises(PlatformJobDependencyUnavailableError, match="Jobs service is temporarily unavailable"):
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+
+
+@pytest.mark.parametrize("failure_kind", ["invalid-response", "server-error"])
+async def test_compile_marks_profile_dependency_failure_as_retryable(failure_kind: str, mocker: MockerFixture) -> None:
+    request = httpx.Request("GET", "http://jobs.test/v2/execution-profiles")
+    response = httpx.Response(503, json={"detail": "jobs unavailable"}, request=request)
+    error: Exception
+    if failure_kind == "invalid-response":
+        error = NemoResponseValidationError(response, ValueError("invalid profile response"))
+    else:
+        error = InternalServerError(response)
+    jobs_client = mocker.Mock()
+    jobs_client.get_execution_profiles = mocker.AsyncMock(side_effect=error)
+    mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
+
+    with pytest.raises(PlatformJobDependencyUnavailableError, match="Jobs service is temporarily unavailable"):
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+
+
+async def test_compile_does_not_classify_unexpected_profile_failure_as_invalid(mocker: MockerFixture) -> None:
+    jobs_client = mocker.Mock()
+    jobs_client.get_execution_profiles = mocker.AsyncMock(side_effect=RuntimeError("unexpected lookup bug"))
+    mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
+
+    with pytest.raises(RuntimeError, match="unexpected lookup bug"):
+        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+
+
+async def test_compile_non_harbor_target_does_not_resolve_execution_profiles(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_evaluate.client_from_platform",
+        side_effect=AssertionError("non-Harbor compilation must not query execution profiles"),
+    )
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
+
+    compiled = await AgentEvalJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=None,
+    )
+
+    assert cast(dict[str, Any], PlatformJobSpec.model_validate(compiled).steps[0].config)["target"]["kind"] == "codex"
 
 
 async def test_compile_injects_target_api_key_secret() -> None:

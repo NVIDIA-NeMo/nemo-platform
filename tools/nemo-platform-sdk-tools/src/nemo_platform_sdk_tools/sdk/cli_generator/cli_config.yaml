@@ -29,6 +29,9 @@ top_level:
     hidden: true
   audit:
     panel: Functional plugins
+  experiments:
+    panel: Functional plugins
+    help: Manage experiments.
   files:
     panel: Core plugins
     help: Manage files.
@@ -45,7 +48,6 @@ top_level:
   intake:
     panel: Functional plugins
     help: Intake operations.
-    hidden: true
   jobs:
     panel: Core plugins
     help: Manage jobs.
@@ -293,12 +295,7 @@ config:
     live_global:
       skip: true
 
-# Experiments are in the OpenAPI spec and SDK (for the frontend) but not yet exposed
-# as CLI commands; drop the skip once the feature is production-ready.
 - resource: [evaluations]
-  skip: true
-
-- resource: [experiments]
   skip: true
 
 - resource: [secrets]

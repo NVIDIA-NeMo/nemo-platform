@@ -1,0 +1,37 @@
+[
+  {
+    "id": "claim-your-free-iphone-now",
+    "subject": "Claim Your Free iPhone Now!",
+    "body": "Dear valued customer,\nCongratulations! You have been selected to receive a brand new iPhone absolutely free. To claim your prize, simply click the link below and provide your shipping address.\nhttp://malicious-link.example.com/claim\nThis offer is limited, so act fast!",
+    "label": "phishing",
+    "sender": "prize@example.com"
+  },
+  {
+    "id": "urgent-your-account-has-been-suspended",
+    "subject": "Urgent: Your Account Has Been Suspended",
+    "body": "Hello,\nWe have detected unusual activity on your account. To prevent suspension, please verify your identity by clicking the link below and entering your credentials.\nhttp://verify-account.example.com\nIf you do not verify within 24 hours, your account will be disabled.\nThank you,\nSupport Team",
+    "label": "phishing",
+    "sender": "security-alerts@bank.com"
+  },
+  {
+    "id": "important-invoice-attached",
+    "subject": "Important: Invoice Attached",
+    "body": "Hi there,\nPlease find the invoice attached for your recent purchase. Click here to view the details.\nhttp://invoice-example.com/view?invoice=12345\nIf you have any questions, feel free to contact us.\nBest regards,\nCustomer Service",
+    "label": "phishing",
+    "sender": "accounts@shop-example.com"
+  },
+  {
+    "id": "benign-project-meeting-reminder",
+    "subject": "Benign: Project Meeting Reminder",
+    "body": "Hi Team,\nJust wanted to remind you about our project update meeting on Friday at 2pm. Please let me know if you can attend.\nThanks!\n-Bob",
+    "label": "benign",
+    "sender": "bob@example.com"
+  },
+  {
+    "id": "benign-invoice-follow-up",
+    "subject": "Benign: Invoice Follow-up",
+    "body": "Hi John,\nPlease find the invoice #1234 attached for your recent purchase. Let me know if you have any questions.\nBest regards,\nAlice",
+    "label": "benign",
+    "sender": "alice@company.com"
+  }
+]

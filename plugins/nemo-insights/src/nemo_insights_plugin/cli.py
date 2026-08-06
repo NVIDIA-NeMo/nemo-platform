@@ -41,7 +41,7 @@ from nemo_insights_plugin.preflight import (
 from nemo_insights_plugin.profile import AnalysisProfile, load_profile, pick_agent_spec
 from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
-from pydantic_ai import AgentRunError
+from nooa import GenerationError
 
 DEFAULT_WORKSPACE = "default"
 _PREFLIGHT_PROBES: AnalysisProbes | None = None
@@ -186,7 +186,7 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             insights_output=insights_output,
             verbose=verbose,
         )
-    except AgentRunError as exc:
+    except GenerationError as exc:
         detail = _one_line_error(exc).rstrip(".")
         typer.echo(
             f"Error: analyst run failed: {detail}. "

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import {
   resolveConfigModel,
   runGuardrailCheck,
@@ -39,7 +39,7 @@ const snapshot = (name: string): GuardrailCheckEntity => {
 
 describe('resolveConfigModel', () => {
   it('prefers the model marked type "main"', () => {
-    const config: RailsConfigOutput = {
+    const config: RailsConfig = {
       models: [
         { type: 'embeddings', engine: 'openai', model: 'text-embedding-ada-002' },
         { type: 'main', engine: 'openai', model: 'gpt-4' },
@@ -49,18 +49,18 @@ describe('resolveConfigModel', () => {
   });
 
   it('falls back to the first model that declares a reference', () => {
-    const config: RailsConfigOutput = {
+    const config: RailsConfig = {
       models: [{ type: 'embeddings', engine: 'openai', model: 'text-embedding-ada-002' }],
     };
     expect(resolveConfigModel(config, 'pii-filter')).toBe('text-embedding-ada-002');
   });
 
   it.each([
-    ['no models', { models: [] } satisfies RailsConfigOutput],
+    ['no models', { models: [] } satisfies RailsConfig],
     ['models without a reference', { models: [{ type: 'main', engine: 'openai' }] }],
     ['an absent config', undefined],
   ])('throws a named error for %s', (_label, config) => {
-    expect(() => resolveConfigModel(config as RailsConfigOutput | undefined, 'pii-filter')).toThrow(
+    expect(() => resolveConfigModel(config as RailsConfig | undefined, 'pii-filter')).toThrow(
       "Guardrail config 'pii-filter' has no usable model to run checks against."
     );
   });
