@@ -14,12 +14,6 @@ const GuardrailsRoute = lazy(() =>
   }))
 );
 
-const GuardrailNewRoute = lazy(() =>
-  import('@studio/routes/guardrails/GuardrailNewRoute').then((m) => ({
-    default: m.GuardrailNewRoute,
-  }))
-);
-
 const GuardrailDetailRoute = lazy(() =>
   import('@studio/routes/guardrails/GuardrailDetailRoute').then((m) => ({
     default: m.GuardrailDetailRoute,
@@ -43,12 +37,6 @@ export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
     path: ROUTES.workspace.guardrails,
     element: <GuardrailsRoute />,
     errorElement: <ErrorPanel title="Guardrails" />,
-    children: [
-      {
-        path: ROUTES.workspace.guardrailNew,
-        element: <GuardrailNewRoute />,
-      },
-    ],
   },
   {
     path: ROUTES.workspace.guardrailDetail,

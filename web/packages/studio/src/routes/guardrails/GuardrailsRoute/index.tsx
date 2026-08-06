@@ -21,20 +21,18 @@ import { GuardrailsDataView } from '@studio/components/dataViews/GuardrailsDataV
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import {
-  getGuardrailDetailRoute,
-  getGuardrailNewRoute,
-  getGuardrailsRoute,
-} from '@studio/routes/utils';
+import { CreateGuardrailModal } from '@studio/routes/guardrails/GuardrailsRoute/CreateGuardrailModal';
+import { getGuardrailDetailRoute, getGuardrailsRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useCallback, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 
 export const GuardrailsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [configToDelete, setConfigToDelete] = useState<GuardrailConfig | null>(null);
 
   const { mutateAsync: deleteConfig } = useGuardrailsDeleteConfig();
@@ -65,7 +63,7 @@ export const GuardrailsRoute: FC = () => {
           slotHeading="Guardrail Configs"
           slotDescription="Manage NeMo Guardrails configurations for your workspace."
           slotActions={
-            <Button color="brand" onClick={() => navigate(getGuardrailNewRoute(workspace))}>
+            <Button color="brand" onClick={() => setIsCreateOpen(true)}>
               Create Guardrail
             </Button>
           }
@@ -84,6 +82,8 @@ export const GuardrailsRoute: FC = () => {
         />
       </Stack>
 
+      <CreateGuardrailModal open={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
+
       {configToDelete ? (
         <DeleteConfirmationModal
           open
@@ -95,8 +95,6 @@ export const GuardrailsRoute: FC = () => {
           onClose={() => setConfigToDelete(null)}
         />
       ) : null}
-
-      <Outlet />
     </AccessibleTitle>
   );
 };

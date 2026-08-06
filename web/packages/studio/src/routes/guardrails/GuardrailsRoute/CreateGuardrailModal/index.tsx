@@ -4,32 +4,32 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
+import { ENTITY_NAME_HELP, entityNameSchema } from '@nemo/common/src/utils/entityName';
 import { useGuardrailsCreateConfig } from '@nemo/sdk/generated/platform/api';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getGuardrailDetailRoute, getGuardrailsRoute } from '@studio/routes/utils';
+import { getGuardrailDetailRoute } from '@studio/routes/utils';
+import { useQueryClient } from '@tanstack/react-query';
 import { type FC } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
 
-const NAME_PATTERN = /^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$/;
-
 const schema = z.object({
-  name: z
-    .string()
-    .min(1, 'Name is required')
-    .regex(
-      NAME_PATTERN,
-      'Name must start with a lowercase letter, contain only lowercase letters, numbers, hyphens, dots, @, + or _, be 2–63 characters, and not end with a hyphen or contain consecutive hyphens'
-    ),
+  name: entityNameSchema(),
 });
 
 type FormData = z.infer<typeof schema>;
 
-export const GuardrailNewRoute: FC = () => {
+interface Props {
+  open: boolean;
+  onClose: () => void;
+}
+
+export const CreateGuardrailModal: FC<Props> = ({ open, onClose }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const {
     control,
@@ -42,21 +42,31 @@ export const GuardrailNewRoute: FC = () => {
     mode: 'onChange',
   });
 
-  const { mutateAsync: createConfig, isPending, error } = useGuardrailsCreateConfig();
+  const {
+    mutateAsync: createConfig,
+    isPending,
+    error,
+    reset: resetMutation,
+  } = useGuardrailsCreateConfig();
 
   const handleClose = () => {
     reset();
-    navigate(getGuardrailsRoute(workspace));
+    resetMutation();
+    onClose();
   };
 
   const onSubmit = async (data: FormData) => {
     const config = await createConfig({ workspace, data: { name: data.name } });
+    await queryClient.invalidateQueries({
+      queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
+    });
+    handleClose();
     navigate(getGuardrailDetailRoute(workspace, config.name ?? data.name));
   };
 
   return (
     <FormModal
-      open
+      open={open}
       title="Create Guardrail"
       submitButtonText="Create"
       disabled={isPending}
@@ -71,6 +81,7 @@ export const GuardrailNewRoute: FC = () => {
         autoFocus
         disabled={isPending}
         useControllerProps={{ name: 'name', control }}
+        formFieldProps={{ slotInfo: ENTITY_NAME_HELP }}
         attributes={{
           Input: {
             autoComplete: 'off',
