@@ -523,6 +523,17 @@ def _resolve_bootstrap(
 
     # --- OAuth path: set up transparent token refresh ---
     oidc_config = _discover_oidc_client_settings(base_url)
+
+    if not oidc_config.auth_enabled and access_token is None:
+        # The context's user is an OAuthUser, but this cluster has no OIDC
+        # configured (this can happen if the context was previously authenticated
+        # against a different cluster). There's no token endpoint to refresh
+        # against, so fall back to no-auth instead of attempting a refresh_token
+        # grant against an empty endpoint, which would fail.
+        # Note: when access_token is provided explicitly (e.g. NMP_ACCESS_TOKEN),
+        # we skip this guard and let the caller's token flow through as-is.
+        return _ResolvedBootstrap(base_url, resolved.workspace, headers, None)
+
     tokens = TokenSet.from_access_token(
         resolved.user.token.get_secret_value(),
         resolved.user.refresh_token.get_secret_value() if resolved.user.refresh_token else None,
