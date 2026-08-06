@@ -42,6 +42,8 @@ _DEST = _HERE / "smaller_test.csv"
 def assemble_email(row: dict[str, str]) -> str:
     """Build an RFC-822-ish message including the From: sender header."""
     sender = (row.get("sender") or "").strip()
+    if not sender:
+        raise ValueError("sender is required to preserve the phishing signal")
     subject = (row.get("subject") or "").strip()
     body = (row.get("body") or "").strip()
     return f"From: {sender}\nSubject: {subject}\n\n{body}"
@@ -53,6 +55,11 @@ def main() -> None:
 
     if not rows:
         raise SystemExit(f"no rows read from {_SOURCE}")
+
+    subjects = [(row.get("subject") or "").strip() for row in rows]
+    duplicates = sorted({s for s in subjects if subjects.count(s) > 1})
+    if duplicates:
+        raise SystemExit(f"eval id_key 'subject' must be unique; duplicates: {duplicates}")
 
     fieldnames = [*rows[0].keys()]
     if "email" not in fieldnames:

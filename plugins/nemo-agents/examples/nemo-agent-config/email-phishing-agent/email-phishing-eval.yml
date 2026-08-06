@@ -3,8 +3,8 @@
 # Evaluation config for the Fabric email-phishing agent.
 #
 #   nemo agents evaluate run \
-#       --eval-config plugins/nemo-agents/examples/email-phishing-fabric/email-phishing-eval.yml \
-#       --agent email-phishing-fabric
+#       --eval-config plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/email-phishing-eval.yml \
+#       --agent email-phishing-agent
 #
 # The judge LLM scores each generated verdict against the expected label in
 # smaller_test.csv (column ``label`` = "phishing" | "benign").
@@ -27,7 +27,7 @@ llms:
 eval:
   general:
     max_concurrency: 1
-    output_dir: eval/email-phishing-fabric
+    output_dir: eval/email-phishing-agent
     dataset:
       _type: csv
       file_path: data/smaller_test.csv

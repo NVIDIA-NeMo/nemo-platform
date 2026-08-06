@@ -49,7 +49,15 @@ def extract_iocs(text: str) -> dict[str, list[str]]:
     """
     urls = {url.rstrip(_TRAILING_PUNCT) for url in _URL_RE.findall(text)}
 
-    domains = {host.lower() for url in urls if (host := urlsplit(url).hostname)}
+    domains: set[str] = set()
+    for url in urls:
+        try:
+            host = urlsplit(url).hostname
+        except ValueError:
+            # A malformed match (e.g. an unparseable netloc) is not a usable IOC.
+            continue
+        if host:
+            domains.add(host.lower())
     # ponytail: a dotted word pair at a sentence boundary ("Thanks.Best") can look
     # like a domain. Add a public-suffix check if false positives ever matter.
     domains.update(match.lower() for match in _DOMAIN_RE.findall(text))
