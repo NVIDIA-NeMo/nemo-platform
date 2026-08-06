@@ -221,7 +221,16 @@ verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
 
 .PHONY: verify-pnpm
 verify-pnpm: verify-mise ## Verify pnpm is available for Studio bootstrap
-	@$(MISE_EXEC) pnpm --version
+	@$(MISE_EXEC) pnpm --version || { \
+		echo "pnpm not found."; \
+		if [ -n "$(NMP_SKIP_MISE)" ]; then \
+			echo "NMP_SKIP_MISE is set, so pnpm has to come from your PATH."; \
+			echo "Install pnpm, or re-run without NMP_SKIP_MISE to use the mise-managed one."; \
+		else \
+			echo "Run 'make verify-mise' to install the pinned toolchain."; \
+		fi; \
+		exit 1; \
+	}
 
 .PHONY: verify-node-version
 verify-node-version: verify-pnpm ## Verify pnpm and Node.js satisfy Studio's package engine
