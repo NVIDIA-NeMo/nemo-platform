@@ -309,7 +309,6 @@ nemo services [OPTIONS] COMMAND [ARGS]...
 * `run`: Run platform services in the foreground.
 * `start`: Start platform services in the background.
 * `stop`: Stop running platform services.
-* `reset-data`: Permanently delete local platform data after guarded...
 * `restart`: Restart platform services.
 * `status`: Show status of the platform services instance for this...
 * `ls`: List service instances on this host.
@@ -405,37 +404,6 @@ nemo services stop [OPTIONS]
 * `--instance`: Instance name. Defaults to a name derived from the working directory and port.
 * `--port <INTEGER>`: Port (used for scope computation if --instance not given). [default: 8080]
 * `--force`: Stop even if the instance is running in the foreground.
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-#### nemo services reset-data
-
-Permanently delete local platform data after guarded service cleanup.
-
-The command refuses unsafe paths and live services. It removes the managed
-Intake ClickHouse container before deleting its bind-mounted data. A custom
-ClickHouse data directory outside the platform data directory is preserved.
-
-**Examples:**
-
-```shell
-nemo services reset-data
-nemo services reset-data --force
-nemo services reset-data --data-dir /var/lib/nemo --force
-```
-
-**Usage:**
-
-```shell
-nemo services reset-data [OPTIONS]
-```
-
-**Options:**
-
-* `--data-dir <PATH>`: Local platform data directory. Defaults to NMP_DATA_DIR, persisted setup config, or XDG data.
-* `--force`: Delete without confirmation after safety checks pass.
 
 **Help:**
 

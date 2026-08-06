@@ -57,19 +57,30 @@ export NMP_DATA_DIR=/custom/path/to/state
 
 ## Question 3 — Wipe local platform data?
 
-Ask whether the user wants to wipe local platform data before startup. This is a destructive operation that requires explicit confirmation. Warn clearly that it deletes the entity-store database, encryption key, files, job history, secrets, and Intake ClickHouse traces stored under the selected platform data directory. An explicitly configured ClickHouse data directory outside it is preserved. Providers and secrets must be re-seeded afterward. If the database and encryption key get out of sync, later runs can fail with decryption errors such as `cryptography.exceptions.InvalidTag`. **Stop every `nemo services run` process before wiping** (see the macOS gotcha under Question 1); the reset command removes the managed ClickHouse container safely. If the user confirms, run this before `nemo services run`:
+Ask whether the user wants to wipe local platform data before startup. This is a destructive operation that requires explicit confirmation. Warn clearly that it deletes the entity-store database, encryption key, files, job history, secrets, and Intake ClickHouse traces stored under the selected platform data directory. An explicitly configured ClickHouse data directory outside it is preserved. Providers and secrets must be re-seeded afterward. If the database and encryption key get out of sync, later runs can fail with decryption errors such as `cryptography.exceptions.InvalidTag`. **Stop every `nemo services run` process before wiping** (see the macOS gotcha under Question 1), and remove the managed ClickHouse container before deleting its bind-mounted data. If the user confirms, run this before `nemo services run`:
 
 ```bash
-uv run nemo services reset-data --force
+DATA_DIR="${NMP_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/nemo}"
+case "$DATA_DIR" in
+  ""|"/"|"$HOME"|"$HOME/"|"."|"./"|"$PWD"|"$PWD/")
+    echo "REFUSING_UNSAFE_DATA_DIR: '$DATA_DIR' — abort"; exit 1 ;;
+esac
+lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 && { echo "PLATFORM_STILL_RUNNING — abort before wipe"; exit 1; }
+CLICKHOUSE_DATA_DIR="${NMP_INTAKE_CLICKHOUSE_DATA_DIR:-$DATA_DIR/intake-clickhouse}"
+if [ -f "$CLICKHOUSE_DATA_DIR/.nmp-clickhouse-identity" ]; then
+  NMP_DATA_DIR="$DATA_DIR" uv run python -m nmp.intake.local_clickhouse --remove || {
+    echo "CLICKHOUSE_CONTAINER_CLEANUP_FAILED — start Docker and retry; data was not deleted"
+    exit 1
+  }
+fi
+rm -rf "$DATA_DIR"
 ```
 
-The command resolves the path chosen in Q2 from `$NMP_DATA_DIR`, persisted setup
-configuration, `$XDG_DATA_HOME/nemo`, or the default `~/.local/share/nemo`. Pass
-`--data-dir /chosen/path` to override it explicitly. It refuses unsafe paths and
-live services, removes managed ClickHouse before deleting bind-mounted data, and
-preserves an explicitly configured ClickHouse data directory outside the platform
-data directory. If cleanup fails because Docker is unavailable, start Docker and
-retry.
+Replace the path with whatever was chosen in Q2 (`$NMP_DATA_DIR`,
+`$XDG_DATA_HOME/nemo`, or the default `~/.local/share/nemo`). The cleanup command
+validates and removes only the managed container, restoring host ownership when
+its data lives under the platform data directory. If cleanup fails because Docker
+is unavailable, start Docker and retry—do not proceed to `rm -rf`.
 
 ---
 

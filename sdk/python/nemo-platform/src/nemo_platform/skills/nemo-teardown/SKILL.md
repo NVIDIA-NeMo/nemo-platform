@@ -13,7 +13,7 @@ not-for:
   - nemo-setup (use to install or start the platform)
   - nemo-status (use for read-only health)
   - nemo-skill-selection (use for dispatch when intent is unclear)
-compatibility: nemo-platform >= 0.1.0; uses `nemo services stop` and the guarded `nemo services reset-data` command; Docker is required only when an Intake-managed local ClickHouse container must be removed before a data wipe; no `pkill`, no direct removal of the platform data directory, and no `rm` outside the working folder; idempotent (re-running after the platform is already stopped is a no-op).
+compatibility: nemo-platform >= 0.1.0; uses `nemo services stop`, Docker only to remove an Intake-managed local ClickHouse container before a data wipe, and a targeted `rm -rf` of the platform's data directory (default `~/.local/share/nemo`, overridable via `$NMP_DATA_DIR`); no `pkill`, no `rm` outside the chosen data dir or the working folder; idempotent (re-running after platform is already stopped is a no-op).
 maturity: active
 license: Apache-2.0
 user-invocable: true
@@ -114,16 +114,46 @@ If the user confirms they want to kill a foreground instance from this skill (ra
 **Option 2 — stop + wipe data:**
 
 ```bash
-.venv/bin/nemo services stop || true
-.venv/bin/nemo services reset-data --force
+.venv/bin/nemo services stop || true            # tolerate already-stopped
+DATA_DIR="${NMP_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/nemo}"
+# Safety guard: refuse to wipe obviously-unsafe paths (empty, root, $HOME, cwd).
+# Catches accidental NMP_DATA_DIR misconfigurations before they delete user data.
+case "$DATA_DIR" in
+  ""|"/"|"$HOME"|"$HOME/"|"."|"./"|"$PWD"|"$PWD/")
+    echo "REFUSING_UNSAFE_DATA_DIR: '$DATA_DIR' — abort"; exit 1 ;;
+esac
+# Verify the platform is fully down BEFORE wiping; otherwise the running process keeps
+# its file descriptors open against the old inode (the "macOS unlinked-inode gotcha"
+# in SETUP.md) and the next run sees ghost state.
+lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 && { echo "PLATFORM_STILL_RUNNING — abort before wipe"; exit 1; }
+CLICKHOUSE_DATA_DIR="${NMP_INTAKE_CLICKHOUSE_DATA_DIR:-$DATA_DIR/intake-clickhouse}"
+if [ -f "$CLICKHOUSE_DATA_DIR/.nmp-clickhouse-identity" ]; then
+  NMP_DATA_DIR="$DATA_DIR" .venv/bin/python -m nmp.intake.local_clickhouse --remove || {
+    echo "CLICKHOUSE_CONTAINER_CLEANUP_FAILED — start Docker and retry; data was not deleted"
+    exit 1
+  }
+fi
+rm -rf "$DATA_DIR"
 ```
 
 **Option 3 — full cleanup:**
 
 ```bash
 .venv/bin/nemo services stop || true
-.venv/bin/nemo services reset-data --force
-rm -rf .venv agents
+DATA_DIR="${NMP_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/nemo}"
+case "$DATA_DIR" in
+  ""|"/"|"$HOME"|"$HOME/"|"."|"./"|"$PWD"|"$PWD/")
+    echo "REFUSING_UNSAFE_DATA_DIR: '$DATA_DIR' — abort"; exit 1 ;;
+esac
+lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 && { echo "PLATFORM_STILL_RUNNING — abort before wipe"; exit 1; }
+CLICKHOUSE_DATA_DIR="${NMP_INTAKE_CLICKHOUSE_DATA_DIR:-$DATA_DIR/intake-clickhouse}"
+if [ -f "$CLICKHOUSE_DATA_DIR/.nmp-clickhouse-identity" ]; then
+  NMP_DATA_DIR="$DATA_DIR" .venv/bin/python -m nmp.intake.local_clickhouse --remove || {
+    echo "CLICKHOUSE_CONTAINER_CLEANUP_FAILED — start Docker and retry; data was not deleted"
+    exit 1
+  }
+fi
+rm -rf "$DATA_DIR" .venv agents
 ```
 
 Never delete a directory the user did not name or that the snapshot above didn't surface. Never `rm -rf` outside the working folder and the explicit data dir.
@@ -136,17 +166,19 @@ For all three options, the up-check is `lsof`:
 lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 && echo "PLATFORM_STILL_RUNNING" || echo "platform stopped"
 ```
 
-For options 2 and 3, `nemo services reset-data --force` must have exited zero
-and reported that the resolved data directory was deleted or did not exist.
-
-For option 3:
+For option 2:
 
 ```bash
-[ ! -d .venv ] && [ ! -d agents ] && echo "local files cleared" || echo "OPTION3_INCOMPLETE"
+[ ! -d "${NMP_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/nemo}" ] && echo "data dir cleared" || echo "OPTION2_INCOMPLETE"
 ```
 
-Verification passes only when `lsof` reports nothing on :8080, the reset command
-succeeded for options 2 and 3, and option 3's working-folder paths are gone.
+For option 3 (`.venv` is gone, so use absolute paths):
+
+```bash
+[ ! -d "${NMP_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/nemo}" ] && [ ! -d .venv ] && [ ! -d agents ] && echo "platform stopped, local files cleared" || echo "OPTION3_INCOMPLETE"
+```
+
+Verification passes only when `lsof` reports nothing on :8080 and (for options 2 and 3) the data directory is gone.
 
 ## If verification fails
 
@@ -156,7 +188,7 @@ succeeded for options 2 and 3, and option 3's working-folder paths are gone.
 | `services stop` errors with "no instance" but `lsof` shows a listener | Lock state and reality diverged (foreground process with no registered instance, or instance was started in a different working directory / port scope) | Run `nemo services ls` to see what scopes the CLI knows about; the listener may belong to a different scope. Identify the PID from `lsof -iTCP:8080 -sTCP:LISTEN` and ask the user before sending SIGTERM. |
 | `services stop` says "stopped" but `lsof` still shows a listener | Process didn't honor SIGTERM in time | Re-run `nemo services stop --timeout 60`; if still alive, surface the PID and ask the user. Do not silently SIGKILL. |
 | ClickHouse container cleanup says the Docker daemon is unavailable | The local ClickHouse container must be removed before deleting its bind-mounted data | Start Docker Desktop on macOS/Windows or the Docker service on Linux, then rerun teardown. Do not delete the data directory first. |
-| `services reset-data` fails with permission denied | Data dir owned by a different user, or a process still has it open | Surface the error; do not retry with sudo. Confirm `lsof -iTCP:8080` is empty before retrying. |
+| `rm -rf` data dir fails with permission denied | Data dir owned by a different user, or a process still has it open | Surface the error; do not retry with sudo. Confirm `lsof -iTCP:8080` is empty and `lsof +D "$DATA_DIR" 2>/dev/null` shows nothing before retrying. |
 | `nemo services ls --all` shows stopped rows after teardown | Stopped instance directories with logs remain on disk | `nemo services prune` removes them. Re-verify with `lsof`. |
 | User says "I changed my mind" mid-step | Confirmation came back ambiguous | Stop immediately; re-prompt. |
 
@@ -165,7 +197,7 @@ succeeded for options 2 and 3, and option 3's working-folder paths are gone.
 - **`lsof` is ground truth for whether the platform is serving.** `nemo services ls` defaults to running instances; use `nemo services ls --all` for stopped instance directories on disk. Cross-check against `lsof -iTCP:8080 -sTCP:LISTEN` before believing either command.
 - **Foreground vs background instances.** `nemo services run` runs in the foreground and is protected from `nemo services stop` (stop refuses unless `--force`). `nemo services start` runs in the background and is the right target for `stop`. If `stop` refuses, ask the user where they ran `services run` so they can Ctrl-C it themselves.
 - **Wipe AFTER stop, not before.** On macOS especially, running `rm -rf ~/.local/share/nemo` while a `nemo services run` process is still alive leaves the running process holding the old inode while a freshly-spawned platform sees the new (empty) inode. Always confirm `lsof -iTCP:8080` is empty before the wipe.
-- **Remove managed ClickHouse before wiping its data.** Its container uses an `unless-stopped` restart policy and a bind mount. `nemo services reset-data` performs label- and mount-validated cleanup before deleting platform data; if Docker is unavailable, it aborts with the data intact.
+- **Remove managed ClickHouse before wiping its data.** Its container uses an `unless-stopped` restart policy and a bind mount. Options 2 and 3 must run the label- and mount-validated cleanup command before `rm -rf`; if Docker is unavailable, abort the wipe with the data intact.
 - **No `pkill`.** Don't grep for "nemo-platform" or "nemo services" and send SIGTERM blindly — the kernel doesn't know which instance is the user's and which belongs to a coworker on the same box. Use `nemo services stop` (or, with user confirmation, kill a specific PID surfaced by `lsof`).
 - **`agents/` is local, not platform state.** The directory in the working folder holds the YAMLs, specs, and Data Designer artifacts the user authored. Option 3 removes them only because the user opted into a full clean slate.
 - **`.venv` is reusable.** A new `nemo-setup` after option 1 or 2 does not require reinstalling. Option 3 is the only path that wipes it.

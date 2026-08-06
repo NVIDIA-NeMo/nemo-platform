@@ -27,6 +27,7 @@ from nmp.intake.local_clickhouse import (
     _managed_container_name,
     _prepare_data_dir,
     _provision_local_clickhouse,
+    main,
     remove_local_clickhouse,
 )
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings
@@ -523,6 +524,31 @@ def test_remove_local_clickhouse_restores_host_ownership_before_removal(
         (["chown", "-R", "1234:5678", CLICKHOUSE_DATA_PATH], "root"),
     ]
     assert container.removed is True
+
+
+@pytest.mark.parametrize("external_data_dir", [False, True])
+def test_remove_command_restores_only_platform_owned_data(
+    external_data_dir: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    platform_data_dir = tmp_path / "platform-data"
+    monkeypatch.setenv("NMP_DATA_DIR", str(platform_data_dir))
+    if external_data_dir:
+        clickhouse_data_dir = tmp_path / "external-clickhouse"
+        monkeypatch.setenv("NMP_INTAKE_CLICKHOUSE_DATA_DIR", str(clickhouse_data_dir))
+    else:
+        clickhouse_data_dir = None
+        monkeypatch.delenv("NMP_INTAKE_CLICKHOUSE_DATA_DIR", raising=False)
+    remove_clickhouse = MagicMock(return_value=True)
+    monkeypatch.setattr("nmp.intake.local_clickhouse.remove_local_clickhouse", remove_clickhouse)
+    monkeypatch.setattr("nmp.intake.local_clickhouse.sys.argv", ["local_clickhouse", "--remove"])
+
+    assert main() == 0
+    remove_clickhouse.assert_called_once_with(
+        data_dir=clickhouse_data_dir,
+        restore_data_ownership=not external_data_dir,
+    )
 
 
 def test_remove_local_clickhouse_refuses_unowned_container(

@@ -38,7 +38,6 @@ CLICKHOUSE_HTTP_PORT_KEY: Final = f"{CLICKHOUSE_HTTP_PORT}/tcp"
 CLICKHOUSE_NATIVE_PORT: Final = 9000
 CLICKHOUSE_NATIVE_PORT_KEY: Final = f"{CLICKHOUSE_NATIVE_PORT}/tcp"
 CLICKHOUSE_DATA_PATH: Final = "/var/lib/clickhouse"
-CLICKHOUSE_IDENTITY_FILE: Final = ".nmp-clickhouse-identity"
 LEGACY_CONTAINER_NAME: Final = "nmp-intake-clickhouse"
 
 _MANAGED_BY_LABEL = "nmp.nvidia.com/managed-by"
@@ -47,7 +46,8 @@ _DATA_DIR_LABEL = "nmp.nvidia.com/data-directory-sha256"
 _DATA_INSTANCE_LABEL = "nmp.nvidia.com/data-instance-id"
 _MANAGED_BY_VALUE = "nemo-platform"
 _COMPONENT_VALUE = "intake-clickhouse"
-_DATA_INSTANCE_FILE_PREFIX = f"{CLICKHOUSE_IDENTITY_FILE}-"
+_DATA_IDENTITY_FILE = ".nmp-clickhouse-identity"
+_DATA_INSTANCE_FILE_PREFIX = f"{_DATA_IDENTITY_FILE}-"
 _READINESS_TIMEOUT_SECONDS = 60.0
 _READINESS_POLL_SECONDS = 0.5
 _DOCKER_UNAVAILABLE_GUIDANCE = (
@@ -434,7 +434,7 @@ def _prepare_data_dir(data_dir: Path, *, manage_permissions: bool) -> str:
         data_dir.chmod(0o755)
         tmp_dir.chmod(0o755)
 
-    identity_path = data_dir / CLICKHOUSE_IDENTITY_FILE
+    identity_path = data_dir / _DATA_IDENTITY_FILE
     if not identity_path.exists():
         data_instance_id = uuid4().hex
         instance_path = data_dir / f"{_DATA_INSTANCE_FILE_PREFIX}{data_instance_id}"
@@ -539,7 +539,14 @@ def main() -> int:
     settings = ClickHouseSettings.from_config(config)
     try:
         if args.remove:
-            removed = remove_local_clickhouse(data_dir=config.clickhouse_config.data_dir)
+            clickhouse_data_dir = config.clickhouse_config.data_dir
+            restore_data_ownership = _resolve_data_dir(clickhouse_data_dir).is_relative_to(
+                nmp_user_data_dir().resolve()
+            )
+            removed = remove_local_clickhouse(
+                data_dir=clickhouse_data_dir,
+                restore_data_ownership=restore_data_ownership,
+            )
             print(
                 "Removed managed local ClickHouse container"
                 if removed
