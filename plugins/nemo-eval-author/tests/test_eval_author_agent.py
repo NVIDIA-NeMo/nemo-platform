@@ -14,11 +14,7 @@ from typing import Any, cast
 import pytest
 from nemo_eval_author_plugin.eval_author import agent as eval_author_module
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
-from nemo_eval_author_plugin.eval_author.models import (
-    ArtifactDescriptor,
-    EvalAuthorConfig,
-    MetricAuthoringResult,
-)
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, MetricAuthoringResult
 from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, ResourceRef, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
@@ -44,6 +40,7 @@ class _Calls:
     author_feedback: list[str | None]
     train_dataset: Dataset
     validation_dataset: Dataset
+    insight_suite: Dataset
     suite_discards: int = 0
 
 
@@ -136,6 +133,7 @@ def _install_pipeline(
         author_feedback=[],
         train_dataset=train_dataset,
         validation_dataset=validation_dataset,
+        insight_suite=materialized,
     )
     analyzer_index = 0
 
@@ -260,7 +258,7 @@ def test_metric_authoring_prompt_limits_edits_and_result_shape() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_returns_input_dataset_artifacts_without_trace_refs(
+async def test_run_returns_input_datasets_without_trace_refs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -276,15 +274,16 @@ async def test_run_returns_input_dataset_artifacts_without_trace_refs(
         client=cast(Any, object()),
     )
 
-    assert result.train_dataset.uri.endswith("/datasets/train")
-    assert result.validation_dataset.uri.endswith("/datasets/validation")
-    assert result.task_set is None
+    assert result.train_dataset is calls.train_dataset
+    assert result.validation_dataset is calls.validation_dataset
+    assert result.insight_suite is None
+    assert result.insight_suite_identity is None
     assert result.metric_keys == ()
     assert cast(_ClosingShell, eval_author.shell).close_calls == 1
 
 
 @pytest.mark.asyncio
-async def test_run_materializes_authors_validates_and_returns_artifacts(
+async def test_run_materializes_authors_validates_and_returns_datasets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -312,12 +311,10 @@ async def test_run_materializes_authors_validates_and_returns_artifacts(
         "validate:insight-suite",
         "finalize",
     ]
-    assert result.train_dataset.uri.endswith("/datasets/train")
-    assert result.validation_dataset.uri.endswith("/datasets/validation")
-    assert result.task_set == ArtifactDescriptor(
-        uri=(tmp_path / "insight-root" / "insight-suite").resolve().as_uri(),
-        identity=f"sha256:{'a' * 64}",
-    )
+    assert result.train_dataset is calls.train_dataset
+    assert result.validation_dataset is calls.validation_dataset
+    assert result.insight_suite is calls.insight_suite
+    assert result.insight_suite_identity == f"sha256:{'a' * 64}"
     assert result.metric_keys == ("uses_correct_tool",)
     assert result.summary == "Authored tool-use metric."
 

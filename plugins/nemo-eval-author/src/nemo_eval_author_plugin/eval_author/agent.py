@@ -12,13 +12,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nemo_eval_author_plugin.eval_author.materialization import InsightSuite, describe_dataset_artifact
-from nemo_eval_author_plugin.eval_author.models import (
-    ArtifactDescriptor,
-    EvalAuthorConfig,
-    EvalAuthorResult,
-    MetricAuthoringResult,
-)
+from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult, MetricAuthoringResult
 from nemo_eval_author_plugin.model_config import (
     bridge_author_env_to_experimentalist,
     get_fast_model,
@@ -312,8 +307,8 @@ class EvalAuthor(Agent):
                 reporter.note("no trace refs — nothing to analyze")
                 reporter.progress(phase="eval author · complete")
             return EvalAuthorResult(
-                train_dataset=describe_dataset_artifact(train_dataset),
-                validation_dataset=describe_dataset_artifact(validation_dataset),
+                train_dataset=train_dataset,
+                validation_dataset=validation_dataset,
                 summary="No trace refs on insight — nothing to analyze.",
             )
 
@@ -453,12 +448,10 @@ class EvalAuthor(Agent):
             if reporter is not None:
                 reporter.progress(phase="eval author · complete")
             return EvalAuthorResult(
-                train_dataset=describe_dataset_artifact(train_dataset),
-                validation_dataset=describe_dataset_artifact(validation_dataset),
-                task_set=ArtifactDescriptor(
-                    uri=finalized_suite.path.resolve().as_uri(),
-                    identity=finalized_suite.identity,
-                ),
+                train_dataset=train_dataset,
+                validation_dataset=validation_dataset,
+                insight_suite=finalized_suite.dataset,
+                insight_suite_identity=finalized_suite.identity,
                 metric_keys=authoring_result.metric_keys,
                 summary=authoring_result.summary,
             )
