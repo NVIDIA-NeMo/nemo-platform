@@ -40,6 +40,7 @@ COPY plugins/nemo-agents/openapi /app/plugins/nemo-agents/openapi
 COPY plugins/nemo-safe-synthesizer/openapi /app/plugins/nemo-safe-synthesizer/openapi
 COPY plugins/nemo-evaluator/openapi /app/plugins/nemo-evaluator/openapi
 COPY plugins/nemo-customizer/openapi /app/plugins/nemo-customizer/openapi
+COPY plugins/nemo-iron-swarm/openapi /app/plugins/nemo-iron-swarm/openapi
 
 # Install pnpm modules and generate SDK artifacts during postinstall.
 RUN pnpm install --frozen-lockfile
