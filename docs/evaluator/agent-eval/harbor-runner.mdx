@@ -16,11 +16,15 @@ the verifier reward through agent-eval — the same
 Unlike the quickstart, this runner is **not** zero-dependency — it shells out to Harbor and Docker:
 
 - **Python ≥ 3.12**
-- **Docker** installed and running
+- **Docker and docker daemon** installed and running
 - **Harbor**, installed separately: `uv pip install "harbor>=0.16.1"`. Harbor is intentionally **not**
   a dependency of `nemo-platform[nemo-evaluator-sdk]`, so the rest of the SDK stays lightweight.
 
 The runner raises a clear error pointing at this install step if `harbor` is missing.
+
+Evaluator plugin submissions (`nemo evaluator agent-evaluate submit`) support the Harbor runner only
+through the host `subprocess` executor. Standalone SDK runs using `run_harbor_eval()` or
+`HarborAgentTaskRunner` invoke Harbor directly and do not use a Jobs execution profile.
 
 </Warning>
 
