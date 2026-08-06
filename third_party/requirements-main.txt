@@ -326,7 +326,6 @@ anthropic==0.120.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') 
     #   langchain-anthropic
     #   nemo-agents-plugin
     #   nemo-platform-plugin
-    #   pydantic-ai-slim
     #   switchyard-vendored
 anyascii==0.3.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:c94e9dd9d47b3d9494eca305fef9447d00b4bf1a32aff85aa746fa3ec7fb95c3 \
@@ -342,7 +341,6 @@ anyio==4.14.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   filesets
     #   google-genai
     #   httpx
-    #   httpx2
     #   langsmith
     #   mcp
     #   nemo-platform-sdk
@@ -981,12 +979,6 @@ fsspec==2025.9.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   nemo-platform-sdk
     #   nemo-safe-synthesizer-plugin
     #   nmp-guardrails
-genai-prices==0.0.62 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:5d9ab0d9e5d81e035f88bf591fb6a8dde527922786acf1ee2737358f7bbe0167 \
-    --hash=sha256:baf1ffa64be0d15577878216464d6a2d04244db5fbdf78d56bde43809e7aef44
-    # via
-    #   nemo-insights-plugin
-    #   pydantic-ai-slim
 gitdb==4.0.12 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571 \
     --hash=sha256:67073e15955400952c6565cc3e707c554a4eea2e428946f7a4c162fab9bd9bcf
@@ -1035,9 +1027,7 @@ greenlet==3.5.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
 griffelib==2.1.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:762a186d2c6fd6794d4ea20d428d597ffb857cb56b66421651cbba15bdd5e813 \
     --hash=sha256:cc7b3d2d2865ad0b909fcc38086e3f554b5ea7acbaa7bbb7ecaa3f5dfb7d9f00
-    # via
-    #   fastmcp-slim
-    #   pydantic-ai-slim
+    # via fastmcp-slim
 grpcio==1.83.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:10b3fa0475eb572c9a81a6fe37fa16a9c500c0c91cfc148cac15692b7e3c2867 \
     --hash=sha256:1aa567f8c3f19850ffd5d2858c9a8ea7c80f0db6c01186b71eb31e923ec984f5 \
@@ -1066,7 +1056,6 @@ h11==0.16.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (pla
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   httpcore
-    #   httpcore2
     #   nemoplatform
     #   uvicorn
 h2==4.4.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -1097,10 +1086,6 @@ httpcore==1.0.9 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     # via
     #   exa-py
     #   httpx
-httpcore2==2.9.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:4d8acbf8b306f48c9d6046591fd5ba4037d1b1b1000d140fc2c3eab1e9a0c0e2 \
-    --hash=sha256:6182472379e855fe4221246a2bb7ecede403bc61c6798062ae1787d051ccde26
-    # via httpx2
 httptools==0.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:0770728beb05094c809b98e814edff5fef69d26ad7d21185f2f6d5884a0ba683 \
     --hash=sha256:2d689918c15a013c65ef52d9fd495d766893ab831a2c8d89f2ac5940a5df847c \
@@ -1161,8 +1146,6 @@ httpx==0.28.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   oci-openai
     #   openai
     #   postgrest
-    #   pydantic-ai-slim
-    #   pydantic-graph
     #   storage3
     #   supabase
     #   supabase-auth
@@ -1178,10 +1161,6 @@ httpx-sse==0.4.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     # via
     #   langchain-community
     #   mcp
-httpx2==2.9.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:1820fe14a9ab1107bfeff39259987429450b070ec0ff38cc87eb0d8c97fdc71a \
-    --hash=sha256:1932a768737e3666291582833da748cc4e563c337cf96706fccc04fa6e58764a
-    # via genai-prices
 huggingface-hub==1.26.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:c8cd4e2df1ba9402f77fce9b509ec1d52debb502551789473f34016acc14e361 \
     --hash=sha256:e8cca670caa5d8dfa7e45bf45e86b466698198cd8150c021bcdb4a86b9252364
@@ -1213,7 +1192,6 @@ idna==3.18 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (plat
     #   data-designer-config
     #   email-validator
     #   httpx
-    #   httpx2
     #   requests
     #   yarl
 importlib-metadata==8.9.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -1598,10 +1576,6 @@ litellm==1.95.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     #   harbor
     #   langchain-litellm
     #   nooa
-logfire-api==4.40.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:f4631d5ca6af95e9d4dadc4f63619ebb8f2300eecfca0ca99c84403d6ea605de \
-    --hash=sha256:f8b7309235a942368b927f00e0a1869ff0820833f264a30e77a35f1da829c130
-    # via pydantic-graph
 loguru==0.7.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6 \
     --hash=sha256:31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c
@@ -1883,6 +1857,7 @@ nooa @ git+https://github.com/NVIDIA-NeMo/labs-OO-Agents.git@6e0274dd03f883254a0
     # via
     #   nemo-eval-author-plugin
     #   nemo-experimentalist-plugin
+    #   nemo-insights-plugin
 numpy==2.5.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:1c6759f538fb912fc46de0a6b1758ccf7b57bc7c7ebebc23974fdac3de8db0cd \
     --hash=sha256:30b44a6b53a7ae63c54c089a8726e5563ed302716c5b7ccc85afade40b0e7ff6 \
@@ -2053,7 +2028,6 @@ opentelemetry-api==1.43.0 ; (platform_machine == 'arm64' and sys_platform == 'da
     #   opentelemetry-processor-baggage
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-    #   pydantic-ai-slim
 opentelemetry-distro==0.64b0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:8a19716899854245b4028650ec1cca12d89f9be41571bbffe9e539cd55d2fd96 \
     --hash=sha256:ce97b6cedfcf03dc54035c422485412eda63250e094f4bd63ef57d017d823f3c
@@ -2544,7 +2518,6 @@ pydantic==2.13.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   fastapi
     #   fastapi-cloud-cli
     #   fastmcp-slim
-    #   genai-prices
     #   google-genai
     #   harbor
     #   instructor
@@ -2600,9 +2573,7 @@ pydantic==2.13.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   openai-codex
     #   openapi-pydantic
     #   postgrest
-    #   pydantic-ai-slim
     #   pydantic-extra-types
-    #   pydantic-graph
     #   pydantic-settings
     #   ragas
     #   realtime
@@ -2611,16 +2582,6 @@ pydantic==2.13.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   supabase-auth
     #   switchyard-vendored
     #   wandb
-pydantic-ai-harness==0.3.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:3a803c2569a3346830443ee7a646b0c2267659d2265ada560c12430cd16d2ffe \
-    --hash=sha256:b3d363ce3bdadba89e6e3378c66a44ce77808a8fa959429d5d7bc07bea8c854f
-    # via nemo-insights-plugin
-pydantic-ai-slim==1.105.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:1e65561ba9a58a9d8fc3a63b550c3c2b2c4017da275dea78291e526aa06298d8 \
-    --hash=sha256:8b4ad8034b40ab3bde8e0c6285082a204ecd203007150a47943f192b474e06e9
-    # via
-    #   nemo-insights-plugin
-    #   pydantic-ai-harness
 pydantic-core==2.46.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:00c603d540afdd6b80eb39f078f33ebd46211f02f33e34a32d9f053bba711de0 \
     --hash=sha256:0186750b482eefa11d7f435892b09c5c606193ef3375bcf94aa00ae6bfb66262 \
@@ -2653,29 +2614,6 @@ pydantic-extra-types==2.11.1 ; (platform_machine == 'arm64' and sys_platform == 
     --hash=sha256:1722ea2bddae5628ace25f2aa685b69978ef533123e5638cfbddb999e0100ec1 \
     --hash=sha256:46792d2307383859e923d8fcefa82108b1a141f8a9c0198982b3832ab5ef1049
     # via fastapi
-pydantic-graph==1.105.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:3f5cf97d544b900098d3cc2dbd6a8cdd79ea59dac610d7651f86c9228d33c0b9 \
-    --hash=sha256:ba76d77ad21a13f2961fbda9d988f3d5a3d9ffc1817ee912e0ea59b0b5a9e825
-    # via pydantic-ai-slim
-pydantic-monty==0.0.18 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:1056ce3acef60ab880314caf97775c5ea41b30f9306d0dd28cefeffd42dda366 \
-    --hash=sha256:2988d3e511131680d9de60647bfe5c697b1e4e4cad474fecf1451c53314e8520 \
-    --hash=sha256:58b4b96863abbc0ffa5baf64779b3fbb6376cc763488b027ecaddb5052d5ff17 \
-    --hash=sha256:9593caa45b68fd07ac67bea9974effbe2a1c5453d8a106b913596b0dff6d8471 \
-    --hash=sha256:96d75a418d96640ff0c7f354a78fc4470a2d0f40ba69e886c2f32756d594d9a0 \
-    --hash=sha256:977168253d8f6b49bb64f128d02c4b62ee8b435fd62876268377e1f2b00cc00f \
-    --hash=sha256:a2e86f3ba67b094d498bc8b071d5e3b8b034bb9f3006216a357c5f71d49d6132 \
-    --hash=sha256:b5c688dc7c7b28a2f389a61217bae1d50658e28f960abe33a254328cadc8a17a \
-    --hash=sha256:c1208bd5976c1254b2705559836511c86ea3cc51d9c6f688b1e3e22984715dbc \
-    --hash=sha256:c21319a091dc1ff1fccb8647dae5bb543b3f528c556319ed15c7992dfa9b5e87 \
-    --hash=sha256:c43794c7c4664fa1403d4841459d0e23f01b4f552283db638f5b40ced4dac6a1 \
-    --hash=sha256:d47976a18e3e3da0e86f8cf6068fc8a125930422dc10d3d3bf0b5410a9e9282e \
-    --hash=sha256:e15e18ed27a17ee607ad3bcbf82f25a9ec4d496ff493ff64cdabb83ca2174cec \
-    --hash=sha256:e6e0cd4991947b8a47210985836f94c14139bc3ea06253d2f38d0d752b165517 \
-    --hash=sha256:eb84fe51e3f6e00a0cc9628e0acf5904d982c8cc85d4db42b7532d071602f703 \
-    --hash=sha256:eb8a412aa0336d4e0334a4e05a54b391d91fa334020bd295a280285ba17ab5ca \
-    --hash=sha256:f469293f5a776231b9617787a5dd6c58048c6568833ee6848338be6391f15449
-    # via pydantic-ai-harness
 pydantic-settings==2.14.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:a20c97b37910b6550d5ea50fbcc2d4187defe58cd57070b73863d069419c9440 \
     --hash=sha256:c19dd64b19097f1de80184f0cc7b0272a13ae6e170cbf240a3e27e381ed14a5f
@@ -3367,12 +3305,6 @@ transformers==5.5.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin')
     --hash=sha256:821a9ff0961abbb29eb1eb686d78df1c85929fdf213a3fe49dc6bd94f9efa944 \
     --hash=sha256:c8db656cf51c600cd8c75f06b20ef85c72e8b8ff9abc880c5d3e8bc70e0ddcbd
     # via nemo-customizer-plugin
-truststore==0.10.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301 \
-    --hash=sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981
-    # via
-    #   httpcore2
-    #   httpx2
 typer==0.25.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:75caa44ed46a03fb2dab8808753ffacdbfea88495e74c85a28c5eefcf5f39c89 \
     --hash=sha256:9616eb8853a09ffeabab1698952f33c6f29ffdbceb4eaeecf571880e8d7664cc
@@ -3433,7 +3365,6 @@ typing-extensions==4.16.0 ; (platform_machine == 'arm64' and sys_platform == 'da
     #   fastmcp-slim
     #   google-genai
     #   grpcio
-    #   httpx2
     #   huggingface-hub
     #   langchain-core
     #   langchain-mcp-adapters
@@ -3454,7 +3385,6 @@ typing-extensions==4.16.0 ; (platform_machine == 'arm64' and sys_platform == 'da
     #   pydantic
     #   pydantic-core
     #   pydantic-extra-types
-    #   pydantic-monty
     #   pyopenssl
     #   realtime
     #   referencing
@@ -3476,8 +3406,6 @@ typing-inspection==0.4.2 ; (platform_machine == 'arm64' and sys_platform == 'dar
     #   fastapi
     #   mcp
     #   pydantic
-    #   pydantic-ai-slim
-    #   pydantic-graph
     #   pydantic-settings
 tzdata==2026.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:9173fde7d80d9018e02a662e168e5a2d04f87c41ea174b139fbef642eda62d10 \

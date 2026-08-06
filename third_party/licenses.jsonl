@@ -31,7 +31,7 @@
 {"name": "cachetools", "license": "MIT", "compatible": true}
 {"name": "caio", "license": "APACHE-2.0", "compatible": true}
 {"name": "certifi", "license": "LGPL", "compatible": true}
-{"name": "cffi", "license": "MIT-0", "compatible": true}
+{"name": "cffi", "license": "MIT", "compatible": true}
 {"name": "chardet", "license": "LGPL-2.1-OR-LATER", "compatible": true}
 {"name": "charset-normalizer", "license": "MIT", "compatible": true}
 {"name": "circuitbreaker", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -90,6 +90,7 @@
 {"name": "google-genai", "license": "APACHE-2.0", "compatible": true}
 {"name": "googleapis-common-protos", "license": "APACHE-2.0", "compatible": true}
 {"name": "greenlet", "license": "MIT", "compatible": true}
+{"name": "griffelib", "license": "ISC", "compatible": true}
 {"name": "grpcio", "license": "APACHE-2.0", "compatible": true}
 {"name": "gunicorn", "license": "MIT", "compatible": true}
 {"name": "h11", "license": "MIT", "compatible": true}
@@ -255,8 +256,6 @@
 {"name": "pydantic", "license": "MIT", "compatible": true}
 {"name": "pydantic-core", "license": "MIT", "compatible": true}
 {"name": "pydantic-extra-types", "license": "MIT", "compatible": true}
-{"name": "pydantic-graph", "license": "MIT", "compatible": true}
-{"name": "pydantic-monty", "license": "MIT", "compatible": true}
 {"name": "pydantic-settings", "license": "MIT", "compatible": true}
 {"name": "pygments", "license": "BSD-2-CLAUSE", "compatible": true}
 {"name": "pyjwt", "license": "MIT", "compatible": true}

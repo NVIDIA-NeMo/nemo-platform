@@ -867,16 +867,6 @@
         },
         {
           "package": {
-            "name": "genai-prices",
-            "version": "0.0.62",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
             "name": "gitdb",
             "version": "4.0.12",
             "ecosystem": "PyPI"
@@ -1027,16 +1017,6 @@
         },
         {
           "package": {
-            "name": "httpcore2",
-            "version": "2.9.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "BSD-3-Clause"
-          ]
-        },
-        {
-          "package": {
             "name": "httptools",
             "version": "0.8.0",
             "ecosystem": "PyPI"
@@ -1073,16 +1053,6 @@
           },
           "licenses": [
             "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "httpx2",
-            "version": "2.9.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "BSD-3-Clause"
           ]
         },
         {
@@ -1609,16 +1579,6 @@
           "package": {
             "name": "litellm",
             "version": "1.95.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "logfire-api",
-            "version": "4.40.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2577,26 +2537,6 @@
         },
         {
           "package": {
-            "name": "pydantic-ai-harness",
-            "version": "0.3.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "pydantic-ai-slim",
-            "version": "1.105.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
             "name": "pydantic-core",
             "version": "2.46.4",
             "ecosystem": "PyPI"
@@ -2609,26 +2549,6 @@
           "package": {
             "name": "pydantic-extra-types",
             "version": "2.11.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "pydantic-graph",
-            "version": "1.105.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "pydantic-monty",
-            "version": "0.0.18",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3598,16 +3518,6 @@
         },
         {
           "package": {
-            "name": "truststore",
-            "version": "0.10.4",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
             "name": "typer",
             "version": "0.25.1",
             "ecosystem": "PyPI"
@@ -3938,7 +3848,7 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 157
+      "count": 150
     },
     {
       "name": "Apache-2.0",
@@ -3950,7 +3860,7 @@
     },
     {
       "name": "BSD-3-Clause",
-      "count": 35
+      "count": 33
     },
     {
       "name": "ISC",
