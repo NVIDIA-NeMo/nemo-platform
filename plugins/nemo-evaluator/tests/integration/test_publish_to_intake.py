@@ -46,7 +46,6 @@ EXPERIMENT_NAME = "intake-it-exp"
 RUN_ID = "intake-it-run"
 NAN_EXPERIMENT_NAME = "intake-it-nan-exp"
 NAN_RUN_ID = "intake-it-nan-run"
-CLICKHOUSE_CONTAINER = "nmp-intake-clickhouse"
 
 
 def _docker_available() -> bool:
@@ -92,19 +91,29 @@ def _wait_for_ready(base_url: str, *, timeout: float) -> None:
 
 
 @pytest.fixture(scope="session")
-def _clickhouse() -> Iterator[None]:
+def _clickhouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     if not _docker_available():
         pytest.skip("Docker not available; required for ClickHouse-backed Intake")
+    clickhouse_env = {
+        **os.environ,
+        "CLICKHOUSE_DATA_DIR": str(tmp_path_factory.mktemp("evaluator-intake-clickhouse")),
+    }
     subprocess.run(
         ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh")],
         check=True,
         cwd=REPO_ROOT,
+        env=clickhouse_env,
     )
     try:
         _wait_for_tcp("localhost", 8123, timeout=60)
         yield
     finally:
-        subprocess.run(["docker", "rm", "-f", CLICKHOUSE_CONTAINER], check=False)
+        subprocess.run(
+            ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh"), "--remove"],
+            check=False,
+            cwd=REPO_ROOT,
+            env=clickhouse_env,
+        )
 
 
 @pytest.fixture(scope="session")
@@ -112,7 +121,11 @@ def platform_base_url(_clickhouse: None) -> Iterator[str]:
     process = subprocess.Popen(
         ["uv", "run", "nemo", "services", "run", "--services", "auth,entities,intake"],
         cwd=REPO_ROOT,
-        env={**os.environ, "NMP_BASE_URL": BASE_URL},
+        env={
+            **os.environ,
+            "NMP_BASE_URL": BASE_URL,
+            "NMP_INTAKE_CLICKHOUSE_URL": "http://localhost:8123",
+        },
     )
     try:
         _wait_for_ready(BASE_URL, timeout=180)

@@ -434,6 +434,32 @@ def test_changed_credentials_report_actionable_remediation(
     assert "NMP_INTAKE_CLICKHOUSE_PASSWORD" in str(error.value)
 
 
+def test_missing_container_credentials_report_unmanaged_container(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    settings: ClickHouseSettings,
+) -> None:
+    data_dir = (tmp_path / "intake-clickhouse").resolve()
+    name = _managed_container_name(data_dir)
+    image = f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}"
+    data_instance_id = _prepare_data_dir(data_dir, manage_permissions=True)
+    container = FakeContainer(
+        name=name,
+        image=image,
+        labels=_expected_labels(data_dir, data_instance_id),
+        data_dir=data_dir,
+    )
+    container.attrs["Config"]["Env"] = []
+    client = FakeDockerClient({name: container})
+    _patch_provisioning(monkeypatch, client, tmp_path)
+
+    with pytest.raises(LocalClickHouseProvisioningError, match="not provisioned by Intake") as error:
+        _provision_local_clickhouse(settings)
+
+    assert "missing CLICKHOUSE_USER, CLICKHOUSE_PASSWORD" in str(error.value)
+    assert "credentials changed" not in str(error.value)
+
+
 def test_recreated_data_directory_replaces_stale_container(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -549,6 +575,45 @@ def test_remove_command_restores_only_platform_owned_data(
         data_dir=clickhouse_data_dir,
         restore_data_ownership=not external_data_dir,
     )
+
+
+def test_remove_command_accepts_explicit_data_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "script-clickhouse"
+    remove_clickhouse = MagicMock(return_value=False)
+    monkeypatch.setenv("NMP_DATA_DIR", str(tmp_path / "platform-data"))
+    monkeypatch.setattr("nmp.intake.local_clickhouse.remove_local_clickhouse", remove_clickhouse)
+    monkeypatch.setattr(
+        "nmp.intake.local_clickhouse.sys.argv",
+        ["local_clickhouse", "--remove", "--data-dir", str(data_dir)],
+    )
+
+    assert main() == 0
+    remove_clickhouse.assert_called_once_with(data_dir=data_dir, restore_data_ownership=False)
+
+
+def test_main_provisions_managed_mode_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "managed-clickhouse"
+    provision_clickhouse = MagicMock(return_value="http://127.0.0.1:55123")
+    monkeypatch.setenv("NMP_INTAKE_CLICKHOUSE_DATA_DIR", str(data_dir))
+    monkeypatch.setattr("nmp.intake.local_clickhouse._provision_local_clickhouse", provision_clickhouse)
+    monkeypatch.setattr("nmp.intake.local_clickhouse.sys.argv", ["local_clickhouse"])
+
+    assert main() == 0
+    provision_clickhouse.assert_called_once()
+    assert provision_clickhouse.call_args.kwargs["data_dir"] == data_dir
+    assert provision_clickhouse.call_args.kwargs["legacy_script_mode"] is False
+
+
+def test_compatibility_script_selects_legacy_mode_and_forwards_arguments() -> None:
+    script = Path(__file__).parents[1] / "scripts" / "spans" / "run_clickhouse.sh"
+
+    assert 'python -m nmp.intake.local_clickhouse --legacy-script-mode "$@"' in script.read_text(encoding="utf-8")
 
 
 def test_remove_local_clickhouse_refuses_unowned_container(

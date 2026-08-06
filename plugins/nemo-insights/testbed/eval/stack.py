@@ -80,7 +80,11 @@ def main() -> None:
                 "8080",
             ],
             cwd=PLATFORM_ROOT,
-            env={**os.environ, "NMP_DATA_DIR": str(state / "nmp")},
+            env={
+                **os.environ,
+                "NMP_DATA_DIR": str(state / "nmp"),
+                "NMP_INTAKE_CLICKHOUSE_URL": "http://localhost:8123",
+            },
             stdout=fh,
             stderr=subprocess.STDOUT,
             start_new_session=True,

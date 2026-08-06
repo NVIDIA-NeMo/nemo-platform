@@ -1169,8 +1169,10 @@ def _stale_manifest(workspace: str, spans: int) -> dict:
     return manifest
 
 
-def test_stale_loopback_restore_stops_ttl_merges(tmp_path, quiet_platform, fake_docker, capsys):
+def test_stale_loopback_restore_stops_ttl_merges(tmp_path, monkeypatch, quiet_platform, fake_docker, capsys):
     export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, LLM_DOC])
+    container = "nmp-intake-clickhouse-a1b2c3d4e5f6"
+    monkeypatch.setattr(reingest, "_local_clickhouse_container", lambda: container)
     quiet_platform["span_counts"] = [0, 2]
     quiet_platform["annotation_counts"] = [0]
     quiet_platform["result_counts"] = [0]
@@ -1182,10 +1184,7 @@ def test_stale_loopback_restore_stops_ttl_merges(tmp_path, quiet_platform, fake_
         catalog=CATALOG,
         sleep=lambda s: None,
     )
-    assert fake_docker == [
-        ["docker", "exec", reingest.CLICKHOUSE_CONTAINER, "clickhouse-client", "-q", "SYSTEM STOP TTL MERGES"]
-    ]
-    assert reingest.CLICKHOUSE_CONTAINER == "nmp-intake-clickhouse"  # pinned by run_clickhouse.sh
+    assert fake_docker == [["docker", "exec", container, "clickhouse-client", "-q", "SYSTEM STOP TTL MERGES"]]
     err = capsys.readouterr().err
     assert "TTL merges" in err and "stopped" in err
 
@@ -1223,6 +1222,33 @@ def test_fresh_bundle_never_touches_ttl_merges(tmp_path, quiet_platform, fake_do
     assert fake_docker == []
 
 
+def test_local_clickhouse_container_resolves_managed_name_by_label(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="nmp-intake-clickhouse-a1b2c3d4e5f6\n", stderr="")
+
+    monkeypatch.setattr(reingest.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(reingest.subprocess, "run", fake_run)
+
+    assert reingest._local_clickhouse_container() == "nmp-intake-clickhouse-a1b2c3d4e5f6"
+    assert "label=nmp.nvidia.com/managed-by=nemo-platform" in commands[0]
+    assert "label=nmp.nvidia.com/component=intake-clickhouse" in commands[0]
+
+
+def test_local_clickhouse_container_rejects_multiple_managed_instances(monkeypatch):
+    monkeypatch.setattr(reingest.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(
+        reingest.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout="first\nsecond\n", stderr=""),
+    )
+
+    with pytest.raises(RuntimeError, match="expected one.*found first, second"):
+        reingest._local_clickhouse_container()
+
+
 @pytest.mark.parametrize("failure", ["rc1", "oserror"])
 def test_ttl_stop_failure_is_nonfatal_and_tells_user(tmp_path, quiet_platform, monkeypatch, capsys, failure):
     def failing_run(cmd, **kwargs):
@@ -1231,6 +1257,7 @@ def test_ttl_stop_failure_is_nonfatal_and_tells_user(tmp_path, quiet_platform, m
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="no such container")
 
     monkeypatch.setattr(reingest.subprocess, "run", failing_run)
+    monkeypatch.setattr(reingest, "_local_clickhouse_container", lambda: "nmp-intake-clickhouse-a1b2c3d4e5f6")
     export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, LLM_DOC])
     quiet_platform["span_counts"] = [0, 2]
     quiet_platform["annotation_counts"] = [0]
@@ -1427,11 +1454,28 @@ def test_cleanup_scratch_loopback_deletes_rows_and_records(monkeypatch, fake_doc
             return httpx.Response(204)
 
     monkeypatch.setattr(reingest.httpx, "Client", _FakeClient)
-    monkeypatch.setattr(reingest.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(reingest, "_local_clickhouse_container", lambda: "nmp-intake-clickhouse-a1b2c3d4e5f6")
     reingest.cleanup_scratch("http://127.0.0.1:8080", ["scratch-rt-abc12345-ws-a"])
     tables = {cmd[-1].split("FROM intake.")[1].split(" ")[0] for cmd in fake_docker}
     assert tables == {"spans", "annotations", "evaluator_results", "trace_index"}
     assert len(deleted) == 1 and deleted[0].endswith("/apis/entities/v2/workspaces/scratch-rt-abc12345-ws-a")
+
+
+def test_cleanup_scratch_keeps_workspace_record_when_container_is_ambiguous(monkeypatch, capsys):
+    class _NoHTTP:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("unsafe cleanup must not delete workspace records")
+
+    monkeypatch.setattr(reingest.httpx, "Client", _NoHTTP)
+
+    def ambiguous_container() -> str:
+        raise RuntimeError("multiple local ClickHouse containers found")
+
+    monkeypatch.setattr(reingest, "_local_clickhouse_container", ambiguous_container)
+
+    reingest.cleanup_scratch("http://127.0.0.1:8080", ["scratch-rt-abc12345-ws-a"])
+
+    assert "rows and workspace records left intact" in capsys.readouterr().err
 
 
 def test_roundtrip_diff_rejects_non_scratch_prefix(tmp_path):

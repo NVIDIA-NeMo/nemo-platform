@@ -108,8 +108,26 @@ set its URL explicitly before starting the platform:
 export NMP_INTAKE_CLICKHOUSE_URL=https://clickhouse.example.com:8443
 ```
 
-`services/intake/scripts/spans/run_clickhouse.sh` remains available as a manual
-compatibility command and delegates to the same Python provisioner.
+`services/intake/scripts/spans/run_clickhouse.sh` remains available for callers
+that need the historical `nmp-intake-clickhouse` name, fixed localhost ports
+`8123`/`9000`, and repository-local data under `tmp/intake-clickhouse`. Point
+Intake at that compatibility container explicitly:
+
+```bash
+services/intake/scripts/spans/run_clickhouse.sh
+NMP_INTAKE_CLICKHOUSE_URL=http://localhost:8123 uv run nemo services run
+```
+
+Remove a compatibility container with its wrapper so the same data directory
+is targeted, or pass the directory explicitly to the underlying command:
+
+```bash
+services/intake/scripts/spans/run_clickhouse.sh --remove
+uv run python -m nmp.intake.local_clickhouse --remove --data-dir /path/to/clickhouse-data
+```
+
+Running `python -m nmp.intake.local_clickhouse` without compatibility flags uses
+the normal managed container naming and dynamic loopback port behavior.
 
 In another terminal, start Studio from the `web/` workspace with the Intake
 feature flag enabled:

@@ -326,6 +326,12 @@ def _validate_container(
                 "The stale container can be replaced without deleting data from the current directory."
             )
     environment = _container_environment(attrs)
+    missing_credential_keys = [key for key in ("CLICKHOUSE_USER", "CLICKHOUSE_PASSWORD") if key not in environment]
+    if missing_credential_keys:
+        raise LocalClickHouseProvisioningError(
+            f"Container {expected_name} was not provisioned by Intake with explicit ClickHouse credentials "
+            f"(missing {', '.join(missing_credential_keys)}). Remove or rename the container before retrying."
+        )
     if (
         environment.get("CLICKHOUSE_USER") != settings.user
         or environment.get("CLICKHOUSE_PASSWORD") != settings.password
@@ -434,6 +440,9 @@ def _prepare_data_dir(data_dir: Path, *, manage_permissions: bool) -> str:
         data_dir.chmod(0o755)
         tmp_dir.chmod(0o755)
 
+    # Keep the identity inside the bind mount intentionally: it belongs to this
+    # data incarnation and must disappear with the ClickHouse data during a wipe.
+    # The real-image integration test verifies ClickHouse tolerates this file.
     identity_path = data_dir / _DATA_IDENTITY_FILE
     if not identity_path.exists():
         data_instance_id = uuid4().hex
@@ -534,12 +543,18 @@ def main() -> int:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--remove", action="store_true", help="remove the data-directory-owned ClickHouse container")
+    parser.add_argument("--data-dir", type=Path, help="ClickHouse data directory to provision or clean up")
+    parser.add_argument(
+        "--legacy-script-mode",
+        action="store_true",
+        help="use the compatibility container name and fixed localhost ports",
+    )
     args = parser.parse_args()
     config = IntakeConfig()
     settings = ClickHouseSettings.from_config(config)
+    clickhouse_data_dir = args.data_dir or config.clickhouse_config.data_dir
     try:
         if args.remove:
-            clickhouse_data_dir = config.clickhouse_config.data_dir
             restore_data_ownership = _resolve_data_dir(clickhouse_data_dir).is_relative_to(
                 nmp_user_data_dir().resolve()
             )
@@ -556,8 +571,8 @@ def main() -> int:
         url = _provision_local_clickhouse(
             settings,
             image=config.clickhouse_config.image,
-            data_dir=config.clickhouse_config.data_dir,
-            legacy_script_mode=True,
+            data_dir=clickhouse_data_dir,
+            legacy_script_mode=args.legacy_script_mode,
         )
     except LocalClickHouseProvisioningError as exc:
         print(str(exc), file=sys.stderr)
