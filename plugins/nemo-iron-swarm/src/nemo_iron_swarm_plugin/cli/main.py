@@ -275,13 +275,14 @@ class IronSwarmCLI(NemoCLI):
                 f"  egress    {', '.join(manifest.get('egress') or []) or '(none — outbound calls are blocked)'}"
             )
 
-            # A rendering, not an input: the run re-renders the manifest and workflow from the agent ref
-            # every time, so this file is for reading. `run --manifest-id` is the runnable path.
+            # Runnable, not just readable: `run --config` takes this file. Prefer
+            # `run --manifest-id`, which uses the stored manifest and its frozen target fileset.
             if manifest.get("manifest_yaml"):
                 out_path = Path(output)
                 out_path.write_text(
-                    f"# Rendered from manifest '{manifest_name}' for inspection.\n"
-                    f"# The war-game re-renders this per run — use `run --manifest-id {manifest_name}`.\n"
+                    f"# Rendered from manifest '{manifest_name}'.\n"
+                    f"# Runnable with `run --config {output}`; `run --manifest-id {manifest_name}` "
+                    f"uses the stored manifest instead.\n"
                     f"{manifest['manifest_yaml']}",
                     encoding="utf-8",
                 )
