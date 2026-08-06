@@ -178,7 +178,7 @@ The demo agent uses `${NEMO_DEFAULT_MODEL}` for both execution and the judge LLM
 
 Full documentation: [NeMo Platform docs](https://docs.nvidia.com/nemo-platform)
 
-- [Telemetry and privacy](https://docs.nvidia.com/nemo-platform/documentation/telemetry-and-privacy): anonymous telemetry, data collection, and opt-out controls.
+- [Telemetry and privacy](https://docs.nvidia.com/nemo-platform/documentation/reference/telemetry-and-privacy): anonymous telemetry, data collection, and opt-out controls.
 - [Setup](https://docs.nvidia.com/nemo-platform/documentation/get-started): installation, providers, SDK.
 - [CLI reference](https://docs.nvidia.com/nemo-platform/documentation/reference/cli-reference): all commands.
 - [API reference](https://docs.nvidia.com/nemo-platform/documentation/reference/api-reference): REST endpoints.
