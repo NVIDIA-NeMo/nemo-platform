@@ -11,11 +11,7 @@ from typing import Any
 import pytest
 from nemo_eval_author_plugin.eval_author import run as eval_author_run
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
-from nemo_eval_author_plugin.eval_author.models import (
-    ArtifactDescriptor,
-    EvalAuthorConfig,
-    EvalAuthorResult,
-)
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, ResourceRef, Task
 from nemo_insights_plugin.entities import Insight
 
@@ -64,6 +60,7 @@ class FakeDatasetFactory:
 class FakeEvalAuthor:
     def __init__(self) -> None:
         self.call: tuple[Insight, Path, Task, Dataset, Dataset, ClosingClient] | None = None
+        self.insight_suite = Dataset(id="insight-suite")
 
     async def run(
         self,
@@ -77,25 +74,17 @@ class FakeEvalAuthor:
     ) -> EvalAuthorResult:
         self.call = (insight, agent_path, task_template, train_dataset, validation_dataset, client)
         return EvalAuthorResult(
-            train_dataset=ArtifactDescriptor(
-                uri="file:///artifacts/train",
-                identity=f"sha256:{'c' * 64}",
-            ),
-            validation_dataset=ArtifactDescriptor(
-                uri="file:///artifacts/validation",
-                identity=f"sha256:{'d' * 64}",
-            ),
-            task_set=ArtifactDescriptor(
-                uri="file:///artifacts/task-set",
-                identity=f"sha256:{'a' * 64}",
-            ),
+            train_dataset=train_dataset,
+            validation_dataset=validation_dataset,
+            insight_suite=self.insight_suite,
+            insight_suite_identity=f"sha256:{'a' * 64}",
             metric_keys=("uses_correct_tool",),
             summary="Eval Author complete.",
         )
 
 
 @pytest.mark.asyncio
-async def test_run_eval_author_resolves_inputs_and_returns_artifact_refs(
+async def test_run_eval_author_resolves_inputs_and_returns_datasets(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -135,12 +124,10 @@ async def test_run_eval_author_resolves_inputs_and_returns_artifact_refs(
     )
 
     experiment_dir = (tmp_path / "experiment").resolve()
-    assert result.train_dataset.uri == "file:///artifacts/train"
-    assert result.validation_dataset.uri == "file:///artifacts/validation"
-    assert result.task_set == ArtifactDescriptor(
-        uri="file:///artifacts/task-set",
-        identity=f"sha256:{'a' * 64}",
-    )
+    assert result.train_dataset is dataset_factory.datasets[0]
+    assert result.validation_dataset is dataset_factory.datasets[1]
+    assert result.insight_suite is eval_author.insight_suite
+    assert result.insight_suite_identity == f"sha256:{'a' * 64}"
     assert result.metric_keys == ("uses_correct_tool",)
     assert backend.insight_calls == [("workspace-a", "insight-123")]
     assert backend.agent_calls == [

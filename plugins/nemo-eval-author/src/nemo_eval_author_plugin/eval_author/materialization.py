@@ -18,8 +18,7 @@ from uuid import uuid4
 
 import tomlkit
 from harbor.models.task.task import Task as HarborTask
-from nemo_eval_author_plugin.eval_author.models import ArtifactDescriptor
-from nemo_experimentalist_plugin.entities import Dataset, Task, local_path_from_uri
+from nemo_experimentalist_plugin.entities import Task, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 
 _MANIFEST_SCHEMA_VERSION = 3
@@ -51,19 +50,6 @@ def _file_hashes(root: Path) -> dict[str, str]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
-
-
-def describe_dataset_artifact(dataset: Dataset) -> ArtifactDescriptor:
-    """Describe the current content of a local evaluation dataset."""
-    if dataset.source is None:
-        raise ValueError(f"Dataset {dataset.id!r} has no source artifact")
-    root = local_path_from_uri(dataset.source.uri, context=f"Dataset {dataset.id!r} source").resolve()
-    if not root.is_dir():
-        raise ValueError(f"Dataset {dataset.id!r} source is not a directory: {root}")
-    return ArtifactDescriptor(
-        uri=root.as_uri(),
-        identity=f"sha256:{_canonical_digest(_file_hashes(root))}",
-    )
 
 
 def _verifier_dir(task_dir: Path) -> Path:
