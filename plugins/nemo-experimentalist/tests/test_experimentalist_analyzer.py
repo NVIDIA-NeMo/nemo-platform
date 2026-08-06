@@ -22,6 +22,7 @@ from typing import Any, ClassVar, cast
 
 import pytest
 from nemo_experimentalist_plugin.experimentalist.components import analyzer as analyzer_module
+from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
     AgentAnalyzer,
     AnalyzerConfig,
@@ -184,6 +185,11 @@ def _fixtures() -> tuple[_FakeTrial, _FakeDataset, _FakeEvaluation]:
     trial = _FakeTrial(id="trial-1", task_id="task-1", trace=object(), metrics={"reward": _FakeMetric(0.0)})
     dataset = _FakeDataset(tasks=[_FakeTask(id="task-1")])
     return trial, dataset, _FakeEvaluation(trials=[trial])
+
+
+def test_trace_cache_key_uses_trace_uri_namespace() -> None:
+    """Trace-analysis cache files must not be named as agent-analysis cache files."""
+    assert cache.trace_uri_hash("intake://trace-1:objective-metrics:[]").startswith("trace-uri-")
 
 
 @pytest.mark.asyncio

@@ -356,7 +356,7 @@ class TraceAnalyzer(Agent):
             f"{_trace_cache_key(trial.trace.uri)}:selection-reason:{selection_reason}:"
             f"objective-metrics:{objective_metrics or []}:regression-metrics:{regression_metrics or []}"
         )
-        key = cache.agent_hash(metric_contract_key)
+        key = cache.trace_uri_hash(metric_contract_key)
 
         cached = cache.load(self._experiment_dir, key, Diagnostic)
         if cached is not None:
