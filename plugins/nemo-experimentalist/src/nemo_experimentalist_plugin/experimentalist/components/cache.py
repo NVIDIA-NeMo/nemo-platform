@@ -63,6 +63,17 @@ def trace_hash(trace_path: str | Path) -> str:
     return f"trace-{digest}"
 
 
+def trace_uri_hash(trace_key: str) -> str:
+    """Return a namespaced SHA-256 digest for a trace cache identity.
+
+    ``trace_key`` may include a trace-content digest or external trace URI plus
+    analysis inputs such as the metric contract. Unlike ``trace_hash``, it does
+    not read a filesystem path.
+    """
+    digest = hashlib.sha256(trace_key.encode()).hexdigest()
+    return f"trace-uri-{digest}"
+
+
 def _cache_path(workspace: Path, key: str) -> Path:
     return workspace / "eval-and-optimize" / "cache" / f"{key}.json"
 
