@@ -1,54 +1,65 @@
-# Email Phishing Agent — Fabric example (`nemo-agents-spec-v1`)
+# Tutorial: Deploy and try the email phishing agent
 
-A DeepAgents **orchestrator** that delegates to a phishing **sub-agent**, which
-calls a deterministic **`extract_iocs`** tool. The *shape* is the template —
-copy it, then swap the domain pieces below for your own agent.
+Deploy a Fabric (`nemo-agents-spec-v1`) agent end to end and watch it classify a
+phishing email. The agent is a DeepAgents orchestrator that delegates the verdict
+to a phishing sub-agent, which calls a deterministic `extract_iocs` tool.
 
+**What you'll do:** deploy the example, send it an email, read the verdict, find
+the tool call in the trace, and score it against labeled data.
+
+**Time:** ~5 minutes.
+
+**Prerequisites:**
+
+- NeMo Platform running locally (see [SETUP.md](../../../../../SETUP.md)); `export NMP_BASE_URL=http://localhost:8080`.
+- `export NVIDIA_API_KEY=<your key>`.
+- Dependencies synced from the repo root: `uv sync --all-packages` (installs the `email-phishing-iocs` tool this agent calls).
+
+## Step 1: Deploy the agent
+
+```bash
+nemo agents create --name email-phishing-agent \
+  --agent-config plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/agent.yaml
+nemo agents deploy --agent email-phishing-agent \
+  --name email-phishing-agent-deployment --mode subprocess
 ```
-orchestrator (deepagents) ── delegates ──▶ phishing-analyzer sub-agent
-      └───────────── calls ─────────────▶ extract_iocs (stdio MCP tool)
+
+The deploy command waits until the deployment reports `running` on a loopback port.
+
+## Step 2: Classify an email
+
+```bash
+nemo agents invoke --agent-deployment email-phishing-agent-deployment \
+  --input $'From: it-support@paypa1-secure.example\nSubject: Verify your account\n\nYour account is locked. Confirm your password at http://paypa1-secure.example/login'
 ```
 
-## Parts & what to swap
+The agent returns a YAML verdict with `is_likely_phishing: true` and lists the
+lookalike sender domain (`paypa1-secure.example`) among its indicators.
 
-| Path | What it is | Swap for your own |
-|---|---|---|
-| `agent.yaml` | The `nemo-agents-spec-v1` config: harness, sub-agent, model, MCP server, telemetry | Rewrite the orchestrator `instructions.system` and the sub-agent `system_prompt` + `description`; set `models.default` (+ `temperature`); rename `name` / `telemetry.project` |
-| `mcps/iocs.py` | `extract_iocs` (pure regex) + a FastMCP stdio server | Replace the function body with your tool's logic; keep the `@mcp.tool()` wrapper + `main()`. Rename the module and tool |
-| `pyproject.toml` | Packages `mcps/`; exposes console `email-phishing-iocs` | Set `name` and `[project.scripts] <console> = "mcps.<module>:main"` |
-| `data/smaller_test.csv` + `build_dataset.py` | Labeled eval rows; the builder assembles a sender-inclusive `email` column | Drop in your rows; edit the assembly to the fields your agent reads |
-| `email-phishing-eval.yml` | Eval config (`question_key: email`, `answer_key: label`) | Point the keys at your columns; tune the judge weights/prompt |
-| `tests/test_extract_iocs.py` | Unit tests for the tool | Rewrite for your tool's contract |
+## Step 3: Find the tool call in the trace
 
-## Keep in sync
+```bash
+nemo agents logs --agent email-phishing-agent
+```
 
-Two couplings break silently if you rename one side only:
+The deployment's `artifacts/.../events.atof.jsonl` records an `extract_iocs` tool
+call — evidence the orchestrator delegated to the sub-agent and the tool ran, not
+the model guessing. With NeMo Studio Intake enabled (`VITE_FF_INTAKE_ENABLED=true`),
+the same run appears under **Traces**.
 
-- **Console name:** `pyproject.toml [project.scripts]` **must equal** `agent.yaml` → `mcp.servers.<name>.url`.
-- **Workspace member:** add your directory to the **root** `pyproject.toml` `members`, then `uv sync --all-packages` — this installs the console so `--mode subprocess` can launch it.
+## Step 4: Evaluate against labeled emails
 
-Keep the `mcps/` package directory as-is (its name is a shared namespace across examples); rename the *module* inside it and the console, not the directory.
+```bash
+nemo agents evaluate run \
+  --eval-config plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/email-phishing-eval.yml \
+  --agent email-phishing-agent
+```
 
-## Run it (to validate your swap)
+The judge scores each verdict against the `label` column in
+`data/smaller_test.csv` and prints an accuracy score.
 
-Prereqs: platform up (`NMP_BASE_URL=http://localhost:8080`), `NVIDIA_API_KEY` set, `uv sync --all-packages` done. Studio also needs Intake on (`VITE_FF_INTAKE_ENABLED=true`).
+## Next Steps
 
-**Platform (CLI)**
-1. **Register** — `nemo agents create --name <agent> --agent-config <dir>/agent.yaml`
-2. **Deploy** — `nemo agents deploy --agent <agent> --name <agent>-deployment --mode subprocess`
-3. **Invoke** — `nemo agents invoke --agent-deployment <agent>-deployment --input "<sample>"`
-4. **Observe** — `nemo agents logs --agent <agent>`; your tool call lands in `artifacts/.../events.atof.jsonl`
-5. **Evaluate** — `nemo agents evaluate run --eval-config <dir>/email-phishing-eval.yml --agent <agent>`
-
-**Studio**
-1. **Register** — Agents → *Create Example* tile. **Pending (ASTD‑08)**; register via the CLI, then manage here.
-2. **Deploy** — from the agent's page. **Pending the same tile**; deploy via the CLI today.
-3. **Invoke** — open the deployed agent → Chat → send your sample.
-4. **Observe** — Intake → Traces → open the run: orchestrator → sub-agent → tool spans.
-5. **Evaluate** — Run Evaluation → your dataset for the accuracy score.
-
-For a container deploy instead of subprocess: `nemo agents package --agent <dir>/agent.yaml --pyproject <dir>/pyproject.toml --tag <img>`, then `deploy --mode docker --image <img>`.
-
-## Status
-
-Live-validated for `--mode subprocess` (deploy → invoke → correct verdict; trace + tool call confirmed). Not yet exercised: container packaging, the Studio *Create Example* tile (ASTD‑08), and eval judge tuning (weights/prompt are starters).
+- **Make it your own:** [CUSTOMIZE.md](CUSTOMIZE.md) — swap the tool, prompts, model, and data for your own agent.
+- **Container deploys (docker/k8s):** [docs/agents/deploy-agents.mdx](../../../../../docs/agents/deploy-agents.mdx).
+- **Compare with/without a tool:** the sibling [calculator-agent](../calculator-agent) example.
