@@ -3,8 +3,9 @@
 
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import type {
-  AnonymizerConfigInput,
+  AnonymizerConfig,
   ModelConfig,
+  PreviewRequest,
   Rewrite,
   RunJobRequest,
   SelectedModelsOverrides,
@@ -16,6 +17,7 @@ import {
   DEFAULT_MODEL_MAX_TOKENS,
   DEFAULT_MODEL_TIMEOUT_SECONDS,
   DEFAULT_PREVIEW_ROWS,
+  MAX_PREVIEW_ROWS,
   ENTITY_MODE_CUSTOM,
   HASH_ALGORITHM_DEFAULT,
   HASH_ALGORITHM_VALUES,
@@ -53,7 +55,7 @@ export const anonymizerFormSchema = z
     sourceType: z.enum(['url', 'dataset']),
     source: z.string().trim().min(1, 'A data source is required'),
     strategy: z.enum(['substitute', 'redact', 'annotate', 'hash', 'rewrite']),
-    previewRows: z.number().int().min(1),
+    previewRows: z.number().int().min(1).max(MAX_PREVIEW_ROWS),
     textColumn: z.string().optional(),
     dataSummary: z.string().optional(),
     entityMode: z.enum([ENTITY_MODE_CUSTOM, 'auto']),
@@ -135,7 +137,7 @@ const withTemplate = <T extends object>(base: T, template: string): T => {
   return trimmed ? { ...base, format_template: trimmed } : base;
 };
 
-const buildReplaceConfig = (form: AnonymizerFormData): AnonymizerConfigInput['replace'] => {
+const buildReplaceConfig = (form: AnonymizerFormData): AnonymizerConfig['replace'] => {
   const replace = ((): object => {
     switch (form.strategy) {
       case STRATEGY_REDACT:
@@ -158,7 +160,7 @@ const buildReplaceConfig = (form: AnonymizerFormData): AnonymizerConfigInput['re
         return { kind: STRATEGY_SUBSTITUTE };
     }
   })();
-  return replace as AnonymizerConfigInput['replace'];
+  return replace as AnonymizerConfig['replace'];
 };
 
 const buildRewriteConfig = (form: AnonymizerFormData): Rewrite => {
@@ -190,7 +192,7 @@ const buildRewriteConfig = (form: AnonymizerFormData): Rewrite => {
 const buildDetectConfig = (
   form: AnonymizerFormData,
   defaultEntityLabels: string[]
-): AnonymizerConfigInput['detect'] => {
+): AnonymizerConfig['detect'] => {
   if (form.entityMode !== ENTITY_MODE_CUSTOM) return undefined;
 
   const labels = form.includeDefaultEntities
@@ -209,7 +211,7 @@ export const buildAnonymizerJobRequest = (
   form: AnonymizerFormData,
   defaultEntityLabels: string[] = []
 ): RunJobRequest => {
-  const config: AnonymizerConfigInput =
+  const config: AnonymizerConfig =
     form.strategy === REWRITE_STRATEGY
       ? { rewrite: buildRewriteConfig(form) }
       : { replace: buildReplaceConfig(form) };
@@ -272,3 +274,11 @@ export const buildAnonymizerJobRequest = (
     },
   };
 };
+
+export const buildAnonymizerPreviewRequest = (
+  form: AnonymizerFormData,
+  defaultEntityLabels: string[] = []
+): PreviewRequest => ({
+  ...buildAnonymizerJobRequest(form, defaultEntityLabels).spec,
+  num_records: form.previewRows,
+});

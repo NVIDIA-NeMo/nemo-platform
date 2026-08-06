@@ -13,10 +13,12 @@ got there*. Each task carries its own metrics, so a single suite can grade heter
 
 <Note>
 
-**Platform-plugin support is in progress.** The pages in this section run agent evaluations through
-the **local SDK** (`AgentEvaluator().run()`). Running them through the **NeMo Platform plugin** as
-durable platform jobs — the way [dataset-driven metrics](/documentation/evaluate-models/metrics)
-already can — is under active development; for now, use the local SDK path shown here.
+**Local interfaces and durable platform interfaces are available.**
+- Use `await AgentEvaluator().run(tasks=..., target=...)` for local task-driven SDK runs
+that do not require running nemo-platform.
+- Use the Evaluator plugin's `uv run nemo evaluator agent-evaluate submit` job for durable runs with inline
+tasks or stored tasksets. The high-level `client.evaluator.run/submit` interfaces
+above remain dataset-driven only.
 
 </Note>
 
@@ -84,9 +86,10 @@ print(result.summary)
   - the **trajectory** — how the agent worked (its tool use and steps);
   - **views** — named roll-ups you define on a task that combine two or more of its metric outputs into one reported score (for example, averaging an accuracy metric and a tool-use metric into a single `quality` score);
   - the **run-level aggregate** — results also roll up across the whole run.
-- **Runs locally.** A full run — including the `report.html` dashboard — is produced on your machine
-  with no platform services required. (Running the same suite as a durable platform job through the
-  evaluator plugin is in progress — see the note above.)
+- **Runs locally or durably.** A local run can produce the full bundle,
+  including `report.html`, without platform services. Use the plugin's
+  `agent-evaluate` job when the task suite needs durable platform execution and
+  persisted result metadata.
 - **Measurement, not decisions.** The evaluator produces scores, aggregates, and provenance — it
   doesn't decide pass/fail, gate a release, or compare runs. Those decisions belong to whatever
   consumes the results.

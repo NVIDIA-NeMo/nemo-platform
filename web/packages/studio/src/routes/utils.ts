@@ -496,10 +496,6 @@ export const getFilesetFileRoute = (workspace: string, fileset: string, filePath
   });
 };
 
-export const getIntakeRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.intake, { workspace });
-};
-
 export const getIntakeTracesRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.intakeTraces, { workspace });
 };
