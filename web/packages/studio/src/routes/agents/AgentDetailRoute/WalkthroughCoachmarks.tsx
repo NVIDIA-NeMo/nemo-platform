@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Coachmark } from '@studio/components/sidePanels/AgentPanels/AgentPanel/Coachmark';
+import { Coachmark } from '@studio/routes/agents/AgentDetailRoute/Coachmark';
 import {
   type WalkthroughStep,
   WALKTHROUGH_COPY,
-} from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
+} from '@studio/routes/agents/AgentDetailRoute/walkthrough';
 import type { FC, RefObject } from 'react';
 
 interface WalkthroughCoachmarksProps {

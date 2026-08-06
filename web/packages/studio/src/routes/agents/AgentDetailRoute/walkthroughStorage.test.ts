@@ -7,7 +7,7 @@ import {
   isAgentWalkthroughPending,
   markAgentWalkthroughPending,
   markExampleAgentIntroShown,
-} from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
+} from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
 
 describe('agent walkthrough storage', () => {
   beforeEach(() => sessionStorage.clear());

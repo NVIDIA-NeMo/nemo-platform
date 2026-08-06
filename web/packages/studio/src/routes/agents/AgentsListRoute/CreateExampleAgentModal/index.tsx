@@ -10,11 +10,6 @@ import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/gen
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import { loadSampleAgentConfig } from '@studio/api/agents/loadSampleAgentConfig';
 import { getErrorMessage } from '@studio/api/common/utils';
-import {
-  hasShownExampleAgentIntro,
-  markAgentWalkthroughPending,
-  markExampleAgentIntroShown,
-} from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import {
   buildSampleAgentName,
@@ -24,6 +19,11 @@ import {
   SAMPLE_AGENTS,
   sampleAgentFormSchema,
 } from '@studio/constants/sampleAgents';
+import {
+  hasShownExampleAgentIntro,
+  markAgentWalkthroughPending,
+  markExampleAgentIntroShown,
+} from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
 import type {
   CreateExampleAgentModalProps,
   ExampleAgentFormData,

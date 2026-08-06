@@ -117,12 +117,16 @@ const LogsForDeployment: FC<LogsForDeploymentProps> = ({ workspace, deploymentNa
   );
 
   const [streamedLines, setStreamedLines] = useState<PlatformJobLog[]>([]);
-  useEffect(() => {
-    setStreamedLines([]);
-  }, [deploymentName]);
 
   const accessToken = useAuth()?.user?.access_token;
   const tailOffset = data?.next_offset;
+
+  // Also keyed on tailOffset: a refetch re-baselines `data` to the latest tail and
+  // reopens the stream from the new offset, so lines buffered against the old offset
+  // would otherwise be rendered a second time after the ones `data` already carries.
+  useEffect(() => {
+    setStreamedLines([]);
+  }, [deploymentName, tailOffset]);
 
   useEffect(() => {
     if (!deploymentName || isLoading) return;

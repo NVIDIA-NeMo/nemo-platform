@@ -9,8 +9,9 @@ import {
   useAgentsListAgents,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
-import { agentNameForJob, fetchAgentEvalJobs } from '@studio/api/evaluation/agent-evaluations';
-import { RECENT_EVAL_LIMIT } from '@studio/components/sidePanels/AgentPanels/AgentPanel/constants';
+import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
+import { targetNameForEvalJob, toEvalJobRow } from '@studio/api/evaluation/utils';
+import { RECENT_EVAL_LIMIT } from '@studio/routes/agents/AgentDetailRoute/constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
@@ -20,7 +21,7 @@ interface UseAgentPanelParams {
   selectedDeploymentName?: string;
 }
 
-export const useAgentPanel = ({
+export const useAgentDetails = ({
   workspace,
   agentName,
   selectedDeploymentName,
@@ -62,8 +63,12 @@ export const useAgentPanel = ({
   // workspace's eval jobs and filter client-side. Capped at the most recent
   // N to keep the panel scannable; the full list is on the evaluations route.
   const { data: agentEvalsData } = useQuery({
-    queryKey: ['agent-eval-jobs', workspace, 'panel', agentName] as const,
-    queryFn: ({ signal }) => fetchAgentEvalJobs(workspace, signal),
+    queryKey: ['evaluator-jobs', workspace, 'panel', agentName] as const,
+    queryFn: ({ signal }) =>
+      fetchEvaluatorJobs(workspace, signal, (all) => {
+        const matched = all.filter((j) => targetNameForEvalJob(j) === agentName).length;
+        return matched >= RECENT_EVAL_LIMIT;
+      }),
     enabled: !!agentName && !!workspace,
   });
 
@@ -88,9 +93,9 @@ export const useAgentPanel = ({
 
   const agentEvals = useMemo(() => {
     if (!agentName) return [];
-    const all = agentEvalsData ?? [];
+    const all = (agentEvalsData ?? []).map(toEvalJobRow);
     // Match either the bare agent name or a workspace-prefixed ref.
-    const matches = all.filter((job) => agentNameForJob(job) === agentName);
+    const matches = all.filter((job) => job.agentName === agentName);
     return matches.slice(0, RECENT_EVAL_LIMIT);
   }, [agentEvalsData, agentName]);
 
