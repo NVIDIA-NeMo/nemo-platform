@@ -74,7 +74,9 @@ from nemo_platform_plugin.jobs.types import (
     PlatformJobResponse as PlatformJob,
 )
 from nemo_platform_plugin.schema import DatetimeFilter, Filter, Page, PaginationData, StringFilter
-from pydantic import BaseModel, Field, TypeAdapter, field_validator
+from collections.abc import Awaitable, Callable
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
@@ -464,8 +466,16 @@ class JobRouteOption(StrEnum):
 
 
 class PlatformJobResultRoute(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
-    serializer: ResultSerializer
+    serializer: ResultSerializer | None = None
+    handler: Callable[..., Awaitable[Response]] | None = None
+
+    @model_validator(mode="after")
+    def _require_handler_or_serializer(self) -> Self:
+        if self.handler is None and self.serializer is None:
+            raise ValueError("PlatformJobResultRoute requires either 'serializer' or 'handler'")
+        return self
 
 
 # Compiler types: compiler receives both input spec (user-provided) and output spec (with auto-generated fields)
@@ -1233,12 +1243,21 @@ def job_route_factory(
             return route
 
         for job_result_route in job_result_routes:
-            router.add_api_route(
-                name=f"download_job_result_{job_result_route.name}",
-                path=f"/jobs/{{job}}/results/{job_result_route.name}/download",
-                endpoint=_stamp(_make_explicit_download_endpoint(job_result_route), perm="read", write=False),
-                **job_result_route.serializer.route_kwargs(),
-            )
+            if job_result_route.handler is not None:
+                router.add_api_route(
+                    name=f"download_job_result_{job_result_route.name}",
+                    path=f"/jobs/{{job}}/results/{job_result_route.name}/download",
+                    endpoint=_stamp(job_result_route.handler, perm="read", write=False),
+                    methods=["GET"],
+                    response_class=FileResponse,
+                )
+            else:
+                router.add_api_route(
+                    name=f"download_job_result_{job_result_route.name}",
+                    path=f"/jobs/{{job}}/results/{job_result_route.name}/download",
+                    endpoint=_stamp(_make_explicit_download_endpoint(job_result_route), perm="read", write=False),
+                    **job_result_route.serializer.route_kwargs(),  # type: ignore[union-attr]
+                )
 
         # Add one final route for wildcard `{name}`, for undeclared results.
         # This route will simply return the result's artifact as a file.

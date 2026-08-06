@@ -57,6 +57,8 @@ _GARAK_OUTPUT_TYPES = (
     ("report-hitlog-jsonl", ".hitlog.jsonl"),
 )
 
+GARAK_RESULT_NAMES: frozenset[str] = frozenset(name for name, _ in _GARAK_OUTPUT_TYPES)
+
 # garak refuses to start unless these are set even when unused (e.g. when
 # the actual creds come through IGW). services/auditor sets the same four.
 _REQUIRED_API_KEY_VARS = (

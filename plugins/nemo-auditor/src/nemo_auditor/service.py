@@ -10,7 +10,9 @@ from typing import ClassVar
 from fastapi import APIRouter
 from nemo_auditor.authz import scope
 from nemo_auditor.jobs.audit import AuditJob
+from nemo_auditor.jobs.artifacts_route import aggregate_artifacts_download
 from nemo_platform_plugin.authz import CallerKind, path_rule
+from nemo_platform_plugin.jobs.api_factory import PlatformJobResultRoute
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import NemoService, RouterSpec
 
@@ -58,7 +60,13 @@ class AuditorPluginService(NemoService):
                 prefix=crud_prefix,
             ),
             RouterSpec(
-                add_job_routes(AuditJob, authz=scope.child("audit")),
+                add_job_routes(
+                    AuditJob,
+                    authz=scope.child("audit"),
+                    job_result_routes=[
+                        PlatformJobResultRoute(name="artifacts", handler=aggregate_artifacts_download),
+                    ],
+                ),
                 tag="Auditor Jobs",
                 description="Audit job submission and retrieval.",
                 prefix=crud_prefix,
