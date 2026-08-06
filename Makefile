@@ -195,19 +195,28 @@ bootstrap-python: ## Bootstrap Python dependencies.
 		$(BOOTSTRAP_ACTIVATION_REMINDER); \
 	fi
 
+# Set NMP_SKIP_MISE=1 to bootstrap against the node/pnpm already on PATH
+# instead of the mise-managed ones (offline installs, nix shells, distro
+# toolchains). web/package.json engines are still enforced either way.
+NMP_SKIP_MISE ?=
+MISE_VERSION ?= v2026.5.7
 MISE := $(shell command -v mise 2>/dev/null || echo $(HOME)/.local/bin/mise)
-MISE_EXEC := $(MISE) exec --
+MISE_EXEC := $(if $(NMP_SKIP_MISE),,$(MISE) exec --)
 
 .PHONY: verify-mise
 verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
-	@if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
-		curl -fsSL https://mise.run | sh; \
-	fi
-	@if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
-		echo "mise not on PATH. Add $$HOME/.local/bin to PATH and re-run."; \
+	@if [ -n "$(NMP_SKIP_MISE)" ]; then \
+		echo "NMP_SKIP_MISE set, using node/pnpm from PATH"; \
+		exit 0; \
+	fi; \
+	if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
+		curl -fsSL https://mise.run | MISE_VERSION=$(MISE_VERSION) sh; \
+	fi; \
+	if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
+		echo "mise not on PATH. Add $$HOME/.local/bin to PATH and re-run,"; \
+		echo "or re-run with NMP_SKIP_MISE=1 to use your own node/pnpm."; \
 		exit 1; \
-	fi
-	$(MISE) trust --all --silent
+	fi; \
 	$(MISE) install --yes
 
 .PHONY: verify-pnpm
@@ -251,8 +260,7 @@ bootstrap: bootstrap-python ## Bootstrap the local dev environment, including St
 		echo ""; \
 		echo "warning: optional Studio asset bootstrap did not complete."; \
 		echo "Studio will be unavailable at http://localhost:8080/studio/ until assets are built."; \
-		echo "Install Node.js matching web/package.json with pnpm, then rerun:"; \
-		echo "  pnpm env use --global 22.23.2"; \
+		echo "Check the output above, then rerun:"; \
 		echo "  make bootstrap-studio"; \
 	fi
 	@echo "bootstrap completed"
