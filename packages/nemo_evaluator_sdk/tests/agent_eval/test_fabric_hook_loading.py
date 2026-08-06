@@ -49,9 +49,7 @@ class MyHook:
     )
     hook = load_fabric_task_hook({"path": str(module_path), "attr": "MyHook", "tag": "from-file"})
     assert hook is not None
-    assert hook.after_success(task=MagicMock(), result=None, session=FabricTaskRunSession()) == {
-        "tag": "from-file"
-    }
+    assert hook.after_success(task=MagicMock(), result=None, session=FabricTaskRunSession()) == {"tag": "from-file"}
 
 
 def test_load_fabric_task_hook_from_ref_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
