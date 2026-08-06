@@ -185,7 +185,9 @@ async def _refresh_source_manifest(entity_client: NemoEntitiesClient, workspace:
         await refresh_manifest(workspace=workspace, name=manifest_id, entity_client=entity_client)
         return True
     except Exception:
-        logger.warning("could not refresh manifest '%s' after apply-mitigation", sanitize_for_log(manifest_id), exc_info=True)
+        logger.warning(
+            "could not refresh manifest '%s' after apply-mitigation", sanitize_for_log(manifest_id), exc_info=True
+        )
         return False
 
 
