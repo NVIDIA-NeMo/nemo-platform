@@ -406,27 +406,19 @@ class PartitionProfile(BaseModel):
 
     File membership and row counts live on ``splits`` — every file lands in exactly one split, so
     partition-level files / num_examples would be derivable duplication.
-
-    ``source_dir`` is the identity and ``name`` is a label. They were a single string until the
-    consequences showed: root-level files and a directory literally named ``default`` collided under
-    one label, and dropping an unrelated file into a directory renamed that partition out of
-    existence — not changed, *gone*, so a stored reference resolved to nothing.
     """
 
     name: str = Field(
-        default="default",
+        default="",
         description=(
-            "Display label, NOT a key. Derived from the layout, not guaranteed unique, and free to "
-            "change when the layout does. Reference a partition by `source_dir` — or, once card "
-            "front-matter is parsed, by its declared config name."
-        ),
-    )
-    source_dir: str | None = Field(
-        default=None,
-        description=(
-            "Top-level directory whose files make up this partition; None when they sit at the "
-            "fileset root. The partition's identity: None and a directory named 'default' are "
-            'different partitions even though both label as "default".'
+            "Identifies this partition, and unique within a profile. It is the path prefix its files "
+            'share within the fileset: a top-level directory, or "" when they sit at the fileset '
+            "root. Empty is a safe sentinel precisely because no directory can be named it, so "
+            "root-level files stay distinct from a directory literally called 'default'. Once card "
+            "front-matter is parsed, a declared config name populates this field instead — the same "
+            'claim from a better source. For display, read it as `name or "default"`: storing that '
+            "default was a lossy habit, because a lone partition under `data/` then reported "
+            '"default" and threw away the only thing identifying it.'
         ),
     )
     file_formats: list[str] = Field(

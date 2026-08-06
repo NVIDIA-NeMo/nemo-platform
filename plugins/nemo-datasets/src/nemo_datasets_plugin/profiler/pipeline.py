@@ -113,10 +113,8 @@ def profile(
     # None once any file's row count is unknown: the fileset's total is then unknowable, not zero.
     rows_present: int | None = 0
 
-    groups = group_partitions(data_entries)
-    for source_dir, partition_entries in groups:
-        name = _partition_label(source_dir, len(groups))
-        outcome = _profile_partition(source, name, source_dir, partition_entries, row_budget, column_roles or {})
+    for name, partition_entries in group_partitions(data_entries):
+        outcome = _profile_partition(source, name, partition_entries, row_budget, column_roles or {})
         partitions.append(outcome.partition)
         rows_scanned += outcome.rows_scanned
         files_read += outcome.files_read
@@ -171,18 +169,6 @@ def _add_known(total: int | None, addend: int | None) -> int | None:
     if total is None or addend is None:
         return None
     return total + addend
-
-
-def _partition_label(source_dir: str | None, group_count: int) -> str:
-    """The display label for a partition. Cosmetic only — ``source_dir`` carries the identity.
-
-    A lone group labels as "default" whatever directory it came from, so the common
-    everything-under-``data/`` layout does not surface a meaningless container name. With several
-    groups each takes its directory name, and root-level files take "default".
-    """
-    if group_count == 1 or source_dir is None:
-        return "default"
-    return source_dir
 
 
 def _unify_schemas(schemas: list[pa.Schema]) -> pa.Schema | None:
@@ -259,7 +245,6 @@ class _PartitionOutcome:
 def _profile_partition(
     source: FileSource,
     name: str,
-    source_dir: str | None,
     entries: list[FileEntry],
     row_budget: int | None,
     column_roles: dict[str, str],
@@ -353,7 +338,6 @@ def _profile_partition(
     )
     partition = PartitionProfile(
         name=name,
-        source_dir=source_dir,
         # Summarized from the records rather than assumed: the partition no longer picks a format,
         # it reports the ones its files turned out to be in.
         file_formats=sorted({file.file_format for split in split_profiles for file in split.files if file.file_format}),

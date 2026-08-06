@@ -38,8 +38,7 @@ profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 2112, rows_present: 3201061,
            files_read: 33, files_present: 33, row_budget: 4096}
 partitions:
-  - name: default
-    source_dir: null
+  - name: ""
     file_formats: [parquet]
     stats_complete: false
     splits:
@@ -82,8 +81,7 @@ profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 1024, rows_present: 46189,
            files_read: 2, files_present: 2, row_budget: 1024}
 partitions:
-  - name: default
-    source_dir: null
+  - name: ""
     file_formats: [parquet]
     stats_complete: false
     splits:
@@ -126,8 +124,7 @@ profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 1024, rows_present: 21362,
            files_read: 2, files_present: 2, row_budget: 1024}
 partitions:
-  - name: default
-    source_dir: null
+  - name: ""
     file_formats: [parquet]
     stats_complete: false
     splits:
@@ -189,7 +186,6 @@ def _build_profile() -> DatasetProfile:
         ),
         partitions=[
             PartitionProfile(
-                source_dir=None,
                 file_formats=["parquet"],
                 stats_complete=False,
                 splits=[
@@ -251,7 +247,8 @@ def test_fixture_deserializes(name):
     """Every fixture loads into the contract and round-trips."""
     profile = DatasetProfile.model_validate(yaml.safe_load(FIXTURES[name]))
     assert profile.profile_schema_version == "1.0"
-    assert profile.partitions[0].name == "default"
+    # All three ship their shards at the fileset root, so the shared path prefix is empty.
+    assert profile.partitions[0].name == ""
     # Round-trip through JSON is lossless.
     assert DatasetProfile.model_validate_json(profile.model_dump_json()) == profile
 
