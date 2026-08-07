@@ -165,15 +165,15 @@ verify-python-version: verify-mise ## Verify Python version and install if neces
 	@echo "verifying python version"
 	$(UV) python find $(PYTHON_VERSION) || $(UV) python install $(PYTHON_VERSION)
 
-.venv/bin/python:
+# Order-only so a direct `make .venv` still resolves mise and the interpreter,
+# without rebuilding an existing venv on every invocation.
+.venv/bin/python: | verify-python-version
 	@echo "~~~"
 	@if [ "$(BOOTSTRAP_CREATE_VENV)" = "0" ]; then \
 		echo "BOOTSTRAP_CREATE_VENV=0 but .venv/bin/python is missing"; \
 		echo "Create .venv manually, or run make again without BOOTSTRAP_CREATE_VENV=0."; \
 		exit 1; \
 	fi
-	@echo "verifying python version"
-	$(UV) python find $(PYTHON_VERSION) || $(UV) python install $(PYTHON_VERSION)
 	@echo "setting up a venv with uv"
 	$(UV) venv --python $(PYTHON_VERSION) --seed --allow-existing
 
