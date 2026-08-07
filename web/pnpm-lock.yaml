@@ -100,8 +100,8 @@ catalogs:
       specifier: ^29.1.1
       version: 29.1.1
     lucide-react:
-      specifier: ^0.577.0
-      version: 0.577.0
+      specifier: ^1.30.0
+      version: 1.30.0
     msw:
       specifier: ^2.13.2
       version: 2.13.3
@@ -360,7 +360,7 @@ importers:
         version: 1.25.1
       lucide-react:
         specifier: 'catalog:'
-        version: 0.577.0(react@19.2.7)
+        version: 1.30.0(react@19.2.7)
       openai:
         specifier: 'catalog:'
         version: 4.104.0(ws@8.21.1)(zod@3.25.76)
@@ -687,7 +687,7 @@ importers:
         version: 1.25.1
       lucide-react:
         specifier: 'catalog:'
-        version: 0.577.0(react@19.2.7)
+        version: 1.30.0(react@19.2.7)
       modern-tour:
         specifier: ^0.1.1
         version: 0.1.1(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vite@8.0.16(@types/node@24.12.0)(esbuild@0.28.1)(jiti@2.6.1)(tsx@4.22.4)(yaml@2.8.3))
@@ -6201,8 +6201,8 @@ packages:
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  lucide-react@0.577.0:
-    resolution: {integrity: sha512-4LjoFv2eEPwYDPg/CUdBJQSDfPyzXCRrVW1X7jrx/trgxnxkHFjnVZINbzvzxjN70dxychOfg+FTYwBiS3pQ5A==}
+  lucide-react@1.30.0:
+    resolution: {integrity: sha512-tUIr2jXLbWpCkdtH8XP7P7YppM9ueWgTky99lpWDY6z5REs6B+O6ZQ3U5tHkUUY59ANyOv/PBcs8E4Fe3KO3eA==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
@@ -13414,7 +13414,7 @@ snapshots:
     dependencies:
       react: 19.2.7
 
-  lucide-react@0.577.0(react@19.2.7):
+  lucide-react@1.30.0(react@19.2.7):
     dependencies:
       react: 19.2.7
 
