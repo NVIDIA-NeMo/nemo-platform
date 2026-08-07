@@ -22,7 +22,8 @@ Docker):
   The test also runs ``nemo setup --auto`` against its isolated Platform, so
   the NVIDIA provider supplies the persisted default and fast model entities
   used by the analyst. ``NEMO_DEFAULT_INFERENCE_KEY`` and its base URL can be
-  supplied instead when the optimizer models use another provider.
+  supplied in addition when the optimizer models use another provider; they do
+  not replace the NVIDIA credential required by the research agent under test.
 - Docker — required to auto-start ClickHouse if one isn't already at
   ``NMP_INTAKE_CLICKHOUSE_URL`` (default ``http://localhost:8123``). A missing
   Docker daemon fails the test.

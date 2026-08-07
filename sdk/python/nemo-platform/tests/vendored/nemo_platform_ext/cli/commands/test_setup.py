@@ -1047,6 +1047,32 @@ class TestRemoteConnection:
         }
         cli_context.reset_sdk_context.assert_called_once_with()
 
+    def test_local_connection_does_not_overwrite_existing_local_context(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.yaml"
+        monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
+        Config.write(
+            {
+                "base_url": "https://remote.example.com",
+                "access_token": "remote-token",
+                "current_context": "local",
+            },
+            context_name="local",
+        )
+        cli_context = MagicMock()
+        cli_context.overrides = {}
+
+        _configure_local_connection(cli_context, "local-workspace")
+
+        config_file = Config.load(config_path=config_path).get_config_file()
+        original = next(context for context in config_file.contexts if context.name == "local")
+        original_cluster = next(cluster for cluster in config_file.clusters if cluster.name == original.cluster)
+        assert str(original_cluster.base_url) == "https://remote.example.com/"
+        assert config_file.current_context == "local-2"
+        assert cli_context.overrides == {
+            "current_context": "local-2",
+            "base_url": "http://localhost:8080",
+        }
+
     def test_preserves_active_workspace_when_flag_not_explicit(self):
         ctx = MagicMock(spec=typer.Context)
         ctx.get_parameter_source.return_value = ParameterSource.DEFAULT
@@ -2141,6 +2167,32 @@ class TestAutoModelPairSelection:
             cli_context,
             ModelPair(default="default/a-model", fast="default/a-model"),
         )
+
+    def test_fast_override_without_default_warns_and_is_not_saved(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {"NEMO_FAST_MODEL": "default/fast"}, clear=True),
+            patch(f"{SETUP_MOD}._MODEL_DISCOVERY_MAX_ROUNDS", 1),
+            patch(f"{SETUP_MOD}._MODEL_DISCOVERY_ROUND_SECONDS", 0),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="openai"),
+            patch(f"{SETUP_MOD}._get_all_model_entity_ids", return_value=[]),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+            patch(f"{SETUP_MOD}.console.print") as print_message,
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        save_pair.assert_not_called()
+        assert any("NEMO_FAST_MODEL is ignored" in call.args[0] for call in print_message.call_args_list)
 
 
 # ---------------------------------------------------------------------------

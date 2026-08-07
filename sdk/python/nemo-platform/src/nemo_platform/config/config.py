@@ -63,6 +63,13 @@ class _RuntimeAccessTokenSource:
     label: str
 
 
+def _resolve_model_pair(default_model: str | None, fast_model: str | None) -> tuple[str | None, str | None]:
+    """Apply environment overrides and the fast-to-default fallback consistently."""
+    effective_default = os.environ.get("NEMO_DEFAULT_MODEL") or default_model
+    effective_fast = os.environ.get("NEMO_FAST_MODEL") or fast_model or effective_default
+    return effective_default, effective_fast
+
+
 class Config(BaseModel):
     """
     Configuration manager for nemo_platform.
@@ -488,8 +495,10 @@ class Config(BaseModel):
 
         # The default model is the quality-oriented model for agent workloads.
         # Existing single-model contexts also supply the fast role.
-        effective_default_model = os.environ.get("NEMO_DEFAULT_MODEL") or context.default_model
-        effective_fast_model = os.environ.get("NEMO_FAST_MODEL") or context.fast_model or effective_default_model
+        effective_default_model, effective_fast_model = _resolve_model_pair(
+            context.default_model,
+            context.fast_model,
+        )
 
         # Create the resolved Context (runtime model) from the ContextDefinition (config file model)
         return Context(
@@ -548,8 +557,10 @@ class Config(BaseModel):
             prefs.color_output = self.color_output
 
         # Return resolved Context (runtime model)
-        effective_default_model = os.environ.get("NEMO_DEFAULT_MODEL") or context_def.default_model
-        effective_fast_model = os.environ.get("NEMO_FAST_MODEL") or context_def.fast_model or effective_default_model
+        effective_default_model, effective_fast_model = _resolve_model_pair(
+            context_def.default_model,
+            context_def.fast_model,
+        )
         return Context(
             context_name=context_name,
             cluster=cluster,

@@ -72,7 +72,7 @@ models (press Enter at the fast prompt to reuse the default):
 
 ```bash
 set -a && source .env && set +a
-uv run nemo setup --auto
+uv run nemo setup
 ```
 
 ### Register the workflow as an agent

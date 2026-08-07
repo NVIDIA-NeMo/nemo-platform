@@ -118,7 +118,6 @@ jobs:
       NEMO_DEFAULT_INFERENCE_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
       NEMO_DEFAULT_INFERENCE_BASE_URL: ${{ secrets.NVIDIA_INFERENCE_URL }}
       NEMO_DEFAULT_MODEL: ${{ vars.INSIGHTS_TESTBED_MODEL || 'default/openai-openai-gpt-5-5' }}
-      NEMO_FAST_MODEL: ${{ vars.INSIGHTS_TESTBED_MODEL || 'default/openai-openai-gpt-5-5' }}
     steps:
       - name: Require secrets
         run: |
@@ -201,7 +200,6 @@ jobs:
       NEMO_DEFAULT_INFERENCE_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
       NEMO_DEFAULT_INFERENCE_BASE_URL: ${{ secrets.NVIDIA_INFERENCE_URL }}
       NEMO_DEFAULT_MODEL: ${{ vars.INSIGHTS_TESTBED_MODEL || 'default/openai-openai-gpt-5-5' }}
-      NEMO_FAST_MODEL: ${{ vars.INSIGHTS_TESTBED_MODEL || 'default/openai-openai-gpt-5-5' }}
     steps:
       - name: Require secrets
         env:

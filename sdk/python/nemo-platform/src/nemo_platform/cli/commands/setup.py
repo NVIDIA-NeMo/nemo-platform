@@ -47,7 +47,7 @@ from nemo_platform.cli.telemetry import emit
 from nemo_platform.cli.telemetry.events import OnboardingStepEvent, TaskStatusEnum
 from nemo_platform.client.tls import client_verify_from_env
 from nemo_platform.config.config import Config
-from nemo_platform.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig
+from nemo_platform.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig, NoAuthUser
 from nemo_platform.local.process import (
     check_port_available_for_start,
     compute_scope,
@@ -387,6 +387,23 @@ def _configure_remote_connection(cli_context: CLIContext, base_url: str, workspa
     cli_context.reset_sdk_context()
 
 
+def _local_context_name(config_file: ConfigFile) -> str:
+    """Reuse a compatible local context or choose a name that cannot overwrite one."""
+    for context in config_file.contexts:
+        cluster = next(cluster for cluster in config_file.clusters if cluster.name == context.cluster)
+        user = next(user for user in config_file.users if user.name == context.user)
+        if str(cluster.base_url).rstrip("/") == DEFAULT_BASE_URL.rstrip("/") and isinstance(user, NoAuthUser):
+            return context.name
+
+    existing_names = {context.name for context in config_file.contexts}
+    if _LOCAL_CONTEXT_NAME not in existing_names:
+        return _LOCAL_CONTEXT_NAME
+    suffix = 2
+    while f"{_LOCAL_CONTEXT_NAME}-{suffix}" in existing_names:
+        suffix += 1
+    return f"{_LOCAL_CONTEXT_NAME}-{suffix}"
+
+
 def _configure_local_connection(cli_context: CLIContext, workspace: str) -> None:
     """Activate an isolated no-auth context for local services.
 
@@ -395,20 +412,21 @@ def _configure_local_connection(cli_context: CLIContext, workspace: str) -> None
     refresh those credentials using the local auth discovery response. Keep the
     remote context intact and use a dedicated local context instead.
     """
+    context_name = _local_context_name(Config.load().get_config_file())
     params: ConfigParams = {
         "base_url": DEFAULT_BASE_URL,
         "workspace": workspace,
         "access_token": None,
         "refresh_token": None,
-        "current_context": _LOCAL_CONTEXT_NAME,
+        "current_context": context_name,
     }
     Config.write(
         params,
-        context_name=_LOCAL_CONTEXT_NAME,
+        context_name=context_name,
         set_current_on_create=True,
     )
     cli_context.overrides["base_url"] = DEFAULT_BASE_URL
-    cli_context.overrides["current_context"] = _LOCAL_CONTEXT_NAME
+    cli_context.overrides["current_context"] = context_name
     cli_context.reset_sdk_context()
 
 
@@ -2256,6 +2274,8 @@ def _run_auto_mode(
         console.print(f"  {CHECK} Default model: {model_pair.default}")
         console.print(f"  {CHECK} Fast model: {model_pair.fast}")
     else:
+        if fast_model:
+            console.print(f"  {WARN} NEMO_FAST_MODEL is ignored until a default model is available")
         console.print(f"  {WARN} No default model set (no models discovered yet)")
         console.print("  Run [cyan]nemo setup[/cyan] again after models sync, or set the models via env vars:")
         console.print("    [cyan]export NEMO_DEFAULT_MODEL=<model>[/cyan]")
