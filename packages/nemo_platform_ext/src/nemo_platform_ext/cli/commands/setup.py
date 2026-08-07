@@ -542,9 +542,7 @@ def _create_provider(
     if secret_name:
         kwargs["api_key_secret_name"] = secret_name
     if auth_header_format:
-        header_name, _, header_value = auth_header_format.partition(":")
-        if header_name and header_value:
-            kwargs["required_extra_headers"] = {header_name.strip(): header_value.strip()}
+        kwargs["auth_header_format"] = auth_header_format
     if default_extra_headers:
         kwargs["default_extra_headers"] = default_extra_headers
     provider_type = _provider_type_for_connection(name, host_url)
@@ -571,6 +569,7 @@ def _update_provider(
     host_url: str,
     secret_name: str | None,
     workspace: str,
+    auth_header_format: str | None = None,
     default_extra_headers: dict[str, str] | None = None,
 ) -> None:
     kwargs: dict = {
@@ -579,6 +578,8 @@ def _update_provider(
     }
     if secret_name:
         kwargs["api_key_secret_name"] = secret_name
+    if auth_header_format:
+        kwargs["auth_header_format"] = auth_header_format
     if default_extra_headers:
         kwargs["default_extra_headers"] = default_extra_headers
     provider_type = _provider_type_for_connection(name, host_url)
@@ -1734,6 +1735,7 @@ def _register_provider_interactive(
             host_url=host_url,
             secret_name=secret_name,
             workspace=workspace,
+            auth_header_format=auth_header_format,
             default_extra_headers=default_extra_headers,
         )
         console.print(f"  {CHECK} Updated provider '{provider_name}' ({host_url})")
@@ -1904,6 +1906,7 @@ def _auto_setup(client: NeMoPlatform, workspace: str) -> bool:
                 host_url=host_url,
                 secret_name=secret_name,
                 workspace=workspace,
+                auth_header_format=auth_header_format,
                 default_extra_headers=default_extra_headers,
             )
             console.print(f"  {CHECK} Updated provider '{provider_name}' ({host_url})")
