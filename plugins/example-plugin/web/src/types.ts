@@ -39,6 +39,15 @@ export interface PluginNotifications {
   notify: (message: string, type?: NotificationType) => void;
 }
 
+export interface PluginBreadcrumb {
+  label: string;
+  href?: string;
+}
+
+export interface PluginBreadcrumbs {
+  set: (trail: PluginBreadcrumb[]) => void;
+}
+
 export interface PluginTelemetry {
   info: (message: string, cause?: unknown) => void;
   warn: (message: string, cause?: unknown) => void;
@@ -56,6 +65,7 @@ export interface PluginHost {
   navigation: PluginNavigation;
   notifications: PluginNotifications;
   telemetry: PluginTelemetry;
+  breadcrumbs: PluginBreadcrumbs;
 }
 
 export interface PluginRootProps {

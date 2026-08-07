@@ -9,7 +9,8 @@ import {
   useStudioDataViewState,
 } from "@nemo/common";
 import { Stack, Text } from "@nvidia/foundations-react-core";
-import { useCallback, type ComponentProps } from "react";
+import { useCallback, useEffect, type ComponentProps } from "react";
+import { pluginPath } from "./paths";
 import type { PluginHost, Workspace } from "./types";
 
 // `@nemo/common` is external like react — this is Studio's own StudioDataView,
@@ -21,6 +22,16 @@ export function SharedUiPage({ host }: { host: PluginHost }) {
       page_size: 100,
     });
   const workspaces = data?.data ?? [];
+
+  // Renders in Studio's chrome, outside this subtree. Studio clears it on unmount.
+  const { set: setBreadcrumbs } = host.breadcrumbs;
+  const { workspaceId } = host;
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: "Example Plugin", href: pluginPath(workspaceId, "overview") },
+      { label: "Shared UI" },
+    ]);
+  }, [setBreadcrumbs, workspaceId]);
 
   // Syncs to URL search params — one DataView per route or they fight.
   const dataViewState = useStudioDataViewState();

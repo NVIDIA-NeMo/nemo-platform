@@ -25,6 +25,21 @@ export interface PluginNotifications {
   notify: (message: string, type?: NotificationType) => void;
 }
 
+export interface PluginBreadcrumb {
+  label: string;
+  /** Absolute Studio path; omit for the trailing (current) crumb. */
+  href?: string;
+}
+
+/**
+ * Write into Studio's breadcrumb bar, which renders in GlobalNav — outside the
+ * plugin's own subtree, so a plugin cannot render it itself. Studio clears the
+ * trail when the plugin unmounts.
+ */
+export interface PluginBreadcrumbs {
+  set: (trail: PluginBreadcrumb[]) => void;
+}
+
 /** Structured logging to Studio's OTEL pipeline, auto-scoped to the plugin. */
 export interface PluginTelemetry {
   info: (message: string, cause?: unknown) => void;
@@ -45,6 +60,7 @@ export interface PluginHost {
   navigation: PluginNavigation;
   notifications: PluginNotifications;
   telemetry: PluginTelemetry;
+  breadcrumbs: PluginBreadcrumbs;
 }
 
 export interface PluginRootProps {

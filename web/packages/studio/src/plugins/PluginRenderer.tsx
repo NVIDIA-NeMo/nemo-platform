@@ -6,9 +6,15 @@ import * as platformSdk from '@nemo/sdk/generated/platform/api';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
 import { PluginErrorBoundary } from '@studio/plugins/PluginErrorBoundary';
-import type { PluginHost, PluginSdk, PluginTelemetry } from '@studio/plugins/types';
+import type {
+  PluginBreadcrumb,
+  PluginHost,
+  PluginSdk,
+  PluginTelemetry,
+} from '@studio/plugins/types';
+import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { logger } from '@studio/util/logger';
-import { useCallback, useMemo, useRef, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type ReactElement } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useNavigate, useParams } from 'react-router';
 
@@ -41,6 +47,15 @@ export const PluginRenderer = (): ReactElement => {
   accessTokenRef.current = accessToken;
   const getAccessToken = useCallback(() => accessTokenRef.current, []);
 
+  const { setBreadcrumbs } = useBreadcrumbs();
+  const setPluginBreadcrumbs = useCallback(
+    (trail: PluginBreadcrumb[]) =>
+      setBreadcrumbs(trail.map(({ label, href }) => ({ slotLabel: label, href }))),
+    [setBreadcrumbs]
+  );
+  // Studio owns the cleanup so a plugin can't leave a stale trail behind.
+  useEffect(() => () => setBreadcrumbs([]), [setBreadcrumbs]);
+
   const host = useMemo<PluginHost>(
     () => ({
       workspaceId: workspace,
@@ -49,8 +64,9 @@ export const PluginRenderer = (): ReactElement => {
       navigation: { navigate: (to) => navigate(to), back: () => navigate(-1) },
       notifications: { notify: (message, type = 'info') => toast[type](message) },
       telemetry: makeTelemetry(pluginName ?? 'unknown'),
+      breadcrumbs: { set: setPluginBreadcrumbs },
     }),
-    [workspace, accessToken, getAccessToken, navigate, toast, pluginName]
+    [workspace, accessToken, getAccessToken, navigate, toast, pluginName, setPluginBreadcrumbs]
   );
 
   if (!isLoaded) {
