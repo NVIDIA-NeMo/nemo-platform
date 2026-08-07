@@ -89,6 +89,23 @@ _SERVE_PIDFILE = "/tmp/nemo-serve.pid"
 # otherwise cannot prove the write happened is a failed, not a silent, delivery.
 _CONFIG_DELIVERED_MARKER = "__nmp_config_delivered__"
 
+
+def _delivery_script(path: str, mode: int) -> str:
+    """Shell one-liner that writes a config file from stdin and self-attests the write.
+
+    ``set -e`` aborts before ``cat`` if the parent directory cannot be made; the content
+    arrives on stdin so it stays opaque bytes to the shell (no escaping, no argv/env size
+    limit, no metacharacter interpretation). The trailing ``printf`` runs only if every
+    step succeeded, so its marker on stdout is positive proof the file was written.
+    """
+    directory = posixpath.dirname(path) or "/"
+    return (
+        f"set -e; mkdir -p {shlex.quote(directory)}; "
+        f"cat > {shlex.quote(path)}; chmod {mode:o} {shlex.quote(path)}; "
+        f"printf %s {_CONFIG_DELIVERED_MARKER}"
+    )
+
+
 # OpenShell rejects a longer sandbox or service name with INVALID_ARGUMENT: three
 # segments plus two "--" delimiters must fit a 63-char DNS label.
 _MAX_ROUTABLE_NAME_LEN = 19
@@ -675,32 +692,21 @@ class OpenShellDeploymentBackend(DeploymentBackend):
         """Write each declared config file into the sandbox before serve launch.
 
         Returns None on success, or a terminal FAILED update naming the file when a write
-        does not succeed. A missing config file is a deterministic config error, so it is
-        reported loudly rather than silently dropped (the historical defect) and the
-        provisioning caller tears the sandbox down.
+        does not succeed. A file that cannot be written fails loudly and the provisioning
+        caller tears the sandbox down; it never reaches READY with the file absent.
 
-        Delivery runs through ``ExecSandbox`` as the sandbox user (the RPC has no user
-        field; the policy pins ``run_as_user`` to the non-root sandbox user). It can
-        therefore only write paths that user owns -- ``/home/sandbox``, ``/sandbox``,
-        ``/tmp`` -- and NOT ``/workspace``, which the packaged agent image chowns to its
-        own ``agent`` user even though the sandbox policy lists it read-write. A target
-        the sandbox user cannot write fails here with the path and the shell's own error,
-        instead of reaching READY with the file absent. When OpenShell grows a native
-        file-transfer RPC, swap the ``cat`` for it; callers only ever emit a first-class
-        ``ConfigFile(path, content)`` and never learn how the bytes arrived.
+        Delivery runs through ``ExecSandbox`` as the sandbox user (the RPC pins
+        ``run_as_user`` to the non-root sandbox user), so it can only write paths that
+        user owns -- ``/home/sandbox``, ``/sandbox``, ``/tmp`` -- and not ``/workspace``,
+        which the packaged agent image chowns to its own ``agent`` user even though the
+        sandbox policy lists it read-write. A path that user cannot write to fails here
+        with the shell's own error. When OpenShell grows a native file-transfer RPC, swap
+        the ``cat`` for it; callers only ever emit a first-class ``ConfigFile(path,
+        content)`` and never learn how the bytes arrived.
         """
         for config_file in config_files:
             path = config_file.path
-            directory = posixpath.dirname(path) or "/"
-            # set -e aborts before cat if the directory cannot be made; content arrives on
-            # stdin so it is opaque bytes to the shell (no escaping, no argv/env limit). The
-            # trailing printf runs only if every step succeeded, so its marker on stdout is
-            # positive proof the file was written -- see the marker check below.
-            script = (
-                f"set -e; mkdir -p {shlex.quote(directory)}; "
-                f"cat > {shlex.quote(path)}; chmod {config_file.mode:o} {shlex.quote(path)}; "
-                f"printf %s {_CONFIG_DELIVERED_MARKER}"
-            )
+            script = _delivery_script(path, config_file.mode)
             try:
                 exit_code, output = await self._exec_detached(
                     sandbox_id, ["/bin/sh", "-c", script], stdin=config_file.content.encode("utf-8")
@@ -717,10 +723,9 @@ class OpenShellDeploymentBackend(DeploymentBackend):
                 if detail:
                     message = f"{message}: {detail}"
                 return BackendStatusUpdate(status="FAILED", status_message=message)
-            # Self-attesting delivery: require the completion marker rather than trusting a
-            # zero/None exit. This closes the residual silent-drop hole where a stream ends
-            # without an exit event (exit_code None) yet the write never happened -- an
-            # unconfirmed delivery fails loudly instead of advancing to READY file-less.
+            # Require the completion marker rather than trusting a zero/None exit: a stream
+            # can end without an exit event (exit_code None) while the write never happened.
+            # An unconfirmed delivery fails loudly instead of advancing to READY file-less.
             if _CONFIG_DELIVERED_MARKER not in output:
                 return BackendStatusUpdate(
                     status="FAILED",

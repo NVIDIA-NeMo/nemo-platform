@@ -30,6 +30,7 @@ from nemo_deployments_plugin.backends.openshell.backend import (
     _SERVE_PID_GRACE_SECONDS,
     _SERVE_PIDFILE,
     OpenShellDeploymentBackend,
+    _delivery_script,
     _sandbox_name,
     _service_name,
 )
@@ -756,6 +757,49 @@ async def test_config_content_with_shell_metacharacters_is_not_interpreted(
         assert needle not in script
 
 
+def test_delivery_script_writes_bytes_verbatim_and_never_executes_content(tmp_path: Path) -> None:
+    # Run the exact script the backend generates through a real /bin/sh with adversarial
+    # content on stdin, and prove the shell writes it verbatim without ever interpreting it:
+    # shell-injection payloads in the content stay inert bytes and land in the file 1:1.
+    target = tmp_path / "nested" / "dir" / "agent.yaml"
+    canary = tmp_path / "canary"  # a side effect would delete or overwrite this
+    canary.write_text("alive")
+    # Every shell-injection vector: command substitution, backticks, and a statement break.
+    content = f'x: "$(rm -f {canary})"\ny: `printf pwned > {canary}`\nz: ; printf pwned > {canary} #\n'
+
+    proc = subprocess.run(
+        ["/bin/sh", "-c", _delivery_script(str(target), 0o600)],
+        input=content.encode("utf-8"),
+        capture_output=True,
+    )
+
+    assert proc.returncode == 0
+    assert _CONFIG_DELIVERED_MARKER.encode() in proc.stdout
+    assert target.read_bytes() == content.encode("utf-8")
+    assert canary.read_text() == "alive"  # untouched: the injection payload never executed
+    assert (target.stat().st_mode & 0o777) == 0o600
+
+
+@pytest.mark.skipif(hasattr(os, "getuid") and os.getuid() == 0, reason="root bypasses write permissions")
+def test_delivery_script_fails_without_marker_when_target_is_unwritable(tmp_path: Path) -> None:
+    # The real failure branch: a target under a read-only directory makes the shell exit
+    # non-zero and never print the marker -- exactly what the backend treats as FAILED.
+    readonly = tmp_path / "readonly"
+    readonly.mkdir()
+    readonly.chmod(0o500)  # r-x: the sandbox user cannot create files here
+    try:
+        proc = subprocess.run(
+            ["/bin/sh", "-c", _delivery_script(str(readonly / "denied.yaml"), 0o644)],
+            input=b"k: v\n",
+            capture_output=True,
+        )
+    finally:
+        readonly.chmod(0o700)  # restore so tmp_path cleanup can remove it
+
+    assert proc.returncode != 0
+    assert _CONFIG_DELIVERED_MARKER.encode() not in proc.stdout
+
+
 async def test_config_path_with_spaces_is_quoted(
     openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
 ) -> None:
@@ -903,3 +947,30 @@ async def test_multi_file_partial_failure_aborts_and_deletes_sandbox(
     assert len(_delivery_requests(mock_stub)) == 2  # both attempted; aborted after the failure
     mock_stub.DeleteSandbox.assert_called_once()
     assert not any("setsid" in p for r in _exec_requests(mock_stub) for p in r.command)
+
+
+async def test_config_delivery_with_marker_but_no_exit_event_succeeds(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # A response stream can lose its exit event (exit_code None) yet still carry the
+    # completion marker. The marker prints only after set -e clears mkdir+cat+chmod, and the
+    # file content is sent atomically in the ExecSandbox *request* (stdin is one bytes field,
+    # not the response stream), so a marker in the output is positive proof the file was
+    # written. Delivery is therefore confirmed and launch proceeds -- requiring exit_code == 0
+    # here would false-fail a proven-good delivery and tear down the sandbox.
+    mock_entities.get.return_value = _config_with_config_files(
+        [ConfigFile(path="/home/sandbox/x.yaml", content="k: v\n")]
+    )
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [
+        _exec_events(1),  # marker absent -> not yet launched
+        _stream_without_exit(stdout=_CONFIG_DELIVERED_MARKER),  # write proven, exit event lost
+        _exec_events(0),  # launch ok
+    ]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    assert len(_delivery_requests(mock_stub)) == 1
+    # Launch proceeded after the confirmed delivery.
+    assert any("setsid" in p for r in _exec_requests(mock_stub) for p in r.command)
