@@ -3,24 +3,21 @@ name: Request NVSkills CI
 on:
   issue_comment:
     types: [created]
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
   push:
 
 jobs:
   request:
     if: >
-      github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
-        startsWith(github.event.comment.body, '/nvskills-ci')) ||
+        startsWith(github.event.comment.body, '/nvskills-ci') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'push' &&
-        github.actor == (vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'nv-skills-ci[bot]') &&
+        github.actor == (vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'svc-nvskills-signing') &&
         startsWith(github.event.head_commit.message, vars.NVSKILLS_SIGNATURE_COMMIT_TITLE || 'Attach NVSkills validation signatures'))
     permissions:
       contents: read
       pull-requests: read
-      statuses: read
-    uses: NVIDIA/skills/.github/workflows/team-request.yml@e0cd22d572493dd3061708406a9ba53fddaa7087
+    uses: NVIDIA/skills/.github/workflows/team-request.yml@6c6fc092703624a6ce66af814d9ec91d20930885
     secrets:
       NVSKILLS_CI_DISPATCH_TOKEN: ${{ secrets.NVSKILLS_CI_DISPATCH_TOKEN }}
