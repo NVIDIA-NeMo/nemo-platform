@@ -109,10 +109,10 @@ def _build_nemo_gym_env_config(
                 image=runtime_image,
                 env_mount_path=SANDBOX_ENVIRONMENT_PATH,
                 dataset_mount_path=SANDBOX_DATASET_PATH,
-                # Prefer /scratch (or /tmp) for lock-heavy work; sandbox still sees /job/work.
+                # Sandbox mount is /job/work; ephemeral host work prefers /scratch or /tmp.
                 work_mount_path=SANDBOX_WORK_PATH,
                 network_policy=SandboxNetworkPolicy(
-                    # Placeholders at compile time; master calls assemble_master_egress_allow().
+                    # Defaults until the training master resolves live vLLM/broker endpoints.
                     egress_allow=assemble_master_egress_allow(),
                 ),
             ),
