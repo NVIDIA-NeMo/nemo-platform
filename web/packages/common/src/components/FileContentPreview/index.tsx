@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { CodeEditor } from '@nemo/common/src/components/CodeEditor';
 import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
 import {
   getFileExtension,
@@ -13,9 +12,19 @@ import { MarkdownContent } from '@nemo/common/src/components/MarkdownContent';
 import { ScrollTable } from '@nemo/common/src/components/ScrollTable';
 import { Flex, Spinner, TableRowDefinition, Text } from '@nvidia/foundations-react-core';
 import Papa from 'papaparse';
-import { FC, useEffect, useMemo, useState } from 'react';
+import { type FC, lazy, Suspense, useEffect, useMemo, useState } from 'react';
 
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
+
+const CodeEditor = lazy(() =>
+  import('@nemo/common/src/components/CodeEditor').then((m) => ({ default: m.CodeEditor }))
+);
+
+const editorFallback = (
+  <Flex align="center" justify="center" className="h-full">
+    <Spinner size="medium" aria-label="Loading editor..." />
+  </Flex>
+);
 
 export interface FileContentPreviewProps {
   isLoading: boolean;
@@ -116,12 +125,14 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
   if (isJson && jsonContentType) {
     return (
       <div className="h-full min-h-0">
-        <CodeEditor
-          content={content}
-          contentType={jsonContentType}
-          readOnly
-          className="h-full min-h-0"
-        />
+        <Suspense fallback={editorFallback}>
+          <CodeEditor
+            content={content}
+            contentType={jsonContentType}
+            readOnly
+            className="h-full min-h-0"
+          />
+        </Suspense>
       </div>
     );
   }
@@ -149,12 +160,14 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
   // Plain text fallback (incl. .txt, .log, anything we don't have a richer view for)
   return (
     <div className="h-full min-h-0">
-      <CodeEditor
-        content={content}
-        contentType={ContentType.TEXT}
-        readOnly
-        className="h-full min-h-0"
-      />
+      <Suspense fallback={editorFallback}>
+        <CodeEditor
+          content={content}
+          contentType={ContentType.TEXT}
+          readOnly
+          className="h-full min-h-0"
+        />
+      </Suspense>
     </div>
   );
 };
