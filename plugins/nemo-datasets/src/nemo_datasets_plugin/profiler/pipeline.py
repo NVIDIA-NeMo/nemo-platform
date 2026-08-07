@@ -45,7 +45,7 @@ from nemo_datasets_plugin.profiler.readers.base import (
     get_reader,
     is_unsupported_data,
 )
-from nemo_datasets_plugin.profiler.schema import derive_features
+from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, columns_were_capped, derive_features
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
 from nemo_datasets_plugin.profiler.stats import ColumnFold, measure_columns, quote_enumerations
 from nemo_platform_plugin.files.dataset_profile import (
@@ -273,6 +273,7 @@ def _measure(
         quote_enumerations(features, measured.stats, measured.vocabularies)
         # After classify, so its own reasoning reads first and a column that could not be measured
         # is reported as a caveat on the result rather than as part of the case for it.
+        classification.evidence.extend(_capped_columns_evidence(features))
         classification.evidence.extend(measured.errors)
         return features, measured.stats, classification
     except Exception as exc:
@@ -289,6 +290,25 @@ class _PartitionOutcome:
     files_read: int  # files actually opened and read, so `files_read` can exclude failures
     rows_present: int | None  # rows known to exist here, or None once any file's count is unknown
     file_errors: list[FileError]  # files this partition grouped but could not fully read
+
+
+def _capped_columns_evidence(features: list[FeatureSchema]) -> list[Evidence]:
+    """Say so when the schema stopped at the cap rather than at the end of the data.
+
+    A profile that quietly described 4,096 of a file's columns as though they were all of them would
+    be worse than one that failed: the reader has no way to tell a wide table from a broken one.
+    """
+    if not columns_were_capped(features):
+        return []
+    return [
+        Evidence(
+            kind="error",
+            detail=(
+                f"stopped at {MAX_COLUMNS} columns; the rest of this partition's schema was not "
+                f"described. A file whose rows carry unique keys will do this."
+            ),
+        )
+    ]
 
 
 def _peek_files(source: FileSource, entries: list[FileEntry]) -> dict[str, FilePreview]:
@@ -355,6 +375,7 @@ class _PartitionFolds:
                 column_roles=column_roles,
             )
             quote_enumerations(self.features, measured.stats, measured.vocabularies)
+            classification.evidence.extend(_capped_columns_evidence(self.features))
             classification.evidence.extend(measured.errors)
             return self.features, measured.stats, classification
         except Exception as exc:
