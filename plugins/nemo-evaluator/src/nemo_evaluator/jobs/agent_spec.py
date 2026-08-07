@@ -165,7 +165,7 @@ def target_agent_identity(target: Target | None) -> tuple[str | None, str | None
     ``(kind, name, url)`` filter traits and folds runner *models* into its ``name`` slot.
     """
     if isinstance(target, AgentTarget):
-        return getattr(target.agent, "name", None), None
+        return target.agent.name, None
     if isinstance(target, HarborRunnerTarget):
         return target.agent_import_path or target.agent_name, target.agent_model_name
     if isinstance(target, ModelTarget):

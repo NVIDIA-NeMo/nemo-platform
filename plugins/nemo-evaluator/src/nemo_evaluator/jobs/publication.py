@@ -146,6 +146,12 @@ def publish_agent_eval_result(
     if async_sdk is None:
         return fail("No platform client available to publish with (platformless local run).")
 
+    logger.info(
+        "Publishing %d trial(s) to Intake under evaluation %r in workspace %r",
+        len(result.trials),
+        spec.evaluation_id,
+        workspace,
+    )
     try:
         report = run_sync(
             lambda: _publish(
