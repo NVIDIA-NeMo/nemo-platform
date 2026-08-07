@@ -11,10 +11,9 @@ detectors cannot handle costs only itself. Row values themselves are never store
 small controlled vocabulary is added afterwards by :func:`quote_enumerations`, which gates on role.
 
 The same pass reads each column's *content* — answer markers, embedded transcripts — as plain
-per-column counts (:class:`ColumnProbes`, also reachable alone via :func:`derive_probes`, which
-classification uses when it was handed no probes). Those are measurements, not interpretations: what
-they mean is classification's job, and keeping the looking here is what stops a content signal from
-being reachable only through a correctly named column.
+per-column counts (:class:`ColumnProbes`). Those are measurements, not interpretations: what they
+mean is classification's job, and keeping the looking here is what stops a content signal from being
+reachable only through a correctly named column.
 
 The measuring itself is done by a :class:`ColumnAccumulator` per column, chosen once on dtype. An
 accumulator folds batches in and keeps no reference to them, so a column measured in pieces gives
@@ -71,9 +70,22 @@ _NON_STRING_VALUE_BYTES = 8
 _QUOTABLE_ROLES = frozenset({"label", "provenance", "meta", "rank"})
 
 
-def measure_columns(
-    features: list[FeatureSchema], rows: list[dict[str, Any]]
-) -> tuple[dict[str, ColumnStats], dict[str, ColumnProbes], list[Evidence]]:
+@dataclass(frozen=True)
+class ColumnMeasurements:
+    """Everything one pass over a partition's columns produced.
+
+    A named result rather than a tuple because the vocabularies joined it: they are not part of the
+    stored profile, but :func:`quote_enumerations` needs them and can no longer go back to the rows
+    for them.
+    """
+
+    stats: dict[str, ColumnStats]
+    probes: dict[str, ColumnProbes]
+    vocabularies: dict[str, set[Any]]  # name -> distinct values, only where the column stayed one
+    errors: list[Evidence]
+
+
+def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> ColumnMeasurements:
     """Measure every top-level column: its statistics and its content probes, in one pass each.
 
     Each column is isolated. A value no detector anticipated -- a chat message whose ``role`` is a
@@ -93,6 +105,7 @@ def measure_columns(
     """
     stats: dict[str, ColumnStats] = {}
     probes: dict[str, ColumnProbes] = {}
+    vocabularies: dict[str, set[Any]] = {}
     errors: list[Evidence] = []
     for feature in features:
         # Parquet permits duplicate field names, and both maps are keyed by name. Measuring the
@@ -108,6 +121,9 @@ def measure_columns(
             accumulator.update([row.get(feature.name) for row in rows])
             column, probe = accumulator.finalize()
             probes[feature.name] = probe
+            vocabulary = accumulator.vocabulary()
+            if vocabulary is not None:
+                vocabularies[feature.name] = vocabulary
         except Exception as exc:
             errors.append(
                 Evidence(
@@ -120,17 +136,21 @@ def measure_columns(
             continue
         if column is not None:
             stats[feature.name] = column
-    return stats, probes, errors
+    return ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
 
 
 def quote_enumerations(
-    features: list[FeatureSchema], stats: dict[str, ColumnStats], rows: list[dict[str, Any]]
+    features: list[FeatureSchema], stats: dict[str, ColumnStats], vocabularies: dict[str, set[Any]]
 ) -> None:
     """Fill in ``categorical.values`` for columns whose role makes them a controlled vocabulary.
 
     Runs after classification, because it needs the roles it gates on, and mutates ``stats`` in place
     the way classification mutates ``features``. Deliberately fills in rather than redacting: skip
     this pass and no values are stored, where a redaction pass that got skipped would leak them.
+
+    Reads what the accumulators already kept rather than going back to the rows. That second pass
+    was the last thing tying the measure stage to a materialised partition, and it was re-deriving a
+    set the vocabulary had built and thrown away.
 
     Cardinality is only the size bound. It cannot be the permission, because it inverts on small
     data -- in a three-row dataset every column holds under 32 distinct values, free text included,
@@ -142,11 +162,10 @@ def quote_enumerations(
         column = stats.get(feature.name)
         if column is None or column.categorical is None or column.categorical.distinct_count > _MAX_ENUM_VALUES:
             continue
-        try:
-            distinct = {value for row in rows if (value := row.get(feature.name)) is not None}
-        except TypeError:
-            continue  # unhashable values have no enumeration to quote
-        column.categorical.values = sorted(str(value) for value in distinct)
+        values = vocabularies.get(feature.name)
+        if values is None:
+            continue
+        column.categorical.values = sorted(str(value) for value in values)
 
 
 class ColumnAccumulator:
@@ -215,6 +234,11 @@ class ColumnAccumulator:
         """The dtype-specific ``ColumnStats`` blocks. The base column contributes none."""
         return {}
 
+    def vocabulary(self) -> set[Any] | None:
+        """The distinct values, for a column that is a bounded vocabulary. None for one that is not,
+        which is every dtype without a notion of cardinality."""
+        return None
+
 
 class _Vocabulary:
     """Distinct values, for as long as the column still looks like a controlled vocabulary.
@@ -265,6 +289,14 @@ class _Vocabulary:
     def finalize(self) -> CategoricalStats | None:
         return None if self._saturated else CategoricalStats(distinct_count=len(self._values))
 
+    def values(self) -> set[Any] | None:
+        """What was kept, or None once the column stopped being a vocabulary.
+
+        Handing this out is what lets :func:`quote_enumerations` fill in an enumeration without a
+        second pass over the rows -- which it could only do while the rows were still there.
+        """
+        return None if self._saturated else self._values
+
 
 class StringAccumulator(ColumnAccumulator):
     """A ``string`` column: length quantiles, corruption ratios, and a vocabulary if it has one."""
@@ -293,6 +325,9 @@ class StringAccumulator(ColumnAccumulator):
             text = TextStats(chars=self._lengths.quantiles())
             quality = _text_quality(self._strings)
         return {"text": text, "quality": quality, "categorical": self._vocabulary.finalize()}
+
+    def vocabulary(self) -> set[Any] | None:
+        return self._vocabulary.values()
 
 
 class NumericAccumulator(ColumnAccumulator):
@@ -325,6 +360,9 @@ class NumericAccumulator(ColumnAccumulator):
             numeric = NumericStats(min=self._min, max=self._max, mean=self._sum / self._count)
         return {"numeric": numeric, "categorical": self._vocabulary.finalize()}
 
+    def vocabulary(self) -> set[Any] | None:
+        return self._vocabulary.values()
+
 
 class BoolAccumulator(ColumnAccumulator):
     """A ``bool`` column. The column that decides unpaired_preference deserves a measured class
@@ -339,6 +377,9 @@ class BoolAccumulator(ColumnAccumulator):
 
     def _blocks(self) -> dict[str, Any]:
         return {"categorical": self._vocabulary.finalize()}
+
+    def vocabulary(self) -> set[Any] | None:
+        return self._vocabulary.values()
 
 
 class MessageAccumulator(ColumnAccumulator):
@@ -676,24 +717,6 @@ class ColumnProbes:
     texts: int  # rows that yielded text: a string, or a chat column's final turn
     extractable_answer: int  # of `texts`, how many carry `#### <number>` or `\boxed{`
     transcript_marker: int  # of `texts`, how many embed a Human:/Assistant: transcript
-
-
-def derive_probes(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> dict[str, ColumnProbes]:
-    """Run the content probes over every top-level column, keyed by column name.
-
-    The probes alone, through the base accumulator, which carries no dtype state — so this costs the
-    scan and nothing else. Classification calls it when it was handed no probes of its own;
-    :func:`measure_columns` is the path that wants the statistics as well.
-    """
-    probes: dict[str, ColumnProbes] = {}
-    for feature in features:
-        # Duplicate parquet field names: first wins, matching `measure_columns` so both agree on which.
-        if feature.name in probes:
-            continue
-        accumulator = ColumnAccumulator()
-        accumulator.update([row.get(feature.name) for row in rows])
-        probes[feature.name] = accumulator.finalize()[1]
-    return probes
 
 
 def _probe_text(value: Any) -> str | None:

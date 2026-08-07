@@ -3,8 +3,8 @@
 
 """Tests for classification: role assignment, format/prompt-form axes, and dataset type."""
 
-from nemo_datasets_plugin.profiler.classify import classify
-from nemo_datasets_plugin.profiler.stats import derive_probes
+from nemo_datasets_plugin.profiler.classify import PrefixPairFold, classify
+from nemo_datasets_plugin.profiler.stats import measure_columns
 from nemo_platform_plugin.files.dataset_profile import (
     CategoricalStats,
     ColumnStats,
@@ -12,6 +12,17 @@ from nemo_platform_plugin.files.dataset_profile import (
     MessageStats,
     Quantiles,
 )
+
+
+def _probes(features, rows):
+    return measure_columns(features, rows).probes
+
+
+def classify_rows(features, stats, rows, **kwargs):
+    """Classify from rows the way the pipeline does: fold first, then interpret the folds."""
+    prefix = PrefixPairFold(features)
+    prefix.update(rows)
+    return classify(features, stats, probes=_probes(features, rows), prefix_pair=prefix.result(), **kwargs)
 
 
 def _f(name, dtype):
@@ -174,14 +185,14 @@ def test_classification_records_evidence():
 def test_verifiability_extractable_gsm8k_answer():
     features = [_f("problem", "string"), _f("solution", "string")]
     rows = [{"problem": "q", "solution": "steps #### 18"}, {"problem": "q", "solution": "no final answer"}]
-    result = classify(features, {}, rows)
+    result = classify_rows(features, {}, rows)
     assert result.verifiability.method == "extractable_final_answer"
     assert result.verifiability.coverage == 0.5
 
 
 def test_verifiability_boxed_answer():
     features = [_f("prompt", "string"), _f("completion", "string")]
-    result = classify(features, {}, [{"prompt": "q", "completion": r"reasoning \boxed{42}"}])
+    result = classify_rows(features, {}, [{"prompt": "q", "completion": r"reasoning \boxed{42}"}])
     assert result.verifiability.method == "extractable_final_answer"
     assert result.verifiability.coverage == 1.0
 
@@ -189,14 +200,14 @@ def test_verifiability_boxed_answer():
 def test_verifiability_ground_truth_column_coverage():
     features = [_f("prompt", "string"), _f("ground_truth", "string")]
     rows = [{"prompt": "q", "ground_truth": "42"}, {"prompt": "q", "ground_truth": None}]
-    result = classify(features, {}, rows)
+    result = classify_rows(features, {}, rows)
     assert result.verifiability.method == "ground_truth_column"
     assert result.verifiability.coverage == 0.5
 
 
 def test_no_verifiability_without_a_target():
     features = [_f("prompt", "string"), _f("completion", "string")]
-    result = classify(features, {}, [{"prompt": "q", "completion": "just prose, no answer"}])
+    result = classify_rows(features, {}, [{"prompt": "q", "completion": "just prose, no answer"}])
     assert result.verifiability is None
 
 
@@ -205,7 +216,7 @@ def test_verifiability_ignores_below_threshold_extractable_noise():
     features = [_f("prompt", "string"), _f("completion", "string")]
     rows = [{"prompt": "q", "completion": "just prose"} for _ in range(100)]
     rows[0]["completion"] = "the answer is #### 7"  # 1/100 = 1% < 5% floor
-    assert classify(features, {}, rows).verifiability is None
+    assert classify_rows(features, {}, rows).verifiability is None
 
 
 def test_verifiability_asserted_above_coverage_floor():
@@ -213,7 +224,7 @@ def test_verifiability_asserted_above_coverage_floor():
     rows = [{"prompt": "q", "completion": "just prose"} for _ in range(10)]
     for row in rows[:2]:
         row["completion"] = "answer #### 7"  # 2/10 = 20% >= 5% floor
-    result = classify(features, {}, rows)
+    result = classify_rows(features, {}, rows)
     assert result.verifiability.method == "extractable_final_answer"
     assert result.verifiability.coverage == 0.2
 
@@ -223,7 +234,7 @@ def test_sparse_ground_truth_falls_through_to_extractable_answer():
     features = [_f("completion", "string"), _f("ground_truth", "string")]
     rows = [{"completion": "reasoning #### 5", "ground_truth": None} for _ in range(100)]
     rows[0]["ground_truth"] = "5"  # 1/100 ground_truth coverage -> below floor, must fall through
-    result = classify(features, {}, rows)
+    result = classify_rows(features, {}, rows)
     assert result.verifiability.method == "extractable_final_answer"
     assert result.verifiability.coverage == 1.0
 
@@ -231,7 +242,7 @@ def test_sparse_ground_truth_falls_through_to_extractable_answer():
 def test_implicit_prompt_evidence_from_embedded_transcript():
     features = [_f("chosen", "string"), _f("rejected", "string")]
     rows = [{"chosen": "\n\nHuman: hi\n\nAssistant: hello", "rejected": "\n\nHuman: hi\n\nAssistant: hey"}]
-    result = classify(features, {}, rows)
+    result = classify_rows(features, {}, rows)
     assert result.prompt_form == "implicit"
     assert any(e.kind == "content_probe" for e in result.evidence)
 
@@ -248,7 +259,7 @@ def test_ground_truth_may_be_a_container_dtype():
 def test_container_ground_truth_drives_verifiability():
     features = [_f("prompt", "string"), _f("test_cases", "list")]
     rows = [{"prompt": "q", "test_cases": [{"in": "1", "out": "2"}]}, {"prompt": "q2", "test_cases": []}]
-    result = classify(features, {}, rows)
+    result = classify_rows(features, {}, rows)
     assert result.verifiability.method == "ground_truth_column"
     assert result.verifiability.coverage == 0.5  # the empty test_cases list is not a usable target
 
@@ -266,7 +277,7 @@ def test_verifiability_survives_an_unrecognized_column_name():
     # nothing knew where to look. The finding must name the column it came from.
     features = [_f("q", "string"), _f("a", "string")]
     rows = [{"q": "what is 2+2?", "a": f"add them #### {i}"} for i in range(10)]
-    result = classify(features, {}, rows)
+    result = classify_rows(features, {}, rows)
 
     assert {f.semantic_role for f in features} == {None}  # still unroled, and honest about it
     assert result.dataset_type == "unknown"
@@ -280,26 +291,29 @@ def test_a_named_completion_still_decides_where_to_look():
     # completion is a better answer than one that merely looks like it.
     features = [_f("completion", "string"), _f("notes", "string")]
     rows = [{"completion": "just prose", "notes": "scratch #### 9"} for _ in range(10)]
-    assert classify(features, {}, rows).verifiability is None
+    assert classify_rows(features, {}, rows).verifiability is None
 
 
 def test_verifiability_reads_a_sharegpt_conversational_completion():
     features = [_f("prompt", "string"), _f("completion", "messages")]
     rows = [{"prompt": "q", "completion": [{"from": "human", "value": "q"}, {"from": "gpt", "value": "#### 4"}]}]
-    result = classify(features, {}, rows)
+    result = classify_rows(features, {}, rows)
     assert result.verifiability.method == "extractable_final_answer"
     assert result.verifiability.coverage == 1.0
 
 
-def test_precomputed_probes_and_derived_probes_agree():
-    # classify() derives probes when it is not given them; the pipeline passes them in to avoid the
-    # second pass. The two paths must not drift.
+def test_classification_without_probes_claims_nothing_rather_than_guessing():
+    # classify() used to derive probes from rows when it was handed none. It no longer sees rows at
+    # all, so absent probes must read as "nothing was measured" -- never as "nothing is there".
     rows = [{"prompt": "q", "completion": f"steps #### {i}"} for i in range(10)]
-    derived = classify([_f("prompt", "string"), _f("completion", "string")], {}, rows)
     features = [_f("prompt", "string"), _f("completion", "string")]
-    passed_in = classify(features, {}, rows, probes=derive_probes(features, rows))
-    assert derived.verifiability.coverage == passed_in.verifiability.coverage
-    assert derived.verifiability.evidence[0].detail == passed_in.verifiability.evidence[0].detail
+
+    blind = classify(features, {})
+    assert blind.verifiability is None
+
+    measured = classify([_f("prompt", "string"), _f("completion", "string")], {}, probes=_probes(features, rows))
+    assert measured.verifiability.method == "extractable_final_answer"
+    assert measured.verifiability.coverage == 1.0
 
 
 # --- candidates ------------------------------------------------------------------------------------

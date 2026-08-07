@@ -15,7 +15,9 @@ carry unrecognized names keeps whatever its content proves.
 
 from __future__ import annotations
 
-from nemo_datasets_plugin.profiler.stats import ColumnProbes, derive_probes
+from dataclasses import dataclass
+
+from nemo_datasets_plugin.profiler.stats import ColumnProbes
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
     Evidence,
@@ -317,6 +319,12 @@ def _detect_verifiability(features: list[FeatureSchema], probes: dict[str, Colum
     return None
 
 
+# How much text two answers must open with in common before it reads as a shared prompt rather than
+# a shared turn of phrase. Short enough that a one-line question counts, long enough that "I think
+# that" does not.
+_EMBEDDED_PROMPT_PREFIX_CHARS = 16
+
+
 def _common_prefix_len(left: str, right: str) -> int:
     limit = min(len(left), len(right))
     index = 0
@@ -325,8 +333,53 @@ def _common_prefix_len(left: str, right: str) -> int:
     return index
 
 
+@dataclass(frozen=True)
+class PrefixPair:
+    """How often two columns of the same row opened with the same long run of text."""
+
+    pairs: int = 0
+    shared: int = 0
+
+
+class PrefixPairFold:
+    """The one probe that reads two columns against each other rather than each on its own.
+
+    A preference set whose prompt is embedded in both answers shows up as a long shared prefix
+    between them, and no per-column measurement can see that. Being relational, it also cannot live
+    on a column accumulator, so it folds separately over the same batches.
+
+    Resolved by column *name*, not by role, because the fold runs before classification has assigned
+    any roles -- the same inversion the content probes made when they stopped being role-gated. The
+    names are the ones the alias table maps to these two roles.
+    """
+
+    def __init__(self, features: list[FeatureSchema]) -> None:
+        self._left = self._column_named(features, "chosen")
+        self._right = self._column_named(features, "rejected")
+        self._pairs = 0
+        self._shared = 0
+
+    @staticmethod
+    def _column_named(features: list[FeatureSchema], role: str) -> str | None:
+        wanted = {name for name, aliased in _ALIAS_ROLES.items() if aliased == role}
+        return next((f.name for f in features if f.name in wanted and f.dtype == "string"), None)
+
+    def update(self, rows: list[dict]) -> None:
+        if self._left is None or self._right is None:
+            return
+        for row in rows:
+            left, right = row.get(self._left), row.get(self._right)
+            if isinstance(left, str) and isinstance(right, str):
+                self._pairs += 1
+                if _common_prefix_len(left, right) >= _EMBEDDED_PROMPT_PREFIX_CHARS:
+                    self._shared += 1
+
+    def result(self) -> PrefixPair:
+        return PrefixPair(pairs=self._pairs, shared=self._shared)
+
+
 def _implicit_prompt_evidence(
-    features: list[FeatureSchema], probes: dict[str, ColumnProbes], rows: list[dict]
+    features: list[FeatureSchema], probes: dict[str, ColumnProbes], prefix_pair: PrefixPair
 ) -> Evidence | None:
     targets = [f for f in features if f.semantic_role in {"chosen", "rejected", "completion"} and f.dtype == "string"]
     counted = [probes[f.name] for f in targets if f.name in probes]
@@ -336,49 +389,35 @@ def _implicit_prompt_evidence(
         detail = f"embedded transcript markers in {_pct(marked / sampled)} of sampled completions - prompt is embedded"
         return Evidence(kind="content_probe", detail=detail)
 
-    # The shared-prefix check is *relational* — it compares two columns against each other — so it
-    # has no per-column probe to read and still works from the rows themselves.
-    if not rows:
-        return None
-
-    chosen = next((f for f in features if f.semantic_role == "chosen" and f.dtype == "string"), None)
-    rejected = next((f for f in features if f.semantic_role == "rejected" and f.dtype == "string"), None)
-    if chosen is not None and rejected is not None:
-        pairs = 0
-        shared = 0
-        for row in rows:
-            left, right = row.get(chosen.name), row.get(rejected.name)
-            if isinstance(left, str) and isinstance(right, str):
-                pairs += 1
-                if _common_prefix_len(left, right) >= 16:
-                    shared += 1
-        if pairs and shared / pairs >= 0.5:
-            detail = f"chosen/rejected share a common prefix in {_pct(shared / pairs)} of pairs - prompt is embedded"
-            return Evidence(kind="content_probe", detail=detail)
+    if prefix_pair.pairs and prefix_pair.shared / prefix_pair.pairs >= 0.5:
+        rate = _pct(prefix_pair.shared / prefix_pair.pairs)
+        return Evidence(
+            kind="content_probe",
+            detail=f"chosen/rejected share a common prefix in {rate} of pairs - prompt is embedded",
+        )
     return None
 
 
 def classify(
     features: list[FeatureSchema],
     stats: dict[str, ColumnStats],
-    rows: list[dict] | None = None,
     *,
     probes: dict[str, ColumnProbes] | None = None,
+    prefix_pair: PrefixPair | None = None,
     column_roles: dict[str, str] | None = None,
 ) -> PartitionClassification:
     """Assign roles onto ``features`` in place and return the partition's classification.
 
-    ``probes`` are the per-column content measurements from :func:`~.stats.derive_probes`. They are
-    a pure function of ``(features, rows)``, so a caller that has not already computed them can pass
-    ``rows`` alone and get them derived here; the pipeline passes them in to avoid the second pass.
-    Role/axis/type inference needs neither — only the schema and stats.
+    ``probes`` are the per-column content measurements, and ``prefix_pair`` the one relational one.
+    Both are folded over the rows before this runs; nothing here reads a row, which is what lets a
+    partition be classified without ever having been materialised. Absent, each reads as "nothing
+    was measured", and role/axis/type inference is unaffected — that needs only schema and stats.
 
     ``column_roles`` maps a column name to a role the caller is asserting, taking precedence over
     the name-alias table but still subject to the dtype gates. It exists because that table is ~35
     English names with no way to say "my `q` column is the prompt", and its misses are silent.
     """
-    rows = rows or []
-    probes = derive_probes(features, rows) if probes is None else probes
+    probes = probes or {}
     evidence = _assign_roles(features, stats, column_roles or {})
     roles = {feature.semantic_role for feature in features if feature.semantic_role}
     candidates = _detect_types(features, stats)
@@ -392,7 +431,7 @@ def classify(
     if fmt is not None:
         evidence.append(Evidence(kind="column_dtype", detail=f"{fmt} format from role column dtypes"))
     if prompt_form == "implicit":
-        embedded = _implicit_prompt_evidence(features, probes, rows)
+        embedded = _implicit_prompt_evidence(features, probes, prefix_pair or PrefixPair())
         if embedded is not None:
             evidence.append(embedded)
 
