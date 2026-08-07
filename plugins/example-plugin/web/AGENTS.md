@@ -66,8 +66,12 @@ bundle. See `src/SharedUiPage.tsx`.
 import { StudioDataView, useStudioDataViewState } from '@nemo/common';
 ```
 
-- **Bare specifier only.** The deep `@nemo/common/src/...` paths Studio uses
-  internally are not in the import map and will fail to resolve at runtime.
+- **Bare specifier only.** A deep `@nemo/common/src/...` import is not
+  externalized, so it silently bundles a *second copy* of the component instead
+  of sharing Studio's — it does not error, it just quietly stops being shared.
+  The `reject-deep-shared-imports` plugin in `vite.config.ts` fails the build on
+  one; keep it when you copy this template. Importing a name the barrel doesn't
+  export is already a tsc error, so `pnpm typecheck` covers that half.
 - **`plugin.ts` is the API.** Need something Studio has but the barrel doesn't
   export? Add it there — additions are cheap, removals are breaking.
 - **Types come from source**, via `paths` in `tsconfig.json`; `@nemo/common` is

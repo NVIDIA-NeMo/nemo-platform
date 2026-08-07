@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 // Keep in sync with VENDOR_EXTERNALS in web/packages/studio/vite.config.ts —
 // Studio serves a single shared React/react-dom/router instance via an
@@ -23,6 +23,29 @@ const STUDIO_SHARED_DEPS = [
   "@nemo/common",
 ];
 
+// A deep `@nemo/common/...` import is the one shared-UI mistake nothing else
+// catches: it typechecks, it builds, and because only the bare specifier is
+// externalized it quietly bundles a second copy of the component instead of
+// sharing Studio's instance. Fail the build instead.
+const rejectDeepSharedImports = (): Plugin => ({
+  name: "reject-deep-shared-imports",
+  // Must beat Vite's core resolver, which would otherwise resolve the deep
+  // path (via tsconfig paths) before this ever sees it.
+  enforce: "pre",
+  resolveId(id: string, importer: string | undefined) {
+    if (id.startsWith("@nemo/common/")) {
+      throw new Error(
+        `Deep import "${id}"${importer ? ` from ${importer}` : ""}.\n` +
+          `Only the bare "@nemo/common" specifier is in Studio's import map, so ` +
+          `a deep path is not externalized and bundles a duplicate copy of the ` +
+          `component. Import from "@nemo/common"; if the name is missing, add it ` +
+          `to web/packages/common/src/plugin.ts.`
+      );
+    }
+    return null;
+  },
+});
+
 // Prepended to the built bundle so the emitted artifact keeps an SPDX header —
 // minification strips source comments, and CI's copyright-header check
 // (script/copyright_fixer.py) requires the header literally in the file.
@@ -31,7 +54,7 @@ const LICENSE_BANNER =
   "// SPDX-License-Identifier: Apache-2.0";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), rejectDeepSharedImports()],
   build: {
     lib: {
       entry: "src/index.ts",
