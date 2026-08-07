@@ -36,6 +36,19 @@ from nemo_platform_plugin.files.dataset_profile import (
 # A quotable enumeration holds at most this many distinct values.
 _MAX_ENUM_VALUES = 32
 
+# Where a column stops being a plausible controlled vocabulary, and so stops being worth counting.
+# Three bounds because a count alone bounds cardinality but not bytes -- 1024 reasoning traces is
+# 32 MB. `_MAX_VOCABULARY_VALUE_CHARS` is the one that matters most: it is a claim about what the
+# column *is* rather than how big it is, so it settles a free-text column on the first value instead
+# of after a thousand. Sized well above real vocabularies -- a `source` column spanning 500 datasets,
+# a 200-class label set -- and far below anything that costs memory.
+_MAX_VOCABULARY_VALUES = 1024
+_MAX_VOCABULARY_VALUE_CHARS = 256
+_MAX_VOCABULARY_BYTES = 64 * 1024
+# What a non-string distinct value is charged against the byte bound. Ints and bools are small and
+# uniform, so an exact size buys nothing the count bound does not already give.
+_NON_STRING_VALUE_BYTES = 8
+
 # Roles that are controlled vocabularies by construction, and so are safe to quote at any dataset
 # size. Everything else -- prompts, completions, chosen/rejected, context, chat -- is free text no
 # matter how few distinct values a small sample happens to show, and unroled columns are unknown,
@@ -150,12 +163,42 @@ def _quantiles(values: list[int]) -> Quantiles:
 
 
 def _cardinality(present: list[Any]) -> CategoricalStats | None:
-    """The count only. The values themselves are row data and are gated on role, not cardinality,
-    so :func:`quote_enumerations` adds them once classification has assigned one."""
-    try:
-        distinct = set(present)
-    except TypeError:
-        return None  # unhashable values (dicts / lists) have no cardinality signal
+    """The distinct-value count, for as long as the column looks like a controlled vocabulary.
+
+    Returns None the moment it stops looking like one, discarding what it had accumulated. Counting
+    distinct values exactly means *retaining* them, so on a free-text column this set grows to hold
+    the column, to report that `response` had 9,954 distinct values in 10,000 rows -- which is "this
+    is free text", which the role marker and the length quantiles already say for nothing.
+
+    Today that costs little, because the rows are held anyway and the set stores pointers into them:
+    measured at 2.6 MB beside 61.4 MB of resident rows. The bound is here for the pipeline this is
+    becoming. Once a batch is folded and discarded, a distinct set is the *sole owner* of every value
+    it kept, and the same two columns cost 46.8 MB against 0.163 MB for every other accumulator
+    combined. Unbounded, this is the one thing that would make a streaming fold O(rows) again.
+
+    Three bounds rather than one. A count alone bounds cardinality but not bytes, and 1024 reasoning
+    traces is 32 MB. The middle bound is the one that does the real work: it asks what the column
+    *is* rather than how many values it holds, in the same way the role gate on quoting does. A
+    vocabulary member is short by nature, so a single 32 KB value settles the question on sight,
+    which is why free-text columns exit here almost immediately instead of after 1024 values.
+
+    The values themselves are still never returned here. They are row content, gated on role rather
+    than on size, and :func:`quote_enumerations` adds them once classification has assigned one.
+    """
+    distinct: set[Any] = set()
+    retained_bytes = 0
+    for value in present:
+        if isinstance(value, str) and len(value) > _MAX_VOCABULARY_VALUE_CHARS:
+            return None
+        try:
+            if value in distinct:
+                continue
+            distinct.add(value)
+        except TypeError:
+            return None  # unhashable values (dicts / lists) have no cardinality signal
+        retained_bytes += len(value) if isinstance(value, str) else _NON_STRING_VALUE_BYTES
+        if len(distinct) > _MAX_VOCABULARY_VALUES or retained_bytes > _MAX_VOCABULARY_BYTES:
+            return None
     return CategoricalStats(distinct_count=len(distinct))
 
 

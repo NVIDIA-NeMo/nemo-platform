@@ -3,7 +3,14 @@
 
 """Tests for per-column statistics."""
 
-from nemo_datasets_plugin.profiler.stats import derive_probes, derive_stats, quote_enumerations
+from nemo_datasets_plugin.profiler.stats import (
+    _MAX_VOCABULARY_BYTES,
+    _MAX_VOCABULARY_VALUE_CHARS,
+    _MAX_VOCABULARY_VALUES,
+    derive_probes,
+    derive_stats,
+    quote_enumerations,
+)
 from nemo_platform_plugin.files.dataset_profile import ColumnStats, FeatureSchema
 
 
@@ -33,14 +40,41 @@ def test_text_quality_flags_repetition_and_non_ascii():
     assert stats.quality.non_ascii_ratio > 0.0  # accented characters
 
 
-def test_cardinality_counts_are_always_stored():
-    # distinct_count is a count, not row content, so it is always safe -- and it is the id-like
-    # signal the contract documents.
-    free_text = derive_stats([_feature("t", "string")], _rows("t", [f"unique-{i}" for i in range(50)]))
-    assert free_text["t"].categorical.distinct_count == 50  # ~= row count -> id-like
-
+def test_cardinality_is_counted_while_the_column_is_a_vocabulary():
     labels = derive_stats([_feature("c", "string")], _rows("c", ["yes", "no", "yes", "no"]))
     assert labels["c"].categorical.distinct_count == 2
+
+    # Still counted well past the point where every value is distinct: it is size, not repetition,
+    # that decides whether a column is a vocabulary.
+    many = derive_stats([_feature("t", "string")], _rows("t", [f"unique-{i}" for i in range(50)]))
+    assert many["t"].categorical.distinct_count == 50
+
+
+def test_cardinality_stops_at_too_many_values():
+    over = derive_stats([_feature("t", "string")], _rows("t", [f"v{i}" for i in range(_MAX_VOCABULARY_VALUES + 1)]))
+    assert over["t"].categorical is None  # absence is the claim: not a vocabulary
+    assert over["t"].text is not None  # ...but the column is still measured
+
+    at_cap = derive_stats([_feature("t", "string")], _rows("t", [f"v{i}" for i in range(_MAX_VOCABULARY_VALUES)]))
+    assert at_cap["t"].categorical.distinct_count == _MAX_VOCABULARY_VALUES
+
+
+def test_one_long_value_settles_it_without_counting():
+    # The rule that does the real work: a vocabulary member is short by nature, so a single long
+    # value proves the column is not one -- on sight, rather than after a thousand of them.
+    values = ["yes", "no", "x" * (_MAX_VOCABULARY_VALUE_CHARS + 1)]
+    assert derive_stats([_feature("t", "string")], _rows("t", values))["t"].categorical is None
+
+    still_short = ["yes", "no", "x" * _MAX_VOCABULARY_VALUE_CHARS]
+    assert derive_stats([_feature("t", "string")], _rows("t", still_short))["t"].categorical.distinct_count == 3
+
+
+def test_cardinality_stops_on_total_bytes_before_the_count():
+    # Values individually short enough and few enough, but heavy in aggregate. Without this bound
+    # the other two would admit 1024 x 256 chars -- four times the byte budget.
+    values = [f"{i:04d}" + "x" * 200 for i in range(_MAX_VOCABULARY_BYTES // 200)]
+    assert len(values) < _MAX_VOCABULARY_VALUES  # the count bound is not what stops this
+    assert derive_stats([_feature("t", "string")], _rows("t", values))["t"].categorical is None
 
 
 def test_derive_stats_never_quotes_values():
