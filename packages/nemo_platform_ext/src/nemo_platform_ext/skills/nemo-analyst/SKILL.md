@@ -61,10 +61,10 @@ The Analyst reads telemetry; it cannot create it. Confirm all three:
 
 - The target agent already has traces in Intake. No traces means no Insights.
 - The platform is reachable at `NMP_BASE_URL`.
-- The Analyst has a model to run on. It is an LLM agent itself, and it uses the
-  models the platform is configured with rather than any credential of its own.
-  Don't hand it the Experimentalist's configuration. Pre-flight is the authority
-  on whether this is satisfied, and says how to fix it if not.
+- The Analyst has a model to run on. It is an LLM agent itself, and how that is
+  configured is changing, so let pre-flight tell you whether it is satisfied —
+  it names what is missing and how to set it. Don't reach for the
+  Experimentalist's configuration; that is a different contract.
 
 An `AGENT-SPEC.md` is optional but makes the Analyst materially better. It
 carries the intent behind the agent — what it is for, its constraints, what
